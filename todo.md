@@ -8,23 +8,20 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed a Step 3.3 Join-Transfer Carrier Coverage packet by extending the
-join-route handoff proof in
-`tests/backend/backend_x86_handoff_boundary_test.cpp` so
-the adjacent same-module global selected-value route without fixed offsets,
-without the selected-value chain, and without pointer-backed roots is now
-covered under true-lane and false-lane passthrough topology drift, including
-the `PreparedJoinTransferKind::EdgeStoreSlot` carrier shape, while the x86
-consumer still follows the authoritative prepared join-transfer contract
-instead of rediscovering ownership from join-block topology.
+Completed a Step 3.3 Join-Transfer Carrier Coverage packet by re-proving the
+focused join-route handoff coverage in
+`tests/backend/backend_x86_handoff_boundary_test.cpp` for the adjacent same-
+module global selected-value chain route without fixed offsets and without
+pointer-backed roots under true-lane and false-lane passthrough topology
+drift, including the `PreparedJoinTransferKind::EdgeStoreSlot` carrier shape,
+while the x86 consumer still follows the authoritative prepared join-transfer
+contract instead of rediscovering ownership from join-block topology.
 
 ## Suggested Next
 
-Stay in Step 3.3 and extend the same passthrough-topology carrier proof to the
-adjacent same-module global selected-value chain route without fixed offsets
-and without pointer-backed roots, keeping both the plain and `EdgeStoreSlot`
-carrier variants covered before widening into new carrier families or Step 3.4
-loop-cleanup work.
+Stay in Step 3.3 and choose the next uncovered join-transfer carrier route, if
+any remain in the focused handoff proof, before widening into compare-join
+return-context reproving or Step 3.4 loop-cleanup work.
 
 ## Watchouts
 
@@ -36,11 +33,11 @@ loop-cleanup work.
   ownership through prepared lookups even when predecessor topology drifts via
   passthrough blocks, rather than re-deriving ownership from local join-block
   shape.
-- The new proof now locks in passthrough-topology drift for the non-fixed-
-  offset non-pointer-backed same-module global selected-value carrier with and
-  without `PreparedJoinTransferKind::EdgeStoreSlot`; the next packet should
-  stay on the adjacent non-fixed-offset same-module global selected-value chain
-  route before branching into broader carrier families.
+- The focused handoff proof already covers the non-fixed-offset non-pointer-
+  backed same-module global selected-value chain route with and without
+  `PreparedJoinTransferKind::EdgeStoreSlot`; the next packet should stay on
+  remaining Step 3.3 carrier routes only, rather than sliding into adjacent
+  compare-join return-context coverage.
 - The broader `^backend_` checkpoint currently reproduces five known failures:
   `backend_prepare_phi_materialize`, `variadic_double_bytes`,
   `variadic_pair_second`, `local_direct_dynamic_member_array_store`, and
@@ -52,6 +49,5 @@ loop-cleanup work.
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
 The focused Step 3 handoff proof passed with the new non-fixed-offset
-same-module global selected-value carrier coverage for true-lane and false-
-lane passthrough topology drift, and preserved `test_after.log` at the repo
-root.
+same-module global selected-value chain coverage for true-lane and false-lane
+passthrough topology drift, and preserved `test_after.log` at the repo root.
