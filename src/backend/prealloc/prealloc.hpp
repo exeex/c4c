@@ -646,18 +646,18 @@ struct PreparedShortCircuitJoinContext {
   const PreparedEdgeValueTransfer* false_transfer = nullptr;
   const bir::Block* join_block = nullptr;
   PreparedClassifiedShortCircuitIncoming classified_incoming;
-  std::string_view continuation_true_label;
-  std::string_view continuation_false_label;
+  BlockLabelId continuation_true_label = kInvalidBlockLabel;
+  BlockLabelId continuation_false_label = kInvalidBlockLabel;
 };
 
 struct PreparedShortCircuitContinuationLabels {
-  std::string_view incoming_label;
-  std::string_view true_label;
-  std::string_view false_label;
+  BlockLabelId incoming_label = kInvalidBlockLabel;
+  BlockLabelId true_label = kInvalidBlockLabel;
+  BlockLabelId false_label = kInvalidBlockLabel;
 };
 
 struct PreparedShortCircuitTargetLabels {
-  std::string_view block_label;
+  BlockLabelId block_label = kInvalidBlockLabel;
   std::optional<PreparedShortCircuitContinuationLabels> continuation;
 };
 
@@ -730,17 +730,17 @@ struct PreparedMaterializedCompareJoinBranches {
   PreparedMaterializedCompareJoinContext compare_join_context;
   PreparedMaterializedCompareJoinReturnContext true_return_context;
   PreparedMaterializedCompareJoinReturnContext false_return_context;
-  std::string_view false_predecessor_label;
+  BlockLabelId false_predecessor_label = kInvalidBlockLabel;
 };
 
 struct PreparedCompareJoinContinuationTargets {
-  std::string_view true_label;
-  std::string_view false_label;
+  BlockLabelId true_label = kInvalidBlockLabel;
+  BlockLabelId false_label = kInvalidBlockLabel;
 };
 
 struct PreparedBranchTargetLabels {
-  std::string_view true_label;
-  std::string_view false_label;
+  BlockLabelId true_label = kInvalidBlockLabel;
+  BlockLabelId false_label = kInvalidBlockLabel;
 };
 
 [[nodiscard]] constexpr PreparedBranchTargetLabels prepared_branch_target_labels(
@@ -845,8 +845,8 @@ find_prepared_compare_branch_target_labels(const PreparedNameTables& names,
   }
 
   return PreparedBranchTargetLabels{
-      .true_label = prepared_block_label(names, branch_condition.true_label),
-      .false_label = prepared_block_label(names, branch_condition.false_label),
+      .true_label = branch_condition.true_label,
+      .false_label = branch_condition.false_label,
   };
 }
 
@@ -873,9 +873,9 @@ build_prepared_short_circuit_target_labels(
     const PreparedEdgeValueTransfer& transfer,
     bool is_short_circuit_lane,
     bool short_circuit_value,
-    std::string_view rhs_entry_label,
-    std::string_view continuation_true_label,
-    std::string_view continuation_false_label) {
+    BlockLabelId rhs_entry_label,
+    BlockLabelId continuation_true_label,
+    BlockLabelId continuation_false_label) {
   if (is_short_circuit_lane) {
     return PreparedShortCircuitTargetLabels{
         .block_label = short_circuit_value ? continuation_true_label
@@ -888,7 +888,7 @@ build_prepared_short_circuit_target_labels(
       .block_label = rhs_entry_label,
       .continuation =
           PreparedShortCircuitContinuationLabels{
-              .incoming_label = prepared_block_label(names, transfer.predecessor_label),
+              .incoming_label = transfer.predecessor_label,
               .true_label = continuation_true_label,
               .false_label = continuation_false_label,
           },
@@ -1800,14 +1800,14 @@ find_prepared_compare_join_continuation_targets(
 
   if (*join_branch_condition.predicate == bir::BinaryOpcode::Ne) {
     return PreparedCompareJoinContinuationTargets{
-        .true_label = prepared_block_label(names, join_branch_condition.true_label),
-        .false_label = prepared_block_label(names, join_branch_condition.false_label),
+        .true_label = join_branch_condition.true_label,
+        .false_label = join_branch_condition.false_label,
     };
   }
   if (*join_branch_condition.predicate == bir::BinaryOpcode::Eq) {
     return PreparedCompareJoinContinuationTargets{
-        .true_label = prepared_block_label(names, join_branch_condition.false_label),
-        .false_label = prepared_block_label(names, join_branch_condition.true_label),
+        .true_label = join_branch_condition.false_label,
+        .false_label = join_branch_condition.true_label,
     };
   }
   return std::nullopt;
@@ -1848,9 +1848,8 @@ find_prepared_short_circuit_continuation_targets(
     return std::nullopt;
   }
 
-  std::string_view rhs_entry_label;
-  const std::string_view join_block_label =
-      prepared_block_label(names, join_sources->join_transfer->join_block_label);
+  BlockLabelId rhs_entry_label = kInvalidBlockLabel;
+  const BlockLabelId join_block_label = join_sources->join_transfer->join_block_label;
   if (direct_targets->true_label == join_block_label &&
       direct_targets->false_label != join_block_label) {
     rhs_entry_label = direct_targets->false_label;
@@ -1862,11 +1861,12 @@ find_prepared_short_circuit_continuation_targets(
                           ? direct_targets->false_label
                           : direct_targets->true_label;
   }
-  if (rhs_entry_label.empty()) {
+  if (rhs_entry_label == kInvalidBlockLabel) {
     return std::nullopt;
   }
 
-  const auto* rhs_entry_block = find_block_in_function(function, rhs_entry_label);
+  const auto* rhs_entry_block =
+      find_block_in_function(function, prepared_block_label(names, rhs_entry_label));
   if (rhs_entry_block == nullptr) {
     return std::nullopt;
   }
@@ -1884,8 +1884,8 @@ find_prepared_short_circuit_continuation_targets(
   }
 
   return PreparedCompareJoinContinuationTargets{
-      .true_label = prepared_block_label(names, rhs_branch_condition->true_label),
-      .false_label = prepared_block_label(names, rhs_branch_condition->false_label),
+      .true_label = rhs_branch_condition->true_label,
+      .false_label = rhs_branch_condition->false_label,
   };
 }
 
@@ -1975,7 +1975,8 @@ find_prepared_compare_join_entry_branch_plan(
     const PreparedShortCircuitContinuationLabels& continuation_labels) {
   const auto target_labels = resolve_prepared_compare_join_entry_target_labels(
       names, function_cf, function, source_block, continuation_labels);
-  if (target_labels.true_label.empty() || target_labels.false_label.empty()) {
+  if (target_labels.true_label == kInvalidBlockLabel ||
+      target_labels.false_label == kInvalidBlockLabel) {
     return std::nullopt;
   }
 
@@ -2041,7 +2042,8 @@ find_prepared_short_circuit_branch_plan(
     const PreparedShortCircuitJoinContext& join_context,
     const PreparedBranchTargetLabels& direct_branch_targets) {
   if (join_context.true_transfer == nullptr || join_context.false_transfer == nullptr ||
-      direct_branch_targets.true_label.empty() || direct_branch_targets.false_label.empty()) {
+      direct_branch_targets.true_label == kInvalidBlockLabel ||
+      direct_branch_targets.false_label == kInvalidBlockLabel) {
     return std::nullopt;
   }
 
@@ -2052,7 +2054,7 @@ find_prepared_short_circuit_branch_plan(
   const auto rhs_entry_label = short_circuit_on_compare_true
                                    ? direct_branch_targets.false_label
                                    : direct_branch_targets.true_label;
-  if (rhs_entry_label.empty()) {
+  if (rhs_entry_label == kInvalidBlockLabel) {
     return std::nullopt;
   }
 
@@ -2073,7 +2075,8 @@ find_prepared_short_circuit_branch_plan(
       join_context.continuation_true_label,
       join_context.continuation_false_label);
   if (!on_compare_true.has_value() || !on_compare_false.has_value() ||
-      on_compare_true->block_label.empty() || on_compare_false->block_label.empty()) {
+      on_compare_true->block_label == kInvalidBlockLabel ||
+      on_compare_false->block_label == kInvalidBlockLabel) {
     return std::nullopt;
   }
 
@@ -2106,7 +2109,11 @@ find_prepared_materialized_compare_join_branches(
       .compare_join_context = compare_join_context,
       .true_return_context = std::move(*true_return_context),
       .false_return_context = std::move(*false_return_context),
-      .false_predecessor_label = compare_join_context.false_predecessor->label,
+      .false_predecessor_label =
+          compare_join_context.join_transfer->edge_transfers[*compare_join_context
+                                                                  .join_transfer
+                                                                  ->source_false_transfer_index]
+              .predecessor_label,
   };
 }
 
@@ -2231,16 +2238,16 @@ find_prepared_materialized_compare_join_branch_plan(
     return std::nullopt;
   }
   const auto& branch_condition = *prepared_compare_join_branches.prepared_branch.branch_condition;
-  if (prepared_block_label(names, branch_condition.true_label).empty() ||
-      prepared_block_label(names, branch_condition.false_label).empty()) {
+  if (branch_condition.true_label == kInvalidBlockLabel ||
+      branch_condition.false_label == kInvalidBlockLabel) {
     return std::nullopt;
   }
 
   return PreparedMaterializedCompareJoinBranchPlan{
       .target_labels =
           PreparedBranchTargetLabels{
-              .true_label = prepared_block_label(names, branch_condition.true_label),
-              .false_label = prepared_block_label(names, branch_condition.false_label),
+              .true_label = branch_condition.true_label,
+              .false_label = branch_condition.false_label,
           },
       .false_branch_opcode =
           prepared_compare_join_branches.prepared_branch.false_branch_opcode,

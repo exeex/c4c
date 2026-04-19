@@ -1174,12 +1174,13 @@ void publish_short_circuit_continuation_branch_conditions(
         continue;
       }
 
-      if (find_prepared_branch_condition(names, *function_control_flow, target->block_label) !=
+      if (find_prepared_branch_condition(*function_control_flow, target->block_label) !=
           nullptr) {
         continue;
       }
 
-      const auto* continuation_block = find_block(function, target->block_label);
+      const auto* continuation_block =
+          find_block(function, prepared_block_label(names, target->block_label));
       if (continuation_block == nullptr) {
         continue;
       }
@@ -1199,8 +1200,8 @@ void publish_short_circuit_continuation_branch_conditions(
           .lhs = continuation_compare->lhs,
           .rhs = continuation_compare->rhs,
           .can_fuse_with_branch = true,
-          .true_label = names.block_labels.intern(target->continuation->true_label),
-          .false_label = names.block_labels.intern(target->continuation->false_label),
+          .true_label = target->continuation->true_label,
+          .false_label = target->continuation->false_label,
       });
     }
   }

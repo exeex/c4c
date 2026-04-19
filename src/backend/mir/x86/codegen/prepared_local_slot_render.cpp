@@ -774,11 +774,16 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
                 [&](const c4c::backend::prepare::PreparedShortCircuitBranchPlan& prepared_plan)
                     -> std::optional<ShortCircuitPlan> {
                   return c4c::backend::x86::build_prepared_short_circuit_plan(
-                      prepared_plan, find_block);
+                      *prepared_names, prepared_plan, find_block);
                 });
         if (compare_join_render_plan.has_value()) {
           return c4c::backend::x86::render_compare_driven_branch_plan_with_block_renderer(
-              function.name, body, *compare_join_render_plan, find_block, render_block);
+              function.name,
+              body,
+              *compare_join_render_plan,
+              prepared_names,
+              find_block,
+              render_block);
         }
       }
       if (compare_index != block.insts.size()) {
@@ -826,13 +831,18 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
               [&](const c4c::backend::prepare::PreparedShortCircuitBranchPlan& prepared_plan)
                   -> std::optional<ShortCircuitPlan> {
                 return c4c::backend::x86::build_prepared_short_circuit_plan(
-                    prepared_plan, find_block);
+                    *prepared_names, prepared_plan, find_block);
               });
       if (!short_circuit_render_plan.has_value()) {
         return std::nullopt;
       }
       return c4c::backend::x86::render_compare_driven_branch_plan_with_block_renderer(
-          function.name, body, *short_circuit_render_plan, find_block, render_block);
+          function.name,
+          body,
+          *short_circuit_render_plan,
+          prepared_names,
+          find_block,
+          render_block);
     };
     if (const auto rendered_short_circuit = try_render_short_circuit_plan();
         rendered_short_circuit.has_value()) {
@@ -863,7 +873,12 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
       return std::nullopt;
     }
     return c4c::backend::x86::render_compare_driven_branch_plan_with_block_renderer(
-        function.name, body, *plain_cond_render_plan, find_block, render_block);
+        function.name,
+        body,
+        *plain_cond_render_plan,
+        nullptr,
+        find_block,
+        render_block);
   };
 
   auto asm_text = std::string(asm_prefix);

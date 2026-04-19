@@ -3812,8 +3812,8 @@ int check_materialized_compare_join_branch_plan_helper_publishes_prepared_labels
                     .c_str());
   }
 
-  if (prepared_branch_plan->target_labels.true_label != expected_true_label ||
-      prepared_branch_plan->target_labels.false_label != expected_false_label ||
+  if (block_label(prepared, prepared_branch_plan->target_labels.true_label) != expected_true_label ||
+      block_label(prepared, prepared_branch_plan->target_labels.false_label) != expected_false_label ||
       std::string(prepared_branch_plan->false_branch_opcode) != "jne" ||
       prepared_branch_plan->compare_shape !=
           prepare::PreparedParamZeroBranchCondition::CompareShape::SelfTest) {
@@ -4319,8 +4319,8 @@ int check_materialized_compare_join_render_contract_publishes_prepared_globals_a
                  ": shared helper no longer publishes the compare-join branch plan")
                     .c_str());
   }
-  if (expected_branch_plan->target_labels.true_label != expected_true_label ||
-      expected_branch_plan->target_labels.false_label != expected_false_label ||
+  if (block_label(prepared, expected_branch_plan->target_labels.true_label) != expected_true_label ||
+      block_label(prepared, expected_branch_plan->target_labels.false_label) != expected_false_label ||
       std::string(expected_branch_plan->false_branch_opcode) != "jne" ||
       expected_branch_plan->compare_shape !=
           prepare::PreparedParamZeroBranchCondition::CompareShape::SelfTest) {

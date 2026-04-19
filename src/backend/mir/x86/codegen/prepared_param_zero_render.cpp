@@ -313,9 +313,15 @@ find_prepared_short_circuit_join_context_if_supported(
 }
 
 std::optional<ShortCircuitTarget> build_prepared_short_circuit_target(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedShortCircuitTargetLabels& prepared_target,
     const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block) {
-  const auto* block = find_block(prepared_target.block_label);
+  const std::string_view block_label =
+      c4c::backend::prepare::prepared_block_label(prepared_names, prepared_target.block_label);
+  if (block_label.empty()) {
+    return std::nullopt;
+  }
+  const auto* block = find_block(block_label);
   if (block == nullptr) {
     return std::nullopt;
   }
@@ -332,12 +338,13 @@ std::optional<ShortCircuitTarget> build_prepared_short_circuit_target(
 }
 
 std::optional<ShortCircuitPlan> build_prepared_short_circuit_plan(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedShortCircuitBranchPlan& prepared_plan,
     const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block) {
   const auto on_compare_true =
-      build_prepared_short_circuit_target(prepared_plan.on_compare_true, find_block);
+      build_prepared_short_circuit_target(prepared_names, prepared_plan.on_compare_true, find_block);
   const auto on_compare_false =
-      build_prepared_short_circuit_target(prepared_plan.on_compare_false, find_block);
+      build_prepared_short_circuit_target(prepared_names, prepared_plan.on_compare_false, find_block);
   if (!on_compare_true.has_value() || !on_compare_false.has_value()) {
     return std::nullopt;
   }
@@ -620,7 +627,8 @@ find_and_render_prepared_materialized_compare_join_function_if_supported(
       function.name,
       to_prepared_param_zero_compare_shape(
           resolved_render_contract->branch_plan.compare_shape),
-      resolved_render_contract->branch_plan.target_labels.false_label,
+      c4c::backend::prepare::prepared_block_label(
+          module.names, resolved_render_contract->branch_plan.target_labels.false_label),
       resolved_render_contract->branch_plan.false_branch_opcode,
       param_register_name,
       *true_return,
@@ -908,6 +916,7 @@ std::optional<std::string> render_compare_driven_branch_plan(
     std::string_view function_name,
     std::string_view rendered_body,
     const CompareDrivenBranchRenderPlan& render_plan,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block,
     const std::function<std::optional<std::string>(const ShortCircuitTarget&, bool)>&
         render_short_circuit_target) {
@@ -926,14 +935,28 @@ std::optional<std::string> render_compare_driven_branch_plan(
 
   const auto build_short_circuit_render_context =
       [&](const ShortCircuitPlan& plan) -> std::optional<ShortCircuitRenderContext> {
+    if ((plan.on_compare_true.continuation.has_value() ||
+         plan.on_compare_false.continuation.has_value()) &&
+        prepared_names == nullptr) {
+      return std::nullopt;
+    }
+    const auto resolve_prepared_block =
+        [&](c4c::BlockLabelId label_id) -> const c4c::backend::bir::Block* {
+      if (prepared_names == nullptr) {
+        return nullptr;
+      }
+      const std::string_view label =
+          c4c::backend::prepare::prepared_block_label(*prepared_names, label_id);
+      return label.empty() ? nullptr : find_block(label);
+    };
     const bool true_target_renders_false_lane =
         plan.on_compare_true.continuation.has_value() &&
         plan.on_compare_false.block ==
-            find_block(plan.on_compare_true.continuation->false_label);
+            resolve_prepared_block(plan.on_compare_true.continuation->false_label);
     const bool false_target_renders_true_lane =
         plan.on_compare_false.continuation.has_value() &&
         plan.on_compare_true.block ==
-            find_block(plan.on_compare_false.continuation->true_label);
+            resolve_prepared_block(plan.on_compare_false.continuation->true_label);
     if (true_target_renders_false_lane && false_target_renders_true_lane) {
       return std::nullopt;
     }
@@ -1014,6 +1037,7 @@ std::optional<std::string> render_compare_driven_branch_plan_with_block_renderer
     std::string_view function_name,
     std::string_view rendered_body,
     const CompareDrivenBranchRenderPlan& render_plan,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block,
     const std::function<std::optional<std::string>(
         const c4c::backend::bir::Block&,
@@ -1023,6 +1047,7 @@ std::optional<std::string> render_compare_driven_branch_plan_with_block_renderer
       function_name,
       rendered_body,
       render_plan,
+      prepared_names,
       find_block,
       [&](const ShortCircuitTarget& target,
           bool omit_continuation) -> std::optional<std::string> {

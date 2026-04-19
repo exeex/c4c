@@ -799,8 +799,8 @@ int check_short_circuit_context_publishes_prepared_continuation_labels_impl(
   }
   if (!prepared_context->classified_incoming.short_circuit_on_compare_true ||
       !prepared_context->classified_incoming.short_circuit_value ||
-      prepared_context->continuation_true_label != "block_1" ||
-      prepared_context->continuation_false_label != "block_2") {
+      block_label(prepared, prepared_context->continuation_true_label) != "block_1" ||
+      block_label(prepared, prepared_context->continuation_false_label) != "block_2") {
     return fail((std::string(failure_context) +
                  ": shared helper stopped publishing the authoritative short-circuit continuation labels")
                     .c_str());
@@ -950,8 +950,8 @@ int check_short_circuit_context_prefers_prepared_continuation_branch_condition_i
                  ": shared helper no longer recognizes the short-circuit continuation contract when join-branch labels drift")
                     .c_str());
   }
-  if (prepared_context->continuation_true_label != expected_true_label ||
-      prepared_context->continuation_false_label != expected_false_label) {
+  if (block_label(prepared, prepared_context->continuation_true_label) != expected_true_label ||
+      block_label(prepared, prepared_context->continuation_false_label) != expected_false_label) {
     return fail((std::string(failure_context) +
                  ": shared helper stopped preferring authoritative rhs continuation branch metadata")
                     .c_str());
@@ -961,8 +961,8 @@ int check_short_circuit_context_prefers_prepared_continuation_branch_condition_i
       prepare::find_prepared_compare_join_continuation_targets(
           prepared.names, *control_flow, function, "entry");
   if (!prepared_compare_join_targets.has_value() ||
-      prepared_compare_join_targets->true_label != expected_true_label ||
-      prepared_compare_join_targets->false_label != expected_false_label) {
+      block_label(prepared, prepared_compare_join_targets->true_label) != expected_true_label ||
+      block_label(prepared, prepared_compare_join_targets->false_label) != expected_false_label) {
     return fail((std::string(failure_context) +
                  ": shared compare-join helper stopped preferring authoritative rhs continuation targets")
                     .c_str());
@@ -1467,8 +1467,8 @@ int check_short_circuit_entry_branch_helper_publishes_prepared_target_labels(
                  ": shared helper no longer recognizes the prepared short-circuit entry branch contract")
                     .c_str());
   }
-  if (prepared_targets->true_label != "logic.rhs.9" ||
-      prepared_targets->false_label != "logic.end.10") {
+  if (block_label(prepared, prepared_targets->true_label) != "logic.rhs.9" ||
+      block_label(prepared, prepared_targets->false_label) != "logic.end.10") {
     return fail((std::string(failure_context) +
                  ": shared helper stopped publishing authoritative short-circuit entry branch labels")
                     .c_str());
@@ -1567,16 +1567,17 @@ int check_short_circuit_branch_plan_helper_publishes_prepared_labels(
                     .c_str());
   }
 
-  if (prepared_branch_plan->on_compare_true.block_label != "carrier.join.false" ||
+  if (block_label(prepared, prepared_branch_plan->on_compare_true.block_label) !=
+          "carrier.join.false" ||
       !prepared_branch_plan->on_compare_false.continuation.has_value() ||
-      prepared_branch_plan->on_compare_false.block_label != "logic.end.10" ||
-      prepared_branch_plan->on_compare_false.continuation->incoming_label !=
+      block_label(prepared, prepared_branch_plan->on_compare_false.block_label) != "logic.end.10" ||
+      block_label(prepared, prepared_branch_plan->on_compare_false.continuation->incoming_label) !=
           block_label(prepared,
                       join_transfer.edge_transfers[*join_transfer.source_false_transfer_index]
                           .predecessor_label) ||
-      prepared_branch_plan->on_compare_false.continuation->true_label !=
+      block_label(prepared, prepared_branch_plan->on_compare_false.continuation->true_label) !=
           "carrier.join.false" ||
-      prepared_branch_plan->on_compare_false.continuation->false_label !=
+      block_label(prepared, prepared_branch_plan->on_compare_false.continuation->false_label) !=
           "carrier.join.true") {
     return fail((std::string(failure_context) +
                  ": shared helper stopped publishing the authoritative short-circuit branch-plan labels")

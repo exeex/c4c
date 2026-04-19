@@ -871,10 +871,12 @@ find_prepared_short_circuit_join_context_if_supported(
     std::string_view source_block_label);
 
 std::optional<ShortCircuitTarget> build_prepared_short_circuit_target(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedShortCircuitTargetLabels& prepared_target,
     const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block);
 
 std::optional<ShortCircuitPlan> build_prepared_short_circuit_plan(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedShortCircuitBranchPlan& prepared_plan,
     const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block);
 
@@ -917,6 +919,7 @@ std::optional<std::string> render_compare_driven_branch_plan(
     std::string_view function_name,
     std::string_view rendered_body,
     const CompareDrivenBranchRenderPlan& render_plan,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block,
     const std::function<std::optional<std::string>(const ShortCircuitTarget&, bool)>&
         render_short_circuit_target);
@@ -925,6 +928,7 @@ std::optional<std::string> render_compare_driven_branch_plan_with_block_renderer
     std::string_view function_name,
     std::string_view rendered_body,
     const CompareDrivenBranchRenderPlan& render_plan,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block,
     const std::function<std::optional<std::string>(
         const c4c::backend::bir::Block&,
