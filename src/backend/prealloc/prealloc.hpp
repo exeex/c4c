@@ -1499,6 +1499,33 @@ find_prepared_compare_join_continuation_targets(
   return std::nullopt;
 }
 
+[[nodiscard]] inline std::optional<PreparedCompareJoinContinuationTargets>
+find_prepared_compare_join_continuation_targets(const PreparedControlFlowFunction& function_cf,
+                                                const bir::Function& function,
+                                                std::string_view source_block_label) {
+  const auto authoritative_join_transfer =
+      find_authoritative_branch_owned_join_transfer(function_cf, source_block_label);
+  if (!authoritative_join_transfer.has_value() ||
+      authoritative_join_transfer->join_transfer == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* join_block = find_block_in_function(
+      function, authoritative_join_transfer->join_transfer->join_block_label);
+  if (join_block == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* join_branch_condition =
+      find_prepared_branch_condition(function_cf, join_block->label);
+  if (join_branch_condition == nullptr) {
+    return std::nullopt;
+  }
+
+  return find_prepared_compare_join_continuation_targets(
+      *authoritative_join_transfer->join_transfer, *join_block, *join_branch_condition);
+}
+
 [[nodiscard]] inline std::optional<PreparedShortCircuitJoinContext>
 find_prepared_short_circuit_join_context(const PreparedControlFlowFunction& function_cf,
                                          const bir::Function& function,

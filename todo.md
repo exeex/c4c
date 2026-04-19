@@ -9,16 +9,20 @@ Source Plan: plan.md
 ## Just Finished
 
 Completed a Step 3 Consume Prepared Control-Flow In X86 packet by removing the
-x86 emitter's local rebuilt short-circuit join-context copy and feeding
-`PreparedShortCircuitJoinContext` directly into the shared short-circuit
-branch-plan helper in `src/backend/mir/x86/codegen/prepared_module_emit.cpp`.
+x86 compare-join continuation path's dependence on copied continuation labels
+alone: `src/backend/prealloc/prealloc.hpp` now exposes a direct prepared
+compare-join continuation-target lookup by source block, and
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` now prefers that shared
+helper when rendering compare-join entry branches while preserving the existing
+prepared continuation labels as a bounded fallback for valid nested shapes.
 
 ## Suggested Next
 
 Stay in Step 3 but move to another prepared control-flow consumer seam with an
-observable end-to-end gain, such as tightening a non-short-circuit branch/join
-consumer path to use a shared prepared render contract instead of emitter-local
-reconstruction.
+observable end-to-end gain, such as tightening a non-short-circuit
+materialized-compare/join render-contract consumer path to use more of the
+shared prepared packet directly instead of keeping x86-side fallback-only
+knowledge about nested continuation topology.
 
 ## Watchouts
 
@@ -28,9 +32,11 @@ reconstruction.
 - This packet was intentionally a consumer-side contract cleanup, not a new
  capability family: it should not be used to justify more compare-join
  passthrough coverage or emitter-local matcher growth.
-- Follow-on packets should keep consuming prepared helper outputs directly
- where possible instead of copying shared short-circuit or join metadata back
- into x86-local structs.
+- The new source-block compare-join continuation helper is authoritative when
+ available, but the x86 consumer still needs the existing prepared
+ continuation-label fallback for valid nested shapes that are not yet published
+ through that direct lookup. Follow-on packets should close that contract gap
+ in shared helpers rather than dropping back to CFG rediscovery.
 - The broader `^backend_` checkpoint still has the same four known failures in
  variadic and dynamic-member-array semantic lowering outside this packet's
  owned files.

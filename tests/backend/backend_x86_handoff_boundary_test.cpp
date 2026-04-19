@@ -7757,6 +7757,17 @@ int check_short_circuit_context_publishes_prepared_continuation_labels_impl(
                     .c_str());
   }
 
+  const auto prepared_compare_join_targets =
+      prepare::find_prepared_compare_join_continuation_targets(
+          *control_flow, function, "entry");
+  if (!prepared_compare_join_targets.has_value() ||
+      prepared_compare_join_targets->true_label != prepared_context->continuation_true_label ||
+      prepared_compare_join_targets->false_label != prepared_context->continuation_false_label) {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped publishing authoritative compare-join continuation targets")
+                    .c_str());
+  }
+
   return 0;
 }
 
