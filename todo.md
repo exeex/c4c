@@ -5,24 +5,26 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Migrate Consumers To The Authoritative Prepared Facts
-Plan Review Counter: 4 / 10
+Plan Review Counter: 5 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another `plan.md` Step 3 slice for idea 62. The
-`tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp` handoff
-coverage now extends the compare-join family so both the normal and
-`EdgeStoreSlot` joined-branch lanes prove the x86 consumer rejects reopening
-raw recovery when the authoritative prepared branch record is missing, instead
-of silently falling back past the canonical prepared compare-join handoff.
+`tests/backend/backend_x86_handoff_boundary_i32_guard_chain_test.cpp` handoff
+coverage now extends the pointer-backed same-module global guard-chain family
+so it proves both that the x86 consumer keeps following authoritative prepared
+addressing over drifted raw global carriers and that it rejects reopening raw
+global fallback when the prepared addressing contract is removed from the
+canonical guard-chain handoff.
 
 ## Suggested Next
 
-Stay on the next bounded `plan.md` Step 3 compare-join or short-circuit handoff
-packet that still lacks explicit contract proof for missing or drifted prepared
-metadata, most likely one of the remaining helper-backed entry-planner lanes in
-the same focused x86 handoff-boundary surface.
+Stay on the next bounded `plan.md` Step 3 short-circuit or remaining helper-
+backed guard-family handoff packet that still lacks explicit contract proof for
+missing or drifted prepared metadata, most likely another consumer lane where
+prepared addressing or continuation ownership is authoritative but not yet
+proven against raw-carrier drift and prepared-data loss.
 
 ## Watchouts
 
@@ -51,13 +53,17 @@ the same focused x86 handoff-boundary surface.
   convert that family to short-circuit-style label rejection, because the
   current migration proof already relies on authoritative prepared ownership
   winning over raw carrier labels there.
+- The pointer-backed same-module global guard-chain lane now has explicit proof
+  for prepared-address consumption and prepared-address-loss rejection, so the
+  next packet should move to a different consumer family instead of restating
+  that addressing contract.
 
 ## Proof
 
 Ran the delegated proof command
 `cmake --build --preset default --target backend_x86_handoff_boundary_test && ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 and wrote the canonical proof log to `test_after.log`. The focused
-`backend_x86_handoff_boundary` proof passed after extending compare-join
-handoff-boundary coverage so the normal and `EdgeStoreSlot` joined-branch
-variants both prove rejection of a missing authoritative prepared branch
-record. `test_after.log` is the proof artifact for this packet.
+`backend_x86_handoff_boundary` proof passed after extending pointer-backed
+same-module global guard-chain coverage so the route proves authoritative
+prepared-address consumption and rejects raw global fallback after prepared
+address loss. `test_after.log` is the proof artifact for this packet.

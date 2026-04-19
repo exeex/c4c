@@ -964,6 +964,117 @@ int check_same_module_global_store_guard_chain_route_requires_authoritative_prep
   return 0;
 }
 
+int check_pointer_backed_same_module_global_guard_chain_route_consumes_prepared_address_contract(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* function_addressing =
+      prepare::find_prepared_addressing(prepared, find_function_name_id(prepared, function_name));
+  if (function_addressing == nullptr || function_addressing->accesses.size() < 5) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the pointer-backed same-module global prepared accesses")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  bool mutated_any_load = false;
+  for (auto& block : function.blocks) {
+    for (auto& inst : block.insts) {
+      auto* load = std::get_if<bir::LoadGlobalInst>(&inst);
+      if (load == nullptr) {
+        continue;
+      }
+      load->global_name = "drifted_same_module_global";
+      mutated_any_load = true;
+    }
+  }
+  if (!mutated_any_load) {
+    return fail((std::string(failure_context) +
+                 ": prepared pointer-backed same-module global guard fixture no longer exposes the expected load carriers")
+                    .c_str());
+  }
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following authoritative prepared pointer-backed same-module global accesses over drifted raw global carriers")
+                    .c_str());
+  }
+
+  return 0;
+}
+
+int check_pointer_backed_same_module_global_guard_chain_route_requires_authoritative_prepared_address_contract(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* function_addressing =
+      prepare::find_prepared_addressing(prepared, find_function_name_id(prepared, function_name));
+  if (function_addressing == nullptr || function_addressing->accesses.size() < 5) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the pointer-backed same-module global prepared accesses")
+                    .c_str());
+  }
+
+  auto mutated = prepared;
+  prepare::PreparedAddressingFunction* mutable_addressing = nullptr;
+  for (auto& candidate : mutated.addressing.functions) {
+    if (prepare::prepared_function_name(mutated.names, candidate.function_name) == function_name) {
+      mutable_addressing = &candidate;
+      break;
+    }
+  }
+  if (mutable_addressing == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": mutated pointer-backed same-module global guard fixture lost its prepared accesses")
+                    .c_str());
+  }
+
+  auto& function = mutated.module.functions.front();
+  bool mutated_any_load = false;
+  for (auto& block : function.blocks) {
+    for (auto& inst : block.insts) {
+      auto* load = std::get_if<bir::LoadGlobalInst>(&inst);
+      if (load == nullptr) {
+        continue;
+      }
+      load->global_name = "drifted_same_module_global";
+      mutated_any_load = true;
+    }
+  }
+  if (!mutated_any_load) {
+    return fail((std::string(failure_context) +
+                 ": prepared pointer-backed same-module global guard fixture no longer exposes the expected load carriers")
+                    .c_str());
+  }
+  mutable_addressing->accesses.clear();
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(mutated);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly fell back to raw pointer-backed same-module global carriers after prepared access loss")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected missing prepared pointer-backed same-module global accesses with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_i32_guard_chain_tests() {
@@ -1070,6 +1181,23 @@ int run_backend_x86_handoff_boundary_i32_guard_chain_tests() {
               "main",
               "block_10",
               "pointer-backed same-module global equality-against-immediate guard route rejects drifted prepared branch labels instead of falling back to the raw guard-chain matcher");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_pointer_backed_same_module_global_guard_chain_route_consumes_prepared_address_contract(
+              make_x86_pointer_backed_same_module_global_guard_chain_module(),
+              expected_minimal_pointer_backed_same_module_global_guard_chain_asm("main"),
+              "main",
+              "pointer-backed same-module global equality-against-immediate guard route consumes authoritative prepared global accesses");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_pointer_backed_same_module_global_guard_chain_route_requires_authoritative_prepared_address_contract(
+              make_x86_pointer_backed_same_module_global_guard_chain_module(),
+              "main",
+              "pointer-backed same-module global equality-against-immediate guard route rejects raw global fallback after prepared access loss");
       status != 0) {
     return status;
   }
