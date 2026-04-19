@@ -86,7 +86,7 @@ class BitSet {
 };
 
 struct DenseValueInfo {
-  std::string value_name;
+  ValueNameId value_name = kInvalidValueName;
   bir::TypeKind type = bir::TypeKind::Void;
   PreparedValueKind value_kind = PreparedValueKind::Temporary;
   std::optional<PreparedObjectId> stack_object_id;
@@ -96,7 +96,7 @@ struct DenseValueInfo {
 
 struct DenseValueSet {
   std::vector<DenseValueInfo> values;
-  std::unordered_map<std::string, std::size_t> name_to_index;
+  std::unordered_map<ValueNameId, std::size_t> name_to_index;
 };
 
 struct BlockProgramPoints {
@@ -136,11 +136,31 @@ void absorb_value_metadata(DenseValueInfo& info,
   info.requires_home_slot = info.requires_home_slot || requires_home_slot;
 }
 
-[[nodiscard]] std::unordered_map<std::string, std::vector<const PreparedStackObject*>>
-build_stack_object_lookup(const PreparedNameTables& names,
-                          FunctionNameId function_name,
+[[nodiscard]] std::optional<ValueNameId> lookup_named_value_id(const PreparedNameTables& names,
+                                                               const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return std::nullopt;
+  }
+  const ValueNameId value_name_id = names.value_names.find(value.name);
+  if (value_name_id == kInvalidValueName) {
+    return std::nullopt;
+  }
+  return value_name_id;
+}
+
+[[nodiscard]] std::optional<BlockLabelId> lookup_block_label_id(const PreparedNameTables& names,
+                                                                std::string_view label) {
+  const BlockLabelId block_label_id = names.block_labels.find(label);
+  if (block_label_id == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+  return block_label_id;
+}
+
+[[nodiscard]] std::unordered_map<ValueNameId, std::vector<const PreparedStackObject*>>
+build_stack_object_lookup(FunctionNameId function_name,
                           const PreparedStackLayout& stack_layout) {
-  std::unordered_map<std::string, std::vector<const PreparedStackObject*>> lookup;
+  std::unordered_map<ValueNameId, std::vector<const PreparedStackObject*>> lookup;
   for (const auto& object : stack_layout.objects) {
     if (object.function_name != function_name) {
       continue;
@@ -148,15 +168,15 @@ build_stack_object_lookup(const PreparedNameTables& names,
     if (!object.value_name.has_value()) {
       continue;
     }
-    lookup[std::string(prepared_value_name(names, *object.value_name))].push_back(&object);
+    lookup[*object.value_name].push_back(&object);
   }
   return lookup;
 }
 
 [[nodiscard]] std::optional<const PreparedStackObject*> find_unique_stack_object(
-    std::string_view value_name,
-    const std::unordered_map<std::string, std::vector<const PreparedStackObject*>>& lookup) {
-  const auto found = lookup.find(std::string(value_name));
+    ValueNameId value_name,
+    const std::unordered_map<ValueNameId, std::vector<const PreparedStackObject*>>& lookup) {
+  const auto found = lookup.find(value_name);
   if (found == lookup.end() || found->second.size() != 1U) {
     return std::nullopt;
   }
@@ -164,18 +184,17 @@ build_stack_object_lookup(const PreparedNameTables& names,
 }
 
 std::size_t ensure_dense_value(DenseValueSet& dense_values,
-                               std::string_view value_name,
+                               ValueNameId value_name,
                                bir::TypeKind type,
                                PreparedValueKind value_kind,
-                               const std::unordered_map<std::string, std::vector<const PreparedStackObject*>>&
+                               const std::unordered_map<ValueNameId, std::vector<const PreparedStackObject*>>&
                                    stack_object_lookup,
                                bool address_taken = false,
                                bool requires_home_slot = false) {
-  const auto [it, inserted] =
-      dense_values.name_to_index.emplace(std::string(value_name), dense_values.values.size());
+  const auto [it, inserted] = dense_values.name_to_index.emplace(value_name, dense_values.values.size());
   if (inserted) {
     DenseValueInfo info{
-        .value_name = std::string(value_name),
+        .value_name = value_name,
         .type = type,
         .value_kind = value_kind,
         .stack_object_id = std::nullopt,
@@ -201,110 +220,130 @@ std::size_t ensure_dense_value(DenseValueSet& dense_values,
 }
 
 void maybe_add_named_value(DenseValueSet& dense_values,
+                           PreparedNameTables& names,
                            const bir::Value& value,
                            PreparedValueKind value_kind,
-                           const std::unordered_map<std::string, std::vector<const PreparedStackObject*>>&
+                           const std::unordered_map<ValueNameId, std::vector<const PreparedStackObject*>>&
                                stack_object_lookup,
                            bool address_taken = false,
                            bool requires_home_slot = false) {
-  if (value.kind != bir::Value::Kind::Named) {
+  const auto value_name_id = prepared_named_value_id(names, value);
+  if (!value_name_id.has_value()) {
     return;
   }
   (void)ensure_dense_value(
-      dense_values, value.name, value.type, value_kind, stack_object_lookup, address_taken, requires_home_slot);
+      dense_values,
+      *value_name_id,
+      value.type,
+      value_kind,
+      stack_object_lookup,
+      address_taken,
+      requires_home_slot);
 }
 
 void maybe_add_pointer_base_value(
+    PreparedNameTables& names,
     DenseValueSet& dense_values,
     const std::optional<bir::MemoryAddress>& address,
-    const std::unordered_map<std::string, std::vector<const PreparedStackObject*>>& stack_object_lookup) {
+    const std::unordered_map<ValueNameId, std::vector<const PreparedStackObject*>>& stack_object_lookup) {
   if (!address.has_value() || address->base_kind != bir::MemoryAddress::BaseKind::PointerValue) {
     return;
   }
   maybe_add_named_value(
-      dense_values, address->base_value, PreparedValueKind::Temporary, stack_object_lookup, true);
+      dense_values, names, address->base_value, PreparedValueKind::Temporary, stack_object_lookup, true);
 }
 
 void collect_dense_values_from_instruction(
+    PreparedNameTables& names,
     DenseValueSet& dense_values,
     const bir::Inst& inst,
-    const std::unordered_map<std::string, std::vector<const PreparedStackObject*>>& stack_object_lookup) {
+    const std::unordered_map<ValueNameId, std::vector<const PreparedStackObject*>>& stack_object_lookup) {
   std::visit(
       [&](const auto& typed_inst) {
         using T = std::decay_t<decltype(typed_inst)>;
         if constexpr (std::is_same_v<T, bir::BinaryInst>) {
           maybe_add_named_value(
-              dense_values, typed_inst.result, PreparedValueKind::Temporary, stack_object_lookup);
+              dense_values, names, typed_inst.result, PreparedValueKind::Temporary, stack_object_lookup);
           maybe_add_named_value(
-              dense_values, typed_inst.lhs, PreparedValueKind::Temporary, stack_object_lookup);
+              dense_values, names, typed_inst.lhs, PreparedValueKind::Temporary, stack_object_lookup);
           maybe_add_named_value(
-              dense_values, typed_inst.rhs, PreparedValueKind::Temporary, stack_object_lookup);
+              dense_values, names, typed_inst.rhs, PreparedValueKind::Temporary, stack_object_lookup);
         } else if constexpr (std::is_same_v<T, bir::SelectInst>) {
           maybe_add_named_value(
-              dense_values, typed_inst.result, PreparedValueKind::Temporary, stack_object_lookup);
+              dense_values, names, typed_inst.result, PreparedValueKind::Temporary, stack_object_lookup);
           maybe_add_named_value(
-              dense_values, typed_inst.lhs, PreparedValueKind::Temporary, stack_object_lookup);
+              dense_values, names, typed_inst.lhs, PreparedValueKind::Temporary, stack_object_lookup);
           maybe_add_named_value(
-              dense_values, typed_inst.rhs, PreparedValueKind::Temporary, stack_object_lookup);
+              dense_values, names, typed_inst.rhs, PreparedValueKind::Temporary, stack_object_lookup);
           maybe_add_named_value(
-              dense_values, typed_inst.true_value, PreparedValueKind::Temporary, stack_object_lookup);
+              dense_values, names, typed_inst.true_value, PreparedValueKind::Temporary, stack_object_lookup);
           maybe_add_named_value(
-              dense_values, typed_inst.false_value, PreparedValueKind::Temporary, stack_object_lookup);
+              dense_values, names, typed_inst.false_value, PreparedValueKind::Temporary, stack_object_lookup);
         } else if constexpr (std::is_same_v<T, bir::CastInst>) {
           maybe_add_named_value(
-              dense_values, typed_inst.result, PreparedValueKind::Temporary, stack_object_lookup);
+              dense_values, names, typed_inst.result, PreparedValueKind::Temporary, stack_object_lookup);
           maybe_add_named_value(
-              dense_values, typed_inst.operand, PreparedValueKind::Temporary, stack_object_lookup);
+              dense_values, names, typed_inst.operand, PreparedValueKind::Temporary, stack_object_lookup);
         } else if constexpr (std::is_same_v<T, bir::PhiInst>) {
-          maybe_add_named_value(dense_values, typed_inst.result, PreparedValueKind::Phi, stack_object_lookup);
+          maybe_add_named_value(
+              dense_values, names, typed_inst.result, PreparedValueKind::Phi, stack_object_lookup);
           for (const auto& incoming : typed_inst.incomings) {
             maybe_add_named_value(
-                dense_values, incoming.value, PreparedValueKind::Temporary, stack_object_lookup);
+                dense_values, names, incoming.value, PreparedValueKind::Temporary, stack_object_lookup);
           }
         } else if constexpr (std::is_same_v<T, bir::CallInst>) {
           if (typed_inst.result.has_value()) {
             maybe_add_named_value(
-                dense_values, *typed_inst.result, PreparedValueKind::CallResult, stack_object_lookup);
+                dense_values,
+                names,
+                *typed_inst.result,
+                PreparedValueKind::CallResult,
+                stack_object_lookup);
           }
           if (typed_inst.callee_value.has_value()) {
             maybe_add_named_value(
-                dense_values, *typed_inst.callee_value, PreparedValueKind::Temporary, stack_object_lookup);
+                dense_values,
+                names,
+                *typed_inst.callee_value,
+                PreparedValueKind::Temporary,
+                stack_object_lookup);
           }
           for (const auto& arg : typed_inst.args) {
             maybe_add_named_value(
-                dense_values, arg, PreparedValueKind::Temporary, stack_object_lookup);
+                dense_values, names, arg, PreparedValueKind::Temporary, stack_object_lookup);
           }
         } else if constexpr (std::is_same_v<T, bir::LoadLocalInst>) {
           maybe_add_named_value(
-              dense_values, typed_inst.result, PreparedValueKind::Temporary, stack_object_lookup);
-          maybe_add_pointer_base_value(dense_values, typed_inst.address, stack_object_lookup);
+              dense_values, names, typed_inst.result, PreparedValueKind::Temporary, stack_object_lookup);
+          maybe_add_pointer_base_value(names, dense_values, typed_inst.address, stack_object_lookup);
         } else if constexpr (std::is_same_v<T, bir::LoadGlobalInst>) {
           maybe_add_named_value(
-              dense_values, typed_inst.result, PreparedValueKind::Temporary, stack_object_lookup);
-          maybe_add_pointer_base_value(dense_values, typed_inst.address, stack_object_lookup);
+              dense_values, names, typed_inst.result, PreparedValueKind::Temporary, stack_object_lookup);
+          maybe_add_pointer_base_value(names, dense_values, typed_inst.address, stack_object_lookup);
         } else if constexpr (std::is_same_v<T, bir::StoreGlobalInst>) {
           maybe_add_named_value(
-              dense_values, typed_inst.value, PreparedValueKind::Temporary, stack_object_lookup);
-          maybe_add_pointer_base_value(dense_values, typed_inst.address, stack_object_lookup);
+              dense_values, names, typed_inst.value, PreparedValueKind::Temporary, stack_object_lookup);
+          maybe_add_pointer_base_value(names, dense_values, typed_inst.address, stack_object_lookup);
         } else if constexpr (std::is_same_v<T, bir::StoreLocalInst>) {
           maybe_add_named_value(
-              dense_values, typed_inst.value, PreparedValueKind::Temporary, stack_object_lookup);
-          maybe_add_pointer_base_value(dense_values, typed_inst.address, stack_object_lookup);
+              dense_values, names, typed_inst.value, PreparedValueKind::Temporary, stack_object_lookup);
+          maybe_add_pointer_base_value(names, dense_values, typed_inst.address, stack_object_lookup);
         }
       },
       inst);
 }
 
 void collect_dense_values_from_terminator(
+    PreparedNameTables& names,
     DenseValueSet& dense_values,
     const bir::Terminator& terminator,
-    const std::unordered_map<std::string, std::vector<const PreparedStackObject*>>& stack_object_lookup) {
+    const std::unordered_map<ValueNameId, std::vector<const PreparedStackObject*>>& stack_object_lookup) {
   if (terminator.kind == bir::TerminatorKind::Return && terminator.value.has_value()) {
     maybe_add_named_value(
-        dense_values, *terminator.value, PreparedValueKind::Temporary, stack_object_lookup);
+        dense_values, names, *terminator.value, PreparedValueKind::Temporary, stack_object_lookup);
   } else if (terminator.kind == bir::TerminatorKind::CondBranch) {
     maybe_add_named_value(
-        dense_values, terminator.condition, PreparedValueKind::Temporary, stack_object_lookup);
+        dense_values, names, terminator.condition, PreparedValueKind::Temporary, stack_object_lookup);
   }
 }
 
@@ -312,14 +351,18 @@ void collect_dense_values_from_terminator(
                                                   const bir::Function& function,
                                                   const PreparedStackLayout& stack_layout) {
   const FunctionNameId function_name_id = names.function_names.intern(function.name);
-  const auto stack_object_lookup = build_stack_object_lookup(names, function_name_id, stack_layout);
+  const auto stack_object_lookup = build_stack_object_lookup(function_name_id, stack_layout);
   DenseValueSet dense_values;
 
   for (const auto& param : function.params) {
     const bool requires_home_slot = param.is_byval || param.is_sret;
     const bool address_taken = param.is_byval || param.is_sret;
+    const ValueNameId param_name_id = names.value_names.intern(param.name);
+    if (param_name_id == kInvalidValueName) {
+      continue;
+    }
     (void)ensure_dense_value(dense_values,
-                             param.name,
+                             param_name_id,
                              param.type,
                              PreparedValueKind::Parameter,
                              stack_object_lookup,
@@ -329,33 +372,36 @@ void collect_dense_values_from_terminator(
 
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
-      collect_dense_values_from_instruction(dense_values, inst, stack_object_lookup);
+      collect_dense_values_from_instruction(names, dense_values, inst, stack_object_lookup);
     }
-    collect_dense_values_from_terminator(dense_values, block.terminator, stack_object_lookup);
+    collect_dense_values_from_terminator(names, dense_values, block.terminator, stack_object_lookup);
   }
 
   return dense_values;
 }
 
-void append_named_value_match(const bir::Value& value,
+void append_named_value_match(const PreparedNameTables& names,
+                              const bir::Value& value,
                               const DenseValueSet& dense_values,
                               std::vector<std::size_t>& matches) {
-  if (value.kind != bir::Value::Kind::Named) {
+  const auto value_name_id = lookup_named_value_id(names, value);
+  if (!value_name_id.has_value()) {
     return;
   }
-  const auto found = dense_values.name_to_index.find(value.name);
+  const auto found = dense_values.name_to_index.find(*value_name_id);
   if (found != dense_values.name_to_index.end()) {
     matches.push_back(found->second);
   }
 }
 
-void append_pointer_base_match(const std::optional<bir::MemoryAddress>& address,
+void append_pointer_base_match(const PreparedNameTables& names,
+                               const std::optional<bir::MemoryAddress>& address,
                                const DenseValueSet& dense_values,
                                std::vector<std::size_t>& matches) {
   if (!address.has_value() || address->base_kind != bir::MemoryAddress::BaseKind::PointerValue) {
     return;
   }
-  append_named_value_match(address->base_value, dense_values, matches);
+  append_named_value_match(names, address->base_value, dense_values, matches);
 }
 
 void sort_and_unique(std::vector<std::size_t>& items) {
@@ -363,7 +409,8 @@ void sort_and_unique(std::vector<std::size_t>& items) {
   items.erase(std::unique(items.begin(), items.end()), items.end());
 }
 
-void collect_instruction_uses_and_defs(const bir::Inst& inst,
+void collect_instruction_uses_and_defs(const PreparedNameTables& names,
+                                       const bir::Inst& inst,
                                        const DenseValueSet& dense_values,
                                        std::vector<std::size_t>& uses,
                                        std::vector<std::size_t>& defs) {
@@ -371,42 +418,42 @@ void collect_instruction_uses_and_defs(const bir::Inst& inst,
       [&](const auto& typed_inst) {
         using T = std::decay_t<decltype(typed_inst)>;
         if constexpr (std::is_same_v<T, bir::BinaryInst>) {
-          append_named_value_match(typed_inst.lhs, dense_values, uses);
-          append_named_value_match(typed_inst.rhs, dense_values, uses);
-          append_named_value_match(typed_inst.result, dense_values, defs);
+          append_named_value_match(names, typed_inst.lhs, dense_values, uses);
+          append_named_value_match(names, typed_inst.rhs, dense_values, uses);
+          append_named_value_match(names, typed_inst.result, dense_values, defs);
         } else if constexpr (std::is_same_v<T, bir::SelectInst>) {
-          append_named_value_match(typed_inst.lhs, dense_values, uses);
-          append_named_value_match(typed_inst.rhs, dense_values, uses);
-          append_named_value_match(typed_inst.true_value, dense_values, uses);
-          append_named_value_match(typed_inst.false_value, dense_values, uses);
-          append_named_value_match(typed_inst.result, dense_values, defs);
+          append_named_value_match(names, typed_inst.lhs, dense_values, uses);
+          append_named_value_match(names, typed_inst.rhs, dense_values, uses);
+          append_named_value_match(names, typed_inst.true_value, dense_values, uses);
+          append_named_value_match(names, typed_inst.false_value, dense_values, uses);
+          append_named_value_match(names, typed_inst.result, dense_values, defs);
         } else if constexpr (std::is_same_v<T, bir::CastInst>) {
-          append_named_value_match(typed_inst.operand, dense_values, uses);
-          append_named_value_match(typed_inst.result, dense_values, defs);
+          append_named_value_match(names, typed_inst.operand, dense_values, uses);
+          append_named_value_match(names, typed_inst.result, dense_values, defs);
         } else if constexpr (std::is_same_v<T, bir::PhiInst>) {
-          append_named_value_match(typed_inst.result, dense_values, defs);
+          append_named_value_match(names, typed_inst.result, dense_values, defs);
         } else if constexpr (std::is_same_v<T, bir::CallInst>) {
           if (typed_inst.result.has_value()) {
-            append_named_value_match(*typed_inst.result, dense_values, defs);
+            append_named_value_match(names, *typed_inst.result, dense_values, defs);
           }
           if (typed_inst.callee_value.has_value()) {
-            append_named_value_match(*typed_inst.callee_value, dense_values, uses);
+            append_named_value_match(names, *typed_inst.callee_value, dense_values, uses);
           }
           for (const auto& arg : typed_inst.args) {
-            append_named_value_match(arg, dense_values, uses);
+            append_named_value_match(names, arg, dense_values, uses);
           }
         } else if constexpr (std::is_same_v<T, bir::LoadLocalInst>) {
-          append_pointer_base_match(typed_inst.address, dense_values, uses);
-          append_named_value_match(typed_inst.result, dense_values, defs);
+          append_pointer_base_match(names, typed_inst.address, dense_values, uses);
+          append_named_value_match(names, typed_inst.result, dense_values, defs);
         } else if constexpr (std::is_same_v<T, bir::LoadGlobalInst>) {
-          append_pointer_base_match(typed_inst.address, dense_values, uses);
-          append_named_value_match(typed_inst.result, dense_values, defs);
+          append_pointer_base_match(names, typed_inst.address, dense_values, uses);
+          append_named_value_match(names, typed_inst.result, dense_values, defs);
         } else if constexpr (std::is_same_v<T, bir::StoreGlobalInst>) {
-          append_named_value_match(typed_inst.value, dense_values, uses);
-          append_pointer_base_match(typed_inst.address, dense_values, uses);
+          append_named_value_match(names, typed_inst.value, dense_values, uses);
+          append_pointer_base_match(names, typed_inst.address, dense_values, uses);
         } else if constexpr (std::is_same_v<T, bir::StoreLocalInst>) {
-          append_named_value_match(typed_inst.value, dense_values, uses);
-          append_pointer_base_match(typed_inst.address, dense_values, uses);
+          append_named_value_match(names, typed_inst.value, dense_values, uses);
+          append_pointer_base_match(names, typed_inst.address, dense_values, uses);
         }
       },
       inst);
@@ -414,13 +461,14 @@ void collect_instruction_uses_and_defs(const bir::Inst& inst,
   sort_and_unique(defs);
 }
 
-void collect_terminator_uses(const bir::Terminator& terminator,
+void collect_terminator_uses(const PreparedNameTables& names,
+                             const bir::Terminator& terminator,
                              const DenseValueSet& dense_values,
                              std::vector<std::size_t>& uses) {
   if (terminator.kind == bir::TerminatorKind::Return && terminator.value.has_value()) {
-    append_named_value_match(*terminator.value, dense_values, uses);
+    append_named_value_match(names, *terminator.value, dense_values, uses);
   } else if (terminator.kind == bir::TerminatorKind::CondBranch) {
-    append_named_value_match(terminator.condition, dense_values, uses);
+    append_named_value_match(names, terminator.condition, dense_values, uses);
   }
   sort_and_unique(uses);
 }
@@ -460,24 +508,33 @@ void record_point_activity(const std::vector<std::size_t>& uses,
   }
 }
 
-[[nodiscard]] std::unordered_map<std::string, std::size_t> build_block_index_map(
+[[nodiscard]] std::unordered_map<BlockLabelId, std::size_t> build_block_index_map(
+    PreparedNameTables& names,
     const bir::Function& function) {
-  std::unordered_map<std::string, std::size_t> indices;
+  std::unordered_map<BlockLabelId, std::size_t> indices;
   indices.reserve(function.blocks.size());
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
-    indices.emplace(function.blocks[block_index].label, block_index);
+    const BlockLabelId block_label_id = names.block_labels.intern(function.blocks[block_index].label);
+    if (block_label_id != kInvalidBlockLabel) {
+      indices.emplace(block_label_id, block_index);
+    }
   }
   return indices;
 }
 
 [[nodiscard]] std::vector<std::vector<std::size_t>> build_successors(
+    const PreparedNameTables& names,
     const bir::Function& function,
-    const std::unordered_map<std::string, std::size_t>& block_indices) {
+    const std::unordered_map<BlockLabelId, std::size_t>& block_indices) {
   std::vector<std::vector<std::size_t>> successors(function.blocks.size());
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     const auto& terminator = function.blocks[block_index].terminator;
     auto append_successor = [&](std::string_view label) {
-      const auto found = block_indices.find(std::string(label));
+      const auto block_label_id = lookup_block_label_id(names, label);
+      if (!block_label_id.has_value()) {
+        return;
+      }
+      const auto found = block_indices.find(*block_label_id);
       if (found != block_indices.end()) {
         successors[block_index].push_back(found->second);
       }
@@ -506,9 +563,10 @@ void record_point_activity(const std::vector<std::size_t>& uses,
 }
 
 [[nodiscard]] std::vector<std::vector<std::size_t>> collect_phi_predecessor_uses(
+    const PreparedNameTables& names,
     const bir::Function& function,
     const DenseValueSet& dense_values,
-    const std::unordered_map<std::string, std::size_t>& block_indices) {
+    const std::unordered_map<BlockLabelId, std::size_t>& block_indices) {
   std::vector<std::vector<std::size_t>> phi_uses(function.blocks.size());
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
@@ -517,11 +575,13 @@ void record_point_activity(const std::vector<std::size_t>& uses,
         continue;
       }
       for (const auto& incoming : phi->incomings) {
-        if (incoming.value.kind != bir::Value::Kind::Named) {
+        const auto predecessor_label_id = lookup_block_label_id(names, incoming.label);
+        const auto value_name_id = lookup_named_value_id(names, incoming.value);
+        if (!predecessor_label_id.has_value() || !value_name_id.has_value()) {
           continue;
         }
-        const auto pred_it = block_indices.find(incoming.label);
-        const auto value_it = dense_values.name_to_index.find(incoming.value.name);
+        const auto pred_it = block_indices.find(*predecessor_label_id);
+        const auto value_it = dense_values.name_to_index.find(*value_name_id);
         if (pred_it == block_indices.end() || value_it == dense_values.name_to_index.end()) {
           continue;
         }
@@ -592,6 +652,7 @@ void record_point_activity(const std::vector<std::size_t>& uses,
 
 [[nodiscard]] ProgramPointState assign_program_points(
     const bir::Function& function,
+    const PreparedNameTables& names,
     const DenseValueSet& dense_values,
     const std::vector<std::vector<std::size_t>>& phi_predecessor_uses) {
   const std::size_t value_count = dense_values.values.size();
@@ -632,7 +693,7 @@ void record_point_activity(const std::vector<std::size_t>& uses,
     for (const auto& inst : function.blocks[block_index].insts) {
       std::vector<std::size_t> uses;
       std::vector<std::size_t> defs;
-      collect_instruction_uses_and_defs(inst, dense_values, uses, defs);
+      collect_instruction_uses_and_defs(names, inst, dense_values, uses, defs);
       record_point_activity(uses,
                             defs,
                             state.total_points,
@@ -650,7 +711,7 @@ void record_point_activity(const std::vector<std::size_t>& uses,
     }
 
     std::vector<std::size_t> terminator_uses;
-    collect_terminator_uses(function.blocks[block_index].terminator, dense_values, terminator_uses);
+    collect_terminator_uses(names, function.blocks[block_index].terminator, dense_values, terminator_uses);
     terminator_uses.insert(terminator_uses.end(),
                            phi_predecessor_uses[block_index].begin(),
                            phi_predecessor_uses[block_index].end());
@@ -759,7 +820,6 @@ void extend_intervals_from_liveness(const std::vector<BlockProgramPoints>& block
 }
 
 [[nodiscard]] PreparedLivenessValue build_liveness_value(const DenseValueInfo& info,
-                                                         PreparedNameTables& names,
                                                          FunctionNameId function_name,
                                                          PreparedValueId value_id,
                                                          std::optional<std::size_t> definition_point,
@@ -770,7 +830,7 @@ void extend_intervals_from_liveness(const std::vector<BlockProgramPoints>& block
       .value_id = value_id,
       .stack_object_id = info.stack_object_id,
       .function_name = function_name,
-      .value_name = names.value_names.intern(info.value_name),
+      .value_name = info.value_name,
       .type = info.type,
       .value_kind = info.value_kind,
       .address_taken = info.address_taken,
@@ -809,11 +869,13 @@ void BirPreAlloc::run_liveness() {
 
     const DenseValueSet dense_values =
         build_dense_value_set(prepared_.names, function, prepared_.stack_layout);
-    const auto block_indices = build_block_index_map(function);
-    const auto successors = build_successors(function, block_indices);
+    const auto block_indices = build_block_index_map(prepared_.names, function);
+    const auto successors = build_successors(prepared_.names, function, block_indices);
     const auto predecessors = build_predecessors(successors);
-    const auto phi_predecessor_uses = collect_phi_predecessor_uses(function, dense_values, block_indices);
-    ProgramPointState points = assign_program_points(function, dense_values, phi_predecessor_uses);
+    const auto phi_predecessor_uses =
+        collect_phi_predecessor_uses(prepared_.names, function, dense_values, block_indices);
+    ProgramPointState points =
+        assign_program_points(function, prepared_.names, dense_values, phi_predecessor_uses);
     const auto [live_in, live_out] =
         run_backward_dataflow(successors, points.blocks, dense_values.values.size());
     extend_intervals_from_liveness(points.blocks,
@@ -862,7 +924,6 @@ void BirPreAlloc::run_liveness() {
       }
       auto value =
           build_liveness_value(dense_values.values[dense_index],
-                               prepared_.names,
                                function_name_id,
                                dense_value_ids[dense_index],
                                points.def_points[dense_index],
