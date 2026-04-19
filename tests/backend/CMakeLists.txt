@@ -166,6 +166,7 @@ add_executable(backend_x86_handoff_boundary_test
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_lir_test.cpp"
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_local_i16_guard_test.cpp"
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_local_i32_guard_test.cpp"
+    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_multi_defined_call_test.cpp"
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_short_circuit_test.cpp"
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_loop_countdown_test.cpp"
 )

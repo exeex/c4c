@@ -139,35 +139,6 @@ std::string expected_minimal_constant_return_asm(const char* function_name, int 
          std::to_string(returned_value) + "\n    ret\n";
 }
 
-std::string expected_minimal_multi_defined_direct_call_lane_asm() {
-  return asm_header("foo") + "    ret\n" +
-         asm_header("actual_function") + "    mov " + minimal_i32_return_register() +
-         ", 42\n    ret\n" +
-         asm_header("main") + "    sub rsp, 24\n"
-         "    xor eax, eax\n"
-         "    call actual_function\n"
-         "    mov DWORD PTR [rsp + 16], eax\n"
-         "    mov eax, DWORD PTR [rsp + 16]\n"
-         "    lea rdi, [rip + .L.str0]\n"
-         "    mov esi, eax\n"
-         "    xor eax, eax\n"
-         "    call printf\n"
-         "    xor eax, eax\n"
-         "    call actual_function\n"
-         "    mov DWORD PTR [rsp + 20], eax\n"
-         "    mov eax, DWORD PTR [rsp + 20]\n"
-         "    lea rdi, [rip + .L.str0]\n"
-         "    mov esi, eax\n"
-         "    xor eax, eax\n"
-         "    call printf\n"
-         "    mov eax, 0\n"
-         "    add rsp, 24\n"
-         "    ret\n"
-         ".section .rodata\n"
-         ".L.str0:\n"
-         "    .asciz \"%i\\n\"\n";
-}
-
 std::string expected_minimal_param_passthrough_asm(const char* function_name) {
   return asm_header(function_name) + "    mov " + minimal_i32_return_register() + ", " +
          minimal_i32_param_register() + "\n    ret\n";
@@ -991,125 +962,6 @@ bir::Module make_x86_local_i8_address_guard_module() {
   return module;
 }
 
-bir::Module make_x86_multi_defined_direct_call_lane_module() {
-  bir::Module module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
-  module.string_constants.push_back(bir::StringConstant{
-      .name = ".str0",
-      .bytes = "%i\n",
-  });
-
-  bir::Function foo;
-  foo.name = "foo";
-  foo.return_type = bir::TypeKind::Void;
-  foo.blocks.push_back(bir::Block{
-      .label = "entry",
-      .terminator = bir::ReturnTerminator{},
-  });
-
-  bir::Function actual_function;
-  actual_function.name = "actual_function";
-  actual_function.return_type = bir::TypeKind::I32;
-  actual_function.blocks.push_back(bir::Block{
-      .label = "entry",
-      .terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(42)},
-  });
-
-  bir::Function printf_decl;
-  printf_decl.name = "printf";
-  printf_decl.is_declaration = true;
-  printf_decl.return_type = bir::TypeKind::I32;
-  printf_decl.params.push_back(bir::Param{
-      .type = bir::TypeKind::Ptr,
-      .name = "%p._anon_param_",
-  });
-
-  bir::Function main_function;
-  main_function.name = "main";
-  main_function.return_type = bir::TypeKind::I32;
-  main_function.local_slots.push_back(bir::LocalSlot{
-      .name = "%lv.function_pointer",
-      .type = bir::TypeKind::Ptr,
-      .align_bytes = 8,
-  });
-  main_function.local_slots.push_back(bir::LocalSlot{
-      .name = "%lv.a",
-      .type = bir::TypeKind::I32,
-      .size_bytes = 4,
-      .align_bytes = 4,
-      .is_address_taken = true,
-  });
-  main_function.local_slots.push_back(bir::LocalSlot{
-      .name = "%lv.b",
-      .type = bir::TypeKind::I32,
-      .size_bytes = 4,
-      .align_bytes = 4,
-      .is_address_taken = true,
-  });
-
-  bir::Block entry;
-  entry.label = "entry";
-  entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, "%t1"),
-      .callee_value = bir::Value::named(bir::TypeKind::Ptr, "@actual_function"),
-      .return_type_name = "i32",
-      .return_type = bir::TypeKind::I32,
-      .is_indirect = true,
-  });
-  entry.insts.push_back(bir::StoreLocalInst{
-      .slot_name = "%lv.a",
-      .value = bir::Value::named(bir::TypeKind::I32, "%t1"),
-  });
-  entry.insts.push_back(bir::LoadLocalInst{
-      .result = bir::Value::named(bir::TypeKind::I32, "%t3"),
-      .slot_name = "%lv.a",
-  });
-  entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, "%t4"),
-      .callee = "printf",
-      .args = {bir::Value::named(bir::TypeKind::Ptr, "@.str0"),
-               bir::Value::named(bir::TypeKind::I32, "%t3")},
-      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::I32},
-      .return_type_name = "i32",
-      .return_type = bir::TypeKind::I32,
-      .is_variadic = true,
-  });
-  entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, "%t6"),
-      .callee_value = bir::Value::named(bir::TypeKind::Ptr, "@actual_function"),
-      .return_type_name = "i32",
-      .return_type = bir::TypeKind::I32,
-      .is_indirect = true,
-  });
-  entry.insts.push_back(bir::StoreLocalInst{
-      .slot_name = "%lv.b",
-      .value = bir::Value::named(bir::TypeKind::I32, "%t6"),
-  });
-  entry.insts.push_back(bir::LoadLocalInst{
-      .result = bir::Value::named(bir::TypeKind::I32, "%t8"),
-      .slot_name = "%lv.b",
-  });
-  entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, "%t9"),
-      .callee = "printf",
-      .args = {bir::Value::named(bir::TypeKind::Ptr, "@.str0"),
-               bir::Value::named(bir::TypeKind::I32, "%t8")},
-      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::I32},
-      .return_type_name = "i32",
-      .return_type = bir::TypeKind::I32,
-      .is_variadic = true,
-  });
-  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
-
-  main_function.blocks.push_back(std::move(entry));
-
-  module.functions.push_back(std::move(foo));
-  module.functions.push_back(std::move(actual_function));
-  module.functions.push_back(std::move(printf_decl));
-  module.functions.push_back(std::move(main_function));
-  return module;
-}
-
 bir::Module make_x86_multi_defined_global_function_pointer_boundary_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1318,6 +1170,7 @@ int run_backend_x86_handoff_boundary_short_circuit_tests();
 int run_backend_x86_handoff_boundary_loop_countdown_tests();
 int run_backend_x86_handoff_boundary_i32_guard_chain_tests();
 int run_backend_x86_handoff_boundary_lir_tests();
+int run_backend_x86_handoff_boundary_multi_defined_call_tests();
 
 int main() {
   if (const auto status =
@@ -1475,11 +1328,7 @@ int main() {
     return status;
   }
 
-  if (const auto status =
-          check_route_outputs(make_x86_multi_defined_direct_call_lane_module(),
-                              expected_minimal_multi_defined_direct_call_lane_asm(),
-                              "bir.func @main() -> i32 {",
-                              "bounded multi-defined-function same-module symbol-call prepared-module route");
+  if (const auto status = run_backend_x86_handoff_boundary_multi_defined_call_tests();
       status != 0) {
     return status;
   }
