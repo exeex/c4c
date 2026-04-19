@@ -179,6 +179,297 @@ render_prepared_bounded_multi_defined_call_lane_module_if_supported(
   return rendered;
 }
 
+std::optional<PreparedBoundedSameModuleHelperPrefixRender>
+render_prepared_bounded_same_module_helper_prefix_if_supported(
+    const std::vector<const c4c::backend::bir::Function*>& defined_functions,
+    const c4c::backend::bir::Function& entry_function,
+    c4c::TargetArch prepared_arch,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
+        render_trivial_defined_function,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
+        minimal_function_return_register,
+    const std::function<std::string(const c4c::backend::bir::Function&)>&
+        minimal_function_asm_prefix,
+    const std::function<const c4c::backend::bir::Global*(std::string_view)>&
+        find_same_module_global,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Param&, std::size_t)>&
+        minimal_param_register_at,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name) {
+  if (defined_functions.size() <= 1 || entry_function.name != "main") {
+    return std::nullopt;
+  }
+
+  struct BoundedSameModuleHelperRender {
+    std::string asm_text;
+    std::unordered_set<std::string_view> used_same_module_globals;
+  };
+
+  const auto render_bounded_same_module_helper_function_if_supported =
+      [&](const c4c::backend::bir::Function& candidate)
+      -> std::optional<BoundedSameModuleHelperRender> {
+    if (prepared_arch != c4c::TargetArch::X86_64 || candidate.local_slots.empty() == false ||
+        candidate.blocks.size() != 1 || candidate.blocks.front().label != "entry" ||
+        candidate.blocks.front().terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        !candidate.blocks.front().terminator.value.has_value() || candidate.params.size() > 6) {
+      return std::nullopt;
+    }
+
+    std::unordered_map<std::string_view, std::string> param_registers;
+    for (std::size_t param_index = 0; param_index < candidate.params.size(); ++param_index) {
+      const auto& param = candidate.params[param_index];
+      if (param.type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      const auto param_register = minimal_param_register_at(param, param_index);
+      if (!param_register.has_value()) {
+        return std::nullopt;
+      }
+      param_registers.emplace(param.name, *param_register);
+    }
+
+    const auto candidate_return_register = minimal_function_return_register(candidate);
+    if (!candidate_return_register.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto render_value_to_eax =
+        [&](const c4c::backend::bir::Value& value,
+            const std::optional<std::string_view>& current_i32_name) -> std::optional<std::string> {
+          if (value.type != c4c::backend::bir::TypeKind::I32) {
+            return std::nullopt;
+          }
+          if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+            return "    mov eax, " +
+                   std::to_string(static_cast<std::int32_t>(value.immediate)) + "\n";
+          }
+          if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+            return std::nullopt;
+          }
+          if (current_i32_name.has_value() && value.name == *current_i32_name) {
+            return std::string{};
+          }
+          const auto param_it = param_registers.find(value.name);
+          if (param_it == param_registers.end()) {
+            return std::nullopt;
+          }
+          return "    mov eax, " + param_it->second + "\n";
+        };
+    const auto render_i32_operand =
+        [&](const c4c::backend::bir::Value& value,
+            const std::optional<std::string_view>& current_i32_name) -> std::optional<std::string> {
+          if (value.type != c4c::backend::bir::TypeKind::I32) {
+            return std::nullopt;
+          }
+          if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+            return std::to_string(static_cast<std::int32_t>(value.immediate));
+          }
+          if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+            return std::nullopt;
+          }
+          if (current_i32_name.has_value() && value.name == *current_i32_name) {
+            return std::string("eax");
+          }
+          const auto param_it = param_registers.find(value.name);
+          if (param_it == param_registers.end()) {
+            return std::nullopt;
+          }
+          return param_it->second;
+        };
+    const auto apply_binary_in_eax =
+        [&](const c4c::backend::bir::BinaryInst& binary,
+            const std::optional<std::string_view>& current_i32_name) -> std::optional<std::string> {
+          if (binary.operand_type != c4c::backend::bir::TypeKind::I32 ||
+              binary.result.type != c4c::backend::bir::TypeKind::I32) {
+            return std::nullopt;
+          }
+
+          const auto render_rhs =
+              [&](const c4c::backend::bir::Value& rhs) -> std::optional<std::string> {
+            return render_i32_operand(rhs, current_i32_name);
+          };
+          const auto render_commutative =
+              [&](const c4c::backend::bir::Value& lhs,
+                  const c4c::backend::bir::Value& rhs) -> std::optional<std::string> {
+                const auto setup = render_value_to_eax(lhs, current_i32_name);
+                const auto rhs_operand = render_rhs(rhs);
+                if (!setup.has_value() || !rhs_operand.has_value()) {
+                  return std::nullopt;
+                }
+                std::string rendered = *setup;
+                switch (binary.opcode) {
+                  case c4c::backend::bir::BinaryOpcode::Add:
+                    rendered += "    add eax, " + *rhs_operand + "\n";
+                    return rendered;
+                  case c4c::backend::bir::BinaryOpcode::Sub:
+                    rendered += "    sub eax, " + *rhs_operand + "\n";
+                    return rendered;
+                  case c4c::backend::bir::BinaryOpcode::Mul:
+                    rendered += "    imul eax, " + *rhs_operand + "\n";
+                    return rendered;
+                  case c4c::backend::bir::BinaryOpcode::And:
+                    rendered += "    and eax, " + *rhs_operand + "\n";
+                    return rendered;
+                  case c4c::backend::bir::BinaryOpcode::Or:
+                    rendered += "    or eax, " + *rhs_operand + "\n";
+                    return rendered;
+                  case c4c::backend::bir::BinaryOpcode::Xor:
+                    rendered += "    xor eax, " + *rhs_operand + "\n";
+                    return rendered;
+                  case c4c::backend::bir::BinaryOpcode::Shl:
+                    if (rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+                        rhs.type != c4c::backend::bir::TypeKind::I32) {
+                      return std::nullopt;
+                    }
+                    rendered += "    shl eax, " +
+                                std::to_string(static_cast<std::int32_t>(rhs.immediate)) + "\n";
+                    return rendered;
+                  case c4c::backend::bir::BinaryOpcode::LShr:
+                    if (rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+                        rhs.type != c4c::backend::bir::TypeKind::I32) {
+                      return std::nullopt;
+                    }
+                    rendered += "    shr eax, " +
+                                std::to_string(static_cast<std::int32_t>(rhs.immediate)) + "\n";
+                    return rendered;
+                  case c4c::backend::bir::BinaryOpcode::AShr:
+                    if (rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+                        rhs.type != c4c::backend::bir::TypeKind::I32) {
+                      return std::nullopt;
+                    }
+                    rendered += "    sar eax, " +
+                                std::to_string(static_cast<std::int32_t>(rhs.immediate)) + "\n";
+                    return rendered;
+                  default:
+                    return std::nullopt;
+                }
+              };
+
+          if (const auto rendered = render_commutative(binary.lhs, binary.rhs);
+              rendered.has_value()) {
+            return rendered;
+          }
+          switch (binary.opcode) {
+            case c4c::backend::bir::BinaryOpcode::Add:
+            case c4c::backend::bir::BinaryOpcode::Mul:
+            case c4c::backend::bir::BinaryOpcode::And:
+            case c4c::backend::bir::BinaryOpcode::Or:
+            case c4c::backend::bir::BinaryOpcode::Xor:
+              return render_commutative(binary.rhs, binary.lhs);
+            default:
+              return std::nullopt;
+          }
+        };
+
+    std::unordered_set<std::string_view> used_same_module_globals;
+    std::string body;
+    std::optional<std::string_view> current_i32_name;
+    for (const auto& inst : candidate.blocks.front().insts) {
+      const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
+      if (binary != nullptr) {
+        if (binary->result.kind != c4c::backend::bir::Value::Kind::Named) {
+          return std::nullopt;
+        }
+        const auto rendered_binary = apply_binary_in_eax(*binary, current_i32_name);
+        if (!rendered_binary.has_value()) {
+          return std::nullopt;
+        }
+        body += *rendered_binary;
+        current_i32_name = binary->result.name;
+        continue;
+      }
+
+      const auto* store = std::get_if<c4c::backend::bir::StoreGlobalInst>(&inst);
+      if (store == nullptr || store->address.has_value() || store->byte_offset != 0 ||
+          store->value.type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      const auto* global = find_same_module_global(store->global_name);
+      if (global == nullptr || global->type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      used_same_module_globals.insert(global->name);
+
+      if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+        body += "    mov DWORD PTR [rip + ";
+        body += render_asm_symbol_name(store->global_name);
+        body += "], ";
+        body += std::to_string(static_cast<std::int32_t>(store->value.immediate));
+        body += "\n";
+        continue;
+      }
+      if (store->value.kind != c4c::backend::bir::Value::Kind::Named) {
+        return std::nullopt;
+      }
+      body += "    mov DWORD PTR [rip + ";
+      body += render_asm_symbol_name(store->global_name);
+      body += "], ";
+      if (current_i32_name.has_value() && store->value.name == *current_i32_name) {
+        body += "eax\n";
+        continue;
+      }
+      const auto param_it = param_registers.find(store->value.name);
+      if (param_it == param_registers.end()) {
+        return std::nullopt;
+      }
+      body += param_it->second;
+      body += "\n";
+    }
+
+    const auto& returned = *candidate.blocks.front().terminator.value;
+    if (returned.type != c4c::backend::bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+    if (returned.kind == c4c::backend::bir::Value::Kind::Immediate) {
+      body += "    mov " + *candidate_return_register + ", " +
+              std::to_string(static_cast<std::int32_t>(returned.immediate)) + "\n";
+    } else if (returned.kind == c4c::backend::bir::Value::Kind::Named) {
+      if (current_i32_name.has_value() && returned.name == *current_i32_name) {
+        if (*candidate_return_register != "eax") {
+          body += "    mov " + *candidate_return_register + ", eax\n";
+        }
+      } else {
+        const auto param_it = param_registers.find(returned.name);
+        if (param_it == param_registers.end()) {
+          return std::nullopt;
+        }
+        body += "    mov " + *candidate_return_register + ", " + param_it->second + "\n";
+      }
+    } else {
+      return std::nullopt;
+    }
+    body += "    ret\n";
+    return BoundedSameModuleHelperRender{
+        .asm_text = minimal_function_asm_prefix(candidate) + body,
+        .used_same_module_globals = std::move(used_same_module_globals),
+    };
+  };
+
+  PreparedBoundedSameModuleHelperPrefixRender rendered_helpers;
+  for (const auto* candidate : defined_functions) {
+    if (candidate == &entry_function) {
+      continue;
+    }
+    if (const auto rendered_trivial = render_trivial_defined_function(*candidate);
+        rendered_trivial.has_value()) {
+      rendered_helpers.helper_names.insert(candidate->name);
+      rendered_helpers.helper_prefix += *rendered_trivial;
+      continue;
+    }
+    const auto rendered_helper =
+        render_bounded_same_module_helper_function_if_supported(*candidate);
+    if (!rendered_helper.has_value()) {
+      return std::nullopt;
+    }
+    for (const auto global_name : rendered_helper->used_same_module_globals) {
+      rendered_helpers.helper_global_names.insert(global_name);
+    }
+    rendered_helpers.helper_names.insert(candidate->name);
+    rendered_helpers.helper_prefix += rendered_helper->asm_text;
+  }
+
+  return rendered_helpers;
+}
+
 std::optional<std::string>
 render_prepared_bounded_multi_defined_call_lane_data_if_supported(
     const PreparedBoundedMultiDefinedCallLaneModuleRender& rendered_module,
