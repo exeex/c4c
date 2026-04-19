@@ -1549,9 +1549,90 @@ find_prepared_compare_join_continuation_targets(
 }
 
 [[nodiscard]] inline std::optional<PreparedCompareJoinContinuationTargets>
+find_prepared_short_circuit_continuation_targets(
+    const PreparedControlFlowFunction& function_cf,
+    const bir::Function& function,
+    std::string_view source_block_label) {
+  const auto authoritative_join_transfer =
+      find_authoritative_branch_owned_join_transfer(function_cf, source_block_label);
+  if (!authoritative_join_transfer.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto join_sources =
+      find_authoritative_short_circuit_join_sources(*authoritative_join_transfer);
+  if (!join_sources.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* source_block = find_block_in_function(function, source_block_label);
+  if (source_block == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* source_branch_condition =
+      find_prepared_branch_condition(function_cf, source_block->label);
+  if (source_branch_condition == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto direct_targets = find_prepared_compare_branch_target_labels(
+      *source_branch_condition, *source_block);
+  if (!direct_targets.has_value()) {
+    return std::nullopt;
+  }
+
+  std::string_view rhs_entry_label;
+  if (direct_targets->true_label == join_sources->join_transfer->join_block_label &&
+      direct_targets->false_label != join_sources->join_transfer->join_block_label) {
+    rhs_entry_label = direct_targets->false_label;
+  } else if (direct_targets->false_label == join_sources->join_transfer->join_block_label &&
+             direct_targets->true_label != join_sources->join_transfer->join_block_label) {
+    rhs_entry_label = direct_targets->true_label;
+  } else {
+    rhs_entry_label = join_sources->classified_incoming.short_circuit_on_compare_true
+                          ? direct_targets->false_label
+                          : direct_targets->true_label;
+  }
+  if (rhs_entry_label.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* rhs_entry_block = find_block_in_function(function, rhs_entry_label);
+  if (rhs_entry_block == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* rhs_branch_condition =
+      find_prepared_branch_condition(function_cf, rhs_entry_block->label);
+  if (rhs_branch_condition == nullptr) {
+    return std::nullopt;
+  }
+
+  if (!rhs_branch_condition->predicate.has_value() ||
+      !rhs_branch_condition->compare_type.has_value() ||
+      !rhs_branch_condition->lhs.has_value() || !rhs_branch_condition->rhs.has_value()) {
+    return std::nullopt;
+  }
+
+  return PreparedCompareJoinContinuationTargets{
+      .true_label = rhs_branch_condition->true_label,
+      .false_label = rhs_branch_condition->false_label,
+  };
+}
+
+[[nodiscard]] inline std::optional<PreparedCompareJoinContinuationTargets>
 find_prepared_compare_join_continuation_targets(const PreparedControlFlowFunction& function_cf,
                                                 const bir::Function& function,
                                                 std::string_view source_block_label) {
+  if (const auto short_circuit_targets =
+          find_prepared_short_circuit_continuation_targets(function_cf,
+                                                           function,
+                                                           source_block_label);
+      short_circuit_targets.has_value()) {
+    return short_circuit_targets;
+  }
+
   const auto authoritative_join_transfer =
       find_authoritative_branch_owned_join_transfer(function_cf, source_block_label);
   if (!authoritative_join_transfer.has_value() ||
@@ -1660,14 +1741,8 @@ find_prepared_short_circuit_join_context(const PreparedControlFlowFunction& func
     return std::nullopt;
   }
 
-  const auto* join_branch_condition =
-      find_prepared_branch_condition(function_cf, join_block->label);
-  if (join_branch_condition == nullptr) {
-    return std::nullopt;
-  }
-
   const auto continuation_targets = find_prepared_compare_join_continuation_targets(
-      *join_sources->join_transfer, *join_block, *join_branch_condition);
+      function_cf, function, source_block_label);
   if (!continuation_targets.has_value()) {
     return std::nullopt;
   }

@@ -8079,8 +8079,8 @@ int check_short_circuit_context_publishes_prepared_continuation_labels_impl(
   }
   if (!prepared_context->classified_incoming.short_circuit_on_compare_true ||
       !prepared_context->classified_incoming.short_circuit_value ||
-      prepared_context->continuation_true_label != "carrier.join.false" ||
-      prepared_context->continuation_false_label != "carrier.join.true") {
+      prepared_context->continuation_true_label != "block_1" ||
+      prepared_context->continuation_false_label != "block_2") {
     return fail((std::string(failure_context) +
                  ": shared helper stopped publishing the authoritative short-circuit continuation labels")
                     .c_str());
@@ -8113,6 +8113,152 @@ int check_short_circuit_edge_store_slot_context_publishes_prepared_continuation_
     const char* function_name,
     const char* failure_context) {
   return check_short_circuit_context_publishes_prepared_continuation_labels_impl(
+      module, function_name, failure_context, true);
+}
+
+int check_short_circuit_context_prefers_prepared_continuation_branch_condition_impl(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context,
+    bool use_edge_store_slot_join) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 3 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the short-circuit continuation branch contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* join_block = find_block(function, "logic.end.10");
+  auto* rhs_block = find_block(function, "logic.rhs.7");
+  if (join_block == nullptr || rhs_block == nullptr || join_block->insts.size() < 2) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer has the expected rhs/join shape")
+                    .c_str());
+  }
+
+  auto& join_transfer = control_flow->join_transfers.front();
+  auto* join_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
+    for (auto& branch_condition : control_flow->branch_conditions) {
+      if (branch_condition.block_label == join_block->label) {
+        return &branch_condition;
+      }
+    }
+    return nullptr;
+  }();
+  auto* rhs_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
+    for (auto& branch_condition : control_flow->branch_conditions) {
+      if (branch_condition.block_label == rhs_block->label) {
+        return &branch_condition;
+      }
+    }
+    return nullptr;
+  }();
+  if (join_branch_condition == nullptr || rhs_branch_condition == nullptr ||
+      !rhs_branch_condition->lhs.has_value() || !rhs_branch_condition->rhs.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes the authoritative rhs/join compare metadata")
+                    .c_str());
+  }
+
+  const std::string expected_true_label = rhs_branch_condition->true_label;
+  const std::string expected_false_label = rhs_branch_condition->false_label;
+
+  if (use_edge_store_slot_join) {
+    if (join_transfer.edge_transfers.size() != 2 ||
+        !join_transfer.source_true_transfer_index.has_value() ||
+        !join_transfer.source_false_transfer_index.has_value()) {
+      return fail((std::string(failure_context) +
+                   ": prepared short-circuit join transfer no longer exposes both authoritative lanes")
+                      .c_str());
+    }
+    const auto true_transfer_index = *join_transfer.source_true_transfer_index;
+    const auto false_transfer_index = *join_transfer.source_false_transfer_index;
+    if (true_transfer_index >= join_transfer.edge_transfers.size() ||
+        false_transfer_index >= join_transfer.edge_transfers.size()) {
+      return fail((std::string(failure_context) +
+                   ": prepared short-circuit join transfer published invalid authoritative lane indices")
+                      .c_str());
+    }
+
+    join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
+    join_transfer.storage_name = "%contract.short_circuit.slot";
+    join_transfer.edge_transfers[true_transfer_index].storage_name = join_transfer.storage_name;
+    join_transfer.edge_transfers[false_transfer_index].storage_name = join_transfer.storage_name;
+    function.local_slots.push_back(bir::LocalSlot{
+        .name = *join_transfer.storage_name,
+        .type = bir::TypeKind::I32,
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .is_address_taken = false,
+    });
+    const auto load_result =
+        bir::Value::named(bir::TypeKind::I32, "carrier.short_circuit.contract.join");
+    join_block->insts.front() = bir::LoadLocalInst{
+        .result = load_result,
+        .slot_name = *join_transfer.storage_name,
+    };
+    if (join_branch_condition->lhs->kind == bir::Value::Kind::Named &&
+        join_branch_condition->lhs->name == join_transfer.result.name) {
+      *join_branch_condition->lhs = load_result;
+    }
+    if (join_branch_condition->rhs->kind == bir::Value::Kind::Named &&
+        join_branch_condition->rhs->name == join_transfer.result.name) {
+      *join_branch_condition->rhs = load_result;
+    }
+  }
+
+  join_block->terminator.true_label = "carrier.join.misleading.true";
+  join_block->terminator.false_label = "carrier.join.misleading.false";
+  join_branch_condition->true_label = join_block->terminator.true_label;
+  join_branch_condition->false_label = join_block->terminator.false_label;
+
+  const auto prepared_context =
+      prepare::find_prepared_short_circuit_join_context(*control_flow, function, "entry");
+  if (!prepared_context.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer recognizes the short-circuit continuation contract when join-branch labels drift")
+                    .c_str());
+  }
+  if (prepared_context->continuation_true_label != expected_true_label ||
+      prepared_context->continuation_false_label != expected_false_label) {
+    return fail((std::string(failure_context) +
+                 ": shared helper stopped preferring authoritative rhs continuation branch metadata")
+                    .c_str());
+  }
+
+  const auto prepared_compare_join_targets =
+      prepare::find_prepared_compare_join_continuation_targets(
+          *control_flow, function, "entry");
+  if (!prepared_compare_join_targets.has_value() ||
+      prepared_compare_join_targets->true_label != expected_true_label ||
+      prepared_compare_join_targets->false_label != expected_false_label) {
+    return fail((std::string(failure_context) +
+                 ": shared compare-join helper stopped preferring authoritative rhs continuation targets")
+                    .c_str());
+  }
+
+  return 0;
+}
+
+int check_short_circuit_context_prefers_prepared_continuation_branch_condition(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_short_circuit_context_prefers_prepared_continuation_branch_condition_impl(
+      module, function_name, failure_context, false);
+}
+
+int check_short_circuit_edge_store_slot_context_prefers_prepared_continuation_branch_condition(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_short_circuit_context_prefers_prepared_continuation_branch_condition_impl(
       module, function_name, failure_context, true);
 }
 
@@ -10226,6 +10372,14 @@ int main() {
     return status;
   }
   if (const auto status =
+          check_short_circuit_context_prefers_prepared_continuation_branch_condition(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit prefers prepared rhs continuation metadata over join-branch label drift");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_short_circuit_entry_branch_helper_publishes_prepared_target_labels(
               make_x86_local_i32_short_circuit_or_guard_module(),
               "main",
@@ -10254,6 +10408,14 @@ int main() {
               make_x86_local_i32_short_circuit_or_guard_module(),
               "main",
               "minimal local-slot short-circuit EdgeStoreSlot prepared continuation-label ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_short_circuit_edge_store_slot_context_prefers_prepared_continuation_branch_condition(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit EdgeStoreSlot prefers prepared rhs continuation metadata over join-branch label drift");
       status != 0) {
     return status;
   }
