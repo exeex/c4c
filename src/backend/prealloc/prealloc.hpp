@@ -1823,21 +1823,20 @@ find_prepared_param_zero_materialized_compare_join_branches(
 [[nodiscard]] inline std::optional<PreparedMaterializedCompareJoinBranchPlan>
 find_prepared_materialized_compare_join_branch_plan(
     const PreparedParamZeroMaterializedCompareJoinBranches& prepared_compare_join_branches) {
-  const auto& compare_join_context =
-      prepared_compare_join_branches.prepared_join_branches.compare_join_context;
   if (prepared_compare_join_branches.prepared_branch.branch_condition == nullptr ||
-      prepared_compare_join_branches.prepared_branch.false_branch_opcode == nullptr ||
-      compare_join_context.true_predecessor == nullptr ||
-      compare_join_context.false_predecessor == nullptr ||
-      compare_join_context.true_predecessor == compare_join_context.false_predecessor) {
+      prepared_compare_join_branches.prepared_branch.false_branch_opcode == nullptr) {
+    return std::nullopt;
+  }
+  const auto& branch_condition = *prepared_compare_join_branches.prepared_branch.branch_condition;
+  if (branch_condition.true_label.empty() || branch_condition.false_label.empty()) {
     return std::nullopt;
   }
 
   return PreparedMaterializedCompareJoinBranchPlan{
       .target_labels =
           PreparedBranchTargetLabels{
-              .true_label = compare_join_context.true_predecessor->label,
-              .false_label = compare_join_context.false_predecessor->label,
+              .true_label = branch_condition.true_label,
+              .false_label = branch_condition.false_label,
           },
       .false_branch_opcode =
       prepared_compare_join_branches.prepared_branch.false_branch_opcode,
