@@ -7699,6 +7699,44 @@ int check_materialized_compare_join_edge_store_slot_global_route_ignores_non_com
       &expected_asm);
 }
 
+int check_materialized_compare_join_pointer_backed_global_chain_route_ignores_non_compare_entry_carrier(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module,
+      function_name,
+      failure_context,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      &expected_asm);
+}
+
+int check_materialized_compare_join_edge_store_slot_pointer_backed_global_chain_route_ignores_non_compare_entry_carrier(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  return check_materialized_compare_join_branches_publish_prepared_global_return_contexts_impl(
+      module,
+      function_name,
+      failure_context,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      &expected_asm);
+}
+
 int check_materialized_compare_join_branches_publish_prepared_global_chain_return_contexts(
     const bir::Module& module,
     const char* function_name,
@@ -10384,6 +10422,42 @@ int main() {
               make_x86_param_eq_zero_branch_joined_pointer_backed_globals_then_xor_module(),
               "branch_join_pointer_backed_global_then_xor",
               "scalar-control-flow compare-against-zero prepared compare-join EdgeStoreSlot pointer-backed same-module global selected-value chain return context ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_pointer_backed_global_chain_route_ignores_non_compare_entry_carrier(
+              make_x86_param_eq_zero_branch_joined_pointer_backed_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_pointer_backed_global_chains_then_xor_asm(
+                  "branch_join_pointer_backed_global_then_xor",
+                  "is_nonzero",
+                  "selected_zero_root",
+                  "selected_zero_backing",
+                  4,
+                  "selected_nonzero_root",
+                  "selected_nonzero_backing",
+                  1,
+                  3),
+              "branch_join_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero pointer-backed same-module global selected-value chain compare-join route ignores non-compare entry carrier state when prepared-control-flow ownership is authoritative");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_edge_store_slot_pointer_backed_global_chain_route_ignores_non_compare_entry_carrier(
+              make_x86_param_eq_zero_branch_joined_pointer_backed_globals_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_pointer_backed_global_chains_then_xor_asm(
+                  "branch_join_pointer_backed_global_then_xor",
+                  "is_nonzero",
+                  "selected_zero_root",
+                  "selected_zero_backing",
+                  4,
+                  "selected_nonzero_root",
+                  "selected_nonzero_backing",
+                  1,
+                  3),
+              "branch_join_pointer_backed_global_then_xor",
+              "scalar-control-flow compare-against-zero pointer-backed same-module global selected-value chain EdgeStoreSlot compare-join route ignores non-compare entry carrier state when prepared-control-flow ownership is authoritative");
       status != 0) {
     return status;
   }

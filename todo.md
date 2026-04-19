@@ -8,39 +8,35 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed a Step 3 Consume Prepared Control-Flow In X86 packet by teaching
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` to accept the countdown
-loop route when entry reaches the authoritative prepared init predecessor
-through a transparent branch-only carrier chain, instead of requiring entry to
-branch directly to that predecessor. The new Step 3 handoff proof in
-`tests/backend/backend_x86_handoff_boundary_test.cpp` builds a loop fixture
-where `entry -> carrier -> preheader -> loop`, while prepared `LoopCarry`
-ownership still names `preheader` as the authoritative incoming edge, and
-confirms x86 still emits the canonical countdown asm.
+Completed a Step 3 Consume Prepared Control-Flow In X86 packet by extending
+the compare-join handoff proof in
+`tests/backend/backend_x86_handoff_boundary_test.cpp` so
+`render_materialized_compare_join_if_supported()` is now proven against
+pointer-backed same-module global selected-value chains, including the
+`PreparedJoinTransferKind::EdgeStoreSlot` carrier shape, while the entry
+compare carrier has been rewritten into a non-compare instruction and the x86
+consumer still follows the shared resolved render contract.
 
 ## Suggested Next
 
-Stay in Step 3 but move to the adjacent prepared join-consumer path in
-`render_materialized_compare_join_if_supported()` and related lookup helpers,
-rather than adding more countdown-specific carrier exceptions. The current
-countdown helper now follows prepared predecessor ownership across transparent
-entry carriers; the remaining non-empty init-carrier restriction should stay a
-handoff boundary until shared prepared data grows.
+Stay in Step 3 on the same compare-join route and add the next focused handoff
+proof for pointer-backed global selected-value chains when true-lane or
+false-lane passthrough topology drifts, rather than widening into more
+countdown-loop exceptions or unrelated join families.
 
 ## Watchouts
 
 - Keep this route in Step 3 consumer work; do not widen into Step 4 file
   organization, idea 57, idea 59, idea 60, idea 61, or the unrelated
   `^backend_` semantic-lowering failures.
-- Countdown-loop consumer packets should keep preferring prepared
-  predecessor-labeled `LoopCarry` transfers and prepared branch ownership over
-  incidental block counts, direct `entry -> predecessor` adjacency, or mutable
-  compare carriers in the loop blocks.
-- The current x86 countdown specialization now tolerates transparent entry-side
-  carrier chains only when the intermediate carriers are branch-only and the
-  authoritative init predecessor is still empty or holds the canonical
-  prepared phi-store for the loop-carry slot; treat that as a handoff contract
-  boundary, not a license to grow emitter-local special cases.
+- Compare-join packets should keep proving that x86 consumes the shared
+  resolved render contract for branch labels, join-transfer ownership, and
+  selected-value return arms instead of re-deriving meaning from entry compare
+  carriers or join-block topology.
+- The new proof only locks in non-compare entry-carrier drift for the
+  pointer-backed global selected-value chain route, including the
+  `EdgeStoreSlot` carrier shape; true-lane and false-lane passthrough topology
+  for that compare-join route remain separate follow-up packets.
 - The broader `^backend_` checkpoint currently reproduces five known failures:
   `backend_prepare_phi_materialize`, `variadic_double_bytes`,
   `variadic_pair_second`, `local_direct_dynamic_member_array_store`, and
@@ -51,6 +47,6 @@ handoff boundary until shared prepared data grows.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The focused Step 3 handoff proof passed with the new countdown transparent
-entry-carrier ownership coverage and preserved `test_after.log` at the repo
-root.
+The focused Step 3 handoff proof passed with the new compare-join
+pointer-backed selected-value-chain route coverage and preserved
+`test_after.log` at the repo root.
