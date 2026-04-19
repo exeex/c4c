@@ -669,30 +669,14 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    std::string rendered_data;
-    std::unordered_set<std::string_view> used_same_module_globals(
-        rendered_module->used_same_module_global_names.begin(),
-        rendered_module->used_same_module_global_names.end());
-    for (const auto& string_name : rendered_module->used_string_names) {
-      const auto* string_constant = find_string_constant(string_name);
-      if (string_constant == nullptr) {
-        return std::nullopt;
-      }
-      rendered_data += emit_string_constant_data(*string_constant);
+    const auto rendered_data = render_prepared_bounded_multi_defined_call_lane_data_if_supported(
+        *rendered_module, module.module, bounded_same_module_helper_global_names,
+        [&](std::string_view symbol_name) { return find_string_constant(symbol_name); },
+        emit_string_constant_data, emit_same_module_global_data);
+    if (!rendered_data.has_value()) {
+      return std::nullopt;
     }
-    for (const auto& global : module.module.globals) {
-      if (used_same_module_globals.find(global.name) == used_same_module_globals.end() &&
-          bounded_same_module_helper_global_names.find(global.name) ==
-              bounded_same_module_helper_global_names.end()) {
-        continue;
-      }
-      const auto rendered_global_data = emit_same_module_global_data(global);
-      if (!rendered_global_data.has_value()) {
-        return std::nullopt;
-      }
-      rendered_data += *rendered_global_data;
-    }
-    return rendered_module->rendered_functions + rendered_data;
+    return rendered_module->rendered_functions + *rendered_data;
   };
   if (const auto rendered_multi_defined = render_bounded_multi_defined_call_lane_if_supported();
       rendered_multi_defined.has_value()) {

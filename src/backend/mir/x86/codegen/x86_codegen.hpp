@@ -473,6 +473,18 @@ render_prepared_bounded_multi_defined_call_lane_module_if_supported(
     const std::function<std::string(std::string_view)>& render_private_data_label,
     const std::function<std::string(std::string_view)>& render_asm_symbol_name);
 
+std::optional<std::string>
+render_prepared_bounded_multi_defined_call_lane_data_if_supported(
+    const PreparedBoundedMultiDefinedCallLaneModuleRender& rendered_module,
+    const c4c::backend::bir::Module& module,
+    const std::unordered_set<std::string_view>& helper_global_names,
+    const std::function<const c4c::backend::bir::StringConstant*(std::string_view)>&
+        find_string_constant,
+    const std::function<std::string(const c4c::backend::bir::StringConstant&)>&
+        emit_string_constant_data,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
+        emit_same_module_global_data);
+
 std::optional<std::string> render_prepared_param_zero_branch_function(
     std::string_view asm_prefix,
     std::string_view function_name,

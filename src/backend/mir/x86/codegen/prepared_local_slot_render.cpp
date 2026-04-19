@@ -179,4 +179,40 @@ render_prepared_bounded_multi_defined_call_lane_module_if_supported(
   return rendered;
 }
 
+std::optional<std::string>
+render_prepared_bounded_multi_defined_call_lane_data_if_supported(
+    const PreparedBoundedMultiDefinedCallLaneModuleRender& rendered_module,
+    const c4c::backend::bir::Module& module,
+    const std::unordered_set<std::string_view>& helper_global_names,
+    const std::function<const c4c::backend::bir::StringConstant*(std::string_view)>&
+        find_string_constant,
+    const std::function<std::string(const c4c::backend::bir::StringConstant&)>&
+        emit_string_constant_data,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
+        emit_same_module_global_data) {
+  std::string rendered_data;
+  std::unordered_set<std::string_view> used_same_module_globals(
+      rendered_module.used_same_module_global_names.begin(),
+      rendered_module.used_same_module_global_names.end());
+  for (const auto& string_name : rendered_module.used_string_names) {
+    const auto* string_constant = find_string_constant(string_name);
+    if (string_constant == nullptr) {
+      return std::nullopt;
+    }
+    rendered_data += emit_string_constant_data(*string_constant);
+  }
+  for (const auto& global : module.globals) {
+    if (used_same_module_globals.find(global.name) == used_same_module_globals.end() &&
+        helper_global_names.find(global.name) == helper_global_names.end()) {
+      continue;
+    }
+    const auto rendered_global_data = emit_same_module_global_data(global);
+    if (!rendered_global_data.has_value()) {
+      return std::nullopt;
+    }
+    rendered_data += *rendered_global_data;
+  }
+  return rendered_data;
+}
+
 }  // namespace c4c::backend::x86
