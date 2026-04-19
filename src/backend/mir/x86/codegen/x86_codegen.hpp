@@ -368,6 +368,14 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
     std::string_view asm_prefix,
     const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block);
 
+std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_supported(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block);
+
 inline std::optional<PreparedBoundedMultiDefinedCallLaneRender>
 render_prepared_bounded_multi_defined_call_lane_body_if_supported(
     const c4c::backend::bir::Function& candidate,
