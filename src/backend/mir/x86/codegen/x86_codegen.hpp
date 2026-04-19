@@ -376,6 +376,12 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
     std::string_view asm_prefix,
     const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block);
 
+std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix);
+
 std::optional<std::string> render_prepared_trivial_defined_function_if_supported(
     const c4c::backend::bir::Function& candidate,
     c4c::TargetArch prepared_arch,
