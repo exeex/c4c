@@ -421,40 +421,113 @@ template <typename CanEvict>
   return &*it;
 }
 
+[[nodiscard]] std::optional<std::size_t> find_block_index(
+    const PreparedNameTables& names,
+    const bir::Function& function,
+    BlockLabelId block_label_id) {
+  if (block_label_id == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+  const std::string_view block_label = prepared_block_label(names, block_label_id);
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    if (function.blocks[block_index].label == block_label) {
+      return block_index;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::size_t> find_instruction_index_for_named_result(
+    const bir::Block& block,
+    std::string_view value_name) {
+  for (std::size_t instruction_index = 0; instruction_index < block.insts.size(); ++instruction_index) {
+    bool matches_result = std::visit(
+        [&](const auto& inst) {
+          using Inst = std::decay_t<decltype(inst)>;
+          if constexpr (std::is_same_v<Inst, bir::BinaryInst> || std::is_same_v<Inst, bir::SelectInst> ||
+                        std::is_same_v<Inst, bir::CastInst> || std::is_same_v<Inst, bir::LoadLocalInst> ||
+                        std::is_same_v<Inst, bir::LoadGlobalInst>) {
+            return inst.result.kind == bir::Value::Kind::Named && inst.result.name == value_name;
+          } else if constexpr (std::is_same_v<Inst, bir::CallInst>) {
+            return inst.result.has_value() && inst.result->kind == bir::Value::Kind::Named &&
+                   inst.result->name == value_name;
+          } else {
+            return false;
+          }
+        },
+        block.insts[instruction_index]);
+    if (matches_result) {
+      return instruction_index;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::string phi_transfer_reason_prefix(const PreparedJoinTransfer& join_transfer,
+                                                     bool uses_cycle_temp_source) {
+  std::string prefix = join_transfer.kind == PreparedJoinTransferKind::LoopCarry
+                           ? "phi_loop_carry"
+                           : "phi_join";
+  if (uses_cycle_temp_source) {
+    prefix += "_cycle_temp";
+  }
+  return prefix;
+}
+
 void append_phi_move_resolution(const PreparedNameTables& names,
                                 const bir::Function& function,
+                                const PreparedControlFlowFunction& function_cf,
                                 PreparedRegallocFunction& regalloc_function) {
-  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
-    const auto& block = function.blocks[block_index];
-    for (std::size_t instruction_index = 0; instruction_index < block.insts.size(); ++instruction_index) {
-      const auto* phi = std::get_if<bir::PhiInst>(&block.insts[instruction_index]);
-      if (phi == nullptr || phi->result.kind != bir::Value::Kind::Named) {
+  for (const auto& bundle : function_cf.parallel_copy_bundles) {
+    const auto predecessor_block_index = find_block_index(names, function, bundle.predecessor_label);
+    if (!predecessor_block_index.has_value()) {
+      continue;
+    }
+
+    for (const auto& step : bundle.steps) {
+      if (step.kind != PreparedParallelCopyStepKind::Move || step.move_index >= bundle.moves.size()) {
         continue;
       }
 
-      const auto* destination = find_regalloc_value(regalloc_function, names, phi->result.name);
+      const auto& move = bundle.moves[step.move_index];
+      if (move.join_transfer_index >= function_cf.join_transfers.size() ||
+          move.source_value.kind != bir::Value::Kind::Named ||
+          move.destination_value.kind != bir::Value::Kind::Named) {
+        continue;
+      }
+
+      const auto& join_transfer = function_cf.join_transfers[move.join_transfer_index];
+      std::size_t instruction_index = function.blocks[*predecessor_block_index].insts.size();
+      if (const auto join_block_index = find_block_index(names, function, join_transfer.join_block_label);
+          join_block_index.has_value()) {
+        if (const auto join_instruction_index =
+                find_instruction_index_for_named_result(function.blocks[*join_block_index],
+                                                        move.destination_value.name);
+            join_instruction_index.has_value()) {
+          instruction_index = *join_instruction_index;
+        }
+      }
+
+      const auto* destination =
+          find_regalloc_value(regalloc_function, names, move.destination_value.name);
       if (destination == nullptr || assigned_storage_kind(*destination) == PreparedMoveStorageKind::None) {
         continue;
       }
 
-      for (const auto& incoming : phi->incomings) {
-        if (incoming.value.kind != bir::Value::Kind::Named) {
-          continue;
-        }
-
-        const auto* source = find_regalloc_value(regalloc_function, names, incoming.value.name);
-        if (source == nullptr || assigned_storage_kind(*source) == PreparedMoveStorageKind::None ||
-            assigned_storage_matches(*source, *destination)) {
-          continue;
-        }
-
-        append_move_resolution_record(regalloc_function,
-                                      *source,
-                                      *destination,
-                                      block_index,
-                                      instruction_index,
-                                      storage_transfer_reason("phi_join", *source, *destination));
+      const auto* source = find_regalloc_value(regalloc_function, names, move.source_value.name);
+      if (source == nullptr || assigned_storage_kind(*source) == PreparedMoveStorageKind::None ||
+          assigned_storage_matches(*source, *destination)) {
+        continue;
       }
+
+      append_move_resolution_record(
+          regalloc_function,
+          *source,
+          *destination,
+          *predecessor_block_index,
+          instruction_index,
+          storage_transfer_reason(
+              phi_transfer_reason_prefix(join_transfer, step.uses_cycle_temp_source), *source, *destination));
     }
   }
 }
@@ -1002,7 +1075,11 @@ void BirPreAlloc::run_regalloc() {
     if (const auto* function =
             find_bir_function(prepared_.module, prepared_.names, regalloc_function.function_name);
         function != nullptr) {
-      append_phi_move_resolution(prepared_.names, *function, regalloc_function);
+      if (const auto* function_cf =
+              find_prepared_control_flow_function(prepared_.control_flow, regalloc_function.function_name);
+          function_cf != nullptr) {
+        append_phi_move_resolution(prepared_.names, *function, *function_cf, regalloc_function);
+      }
       append_consumer_move_resolution(prepared_.names, *function, regalloc_function);
       append_call_arg_move_resolution(
           prepared_.names, prepared_.target_profile, *function, regalloc_function);

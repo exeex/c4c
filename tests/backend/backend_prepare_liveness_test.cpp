@@ -1569,6 +1569,11 @@ int check_phi_join_move_resolution(const prepare::PreparedBirModule& prepared) {
   if (function == nullptr) {
     return fail("expected regalloc output for phi_join_move_resolution");
   }
+  const auto* control_flow =
+      prepare::find_prepared_control_flow_function(prepared.control_flow, function->function_name);
+  if (control_flow == nullptr || control_flow->parallel_copy_bundles.empty()) {
+    return fail("expected phi_join_move_resolution to publish prepared parallel-copy control-flow data");
+  }
 
   const auto* left_feed = find_regalloc_value(prepared, *function, "left.feed");
   const auto* right_feed = find_regalloc_value(prepared, *function, "right.feed");
@@ -1594,8 +1599,8 @@ int check_phi_join_move_resolution(const prepare::PreparedBirModule& prepared) {
   }
 
   const auto* move = find_move_resolution(*function, left_feed->value_id, phi->value_id);
-  if (move == nullptr || move->reason != "consumer_stack_to_stack") {
-    return fail("expected the stack-backed left phi incoming to publish active stack-backed consumer move resolution");
+  if (move == nullptr || move->reason != "phi_join_stack_to_stack") {
+    return fail("expected the stack-backed left phi incoming to publish prepared phi-join move resolution");
   }
   if (move->destination_kind != prepare::PreparedMoveDestinationKind::Value ||
       move->destination_storage_kind != prepare::PreparedMoveStorageKind::StackSlot ||
