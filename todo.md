@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/58_bir_cfg_and_join_materialization_for_x86.md
 Source Plan Path: plan.md
-Current Step ID: 4.2
-Current Step Title: Single-Function Entry Orchestration Extraction
-Plan Review Counter: 10 / 10
+Current Step ID: 4.2.1
+Current Step Title: Local Arithmetic Guard Wrapper Extraction
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
@@ -21,11 +21,11 @@ changing prepared control-flow semantics.
 
 ## Suggested Next
 
-Continue Step 4.2 with the next bounded single-function entry helper group
-still owned directly by `prepared_module_emit.cpp`, most likely by moving one
-of the remaining local arithmetic guard wrappers behind the active local-slot
-helper seam if that can be done without widening the helper contract beyond
-entry orchestration.
+Continue Step 4.2.1 with the next bounded local arithmetic guard wrapper
+still owned directly by `prepared_module_emit.cpp`, most likely by moving
+`render_local_i32_arithmetic_guard_if_supported()` behind the active
+local-slot helper seam if that can be done without widening the helper
+contract beyond entry orchestration.
 
 ## Watchouts
 
@@ -37,9 +37,9 @@ entry orchestration.
   more cosmetic 4.1 churn when Step 4.2 entry-helper extraction is available.
 - The active Step 4.2 seams now include the prepared param-zero / branch
   helper surface, the prepared countdown helper surface, and the prepared
-  local-slot guard-chain helper surface. The next honest packet should keep
-  using one of those existing helper owners instead of inventing a new file
-  unless no current translation unit can own the responsibility.
+  local-slot guard-chain helper surface. Step 4.2.1 should keep using one of
+  those existing helper owners instead of inventing a new file unless no
+  current translation unit can own the responsibility.
 - The new local-slot wrapper now owns the full supported guard-chain entry
   family plus its same-module-global data collection. Do not treat that as
   permission to reopen Step 3 short-circuit semantics or to hide unrelated

@@ -395,6 +395,62 @@ Completion check:
   through stable seams, and the emitter's central block no longer mixes those
   orchestration details with unrelated top-level dispatch
 
+### Step 4.2.1: Local Arithmetic Guard Wrapper Extraction
+
+Goal: move the remaining local arithmetic guard entry wrappers onto existing
+helper seams so `prepared_module_emit.cpp` stops owning those route-specific
+entry implementations directly.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- `src/backend/mir/x86/codegen/x86_codegen.hpp`
+
+Actions:
+
+- extract `render_local_i32_arithmetic_guard_if_supported()` onto the active
+  local-slot helper seam if that seam can own the wrapper without widening
+  into Step 3 semantics or idea 61 addressing work
+- keep the moved helper focused on entry-wrapper orchestration and already
+  supported guard behavior, not on producer-side capability changes
+- prove the packet against the focused x86 handoff-boundary subset already
+  used by adjacent Step 4.2 organization packets
+
+Completion check:
+
+- the local i32 arithmetic guard entry wrapper is delegated through a stable
+  helper seam outside `prepared_module_emit.cpp`, and the top-level emitter
+  keeps only route selection for that family
+
+### Step 4.2.2: Residual Local Arithmetic Guard Exhaustion
+
+Goal: finish the last honest Step 4.2 wrapper extraction work and leave only
+Step 4.3-style top-level dispatcher narrowing behind.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- existing x86 codegen translation units that already own adjacent local guard
+  helper logic
+
+Actions:
+
+- extract `render_local_i16_arithmetic_guard_if_supported()` or any tiny
+  adjacent arithmetic guard entry wrapper that still belongs to the same
+  single-function orchestration seam
+- stop Step 4.2 once those residual local arithmetic wrappers no longer live
+  directly in `prepared_module_emit.cpp`; do not keep mining cosmetic
+  organization packets after that point
+- keep this cleanup limited to wrapper ownership and route selection rather
+  than reopening Step 3 control-flow work or broadening helper contracts
+
+Completion check:
+
+- the residual local arithmetic guard entry wrappers are owned by stable
+  helper seams, and the remaining `prepared_module_emit.cpp` work is honestly
+  Step 4.3 dispatcher narrowing rather than more Step 4.2 extraction
+
 ### Step 4.3: Residual Prepared-Module Dispatch Narrowing
 
 Goal: finish the remaining top-level emitter cleanup needed before Step 4 can
