@@ -284,8 +284,32 @@ std::optional<ShortCircuitPlan> build_direct_branch_plan_from_targets(
 
 std::optional<DirectBranchTargets> build_plain_cond_direct_branch_targets(
     const c4c::backend::prepare::PreparedNameTables& prepared_names,
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    const c4c::backend::bir::Block& source_block,
     const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block,
     const c4c::backend::prepare::PreparedBranchCondition& branch_condition) {
+  if (function_control_flow != nullptr) {
+    const auto source_block_label_id =
+        c4c::backend::prepare::resolve_prepared_block_label_id(prepared_names, source_block.label);
+    if (source_block_label_id.has_value()) {
+      if (const auto prepared_target_labels =
+              c4c::backend::prepare::find_prepared_control_flow_branch_target_labels(
+                  *function_control_flow, *source_block_label_id);
+          prepared_target_labels.has_value()) {
+        if (prepared_target_labels->true_label != branch_condition.true_label ||
+            prepared_target_labels->false_label != branch_condition.false_label) {
+          return std::nullopt;
+        }
+        return resolve_direct_branch_targets(
+            find_block,
+            c4c::backend::prepare::prepared_block_label(
+                prepared_names, prepared_target_labels->true_label),
+            c4c::backend::prepare::prepared_block_label(
+                prepared_names, prepared_target_labels->false_label));
+      }
+    }
+  }
+
   return resolve_direct_branch_targets(
       find_block,
       c4c::backend::prepare::prepared_block_label(prepared_names, branch_condition.true_label),
@@ -843,7 +867,8 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_plain_cond_entry_ren
     }
 
     const auto direct_targets =
-        build_plain_cond_direct_branch_targets(prepared_names, find_block, *branch_condition);
+        build_plain_cond_direct_branch_targets(
+            prepared_names, function_control_flow, source_block, find_block, *branch_condition);
     if (!direct_targets.has_value()) {
       throw std::invalid_argument(
           "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
@@ -883,6 +908,8 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_plain_cond_entry_ren
           return std::nullopt;
         }
         return build_plain_cond_direct_branch_targets(prepared_names,
+                                                      function_control_flow,
+                                                      source_block,
                                                       find_block,
                                                       *compare_context.branch_condition);
       });

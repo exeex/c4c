@@ -605,6 +605,14 @@ struct PreparedBranchCondition {
   BlockLabelId false_label = kInvalidBlockLabel;
 };
 
+struct PreparedControlFlowBlock {
+  BlockLabelId block_label = kInvalidBlockLabel;
+  bir::TerminatorKind terminator_kind = bir::TerminatorKind::Return;
+  BlockLabelId branch_target_label = kInvalidBlockLabel;
+  BlockLabelId true_label = kInvalidBlockLabel;
+  BlockLabelId false_label = kInvalidBlockLabel;
+};
+
 struct PreparedJoinTransfer {
   FunctionNameId function_name = kInvalidFunctionName;
   BlockLabelId join_block_label = kInvalidBlockLabel;
@@ -622,6 +630,7 @@ struct PreparedJoinTransfer {
 
 struct PreparedControlFlowFunction {
   FunctionNameId function_name = kInvalidFunctionName;
+  std::vector<PreparedControlFlowBlock> blocks;
   std::vector<PreparedBranchCondition> branch_conditions;
   std::vector<PreparedJoinTransfer> join_transfers;
 };
@@ -803,6 +812,37 @@ struct PreparedControlFlow {
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] inline const PreparedControlFlowBlock* find_prepared_control_flow_block(
+    const PreparedControlFlowFunction& function_cf,
+    BlockLabelId block_label) {
+  for (const auto& block : function_cf.blocks) {
+    if (block.block_label == block_label) {
+      return &block;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline std::optional<PreparedBranchTargetLabels>
+find_prepared_control_flow_branch_target_labels(
+    const PreparedControlFlowFunction& function_cf,
+    BlockLabelId block_label) {
+  if (block_label == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+
+  const auto* block = find_prepared_control_flow_block(function_cf, block_label);
+  if (block == nullptr || block->terminator_kind != bir::TerminatorKind::CondBranch ||
+      block->true_label == kInvalidBlockLabel || block->false_label == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+
+  return PreparedBranchTargetLabels{
+      .true_label = block->true_label,
+      .false_label = block->false_label,
+  };
 }
 
 [[nodiscard]] inline const PreparedBranchCondition*

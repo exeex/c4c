@@ -1431,6 +1431,18 @@ void legalize_module(const c4c::TargetProfile& target_profile,
         legalize_value(target_profile, *block.terminator.value);
       }
       legalize_value(target_profile, block.terminator.condition);
+      PreparedControlFlowBlock prepared_block{
+          .block_label = names.block_labels.intern(block.label),
+          .terminator_kind = block.terminator.kind,
+      };
+      if (block.terminator.kind == bir::TerminatorKind::Branch) {
+        prepared_block.branch_target_label =
+            names.block_labels.intern(block.terminator.target_label);
+      } else if (block.terminator.kind == bir::TerminatorKind::CondBranch) {
+        prepared_block.true_label = names.block_labels.intern(block.terminator.true_label);
+        prepared_block.false_label = names.block_labels.intern(block.terminator.false_label);
+      }
+      function_control_flow.blocks.push_back(std::move(prepared_block));
       if (block.terminator.kind == bir::TerminatorKind::CondBranch) {
         function_control_flow.branch_conditions.push_back(
             make_branch_condition(names, function_name_id, block));
