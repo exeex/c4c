@@ -228,22 +228,6 @@ std::string expected_minimal_local_pointer_guard_chain_asm(const char* function_
          "    ret\n";
 }
 
-std::string expected_minimal_local_i32_immediate_guard_asm(const char* function_name,
-                                                           int immediate) {
-  return asm_header(function_name) + "    sub rsp, 16\n"
-         "    mov DWORD PTR [rsp], " + std::to_string(immediate) + "\n"
-         "    mov eax, DWORD PTR [rsp]\n"
-         "    cmp eax, " + std::to_string(immediate) + "\n"
-         "    je .L" + function_name + "_block_2\n"
-         "    mov eax, 1\n"
-         "    add rsp, 16\n"
-         "    ret\n"
-         ".L" + function_name + "_block_2:\n"
-         "    mov eax, 0\n"
-         "    add rsp, 16\n"
-         "    ret\n";
-}
-
 std::string expected_minimal_local_i32_add_chain_guard_asm(const char* function_name) {
   return asm_header(function_name) + "    sub rsp, 16\n"
          "    mov DWORD PTR [rsp], 1\n"
@@ -816,59 +800,6 @@ bir::Module make_x86_param_ashr_immediate_module() {
   };
 
   function.blocks.push_back(std::move(entry));
-  module.functions.push_back(std::move(function));
-  return module;
-}
-
-bir::Module make_x86_local_i32_immediate_guard_module() {
-  bir::Module module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
-
-  bir::Function function;
-  function.name = "main";
-  function.return_type = bir::TypeKind::I32;
-  function.local_slots.push_back(bir::LocalSlot{
-      .name = "%lv.x",
-      .type = bir::TypeKind::I32,
-      .size_bytes = 4,
-      .align_bytes = 4,
-      .is_address_taken = true,
-  });
-
-  bir::Block entry;
-  entry.label = "entry";
-  entry.insts.push_back(bir::StoreLocalInst{
-      .slot_name = "%lv.x",
-      .value = bir::Value::immediate_i32(123),
-  });
-  entry.insts.push_back(bir::LoadLocalInst{
-      .result = bir::Value::named(bir::TypeKind::I32, "loaded"),
-      .slot_name = "%lv.x",
-  });
-  entry.insts.push_back(bir::BinaryInst{
-      .opcode = bir::BinaryOpcode::Ne,
-      .result = bir::Value::named(bir::TypeKind::I32, "cmp"),
-      .operand_type = bir::TypeKind::I32,
-      .lhs = bir::Value::named(bir::TypeKind::I32, "loaded"),
-      .rhs = bir::Value::immediate_i32(123),
-  });
-  entry.terminator = bir::CondBranchTerminator{
-      .condition = bir::Value::named(bir::TypeKind::I32, "cmp"),
-      .true_label = "block_1",
-      .false_label = "block_2",
-  };
-
-  bir::Block block_1;
-  block_1.label = "block_1";
-  block_1.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(1)};
-
-  bir::Block block_2;
-  block_2.label = "block_2";
-  block_2.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
-
-  function.blocks.push_back(std::move(entry));
-  function.blocks.push_back(std::move(block_1));
-  function.blocks.push_back(std::move(block_2));
   module.functions.push_back(std::move(function));
   return module;
 }
@@ -2442,100 +2373,6 @@ int check_route_outputs(const bir::Module& module,
   return 0;
 }
 
-int check_local_i32_guard_route_consumes_prepared_branch_contract(
-    const bir::Module& module,
-    const std::string& expected_asm,
-    const char* function_name,
-    const char* failure_context) {
-  c4c::TargetProfile target_profile;
-  auto prepared =
-      prepare::prepare_semantic_bir_module_with_options(
-          module, target_profile_from_module_triple(module.target_triple, target_profile));
-  const auto* control_flow = find_control_flow_function(prepared, function_name);
-  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
-      !control_flow->join_transfers.empty()) {
-    return fail((std::string(failure_context) +
-                 ": prepare no longer publishes the local guard prepared branch contract")
-                    .c_str());
-  }
-
-  auto& function = prepared.module.functions.front();
-  auto* entry_block = find_block(function, "entry");
-  if (entry_block == nullptr || entry_block->insts.size() < 3) {
-    return fail((std::string(failure_context) +
-                 ": prepared local guard fixture no longer has the expected entry shape")
-                    .c_str());
-  }
-  auto* entry_compare = std::get_if<bir::BinaryInst>(&entry_block->insts.back());
-  if (entry_compare == nullptr) {
-    return fail((std::string(failure_context) +
-                 ": prepared local guard fixture no longer exposes the bounded compare carrier")
-                    .c_str());
-  }
-
-  const std::string original_true_label = entry_block->terminator.true_label;
-  const std::string original_false_label = entry_block->terminator.false_label;
-  entry_block->terminator.condition.name = "contract.guard.condition";
-  entry_block->terminator.true_label = "contract.guard.true";
-  entry_block->terminator.false_label = "contract.guard.false";
-  entry_compare->opcode = bir::BinaryOpcode::Eq;
-  entry_compare->lhs = bir::Value::immediate_i32(7);
-  entry_compare->rhs = bir::Value::immediate_i32(9);
-  function.blocks.push_back(bir::Block{
-      .label = "contract.guard.true",
-      .terminator = bir::BranchTerminator{.target_label = original_true_label},
-  });
-  function.blocks.push_back(bir::Block{
-      .label = "contract.guard.false",
-      .terminator = bir::BranchTerminator{.target_label = original_false_label},
-  });
-
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
-  if (prepared_asm != expected_asm) {
-    return fail((std::string(failure_context) +
-                 ": x86 prepared-module consumer stopped following the authoritative prepared branch contract over local guard carrier state")
-                    .c_str());
-  }
-
-  return 0;
-}
-
-int check_local_i32_guard_route_requires_authoritative_prepared_branch_labels(
-    const bir::Module& module,
-    const char* function_name,
-    const char* failure_context) {
-  c4c::TargetProfile target_profile;
-  auto prepared =
-      prepare::prepare_semantic_bir_module_with_options(
-          module, target_profile_from_module_triple(module.target_triple, target_profile));
-  auto* control_flow = find_control_flow_function(prepared, function_name);
-  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
-      !control_flow->join_transfers.empty()) {
-    return fail((std::string(failure_context) +
-                 ": prepare no longer publishes the local guard prepared branch contract")
-                    .c_str());
-  }
-
-  auto& branch_condition = control_flow->branch_conditions.front();
-  branch_condition.false_label = "drifted.guard.false";
-
-  try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
-    return fail((std::string(failure_context) +
-                 ": x86 prepared-module consumer unexpectedly accepted drifted prepared guard labels")
-                    .c_str());
-  } catch (const std::invalid_argument& error) {
-    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
-        std::string_view::npos) {
-      return fail((std::string(failure_context) +
-                   ": x86 prepared-module consumer rejected drifted prepared guard labels with the wrong contract message")
-                      .c_str());
-    }
-  }
-
-  return 0;
-}
-
 int check_local_i16_guard_route_requires_authoritative_prepared_branch_labels(
     const bir::Module& module,
     const char* function_name,
@@ -2616,60 +2453,6 @@ int check_i32_guard_chain_route_requires_authoritative_prepared_branch_labels(
                    ": x86 prepared-module consumer rejected drifted prepared guard-chain labels with the wrong contract message")
                       .c_str());
     }
-  }
-
-  return 0;
-}
-
-int check_local_i32_guard_helper_publishes_prepared_compare_contract(const bir::Module& module,
-                                                                     const char* function_name,
-                                                                     const char* failure_context) {
-  c4c::TargetProfile target_profile;
-  auto prepared =
-      prepare::prepare_semantic_bir_module_with_options(
-          module, target_profile_from_module_triple(module.target_triple, target_profile));
-  auto* control_flow = find_control_flow_function(prepared, function_name);
-  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
-      !control_flow->join_transfers.empty()) {
-    return fail((std::string(failure_context) +
-                 ": prepare no longer publishes the local guard prepared branch contract")
-                    .c_str());
-  }
-
-  auto& function = prepared.module.functions.front();
-  auto* entry_block = find_block(function, "entry");
-  if (entry_block == nullptr || entry_block->insts.size() < 3) {
-    return fail((std::string(failure_context) +
-                 ": prepared local guard fixture no longer has the expected entry shape")
-                    .c_str());
-  }
-  auto* entry_compare = std::get_if<bir::BinaryInst>(&entry_block->insts.back());
-  if (entry_compare == nullptr) {
-    return fail((std::string(failure_context) +
-                 ": prepared local guard fixture no longer exposes the bounded compare carrier")
-                    .c_str());
-  }
-
-  entry_compare->opcode = bir::BinaryOpcode::Eq;
-  entry_compare->lhs = bir::Value::immediate_i32(7);
-  entry_compare->rhs = bir::Value::immediate_i32(9);
-
-  const auto* prepared_branch_condition =
-      prepare::find_prepared_i32_immediate_branch_condition(*control_flow, entry_block->label, "loaded");
-  if (prepared_branch_condition == nullptr) {
-    return fail((std::string(failure_context) +
-                 ": shared helper no longer recognizes the authoritative local guard compare contract")
-                    .c_str());
-  }
-  if (!prepared_branch_condition->predicate.has_value() ||
-      *prepared_branch_condition->predicate != bir::BinaryOpcode::Ne ||
-      !prepared_branch_condition->lhs.has_value() || prepared_branch_condition->lhs->name != "loaded" ||
-      !prepared_branch_condition->rhs.has_value() ||
-      prepared_branch_condition->rhs->kind != bir::Value::Kind::Immediate ||
-      prepared_branch_condition->rhs->immediate != 123) {
-    return fail((std::string(failure_context) +
-                 ": shared helper stopped publishing the authoritative local guard compare semantics")
-                    .c_str());
   }
 
   return 0;
@@ -2797,6 +2580,7 @@ int check_lir_route_rejection(const lir::LirModule& module,
 
 int run_backend_x86_handoff_boundary_compare_branch_tests();
 int run_backend_x86_handoff_boundary_joined_branch_tests();
+int run_backend_x86_handoff_boundary_local_i32_guard_tests();
 int run_backend_x86_handoff_boundary_short_circuit_tests();
 int run_backend_x86_handoff_boundary_loop_countdown_tests();
 
@@ -2912,36 +2696,7 @@ int main() {
   if (const auto status = run_backend_x86_handoff_boundary_short_circuit_tests(); status != 0) {
     return status;
   }
-  if (const auto status =
-          check_route_outputs(make_x86_local_i32_immediate_guard_module(),
-                              expected_minimal_local_i32_immediate_guard_asm("main", 123),
-                              "bir.store_local %lv.x, i32 123",
-                              "minimal local-slot compare-against-immediate guard route");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_local_i32_guard_route_consumes_prepared_branch_contract(
-              make_x86_local_i32_immediate_guard_module(),
-              expected_minimal_local_i32_immediate_guard_asm("main", 123),
-              "main",
-              "minimal local-slot compare-against-immediate guard prepared branch-contract ownership");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_local_i32_guard_route_requires_authoritative_prepared_branch_labels(
-              make_x86_local_i32_immediate_guard_module(),
-              "main",
-              "minimal local-slot compare-against-immediate guard prepared branch-contract ownership rejects drifted prepared labels instead of falling back to the local guard matcher");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_local_i32_guard_helper_publishes_prepared_compare_contract(
-              make_x86_local_i32_immediate_guard_module(),
-              "main",
-              "minimal local-slot compare-against-immediate guard helper publishes prepared compare contract");
+  if (const auto status = run_backend_x86_handoff_boundary_local_i32_guard_tests();
       status != 0) {
     return status;
   }
