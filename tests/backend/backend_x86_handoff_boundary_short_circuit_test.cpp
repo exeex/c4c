@@ -2060,6 +2060,198 @@ int check_short_circuit_branch_plan_helper_publishes_prepared_labels_impl(
   return 0;
 }
 
+int check_short_circuit_branch_plan_helper_requires_authoritative_entry_targets_impl(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context,
+    bool use_edge_store_slot_carrier) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 2 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the short-circuit branch-plan contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  auto* join_block = find_block(function, "logic.end.10");
+  if (entry_block == nullptr || join_block == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer has the expected entry/join blocks")
+                    .c_str());
+  }
+
+  auto* entry_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
+    for (auto& branch_condition : control_flow->branch_conditions) {
+      if (block_label(prepared, branch_condition.block_label) == entry_block->label) {
+        return &branch_condition;
+      }
+    }
+    return nullptr;
+  }();
+  auto* join_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
+    for (auto& branch_condition : control_flow->branch_conditions) {
+      if (block_label(prepared, branch_condition.block_label) == join_block->label) {
+        return &branch_condition;
+      }
+    }
+    return nullptr;
+  }();
+  if (entry_branch_condition == nullptr || join_branch_condition == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes the expected branch metadata")
+                    .c_str());
+  }
+
+  entry_block->terminator.true_label = "carrier.short_circuit";
+  entry_block->terminator.false_label = "carrier.rhs";
+  entry_block->terminator.condition = bir::Value::named(bir::TypeKind::I32, "carrier.entry.condition");
+  entry_branch_condition->true_label = intern_block_label(prepared, "logic.rhs.9");
+  entry_branch_condition->false_label = intern_block_label(prepared, "logic.end.10");
+  join_block->terminator.true_label = "carrier.join.true";
+  join_block->terminator.false_label = "carrier.join.false";
+  join_branch_condition->true_label = intern_block_label(prepared, join_block->terminator.true_label);
+  join_branch_condition->false_label =
+      intern_block_label(prepared, join_block->terminator.false_label);
+  join_branch_condition->predicate = bir::BinaryOpcode::Eq;
+  if (use_edge_store_slot_carrier) {
+    if (const auto status = convert_short_circuit_join_to_edge_store_slot(
+            prepared, *control_flow, function, *join_block, *join_branch_condition, failure_context);
+        status != 0) {
+      return status;
+    }
+  }
+
+  const auto prepared_join_context =
+      prepare::find_prepared_short_circuit_join_context(
+          prepared.names, *control_flow, function, "entry");
+  if (!prepared_join_context.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer recognizes the short-circuit join context")
+                    .c_str());
+  }
+
+  auto prepared_entry_targets = prepare::find_prepared_compare_branch_target_labels(
+      prepared.names, *entry_branch_condition, *entry_block);
+  if (!prepared_entry_targets.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer recognizes the short-circuit entry branch contract")
+                    .c_str());
+  }
+  prepared_entry_targets->false_label = c4c::kInvalidBlockLabel;
+
+  if (prepare::find_prepared_short_circuit_branch_plan(
+          prepared.names, *prepared_join_context, *prepared_entry_targets)
+          .has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper unexpectedly kept a short-circuit branch plan after authoritative entry-target loss")
+                    .c_str());
+  }
+
+  return 0;
+}
+
+int check_short_circuit_branch_plan_helper_requires_authoritative_continuation_labels_impl(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context,
+    bool use_edge_store_slot_carrier) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 2 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the short-circuit branch-plan contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  auto* join_block = find_block(function, "logic.end.10");
+  if (entry_block == nullptr || join_block == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer has the expected entry/join blocks")
+                    .c_str());
+  }
+
+  auto* entry_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
+    for (auto& branch_condition : control_flow->branch_conditions) {
+      if (block_label(prepared, branch_condition.block_label) == entry_block->label) {
+        return &branch_condition;
+      }
+    }
+    return nullptr;
+  }();
+  auto* join_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
+    for (auto& branch_condition : control_flow->branch_conditions) {
+      if (block_label(prepared, branch_condition.block_label) == join_block->label) {
+        return &branch_condition;
+      }
+    }
+    return nullptr;
+  }();
+  if (entry_branch_condition == nullptr || join_branch_condition == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes the expected branch metadata")
+                    .c_str());
+  }
+
+  entry_block->terminator.true_label = "carrier.short_circuit";
+  entry_block->terminator.false_label = "carrier.rhs";
+  entry_block->terminator.condition = bir::Value::named(bir::TypeKind::I32, "carrier.entry.condition");
+  entry_branch_condition->true_label = intern_block_label(prepared, "logic.rhs.9");
+  entry_branch_condition->false_label = intern_block_label(prepared, "logic.end.10");
+  join_block->terminator.true_label = "carrier.join.true";
+  join_block->terminator.false_label = "carrier.join.false";
+  join_branch_condition->true_label = intern_block_label(prepared, join_block->terminator.true_label);
+  join_branch_condition->false_label =
+      intern_block_label(prepared, join_block->terminator.false_label);
+  join_branch_condition->predicate = bir::BinaryOpcode::Eq;
+  if (use_edge_store_slot_carrier) {
+    if (const auto status = convert_short_circuit_join_to_edge_store_slot(
+            prepared, *control_flow, function, *join_block, *join_branch_condition, failure_context);
+        status != 0) {
+      return status;
+    }
+  }
+
+  auto prepared_join_context =
+      prepare::find_prepared_short_circuit_join_context(
+          prepared.names, *control_flow, function, "entry");
+  if (!prepared_join_context.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer recognizes the short-circuit join context")
+                    .c_str());
+  }
+
+  const auto prepared_entry_targets = prepare::find_prepared_compare_branch_target_labels(
+      prepared.names, *entry_branch_condition, *entry_block);
+  if (!prepared_entry_targets.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper no longer recognizes the short-circuit entry branch contract")
+                    .c_str());
+  }
+  prepared_join_context->continuation_false_label = c4c::kInvalidBlockLabel;
+
+  if (prepare::find_prepared_short_circuit_branch_plan(
+          prepared.names, *prepared_join_context, *prepared_entry_targets)
+          .has_value()) {
+    return fail((std::string(failure_context) +
+                 ": shared helper unexpectedly kept a short-circuit branch plan after authoritative continuation-label loss")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_short_circuit_branch_plan_helper_publishes_prepared_labels(
     const bir::Module& module,
     const char* function_name,
@@ -2068,11 +2260,43 @@ int check_short_circuit_branch_plan_helper_publishes_prepared_labels(
       module, function_name, failure_context, false);
 }
 
+int check_short_circuit_branch_plan_helper_requires_authoritative_entry_targets(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_short_circuit_branch_plan_helper_requires_authoritative_entry_targets_impl(
+      module, function_name, failure_context, false);
+}
+
+int check_short_circuit_branch_plan_helper_requires_authoritative_continuation_labels(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_short_circuit_branch_plan_helper_requires_authoritative_continuation_labels_impl(
+      module, function_name, failure_context, false);
+}
+
 int check_short_circuit_edge_store_slot_branch_plan_helper_publishes_prepared_labels(
     const bir::Module& module,
     const char* function_name,
     const char* failure_context) {
   return check_short_circuit_branch_plan_helper_publishes_prepared_labels_impl(
+      module, function_name, failure_context, true);
+}
+
+int check_short_circuit_edge_store_slot_branch_plan_helper_requires_authoritative_entry_targets(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_short_circuit_branch_plan_helper_requires_authoritative_entry_targets_impl(
+      module, function_name, failure_context, true);
+}
+
+int check_short_circuit_edge_store_slot_branch_plan_helper_requires_authoritative_continuation_labels(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_short_circuit_branch_plan_helper_requires_authoritative_continuation_labels_impl(
       module, function_name, failure_context, true);
 }
 
@@ -2371,10 +2595,42 @@ int run_backend_x86_handoff_boundary_short_circuit_tests() {
     return status;
   }
   if (const auto status =
+          check_short_circuit_branch_plan_helper_requires_authoritative_entry_targets(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit branch-plan helper rejects entry-target loss instead of keeping a local fallback alive");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_short_circuit_branch_plan_helper_requires_authoritative_continuation_labels(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit branch-plan helper rejects continuation-label loss instead of keeping a local fallback alive");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_short_circuit_edge_store_slot_branch_plan_helper_publishes_prepared_labels(
               make_x86_local_i32_short_circuit_or_guard_module(),
               "main",
               "minimal local-slot short-circuit EdgeStoreSlot branch-plan prepared label ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_short_circuit_edge_store_slot_branch_plan_helper_requires_authoritative_entry_targets(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit EdgeStoreSlot branch-plan helper rejects entry-target loss instead of keeping a local fallback alive");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_short_circuit_edge_store_slot_branch_plan_helper_requires_authoritative_continuation_labels(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit EdgeStoreSlot branch-plan helper rejects continuation-label loss instead of keeping a local fallback alive");
       status != 0) {
     return status;
   }

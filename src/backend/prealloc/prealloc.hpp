@@ -2444,7 +2444,11 @@ find_prepared_short_circuit_branch_plan(
   const auto rhs_entry_label = short_circuit_on_compare_true
                                    ? direct_branch_targets.false_label
                                    : direct_branch_targets.true_label;
-  if (rhs_entry_label == kInvalidBlockLabel) {
+  if (rhs_entry_label == kInvalidBlockLabel ||
+      join_context.continuation_true_label == kInvalidBlockLabel ||
+      join_context.continuation_false_label == kInvalidBlockLabel ||
+      join_context.true_transfer->predecessor_label == kInvalidBlockLabel ||
+      join_context.false_transfer->predecessor_label == kInvalidBlockLabel) {
     return std::nullopt;
   }
 
