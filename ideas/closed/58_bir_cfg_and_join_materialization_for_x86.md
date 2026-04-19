@@ -1,11 +1,51 @@
 # Shared CFG, Branch, Join, And Loop Materialization Before X86 Emission
 
-Status: Open
+Status: Closed
 Created: 2026-04-18
-Last-Updated: 2026-04-18
+Last-Updated: 2026-04-19
+Closed: 2026-04-19
+Disposition: Completed; shared prepared control-flow ownership is now authoritative for the covered x86 branch, join, short-circuit, and loop routes, and the remaining broader backend failures continue as adjacent debt under existing follow-on ideas.
 Depends-On: none
 Blocks:
 - idea 59 generic scalar instruction selection for x86
+
+## Why This Was Closed
+
+Idea 58 was about making shared prepared control-flow facts authoritative so
+x86 no longer had to rediscover branch, join, short-circuit, and loop meaning
+from CFG shape. That route is now complete: the shared contract is present,
+the x86 consumer uses prepared lookups for the covered lanes, and the focused
+handoff and prepare-side proof now agree on the authoritative metadata shape.
+
+## Validation At Closure
+
+Closure used a backend-scoped regression guard:
+
+- `cmake --build --preset default`
+- `ctest --test-dir build -j --output-on-failure -R '^backend_'`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+
+Result:
+
+- regression guard passed
+- before reported `67` passed / `5` failed / `72` total
+- after reported `68` passed / `4` failed / `72` total
+- `backend_prepare_phi_materialize` was the resolved in-scope failure
+- the remaining broader backend failures stayed limited to:
+  - `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`
+  - `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`
+  - `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`
+  - `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`
+
+## Follow-On Context
+
+- `ideas/open/57_x86_backend_c_testsuite_capability_families.md` remains the
+  follow-on route for the residual broader backend capability debt
+- `ideas/open/59_generic_scalar_instruction_selection_for_x86.md`,
+  `ideas/open/60_prepared_value_location_consumption.md`, and
+  `ideas/open/61_stack_frame_and_addressing_consumption.md` remain separate
+  follow-on ideas and should not be silently folded back into this closed
+  route
 
 ## Intent
 
