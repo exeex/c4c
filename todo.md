@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/64_shared_text_identity_and_semantic_name_table_refactor.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Migrate The First Prepared Identity Surfaces
-Plan Review Counter: 10 / 10
+Current Step ID: 3.2
+Current Step Title: Migrate Remaining Prepared Lookup Helpers And Liveness Consumers
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
@@ -20,7 +20,7 @@ helper instead of open-coded raw spelling paths at each access site.
 
 ## Suggested Next
 
-Continue `plan.md` Step 3 by migrating the remaining prepared/backend lookup
+Continue `plan.md` Step 3.2 by migrating the remaining prepared/backend lookup
 helpers that still accept raw value or block spellings, with priority on the
 remaining `prealloc.hpp` and `liveness.cpp` lookup surfaces that still take
 `std::string_view` names instead of typed ids.

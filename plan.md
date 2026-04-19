@@ -131,6 +131,53 @@ Actions:
 - document the follow-on expectation that idea 62 should consume `BlockLabelId`
   and related semantic ids directly
 
+### Step 3.1: Move Prepared Control-Flow And Addressing Boundaries To Semantic Ids
+
+Goal: keep the already-started prepared control-flow, join, x86 local-slot,
+module, and stack-layout boundaries on typed function and block identities
+instead of repeated raw spelling lookup.
+
+Primary targets:
+
+- `src/backend/prealloc/prealloc.hpp`
+- `src/backend/prealloc/stack_layout.cpp`
+- adjacent prepared/x86 lookup boundaries already carrying control-flow or
+  addressing metadata
+
+Completion check:
+
+- the main prepared control-flow and addressing entry boundaries resolve
+  `FunctionNameId` and `BlockLabelId` once and any remaining string-view paths
+  in this area are compatibility shims rather than the primary contract
+
+### Step 3.2: Migrate Remaining Prepared Lookup Helpers And Liveness Consumers
+
+Goal: move the remaining lookup-heavy prepared helpers off raw value and block
+spellings so typed ids stay authoritative inside the helper graph.
+
+Primary targets:
+
+- residual lookup helpers in `src/backend/prealloc/prealloc.hpp`
+- `src/backend/prealloc/liveness.cpp`
+- adjacent call sites that still enter those helpers through `std::string_view`
+  names
+
+Completion check:
+
+- the remaining hot prepared lookup paths resolve typed ids once at the edge
+  and carry `BlockLabelId` and `ValueNameId` internally, with string-view
+  overloads reduced to compatibility wrappers where still needed
+
+### Step 3.3: Confirm Idea 62 Starter Surfaces Are Clean
+
+Goal: leave the first prepared/backend identity surfaces in a state that idea
+62 can consume without introducing new string-keyed contracts.
+
+Primary targets:
+
+- prepared/backend helper surfaces that upcoming CFG ownership work will build
+  on first
+
 Completion check:
 
 - the first prepared/backend identity surfaces use semantic ids cleanly enough
