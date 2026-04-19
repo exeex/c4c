@@ -714,6 +714,73 @@ int check_same_module_global_guard_chain_route_consumes_prepared_address_contrac
   return 0;
 }
 
+int check_same_module_global_guard_chain_route_requires_authoritative_prepared_address_contract(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name);
+  if (function_addressing == nullptr || function_addressing->accesses.size() < 2) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the same-module global prepared accesses")
+                    .c_str());
+  }
+
+  auto mutated = prepared;
+  prepare::PreparedAddressingFunction* mutable_addressing = nullptr;
+  for (auto& candidate : mutated.addressing.functions) {
+    if (candidate.function_name == function_name) {
+      mutable_addressing = &candidate;
+      break;
+    }
+  }
+  if (mutable_addressing == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": mutated same-module global guard fixture lost its prepared accesses")
+                    .c_str());
+  }
+
+  auto& function = mutated.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  auto* block_2 = find_block(function, "block_2");
+  if (entry_block == nullptr || block_2 == nullptr || entry_block->insts.empty() ||
+      block_2->insts.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepared same-module global guard fixture no longer exposes the expected load carriers")
+                    .c_str());
+  }
+  auto* entry_load = std::get_if<bir::LoadGlobalInst>(&entry_block->insts.front());
+  auto* second_load = std::get_if<bir::LoadGlobalInst>(&block_2->insts.front());
+  if (entry_load == nullptr || second_load == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared same-module global guard fixture no longer exposes the expected direct global load carriers")
+                    .c_str());
+  }
+
+  entry_load->global_name = "drifted_same_module_global";
+  second_load->global_name = "drifted_same_module_global";
+  mutable_addressing->accesses.clear();
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(mutated);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly fell back to raw same-module global carriers after prepared access loss")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected missing prepared same-module global accesses with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_same_module_global_store_guard_chain_route_consumes_prepared_address_contract(
     const bir::Module& module,
     const std::string& expected_asm,
@@ -755,6 +822,73 @@ int check_same_module_global_store_guard_chain_route_consumes_prepared_address_c
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following authoritative prepared same-module global store accesses over drifted raw global carriers")
                     .c_str());
+  }
+
+  return 0;
+}
+
+int check_same_module_global_store_guard_chain_route_requires_authoritative_prepared_address_contract(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name);
+  if (function_addressing == nullptr || function_addressing->accesses.size() < 2) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the same-module global store prepared accesses")
+                    .c_str());
+  }
+
+  auto mutated = prepared;
+  prepare::PreparedAddressingFunction* mutable_addressing = nullptr;
+  for (auto& candidate : mutated.addressing.functions) {
+    if (candidate.function_name == function_name) {
+      mutable_addressing = &candidate;
+      break;
+    }
+  }
+  if (mutable_addressing == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": mutated same-module global store fixture lost its prepared accesses")
+                    .c_str());
+  }
+
+  auto& function = mutated.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  if (entry_block == nullptr || entry_block->insts.size() < 2) {
+    return fail((std::string(failure_context) +
+                 ": prepared same-module global store fixture no longer exposes the expected carriers")
+                    .c_str());
+  }
+  auto* entry_store = std::get_if<bir::StoreGlobalInst>(&entry_block->insts.front());
+  auto* entry_load = std::get_if<bir::LoadGlobalInst>(&entry_block->insts[1]);
+  if (entry_store == nullptr || entry_load == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared same-module global store fixture no longer exposes the expected direct global store/load carriers")
+                    .c_str());
+  }
+
+  entry_store->global_name = "drifted_same_module_global";
+  entry_store->byte_offset = 0;
+  entry_load->global_name = "drifted_same_module_global";
+  entry_load->byte_offset = 0;
+  mutable_addressing->accesses.clear();
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(mutated);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly fell back to raw same-module global store carriers after prepared access loss")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected missing prepared same-module global store accesses with the wrong contract message")
+                      .c_str());
+    }
   }
 
   return 0;
@@ -808,6 +942,14 @@ int run_backend_x86_handoff_boundary_i32_guard_chain_tests() {
     return status;
   }
   if (const auto status =
+          check_same_module_global_guard_chain_route_requires_authoritative_prepared_address_contract(
+              make_x86_same_module_global_i32_guard_chain_module(),
+              "main",
+              "same-module defined-global equality-against-immediate guard route rejects raw global fallback after prepared access loss");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_route_outputs(make_x86_same_module_global_i32_store_guard_chain_module(),
                               expected_minimal_same_module_global_i32_store_guard_chain_asm("main"),
                               "bir.store_global @s, offset 4, i32 7",
@@ -821,6 +963,14 @@ int run_backend_x86_handoff_boundary_i32_guard_chain_tests() {
               expected_minimal_same_module_global_i32_store_guard_chain_asm("main"),
               "main",
               "same-module defined-global offset-store equality-against-immediate guard route consumes authoritative prepared global store accesses");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_same_module_global_store_guard_chain_route_requires_authoritative_prepared_address_contract(
+              make_x86_same_module_global_i32_store_guard_chain_module(),
+              "main",
+              "same-module defined-global offset-store equality-against-immediate guard route rejects raw global fallback after prepared access loss");
       status != 0) {
     return status;
   }
