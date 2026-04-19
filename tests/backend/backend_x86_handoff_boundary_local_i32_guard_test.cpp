@@ -316,7 +316,7 @@ int check_local_i32_return_route_requires_authoritative_prepared_frame_access_co
   auto mutated = prepared;
   prepare::PreparedAddressingFunction* mutable_addressing = nullptr;
   for (auto& candidate : mutated.addressing.functions) {
-    if (candidate.function_name == function_name) {
+    if (prepare::prepared_function_name(mutated.names, candidate.function_name) == function_name) {
       mutable_addressing = &candidate;
       break;
     }
@@ -530,7 +530,7 @@ int check_local_i32_guard_route_consumes_prepared_frame_contract(const bir::Modu
   auto mutated = prepared;
   prepare::PreparedAddressingFunction* mutable_addressing = nullptr;
   for (auto& candidate : mutated.addressing.functions) {
-    if (candidate.function_name == function_name) {
+    if (prepare::prepared_function_name(mutated.names, candidate.function_name) == function_name) {
       mutable_addressing = &candidate;
       break;
     }

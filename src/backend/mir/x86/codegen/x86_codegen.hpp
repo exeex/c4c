@@ -325,26 +325,30 @@ std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_la
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     c4c::TargetArch prepared_arch);
 
 inline std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     c4c::TargetArch prepared_arch) {
-  return build_prepared_module_local_slot_layout(function, stack_layout, nullptr, prepared_arch);
+  return build_prepared_module_local_slot_layout(
+      function, stack_layout, nullptr, nullptr, prepared_arch);
 }
 
 inline std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
     const c4c::backend::bir::Function& function,
     c4c::TargetArch prepared_arch) {
-  return build_prepared_module_local_slot_layout(function, nullptr, nullptr, prepared_arch);
+  return build_prepared_module_local_slot_layout(function, nullptr, nullptr, nullptr, prepared_arch);
 }
 
 inline std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     c4c::TargetArch prepared_arch) {
-  return build_prepared_module_local_slot_layout(function, nullptr, function_addressing,
+  return build_prepared_module_local_slot_layout(
+      function, nullptr, function_addressing, prepared_names,
                                                  prepared_arch);
 }
 
@@ -392,6 +396,7 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix);
 
@@ -401,6 +406,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
     const c4c::backend::bir::Block& entry,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
@@ -421,6 +427,7 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
     const c4c::backend::bir::Block& entry,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
@@ -431,6 +438,7 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
     const c4c::backend::bir::Block& entry,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
@@ -441,6 +449,7 @@ std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported
     const c4c::backend::bir::Block& entry,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix);
 
@@ -477,6 +486,7 @@ std::optional<std::string> render_prepared_single_block_return_dispatch_if_suppo
     const c4c::backend::bir::Block& entry,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
     std::string_view return_register,

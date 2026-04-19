@@ -20,6 +20,7 @@ std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_la
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     c4c::TargetArch prepared_arch) {
   if (prepared_arch != c4c::TargetArch::X86_64) {
     return std::nullopt;
@@ -60,6 +61,12 @@ std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_la
     }
   }
   if (function_addressing != nullptr) {
+    if (prepared_names == nullptr ||
+        c4c::backend::prepare::prepared_function_name(*prepared_names,
+                                                      function_addressing->function_name) !=
+            function.name) {
+      return std::nullopt;
+    }
     const auto required_frame_alignment =
         std::max<std::size_t>(16, function_addressing->frame_alignment_bytes);
     layout.frame_alignment = required_frame_alignment;
@@ -74,23 +81,24 @@ std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_la
 namespace {
 
 const c4c::backend::prepare::PreparedMemoryAccess* find_prepared_function_memory_access(
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     std::string_view block_label,
     std::size_t inst_index) {
-  if (function_addressing == nullptr) {
+  if (function_addressing == nullptr || prepared_names == nullptr) {
     return nullptr;
   }
-  return c4c::backend::prepare::find_prepared_memory_access(*function_addressing,
-                                                             block_label,
-                                                             inst_index);
+  return c4c::backend::prepare::find_prepared_memory_access(
+      *prepared_names, *function_addressing, block_label, inst_index);
 }
 
 const c4c::backend::prepare::PreparedMemoryAccess* find_prepared_frame_memory_access(
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     std::string_view block_label,
     std::size_t inst_index) {
   const auto* access =
-      find_prepared_function_memory_access(function_addressing, block_label, inst_index);
+      find_prepared_function_memory_access(prepared_names, function_addressing, block_label, inst_index);
   if (access == nullptr ||
       access->address.base_kind != c4c::backend::prepare::PreparedAddressBaseKind::FrameSlot ||
       !access->address.frame_slot_id.has_value()) {
@@ -100,14 +108,16 @@ const c4c::backend::prepare::PreparedMemoryAccess* find_prepared_frame_memory_ac
 }
 
 const c4c::backend::prepare::PreparedMemoryAccess* find_prepared_symbol_memory_access(
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     std::string_view block_label,
     std::size_t inst_index) {
   const auto* access =
-      find_prepared_function_memory_access(function_addressing, block_label, inst_index);
+      find_prepared_function_memory_access(prepared_names, function_addressing, block_label, inst_index);
   if (access == nullptr ||
       access->address.base_kind != c4c::backend::prepare::PreparedAddressBaseKind::GlobalSymbol ||
-      !access->address.symbol_name.has_value() || access->address.symbol_name->empty()) {
+      !access->address.symbol_name.has_value() ||
+      c4c::backend::prepare::prepared_link_name(*prepared_names, *access->address.symbol_name).empty()) {
     return nullptr;
   }
   return access;
@@ -144,15 +154,21 @@ std::optional<std::string> render_prepared_frame_slot_memory_operand_if_supporte
 }
 
 std::optional<std::string> render_prepared_symbol_memory_operand_if_supported(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedAddress& address,
     std::string_view size_name,
     const std::function<std::string(std::string_view)>& render_asm_symbol_name) {
   if (address.base_kind != c4c::backend::prepare::PreparedAddressBaseKind::GlobalSymbol ||
-      !address.symbol_name.has_value() || address.symbol_name->empty()) {
+      !address.symbol_name.has_value()) {
+    return std::nullopt;
+  }
+  const std::string_view symbol_name =
+      c4c::backend::prepare::prepared_link_name(prepared_names, *address.symbol_name);
+  if (symbol_name.empty()) {
     return std::nullopt;
   }
   std::string memory = std::string(size_name) + " PTR [rip + " +
-                       render_asm_symbol_name(*address.symbol_name);
+                       render_asm_symbol_name(symbol_name);
   if (address.byte_offset > 0) {
     memory += " + " + std::to_string(address.byte_offset);
   } else if (address.byte_offset < 0) {
@@ -218,6 +234,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
     const c4c::backend::bir::Block& entry,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
@@ -239,6 +256,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
       build_prepared_module_local_slot_layout(function,
                                               stack_layout,
                                               function_addressing,
+                                              prepared_names,
                                               prepared_arch);
   if (!layout.has_value()) {
     return std::nullopt;
@@ -279,7 +297,8 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
         -> std::optional<std::string> {
       if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst)) {
         const auto* prepared_access =
-            find_prepared_function_memory_access(function_addressing, block.label, inst_index);
+            find_prepared_function_memory_access(
+                prepared_names, function_addressing, block.label, inst_index);
         std::optional<std::string> memory;
         if (prepared_access != nullptr) {
           memory = render_prepared_frame_slot_memory_operand_if_supported(
@@ -345,18 +364,22 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
           return std::nullopt;
         }
         const auto* prepared_access =
-            find_prepared_symbol_memory_access(function_addressing, block.label, inst_index);
+            find_prepared_symbol_memory_access(
+                prepared_names, function_addressing, block.label, inst_index);
         if (prepared_access == nullptr) {
           return std::nullopt;
         }
         auto memory = render_prepared_symbol_memory_operand_if_supported(
+            *prepared_names,
             prepared_access->address,
             load->result.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD" : "DWORD",
             render_asm_symbol_name);
         if (!memory.has_value()) {
           return std::nullopt;
         }
-        const std::string_view resolved_global_name = *prepared_access->address.symbol_name;
+        const std::string_view resolved_global_name =
+            c4c::backend::prepare::prepared_link_name(
+                *prepared_names, *prepared_access->address.symbol_name);
         const auto* global = find_same_module_global(resolved_global_name);
         const auto global_byte_offset = prepared_access->address.byte_offset;
         if (global == nullptr ||
@@ -383,16 +406,19 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
           return std::nullopt;
         }
         const auto* prepared_access =
-            find_prepared_symbol_memory_access(function_addressing, block.label, inst_index);
+            find_prepared_symbol_memory_access(
+                prepared_names, function_addressing, block.label, inst_index);
         if (prepared_access == nullptr) {
           return std::nullopt;
         }
         auto memory = render_prepared_symbol_memory_operand_if_supported(
-            prepared_access->address, "DWORD", render_asm_symbol_name);
+            *prepared_names, prepared_access->address, "DWORD", render_asm_symbol_name);
         if (!memory.has_value()) {
           return std::nullopt;
         }
-        const std::string_view resolved_global_name = *prepared_access->address.symbol_name;
+        const std::string_view resolved_global_name =
+            c4c::backend::prepare::prepared_link_name(
+                *prepared_names, *prepared_access->address.symbol_name);
         const auto global_byte_offset = prepared_access->address.byte_offset;
         const auto* global = find_same_module_global(resolved_global_name);
         if (global == nullptr || global->type != c4c::backend::bir::TypeKind::I32) {
@@ -424,7 +450,8 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
         return std::nullopt;
       }
       const auto* prepared_access =
-          find_prepared_function_memory_access(function_addressing, block.label, inst_index);
+          find_prepared_function_memory_access(
+              prepared_names, function_addressing, block.label, inst_index);
       std::optional<std::string> memory;
       if (prepared_access != nullptr) {
         memory = render_prepared_frame_slot_memory_operand_if_supported(
@@ -860,6 +887,7 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
     const c4c::backend::bir::Block& entry,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
@@ -874,6 +902,7 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
       build_prepared_module_local_slot_layout(function,
                                               stack_layout,
                                               function_addressing,
+                                              prepared_names,
                                               prepared_arch);
   if (!layout.has_value()) {
     return std::nullopt;
@@ -963,7 +992,8 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
     const auto& inst = entry.insts[index];
     if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
       const auto* prepared_access =
-          find_prepared_function_memory_access(function_addressing, entry.label, index);
+          find_prepared_function_memory_access(
+              prepared_names, function_addressing, entry.label, index);
       if (store->byte_offset != 0 || store->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
           store->value.type != c4c::backend::bir::TypeKind::I32) {
         return std::nullopt;
@@ -992,7 +1022,8 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
 
     if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst)) {
       const auto* prepared_access =
-          find_prepared_function_memory_access(function_addressing, entry.label, index);
+          find_prepared_function_memory_access(
+              prepared_names, function_addressing, entry.label, index);
       if (load->byte_offset != 0 || load->result.type != c4c::backend::bir::TypeKind::I32) {
         return std::nullopt;
       }
@@ -1190,6 +1221,7 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
     const c4c::backend::bir::Block& entry,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
@@ -1204,6 +1236,7 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
       build_prepared_module_local_slot_layout(function,
                                               stack_layout,
                                               function_addressing,
+                                              prepared_names,
                                               prepared_arch);
   if (!layout.has_value()) {
     return std::nullopt;
@@ -1289,7 +1322,7 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
 
   std::optional<std::string> short_memory;
   if (const auto* prepared_access =
-          find_prepared_function_memory_access(function_addressing, entry.label, 0);
+          find_prepared_function_memory_access(prepared_names, function_addressing, entry.label, 0);
       prepared_access != nullptr) {
     short_memory =
         render_prepared_frame_slot_memory_operand_if_supported(*layout,
@@ -1416,6 +1449,7 @@ std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported
     const c4c::backend::bir::Block& entry,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix) {
   if (!function.params.empty() || function.blocks.size() != 1 ||
@@ -1428,6 +1462,7 @@ std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported
       build_prepared_module_local_slot_layout(function,
                                               stack_layout,
                                               function_addressing,
+                                              prepared_names,
                                               prepared_arch);
   if (!layout.has_value()) {
     return std::nullopt;
@@ -1497,17 +1532,17 @@ std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported
   }
 
   const auto* prepared_store_short =
-      find_prepared_frame_memory_access(function_addressing, entry.label, 0);
+      find_prepared_frame_memory_access(prepared_names, function_addressing, entry.label, 0);
   const auto* prepared_store_long =
-      find_prepared_frame_memory_access(function_addressing, entry.label, 1);
+      find_prepared_frame_memory_access(prepared_names, function_addressing, entry.label, 1);
   const auto* prepared_load_long =
-      find_prepared_frame_memory_access(function_addressing, entry.label, 2);
+      find_prepared_frame_memory_access(prepared_names, function_addressing, entry.label, 2);
   const auto* prepared_load_short =
-      find_prepared_frame_memory_access(function_addressing, entry.label, 3);
+      find_prepared_frame_memory_access(prepared_names, function_addressing, entry.label, 3);
   const auto* prepared_store_result =
-      find_prepared_frame_memory_access(function_addressing, entry.label, 7);
+      find_prepared_frame_memory_access(prepared_names, function_addressing, entry.label, 7);
   const auto* prepared_load_result =
-      find_prepared_frame_memory_access(function_addressing, entry.label, 8);
+      find_prepared_frame_memory_access(prepared_names, function_addressing, entry.label, 8);
   if (!prepared_frame_memory_accesses_match(prepared_store_short, prepared_load_short) ||
       !prepared_frame_memory_accesses_match(prepared_store_short, prepared_store_result) ||
       !prepared_frame_memory_accesses_match(prepared_store_short, prepared_load_result) ||
@@ -2110,6 +2145,7 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix) {
   if (function.params.empty() == false || function.blocks.size() != 1 ||
@@ -2122,6 +2158,7 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
       build_prepared_module_local_slot_layout(function,
                                               stack_layout,
                                               function_addressing,
+                                              prepared_names,
                                               prepared_arch);
   if (!layout.has_value()) {
     return std::nullopt;
@@ -2150,7 +2187,8 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
         return std::nullopt;
       }
       const auto* prepared_access =
-          find_prepared_function_memory_access(function_addressing, entry.label, inst_index);
+          find_prepared_function_memory_access(
+              prepared_names, function_addressing, entry.label, inst_index);
       auto memory = prepared_access == nullptr
                         ? std::nullopt
                         : render_prepared_frame_slot_memory_operand_if_supported(
@@ -2188,7 +2226,8 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
       return std::nullopt;
     }
     const auto* prepared_access =
-        find_prepared_function_memory_access(function_addressing, entry.label, inst_index);
+        find_prepared_function_memory_access(
+            prepared_names, function_addressing, entry.label, inst_index);
     auto memory = prepared_access == nullptr
                       ? std::nullopt
                       : render_prepared_frame_slot_memory_operand_if_supported(
@@ -2462,6 +2501,7 @@ std::optional<std::string> render_prepared_single_block_return_dispatch_if_suppo
     const c4c::backend::bir::Block& entry,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
     std::string_view return_register,
@@ -2490,7 +2530,7 @@ std::optional<std::string> render_prepared_single_block_return_dispatch_if_suppo
   }
   if (const auto rendered_local_slot =
           render_prepared_minimal_local_slot_return_if_supported(
-              function, stack_layout, function_addressing, prepared_arch, asm_prefix);
+              function, stack_layout, function_addressing, prepared_names, prepared_arch, asm_prefix);
       rendered_local_slot.has_value()) {
     return *rendered_local_slot;
   }
@@ -2502,7 +2542,7 @@ std::optional<std::string> render_prepared_single_block_return_dispatch_if_suppo
   }
   if (const auto rendered_local_i16_i64_return =
           render_prepared_local_i16_i64_sub_return_if_supported(
-              function, entry, stack_layout, function_addressing, prepared_arch, asm_prefix);
+              function, entry, stack_layout, function_addressing, prepared_names, prepared_arch, asm_prefix);
       rendered_local_i16_i64_return.has_value()) {
     return *rendered_local_i16_i64_return;
   }

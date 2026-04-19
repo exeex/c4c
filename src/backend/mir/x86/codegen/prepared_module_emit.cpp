@@ -386,6 +386,7 @@ std::string emit_prepared_module(
         entry,
         &module.stack_layout,
         find_addressing_function(),
+        &module.names,
         find_control_flow_function(),
         prepared_arch,
         asm_prefix,
@@ -405,6 +406,7 @@ std::string emit_prepared_module(
         entry,
         &module.stack_layout,
         find_addressing_function(),
+        &module.names,
         find_control_flow_function(),
         prepared_arch,
         asm_prefix,
@@ -417,6 +419,7 @@ std::string emit_prepared_module(
         entry,
         &module.stack_layout,
         find_addressing_function(),
+        &module.names,
         find_control_flow_function(),
         prepared_arch,
         asm_prefix,
@@ -497,10 +500,10 @@ std::string emit_prepared_module(
     throw std::invalid_argument(
         "x86 backend emitter only supports i32 return values through the canonical prepared-module handoff");
   }
-  if (const auto rendered_single_block_return =
+      if (const auto rendered_single_block_return =
           c4c::backend::x86::render_prepared_single_block_return_dispatch_if_supported(
-              module.module, function, entry, &module.stack_layout, find_addressing_function(), prepared_arch,
-              asm_prefix, *return_register,
+              module.module, function, entry, &module.stack_layout, find_addressing_function(), &module.names,
+              prepared_arch, asm_prefix, *return_register,
               bounded_same_module_helper_global_names, find_string_constant, find_same_module_global,
               render_private_data_label, render_asm_symbol_name, emit_string_constant_data,
               emit_same_module_global_data, prepend_bounded_same_module_helpers,

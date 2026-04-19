@@ -283,13 +283,13 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
   }
 
   const auto* store_access =
-      prepare::find_prepared_memory_access(*function_addressing, "entry", 2);
+      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 2);
   if (store_access == nullptr) {
     return fail("expected prepared addressing to record the direct frame-slot store");
   }
   if (store_access->result_value_name.has_value() ||
       !store_access->stored_value_name.has_value() ||
-      *store_access->stored_value_name != "coalesced" ||
+      prepare::prepared_value_name(prepared.names, *store_access->stored_value_name) != "coalesced" ||
       store_access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
       !store_access->address.frame_slot_id.has_value() ||
       *store_access->address.frame_slot_id != live_slot->slot_id ||
@@ -301,12 +301,12 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
   }
 
   const auto* load_access =
-      prepare::find_prepared_memory_access(*function_addressing, "entry", 3);
+      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 3);
   if (load_access == nullptr) {
     return fail("expected prepared addressing to record the direct frame-slot load");
   }
   if (!load_access->result_value_name.has_value() ||
-      *load_access->result_value_name != "loaded" ||
+      prepare::prepared_value_name(prepared.names, *load_access->result_value_name) != "loaded" ||
       load_access->stored_value_name.has_value() ||
       load_access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
       !load_access->address.frame_slot_id.has_value() ||
@@ -319,16 +319,16 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
   }
 
   const auto* global_store_access =
-      prepare::find_prepared_memory_access(*function_addressing, "entry", 4);
+      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 4);
   if (global_store_access == nullptr) {
     return fail("expected prepared addressing to record the direct global-symbol store");
   }
   if (global_store_access->result_value_name.has_value() ||
       !global_store_access->stored_value_name.has_value() ||
-      *global_store_access->stored_value_name != "loaded" ||
+      prepare::prepared_value_name(prepared.names, *global_store_access->stored_value_name) != "loaded" ||
       global_store_access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
       !global_store_access->address.symbol_name.has_value() ||
-      *global_store_access->address.symbol_name != "g.counter" ||
+      prepare::prepared_link_name(prepared.names, *global_store_access->address.symbol_name) != "g.counter" ||
       global_store_access->address.byte_offset != 0 ||
       global_store_access->address.size_bytes != 4 ||
       global_store_access->address.align_bytes != 4 ||
@@ -337,16 +337,16 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
   }
 
   const auto* string_load_access =
-      prepare::find_prepared_memory_access(*function_addressing, "entry", 5);
+      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 5);
   if (string_load_access == nullptr) {
     return fail("expected prepared addressing to record the direct string-constant load");
   }
   if (!string_load_access->result_value_name.has_value() ||
-      *string_load_access->result_value_name != "message.ptr" ||
+      prepare::prepared_value_name(prepared.names, *string_load_access->result_value_name) != "message.ptr" ||
       string_load_access->stored_value_name.has_value() ||
       string_load_access->address.base_kind != prepare::PreparedAddressBaseKind::StringConstant ||
       !string_load_access->address.symbol_name.has_value() ||
-      *string_load_access->address.symbol_name != ".L.str0" ||
+      prepare::prepared_link_name(prepared.names, *string_load_access->address.symbol_name) != ".L.str0" ||
       string_load_access->address.byte_offset != 0 ||
       string_load_access->address.size_bytes != 8 ||
       string_load_access->address.align_bytes != 8 ||
@@ -354,8 +354,8 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
     return fail("expected prepared addressing to preserve the direct string-constant load facts");
   }
 
-  if (prepare::find_prepared_memory_access(*function_addressing, "entry", 0) != nullptr ||
-      prepare::find_prepared_memory_access(*function_addressing, "entry", 1) != nullptr) {
+  if (prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 0) != nullptr ||
+      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 1) != nullptr) {
     return fail("expected coalesced scratch accesses to stay out of prepared frame-slot records");
   }
   if (prepare::find_prepared_addressing(prepared, "missing_function") != nullptr) {
@@ -3024,7 +3024,7 @@ int check_pointer_addressed_local_slot_activation(const prepare::PreparedBirModu
   }
 
   const auto* pointer_store_access =
-      prepare::find_prepared_memory_access(*function_addressing, "entry", 1);
+      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 1);
   if (pointer_store_access == nullptr) {
     return fail("expected prepared addressing to record the pointer-indirect local store");
   }
@@ -3032,7 +3032,8 @@ int check_pointer_addressed_local_slot_activation(const prepare::PreparedBirModu
       pointer_store_access->stored_value_name.has_value() ||
       pointer_store_access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
       !pointer_store_access->address.pointer_value_name.has_value() ||
-      *pointer_store_access->address.pointer_value_name != "lv.ptr.addr.alias" ||
+      prepare::prepared_value_name(prepared.names, *pointer_store_access->address.pointer_value_name) !=
+          "lv.ptr.addr.alias" ||
       pointer_store_access->address.symbol_name.has_value() ||
       pointer_store_access->address.frame_slot_id.has_value() ||
       pointer_store_access->address.byte_offset != 0 ||
@@ -3084,7 +3085,7 @@ int check_global_pointer_addressed_local_slot_activation(
   }
 
   const auto* pointer_store_access =
-      prepare::find_prepared_memory_access(*function_addressing, "entry", 1);
+      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 1);
   if (pointer_store_access == nullptr) {
     return fail("expected prepared addressing to record the pointer-indirect global store");
   }
@@ -3092,7 +3093,8 @@ int check_global_pointer_addressed_local_slot_activation(
       pointer_store_access->stored_value_name.has_value() ||
       pointer_store_access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
       !pointer_store_access->address.pointer_value_name.has_value() ||
-      *pointer_store_access->address.pointer_value_name != "lv.global.ptr.addr.alias" ||
+      prepare::prepared_value_name(prepared.names, *pointer_store_access->address.pointer_value_name) !=
+          "lv.global.ptr.addr.alias" ||
       pointer_store_access->address.symbol_name.has_value() ||
       pointer_store_access->address.frame_slot_id.has_value() ||
       pointer_store_access->address.byte_offset != 0 ||
@@ -3103,16 +3105,18 @@ int check_global_pointer_addressed_local_slot_activation(
   }
 
   const auto* pointer_load_access =
-      prepare::find_prepared_memory_access(*function_addressing, "entry", 2);
+      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 2);
   if (pointer_load_access == nullptr) {
     return fail("expected prepared addressing to record the pointer-indirect global load");
   }
   if (!pointer_load_access->result_value_name.has_value() ||
-      *pointer_load_access->result_value_name != "lv.global.ptr.addr.loaded" ||
+      prepare::prepared_value_name(prepared.names, *pointer_load_access->result_value_name) !=
+          "lv.global.ptr.addr.loaded" ||
       pointer_load_access->stored_value_name.has_value() ||
       pointer_load_access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
       !pointer_load_access->address.pointer_value_name.has_value() ||
-      *pointer_load_access->address.pointer_value_name != "lv.global.ptr.addr.alias" ||
+      prepare::prepared_value_name(prepared.names, *pointer_load_access->address.pointer_value_name) !=
+          "lv.global.ptr.addr.alias" ||
       pointer_load_access->address.symbol_name.has_value() ||
       pointer_load_access->address.frame_slot_id.has_value() ||
       pointer_load_access->address.byte_offset != 0 ||
@@ -3290,17 +3294,22 @@ int check_rooted_pointer_binary_local_slot_activation(const prepare::PreparedBir
 
 int check_prepared_addressing_contract_activation() {
   prepare::PreparedBirModule prepared;
+  const auto function_name = prepared.names.function_names.intern("main");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto t0_name = prepared.names.value_names.intern("%t0");
+  const auto t1_name = prepared.names.value_names.intern("%t1");
+  const auto str_name = prepared.names.link_names.intern(".L.str0");
   prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
-      .function_name = "main",
+      .function_name = function_name,
       .frame_size_bytes = 32,
       .frame_alignment_bytes = 16,
       .accesses =
           {
               prepare::PreparedMemoryAccess{
-                  .function_name = "main",
-                  .block_label = "entry",
+                  .function_name = function_name,
+                  .block_label = block_label,
                   .inst_index = 1,
-                  .result_value_name = std::string("%t0"),
+                  .result_value_name = t0_name,
                   .address =
                       prepare::PreparedAddress{
                           .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
@@ -3312,14 +3321,14 @@ int check_prepared_addressing_contract_activation() {
                       },
               },
               prepare::PreparedMemoryAccess{
-                  .function_name = "main",
-                  .block_label = "entry",
+                  .function_name = function_name,
+                  .block_label = block_label,
                   .inst_index = 2,
-                  .stored_value_name = std::string("%t1"),
+                  .stored_value_name = t1_name,
                   .address =
                       prepare::PreparedAddress{
                           .base_kind = prepare::PreparedAddressBaseKind::StringConstant,
-                          .symbol_name = std::string(".L.str0"),
+                          .symbol_name = str_name,
                           .size_bytes = 8,
                           .align_bytes = 8,
                       },
@@ -3337,11 +3346,12 @@ int check_prepared_addressing_contract_activation() {
   }
 
   const auto* frame_access =
-      prepare::find_prepared_memory_access(*function_addressing, "entry", 1);
+      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 1);
   if (frame_access == nullptr) {
     return fail("expected prepared addressing to find the frame-slot access by block and instruction");
   }
-  if (!frame_access->result_value_name.has_value() || *frame_access->result_value_name != "%t0" ||
+  if (!frame_access->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *frame_access->result_value_name) != "%t0" ||
       frame_access->stored_value_name.has_value() ||
       frame_access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
       !frame_access->address.frame_slot_id.has_value() || *frame_access->address.frame_slot_id != 4 ||
@@ -3352,21 +3362,21 @@ int check_prepared_addressing_contract_activation() {
   }
 
   const auto* symbol_access =
-      prepare::find_prepared_memory_access(*function_addressing, "entry", 2);
+      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 2);
   if (symbol_access == nullptr) {
     return fail("expected prepared addressing to find the symbol-backed access by block and instruction");
   }
   if (symbol_access->result_value_name.has_value() || !symbol_access->stored_value_name.has_value() ||
-      *symbol_access->stored_value_name != "%t1" ||
+      prepare::prepared_value_name(prepared.names, *symbol_access->stored_value_name) != "%t1" ||
       symbol_access->address.base_kind != prepare::PreparedAddressBaseKind::StringConstant ||
       !symbol_access->address.symbol_name.has_value() ||
-      *symbol_access->address.symbol_name != ".L.str0" ||
+      prepare::prepared_link_name(prepared.names, *symbol_access->address.symbol_name) != ".L.str0" ||
       symbol_access->address.frame_slot_id.has_value() ||
       symbol_access->address.pointer_value_name.has_value()) {
     return fail("expected prepared addressing to preserve symbol-backed access facts");
   }
 
-  if (prepare::find_prepared_memory_access(*function_addressing, "entry", 99) != nullptr) {
+  if (prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 99) != nullptr) {
     return fail("expected prepared addressing lookup to reject missing instruction records");
   }
   if (prepare::find_prepared_addressing(prepared, "helper") != nullptr) {

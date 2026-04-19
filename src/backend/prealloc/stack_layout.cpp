@@ -36,6 +36,7 @@ using FrameSlotMap =
 }
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_frame_slot_access(
+    PreparedNameTables& names,
     std::string_view function_name,
     std::string_view block_label,
     std::size_t inst_index,
@@ -56,11 +57,11 @@ using FrameSlotMap =
                                                          : stack_layout::fallback_type_size(
                                                                inst.result.type));
   return PreparedMemoryAccess{
-      .function_name = std::string(function_name),
-      .block_label = std::string(block_label),
+      .function_name = names.function_names.intern(function_name),
+      .block_label = names.block_labels.intern(block_label),
       .inst_index = inst_index,
       .result_value_name = inst.result.kind == bir::Value::Kind::Named
-                               ? std::optional<std::string>(inst.result.name)
+                               ? std::optional<ValueNameId>(names.value_names.intern(inst.result.name))
                                : std::nullopt,
       .address =
           PreparedAddress{
@@ -76,6 +77,7 @@ using FrameSlotMap =
 }
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_frame_slot_access(
+    PreparedNameTables& names,
     std::string_view function_name,
     std::string_view block_label,
     std::size_t inst_index,
@@ -96,11 +98,11 @@ using FrameSlotMap =
                                                         : stack_layout::fallback_type_size(
                                                               inst.value.type));
   return PreparedMemoryAccess{
-      .function_name = std::string(function_name),
-      .block_label = std::string(block_label),
+      .function_name = names.function_names.intern(function_name),
+      .block_label = names.block_labels.intern(block_label),
       .inst_index = inst_index,
       .stored_value_name = inst.value.kind == bir::Value::Kind::Named
-                               ? std::optional<std::string>(inst.value.name)
+                               ? std::optional<ValueNameId>(names.value_names.intern(inst.value.name))
                                : std::nullopt,
       .address =
           PreparedAddress{
@@ -116,6 +118,7 @@ using FrameSlotMap =
 }
 
 [[nodiscard]] std::optional<PreparedAddress> build_direct_symbol_backed_address(
+    PreparedNameTables& names,
     const std::optional<bir::MemoryAddress>& address,
     std::string_view fallback_symbol_name,
     std::int64_t fallback_byte_offset,
@@ -127,7 +130,7 @@ using FrameSlotMap =
     }
     return PreparedAddress{
         .base_kind = PreparedAddressBaseKind::GlobalSymbol,
-        .symbol_name = std::string(fallback_symbol_name),
+        .symbol_name = names.link_names.intern(fallback_symbol_name),
         .byte_offset = fallback_byte_offset,
         .size_bytes = size_bytes,
         .align_bytes = align_bytes,
@@ -155,7 +158,7 @@ using FrameSlotMap =
 
   return PreparedAddress{
       .base_kind = base_kind,
-      .symbol_name = std::string(symbol_name),
+      .symbol_name = names.link_names.intern(symbol_name),
       .byte_offset = address->byte_offset + fallback_byte_offset,
       .size_bytes = size_bytes,
       .align_bytes = align_bytes == 0 ? address->align_bytes : align_bytes,
@@ -164,6 +167,7 @@ using FrameSlotMap =
 }
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_symbol_backed_access(
+    PreparedNameTables& names,
     std::string_view function_name,
     std::string_view block_label,
     std::size_t inst_index,
@@ -182,23 +186,29 @@ using FrameSlotMap =
       inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes : inst.align_bytes,
       size_bytes);
   auto address = build_direct_symbol_backed_address(
-      inst.address, inst.global_name, static_cast<std::int64_t>(inst.byte_offset), size_bytes, align_bytes);
+      names,
+      inst.address,
+      inst.global_name,
+      static_cast<std::int64_t>(inst.byte_offset),
+      size_bytes,
+      align_bytes);
   if (!address.has_value()) {
     return std::nullopt;
   }
 
   return PreparedMemoryAccess{
-      .function_name = std::string(function_name),
-      .block_label = std::string(block_label),
+      .function_name = names.function_names.intern(function_name),
+      .block_label = names.block_labels.intern(block_label),
       .inst_index = inst_index,
       .result_value_name = inst.result.kind == bir::Value::Kind::Named
-                               ? std::optional<std::string>(inst.result.name)
+                               ? std::optional<ValueNameId>(names.value_names.intern(inst.result.name))
                                : std::nullopt,
       .address = std::move(*address),
   };
 }
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_symbol_backed_access(
+    PreparedNameTables& names,
     std::string_view function_name,
     std::string_view block_label,
     std::size_t inst_index,
@@ -217,23 +227,29 @@ using FrameSlotMap =
       inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes : inst.align_bytes,
       size_bytes);
   auto address = build_direct_symbol_backed_address(
-      inst.address, inst.global_name, static_cast<std::int64_t>(inst.byte_offset), size_bytes, align_bytes);
+      names,
+      inst.address,
+      inst.global_name,
+      static_cast<std::int64_t>(inst.byte_offset),
+      size_bytes,
+      align_bytes);
   if (!address.has_value()) {
     return std::nullopt;
   }
 
   return PreparedMemoryAccess{
-      .function_name = std::string(function_name),
-      .block_label = std::string(block_label),
+      .function_name = names.function_names.intern(function_name),
+      .block_label = names.block_labels.intern(block_label),
       .inst_index = inst_index,
       .stored_value_name = inst.value.kind == bir::Value::Kind::Named
-                               ? std::optional<std::string>(inst.value.name)
+                               ? std::optional<ValueNameId>(names.value_names.intern(inst.value.name))
                                : std::nullopt,
       .address = std::move(*address),
   };
 }
 
 [[nodiscard]] std::optional<PreparedAddress> build_pointer_indirect_address(
+    PreparedNameTables& names,
     const std::optional<bir::MemoryAddress>& address,
     std::size_t size_bytes,
     std::size_t align_bytes) {
@@ -244,7 +260,7 @@ using FrameSlotMap =
 
   return PreparedAddress{
       .base_kind = PreparedAddressBaseKind::PointerValue,
-      .pointer_value_name = address->base_value.name,
+      .pointer_value_name = names.value_names.intern(address->base_value.name),
       .byte_offset = address->byte_offset,
       .size_bytes = size_bytes,
       .align_bytes = align_bytes == 0 ? address->align_bytes : align_bytes,
@@ -253,6 +269,7 @@ using FrameSlotMap =
 }
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_pointer_indirect_access(
+    PreparedNameTables& names,
     std::string_view function_name,
     std::string_view block_label,
     std::size_t inst_index,
@@ -267,23 +284,24 @@ using FrameSlotMap =
       inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes
                                                         : inst.align_bytes,
       size_bytes);
-  auto address = build_pointer_indirect_address(inst.address, size_bytes, align_bytes);
+  auto address = build_pointer_indirect_address(names, inst.address, size_bytes, align_bytes);
   if (!address.has_value()) {
     return std::nullopt;
   }
 
   return PreparedMemoryAccess{
-      .function_name = std::string(function_name),
-      .block_label = std::string(block_label),
+      .function_name = names.function_names.intern(function_name),
+      .block_label = names.block_labels.intern(block_label),
       .inst_index = inst_index,
       .result_value_name = inst.result.kind == bir::Value::Kind::Named
-                               ? std::optional<std::string>(inst.result.name)
+                               ? std::optional<ValueNameId>(names.value_names.intern(inst.result.name))
                                : std::nullopt,
       .address = std::move(*address),
   };
 }
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_pointer_indirect_access(
+    PreparedNameTables& names,
     std::string_view function_name,
     std::string_view block_label,
     std::size_t inst_index,
@@ -298,23 +316,24 @@ using FrameSlotMap =
       inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes
                                                         : inst.align_bytes,
       size_bytes);
-  auto address = build_pointer_indirect_address(inst.address, size_bytes, align_bytes);
+  auto address = build_pointer_indirect_address(names, inst.address, size_bytes, align_bytes);
   if (!address.has_value()) {
     return std::nullopt;
   }
 
   return PreparedMemoryAccess{
-      .function_name = std::string(function_name),
-      .block_label = std::string(block_label),
+      .function_name = names.function_names.intern(function_name),
+      .block_label = names.block_labels.intern(block_label),
       .inst_index = inst_index,
       .stored_value_name = inst.value.kind == bir::Value::Kind::Named
-                               ? std::optional<std::string>(inst.value.name)
+                               ? std::optional<ValueNameId>(names.value_names.intern(inst.value.name))
                                : std::nullopt,
       .address = std::move(*address),
   };
 }
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_pointer_indirect_access(
+    PreparedNameTables& names,
     std::string_view function_name,
     std::string_view block_label,
     std::size_t inst_index,
@@ -329,23 +348,24 @@ using FrameSlotMap =
       inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes
                                                         : inst.align_bytes,
       size_bytes);
-  auto address = build_pointer_indirect_address(inst.address, size_bytes, align_bytes);
+  auto address = build_pointer_indirect_address(names, inst.address, size_bytes, align_bytes);
   if (!address.has_value()) {
     return std::nullopt;
   }
 
   return PreparedMemoryAccess{
-      .function_name = std::string(function_name),
-      .block_label = std::string(block_label),
+      .function_name = names.function_names.intern(function_name),
+      .block_label = names.block_labels.intern(block_label),
       .inst_index = inst_index,
       .result_value_name = inst.result.kind == bir::Value::Kind::Named
-                               ? std::optional<std::string>(inst.result.name)
+                               ? std::optional<ValueNameId>(names.value_names.intern(inst.result.name))
                                : std::nullopt,
       .address = std::move(*address),
   };
 }
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_pointer_indirect_access(
+    PreparedNameTables& names,
     std::string_view function_name,
     std::string_view block_label,
     std::size_t inst_index,
@@ -360,23 +380,24 @@ using FrameSlotMap =
       inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes
                                                         : inst.align_bytes,
       size_bytes);
-  auto address = build_pointer_indirect_address(inst.address, size_bytes, align_bytes);
+  auto address = build_pointer_indirect_address(names, inst.address, size_bytes, align_bytes);
   if (!address.has_value()) {
     return std::nullopt;
   }
 
   return PreparedMemoryAccess{
-      .function_name = std::string(function_name),
-      .block_label = std::string(block_label),
+      .function_name = names.function_names.intern(function_name),
+      .block_label = names.block_labels.intern(block_label),
       .inst_index = inst_index,
       .stored_value_name = inst.value.kind == bir::Value::Kind::Named
-                               ? std::optional<std::string>(inst.value.name)
+                               ? std::optional<ValueNameId>(names.value_names.intern(inst.value.name))
                                : std::nullopt,
       .address = std::move(*address),
   };
 }
 
-void append_direct_frame_slot_accesses(PreparedAddressingFunction& function_addressing,
+void append_direct_frame_slot_accesses(PreparedNameTables& names,
+                                       PreparedAddressingFunction& function_addressing,
                                        const bir::Function& function,
                                        const FrameSlotMap& frame_slots_by_name) {
   for (const auto& block : function.blocks) {
@@ -384,13 +405,14 @@ void append_direct_frame_slot_accesses(PreparedAddressingFunction& function_addr
       const auto& inst = block.insts[inst_index];
       if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
         if (auto access =
-                build_pointer_indirect_access(function.name, block.label, inst_index, *load_local);
+                build_pointer_indirect_access(
+                    names, function.name, block.label, inst_index, *load_local);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
           continue;
         }
         if (auto access = build_direct_frame_slot_access(
-                function.name, block.label, inst_index, *load_local, frame_slots_by_name);
+                names, function.name, block.label, inst_index, *load_local, frame_slots_by_name);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
         }
@@ -398,13 +420,14 @@ void append_direct_frame_slot_accesses(PreparedAddressingFunction& function_addr
       }
       if (const auto* store_local = std::get_if<bir::StoreLocalInst>(&inst)) {
         if (auto access =
-                build_pointer_indirect_access(function.name, block.label, inst_index, *store_local);
+                build_pointer_indirect_access(
+                    names, function.name, block.label, inst_index, *store_local);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
           continue;
         }
         if (auto access = build_direct_frame_slot_access(
-                function.name, block.label, inst_index, *store_local, frame_slots_by_name);
+                names, function.name, block.label, inst_index, *store_local, frame_slots_by_name);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
         }
@@ -412,13 +435,14 @@ void append_direct_frame_slot_accesses(PreparedAddressingFunction& function_addr
       }
       if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst)) {
         if (auto access =
-                build_pointer_indirect_access(function.name, block.label, inst_index, *load_global);
+                build_pointer_indirect_access(
+                    names, function.name, block.label, inst_index, *load_global);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
           continue;
         }
         if (auto access = build_direct_symbol_backed_access(
-                function.name, block.label, inst_index, *load_global);
+                names, function.name, block.label, inst_index, *load_global);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
         }
@@ -426,13 +450,13 @@ void append_direct_frame_slot_accesses(PreparedAddressingFunction& function_addr
       }
       if (const auto* store_global = std::get_if<bir::StoreGlobalInst>(&inst)) {
         if (auto access = build_pointer_indirect_access(
-                function.name, block.label, inst_index, *store_global);
+                names, function.name, block.label, inst_index, *store_global);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
           continue;
         }
         if (auto access = build_direct_symbol_backed_access(
-                function.name, block.label, inst_index, *store_global);
+                names, function.name, block.label, inst_index, *store_global);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
         }
@@ -472,13 +496,17 @@ void BirPreAlloc::run_stack_layout() {
         std::max(prepared_.stack_layout.frame_size_bytes, function_frame_size);
     prepared_.stack_layout.frame_alignment_bytes =
         std::max(prepared_.stack_layout.frame_alignment_bytes, function_frame_alignment);
+    const FunctionNameId function_name_id = prepared_.names.function_names.intern(function.name);
     auto& function_addressing = prepared_.addressing.functions.emplace_back(PreparedAddressingFunction{
-        .function_name = function.name,
+        .function_name = function_name_id,
         .frame_size_bytes = function_frame_size,
         .frame_alignment_bytes = function_frame_alignment,
     });
     append_direct_frame_slot_accesses(
-        function_addressing, function, build_frame_slot_map(function_objects, function_slots));
+        prepared_.names,
+        function_addressing,
+        function,
+        build_frame_slot_map(function_objects, function_slots));
 
     prepared_.stack_layout.objects.insert(prepared_.stack_layout.objects.end(),
                                           std::make_move_iterator(function_objects.begin()),

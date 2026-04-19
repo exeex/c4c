@@ -119,6 +119,18 @@ struct PreparedNameTables {
   return names.value_names.spelling(id);
 }
 
+[[nodiscard]] inline std::string_view prepared_slot_name(
+    const PreparedNameTables& names,
+    SlotNameId id) {
+  return names.slot_names.spelling(id);
+}
+
+[[nodiscard]] inline std::string_view prepared_link_name(
+    const PreparedNameTables& names,
+    LinkNameId id) {
+  return names.link_names.spelling(id);
+}
+
 struct PreparedStackObject {
   PreparedObjectId object_id = 0;
   std::string function_name;
@@ -177,8 +189,8 @@ enum class PreparedAddressBaseKind {
 struct PreparedAddress {
   PreparedAddressBaseKind base_kind = PreparedAddressBaseKind::None;
   std::optional<PreparedFrameSlotId> frame_slot_id;
-  std::optional<std::string> symbol_name;
-  std::optional<std::string> pointer_value_name;
+  std::optional<LinkNameId> symbol_name;
+  std::optional<ValueNameId> pointer_value_name;
   std::int64_t byte_offset = 0;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
@@ -186,16 +198,16 @@ struct PreparedAddress {
 };
 
 struct PreparedMemoryAccess {
-  std::string function_name;
-  std::string block_label;
+  FunctionNameId function_name = kInvalidFunctionName;
+  BlockLabelId block_label = kInvalidBlockLabel;
   std::size_t inst_index = 0;
-  std::optional<std::string> result_value_name;
-  std::optional<std::string> stored_value_name;
+  std::optional<ValueNameId> result_value_name;
+  std::optional<ValueNameId> stored_value_name;
   PreparedAddress address;
 };
 
 struct PreparedAddressingFunction {
-  std::string function_name;
+  FunctionNameId function_name = kInvalidFunctionName;
   std::size_t frame_size_bytes = 0;
   std::size_t frame_alignment_bytes = 0;
   std::vector<PreparedMemoryAccess> accesses;
@@ -207,7 +219,7 @@ struct PreparedAddressing {
 
 [[nodiscard]] inline const PreparedAddressingFunction* find_prepared_addressing_function(
     const PreparedAddressing& addressing,
-    std::string_view function_name) {
+    FunctionNameId function_name) {
   for (const auto& function_addressing : addressing.functions) {
     if (function_addressing.function_name == function_name) {
       return &function_addressing;
@@ -216,9 +228,20 @@ struct PreparedAddressing {
   return nullptr;
 }
 
+[[nodiscard]] inline const PreparedAddressingFunction* find_prepared_addressing_function(
+    const PreparedNameTables& names,
+    const PreparedAddressing& addressing,
+    std::string_view function_name) {
+  const FunctionNameId function_name_id = names.function_names.find(function_name);
+  if (function_name_id == kInvalidFunctionName) {
+    return nullptr;
+  }
+  return find_prepared_addressing_function(addressing, function_name_id);
+}
+
 [[nodiscard]] inline const PreparedMemoryAccess* find_prepared_memory_access(
     const PreparedAddressingFunction& function_addressing,
-    std::string_view block_label,
+    BlockLabelId block_label,
     std::size_t inst_index) {
   for (const auto& access : function_addressing.accesses) {
     if (access.block_label == block_label && access.inst_index == inst_index) {
@@ -226,6 +249,18 @@ struct PreparedAddressing {
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] inline const PreparedMemoryAccess* find_prepared_memory_access(
+    const PreparedNameTables& names,
+    const PreparedAddressingFunction& function_addressing,
+    std::string_view block_label,
+    std::size_t inst_index) {
+  const BlockLabelId block_label_id = names.block_labels.find(block_label);
+  if (block_label_id == kInvalidBlockLabel) {
+    return nullptr;
+  }
+  return find_prepared_memory_access(function_addressing, block_label_id, inst_index);
 }
 
 namespace stack_layout {
@@ -2355,7 +2390,7 @@ struct PreparedBirModule {
 [[nodiscard]] inline const PreparedAddressingFunction* find_prepared_addressing(
     const PreparedBirModule& module,
     std::string_view function_name) {
-  return find_prepared_addressing_function(module.addressing, function_name);
+  return find_prepared_addressing_function(module.names, module.addressing, function_name);
 }
 
 class BirPreAlloc {

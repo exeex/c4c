@@ -341,17 +341,17 @@ int check_local_i16_i64_sub_return_route_consumes_prepared_frame_access_contract
                     .c_str());
   }
   const auto* short_store_access =
-      prepare::find_prepared_memory_access(*function_addressing, "entry", 0);
+      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 0);
   const auto* long_store_access =
-      prepare::find_prepared_memory_access(*function_addressing, "entry", 1);
+      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 1);
   const auto* long_load_access =
-      prepare::find_prepared_memory_access(*function_addressing, "entry", 2);
+      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 2);
   const auto* short_load_access =
-      prepare::find_prepared_memory_access(*function_addressing, "entry", 3);
+      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 3);
   const auto* short_store_result_access =
-      prepare::find_prepared_memory_access(*function_addressing, "entry", 7);
+      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 7);
   const auto* short_load_result_access =
-      prepare::find_prepared_memory_access(*function_addressing, "entry", 8);
+      prepare::find_prepared_memory_access(prepared.names, *function_addressing, "entry", 8);
   if (short_store_access == nullptr || long_store_access == nullptr || long_load_access == nullptr ||
       short_load_access == nullptr || short_store_result_access == nullptr ||
       short_load_result_access == nullptr) {

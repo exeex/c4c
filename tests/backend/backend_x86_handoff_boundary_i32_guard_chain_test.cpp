@@ -732,7 +732,7 @@ int check_same_module_global_guard_chain_route_requires_authoritative_prepared_a
   auto mutated = prepared;
   prepare::PreparedAddressingFunction* mutable_addressing = nullptr;
   for (auto& candidate : mutated.addressing.functions) {
-    if (candidate.function_name == function_name) {
+    if (prepare::prepared_function_name(mutated.names, candidate.function_name) == function_name) {
       mutable_addressing = &candidate;
       break;
     }
@@ -845,7 +845,7 @@ int check_same_module_global_store_guard_chain_route_requires_authoritative_prep
   auto mutated = prepared;
   prepare::PreparedAddressingFunction* mutable_addressing = nullptr;
   for (auto& candidate : mutated.addressing.functions) {
-    if (candidate.function_name == function_name) {
+    if (prepare::prepared_function_name(mutated.names, candidate.function_name) == function_name) {
       mutable_addressing = &candidate;
       break;
     }
