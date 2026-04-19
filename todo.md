@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/64_shared_text_identity_and_semantic_name_table_refactor.md
 Source Plan Path: plan.md
-Current Step ID: 3.2
-Current Step Title: Migrate Remaining Prepared Lookup Helpers And Liveness Consumers
-Plan Review Counter: 10 / 10
+Current Step ID: 3.2.1
+Current Step Title: Move Liveness Consumers To Prepared Semantic Id Boundaries
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
@@ -21,12 +21,11 @@ lookup paths.
 
 ## Suggested Next
 
-Continue `plan.md` Step 3.2 by migrating the next remaining prepared lookup
-consumers that still translate BIR spellings inside helper bodies, with
-priority on the out-of-scope `src/backend/prealloc/liveness.cpp` consumers and
-then any residual compare-join continuation entry points in
-`src/backend/prealloc/prealloc.hpp` that still open-code
-`names.block_labels.find(...)` on `bir::Block` labels.
+Continue with rewritten `plan.md` Step 3.2.1 by migrating the out-of-scope
+`src/backend/prealloc/liveness.cpp` consumers onto one-time semantic-id
+translation boundaries first, then follow with Step 3.2.2 for any residual
+compare-join continuation entry points in `src/backend/prealloc/prealloc.hpp`
+that still open-code `names.block_labels.find(...)` on `bir::Block` labels.
 
 ## Watchouts
 

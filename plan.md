@@ -162,11 +162,45 @@ Primary targets:
 - adjacent call sites that still enter those helpers through `std::string_view`
   names
 
+### Step 3.2.1: Move Liveness Consumers To Prepared Semantic Id Boundaries
+
+Goal: migrate the `liveness.cpp` label and value lookup consumers so liveness
+walks typed ids after a single boundary translation instead of redoing raw
+spelling lookup inside helper flows.
+
+Primary targets:
+
+- `src/backend/prealloc/liveness.cpp`
+- local lookup helpers such as `lookup_named_value_id(...)` and
+  `lookup_block_label_id(...)`
+- successor/predecessor and phi-use builders that still derive ids from raw
+  labels or value spellings mid-flow
+
 Completion check:
 
-- the remaining hot prepared lookup paths resolve typed ids once at the edge
-  and carry `BlockLabelId` and `ValueNameId` internally, with string-view
-  overloads reduced to compatibility wrappers where still needed
+- liveness-side block and value consumers resolve `BlockLabelId` and
+  `ValueNameId` through shared prepared boundary helpers or equivalent
+  one-time translation points, and the internal liveness helper graph no
+  longer treats raw spellings as the authoritative lookup key
+
+### Step 3.2.2: Finish Residual Prepared Compare/Join Helper Cleanup
+
+Goal: clear the remaining `prealloc.hpp` lookup-heavy helper entry points so
+the compare/join and branch helper graph stays on typed ids internally.
+
+Primary targets:
+
+- residual compare/join continuation and entry-target helpers in
+  `src/backend/prealloc/prealloc.hpp`
+- adjacent join-transfer or short-circuit helpers that still perform
+  `names.block_labels.find(...)` or `names.value_names.find(...)` inside the
+  helper body instead of only at the edge
+
+Completion check:
+
+- the remaining hot prepared lookup paths in `prealloc.hpp` resolve typed ids
+  once at the edge and carry `BlockLabelId` and `ValueNameId` internally, with
+  string-view overloads reduced to compatibility wrappers where still needed
 
 ### Step 3.3: Confirm Idea 62 Starter Surfaces Are Clean
 
