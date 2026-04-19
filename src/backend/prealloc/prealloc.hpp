@@ -1562,6 +1562,32 @@ find_prepared_compare_join_continuation_targets(const PreparedControlFlowFunctio
       *function_cf, function, source_block.label, continuation_labels);
 }
 
+[[nodiscard]] inline std::optional<PreparedShortCircuitBranchPlan>
+find_prepared_compare_join_entry_branch_plan(
+    const PreparedControlFlowFunction* function_cf,
+    const bir::Function& function,
+    const bir::Block& source_block,
+    const PreparedShortCircuitContinuationLabels& continuation_labels) {
+  const auto target_labels = resolve_prepared_compare_join_entry_target_labels(
+      function_cf, function, source_block, continuation_labels);
+  if (target_labels.true_label.empty() || target_labels.false_label.empty()) {
+    return std::nullopt;
+  }
+
+  return PreparedShortCircuitBranchPlan{
+      .on_compare_true =
+          PreparedShortCircuitTargetLabels{
+              .block_label = target_labels.true_label,
+              .continuation = std::nullopt,
+          },
+      .on_compare_false =
+          PreparedShortCircuitTargetLabels{
+              .block_label = target_labels.false_label,
+              .continuation = std::nullopt,
+          },
+  };
+}
+
 [[nodiscard]] inline std::optional<PreparedShortCircuitJoinContext>
 find_prepared_short_circuit_join_context(const PreparedControlFlowFunction& function_cf,
                                          const bir::Function& function,
