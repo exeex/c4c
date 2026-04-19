@@ -5,25 +5,25 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Migrate Consumers To The Authoritative Prepared Facts
-Plan Review Counter: 6 / 10
+Plan Review Counter: 7 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another `plan.md` Step 3 slice for idea 62. The
-`tests/backend/backend_x86_handoff_boundary_short_circuit_test.cpp` handoff
-coverage now extends the short-circuit `EdgeStoreSlot` lane so it proves both
-that the x86 consumer keeps following the authoritative prepared rhs
-passthrough target over raw branch drift and that the shared short-circuit
-branch-plan helper still publishes the canonical prepared labels after the join
-carrier is rewritten to `PreparedJoinTransferKind::EdgeStoreSlot`.
+`tests/backend/backend_x86_handoff_boundary_i32_guard_chain_test.cpp` handoff
+coverage now extends the same-module global offset-store guard-chain lane so it
+proves the x86 consumer rejects drifted prepared branch labels there instead of
+reopening the raw guard-chain matcher, and the shared branch-label helper now
+accepts the single-branch store route without assuming multi-branch-only guard
+chains.
 
 ## Suggested Next
 
 Move to the next bounded `plan.md` Step 3 consumer family that still lacks an
 explicit prepared-contract drift or loss proof, preferably outside the
-short-circuit passthrough/helper lane that now has both select-carrier and
-`EdgeStoreSlot` coverage.
+guard-chain lane now that the same-module global offset-store route has both
+prepared-address loss and prepared-branch drift coverage.
 
 ## Watchouts
 
@@ -32,6 +32,10 @@ short-circuit passthrough/helper lane that now has both select-carrier and
 - Keep phi-completion work in idea 63 unless it is strictly required to make
   CFG ownership truthful.
 - Reject testcase-shaped branch or join matcher growth.
+- The guard-chain branch-label proof helper now covers both multi-branch and
+  single-branch routes; keep future Step 3 additions aligned to authoritative
+  prepared branch metadata instead of reintroducing raw matcher-specific
+  helpers.
 - Keep `PreparedBranchCondition` and `PreparedControlFlowBlock` targets
   contract-consistent; mismatches should still fail the canonical
   prepared-module handoff instead of silently preferring whichever record
@@ -52,10 +56,10 @@ short-circuit passthrough/helper lane that now has both select-carrier and
   convert that family to short-circuit-style label rejection, because the
   current migration proof already relies on authoritative prepared ownership
   winning over raw carrier labels there.
-- The short-circuit passthrough/helper lane now has explicit proof for both the
-  select-carrier and `EdgeStoreSlot` forms, so the next packet should move to a
-  different consumer family instead of restating the same continuation-target
-  or branch-plan shape.
+- The short-circuit passthrough/helper lane and the same-module global
+  offset-store guard-chain lane both now have explicit contract drift coverage,
+  so the next packet should move to a different consumer family instead of
+  restating those shapes.
 
 ## Proof
 
