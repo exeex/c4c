@@ -327,25 +327,25 @@ std::string emit_prepared_module(
     return c4c::backend::x86::render_prepared_trivial_defined_function_if_supported(
         candidate, prepared_arch, minimal_function_return_register, minimal_function_asm_prefix);
   };
-  const auto bounded_same_module_helpers =
-      function_ptr != nullptr
-          ? render_prepared_bounded_same_module_helper_prefix_if_supported(
-                defined_functions, *function_ptr, prepared_arch,
-                render_trivial_defined_function_if_supported, minimal_function_return_register,
-                minimal_function_asm_prefix, find_same_module_global, minimal_param_register_at,
-                render_asm_symbol_name)
-          : std::nullopt;
-  const auto& bounded_same_module_helper_names =
-      bounded_same_module_helpers
-          ? bounded_same_module_helpers->helper_names
-          : std::unordered_set<std::string_view>{};
+  const auto multi_defined_dispatch = c4c::backend::x86::build_prepared_module_multi_defined_dispatch_state(
+      module.module, defined_functions, function_ptr, prepared_arch,
+      render_trivial_defined_function_if_supported, minimal_function_return_register,
+      minimal_function_asm_prefix, find_same_module_global, minimal_param_register_at,
+      [&](std::string_view symbol_name) { return find_string_constant(symbol_name) != nullptr; },
+      [&](std::string_view symbol_name) { return find_same_module_global(symbol_name) != nullptr; },
+      [&](std::string_view symbol_name) {
+        const std::string prefixed_name = "@" + std::string(symbol_name);
+        return render_private_data_label(prefixed_name);
+      },
+      [&](std::string_view symbol_name) { return render_asm_symbol_name(symbol_name); },
+      [&](std::string_view symbol_name) { return find_string_constant(symbol_name); },
+      emit_string_constant_data, emit_same_module_global_data);
+  const auto& bounded_same_module_helper_names = multi_defined_dispatch.helper_names;
   const auto& bounded_same_module_helper_global_names =
-      bounded_same_module_helpers
-          ? bounded_same_module_helpers->helper_global_names
-          : std::unordered_set<std::string_view>{};
+      multi_defined_dispatch.helper_global_names;
   const auto prepend_bounded_same_module_helpers = [&](std::string asm_text) {
-    if (bounded_same_module_helpers.has_value()) {
-      return bounded_same_module_helpers->helper_prefix + asm_text;
+    if (!multi_defined_dispatch.helper_prefix.empty()) {
+      return multi_defined_dispatch.helper_prefix + asm_text;
     }
     return asm_text;
   };
@@ -354,28 +354,15 @@ std::string emit_prepared_module(
         "x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls through the canonical prepared-module handoff");
   };
   const auto throw_multi_defined_contract_if_active = [&]() -> void {
-    if (defined_functions.size() > 1 && bounded_same_module_helpers.has_value()) {
+    if (defined_functions.size() > 1 && multi_defined_dispatch.has_bounded_same_module_helpers) {
       throw_multi_defined_contract();
     }
   };
-  if (const auto rendered_multi_defined = render_prepared_bounded_multi_defined_call_lane_if_supported(
-          module.module, defined_functions, prepared_arch, bounded_same_module_helper_global_names,
-          render_trivial_defined_function_if_supported, minimal_function_return_register,
-          minimal_function_asm_prefix,
-          [&](std::string_view symbol_name) { return find_string_constant(symbol_name) != nullptr; },
-          [&](std::string_view symbol_name) { return find_same_module_global(symbol_name) != nullptr; },
-          [&](std::string_view symbol_name) {
-            const std::string prefixed_name = "@" + std::string(symbol_name);
-            return render_private_data_label(prefixed_name);
-          },
-          [&](std::string_view symbol_name) { return render_asm_symbol_name(symbol_name); },
-          [&](std::string_view symbol_name) { return find_string_constant(symbol_name); },
-          emit_string_constant_data, emit_same_module_global_data);
-      rendered_multi_defined.has_value()) {
-    return *rendered_multi_defined;
+  if (multi_defined_dispatch.rendered_module.has_value()) {
+    return *multi_defined_dispatch.rendered_module;
   }
   if (defined_functions.size() > 1) {
-    if (!bounded_same_module_helpers.has_value()) {
+    if (!multi_defined_dispatch.has_bounded_same_module_helpers) {
       throw_multi_defined_contract();
     }
   }

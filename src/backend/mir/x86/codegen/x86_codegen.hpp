@@ -310,6 +310,14 @@ struct PreparedBoundedSameModuleHelperPrefixRender {
   std::unordered_set<std::string_view> helper_global_names;
 };
 
+struct PreparedModuleMultiDefinedDispatchState {
+  std::string helper_prefix;
+  std::unordered_set<std::string_view> helper_names;
+  std::unordered_set<std::string_view> helper_global_names;
+  std::optional<std::string> rendered_module;
+  bool has_bounded_same_module_helpers = false;
+};
+
 std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
     const c4c::backend::bir::Function& function,
     c4c::TargetArch prepared_arch);
@@ -673,6 +681,32 @@ std::optional<std::string> render_prepared_bounded_multi_defined_call_lane_if_su
         minimal_function_return_register,
     const std::function<std::string(const c4c::backend::bir::Function&)>&
         minimal_function_asm_prefix,
+    const std::function<bool(std::string_view)>& has_string_constant,
+    const std::function<bool(std::string_view)>& has_same_module_global,
+    const std::function<std::string(std::string_view)>& render_private_data_label,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name,
+    const std::function<const c4c::backend::bir::StringConstant*(std::string_view)>&
+        find_string_constant,
+    const std::function<std::string(const c4c::backend::bir::StringConstant&)>&
+        emit_string_constant_data,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
+        emit_same_module_global_data);
+
+PreparedModuleMultiDefinedDispatchState build_prepared_module_multi_defined_dispatch_state(
+    const c4c::backend::bir::Module& module,
+    const std::vector<const c4c::backend::bir::Function*>& defined_functions,
+    const c4c::backend::bir::Function* entry_function,
+    c4c::TargetArch prepared_arch,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
+        render_trivial_defined_function,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
+        minimal_function_return_register,
+    const std::function<std::string(const c4c::backend::bir::Function&)>&
+        minimal_function_asm_prefix,
+    const std::function<const c4c::backend::bir::Global*(std::string_view)>&
+        find_same_module_global,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Param&, std::size_t)>&
+        minimal_param_register_at,
     const std::function<bool(std::string_view)>& has_string_constant,
     const std::function<bool(std::string_view)>& has_same_module_global,
     const std::function<std::string(std::string_view)>& render_private_data_label,

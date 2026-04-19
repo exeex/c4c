@@ -2745,4 +2745,50 @@ std::optional<std::string> render_prepared_bounded_multi_defined_call_lane_if_su
   return rendered_module->rendered_functions + *rendered_data;
 }
 
+PreparedModuleMultiDefinedDispatchState build_prepared_module_multi_defined_dispatch_state(
+    const c4c::backend::bir::Module& module,
+    const std::vector<const c4c::backend::bir::Function*>& defined_functions,
+    const c4c::backend::bir::Function* entry_function,
+    c4c::TargetArch prepared_arch,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
+        render_trivial_defined_function,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
+        minimal_function_return_register,
+    const std::function<std::string(const c4c::backend::bir::Function&)>&
+        minimal_function_asm_prefix,
+    const std::function<const c4c::backend::bir::Global*(std::string_view)>&
+        find_same_module_global,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Param&, std::size_t)>&
+        minimal_param_register_at,
+    const std::function<bool(std::string_view)>& has_string_constant,
+    const std::function<bool(std::string_view)>& has_same_module_global,
+    const std::function<std::string(std::string_view)>& render_private_data_label,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name,
+    const std::function<const c4c::backend::bir::StringConstant*(std::string_view)>&
+        find_string_constant,
+    const std::function<std::string(const c4c::backend::bir::StringConstant&)>&
+        emit_string_constant_data,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
+        emit_same_module_global_data) {
+  PreparedModuleMultiDefinedDispatchState state;
+  if (entry_function != nullptr) {
+    if (const auto helpers = render_prepared_bounded_same_module_helper_prefix_if_supported(
+            defined_functions, *entry_function, prepared_arch, render_trivial_defined_function,
+            minimal_function_return_register, minimal_function_asm_prefix, find_same_module_global,
+            minimal_param_register_at, render_asm_symbol_name);
+        helpers.has_value()) {
+      state.helper_prefix = helpers->helper_prefix;
+      state.helper_names = std::move(helpers->helper_names);
+      state.helper_global_names = std::move(helpers->helper_global_names);
+      state.has_bounded_same_module_helpers = true;
+    }
+  }
+  state.rendered_module = render_prepared_bounded_multi_defined_call_lane_if_supported(
+      module, defined_functions, prepared_arch, state.helper_global_names,
+      render_trivial_defined_function, minimal_function_return_register, minimal_function_asm_prefix,
+      has_string_constant, has_same_module_global, render_private_data_label, render_asm_symbol_name,
+      find_string_constant, emit_string_constant_data, emit_same_module_global_data);
+  return state;
+}
+
 }  // namespace c4c::backend::x86
