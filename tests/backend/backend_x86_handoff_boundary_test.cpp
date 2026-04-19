@@ -9065,6 +9065,56 @@ int check_loop_countdown_route_consumes_prepared_control_flow(const bir::Module&
   return 0;
 }
 
+int check_loop_countdown_route_consumes_prepared_control_flow_with_reversed_join_edges(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the loop countdown control-flow contract")
+                    .c_str());
+  }
+  if (control_flow->join_transfers.front().kind != prepare::PreparedJoinTransferKind::LoopCarry) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer classifies the loop countdown join as explicit loop-carry traffic")
+                    .c_str());
+  }
+
+  auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
+  if (mutable_control_flow == nullptr || mutable_control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture lost its mutable loop-countdown control-flow contract")
+                    .c_str());
+  }
+
+  auto& join_transfer = mutable_control_flow->join_transfers.front();
+  if (join_transfer.edge_transfers.size() != 2 ||
+      join_transfer.edge_transfers.front().predecessor_label != "entry" ||
+      join_transfer.edge_transfers.back().predecessor_label != "body") {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture no longer exposes the expected entry/body loop-carry edge ownership")
+                    .c_str());
+  }
+
+  std::swap(join_transfer.edge_transfers.front(), join_transfer.edge_transfers.back());
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped identifying loop-carry ownership by predecessor labels")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_route_rejection(const bir::Module& module,
                           std::string_view expected_message_fragment,
                           const char* failure_context) {
@@ -10871,6 +10921,15 @@ int main() {
               expected_minimal_loop_countdown_join_asm("main"),
               "main",
               "minimal loop-carried join countdown prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_loop_countdown_route_consumes_prepared_control_flow_with_reversed_join_edges(
+              make_x86_loop_countdown_join_module(),
+              expected_minimal_loop_countdown_join_asm("main"),
+              "main",
+              "minimal loop-carried join countdown prepared-control-flow ownership ignores join-edge ordering when predecessor labels stay authoritative");
       status != 0) {
     return status;
   }

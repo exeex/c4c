@@ -10,34 +10,32 @@ Source Plan: plan.md
 
 Completed a Step 3 Consume Prepared Control-Flow In X86 proof packet by adding
 focused x86 handoff coverage in
-`tests/backend/backend_x86_handoff_boundary_test.cpp` that proves both the
-plain and `PreparedJoinTransferKind::EdgeStoreSlot` same-module-global
-materialized compare-join routes still emit the authoritative prepared
-entry-branch contract even when the entry compare carrier is rewritten to
-unrelated non-compare state; the x86 consumer path already matched the shared
-prepared-control-flow contract, so no emitter code change was required for
-this slice.
+`tests/backend/backend_x86_handoff_boundary_test.cpp` for the loop-carried
+countdown consumer seam. The new proof reverses the prepared
+`PreparedJoinTransferKind::LoopCarry` edge order and confirms x86 still emits
+the authoritative prepared countdown route by predecessor labels rather than
+assuming entry/body transfer ordering.
 
 ## Suggested Next
 
-Stay in Step 3 and extend the same prepared-contract proof to a pointer-backed
-same-module-global materialized compare-join consumer seam, especially one
-that combines prepared branch ownership with resolved root-global emission so
-the x86 route cannot fall back to raw entry carriers or ad hoc global lookup
-shape.
+Stay in Step 3 and extend the loop-carried consumer proof to the alternate
+prepared branch-predicate form, especially an `eq zero` header contract whose
+prepared true/false labels invert the current `ne zero` ownership while the
+same `LoopCarry` join-transfer data remains authoritative.
 
 ## Watchouts
 
 - Keep this route in Step 3 consumer work; do not widen into Step 4 file
   organization, idea 57, idea 59, idea 60, idea 61, or the unrelated
   `^backend_` semantic-lowering failures.
-- Materialized compare-join consumers should keep preferring prepared entry
-  branch metadata over mutated source compare carriers whenever both exist,
-  including same-module-global return arms and `EdgeStoreSlot` join carriers.
-- This packet confirmed the x86 compare-join consumer was already aligned with
-  that shared branch-contract ownership for same-module-global return arms;
-  keep future work focused on missing consumer proof or real capability gaps,
-  not redundant emitter churn.
+- Loop-countdown consumer proofs should keep preferring prepared
+  predecessor-labeled `LoopCarry` transfers and prepared branch ownership over
+  any incidental `edge_transfers` ordering or mutable compare carriers in the
+  loop blocks.
+- This packet confirmed the x86 loop consumer was already aligned with that
+  shared predecessor-labeled join contract; keep future work focused on
+  uncovered prepared branch/join variants or real capability gaps, not
+  redundant emitter churn.
 - The broader `^backend_` checkpoint currently reproduces five known failures:
   `backend_prepare_phi_materialize`, `variadic_double_bytes`,
   `variadic_pair_second`, `local_direct_dynamic_member_array_store`, and
