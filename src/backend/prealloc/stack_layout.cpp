@@ -41,6 +41,10 @@ using FrameSlotMap =
     std::size_t inst_index,
     const bir::LoadLocalInst& inst,
     const FrameSlotMap& frame_slots_by_name) {
+  if (inst.address.has_value() &&
+      inst.address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot) {
+    return std::nullopt;
+  }
   const auto slot_it = frame_slots_by_name.find(inst.slot_name);
   if (slot_it == frame_slots_by_name.end()) {
     return std::nullopt;
@@ -77,6 +81,10 @@ using FrameSlotMap =
     std::size_t inst_index,
     const bir::StoreLocalInst& inst,
     const FrameSlotMap& frame_slots_by_name) {
+  if (inst.address.has_value() &&
+      inst.address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot) {
+    return std::nullopt;
+  }
   const auto slot_it = frame_slots_by_name.find(inst.slot_name);
   if (slot_it == frame_slots_by_name.end()) {
     return std::nullopt;
@@ -160,6 +168,10 @@ using FrameSlotMap =
     std::string_view block_label,
     std::size_t inst_index,
     const bir::LoadGlobalInst& inst) {
+  if (inst.address.has_value() &&
+      inst.address->base_kind == bir::MemoryAddress::BaseKind::PointerValue) {
+    return std::nullopt;
+  }
   const std::size_t size_bytes =
       stack_layout::normalize_size(inst.result.type, inst.result.type == bir::TypeKind::Void
                                                          ? 0
@@ -191,6 +203,10 @@ using FrameSlotMap =
     std::string_view block_label,
     std::size_t inst_index,
     const bir::StoreGlobalInst& inst) {
+  if (inst.address.has_value() &&
+      inst.address->base_kind == bir::MemoryAddress::BaseKind::PointerValue) {
+    return std::nullopt;
+  }
   const std::size_t size_bytes =
       stack_layout::normalize_size(inst.value.type, inst.value.type == bir::TypeKind::Void
                                                         ? 0
@@ -217,6 +233,149 @@ using FrameSlotMap =
   };
 }
 
+[[nodiscard]] std::optional<PreparedAddress> build_pointer_indirect_address(
+    const std::optional<bir::MemoryAddress>& address,
+    std::size_t size_bytes,
+    std::size_t align_bytes) {
+  if (!address.has_value() || address->base_kind != bir::MemoryAddress::BaseKind::PointerValue ||
+      address->base_value.kind != bir::Value::Kind::Named || address->base_value.name.empty()) {
+    return std::nullopt;
+  }
+
+  return PreparedAddress{
+      .base_kind = PreparedAddressBaseKind::PointerValue,
+      .pointer_value_name = address->base_value.name,
+      .byte_offset = address->byte_offset,
+      .size_bytes = size_bytes,
+      .align_bytes = align_bytes == 0 ? address->align_bytes : align_bytes,
+      .can_use_base_plus_offset = true,
+  };
+}
+
+[[nodiscard]] std::optional<PreparedMemoryAccess> build_pointer_indirect_access(
+    std::string_view function_name,
+    std::string_view block_label,
+    std::size_t inst_index,
+    const bir::LoadLocalInst& inst) {
+  const std::size_t size_bytes =
+      stack_layout::normalize_size(inst.result.type, inst.result.type == bir::TypeKind::Void
+                                                         ? 0
+                                                         : stack_layout::fallback_type_size(
+                                                               inst.result.type));
+  const std::size_t align_bytes = stack_layout::normalize_alignment(
+      inst.result.type,
+      inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes
+                                                        : inst.align_bytes,
+      size_bytes);
+  auto address = build_pointer_indirect_address(inst.address, size_bytes, align_bytes);
+  if (!address.has_value()) {
+    return std::nullopt;
+  }
+
+  return PreparedMemoryAccess{
+      .function_name = std::string(function_name),
+      .block_label = std::string(block_label),
+      .inst_index = inst_index,
+      .result_value_name = inst.result.kind == bir::Value::Kind::Named
+                               ? std::optional<std::string>(inst.result.name)
+                               : std::nullopt,
+      .address = std::move(*address),
+  };
+}
+
+[[nodiscard]] std::optional<PreparedMemoryAccess> build_pointer_indirect_access(
+    std::string_view function_name,
+    std::string_view block_label,
+    std::size_t inst_index,
+    const bir::StoreLocalInst& inst) {
+  const std::size_t size_bytes =
+      stack_layout::normalize_size(inst.value.type, inst.value.type == bir::TypeKind::Void
+                                                        ? 0
+                                                        : stack_layout::fallback_type_size(
+                                                              inst.value.type));
+  const std::size_t align_bytes = stack_layout::normalize_alignment(
+      inst.value.type,
+      inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes
+                                                        : inst.align_bytes,
+      size_bytes);
+  auto address = build_pointer_indirect_address(inst.address, size_bytes, align_bytes);
+  if (!address.has_value()) {
+    return std::nullopt;
+  }
+
+  return PreparedMemoryAccess{
+      .function_name = std::string(function_name),
+      .block_label = std::string(block_label),
+      .inst_index = inst_index,
+      .stored_value_name = inst.value.kind == bir::Value::Kind::Named
+                               ? std::optional<std::string>(inst.value.name)
+                               : std::nullopt,
+      .address = std::move(*address),
+  };
+}
+
+[[nodiscard]] std::optional<PreparedMemoryAccess> build_pointer_indirect_access(
+    std::string_view function_name,
+    std::string_view block_label,
+    std::size_t inst_index,
+    const bir::LoadGlobalInst& inst) {
+  const std::size_t size_bytes =
+      stack_layout::normalize_size(inst.result.type, inst.result.type == bir::TypeKind::Void
+                                                         ? 0
+                                                         : stack_layout::fallback_type_size(
+                                                               inst.result.type));
+  const std::size_t align_bytes = stack_layout::normalize_alignment(
+      inst.result.type,
+      inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes
+                                                        : inst.align_bytes,
+      size_bytes);
+  auto address = build_pointer_indirect_address(inst.address, size_bytes, align_bytes);
+  if (!address.has_value()) {
+    return std::nullopt;
+  }
+
+  return PreparedMemoryAccess{
+      .function_name = std::string(function_name),
+      .block_label = std::string(block_label),
+      .inst_index = inst_index,
+      .result_value_name = inst.result.kind == bir::Value::Kind::Named
+                               ? std::optional<std::string>(inst.result.name)
+                               : std::nullopt,
+      .address = std::move(*address),
+  };
+}
+
+[[nodiscard]] std::optional<PreparedMemoryAccess> build_pointer_indirect_access(
+    std::string_view function_name,
+    std::string_view block_label,
+    std::size_t inst_index,
+    const bir::StoreGlobalInst& inst) {
+  const std::size_t size_bytes =
+      stack_layout::normalize_size(inst.value.type, inst.value.type == bir::TypeKind::Void
+                                                        ? 0
+                                                        : stack_layout::fallback_type_size(
+                                                              inst.value.type));
+  const std::size_t align_bytes = stack_layout::normalize_alignment(
+      inst.value.type,
+      inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes
+                                                        : inst.align_bytes,
+      size_bytes);
+  auto address = build_pointer_indirect_address(inst.address, size_bytes, align_bytes);
+  if (!address.has_value()) {
+    return std::nullopt;
+  }
+
+  return PreparedMemoryAccess{
+      .function_name = std::string(function_name),
+      .block_label = std::string(block_label),
+      .inst_index = inst_index,
+      .stored_value_name = inst.value.kind == bir::Value::Kind::Named
+                               ? std::optional<std::string>(inst.value.name)
+                               : std::nullopt,
+      .address = std::move(*address),
+  };
+}
+
 void append_direct_frame_slot_accesses(PreparedAddressingFunction& function_addressing,
                                        const bir::Function& function,
                                        const FrameSlotMap& frame_slots_by_name) {
@@ -224,6 +383,12 @@ void append_direct_frame_slot_accesses(PreparedAddressingFunction& function_addr
     for (std::size_t inst_index = 0; inst_index < block.insts.size(); ++inst_index) {
       const auto& inst = block.insts[inst_index];
       if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
+        if (auto access =
+                build_pointer_indirect_access(function.name, block.label, inst_index, *load_local);
+            access.has_value()) {
+          function_addressing.accesses.push_back(std::move(*access));
+          continue;
+        }
         if (auto access = build_direct_frame_slot_access(
                 function.name, block.label, inst_index, *load_local, frame_slots_by_name);
             access.has_value()) {
@@ -232,6 +397,12 @@ void append_direct_frame_slot_accesses(PreparedAddressingFunction& function_addr
         continue;
       }
       if (const auto* store_local = std::get_if<bir::StoreLocalInst>(&inst)) {
+        if (auto access =
+                build_pointer_indirect_access(function.name, block.label, inst_index, *store_local);
+            access.has_value()) {
+          function_addressing.accesses.push_back(std::move(*access));
+          continue;
+        }
         if (auto access = build_direct_frame_slot_access(
                 function.name, block.label, inst_index, *store_local, frame_slots_by_name);
             access.has_value()) {
@@ -240,6 +411,12 @@ void append_direct_frame_slot_accesses(PreparedAddressingFunction& function_addr
         continue;
       }
       if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst)) {
+        if (auto access =
+                build_pointer_indirect_access(function.name, block.label, inst_index, *load_global);
+            access.has_value()) {
+          function_addressing.accesses.push_back(std::move(*access));
+          continue;
+        }
         if (auto access = build_direct_symbol_backed_access(
                 function.name, block.label, inst_index, *load_global);
             access.has_value()) {
@@ -248,6 +425,12 @@ void append_direct_frame_slot_accesses(PreparedAddressingFunction& function_addr
         continue;
       }
       if (const auto* store_global = std::get_if<bir::StoreGlobalInst>(&inst)) {
+        if (auto access = build_pointer_indirect_access(
+                function.name, block.label, inst_index, *store_global);
+            access.has_value()) {
+          function_addressing.accesses.push_back(std::move(*access));
+          continue;
+        }
         if (auto access = build_direct_symbol_backed_access(
                 function.name, block.label, inst_index, *store_global);
             access.has_value()) {

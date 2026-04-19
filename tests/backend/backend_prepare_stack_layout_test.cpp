@@ -3014,6 +3014,34 @@ int check_pointer_addressed_local_slot_activation(const prepare::PreparedBirModu
     return fail("expected the pointer-addressed root local slot to preserve its frame-slot layout");
   }
 
+  const auto* function_addressing =
+      prepare::find_prepared_addressing(prepared, "stack_layout_pointer_addressed_local_slot_activation");
+  if (function_addressing == nullptr) {
+    return fail("expected pointer-addressed locals to publish prepared addressing records");
+  }
+  if (function_addressing->accesses.size() != 1) {
+    return fail("expected exactly one pointer-indirect access record for the local pointer fixture");
+  }
+
+  const auto* pointer_store_access =
+      prepare::find_prepared_memory_access(*function_addressing, "entry", 1);
+  if (pointer_store_access == nullptr) {
+    return fail("expected prepared addressing to record the pointer-indirect local store");
+  }
+  if (pointer_store_access->result_value_name.has_value() ||
+      pointer_store_access->stored_value_name.has_value() ||
+      pointer_store_access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
+      !pointer_store_access->address.pointer_value_name.has_value() ||
+      *pointer_store_access->address.pointer_value_name != "lv.ptr.addr.alias" ||
+      pointer_store_access->address.symbol_name.has_value() ||
+      pointer_store_access->address.frame_slot_id.has_value() ||
+      pointer_store_access->address.byte_offset != 0 ||
+      pointer_store_access->address.size_bytes != 4 ||
+      pointer_store_access->address.align_bytes != 4 ||
+      !pointer_store_access->address.can_use_base_plus_offset) {
+    return fail("expected prepared addressing to preserve the pointer-indirect local store facts");
+  }
+
   return 0;
 }
 
@@ -3044,6 +3072,54 @@ int check_global_pointer_addressed_local_slot_activation(
     return fail(
         "expected the global-pointer-addressed root local slot to preserve "
         "its frame-slot layout");
+  }
+
+  const auto* function_addressing = prepare::find_prepared_addressing(
+      prepared, "stack_layout_global_pointer_addressed_local_slot_activation");
+  if (function_addressing == nullptr) {
+    return fail("expected global pointer-addressed accesses to publish prepared addressing records");
+  }
+  if (function_addressing->accesses.size() != 2) {
+    return fail("expected both pointer-indirect global load/store records for the global pointer fixture");
+  }
+
+  const auto* pointer_store_access =
+      prepare::find_prepared_memory_access(*function_addressing, "entry", 1);
+  if (pointer_store_access == nullptr) {
+    return fail("expected prepared addressing to record the pointer-indirect global store");
+  }
+  if (pointer_store_access->result_value_name.has_value() ||
+      pointer_store_access->stored_value_name.has_value() ||
+      pointer_store_access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
+      !pointer_store_access->address.pointer_value_name.has_value() ||
+      *pointer_store_access->address.pointer_value_name != "lv.global.ptr.addr.alias" ||
+      pointer_store_access->address.symbol_name.has_value() ||
+      pointer_store_access->address.frame_slot_id.has_value() ||
+      pointer_store_access->address.byte_offset != 0 ||
+      pointer_store_access->address.size_bytes != 4 ||
+      pointer_store_access->address.align_bytes != 4 ||
+      !pointer_store_access->address.can_use_base_plus_offset) {
+    return fail("expected prepared addressing to preserve the pointer-indirect global store facts");
+  }
+
+  const auto* pointer_load_access =
+      prepare::find_prepared_memory_access(*function_addressing, "entry", 2);
+  if (pointer_load_access == nullptr) {
+    return fail("expected prepared addressing to record the pointer-indirect global load");
+  }
+  if (!pointer_load_access->result_value_name.has_value() ||
+      *pointer_load_access->result_value_name != "lv.global.ptr.addr.loaded" ||
+      pointer_load_access->stored_value_name.has_value() ||
+      pointer_load_access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
+      !pointer_load_access->address.pointer_value_name.has_value() ||
+      *pointer_load_access->address.pointer_value_name != "lv.global.ptr.addr.alias" ||
+      pointer_load_access->address.symbol_name.has_value() ||
+      pointer_load_access->address.frame_slot_id.has_value() ||
+      pointer_load_access->address.byte_offset != 0 ||
+      pointer_load_access->address.size_bytes != 4 ||
+      pointer_load_access->address.align_bytes != 4 ||
+      !pointer_load_access->address.can_use_base_plus_offset) {
+    return fail("expected prepared addressing to preserve the pointer-indirect global load facts");
   }
 
   return 0;
