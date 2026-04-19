@@ -5,26 +5,27 @@ Source Idea Path: ideas/open/64_shared_text_identity_and_semantic_name_table_ref
 Source Plan Path: plan.md
 Current Step ID: 3.2
 Current Step Title: Migrate Remaining Prepared Lookup Helpers And Liveness Consumers
-Plan Review Counter: 2 / 10
+Plan Review Counter: 3 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another `plan.md` Step 3.2 packet in `src/backend/prealloc/prealloc.hpp`
-by pushing more join-transfer and compare-join helper state onto semantic ids:
-`find_prepared_param_zero_branch_condition(...)` now resolves the source block
-and param name once before the helper compares via typed ids, join-carrier and
-materialized compare-join contexts now retain `ValueNameId` for the carried
-result, and the remaining `find_prepared_join_transfer(...)` string entry path
-is now a compatibility wrapper that resolves `ValueNameId` before the typed
-helper graph continues.
+by pushing the remaining short-circuit and compare-join entry helpers further
+onto semantic ids: authoritative join-source lookup and materialized
+compare-join context construction now resolve `BlockLabelId` once at the
+boundary, param-zero compare-join entry now resolves both `BlockLabelId` and
+`ValueNameId` before the typed helper graph continues, and
+`resolve_prepared_compare_join_entry_target_labels(...)` now has a typed-id
+entry path with the `bir::Block` overload reduced to a boundary wrapper.
 
 ## Suggested Next
 
-Continue `plan.md` Step 3.2 in `src/backend/prealloc/prealloc.hpp` by pushing
-the remaining compare-join and short-circuit entry helpers onto typed
-`BlockLabelId`/`ValueNameId` boundaries so the surviving `std::string_view`
-overloads in this cluster are wrappers only and no longer the primary route.
+Continue `plan.md` Step 3.2 in `src/backend/prealloc/prealloc.hpp` by auditing
+the remaining source-branch and predecessor-label lookup entry helpers around
+`find_authoritative_branch_owned_join_transfer(...)` so any residual
+`std::string_view` overloads in the join-lookup family stay compatibility
+wrappers only.
 
 ## Watchouts
 
@@ -37,6 +38,9 @@ overloads in this cluster are wrappers only and no longer the primary route.
   helper first needs a `ValueNameId`; follow-on packets should keep that
   semantic-id capture at the helper boundary instead of dropping back to raw
   spelling comparisons deeper in the compare-join path.
+- The new compare-join and short-circuit typed entry paths still translate BIR
+  spellings once at the outer boundary; future packets should preserve that
+  pattern rather than threading raw string labels deeper into helper internals.
 - Keep the remaining string-view overloads in `prealloc.hpp` as compatibility
   wrappers only. Future packets should prefer typed-id entry paths and only
   translate BIR spellings once at the outer boundary.
@@ -55,5 +59,5 @@ Ran `cmake --build --preset default && ctest --test-dir build -j
 build/test output in `test_after.log`. The build completed, and the backend
 subset again reported the same four known failing tests already called out
 above, matching the `test_before.log` failing-test set after the
-`prealloc.hpp` join-transfer, param-zero branch, and compare-join helper state
-moved further onto typed `ValueNameId` and `BlockLabelId` entry paths.
+`prealloc.hpp` short-circuit and compare-join entry helpers moved further onto
+typed `BlockLabelId` and `ValueNameId` boundaries.
