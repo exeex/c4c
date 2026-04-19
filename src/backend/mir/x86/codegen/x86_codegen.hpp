@@ -576,6 +576,17 @@ std::optional<std::string> find_and_render_prepared_param_zero_branch_return_con
     const std::function<std::optional<std::string>(const c4c::backend::bir::Value&)>&
         render_return);
 
+std::optional<std::string> render_prepared_minimal_compare_branch_entry_if_supported(
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
+        minimal_param_register,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Value&)>&
+        render_return);
+
 std::optional<std::string>
 find_and_render_prepared_materialized_compare_join_function_if_supported(
     const c4c::backend::bir::Module& module,
@@ -585,6 +596,21 @@ find_and_render_prepared_materialized_compare_join_function_if_supported(
     const c4c::backend::bir::Param& param,
     std::string_view asm_prefix,
     std::string_view param_register_name,
+    const std::function<std::optional<std::string>(
+        const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&,
+        const c4c::backend::bir::Param&)>& render_return,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
+        emit_same_module_global_data);
+
+std::optional<std::string> render_prepared_materialized_compare_join_entry_if_supported(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
+        minimal_param_register,
     const std::function<std::optional<std::string>(
         const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&,
         const c4c::backend::bir::Param&)>& render_return,

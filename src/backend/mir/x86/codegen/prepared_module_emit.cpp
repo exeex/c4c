@@ -2315,72 +2315,31 @@ std::string emit_prepared_module(
   };
   const auto render_minimal_compare_branch_if_supported =
       [&]() -> std::optional<std::string> {
-    if (function.params.size() != 1 || prepared_arch != c4c::TargetArch::X86_64 ||
-        entry.insts.size() != 1 ||
-        entry.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch) {
-      return std::nullopt;
-    }
-
-    const auto& param = function.params.front();
-    if (param.type != c4c::backend::bir::TypeKind::I32 || param.is_varargs || param.is_sret ||
-        param.is_byval) {
-      return std::nullopt;
-    }
-    const auto param_register = minimal_param_register(param);
-    if (!param_register.has_value()) {
-      return std::nullopt;
-    }
-
-    const auto* function_control_flow = find_control_flow_function();
-    if (function_control_flow == nullptr) {
-      return std::nullopt;
-    }
-
     const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*> named_binaries;
-    return c4c::backend::x86::find_and_render_prepared_param_zero_branch_return_context_if_supported(
-        *function_control_flow,
+    return c4c::backend::x86::render_prepared_minimal_compare_branch_entry_if_supported(
+        find_control_flow_function(),
         function,
         entry,
-        param,
+        prepared_arch,
         asm_prefix,
-        *param_register,
+        minimal_param_register,
         [&](const c4c::backend::bir::Value& value) {
+          const auto& param = function.params.front();
           return render_param_derived_return_if_supported(value, named_binaries, param);
         });
   };
   const auto render_materialized_compare_join_if_supported =
       [&]() -> std::optional<std::string> {
-    if (function.params.size() != 1 || prepared_arch != c4c::TargetArch::X86_64 ||
-        entry.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch) {
-      return std::nullopt;
-    }
-
-    const auto& param = function.params.front();
-    if (param.type != c4c::backend::bir::TypeKind::I32 || param.is_varargs || param.is_sret ||
-        param.is_byval) {
-      return std::nullopt;
-    }
-    const auto param_register = minimal_param_register(param);
-    if (!param_register.has_value()) {
-      return std::nullopt;
-    }
-
-    const auto* function_control_flow = find_control_flow_function();
-    if (function_control_flow == nullptr) {
-      return std::nullopt;
-    }
-
-    return c4c::backend::x86::
-        find_and_render_prepared_materialized_compare_join_function_if_supported(
-            module.module,
-            *function_control_flow,
-            function,
-            entry,
-            param,
-            asm_prefix,
-            *param_register,
-            render_materialized_compare_join_return_if_supported,
-            emit_same_module_global_data);
+    return c4c::backend::x86::render_prepared_materialized_compare_join_entry_if_supported(
+        module.module,
+        find_control_flow_function(),
+        function,
+        entry,
+        prepared_arch,
+        asm_prefix,
+        minimal_param_register,
+        render_materialized_compare_join_return_if_supported,
+        emit_same_module_global_data);
   };
   if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
       !entry.terminator.value.has_value()) {

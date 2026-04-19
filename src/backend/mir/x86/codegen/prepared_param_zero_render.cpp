@@ -261,6 +261,42 @@ std::optional<std::string> find_and_render_prepared_param_zero_branch_return_con
       *false_return);
 }
 
+std::optional<std::string> render_prepared_minimal_compare_branch_entry_if_supported(
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
+        minimal_param_register,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Value&)>&
+        render_return) {
+  if (function.params.size() != 1 || prepared_arch != c4c::TargetArch::X86_64 ||
+      entry.insts.size() != 1 ||
+      entry.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch) {
+    return std::nullopt;
+  }
+
+  const auto& param = function.params.front();
+  if (param.type != c4c::backend::bir::TypeKind::I32 || param.is_varargs || param.is_sret ||
+      param.is_byval) {
+    return std::nullopt;
+  }
+  const auto param_register = minimal_param_register(param);
+  if (!param_register.has_value() || function_control_flow == nullptr) {
+    return std::nullopt;
+  }
+
+  return find_and_render_prepared_param_zero_branch_return_context_if_supported(
+      *function_control_flow,
+      function,
+      entry,
+      param,
+      asm_prefix,
+      *param_register,
+      render_return);
+}
+
 std::optional<std::string>
 find_and_render_prepared_materialized_compare_join_function_if_supported(
     const c4c::backend::bir::Module& module,
@@ -317,6 +353,47 @@ find_and_render_prepared_materialized_compare_join_function_if_supported(
       *true_return,
       *false_return,
       rendered_same_module_globals);
+}
+
+std::optional<std::string> render_prepared_materialized_compare_join_entry_if_supported(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
+        minimal_param_register,
+    const std::function<std::optional<std::string>(
+        const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&,
+        const c4c::backend::bir::Param&)>& render_return,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
+        emit_same_module_global_data) {
+  if (function.params.size() != 1 || prepared_arch != c4c::TargetArch::X86_64 ||
+      entry.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch) {
+    return std::nullopt;
+  }
+
+  const auto& param = function.params.front();
+  if (param.type != c4c::backend::bir::TypeKind::I32 || param.is_varargs || param.is_sret ||
+      param.is_byval) {
+    return std::nullopt;
+  }
+  const auto param_register = minimal_param_register(param);
+  if (!param_register.has_value() || function_control_flow == nullptr) {
+    return std::nullopt;
+  }
+
+  return find_and_render_prepared_materialized_compare_join_function_if_supported(
+      module,
+      *function_control_flow,
+      function,
+      entry,
+      param,
+      asm_prefix,
+      *param_register,
+      render_return,
+      emit_same_module_global_data);
 }
 
 std::optional<std::string> render_prepared_supported_immediate_binary(
