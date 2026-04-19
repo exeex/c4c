@@ -10765,6 +10765,55 @@ int check_loop_countdown_route_requires_authoritative_prepared_branch_condition(
   return 0;
 }
 
+int check_loop_countdown_route_rejects_transfer_drift_when_authoritative_branch_contract_remains(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the loop countdown control-flow contract")
+                    .c_str());
+  }
+  if (control_flow->join_transfers.front().kind != prepare::PreparedJoinTransferKind::LoopCarry) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer classifies the loop countdown join as explicit loop-carry traffic")
+                    .c_str());
+  }
+
+  auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
+  if (mutable_control_flow == nullptr || mutable_control_flow->branch_conditions.size() != 1 ||
+      mutable_control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture lost its mutable loop-countdown handoff contract")
+                    .c_str());
+  }
+
+  mutable_control_flow->join_transfers.front().kind =
+      prepare::PreparedJoinTransferKind::SelectMaterialization;
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly reopened the local countdown fallback after loop-transfer drift")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the drifted loop transfer with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_loop_countdown_route_consumes_prepared_eq_zero_branch_contract(
     const bir::Module& module,
     const std::string& expected_asm,
@@ -13190,6 +13239,14 @@ int main() {
               make_x86_loop_countdown_join_module(),
               "main",
               "minimal loop-carried join countdown prepared-control-flow ownership rejects drifted prepared branch metadata instead of falling back to local countdown topology");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_loop_countdown_route_rejects_transfer_drift_when_authoritative_branch_contract_remains(
+              make_x86_loop_countdown_join_module(),
+              "main",
+              "minimal loop-carried join countdown prepared-control-flow ownership rejects drifted loop-transfer metadata instead of reopening the local countdown fallback");
       status != 0) {
     return status;
   }
