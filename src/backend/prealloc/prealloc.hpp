@@ -2146,8 +2146,12 @@ find_prepared_short_circuit_continuation_targets(
     return std::nullopt;
   }
 
-  const auto direct_targets = find_prepared_compare_branch_target_labels(
-      names, *source_branch_condition, *source_block);
+  const auto direct_targets = resolve_prepared_compare_branch_target_labels(
+      names,
+      &function_cf,
+      source_block_label_id,
+      *source_block,
+      *source_branch_condition);
   if (!direct_targets.has_value()) {
     return std::nullopt;
   }

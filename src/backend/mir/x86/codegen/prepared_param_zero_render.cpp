@@ -819,8 +819,12 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_short_circuit_entry_
   }
 
   const auto prepared_target_labels =
-      c4c::backend::prepare::find_prepared_compare_branch_target_labels(
-          prepared_names, *branch_condition, source_block);
+      c4c::backend::prepare::resolve_prepared_compare_branch_target_labels(
+          prepared_names,
+          function_control_flow,
+          source_block_label_id,
+          source_block,
+          *branch_condition);
   if (!prepared_target_labels.has_value()) {
     return std::nullopt;
   }

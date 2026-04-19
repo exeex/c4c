@@ -5,30 +5,29 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 2
 Current Step Title: Build An Authoritative Shared Prepared CFG Model
-Plan Review Counter: 1 / 10
+Plan Review Counter: 2 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed another `plan.md` Step 2 slice for idea 62. The dedicated local-slot
-arithmetic guard renderers in
-`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` now resolve their
-true/false branch destinations through a shared
-`resolve_prepared_compare_branch_target_labels(...)` helper in
-`src/backend/prealloc/prealloc.hpp`, so these compare-driven guard paths consume
-the authoritative prepared CFG targets when available instead of trusting
-`PreparedBranchCondition` labels in isolation. If the prepared branch condition
-and prepared per-block CFG facts drift, the x86 handoff now rejects that
-contract instead of silently rendering from whichever labels happen to be
-present locally.
+Completed another `plan.md` Step 2 slice for idea 62. The shared short-circuit
+compare-driven entry helpers in
+`src/backend/mir/x86/codegen/prepared_param_zero_render.cpp` and
+`src/backend/prealloc/prealloc.hpp` now resolve entry-branch targets through
+`resolve_prepared_compare_branch_target_labels(...)` instead of trusting
+`PreparedBranchCondition` labels in isolation. That closes the remaining
+guard-chain recursion gap where authoritative prepared CFG ownership could
+still be bypassed by drifted entry labels, and the x86 boundary suite now
+covers both select-carried and `EdgeStoreSlot` short-circuit routes rejecting
+that drift.
 
 ## Suggested Next
 
 Continue `plan.md` Step 2 by moving the remaining compare-driven local-slot
-guard-chain helpers onto the same authoritative prepared CFG target resolution,
-especially the recursive branch/continuation path in
-`render_prepared_local_slot_guard_chain_if_supported(...)` that can still fall
-back to local BIR-shape discovery after the prepared handoff.
+guard-chain helpers onto the same authoritative prepared CFG ownership model,
+especially `src/backend/mir/x86/codegen/prepared_countdown_render.cpp`, which
+still rediscovers loop/body/exit structure from local BIR block shape after it
+has already identified a prepared loop-carry join.
 
 ## Watchouts
 
@@ -56,8 +55,9 @@ back to local BIR-shape discovery after the prepared handoff.
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_' | tee test_after.log`. The build completed
 cleanly. The backend subset returned to the expected baseline shape: the
-boundary handoff tests passed, and `test_after.log` shows only the same four
-pre-existing backend-route failures already tracked for this runbook:
+updated `backend_x86_handoff_boundary` suite passed, and `test_after.log`
+matches `test_before.log` with only the same four pre-existing backend-route
+failures already tracked for this runbook:
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
 `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
 `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`,
