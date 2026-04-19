@@ -5,25 +5,25 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 3.3
 Current Step Title: Close Remaining Consumer Families And Shared Helper Gaps
-Plan Review Counter: 2 / 10
+Plan Review Counter: 3 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another `plan.md` Step 3.3 slice for idea 62. The
-`tests/backend/backend_x86_handoff_boundary_short_circuit_test.cpp`
-shared-helper coverage now proves the prepared short-circuit branch-plan
-helper refuses to keep a usable branch plan alive after authoritative
-entry-target or continuation-label loss, for both the direct and
-`EdgeStoreSlot` short-circuit lanes.
+`tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp`
+compare-join helper coverage now proves the prepared fixed-offset
+same-module global return-context helpers ignore true-lane and false-lane
+passthrough topology drift, for both the direct and `EdgeStoreSlot`
+lanes.
 
 ## Suggested Next
 
 Move to the next bounded `plan.md` Step 3.3 consumer family or shared helper
 surface that still lacks explicit prepared-contract drift or loss proof,
-preferably outside the short-circuit branch-plan helper lane now that both
-the direct and `EdgeStoreSlot` variants reject authoritative branch-plan
-input loss.
+preferably a different compare-join return-context family now that the
+fixed-offset same-module global direct and `EdgeStoreSlot` passthrough
+lanes both have explicit helper coverage.
 
 ## Watchouts
 
@@ -60,6 +60,10 @@ input loss.
   offset-store guard-chain lane both now have explicit contract drift coverage,
   so the next packet should move to a different consumer family instead of
   restating those shapes.
+- The fixed-offset same-module global compare-join return-context helpers now
+  also ignore true-lane and false-lane passthrough topology drift for both
+  direct and `EdgeStoreSlot` lanes, so future Step 3.3 packets should move to
+  a different compare-join family instead of restating that helper surface.
 - The prepared short-circuit branch-plan helper now also rejects missing
   authoritative entry-target and continuation-label inputs for both direct and
   `EdgeStoreSlot` lanes, so future Step 3.3 packets should move to a different
@@ -82,9 +86,8 @@ input loss.
 Ran the delegated proof command
 `cmake --build --preset default --target backend_x86_handoff_boundary_test && ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 and wrote the canonical proof log to `test_after.log`. The focused
-`backend_x86_handoff_boundary` proof passed after tightening
-`find_prepared_short_circuit_branch_plan(...)` and extending the
-short-circuit helper coverage so the shared branch-plan helper rejects
-authoritative entry-target and continuation-label loss for both direct and
-`EdgeStoreSlot` lanes. `test_after.log` is the proof artifact for this
-packet.
+`backend_x86_handoff_boundary` proof passed after extending the fixed-offset
+same-module global compare-join helper coverage so the shared return-context
+helpers ignore true-lane and false-lane passthrough topology drift for both
+direct and `EdgeStoreSlot` lanes. `test_after.log` is the proof artifact for
+this packet.
