@@ -32,6 +32,7 @@ enum class BinaryOpcode : unsigned char;
 }
 namespace prepare {
 struct PreparedBirModule;
+struct PreparedBranchCondition;
 struct PreparedControlFlowFunction;
 struct PreparedParamZeroBranchReturnContext;
 struct PreparedResolvedMaterializedCompareJoinRenderContract;
@@ -156,6 +157,19 @@ enum class RiscvFloatClass : unsigned {
 
 enum class PreparedParamZeroCompareShape : unsigned {
   SelfTest,
+};
+
+struct MaterializedI32Compare {
+  std::string_view i1_name;
+  std::optional<std::string_view> i32_name;
+  c4c::backend::bir::BinaryOpcode opcode = c4c::backend::bir::BinaryOpcode::Eq;
+  std::string compare_setup;
+};
+
+struct ShortCircuitEntryCompareContext {
+  const c4c::backend::prepare::PreparedBranchCondition* branch_condition = nullptr;
+  std::string compare_setup;
+  std::string false_branch_opcode;
 };
 
 // Active intrinsic inventory carried by the translated x86 intrinsics owner.
@@ -576,6 +590,22 @@ find_and_render_prepared_materialized_compare_join_function_if_supported(
         const c4c::backend::bir::Param&)>& render_return,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
         emit_same_module_global_data);
+
+std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_branch_compare(
+    const c4c::backend::bir::BinaryInst& compare,
+    const std::optional<MaterializedI32Compare>& current_materialized_compare,
+    const std::optional<std::string_view>& current_i32_name);
+
+std::optional<std::pair<std::string, std::string>>
+render_prepared_guard_false_branch_compare_from_condition(
+    const c4c::backend::prepare::PreparedBranchCondition& condition,
+    const std::optional<MaterializedI32Compare>& current_materialized_compare,
+    const std::optional<std::string_view>& current_i32_name);
+
+std::optional<ShortCircuitEntryCompareContext> build_prepared_guard_compare_context(
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const std::optional<MaterializedI32Compare>& current_materialized_compare,
+    const std::optional<std::string_view>& current_i32_name);
 
 std::optional<std::string> render_prepared_supported_immediate_binary(
     std::string_view return_register,

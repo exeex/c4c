@@ -37,6 +37,160 @@ std::optional<std::string> render_prepared_param_zero_branch_prefix(
 
 }  // namespace
 
+std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_branch_compare(
+    const c4c::backend::bir::BinaryInst& compare,
+    const std::optional<MaterializedI32Compare>& current_materialized_compare,
+    const std::optional<std::string_view>& current_i32_name) {
+  if (current_materialized_compare.has_value() &&
+      current_materialized_compare->i32_name.has_value()) {
+    const bool lhs_is_materialized_rhs_is_zero =
+        compare.lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+        compare.lhs.name == *current_materialized_compare->i32_name &&
+        compare.rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+        compare.rhs.type == c4c::backend::bir::TypeKind::I32 &&
+        compare.rhs.immediate == 0;
+    const bool rhs_is_materialized_lhs_is_zero =
+        compare.rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+        compare.rhs.name == *current_materialized_compare->i32_name &&
+        compare.lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+        compare.lhs.type == c4c::backend::bir::TypeKind::I32 &&
+        compare.lhs.immediate == 0;
+    if (lhs_is_materialized_rhs_is_zero || rhs_is_materialized_lhs_is_zero) {
+      const bool branch_when_original_false =
+          compare.opcode == c4c::backend::bir::BinaryOpcode::Ne;
+      const char* branch_opcode = nullptr;
+      if (current_materialized_compare->opcode == c4c::backend::bir::BinaryOpcode::Eq) {
+        branch_opcode = branch_when_original_false ? "jne" : "je";
+      } else {
+        branch_opcode = branch_when_original_false ? "je" : "jne";
+      }
+      return std::pair<std::string, std::string>{
+          current_materialized_compare->compare_setup,
+          branch_opcode,
+      };
+    }
+  }
+
+  if (compare.lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+      compare.lhs.type == c4c::backend::bir::TypeKind::I32 &&
+      compare.rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+      compare.rhs.type == c4c::backend::bir::TypeKind::I32) {
+    const auto compare_setup =
+        "    mov eax, " + std::to_string(static_cast<std::int32_t>(compare.lhs.immediate)) +
+        "\n    cmp eax, " + std::to_string(static_cast<std::int32_t>(compare.rhs.immediate)) +
+        "\n";
+    const char* branch_opcode = nullptr;
+    switch (compare.opcode) {
+      case c4c::backend::bir::BinaryOpcode::Eq:
+        branch_opcode = "jne";
+        break;
+      case c4c::backend::bir::BinaryOpcode::Ne:
+        branch_opcode = "je";
+        break;
+      case c4c::backend::bir::BinaryOpcode::Sgt:
+        branch_opcode = "jle";
+        break;
+      case c4c::backend::bir::BinaryOpcode::Sge:
+        branch_opcode = "jl";
+        break;
+      case c4c::backend::bir::BinaryOpcode::Slt:
+        branch_opcode = "jge";
+        break;
+      case c4c::backend::bir::BinaryOpcode::Sle:
+        branch_opcode = "jg";
+        break;
+      default:
+        return std::nullopt;
+    }
+    return std::pair<std::string, std::string>{compare_setup, branch_opcode};
+  }
+
+  if (!current_i32_name.has_value()) {
+    return std::nullopt;
+  }
+  const bool lhs_is_current_rhs_is_imm =
+      compare.lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+      compare.lhs.name == *current_i32_name &&
+      compare.rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+      compare.rhs.type == c4c::backend::bir::TypeKind::I32;
+  const bool rhs_is_current_lhs_is_imm =
+      compare.rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+      compare.rhs.name == *current_i32_name &&
+      compare.lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+      compare.lhs.type == c4c::backend::bir::TypeKind::I32;
+  if (!lhs_is_current_rhs_is_imm && !rhs_is_current_lhs_is_imm) {
+    return std::nullopt;
+  }
+  const auto compare_immediate =
+      lhs_is_current_rhs_is_imm ? compare.rhs.immediate : compare.lhs.immediate;
+  const auto compare_setup =
+      compare_immediate == 0
+          ? std::string("    test eax, eax\n")
+          : "    cmp eax, " + std::to_string(static_cast<std::int32_t>(compare_immediate)) +
+                "\n";
+  const auto branch_opcode_for_current_immediate =
+      [&](bool current_is_lhs) -> const char* {
+    switch (compare.opcode) {
+      case c4c::backend::bir::BinaryOpcode::Eq:
+        return "jne";
+      case c4c::backend::bir::BinaryOpcode::Ne:
+        return "je";
+      case c4c::backend::bir::BinaryOpcode::Sgt:
+        return current_is_lhs ? "jle" : "jge";
+      case c4c::backend::bir::BinaryOpcode::Sge:
+        return current_is_lhs ? "jl" : "jg";
+      case c4c::backend::bir::BinaryOpcode::Slt:
+        return current_is_lhs ? "jge" : "jle";
+      case c4c::backend::bir::BinaryOpcode::Sle:
+        return current_is_lhs ? "jg" : "jl";
+      default:
+        return nullptr;
+    }
+  };
+  const char* branch_opcode = branch_opcode_for_current_immediate(lhs_is_current_rhs_is_imm);
+  if (branch_opcode == nullptr) {
+    return std::nullopt;
+  }
+  return std::pair<std::string, std::string>{compare_setup, branch_opcode};
+}
+
+std::optional<std::pair<std::string, std::string>>
+render_prepared_guard_false_branch_compare_from_condition(
+    const c4c::backend::prepare::PreparedBranchCondition& condition,
+    const std::optional<MaterializedI32Compare>& current_materialized_compare,
+    const std::optional<std::string_view>& current_i32_name) {
+  if (!condition.predicate.has_value() || !condition.lhs.has_value() ||
+      !condition.rhs.has_value()) {
+    return std::nullopt;
+  }
+
+  c4c::backend::bir::BinaryInst compare{
+      .opcode = *condition.predicate,
+      .result = condition.condition_value,
+      .operand_type = condition.compare_type.value_or(c4c::backend::bir::TypeKind::I32),
+      .lhs = *condition.lhs,
+      .rhs = *condition.rhs,
+  };
+  return render_prepared_guard_false_branch_compare(
+      compare, current_materialized_compare, current_i32_name);
+}
+
+std::optional<ShortCircuitEntryCompareContext> build_prepared_guard_compare_context(
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const std::optional<MaterializedI32Compare>& current_materialized_compare,
+    const std::optional<std::string_view>& current_i32_name) {
+  auto false_branch_compare = render_prepared_guard_false_branch_compare_from_condition(
+      branch_condition, current_materialized_compare, current_i32_name);
+  if (!false_branch_compare.has_value()) {
+    return std::nullopt;
+  }
+  return ShortCircuitEntryCompareContext{
+      .branch_condition = &branch_condition,
+      .compare_setup = std::move(false_branch_compare->first),
+      .false_branch_opcode = std::move(false_branch_compare->second),
+  };
+}
+
 std::optional<std::string> render_prepared_param_zero_branch_function(
     std::string_view asm_prefix,
     std::string_view function_name,
