@@ -5,26 +5,27 @@ Source Idea Path: ideas/open/58_bir_cfg_and_join_materialization_for_x86.md
 Source Plan Path: plan.md
 Current Step ID: 3.4
 Current Step Title: Loop-Carry And Residual Consumer Cleanup
-Plan Review Counter: 1 / 10
+Plan Review Counter: 2 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed a Step 3.4 Loop-Carry And Residual Consumer Cleanup packet by
-tightening `render_minimal_compare_branch_if_supported()` so the plain
-param-zero branch lane now rejects drifted direct-return leaf rewrites once
-authoritative prepared join ownership is still published for the entry block,
-instead of accepting a fallback past the compare-join/join handoff, and by
-adding regressions for both the select-carried and `EdgeStoreSlot` joined
-branch variants that mutate the prepared fixture into direct return leaves
-after prepare.
+tightening `render_local_i32_arithmetic_guard_if_supported()` so the generic
+local-slot compare-against-immediate guard lane now rejects fallback once
+authoritative branch-owned short-circuit join ownership is still published for
+the entry block, and by adding a regression that mutates the prepared
+short-circuit fixture into a three-block local guard shape after prepare to
+prove the emitter now throws instead of bypassing the canonical prepared
+handoff.
 
 ## Suggested Next
 
-Stay in Step 3.4 and inspect the remaining plain param-zero branch and joined
-consumer boundaries for any other route where authoritative prepared branch or
-join ownership can still be bypassed by a later generic guard/countdown helper
-after post-prepare module drift.
+Stay in Step 3.4 and inspect the remaining generic fallback helpers after the
+authoritative compare/join consumers, especially the local-slot guard-chain
+and adjacent residual guard/countdown lanes, for any other route where active
+prepared branch-owned join or loop ownership can still be bypassed after
+post-prepare module drift.
 
 ## Watchouts
 
@@ -40,6 +41,10 @@ after post-prepare module drift.
   branch-owned join ownership exists but the entry prepared branch contract has
   drifted; do not let that route fall through into the generic plain-condition
   lane.
+- The generic local `i32` guard fallback must now also reject once
+  authoritative branch-owned short-circuit join ownership remains active for
+  the same entry block; do not let later local guard cleanups reopen that
+  bypass behind a valid-looking prepared branch record.
 - The param-zero compare-join and joined-branch lane must now reject once
   authoritative branch-owned join ownership exists but the resolved prepared
   compare-join render contract disappears; do not let that route silently drop
@@ -61,7 +66,7 @@ after post-prepare module drift.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The focused Step 3.4 handoff proof passed after rejecting a drifted plain
-param-zero fallback when authoritative joined prepared ownership still existed
-for both the select-carried and `EdgeStoreSlot` variants, leaving
-`test_after.log` at the repo root.
+The focused Step 3.4 handoff proof passed after rejecting a drifted generic
+local-slot `i32` guard fallback when authoritative short-circuit join
+ownership still existed for the entry block, leaving `test_after.log` at the
+repo root.

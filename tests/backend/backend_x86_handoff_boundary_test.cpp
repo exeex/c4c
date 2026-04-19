@@ -8733,6 +8733,112 @@ int check_local_i32_guard_route_requires_authoritative_prepared_branch_labels(
   return 0;
 }
 
+int check_local_i32_guard_route_rejects_authoritative_join_contract(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.empty() ||
+      control_flow->join_transfers.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the short-circuit join ownership needed for the fallback rejection")
+                    .c_str());
+  }
+  if (!prepare::find_authoritative_branch_owned_join_transfer(*control_flow, "entry").has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes authoritative entry-owned join ownership")
+                    .c_str());
+  }
+
+  auto* entry_branch_condition = static_cast<prepare::PreparedBranchCondition*>(nullptr);
+  for (auto& branch_condition : control_flow->branch_conditions) {
+    if (branch_condition.block_label == "entry") {
+      entry_branch_condition = &branch_condition;
+      break;
+    }
+  }
+  if (entry_branch_condition == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes the authoritative entry branch condition")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  if (function.local_slots.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes the local-slot carrier needed for the guard fallback probe")
+                    .c_str());
+  }
+
+  const std::string slot_name = function.local_slots.front().name;
+  function.blocks.clear();
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = slot_name,
+      .value = bir::Value::immediate_i32(123),
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "loaded"),
+      .slot_name = slot_name,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "cmp"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "loaded"),
+      .rhs = bir::Value::immediate_i32(123),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cmp"),
+      .true_label = "block_1",
+      .false_label = "block_2",
+  };
+
+  bir::Block block_1;
+  block_1.label = "block_1";
+  block_1.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(1)};
+
+  bir::Block block_2;
+  block_2.label = "block_2";
+  block_2.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+
+  entry_branch_condition->kind = prepare::PreparedBranchConditionKind::FusedCompare;
+  entry_branch_condition->condition_value = bir::Value::named(bir::TypeKind::I32, "cmp");
+  entry_branch_condition->predicate = bir::BinaryOpcode::Ne;
+  entry_branch_condition->compare_type = bir::TypeKind::I32;
+  entry_branch_condition->lhs = bir::Value::named(bir::TypeKind::I32, "loaded");
+  entry_branch_condition->rhs = bir::Value::immediate_i32(123);
+  entry_branch_condition->can_fuse_with_branch = true;
+  entry_branch_condition->true_label = "block_1";
+  entry_branch_condition->false_label = "block_2";
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted a local guard fallback while authoritative join ownership remained active")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the authoritative join-owned guard fallback with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_local_i32_guard_helper_publishes_prepared_compare_contract(const bir::Module& module,
                                                                      const char* function_name,
                                                                      const char* failure_context) {
@@ -12732,6 +12838,14 @@ int main() {
               make_x86_local_i32_immediate_guard_module(),
               "main",
               "minimal local-slot compare-against-immediate guard prepared branch-contract ownership rejects drifted prepared labels instead of falling back to the local guard matcher");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_local_i32_guard_route_rejects_authoritative_join_contract(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot compare-against-immediate guard route rejects fallback when authoritative short-circuit join ownership remains active");
       status != 0) {
     return status;
   }

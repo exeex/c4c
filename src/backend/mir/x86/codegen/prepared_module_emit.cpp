@@ -2939,6 +2939,13 @@ std::string emit_prepared_module(
             ? nullptr
             : c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
                                                                     entry.label);
+    if (function_control_flow != nullptr &&
+        c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
+            *function_control_flow, entry.label)
+            .has_value()) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
+    }
 
     c4c::backend::bir::Value compared_value;
     std::int64_t compare_immediate = 0;
