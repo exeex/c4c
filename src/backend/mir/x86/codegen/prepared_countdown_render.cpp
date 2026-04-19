@@ -461,6 +461,43 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
     const c4c::backend::bir::Block* false_block = nullptr;
   };
 
+  const auto resolve_control_flow_branch_targets =
+      [&](const c4c::backend::bir::Block& block)
+      -> std::optional<std::pair<const c4c::backend::bir::Block*,
+                                 const c4c::backend::bir::Block*>> {
+    if (prepared_names == nullptr || function_control_flow == nullptr) {
+      return std::nullopt;
+    }
+
+    const auto block_label_id =
+        c4c::backend::prepare::resolve_prepared_block_label_id(*prepared_names, block.label);
+    if (!block_label_id.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto prepared_target_labels =
+        c4c::backend::prepare::find_prepared_control_flow_branch_target_labels(
+            *function_control_flow, *block_label_id);
+    if (!prepared_target_labels.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto* true_block = find_block(
+        function,
+        c4c::backend::prepare::prepared_block_label(*prepared_names,
+                                                    prepared_target_labels->true_label));
+    const auto* false_block = find_block(
+        function,
+        c4c::backend::prepare::prepared_block_label(*prepared_names,
+                                                    prepared_target_labels->false_label));
+    if (true_block == nullptr || false_block == nullptr || true_block == &block ||
+        false_block == &block) {
+      return std::nullopt;
+    }
+
+    return std::pair{true_block, false_block};
+  };
+
   const auto resolve_branch_targets =
       [&](const c4c::backend::bir::Block& block,
           std::string_view expected_condition_name,
@@ -479,6 +516,14 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
         c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
                                                               *block_label_id);
     if (branch_condition == nullptr) {
+      if (const auto control_flow_targets = resolve_control_flow_branch_targets(block);
+          control_flow_targets.has_value()) {
+        return ResolvedBranchTargets{
+            .branch_condition = nullptr,
+            .true_block = control_flow_targets->first,
+            .false_block = control_flow_targets->second,
+        };
+      }
       return std::nullopt;
     }
     if (!branch_condition->compare_type.has_value() ||

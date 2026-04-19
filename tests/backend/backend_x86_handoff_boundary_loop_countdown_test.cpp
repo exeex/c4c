@@ -1220,6 +1220,99 @@ int check_local_countdown_guard_route_consumes_authoritative_join_transfer(
   return 0;
 }
 
+int check_local_countdown_guard_route_prefers_authoritative_loop_targets_after_join_transfer(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr) {
+    prepared.control_flow.functions.push_back(
+        prepare::PreparedControlFlowFunction{
+            .function_name = intern_function_name(prepared, function_name)});
+    control_flow = &prepared.control_flow.functions.back();
+  }
+  control_flow->branch_conditions.clear();
+  control_flow->join_transfers.clear();
+
+  std::string baseline_asm;
+  try {
+    baseline_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  } catch (const std::exception& ex) {
+    return fail((std::string(failure_context) +
+                 ": local countdown fallback fixture no longer renders before authoritative continuation-loop ownership is injected: " +
+                 ex.what())
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* continuation_loop = find_block(function, "loop1");
+  if (continuation_loop == nullptr ||
+      continuation_loop->terminator.kind != bir::TerminatorKind::CondBranch) {
+    return fail((std::string(failure_context) +
+                 ": local countdown fallback fixture no longer exposes the continuation loop branch carrier")
+                    .c_str());
+  }
+
+  control_flow->join_transfers.push_back(prepare::PreparedJoinTransfer{
+      .function_name = intern_function_name(prepared, function_name),
+      .join_block_label = intern_block_label(prepared, "loop1"),
+      .result = bir::Value::named(bir::TypeKind::I32, "loop1.counter"),
+      .kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot,
+      .storage_name = intern_slot_name(prepared, "%lv.counter"),
+      .edge_transfers =
+          {
+              prepare::PreparedEdgeValueTransfer{
+                  .predecessor_label = intern_block_label(prepared, "cont"),
+                  .successor_label = intern_block_label(prepared, "loop1"),
+                  .incoming_value = bir::Value::immediate_i32(2),
+                  .destination_value =
+                      bir::Value::named(bir::TypeKind::I32, "loop1.counter"),
+                  .storage_name = intern_slot_name(prepared, "%lv.counter"),
+              },
+              prepare::PreparedEdgeValueTransfer{
+                  .predecessor_label = intern_block_label(prepared, "body1"),
+                  .successor_label = intern_block_label(prepared, "loop1"),
+                  .incoming_value = bir::Value::named(bir::TypeKind::I32, "body1.next"),
+                  .destination_value =
+                      bir::Value::named(bir::TypeKind::I32, "loop1.counter"),
+                  .storage_name = intern_slot_name(prepared, "%lv.counter"),
+              },
+          },
+      .source_branch_block_label = intern_block_label(prepared, "loop1"),
+      .source_true_transfer_index = 1,
+      .source_false_transfer_index = 0,
+      .source_true_incoming_label = intern_block_label(prepared, "body1"),
+      .source_false_incoming_label = intern_block_label(prepared, "cont"),
+  });
+
+  continuation_loop->terminator.condition =
+      bir::Value::named(bir::TypeKind::I32, "drifted.loop1.condition");
+  continuation_loop->terminator.true_label = "drifted.loop1.body";
+  continuation_loop->terminator.false_label = "drifted.loop1.exit";
+
+  std::string prepared_asm;
+  try {
+    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  } catch (const std::exception& ex) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer rejected the authoritative continuation-loop ownership with exception: " +
+                 ex.what())
+                    .c_str());
+  }
+  if (prepared_asm != baseline_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following authoritative prepared loop targets over raw continuation-loop terminator drift")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_loop_countdown_route_consumes_prepared_eq_zero_branch_contract(
     const bir::Module& module,
     const std::string& expected_asm,
@@ -1512,6 +1605,14 @@ int run_backend_x86_handoff_boundary_loop_countdown_tests() {
               make_x86_local_i32_countdown_guard_continuation_module(),
               "main",
               "two-segment local countdown fallback consumes authoritative continuation-loop join ownership over a drifted local init carrier");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_local_countdown_guard_route_prefers_authoritative_loop_targets_after_join_transfer(
+              make_x86_local_i32_countdown_guard_continuation_module(),
+              "main",
+              "two-segment local countdown fallback consumes authoritative continuation-loop targets over raw continuation-loop terminator drift");
       status != 0) {
     return status;
   }
