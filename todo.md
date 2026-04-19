@@ -5,23 +5,24 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 3.3.2
 Current Step Title: Finish Global-Backed Materialized-Select Variants
-Plan Review Counter: 0 / 10
+Plan Review Counter: 1 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another `plan.md` Step 3.3.2 slice for idea 62. The
 `tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp`
-plain same-module global compare-join helpers now prove authoritative
-prepared return-context ownership survives true-lane and false-lane
-passthrough topology drift for both the direct and `EdgeStoreSlot` lanes.
+plain pointer-backed same-module global compare-join helpers now prove
+authoritative prepared return-context ownership survives true-lane and
+false-lane passthrough topology drift for both the direct and
+`EdgeStoreSlot` lanes.
 
 ## Suggested Next
 
 Continue `plan.md` Step 3.3.2 with one residual global-backed
 materialized-select family at a time, starting with the next adjacent
-same-module global selected-value-chain or pointer-backed helper/route gap
-rather than widening into trailing-join families.
+same-module global selected-value-chain or fixed-offset same-module global
+helper/route gap rather than widening into trailing-join families.
 
 ## Watchouts
 
@@ -37,11 +38,11 @@ rather than widening into trailing-join families.
 - Keep Step 3 packets focused on consumer migration proof, not on reopening
   Step 2.3-style fallback cleanup that already landed for stricter handoff
   surfaces.
-- The plain same-module global selected-values family now has route,
-  return-context, non-compare entry-carrier, and helper passthrough-drift
-  compare-join proof for both direct and `EdgeStoreSlot` lanes, so the next
-  packet should move to the next residual Step 3.3.2 family instead of
-  reopening this surface.
+- The plain pointer-backed same-module global selected-values family now has
+  route, return-context, non-compare entry-carrier, and helper
+  passthrough-drift compare-join proof for both direct and `EdgeStoreSlot`
+  lanes, so the next packet should move to the next residual Step 3.3.2
+  family instead of reopening this surface.
 
 ## Proof
 
@@ -49,7 +50,7 @@ Ran the delegated proof command
 `cmake --build --preset default --target backend_x86_handoff_boundary_test && ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 and wrote the canonical proof log to `test_after.log`. The focused
 `backend_x86_handoff_boundary` proof passed after extending the plain
-same-module global compare-join helper coverage so the shared prepared
-return-context handoff ignores true-lane and false-lane passthrough topology
-drift for both direct and `EdgeStoreSlot` lanes. `test_after.log` is the
-proof artifact for this packet.
+pointer-backed same-module global compare-join helper coverage so the shared
+prepared return-context handoff ignores true-lane and false-lane passthrough
+topology drift for both direct and `EdgeStoreSlot` lanes. `test_after.log`
+is the proof artifact for this packet.
