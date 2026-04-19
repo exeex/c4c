@@ -406,6 +406,9 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
     return std::nullopt;
   }
 
+  const bool has_authoritative_prepared_control_flow =
+      prepared_names != nullptr && function_control_flow != nullptr;
+
   const auto resolve_slot_return_block =
       [&](std::string_view label, std::string_view slot_name) -> const c4c::backend::bir::Block* {
     const auto* block = find_block(function, label);
@@ -471,6 +474,19 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
     return target_block;
   };
 
+  const auto resolve_countdown_successor_target =
+      [&](const c4c::backend::bir::Block& source_block) -> const c4c::backend::bir::Block* {
+    const auto* target_block = resolve_authoritative_prepared_branch_target(source_block);
+    if (target_block != nullptr) {
+      return target_block;
+    }
+    if (has_authoritative_prepared_control_flow) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
+    }
+    return find_block(function, source_block.terminator.target_label);
+  };
+
   const auto match_counter_init_block =
       [&](const c4c::backend::bir::Block* block,
           std::optional<std::string_view> expected_slot_name)
@@ -498,10 +514,7 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
       last_store = store;
     }
 
-    const auto* next_block = resolve_authoritative_prepared_branch_target(*block);
-    if (next_block == nullptr) {
-      next_block = find_block(function, block->terminator.target_label);
-    }
+    const auto* next_block = resolve_countdown_successor_target(*block);
     if (last_store == nullptr || next_block == nullptr) {
       return std::nullopt;
     }
@@ -785,10 +798,7 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
           body_store->value.type != c4c::backend::bir::TypeKind::I32) {
         return std::nullopt;
       }
-      const auto* next_block = resolve_authoritative_prepared_branch_target(*body_block);
-      if (next_block == nullptr) {
-        next_block = find_block(function, body_block->terminator.target_label);
-      }
+      const auto* next_block = resolve_countdown_successor_target(*body_block);
       if (next_block != cond_block) {
         return std::nullopt;
       }
@@ -840,11 +850,7 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
 
     if (segment.cond_block == nullptr &&
         segment.entry_target->terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
-      const auto* candidate_cond =
-          resolve_authoritative_prepared_branch_target(*segment.entry_target);
-      if (candidate_cond == nullptr) {
-        candidate_cond = find_block(function, segment.entry_target->terminator.target_label);
-      }
+      const auto* candidate_cond = resolve_countdown_successor_target(*segment.entry_target);
       if (const auto cond_match = match_cond_block(candidate_cond); cond_match.has_value()) {
         const auto cond_targets =
             resolve_cond_targets(*candidate_cond, *cond_match->first, *cond_match->second);

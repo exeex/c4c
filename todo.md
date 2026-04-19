@@ -5,27 +5,28 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 2.3
 Current Step Title: Finish Contract-Strict CFG Handoff Surfaces
-Plan Review Counter: 1 / 10
+Plan Review Counter: 2 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another `plan.md` Step 2.3 slice for idea 62. The loop-join
-countdown matcher in `src/backend/mir/x86/codegen/prepared_countdown_render.cpp`
-now resolves entry carriers, transparent-prefix predecessors, init handoff
-branches, and loop body backedges from authoritative prepared single-successor
-targets instead of trusting raw `terminator.target_label` drift after prepare.
-The x86 handoff boundary countdown suite now proves both the minimal loop join
-and the preheader-chain route still emit the canonical asm even when those raw
-single-successor labels are mutated away from the prepared CFG contract.
+countdown fallback in `src/backend/mir/x86/codegen/prepared_countdown_render.cpp`
+now routes continuation-entry and continuation-body successor discovery through
+one strict prepared-control-flow helper, so once prepared CFG metadata is
+present the matcher throws on missing authoritative branch ownership instead of
+reopening raw `terminator.target_label` recovery. The x86 handoff boundary
+countdown suite now proves both the continuation init carrier and the
+continuation body backedge stay stable under raw branch-target drift.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2.3 by auditing the remaining local countdown fallback
-paths in `src/backend/mir/x86/codegen/prepared_countdown_render.cpp` that still
-drop to raw `target_label` recovery when a strict prepared single-successor or
-compare-target contract should already be authoritative, especially the
-two-segment matcher paths around continuation-entry/body successor discovery.
+Continue `plan.md` Step 2.3 by deciding whether the only remaining
+`target_label` read in `src/backend/mir/x86/codegen/prepared_countdown_render.cpp`
+should stay as the raw-only fallback for no-prepared-context callers or be
+pulled into a broader Step 3 consumer-migration cleanup. If Step 2.3 still
+owns it, prove that choice against the local countdown route without widening
+into unrelated emitters.
 
 ## Watchouts
 
@@ -46,22 +47,20 @@ two-segment matcher paths around continuation-entry/body successor discovery.
   prepared passthrough branch targets over drifted raw local labels, but keep
   the remaining branch-carrier consumers equally strict about not reopening
   raw successor recovery once shared prepare publishes a control-flow block.
-- `prepared_countdown_render.cpp` now consumes prepared control-flow block
-  successor labels even when a local countdown segment does not have a
-  dedicated prepared branch-condition record; keep that route strict about
-  rejecting mismatched authoritative metadata instead of silently falling back
-  to raw terminator drift.
-- The remaining raw `target_label` reads are now concentrated in the broader
-  local countdown fallback matcher rather than the loop-join handoff path;
-  keep the next packet focused on whether those sites belong in Step 2.3
-  contract-hardening or in the wider Step 3 consumer migration.
+- `prepared_countdown_render.cpp` now uses a shared strict successor resolver
+  for the local countdown matcher; with prepared control-flow present, missing
+  authoritative branch ownership should still be treated as a contract failure
+  rather than as permission to reopen raw successor drift.
+- The only remaining raw `target_label` read in this file now sits behind the
+  no-prepared-context path inside that shared helper; keep the next packet
+  explicit about whether that non-authoritative route still belongs in Step 2.3
+  or should wait for broader Step 3 consumer cleanup.
 
 ## Proof
 
 Ran the delegated proof command
 `cmake --build --preset default --target backend_x86_handoff_boundary_test && ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
 and wrote the canonical proof log to `test_after.log`. The focused
-`backend_x86_handoff_boundary` proof passed after adding drift coverage for the
-loop-join entry/body single-successor carriers and for the transparent
-preheader-chain carrier path. `test_after.log` matched `test_before.log`
-except for the expected real-time duration line.
+`backend_x86_handoff_boundary` proof passed after adding continuation-body
+branch-target drift coverage for the two-segment local countdown fallback.
+`test_after.log` is the proof artifact for this packet.
