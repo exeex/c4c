@@ -18,7 +18,7 @@
 #include <string>
 
 #include "../builtin.hpp"
-#include "../string_id_table.hpp"
+#include "../../shared/text_id_table.hpp"
 
 namespace c4c {
 

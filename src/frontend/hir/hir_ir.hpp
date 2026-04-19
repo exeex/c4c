@@ -29,7 +29,7 @@ enum class HirPipelineStage {
 
 #include "ast.hpp"
 #include "source_profile.hpp"
-#include "../string_id_table.hpp"
+#include "../../shared/text_id_table.hpp"
 #include "../../target_profile.hpp"
 
 namespace c4c::sema {

@@ -4,7 +4,7 @@
 #include <string>
 
 #include "source_profile.hpp"
-#include "../string_id_table.hpp"
+#include "../../shared/text_id_table.hpp"
 
 namespace c4c {
 

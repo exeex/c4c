@@ -27,7 +27,7 @@
 #include "operands.hpp"
 #include "types.hpp"
 #include "ast.hpp"  // TypeSpec, TypeBase
-#include "../../frontend/string_id_table.hpp"
+#include "../../shared/text_id_table.hpp"
 #include "../../target_profile.hpp"
 
 namespace c4c::codegen::lir {
