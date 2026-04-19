@@ -2152,8 +2152,13 @@ find_prepared_short_circuit_continuation_targets(
     const PreparedControlFlowFunction& function_cf,
     const bir::Function& function,
     std::string_view source_block_label) {
+  const auto source_block_label_id =
+      resolve_prepared_block_label_id(names, source_block_label);
+  if (!source_block_label_id.has_value()) {
+    return std::nullopt;
+  }
   return find_prepared_short_circuit_continuation_targets(
-      names, function_cf, function, names.block_labels.find(source_block_label));
+      names, function_cf, function, *source_block_label_id);
 }
 
 [[nodiscard]] inline std::optional<PreparedCompareJoinContinuationTargets>
@@ -2208,8 +2213,13 @@ find_prepared_compare_join_continuation_targets(const PreparedNameTables& names,
                                                 const PreparedControlFlowFunction& function_cf,
                                                 const bir::Function& function,
                                                 std::string_view source_block_label) {
+  const auto source_block_label_id =
+      resolve_prepared_block_label_id(names, source_block_label);
+  if (!source_block_label_id.has_value()) {
+    return std::nullopt;
+  }
   return find_prepared_compare_join_continuation_targets(
-      names, function_cf, function, names.block_labels.find(source_block_label));
+      names, function_cf, function, *source_block_label_id);
 }
 
 [[nodiscard]] constexpr PreparedBranchTargetLabels prepared_compare_join_entry_target_labels(
@@ -2354,8 +2364,13 @@ find_prepared_short_circuit_join_context(const PreparedNameTables& names,
                                          const PreparedControlFlowFunction& function_cf,
                                          const bir::Function& function,
                                          std::string_view source_block_label) {
+  const auto source_block_label_id =
+      resolve_prepared_block_label_id(names, source_block_label);
+  if (!source_block_label_id.has_value()) {
+    return std::nullopt;
+  }
   return find_prepared_short_circuit_join_context(
-      names, function_cf, function, names.block_labels.find(source_block_label));
+      names, function_cf, function, *source_block_label_id);
 }
 
 [[nodiscard]] inline std::optional<PreparedShortCircuitBranchPlan>
