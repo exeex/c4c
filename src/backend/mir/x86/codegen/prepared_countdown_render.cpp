@@ -375,12 +375,14 @@ std::optional<std::string> render_prepared_countdown_entry_routes_if_supported(
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix) {
-  if (prepared_names != nullptr && function_control_flow != nullptr) {
-    if (const auto rendered_loop_join = render_prepared_loop_join_countdown_if_supported(
-            function, entry, *prepared_names, *function_control_flow, prepared_arch, asm_prefix);
-        rendered_loop_join.has_value()) {
-      return rendered_loop_join;
-    }
+  if (prepared_names == nullptr || function_control_flow == nullptr) {
+    return std::nullopt;
+  }
+
+  if (const auto rendered_loop_join = render_prepared_loop_join_countdown_if_supported(
+          function, entry, *prepared_names, *function_control_flow, prepared_arch, asm_prefix);
+      rendered_loop_join.has_value()) {
+    return rendered_loop_join;
   }
 
   const auto layout = build_prepared_module_local_slot_layout(function, prepared_arch);
@@ -405,9 +407,9 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
       prepared_arch != c4c::TargetArch::X86_64) {
     return std::nullopt;
   }
-
-  const bool has_authoritative_prepared_control_flow =
-      prepared_names != nullptr && function_control_flow != nullptr;
+  if (prepared_names == nullptr || function_control_flow == nullptr) {
+    return std::nullopt;
+  }
 
   const auto resolve_slot_return_block =
       [&](std::string_view label, std::string_view slot_name) -> const c4c::backend::bir::Block* {
@@ -441,21 +443,19 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
 
   const auto resolve_authoritative_prepared_branch_target =
       [&](const c4c::backend::bir::Block& source_block) -> const c4c::backend::bir::Block* {
-    if (function_control_flow == nullptr || prepared_names == nullptr) {
-      return nullptr;
-    }
-
     const auto block_label_id =
         c4c::backend::prepare::resolve_prepared_block_label_id(*prepared_names,
                                                                source_block.label);
     if (!block_label_id.has_value()) {
-      return nullptr;
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
     }
 
     const auto* prepared_block = c4c::backend::prepare::find_prepared_control_flow_block(
         *function_control_flow, *block_label_id);
     if (prepared_block == nullptr) {
-      return nullptr;
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
     }
     if (prepared_block->terminator_kind != c4c::backend::bir::TerminatorKind::Branch ||
         prepared_block->branch_target_label == c4c::kInvalidBlockLabel) {
@@ -476,15 +476,7 @@ std::optional<std::string> render_prepared_local_i32_countdown_loop_if_supported
 
   const auto resolve_countdown_successor_target =
       [&](const c4c::backend::bir::Block& source_block) -> const c4c::backend::bir::Block* {
-    const auto* target_block = resolve_authoritative_prepared_branch_target(source_block);
-    if (target_block != nullptr) {
-      return target_block;
-    }
-    if (has_authoritative_prepared_control_flow) {
-      throw std::invalid_argument(
-          "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
-    }
-    return find_block(function, source_block.terminator.target_label);
+    return resolve_authoritative_prepared_branch_target(source_block);
   };
 
   const auto match_counter_init_block =

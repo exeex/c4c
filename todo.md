@@ -5,28 +5,25 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 2.3
 Current Step Title: Finish Contract-Strict CFG Handoff Surfaces
-Plan Review Counter: 2 / 10
+Plan Review Counter: 3 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed another `plan.md` Step 2.3 slice for idea 62. The loop-join
-countdown fallback in `src/backend/mir/x86/codegen/prepared_countdown_render.cpp`
-now routes continuation-entry and continuation-body successor discovery through
-one strict prepared-control-flow helper, so once prepared CFG metadata is
-present the matcher throws on missing authoritative branch ownership instead of
-reopening raw `terminator.target_label` recovery. The x86 handoff boundary
-countdown suite now proves both the continuation init carrier and the
-continuation body backedge stay stable under raw branch-target drift.
+Completed another `plan.md` Step 2.3 slice for idea 62. The countdown entry
+route in `src/backend/mir/x86/codegen/prepared_countdown_render.cpp` is now
+strictly prepared-only, and the local countdown successor resolver no longer
+keeps a raw `terminator.target_label` escape hatch behind a missing prepared
+context branch. This keeps the countdown handoff surface aligned with the
+authoritative prepared CFG contract instead of preserving dead non-authoritative
+slack inside a prepared-module-only route.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2.3 by deciding whether the only remaining
-`target_label` read in `src/backend/mir/x86/codegen/prepared_countdown_render.cpp`
-should stay as the raw-only fallback for no-prepared-context callers or be
-pulled into a broader Step 3 consumer-migration cleanup. If Step 2.3 still
-owns it, prove that choice against the local countdown route without widening
-into unrelated emitters.
+Continue `plan.md` Step 2.3 by checking whether any other contract-strict x86
+handoff helpers still expose raw single-successor recovery after prepared CFG
+metadata is already available. If countdown was the last such route, move the
+next packet toward Step 3 consumer migration rather than reopening this helper.
 
 ## Watchouts
 
@@ -47,14 +44,10 @@ into unrelated emitters.
   prepared passthrough branch targets over drifted raw local labels, but keep
   the remaining branch-carrier consumers equally strict about not reopening
   raw successor recovery once shared prepare publishes a control-flow block.
-- `prepared_countdown_render.cpp` now uses a shared strict successor resolver
-  for the local countdown matcher; with prepared control-flow present, missing
-  authoritative branch ownership should still be treated as a contract failure
-  rather than as permission to reopen raw successor drift.
-- The only remaining raw `target_label` read in this file now sits behind the
-  no-prepared-context path inside that shared helper; keep the next packet
-  explicit about whether that non-authoritative route still belongs in Step 2.3
-  or should wait for broader Step 3 consumer cleanup.
+- `prepared_countdown_render.cpp` now treats countdown entry routing as a
+  prepared-only contract surface, so future cleanup in this file should target
+  broader consumer migration rather than reintroducing raw no-context
+  fallbacks.
 
 ## Proof
 
