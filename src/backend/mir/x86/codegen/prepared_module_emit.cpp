@@ -500,38 +500,15 @@ std::string emit_prepared_module(
     throw std::invalid_argument(
         "x86 backend emitter only supports i32 return values through the canonical prepared-module handoff");
   }
-  if (const auto rendered_direct_calls =
-          c4c::backend::x86::render_prepared_minimal_direct_extern_call_sequence_if_supported(
+  if (const auto rendered_single_block_return =
+          c4c::backend::x86::render_prepared_single_block_return_dispatch_if_supported(
               module.module, function, entry, prepared_arch, asm_prefix, *return_register,
               bounded_same_module_helper_global_names, find_string_constant, find_same_module_global,
               render_private_data_label, render_asm_symbol_name, emit_string_constant_data,
-              emit_same_module_global_data, prepend_bounded_same_module_helpers);
-      rendered_direct_calls.has_value()) {
-    return *rendered_direct_calls;
-  }
-  if (const auto rendered_constant_folded =
-          render_prepared_constant_folded_single_block_return_if_supported(
-              function, prepared_arch, asm_prefix, *return_register);
-      rendered_constant_folded.has_value()) {
-    return *rendered_constant_folded;
-  }
-  if (const auto rendered_local_slot = render_prepared_minimal_local_slot_return_if_supported(
-          function, prepared_arch, asm_prefix);
-      rendered_local_slot.has_value()) {
-    return *rendered_local_slot;
-  }
-  if (const auto rendered_local_i16_i64_return =
-          c4c::backend::x86::render_prepared_local_i16_i64_sub_return_if_supported(
-              function, entry, prepared_arch, asm_prefix);
-      rendered_local_i16_i64_return.has_value()) {
-    return *rendered_local_i16_i64_return;
-  }
-  if (const auto rendered_minimal_return =
-          c4c::backend::x86::render_prepared_minimal_immediate_or_param_return_if_supported(
-              function, entry, prepared_arch, asm_prefix, *return_register,
+              emit_same_module_global_data, prepend_bounded_same_module_helpers,
               minimal_param_register);
-      rendered_minimal_return.has_value()) {
-    return *rendered_minimal_return;
+      rendered_single_block_return.has_value()) {
+    return *rendered_single_block_return;
   }
 
   throw_multi_defined_contract_if_active();
