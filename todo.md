@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_control_flow.md
 Source Plan Path: plan.md
-Current Step ID: 3.3.3
-Current Step Title: Close Trailing-Join And Residual Shared Helper Proof Gaps
-Plan Review Counter: 10 / 10
+Current Step ID: 3.3.3.2
+Current Step Title: Finish Trailing Arithmetic And Shift Helper Coverage
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished

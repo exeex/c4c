@@ -351,8 +351,85 @@ Actions:
 
 Completion check:
 
-- Step 3.3 has no remaining residual materialized-select, trailing-join, or
+- the Step 3.3.3 substeps together leave no residual trailing-join or late
   shared-helper proof gap that would justify another broad catch-all packet
+
+##### Step 3.3.3.1: Preserve Trailing Bitwise Helper Render-Contract Coverage
+
+Goal: keep the trailing bitwise helper lanes explicitly covered so the compare-
+join render contract stays authoritative for `xor`, `and`, and `or` families
+in addition to their route-level prepared-control-flow proof.
+
+Primary targets:
+
+- trailing bitwise joined-branch helper proof surfaces in
+  `tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp`
+
+Actions:
+
+- keep trailing bitwise helper proof limited to explicit compare-join render-
+  contract coverage on one adjacent operator family at a time
+- preserve the already-landed route-level and helper-level prepared-control-
+  flow contract checks without reopening unrelated trailing arithmetic or shift
+  families
+
+Completion check:
+
+- the trailing `xor`, `and`, and `or` helper lanes all have explicit compare-
+  join render-contract proof aligned with the authoritative prepared contract
+
+##### Step 3.3.3.2: Finish Trailing Arithmetic And Shift Helper Coverage
+
+Goal: close the remaining trailing arithmetic and shift helper proof lanes so
+the compare-join render contract is explicit for the trailing `mul`, `shl`,
+`lshr`, and `ashr` families, not just their route-level ownership checks.
+
+Primary targets:
+
+- trailing arithmetic and shift helper proof surfaces in
+  `tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp`
+- any directly-adjacent prepared compare-join helper path needed to expose
+  those render-contract checks
+
+Actions:
+
+- add one operator family at a time for `mul`, `shl`, `lshr`, and `ashr`
+  without widening into broader materialized-select or countdown work
+- keep each packet scoped to helper-level render-contract proof on top of the
+  already-landed joined-route ownership checks
+
+Completion check:
+
+- the trailing `mul`, `shl`, `lshr`, and `ashr` families all have explicit
+  compare-join render-contract proof aligned with authoritative prepared
+  ownership
+
+##### Step 3.3.3.3: Audit Final Residual Shared Helper Gaps
+
+Goal: confirm Step 3.3 closes without any leftover late helper surface that
+still depends on bespoke CFG interpretation after the explicit trailing helper
+lanes are covered.
+
+Primary targets:
+
+- any remaining late shared-helper surface under
+  `src/backend/mir/x86/codegen/`
+- the narrowest proof surface in
+  `tests/backend/backend_x86_handoff_boundary_joined_branch_test.cpp` needed
+  to close a real leftover gap
+
+Actions:
+
+- verify whether any residual helper path still lacks explicit prepared-
+  contract proof once the trailing arithmetic and shift lanes are covered
+- if one remains, close it with the narrowest adjacent proof packet instead of
+  reopening finished families
+
+Completion check:
+
+- Step 3.3 no longer has any residual late shared-helper gap after the trailing
+  arithmetic, shift, and already-covered bitwise helper lanes are accounted
+  for
 
 ## Step 4: Validate The CFG Ownership Route
 
