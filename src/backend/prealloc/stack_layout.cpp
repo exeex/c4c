@@ -2,9 +2,137 @@
 #include "stack_layout/support.hpp"
 
 #include <algorithm>
+#include <optional>
+#include <string_view>
+#include <unordered_map>
 #include <utility>
 
 namespace c4c::backend::prepare {
+
+namespace {
+
+using FrameSlotMap =
+    std::unordered_map<std::string_view, const PreparedFrameSlot*>;
+
+[[nodiscard]] FrameSlotMap build_frame_slot_map(
+    const std::vector<PreparedStackObject>& function_objects,
+    const std::vector<PreparedFrameSlot>& function_slots) {
+  std::unordered_map<PreparedObjectId, std::string_view> slot_names_by_object_id;
+  slot_names_by_object_id.reserve(function_objects.size());
+  for (const auto& object : function_objects) {
+    slot_names_by_object_id.emplace(object.object_id, object.source_name);
+  }
+
+  FrameSlotMap frame_slots_by_name;
+  frame_slots_by_name.reserve(function_slots.size());
+  for (const auto& slot : function_slots) {
+    const auto name_it = slot_names_by_object_id.find(slot.object_id);
+    if (name_it == slot_names_by_object_id.end()) {
+      continue;
+    }
+    frame_slots_by_name.emplace(name_it->second, &slot);
+  }
+  return frame_slots_by_name;
+}
+
+[[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_frame_slot_access(
+    std::string_view function_name,
+    std::string_view block_label,
+    std::size_t inst_index,
+    const bir::LoadLocalInst& inst,
+    const FrameSlotMap& frame_slots_by_name) {
+  const auto slot_it = frame_slots_by_name.find(inst.slot_name);
+  if (slot_it == frame_slots_by_name.end()) {
+    return std::nullopt;
+  }
+
+  const std::size_t size_bytes =
+      stack_layout::normalize_size(inst.result.type, inst.result.type == bir::TypeKind::Void
+                                                         ? 0
+                                                         : stack_layout::fallback_type_size(
+                                                               inst.result.type));
+  return PreparedMemoryAccess{
+      .function_name = std::string(function_name),
+      .block_label = std::string(block_label),
+      .inst_index = inst_index,
+      .result_value_name = inst.result.kind == bir::Value::Kind::Named
+                               ? std::optional<std::string>(inst.result.name)
+                               : std::nullopt,
+      .address =
+          PreparedAddress{
+              .base_kind = PreparedAddressBaseKind::FrameSlot,
+              .frame_slot_id = slot_it->second->slot_id,
+              .byte_offset = static_cast<std::int64_t>(inst.byte_offset),
+              .size_bytes = size_bytes,
+              .align_bytes = stack_layout::normalize_alignment(
+                  inst.result.type, inst.align_bytes, size_bytes),
+              .can_use_base_plus_offset = true,
+          },
+  };
+}
+
+[[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_frame_slot_access(
+    std::string_view function_name,
+    std::string_view block_label,
+    std::size_t inst_index,
+    const bir::StoreLocalInst& inst,
+    const FrameSlotMap& frame_slots_by_name) {
+  const auto slot_it = frame_slots_by_name.find(inst.slot_name);
+  if (slot_it == frame_slots_by_name.end()) {
+    return std::nullopt;
+  }
+
+  const std::size_t size_bytes =
+      stack_layout::normalize_size(inst.value.type, inst.value.type == bir::TypeKind::Void
+                                                        ? 0
+                                                        : stack_layout::fallback_type_size(
+                                                              inst.value.type));
+  return PreparedMemoryAccess{
+      .function_name = std::string(function_name),
+      .block_label = std::string(block_label),
+      .inst_index = inst_index,
+      .stored_value_name = inst.value.kind == bir::Value::Kind::Named
+                               ? std::optional<std::string>(inst.value.name)
+                               : std::nullopt,
+      .address =
+          PreparedAddress{
+              .base_kind = PreparedAddressBaseKind::FrameSlot,
+              .frame_slot_id = slot_it->second->slot_id,
+              .byte_offset = static_cast<std::int64_t>(inst.byte_offset),
+              .size_bytes = size_bytes,
+              .align_bytes = stack_layout::normalize_alignment(
+                  inst.value.type, inst.align_bytes, size_bytes),
+              .can_use_base_plus_offset = true,
+          },
+  };
+}
+
+void append_direct_frame_slot_accesses(PreparedAddressingFunction& function_addressing,
+                                       const bir::Function& function,
+                                       const FrameSlotMap& frame_slots_by_name) {
+  for (const auto& block : function.blocks) {
+    for (std::size_t inst_index = 0; inst_index < block.insts.size(); ++inst_index) {
+      const auto& inst = block.insts[inst_index];
+      if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
+        if (auto access = build_direct_frame_slot_access(
+                function.name, block.label, inst_index, *load_local, frame_slots_by_name);
+            access.has_value()) {
+          function_addressing.accesses.push_back(std::move(*access));
+        }
+        continue;
+      }
+      if (const auto* store_local = std::get_if<bir::StoreLocalInst>(&inst)) {
+        if (auto access = build_direct_frame_slot_access(
+                function.name, block.label, inst_index, *store_local, frame_slots_by_name);
+            access.has_value()) {
+          function_addressing.accesses.push_back(std::move(*access));
+        }
+      }
+    }
+  }
+}
+
+}  // namespace
 
 void BirPreAlloc::run_stack_layout() {
   prepared_.completed_phases.push_back("stack_layout");
@@ -35,11 +163,13 @@ void BirPreAlloc::run_stack_layout() {
         std::max(prepared_.stack_layout.frame_size_bytes, function_frame_size);
     prepared_.stack_layout.frame_alignment_bytes =
         std::max(prepared_.stack_layout.frame_alignment_bytes, function_frame_alignment);
-    prepared_.addressing.functions.push_back(PreparedAddressingFunction{
+    auto& function_addressing = prepared_.addressing.functions.emplace_back(PreparedAddressingFunction{
         .function_name = function.name,
         .frame_size_bytes = function_frame_size,
         .frame_alignment_bytes = function_frame_alignment,
     });
+    append_direct_frame_slot_accesses(
+        function_addressing, function, build_frame_slot_map(function_objects, function_slots));
 
     prepared_.stack_layout.objects.insert(prepared_.stack_layout.objects.end(),
                                           std::make_move_iterator(function_objects.begin()),

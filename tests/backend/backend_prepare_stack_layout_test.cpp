@@ -242,8 +242,58 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
       function_addressing->frame_alignment_bytes != 4) {
     return fail("expected prepared addressing frame facts to mirror stack-layout metrics");
   }
-  if (!function_addressing->accesses.empty()) {
-    return fail("expected the frame-fact bootstrap packet to leave per-instruction accesses empty");
+  if (function_addressing->accesses.size() != 2) {
+    return fail("expected direct frame-slot load/store accesses for the surviving home slot only");
+  }
+
+  const auto* live_object = find_stack_object(prepared, "lv.live");
+  if (live_object == nullptr) {
+    return fail("expected the live local slot to produce a stack-layout object");
+  }
+  const auto* live_slot = find_frame_slot(prepared, live_object->object_id);
+  if (live_slot == nullptr) {
+    return fail("expected the live local slot to keep a canonical frame slot");
+  }
+
+  const auto* store_access =
+      prepare::find_prepared_memory_access(*function_addressing, "entry", 2);
+  if (store_access == nullptr) {
+    return fail("expected prepared addressing to record the direct frame-slot store");
+  }
+  if (store_access->result_value_name.has_value() ||
+      !store_access->stored_value_name.has_value() ||
+      *store_access->stored_value_name != "coalesced" ||
+      store_access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+      !store_access->address.frame_slot_id.has_value() ||
+      *store_access->address.frame_slot_id != live_slot->slot_id ||
+      store_access->address.byte_offset != 0 ||
+      store_access->address.size_bytes != 4 ||
+      store_access->address.align_bytes != 4 ||
+      !store_access->address.can_use_base_plus_offset) {
+    return fail("expected prepared addressing to preserve the direct live-slot store facts");
+  }
+
+  const auto* load_access =
+      prepare::find_prepared_memory_access(*function_addressing, "entry", 3);
+  if (load_access == nullptr) {
+    return fail("expected prepared addressing to record the direct frame-slot load");
+  }
+  if (!load_access->result_value_name.has_value() ||
+      *load_access->result_value_name != "loaded" ||
+      load_access->stored_value_name.has_value() ||
+      load_access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+      !load_access->address.frame_slot_id.has_value() ||
+      *load_access->address.frame_slot_id != live_slot->slot_id ||
+      load_access->address.byte_offset != 0 ||
+      load_access->address.size_bytes != 4 ||
+      load_access->address.align_bytes != 4 ||
+      !load_access->address.can_use_base_plus_offset) {
+    return fail("expected prepared addressing to preserve the direct live-slot load facts");
+  }
+
+  if (prepare::find_prepared_memory_access(*function_addressing, "entry", 0) != nullptr ||
+      prepare::find_prepared_memory_access(*function_addressing, "entry", 1) != nullptr) {
+    return fail("expected coalesced scratch accesses to stay out of prepared frame-slot records");
   }
   if (prepare::find_prepared_addressing(prepared, "missing_function") != nullptr) {
     return fail("expected prepared addressing frame-fact bootstrap to reject missing functions");
