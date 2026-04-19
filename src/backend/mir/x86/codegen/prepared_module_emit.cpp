@@ -4356,6 +4356,12 @@ std::string emit_prepared_module(
             find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
                 module.module, *function_control_flow, function, entry, param, false);
     if (!resolved_render_contract.has_value()) {
+      if (c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
+              *function_control_flow, entry.label)
+              .has_value()) {
+        throw std::invalid_argument(
+            "x86 backend emitter requires the authoritative prepared compare-join handoff through the canonical prepared-module handoff");
+      }
       return std::nullopt;
     }
 
