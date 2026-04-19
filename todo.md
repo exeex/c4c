@@ -8,74 +8,36 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed a Step 5 Validate The Route packet in `todo.md` by replacing the
-single-test `^backend_x86_handoff_boundary$` acceptance note with a broader
-`^backend_` checkpoint, preserving `test_after.log`, and recording that the
-broader backend bucket currently reproduces the same four known route failures
-while `backend_x86_handoff_boundary` still passes inside that broader scope.
+Completed a Step 3 Consume Prepared Control-Flow In X86 packet by removing the
+x86 emitter's local rebuilt short-circuit join-context copy and feeding
+`PreparedShortCircuitJoinContext` directly into the shared short-circuit
+branch-plan helper in `src/backend/mir/x86/codegen/prepared_module_emit.cpp`.
 
 ## Suggested Next
 
-Do not queue another adjacent Step 3 compare-join passthrough-family packet
-yet. The next accepted packet should either remove one of the four current
-`^backend_` failures so the broader checkpoint can become monotonic, or move
-to a materially different prepared control-flow consumer seam only after the
-supervisor explicitly accepts the current broader-proof state.
+Stay in Step 3 but move to another prepared control-flow consumer seam with an
+observable end-to-end gain, such as tightening a non-short-circuit branch/join
+consumer path to use a shared prepared render contract instead of emitter-local
+reconstruction.
 
 ## Watchouts
 
-- Keep this family in Step 3 semantic consumer helpers; do not widen into Step
-  4 file organization, idea 57, idea 59, idea 60, idea 61, or countdown-loop
-  route changes.
-- A route review judged the route `drifting`, not because Step 3 failed, but
-  because packet selection and proof discipline narrowed too far around one
-  compare-join passthrough family. Do not queue another adjacent
-  passthrough-coverage packet until the broader proof gap is addressed.
-- Do not solve remaining compare-join gaps with x86-side CFG scans,
-  testcase-shaped matcher growth, or broad multi-block rediscovery. This
-  family should only allow one extra empty passthrough after an already-
-  authoritative compare lane when the prepared branch labels and join-transfer
-  ownership already identify the real source edges, including the
-  fixed-offset pointer-backed selected-value chain return-context variant that
-  now has both true-lane and false-lane passthrough proof for the plain helper
-  path and the paired EdgeStoreSlot carrier without any backend change.
-- Keep follow-on work focused on places where prepared branch labels and join
-  ownership are already authoritative; do not reintroduce source-label
-  equality checks, local join bundle reconstruction, or emitter-local semantic
-  recovery.
-- Treat the optional-empty-passthrough recognition in shared helpers as route
-  debt, not as a license to keep cloning more same-shape variants. Follow-on
-  work should either prove the broader route or strengthen prepared ownership
-  more generally.
-- The broader `^backend_` checkpoint is stable but not acceptance-green: the
-  bucket still fails in
-  `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
-  `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
-  `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`,
-  and
-  `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`.
-  Those failures sit outside this packet's owned files.
-- `test_before.log` and `test_after.log` are byte-identical for `^backend_`,
-  so the broader bucket did not regress, but the monotonic regression checker
-  still returns failure because pass count stayed flat instead of increasing.
-- When a test helper appends passthrough blocks to `function.blocks`, reacquire
-  any cached block pointers before calling prepared-helper classifiers; this
-  packet needed that harness-only fix to keep the proof scoped to the intended
-  ownership contract.
-- The review's broader-proof requirement is now satisfied in scope, but not in
-  acceptance quality: future Step 3 same-family work should not treat this as
-  a green milestone until the supervisor decides how to handle the stable
-  broader-bucket failures.
+- Keep this route in Step 3 consumer work; do not widen into Step 4 file
+ organization, idea 57, idea 59, idea 60, idea 61, or the unrelated
+ `^backend_` semantic-lowering failures.
+- This packet was intentionally a consumer-side contract cleanup, not a new
+ capability family: it should not be used to justify more compare-join
+ passthrough coverage or emitter-local matcher growth.
+- Follow-on packets should keep consuming prepared helper outputs directly
+ where possible instead of copying shared short-circuit or join metadata back
+ into x86-local structs.
+- The broader `^backend_` checkpoint still has the same four known failures in
+ variadic and dynamic-member-array semantic lowering outside this packet's
+ owned files.
 
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
---output-on-failure -R '^backend_' | tee test_after.log`.
-This broader backend checkpoint preserves `test_after.log` for the full
-`^backend_` bucket and reproduces the same four failing route cases already
-present in `test_before.log`; `backend_x86_handoff_boundary` still passes
-within that broader subset. A follow-on monotonic comparison with
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
---before test_before.log --after test_after.log` reported zero new failing
-tests and zero resolved failing tests, but still returned failure because the
-pass count did not strictly increase.
+--output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
+The focused Step 3 handoff proof passed and preserved `test_after.log` at the
+repo root.

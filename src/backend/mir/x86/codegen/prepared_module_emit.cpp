@@ -1535,14 +1535,6 @@ std::string emit_prepared_module(
       std::string compare_setup;
       std::string false_branch_opcode;
     };
-    struct ShortCircuitJoinContext {
-      const c4c::backend::prepare::PreparedJoinTransfer* join_transfer = nullptr;
-      const c4c::backend::bir::Block* join_block = nullptr;
-      const c4c::backend::prepare::PreparedEdgeValueTransfer* true_transfer = nullptr;
-      const c4c::backend::prepare::PreparedEdgeValueTransfer* false_transfer = nullptr;
-      c4c::backend::prepare::PreparedClassifiedShortCircuitIncoming classified_incoming;
-      c4c::backend::prepare::PreparedShortCircuitContinuationLabels continuation_plan;
-    };
     struct ShortCircuitRenderContext {
       bool omit_true_continuation = false;
       bool omit_false_lane = false;
@@ -1645,10 +1637,10 @@ std::string emit_prepared_module(
           .continuation = std::move(continuation),
       };
     };
-    const auto build_short_circuit_join_context =
+    const auto find_short_circuit_join_context =
         [&](const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
             std::string_view source_block_label)
-        -> std::optional<ShortCircuitJoinContext> {
+        -> std::optional<c4c::backend::prepare::PreparedShortCircuitJoinContext> {
       const auto prepared_join_context =
           c4c::backend::prepare::find_prepared_short_circuit_join_context(
               control_flow, function, source_block_label);
@@ -1658,26 +1650,7 @@ std::string emit_prepared_module(
           prepared_join_context->join_block == nullptr) {
         return std::nullopt;
       }
-
-      return ShortCircuitJoinContext{
-          .join_transfer = prepared_join_context->join_transfer,
-          .join_block = prepared_join_context->join_block,
-          .true_transfer = prepared_join_context->true_transfer,
-          .false_transfer = prepared_join_context->false_transfer,
-          .classified_incoming = prepared_join_context->classified_incoming,
-          .continuation_plan =
-              c4c::backend::prepare::PreparedShortCircuitContinuationLabels{
-                  .incoming_label = {},
-                  .true_label = prepared_join_context->continuation_true_label,
-                  .false_label = prepared_join_context->continuation_false_label,
-              },
-      };
-    };
-    const auto find_short_circuit_join_context =
-        [&](const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
-            std::string_view source_block_label)
-        -> std::optional<ShortCircuitJoinContext> {
-      return build_short_circuit_join_context(control_flow, source_block_label);
+      return prepared_join_context;
     };
     const auto build_short_circuit_plan =
         [&](const c4c::backend::prepare::PreparedShortCircuitBranchPlan& prepared_plan)
@@ -2483,7 +2456,7 @@ std::string emit_prepared_module(
           const auto build_short_circuit_entry_render_plan =
               [&](const c4c::backend::bir::Block& source_block,
                   const c4c::backend::bir::BinaryInst& compare,
-                  const ShortCircuitJoinContext& join_context)
+                  const c4c::backend::prepare::PreparedShortCircuitJoinContext& join_context)
               -> std::optional<CompareDrivenBranchRenderPlan> {
             const auto compare_context =
                 build_short_circuit_entry_compare_context(find_branch_condition,
@@ -2503,18 +2476,7 @@ std::string emit_prepared_module(
 
             const auto prepared_short_circuit_plan =
                 c4c::backend::prepare::find_prepared_short_circuit_branch_plan(
-                    c4c::backend::prepare::PreparedShortCircuitJoinContext{
-                        .join_transfer = join_context.join_transfer,
-                        .true_transfer = join_context.true_transfer,
-                        .false_transfer = join_context.false_transfer,
-                        .join_block = join_context.join_block,
-                        .classified_incoming = join_context.classified_incoming,
-                        .continuation_true_label =
-                            join_context.continuation_plan.true_label,
-                        .continuation_false_label =
-                            join_context.continuation_plan.false_label,
-                    },
-                    *prepared_target_labels);
+                    join_context, *prepared_target_labels);
             if (!prepared_short_circuit_plan.has_value()) {
               return std::nullopt;
             }
