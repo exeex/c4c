@@ -5,7 +5,7 @@ Source Idea Path: ideas/open/63_complete_phi_legalization_and_parallel_copy_reso
 Source Plan Path: plan.md
 Current Step ID: 3.2
 Current Step Title: Keep Downstream Phi Consumers Contract-Strict
-Plan Review Counter: 0 / 10
+Plan Review Counter: 1 / 10
 # Current Packet
 
 ## Just Finished
@@ -15,7 +15,8 @@ teaching the x86 loop-countdown prepared-module consumer to follow
 authoritative loop-carry edge values and branch metadata without requiring
 slot-shaped `storage_name` ownership on the prepared join transfer. The
 countdown boundary proof now clears the loop-carry join `storage_name` fields
-after prepare and still expects the same canonical asm.
+after prepare and still expects the same canonical asm while preserving the
+actual prepared-BIR entry handoff carrier check.
 
 ## Suggested Next
 
@@ -45,9 +46,9 @@ can follow authoritative prepared edge values instead of local slot recovery.
 
 ## Proof
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(prepare_(liveness|phi_materialize)|x86_handoff_boundary_loop_countdown)' > test_after.log 2>&1`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(prepare_(liveness|phi_materialize)|x86_handoff_boundary)$' > test_after.log 2>&1`
 ran for this Step 3.2 packet and preserved the canonical proof log in
 `test_after.log`; `backend_prepare_liveness`,
 `backend_prepare_phi_materialize`, and
-`backend_x86_handoff_boundary_loop_countdown` passed with the loop-countdown
-consumer no longer requiring slot-shaped prepared join storage metadata.
+`backend_x86_handoff_boundary` passed with the loop-countdown consumer no
+longer requiring slot-shaped prepared join storage metadata.

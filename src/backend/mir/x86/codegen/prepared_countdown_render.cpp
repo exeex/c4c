@@ -240,9 +240,15 @@ std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
   if (body_block->insts.empty() || loop_block->insts.empty()) {
     return std::nullopt;
   }
+  const auto* loop_carrier =
+      std::get_if<c4c::backend::bir::LoadLocalInst>(&loop_block->insts.front());
   const auto* body_update =
       std::get_if<c4c::backend::bir::BinaryInst>(&body_block->insts.front());
-  if (body_update == nullptr || body_update->opcode != c4c::backend::bir::BinaryOpcode::Sub ||
+  if (loop_carrier == nullptr || loop_carrier->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      loop_carrier->result.type != c4c::backend::bir::TypeKind::I32 ||
+      loop_carrier->result.name != join_transfer->result.name || loop_carrier->byte_offset != 0 ||
+      loop_carrier->address.has_value() || body_update == nullptr ||
+      body_update->opcode != c4c::backend::bir::BinaryOpcode::Sub ||
       body_update->operand_type != c4c::backend::bir::TypeKind::I32 ||
       body_update->result.type != c4c::backend::bir::TypeKind::I32 ||
       body_update->lhs.kind != c4c::backend::bir::Value::Kind::Named ||
@@ -277,7 +283,8 @@ std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
     const auto* init_store =
         std::get_if<c4c::backend::bir::StoreLocalInst>(&candidate.insts.front());
     return init_store != nullptr && init_store->byte_offset == 0 &&
-           !init_store->address.has_value();
+           !init_store->address.has_value() &&
+           init_store->slot_name == loop_carrier->slot_name;
   };
   const auto find_unique_transparent_branch_predecessor =
       [&](const c4c::backend::bir::Block& target_block) -> const c4c::backend::bir::Block* {
