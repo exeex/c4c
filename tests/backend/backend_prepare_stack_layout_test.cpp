@@ -3080,6 +3080,98 @@ int check_rooted_pointer_binary_local_slot_activation(const prepare::PreparedBir
   return 0;
 }
 
+int check_prepared_addressing_contract_activation() {
+  prepare::PreparedBirModule prepared;
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = "main",
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = "main",
+                  .block_label = "entry",
+                  .inst_index = 1,
+                  .result_value_name = std::string("%t0"),
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                          .frame_slot_id = 4,
+                          .byte_offset = 8,
+                          .size_bytes = 4,
+                          .align_bytes = 4,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = "main",
+                  .block_label = "entry",
+                  .inst_index = 2,
+                  .stored_value_name = std::string("%t1"),
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::StringConstant,
+                          .symbol_name = std::string(".L.str0"),
+                          .size_bytes = 8,
+                          .align_bytes = 8,
+                      },
+              },
+          },
+  });
+
+  const auto* function_addressing = prepare::find_prepared_addressing(prepared, "main");
+  if (function_addressing == nullptr) {
+    return fail("expected prepared addressing lookup to find the function contract");
+  }
+  if (function_addressing->frame_size_bytes != 32 ||
+      function_addressing->frame_alignment_bytes != 16) {
+    return fail("expected prepared addressing to preserve frame size and alignment facts");
+  }
+
+  const auto* frame_access =
+      prepare::find_prepared_memory_access(*function_addressing, "entry", 1);
+  if (frame_access == nullptr) {
+    return fail("expected prepared addressing to find the frame-slot access by block and instruction");
+  }
+  if (!frame_access->result_value_name.has_value() || *frame_access->result_value_name != "%t0" ||
+      frame_access->stored_value_name.has_value() ||
+      frame_access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+      !frame_access->address.frame_slot_id.has_value() || *frame_access->address.frame_slot_id != 4 ||
+      frame_access->address.byte_offset != 8 || frame_access->address.size_bytes != 4 ||
+      frame_access->address.align_bytes != 4 ||
+      !frame_access->address.can_use_base_plus_offset) {
+    return fail("expected prepared addressing to preserve direct frame-slot access facts");
+  }
+
+  const auto* symbol_access =
+      prepare::find_prepared_memory_access(*function_addressing, "entry", 2);
+  if (symbol_access == nullptr) {
+    return fail("expected prepared addressing to find the symbol-backed access by block and instruction");
+  }
+  if (symbol_access->result_value_name.has_value() || !symbol_access->stored_value_name.has_value() ||
+      *symbol_access->stored_value_name != "%t1" ||
+      symbol_access->address.base_kind != prepare::PreparedAddressBaseKind::StringConstant ||
+      !symbol_access->address.symbol_name.has_value() ||
+      *symbol_access->address.symbol_name != ".L.str0" ||
+      symbol_access->address.frame_slot_id.has_value() ||
+      symbol_access->address.pointer_value_name.has_value()) {
+    return fail("expected prepared addressing to preserve symbol-backed access facts");
+  }
+
+  if (prepare::find_prepared_memory_access(*function_addressing, "entry", 99) != nullptr) {
+    return fail("expected prepared addressing lookup to reject missing instruction records");
+  }
+  if (prepare::find_prepared_addressing(prepared, "helper") != nullptr) {
+    return fail("expected prepared addressing lookup to reject missing function records");
+  }
+  if (prepare::prepared_address_base_kind_name(prepare::PreparedAddressBaseKind::PointerValue) !=
+      "pointer_value") {
+    return fail("expected prepared addressing base-kind names to stay stable");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -3116,6 +3208,9 @@ int main() {
 
   const auto copy_prepared = prepare_stack_layout_module();
   if (const int rc = check_stack_layout_activation(copy_prepared); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_prepared_addressing_contract_activation(); rc != 0) {
     return rc;
   }
 
