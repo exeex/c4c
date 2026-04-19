@@ -3713,8 +3713,8 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto* true_block = find_block(entry.terminator.true_label);
-    const auto* false_block = find_block(entry.terminator.false_label);
+    const c4c::backend::bir::Block* true_block = find_block(entry.terminator.true_label);
+    const c4c::backend::bir::Block* false_block = find_block(entry.terminator.false_label);
     if (true_block == nullptr || false_block == nullptr || true_block == &entry ||
         false_block == &entry ||
         true_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
@@ -3811,6 +3811,72 @@ std::string emit_prepared_module(
       rendered += "    ret\n";
       return rendered;
     };
+    const auto* function_control_flow = find_control_flow_function();
+    const auto* prepared_branch_condition =
+        function_control_flow == nullptr
+            ? nullptr
+            : c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
+                                                                    entry.label);
+    if (function_control_flow != nullptr &&
+        c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
+            *function_control_flow, entry.label)
+            .has_value()) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
+    }
+
+    auto compare_opcode = compare->opcode;
+    std::int64_t compare_immediate = compare->rhs.immediate;
+    std::string true_label = entry.terminator.true_label;
+    std::string false_label = entry.terminator.false_label;
+    if (prepared_branch_condition != nullptr) {
+      if (!prepared_branch_condition->predicate.has_value() ||
+          !prepared_branch_condition->compare_type.has_value() ||
+          !prepared_branch_condition->lhs.has_value() ||
+          !prepared_branch_condition->rhs.has_value() ||
+          *prepared_branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
+          prepared_branch_condition->condition_value.kind !=
+              c4c::backend::bir::Value::Kind::Named) {
+        return std::nullopt;
+      }
+
+      const bool lhs_is_value_rhs_is_imm =
+          prepared_branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Named &&
+          prepared_branch_condition->lhs->name == sext_updated->result.name &&
+          prepared_branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+          prepared_branch_condition->rhs->type == c4c::backend::bir::TypeKind::I32;
+      const bool rhs_is_value_lhs_is_imm =
+          prepared_branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Named &&
+          prepared_branch_condition->rhs->name == sext_updated->result.name &&
+          prepared_branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+          prepared_branch_condition->lhs->type == c4c::backend::bir::TypeKind::I32;
+      if (!lhs_is_value_rhs_is_imm && !rhs_is_value_lhs_is_imm) {
+        return std::nullopt;
+      }
+
+      compare_opcode = *prepared_branch_condition->predicate;
+      compare_immediate =
+          lhs_is_value_rhs_is_imm ? prepared_branch_condition->rhs->immediate
+                                  : prepared_branch_condition->lhs->immediate;
+      true_label = prepared_branch_condition->true_label;
+      false_label = prepared_branch_condition->false_label;
+    }
+    if (compare_opcode != c4c::backend::bir::BinaryOpcode::Eq &&
+        compare_opcode != c4c::backend::bir::BinaryOpcode::Ne) {
+      return std::nullopt;
+    }
+
+    true_block = find_block(true_label);
+    false_block = find_block(false_label);
+    if (true_block == nullptr || false_block == nullptr || true_block == &entry ||
+        false_block == &entry ||
+        true_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        false_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        !true_block->terminator.value.has_value() || !false_block->terminator.value.has_value() ||
+        !true_block->insts.empty() || !false_block->insts.empty()) {
+      return std::nullopt;
+    }
+
     const auto rendered_true = render_return_block(*true_block);
     const auto rendered_false = render_return_block(*false_block);
     if (!rendered_true.has_value() || !rendered_false.has_value()) {
@@ -3827,12 +3893,12 @@ std::string emit_prepared_module(
     asm_text += "    add eax, 1\n";
     asm_text += "    mov " + short_memory + ", ax\n";
     asm_text += "    movsx eax, " + short_memory + "\n";
-    asm_text += compare->rhs.immediate == 0
+    asm_text += compare_immediate == 0
                     ? "    test eax, eax\n"
                     : "    cmp eax, " +
-                          std::to_string(static_cast<std::int32_t>(compare->rhs.immediate)) + "\n";
+                          std::to_string(static_cast<std::int32_t>(compare_immediate)) + "\n";
     asm_text += "    " +
-                std::string(compare->opcode == c4c::backend::bir::BinaryOpcode::Eq ? "jne" : "je") +
+                std::string(compare_opcode == c4c::backend::bir::BinaryOpcode::Eq ? "jne" : "je") +
                 " .L" + function.name + "_" + false_block->label + "\n";
     asm_text += *rendered_true;
     asm_text += ".L" + function.name + "_" + false_block->label + ":\n";
