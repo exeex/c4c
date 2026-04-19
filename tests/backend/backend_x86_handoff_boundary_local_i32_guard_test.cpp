@@ -151,6 +151,14 @@ std::string expected_minimal_local_i32_immediate_guard_asm_with_frame_size(const
          "    ret\n";
 }
 
+std::string expected_minimal_local_i32_return_asm(const char* function_name, int immediate) {
+  return asm_header(function_name) + "    sub rsp, 16\n"
+         "    mov DWORD PTR [rsp], " + std::to_string(immediate) + "\n"
+         "    mov eax, DWORD PTR [rsp]\n"
+         "    add rsp, 16\n"
+         "    ret\n";
+}
+
 bir::Module make_x86_local_i32_immediate_guard_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -204,6 +212,40 @@ bir::Module make_x86_local_i32_immediate_guard_module() {
   return module;
 }
 
+bir::Module make_x86_local_i32_return_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.ret",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_address_taken = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.ret",
+      .value = bir::Value::immediate_i32(123),
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "loaded"),
+      .slot_name = "%lv.ret",
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "loaded"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 int check_route_outputs(const bir::Module& module,
                         const std::string& expected_asm,
                         const std::string& expected_bir_fragment,
@@ -251,6 +293,71 @@ int check_route_outputs(const bir::Module& module,
     return fail((std::string(failure_context) +
                  ": test fixture no longer prepares the expected semantic BIR shape before routing into x86")
                     .c_str());
+  }
+
+  return 0;
+}
+
+int check_local_i32_return_route_requires_authoritative_prepared_frame_access_contract(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name);
+  if (function_addressing == nullptr || function_addressing->accesses.size() < 2) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the local return prepared frame-slot accesses")
+                    .c_str());
+  }
+
+  auto mutated = prepared;
+  prepare::PreparedAddressingFunction* mutable_addressing = nullptr;
+  for (auto& candidate : mutated.addressing.functions) {
+    if (candidate.function_name == function_name) {
+      mutable_addressing = &candidate;
+      break;
+    }
+  }
+  if (mutable_addressing == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": mutated local return fixture lost its prepared frame-slot accesses")
+                    .c_str());
+  }
+
+  auto& function = mutated.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  if (entry_block == nullptr || entry_block->insts.size() < 2) {
+    return fail((std::string(failure_context) +
+                 ": prepared local return fixture no longer exposes the expected entry load/store carriers")
+                    .c_str());
+  }
+  auto* entry_store = std::get_if<bir::StoreLocalInst>(&entry_block->insts.front());
+  auto* entry_load = std::get_if<bir::LoadLocalInst>(&entry_block->insts[1]);
+  if (entry_store == nullptr || entry_load == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared local return fixture no longer exposes the expected direct local memory carriers")
+                    .c_str());
+  }
+
+  entry_store->slot_name = "%drifted.local.return.store";
+  entry_load->slot_name = "%drifted.local.return.load";
+  mutable_addressing->accesses.clear();
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(mutated);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly fell back to raw local slot carriers after prepared frame-slot access loss")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected missing prepared frame-slot accesses with the wrong contract message")
+                      .c_str());
+    }
   }
 
   return 0;
@@ -493,6 +600,22 @@ int check_local_i32_guard_route_consumes_prepared_frame_access_contract(
 }  // namespace
 
 int run_backend_x86_handoff_boundary_local_i32_guard_tests() {
+  if (const auto status =
+          check_route_outputs(make_x86_local_i32_return_module(),
+                              expected_minimal_local_i32_return_asm("main", 123),
+                              "bir.store_local %lv.ret, i32 123",
+                              "minimal local-slot return route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_local_i32_return_route_requires_authoritative_prepared_frame_access_contract(
+              make_x86_local_i32_return_module(),
+              "main",
+              "minimal local-slot return prepared frame-slot access ownership rejects raw local carrier fallback");
+      status != 0) {
+    return status;
+  }
   if (const auto status =
           check_route_outputs(make_x86_local_i32_immediate_guard_module(),
                               expected_minimal_local_i32_immediate_guard_asm("main", 123),

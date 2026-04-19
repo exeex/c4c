@@ -2166,26 +2166,13 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
       }
       const auto* prepared_access =
           find_prepared_function_memory_access(function_addressing, entry.label, inst_index);
-      std::optional<std::string> memory;
-      if (prepared_access != nullptr) {
-        memory = render_prepared_frame_slot_memory_operand_if_supported(
-            *layout,
-            prepared_access->address,
-            store->value.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD" : "DWORD");
-      }
-      if (!memory.has_value() && store->address.has_value()) {
-        memory = render_prepared_local_address_operand_if_supported(
-            *layout, store->address,
-            store->value.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD" : "DWORD");
-      } else if (!memory.has_value()) {
-        const auto slot_it = layout->offsets.find(store->slot_name);
-        if (slot_it == layout->offsets.end()) {
-          return std::nullopt;
-        }
-        memory = render_prepared_stack_memory_operand(
-            slot_it->second,
-            store->value.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD" : "DWORD");
-      }
+      auto memory = prepared_access == nullptr
+                        ? std::nullopt
+                        : render_prepared_frame_slot_memory_operand_if_supported(
+                              *layout,
+                              prepared_access->address,
+                              store->value.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD"
+                                                                                     : "DWORD");
       if (!memory.has_value()) {
         return std::nullopt;
       }
@@ -2217,26 +2204,13 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
     }
     const auto* prepared_access =
         find_prepared_function_memory_access(function_addressing, entry.label, inst_index);
-    std::optional<std::string> memory;
-    if (prepared_access != nullptr) {
-      memory = render_prepared_frame_slot_memory_operand_if_supported(
-          *layout,
-          prepared_access->address,
-          load->result.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD" : "DWORD");
-    }
-    if (!memory.has_value() && load->address.has_value()) {
-      memory = render_prepared_local_address_operand_if_supported(
-          *layout, load->address,
-          load->result.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD" : "DWORD");
-    } else if (!memory.has_value()) {
-      const auto slot_it = layout->offsets.find(load->slot_name);
-      if (slot_it == layout->offsets.end()) {
-        return std::nullopt;
-      }
-      memory = render_prepared_stack_memory_operand(
-          slot_it->second,
-          load->result.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD" : "DWORD");
-    }
+    auto memory = prepared_access == nullptr
+                      ? std::nullopt
+                      : render_prepared_frame_slot_memory_operand_if_supported(
+                            *layout,
+                            prepared_access->address,
+                            load->result.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD"
+                                                                                   : "DWORD");
     if (!memory.has_value()) {
       return std::nullopt;
     }
@@ -2529,17 +2503,17 @@ std::optional<std::string> render_prepared_single_block_return_dispatch_if_suppo
       rendered_direct_calls.has_value()) {
     return *rendered_direct_calls;
   }
-  if (const auto rendered_constant_folded =
-          render_prepared_constant_folded_single_block_return_if_supported(
-              function, prepared_arch, asm_prefix, return_register);
-      rendered_constant_folded.has_value()) {
-    return *rendered_constant_folded;
-  }
   if (const auto rendered_local_slot =
           render_prepared_minimal_local_slot_return_if_supported(
               function, stack_layout, function_addressing, prepared_arch, asm_prefix);
       rendered_local_slot.has_value()) {
     return *rendered_local_slot;
+  }
+  if (const auto rendered_constant_folded =
+          render_prepared_constant_folded_single_block_return_if_supported(
+              function, prepared_arch, asm_prefix, return_register);
+      rendered_constant_folded.has_value()) {
+    return *rendered_constant_folded;
   }
   if (const auto rendered_local_i16_i64_return =
           render_prepared_local_i16_i64_sub_return_if_supported(
