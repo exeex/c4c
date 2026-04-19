@@ -8458,6 +8458,42 @@ int check_local_i32_guard_route_consumes_prepared_branch_contract(
   return 0;
 }
 
+int check_local_i32_guard_route_requires_authoritative_prepared_branch_labels(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      !control_flow->join_transfers.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the local guard prepared branch contract")
+                    .c_str());
+  }
+
+  auto& branch_condition = control_flow->branch_conditions.front();
+  branch_condition.false_label = "drifted.guard.false";
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted drifted prepared guard labels")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected drifted prepared guard labels with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_local_i32_guard_helper_publishes_prepared_compare_contract(const bir::Module& module,
                                                                      const char* function_name,
                                                                      const char* failure_context) {
@@ -12145,6 +12181,14 @@ int main() {
               expected_minimal_local_i32_immediate_guard_asm("main", 123),
               "main",
               "minimal local-slot compare-against-immediate guard prepared branch-contract ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_local_i32_guard_route_requires_authoritative_prepared_branch_labels(
+              make_x86_local_i32_immediate_guard_module(),
+              "main",
+              "minimal local-slot compare-against-immediate guard prepared branch-contract ownership rejects drifted prepared labels instead of falling back to the local guard matcher");
       status != 0) {
     return status;
   }

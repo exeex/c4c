@@ -2774,17 +2774,6 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
-    const auto* true_block = find_block(entry.terminator.true_label);
-    const auto* false_block = find_block(entry.terminator.false_label);
-    if (true_block == nullptr || false_block == nullptr || true_block == &entry ||
-        false_block == &entry ||
-        true_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
-        false_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
-        !true_block->terminator.value.has_value() || !false_block->terminator.value.has_value() ||
-        !true_block->insts.empty() || !false_block->insts.empty()) {
-      return std::nullopt;
-    }
-
     struct NamedLocalI32Expr {
       enum class Kind { LocalLoad, Add, Sub };
       Kind kind = Kind::LocalLoad;
@@ -2933,42 +2922,102 @@ std::string emit_prepared_module(
       };
     }
 
-    const auto* compare = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.back());
-    if (compare == nullptr ||
-        (compare->opcode != c4c::backend::bir::BinaryOpcode::Eq &&
-         compare->opcode != c4c::backend::bir::BinaryOpcode::Ne) ||
-        compare->operand_type != c4c::backend::bir::TypeKind::I32 ||
-        (compare->result.type != c4c::backend::bir::TypeKind::I1 &&
-         compare->result.type != c4c::backend::bir::TypeKind::I32) ||
-        entry.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named ||
-        entry.terminator.condition.name != compare->result.name) {
+    const auto* function_control_flow = find_control_flow_function();
+    const auto* prepared_branch_condition =
+        function_control_flow == nullptr
+            ? nullptr
+            : c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
+                                                                    entry.label);
+
+    c4c::backend::bir::Value compared_value;
+    std::int64_t compare_immediate = 0;
+    auto compare_opcode = c4c::backend::bir::BinaryOpcode::Eq;
+    std::string true_label = entry.terminator.true_label;
+    std::string false_label = entry.terminator.false_label;
+
+    if (prepared_branch_condition != nullptr) {
+      if (!prepared_branch_condition->predicate.has_value() ||
+          !prepared_branch_condition->compare_type.has_value() ||
+          !prepared_branch_condition->lhs.has_value() ||
+          !prepared_branch_condition->rhs.has_value() ||
+          *prepared_branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
+          prepared_branch_condition->condition_value.kind !=
+              c4c::backend::bir::Value::Kind::Named) {
+        return std::nullopt;
+      }
+
+      const bool lhs_is_value_rhs_is_imm =
+          prepared_branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+          prepared_branch_condition->rhs->type == c4c::backend::bir::TypeKind::I32;
+      const bool rhs_is_value_lhs_is_imm =
+          prepared_branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+          prepared_branch_condition->lhs->type == c4c::backend::bir::TypeKind::I32;
+      if (!lhs_is_value_rhs_is_imm && !rhs_is_value_lhs_is_imm) {
+        return std::nullopt;
+      }
+
+      compared_value = lhs_is_value_rhs_is_imm ? *prepared_branch_condition->lhs
+                                               : *prepared_branch_condition->rhs;
+      compare_immediate = lhs_is_value_rhs_is_imm ? prepared_branch_condition->rhs->immediate
+                                                  : prepared_branch_condition->lhs->immediate;
+      compare_opcode = *prepared_branch_condition->predicate;
+      true_label = prepared_branch_condition->true_label;
+      false_label = prepared_branch_condition->false_label;
+    } else {
+      const auto* compare = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.back());
+      if (compare == nullptr ||
+          (compare->opcode != c4c::backend::bir::BinaryOpcode::Eq &&
+           compare->opcode != c4c::backend::bir::BinaryOpcode::Ne) ||
+          compare->operand_type != c4c::backend::bir::TypeKind::I32 ||
+          (compare->result.type != c4c::backend::bir::TypeKind::I1 &&
+           compare->result.type != c4c::backend::bir::TypeKind::I32) ||
+          entry.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named ||
+          entry.terminator.condition.name != compare->result.name) {
+        return std::nullopt;
+      }
+
+      const bool lhs_is_value_rhs_is_imm =
+          compare->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+          compare->rhs.type == c4c::backend::bir::TypeKind::I32;
+      const bool rhs_is_value_lhs_is_imm =
+          compare->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+          compare->lhs.type == c4c::backend::bir::TypeKind::I32;
+      if (!lhs_is_value_rhs_is_imm && !rhs_is_value_lhs_is_imm) {
+        return std::nullopt;
+      }
+
+      compared_value = lhs_is_value_rhs_is_imm ? compare->lhs : compare->rhs;
+      compare_immediate = lhs_is_value_rhs_is_imm ? compare->rhs.immediate : compare->lhs.immediate;
+      compare_opcode = compare->opcode;
+    }
+
+    if (compare_opcode != c4c::backend::bir::BinaryOpcode::Eq &&
+        compare_opcode != c4c::backend::bir::BinaryOpcode::Ne) {
       return std::nullopt;
     }
 
-    const bool lhs_is_value_rhs_is_imm =
-        compare->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-        compare->rhs.type == c4c::backend::bir::TypeKind::I32;
-    const bool rhs_is_value_lhs_is_imm =
-        compare->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-        compare->lhs.type == c4c::backend::bir::TypeKind::I32;
-    if (!lhs_is_value_rhs_is_imm && !rhs_is_value_lhs_is_imm) {
+    const auto* true_block = find_block(true_label);
+    const auto* false_block = find_block(false_label);
+    if (true_block == nullptr || false_block == nullptr || true_block == &entry ||
+        false_block == &entry ||
+        true_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        false_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        !true_block->terminator.value.has_value() || !false_block->terminator.value.has_value() ||
+        !true_block->insts.empty() || !false_block->insts.empty()) {
       return std::nullopt;
     }
 
-    const auto compared_value = lhs_is_value_rhs_is_imm ? compare->lhs : compare->rhs;
     const auto compared_render = render_i32_value(compared_value);
     if (!compared_render.has_value()) {
       return std::nullopt;
     }
-    const auto compare_immediate =
-        lhs_is_value_rhs_is_imm ? compare->rhs.immediate : compare->lhs.immediate;
     asm_text += *compared_render;
     asm_text += compare_immediate == 0
                     ? "    test eax, eax\n"
                     : "    cmp eax, " +
                           std::to_string(static_cast<std::int32_t>(compare_immediate)) + "\n";
     asm_text += std::string("    ") +
-                (compare->opcode == c4c::backend::bir::BinaryOpcode::Eq ? "jne" : "je") + " .L" +
+                (compare_opcode == c4c::backend::bir::BinaryOpcode::Eq ? "jne" : "je") + " .L" +
                 function.name + "_" + false_block->label + "\n";
 
     const auto render_return_block =
