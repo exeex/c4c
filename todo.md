@@ -8,22 +8,21 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed a Step 3 Consume Prepared Control-Flow In X86 packet by making the
-shared compare-join continuation lookup prefer the published rhs continuation
-`PreparedBranchCondition` over join-block continuation-label drift:
-`src/backend/prealloc/prealloc.hpp` now resolves short-circuit continuation
-targets from the authoritative rhs branch contract when available, and
-`tests/backend/backend_x86_handoff_boundary_test.cpp` now proves both the
-plain and `PreparedJoinTransferKind::EdgeStoreSlot` short-circuit helpers keep
-publishing the authoritative continuation labels even after join-branch target
-labels are rewritten to unrelated state.
+Completed a Step 3 Consume Prepared Control-Flow In X86 proof packet by adding
+focused x86 handoff coverage in
+`tests/backend/backend_x86_handoff_boundary_test.cpp` that proves both the
+plain and `PreparedJoinTransferKind::EdgeStoreSlot` short-circuit consumers
+still emit the authoritative rhs continuation route even when join-branch
+labels are rewritten to unrelated state; the x86 consumer path already matched
+the shared prepared-control-flow contract, so no emitter code change was
+required for this slice.
 
 ## Suggested Next
 
-Stay in Step 3 and push the same prepared continuation-branch preference into
-the remaining x86 compare-join consumer path, especially proving that the
-rendered short-circuit `EdgeStoreSlot` route keeps following the authoritative
-rhs continuation contract when join-branch labels drift.
+Stay in Step 3 and extend the same continuation-contract proof from label drift
+to the next unproved x86 consumer seam, especially any rendered compare-join
+path that could still fall back to join-side compare semantics instead of the
+authoritative prepared rhs branch contract.
 
 ## Watchouts
 
@@ -34,10 +33,9 @@ rhs continuation contract when join-branch labels drift.
   branch metadata on the rhs block; continuation helpers should prefer that
   branch contract over mutated join-block continuation labels whenever both
   exist.
-- The route is acceptable because it moves continuation-target ownership into
-  shared prepared control-flow instead of adding another x86-local matcher; do
-  not regress into emitter-local continuation recovery or testcase-shaped
-  branch lanes.
+- This packet confirmed the x86 short-circuit consumer was already aligned with
+  that shared continuation-label ownership; keep future work focused on missing
+  consumer proof or real capability gaps, not redundant emitter churn.
 - The broader `^backend_` checkpoint currently reproduces five known failures:
   `backend_prepare_phi_materialize`, `variadic_double_bytes`,
   `variadic_pair_second`, `local_direct_dynamic_member_array_store`, and
@@ -48,8 +46,9 @@ rhs continuation contract when join-branch labels drift.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The focused Step 3 handoff proof passed and preserved `test_after.log` at the
-repo root.
+The focused Step 3 handoff proof passed with the new short-circuit
+join-branch-label-drift coverage and preserved `test_after.log` at the repo
+root.
 
 Also ran the broader supervisor checkpoint with canonical regression logs:
 stash the packet, run `cmake --build --preset default && ctest --test-dir
