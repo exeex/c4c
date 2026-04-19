@@ -61,7 +61,6 @@ std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
       static_cast<const std::vector<c4c::backend::prepare::PreparedEdgeValueTransfer>*>(nullptr);
   for (const auto& candidate_join_transfer : function_control_flow.join_transfers) {
     if (candidate_join_transfer.kind != c4c::backend::prepare::PreparedJoinTransferKind::LoopCarry ||
-        !candidate_join_transfer.storage_name.has_value() ||
         candidate_join_transfer.result.type != c4c::backend::bir::TypeKind::I32 ||
         candidate_join_transfer.edge_transfers.size() != 2) {
       continue;
@@ -272,18 +271,13 @@ std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
                                                                    init_incoming->predecessor_label));
   const auto block_has_supported_init_handoff_carrier =
       [&](const c4c::backend::bir::Block& candidate) -> bool {
-    if (!join_transfer->storage_name.has_value() || !init_incoming->storage_name.has_value() ||
-        candidate.insts.size() != 1) {
+    if (candidate.insts.size() != 1) {
       return false;
     }
     const auto* init_store =
         std::get_if<c4c::backend::bir::StoreLocalInst>(&candidate.insts.front());
-    return init_store != nullptr &&
-           *init_incoming->storage_name == *join_transfer->storage_name &&
-           init_store->slot_name ==
-               c4c::backend::prepare::prepared_slot_name(prepared_names,
-                                                         *join_transfer->storage_name) &&
-           init_store->byte_offset == 0 && !init_store->address.has_value();
+    return init_store != nullptr && init_store->byte_offset == 0 &&
+           !init_store->address.has_value();
   };
   const auto find_unique_transparent_branch_predecessor =
       [&](const c4c::backend::bir::Block& target_block) -> const c4c::backend::bir::Block* {

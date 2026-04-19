@@ -3,30 +3,26 @@
 Status: Active
 Source Idea Path: ideas/open/63_complete_phi_legalization_and_parallel_copy_resolution.md
 Source Plan Path: plan.md
-Current Step ID: 3.1
-Current Step Title: Move Regalloc And Edge-Move Consumers To Prepared Transfers
-Plan Review Counter: 3 / 10
+Current Step ID: 3.2
+Current Step Title: Keep Downstream Phi Consumers Contract-Strict
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed another Step 3.1 (`Move Regalloc And Edge-Move Consumers To
-Prepared Transfers`) slice by tightening the prepare-to-regalloc phi move
-contract in `PreparedMoveResolution`. Rather than inventing a fake
-`SaveDestinationToTemp` destination record, the packet made cycle-broken phi
-moves publish a first-class `uses_cycle_temp_source` flag so immediate
-consumers can distinguish temporary-sourced backedge moves from direct
-incoming-value moves without parsing the `reason` string. The liveness proof
-now checks both the acyclic phi-join path and the cyclic loop-carry path
-against that explicit contract bit.
+Completed a Step 3.2 (`Keep Downstream Phi Consumers Contract-Strict`) slice by
+teaching the x86 loop-countdown prepared-module consumer to follow
+authoritative loop-carry edge values and branch metadata without requiring
+slot-shaped `storage_name` ownership on the prepared join transfer. The
+countdown boundary proof now clears the loop-carry join `storage_name` fields
+after prepare and still expects the same canonical asm.
 
 ## Suggested Next
 
-Continue Step 3.1 by auditing the next immediate consumers of
-`PreparedMoveResolution` and `parallel_copy_bundles` to see whether any path
-still infers cycle-temp semantics from `reason` text instead of the new
-`uses_cycle_temp_source` field, then widen into Step 3.2 once the
-prepare-to-regalloc boundary is contract-strict.
+Continue Step 3.2 by auditing the remaining downstream x86/local countdown and
+prepared-join consumers that still key on `EdgeStoreSlot` or slot-shaped join
+carrier metadata, then widen the contract-strict proof only where the consumer
+can follow authoritative prepared edge values instead of local slot recovery.
 
 ## Watchouts
 
@@ -34,26 +30,24 @@ prepare-to-regalloc boundary is contract-strict.
 - Keep typed semantic ids as the public identity boundary.
 - Do not silently fold branch/join ownership work from idea 62 back into this
   route.
-- `prealloc.hpp` still carries transitional enum aliases plus
-  `effective_prepared_join_transfer_carrier_kind(...)` so older manual
-  prepared-control-flow fixtures that only rewrite `storage_name` or `kind`
-  keep working while Step 3.1 migrates consumers to the new surface.
-- The new cycle planner keys off authoritative published `bir::Value` names,
-  not incidental vector order or later name-table interning.
-- `append_consumer_move_resolution(...)` still owns non-phi binary/cast/select
-  consumer moves, so any additional fencing should stay limited to
-  authoritative prepared join results instead of weakening generic consumer
-  bookkeeping.
-- `PreparedMoveResolution` still does not model `SaveDestinationToTemp` as a
-  standalone destination record; the authoritative save step remains in
-  `parallel_copy_bundles`, while `move_resolution` now carries the
-  first-class `uses_cycle_temp_source` bit for the follow-on move that reads
-  from that saved temporary.
+- This packet only relaxed the minimal loop-countdown prepared consumer's
+  dependence on prepared join `storage_name`; it still requires a supported
+  entry handoff carrier block in the prepared BIR and still rejects drifted
+  authoritative branch or edge-value metadata.
+- The two-segment local countdown fallback tests still exercise explicit
+  continuation join ownership with `EdgeStoreSlot`; widen those separately only
+  if the consumer can follow authoritative prepared edge values without
+  reopening local-slot fallback logic.
+- `effective_prepared_join_transfer_carrier_kind(...)` remains a transitional
+  compatibility surface for other prepared consumers and manual fixtures, so
+  additional downstream cleanups should stay narrowly focused on consumers that
+  no longer need slot-shaped join ownership.
 
 ## Proof
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_prepare_(liveness|phi_materialize)' > test_after.log 2>&1`
-ran for this Step 3.1 packet and preserved the canonical proof log in
-`test_after.log`; both `backend_prepare_liveness` and
-`backend_prepare_phi_materialize` passed with the new first-class
-cycle-temp-source contract checks.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(prepare_(liveness|phi_materialize)|x86_handoff_boundary_loop_countdown)' > test_after.log 2>&1`
+ran for this Step 3.2 packet and preserved the canonical proof log in
+`test_after.log`; `backend_prepare_liveness`,
+`backend_prepare_phi_materialize`, and
+`backend_x86_handoff_boundary_loop_countdown` passed with the loop-countdown
+consumer no longer requiring slot-shaped prepared join storage metadata.
