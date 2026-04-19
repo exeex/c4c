@@ -2714,6 +2714,13 @@ std::string emit_prepared_module(
               rendered_short_circuit.has_value()) {
             return rendered_short_circuit;
           }
+          if (function_control_flow != nullptr &&
+              c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
+                  *function_control_flow, block.label)
+                  .has_value()) {
+            throw std::invalid_argument(
+                "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
+          }
 
           if (block.terminator.condition.kind != c4c::backend::bir::Value::Kind::Named) {
             return std::nullopt;
