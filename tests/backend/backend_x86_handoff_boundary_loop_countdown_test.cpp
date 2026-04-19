@@ -1552,6 +1552,88 @@ int check_loop_countdown_route_prefers_authoritative_prepared_branch_labels(
   return 0;
 }
 
+int check_loop_countdown_route_prefers_authoritative_single_successor_targets(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1 || control_flow->blocks.size() < 3) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the loop countdown single-successor control-flow contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  auto* body_block = find_block(function, "body");
+  if (entry_block == nullptr || body_block == nullptr ||
+      entry_block->terminator.kind != bir::TerminatorKind::Branch ||
+      body_block->terminator.kind != bir::TerminatorKind::Branch) {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture no longer exposes the expected entry/body single-successor carriers")
+                    .c_str());
+  }
+
+  entry_block->terminator.target_label = "drifted.entry.loop";
+  body_block->terminator.target_label = "drifted.body.loop";
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped preferring authoritative prepared single-successor targets over raw entry/body branch drift")
+                    .c_str());
+  }
+
+  return 0;
+}
+
+int check_loop_countdown_route_prefers_authoritative_transparent_prefix_targets(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1 || control_flow->blocks.size() < 5) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the transparent-prefix single-successor control-flow contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* carrier_block = find_block(function, "carrier");
+  auto* preheader_block = find_block(function, "preheader");
+  if (carrier_block == nullptr || preheader_block == nullptr ||
+      carrier_block->terminator.kind != bir::TerminatorKind::Branch ||
+      preheader_block->terminator.kind != bir::TerminatorKind::Branch) {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture no longer exposes the expected transparent-prefix branch carriers")
+                    .c_str());
+  }
+
+  carrier_block->terminator.target_label = "drifted.prefix.preheader";
+  preheader_block->terminator.target_label = "drifted.prefix.loop";
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following authoritative transparent-prefix targets over raw preheader-chain drift")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_loop_countdown_tests() {
@@ -1705,6 +1787,24 @@ int run_backend_x86_handoff_boundary_loop_countdown_tests() {
               expected_minimal_loop_countdown_join_asm("main"),
               "main",
               "minimal loop-carried join countdown prepared-control-flow ownership prefers authoritative prepared branch metadata over raw loop-terminator drift");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_loop_countdown_route_prefers_authoritative_single_successor_targets(
+              make_x86_loop_countdown_join_module(),
+              expected_minimal_loop_countdown_join_asm("main"),
+              "main",
+              "minimal loop-carried join countdown prepared-control-flow ownership prefers authoritative single-successor targets over raw entry/body branch drift");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_loop_countdown_route_prefers_authoritative_transparent_prefix_targets(
+              make_x86_loop_countdown_join_with_preheader_chain_module(),
+              expected_minimal_loop_countdown_join_asm("main"),
+              "main",
+              "minimal loop-carried join countdown prepared-control-flow ownership prefers authoritative transparent-prefix targets over raw preheader-chain drift");
       status != 0) {
     return status;
   }

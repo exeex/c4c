@@ -186,12 +186,41 @@ std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
 
   const auto* body_block = find_block(function, body_label);
   const auto* exit_block = find_block(function, exit_label);
+  const auto resolve_authoritative_branch_target =
+      [&](const c4c::backend::bir::Block& source_block) -> const c4c::backend::bir::Block* {
+    const auto source_block_label_id =
+        c4c::backend::prepare::resolve_prepared_block_label_id(prepared_names,
+                                                               source_block.label);
+    if (!source_block_label_id.has_value()) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
+    }
+
+    const auto* prepared_block = c4c::backend::prepare::find_prepared_control_flow_block(
+        function_control_flow, *source_block_label_id);
+    if (prepared_block == nullptr ||
+        prepared_block->terminator_kind != c4c::backend::bir::TerminatorKind::Branch ||
+        prepared_block->branch_target_label == c4c::kInvalidBlockLabel) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
+    }
+
+    const auto* target_block = find_block(
+        function,
+        c4c::backend::prepare::prepared_block_label(prepared_names,
+                                                    prepared_block->branch_target_label));
+    if (target_block == nullptr || target_block == &source_block) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared loop-countdown handoff through the canonical prepared-module handoff");
+    }
+    return target_block;
+  };
   if (body_block == nullptr || exit_block == nullptr || body_block == &entry ||
       exit_block == &entry || body_block == loop_block || exit_block == loop_block ||
       exit_block == body_block ||
       loop_block->terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
       body_block->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
-      body_block->terminator.target_label != loop_block->label ||
+      resolve_authoritative_branch_target(*body_block) != loop_block ||
       exit_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
       !exit_block->terminator.value.has_value()) {
     return std::nullopt;
@@ -257,11 +286,13 @@ std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
            init_store->byte_offset == 0 && !init_store->address.has_value();
   };
   const auto find_unique_transparent_branch_predecessor =
-      [&](std::string_view target_label) -> const c4c::backend::bir::Block* {
+      [&](const c4c::backend::bir::Block& target_block) -> const c4c::backend::bir::Block* {
     const c4c::backend::bir::Block* predecessor = nullptr;
     for (const auto& candidate : function.blocks) {
-      if (candidate.terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
-          candidate.terminator.target_label != target_label) {
+      if (candidate.terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
+        continue;
+      }
+      if (resolve_authoritative_branch_target(candidate) != &target_block) {
         continue;
       }
       if (predecessor != nullptr) {
@@ -276,17 +307,17 @@ std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
       return false;
     }
     if (init_block == &entry) {
-      return entry.terminator.target_label == loop_block->label &&
+      return resolve_authoritative_branch_target(entry) == loop_block &&
              block_has_supported_init_handoff_carrier(entry);
     }
     if (init_block == loop_block || init_block == body_block || init_block == exit_block ||
         init_block->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
-        init_block->terminator.target_label != loop_block->label ||
+        resolve_authoritative_branch_target(*init_block) != loop_block ||
         !block_has_supported_init_handoff_carrier(*init_block)) {
       return false;
     }
 
-    const auto* predecessor = find_unique_transparent_branch_predecessor(init_block->label);
+    const auto* predecessor = find_unique_transparent_branch_predecessor(*init_block);
     if (predecessor == nullptr || predecessor == init_block) {
       return false;
     }
@@ -296,7 +327,7 @@ std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
           predecessor == init_block || !predecessor->insts.empty()) {
         return false;
       }
-      predecessor = find_unique_transparent_branch_predecessor(predecessor->label);
+      predecessor = find_unique_transparent_branch_predecessor(*predecessor);
       if (predecessor == nullptr || ++transparent_prefix_depth > function.blocks.size()) {
         return false;
       }

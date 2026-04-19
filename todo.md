@@ -5,28 +5,27 @@ Source Idea Path: ideas/open/62_prealloc_cfg_generalization_and_authoritative_co
 Source Plan Path: plan.md
 Current Step ID: 2.3
 Current Step Title: Finish Contract-Strict CFG Handoff Surfaces
-Plan Review Counter: 0 / 10
+Plan Review Counter: 1 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed another `plan.md` Step 2.3 slice for idea 62. The local countdown
-renderer in `src/backend/mir/x86/codegen/prepared_countdown_render.cpp` now
-prefers authoritative prepared single-successor targets for init carriers,
-countdown body backedges, and continuation-entry branch carriers before it
-will trust a raw `target_label`, so the two-segment countdown fallback no
-longer depends on driftable local branch labels once shared prepare already
-owns those CFG edges. The x86 handoff boundary countdown suite now proves the
-existing continuation carrier still emits the canonical asm even after its raw
-branch target is drifted away from the authoritative prepared successor.
+Completed another `plan.md` Step 2.3 slice for idea 62. The loop-join
+countdown matcher in `src/backend/mir/x86/codegen/prepared_countdown_render.cpp`
+now resolves entry carriers, transparent-prefix predecessors, init handoff
+branches, and loop body backedges from authoritative prepared single-successor
+targets instead of trusting raw `terminator.target_label` drift after prepare.
+The x86 handoff boundary countdown suite now proves both the minimal loop join
+and the preheader-chain route still emit the canonical asm even when those raw
+single-successor labels are mutated away from the prepared CFG contract.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2.3 by pushing the remaining countdown control-flow
-consumers onto the same strict prepared CFG route, especially the
-`render_prepared_loop_join_countdown_if_supported` branch-carrier checks that
-still read raw single-successor labels in the loop-join matcher after shared
-prepare has already published authoritative branch targets.
+Continue `plan.md` Step 2.3 by auditing the remaining local countdown fallback
+paths in `src/backend/mir/x86/codegen/prepared_countdown_render.cpp` that still
+drop to raw `target_label` recovery when a strict prepared single-successor or
+compare-target contract should already be authoritative, especially the
+two-segment matcher paths around continuation-entry/body successor discovery.
 
 ## Watchouts
 
@@ -52,23 +51,17 @@ prepare has already published authoritative branch targets.
   dedicated prepared branch-condition record; keep that route strict about
   rejecting mismatched authoritative metadata instead of silently falling back
   to raw terminator drift.
-- The remaining loop-join countdown matcher still has a few raw
-  single-successor branch-label reads in its bounded carrier checks; keep the
-  next packet focused on replacing those with the same prepared-control-flow
-  contract instead of widening into unrelated countdown rewrites.
+- The remaining raw `target_label` reads are now concentrated in the broader
+  local countdown fallback matcher rather than the loop-join handoff path;
+  keep the next packet focused on whether those sites belong in Step 2.3
+  contract-hardening or in the wider Step 3 consumer migration.
 
 ## Proof
 
 Ran the delegated proof command
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' | tee test_after.log`
-and wrote the canonical proof log to `test_after.log`. Before the full subset
-run, `cmake --build --preset default --target backend_x86_handoff_boundary_test`
-and `ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$'`
-passed with the new continuation-carrier branch-target drift coverage. The
-backend subset stayed at the expected baseline with the same four pre-existing
-route failures already present in `test_before.log`:
-`backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
-`backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
-`backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`,
-and
-`backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`.
+`cmake --build --preset default --target backend_x86_handoff_boundary_test && ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
+and wrote the canonical proof log to `test_after.log`. The focused
+`backend_x86_handoff_boundary` proof passed after adding drift coverage for the
+loop-join entry/body single-successor carriers and for the transparent
+preheader-chain carrier path. `test_after.log` matched `test_before.log`
+except for the expected real-time duration line.
