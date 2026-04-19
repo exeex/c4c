@@ -360,6 +360,14 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
         emit_same_module_global_data,
     const std::function<std::string(std::string)>& prepend_bounded_same_module_helpers);
 
+std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_supported(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block);
+
 inline std::optional<PreparedBoundedMultiDefinedCallLaneRender>
 render_prepared_bounded_multi_defined_call_lane_body_if_supported(
     const c4c::backend::bir::Function& candidate,
