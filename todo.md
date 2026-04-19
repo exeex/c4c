@@ -8,25 +8,25 @@ Source Plan: plan.md
 
 ## Just Finished
 
-Completed a Step 3.3 Join-Transfer Carrier Coverage packet by re-proving the
-focused join-route handoff coverage in
-`tests/backend/backend_x86_handoff_boundary_test.cpp` for the adjacent same-
-module global selected-value chain route without fixed offsets and without
-pointer-backed roots under true-lane and false-lane passthrough topology
-drift, including the `PreparedJoinTransferKind::EdgeStoreSlot` carrier shape,
-while the x86 consumer still follows the authoritative prepared join-transfer
-contract instead of rediscovering ownership from join-block topology. A
-reviewer check in `review/step3_3_route_drift_review.md` confirmed that the
-focused Step 3.3 carrier matrix is now saturated enough that more generic
-carrier hunting would be proof churn rather than fresh capability progress.
+Completed a Step 3.4 Loop-Carry And Residual Consumer Cleanup packet by making
+`render_loop_join_countdown_if_supported()` take the init handoff value from
+authoritative prepared loop-carry metadata instead of re-validating the
+legalized preheader store literal, while still keeping the transparent
+preheader and entry-carrier chain legality checks bounded to structural
+carriers. Added focused loop-countdown handoff regressions in
+`tests/backend/backend_x86_handoff_boundary_test.cpp` that mutate the
+preheader store, loop compare, and body store after prepare and prove x86
+still follows the prepared loop contract for both the trivial-preheader and
+transparent-carrier-chain routes.
 
 ## Suggested Next
 
-Move to Step 3.4 and target one concrete residual consumer path in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp`, starting with loop-
-carried join-transfer handling that still depends on emitter-local recovery
-instead of authoritative prepared transfer data, then prove that slice with
-focused backend/x86 coverage.
+Stay in Step 3.4 and target the next concrete residual loop-carried consumer
+seam in `src/backend/mir/x86/codegen/prepared_module_emit.cpp`, starting with
+whether the remaining entry-to-preheader transparent-chain walk can be reduced
+further without widening beyond legality checks or sliding into Step 4 file
+organization, then prove that slice with the same focused handoff-boundary
+coverage if the changed route stays inside this test family.
 
 ## Watchouts
 
@@ -34,17 +34,13 @@ focused backend/x86 coverage.
   into Step 3.2 compare-join reproving, generic Step 3.3 carrier hunting,
   Step 4 file organization, idea 57, idea 59, idea 60, idea 61, or the
   unrelated `^backend_` semantic-lowering failures.
-- Carrier packets should keep proving that x86 consumes shared join-transfer
-  ownership through prepared lookups even when predecessor topology drifts via
-  passthrough blocks, rather than re-deriving ownership from local join-block
-  shape.
-- Treat generic Step 3.3 carrier hunting as exhausted unless a specifically
-  identified uncovered join-transfer consumer path appears; do not spend more
-  packets searching for another adjacent passthrough testcase variant.
-- The next packet should stay on Step 3.4 residual consumer cleanup, with
-  emphasis on loop-carry handling in `prepared_module_emit.cpp`, rather than
-  sliding back into Step 3.2 compare-join return-context reproving or Step 4
-  file organization.
+- This packet intentionally removed raw-BIR init-value validation from the
+  preheader carrier path, but it did not declare the transparent carrier walk
+  itself exhausted; treat any follow-on work there as legality cleanup only,
+  not as a license to reintroduce ownership recovery from CFG shape.
+- Keep proving that x86 consumes prepared loop-carry ownership and init values
+  through prepared metadata even when legalized preheader/body stores drift
+  after prepare, rather than re-reading those values from local carrier code.
 - The broader `^backend_` checkpoint currently reproduces five known failures:
   `backend_prepare_phi_materialize`, `variadic_double_bytes`,
   `variadic_pair_second`, `local_direct_dynamic_member_array_store`, and
@@ -55,6 +51,6 @@ focused backend/x86 coverage.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`.
-The focused Step 3 handoff proof passed with the new non-fixed-offset
-same-module global selected-value chain coverage for true-lane and false-lane
-passthrough topology drift, and preserved `test_after.log` at the repo root.
+The focused Step 3.4 handoff proof passed with the new preheader-handoff
+regressions for both the trivial-preheader and transparent entry-carrier chain
+loop-countdown routes, and preserved `test_after.log` at the repo root.

@@ -3179,11 +3179,10 @@ std::string emit_prepared_module(
       }
       const auto* init_store =
           std::get_if<c4c::backend::bir::StoreLocalInst>(&candidate.insts.front());
-      return init_store != nullptr &&
+      return init_store != nullptr && init_incoming->storage_name.has_value() &&
+             *init_incoming->storage_name == *join_transfer->storage_name &&
              init_store->slot_name == *join_transfer->storage_name &&
-             init_store->value.kind == c4c::backend::bir::Value::Kind::Immediate &&
-             init_store->value.type == c4c::backend::bir::TypeKind::I32 &&
-             init_store->value.immediate == init_incoming->incoming_value.immediate;
+             init_store->byte_offset == 0 && !init_store->address.has_value();
     };
     const bool entry_reaches_loop_through_supported_handoff_chain = [&]() -> bool {
       if (init_block == nullptr) {

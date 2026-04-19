@@ -9808,6 +9808,73 @@ int check_loop_countdown_route_consumes_prepared_control_flow_with_preheader_cha
   return 0;
 }
 
+int check_loop_countdown_route_prefers_prepared_preheader_handoff_value(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the loop countdown control-flow contract")
+                    .c_str());
+  }
+  if (control_flow->join_transfers.front().kind != prepare::PreparedJoinTransferKind::LoopCarry) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer classifies the loop countdown join as explicit loop-carry traffic")
+                    .c_str());
+  }
+
+  const auto& join_transfer = control_flow->join_transfers.front();
+  if (join_transfer.edge_transfers.size() != 2 ||
+      join_transfer.edge_transfers.front().predecessor_label != "preheader" ||
+      join_transfer.edge_transfers.back().predecessor_label != "body") {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture no longer exposes the authoritative preheader/body loop-carry ownership")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* preheader_block = find_block(function, "preheader");
+  auto* loop_block = find_block(function, "loop");
+  auto* body_block = find_block(function, "body");
+  if (preheader_block == nullptr || loop_block == nullptr || body_block == nullptr ||
+      preheader_block->insts.empty() || loop_block->insts.size() < 2 || body_block->insts.size() < 2) {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture no longer has the expected preheader/header/body carrier shape")
+                    .c_str());
+  }
+
+  auto* preheader_store = std::get_if<bir::StoreLocalInst>(&preheader_block->insts.front());
+  auto* loop_compare = std::get_if<bir::BinaryInst>(&loop_block->insts.back());
+  auto* body_store = std::get_if<bir::StoreLocalInst>(&body_block->insts.back());
+  if (preheader_store == nullptr || loop_compare == nullptr || body_store == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture no longer exposes the expected preheader/body store and compare carriers")
+                    .c_str());
+  }
+
+  preheader_store->value = bir::Value::immediate_i32(99);
+  loop_compare->opcode = bir::BinaryOpcode::Eq;
+  loop_compare->lhs = bir::Value::immediate_i32(7);
+  loop_compare->rhs = bir::Value::immediate_i32(7);
+  body_store->value = bir::Value::immediate_i32(44);
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped taking the authoritative preheader loop-carry handoff value from prepared metadata")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_loop_countdown_route_consumes_prepared_eq_zero_branch_contract(
     const bir::Module& module,
     const std::string& expected_asm,
@@ -12106,11 +12173,29 @@ int main() {
     return status;
   }
   if (const auto status =
+          check_loop_countdown_route_prefers_prepared_preheader_handoff_value(
+              make_x86_loop_countdown_join_with_preheader_module(),
+              expected_minimal_loop_countdown_join_asm("main"),
+              "main",
+              "minimal loop-carried join countdown prepared-control-flow ownership keeps the init handoff value authoritative when a trivial preheader store drifts after prepare");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_loop_countdown_route_consumes_prepared_control_flow_with_preheader_chain(
               make_x86_loop_countdown_join_with_preheader_chain_module(),
               expected_minimal_loop_countdown_join_asm("main"),
               "main",
               "minimal loop-carried join countdown prepared-control-flow ownership tolerates a transparent entry-carrier chain when the authoritative predecessor labels stay unchanged");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_loop_countdown_route_prefers_prepared_preheader_handoff_value(
+              make_x86_loop_countdown_join_with_preheader_chain_module(),
+              expected_minimal_loop_countdown_join_asm("main"),
+              "main",
+              "minimal loop-carried join countdown prepared-control-flow ownership keeps the init handoff value authoritative through a transparent entry-carrier chain");
       status != 0) {
     return status;
   }
