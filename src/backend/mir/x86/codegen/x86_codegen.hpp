@@ -639,6 +639,23 @@ std::optional<std::string> render_prepared_materialized_compare_join_entry_if_su
     const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
         emit_same_module_global_data);
 
+std::optional<std::string> render_prepared_compare_driven_entry_if_supported(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
+        minimal_param_register,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Value&)>&
+        render_param_derived_return,
+    const std::function<std::optional<std::string>(
+        const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&,
+        const c4c::backend::bir::Param&)>& render_materialized_compare_join_return,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
+        emit_same_module_global_data);
+
 std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_branch_compare(
     const c4c::backend::bir::BinaryInst& compare,
     const std::optional<MaterializedI32Compare>& current_materialized_compare,

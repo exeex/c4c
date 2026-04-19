@@ -1797,10 +1797,13 @@ std::string emit_prepared_module(
         render_asm_symbol_name,
         same_module_global_supports_scalar_load);
   };
-  const auto render_minimal_compare_branch_if_supported =
-      [&]() -> std::optional<std::string> {
-    const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*> named_binaries;
-    return c4c::backend::x86::render_prepared_minimal_compare_branch_entry_if_supported(
+  if (const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*>
+          named_binaries;
+      entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !entry.terminator.value.has_value()) {
+    if (const auto rendered_compare_driven_entry =
+            c4c::backend::x86::render_prepared_compare_driven_entry_if_supported(
+        module.module,
         find_control_flow_function(),
         function,
         entry,
@@ -1810,30 +1813,11 @@ std::string emit_prepared_module(
         [&](const c4c::backend::bir::Value& value) {
           const auto& param = function.params.front();
           return render_param_derived_return_if_supported(value, named_binaries, param);
-        });
-  };
-  const auto render_materialized_compare_join_if_supported =
-      [&]() -> std::optional<std::string> {
-    return c4c::backend::x86::render_prepared_materialized_compare_join_entry_if_supported(
-        module.module,
-        find_control_flow_function(),
-        function,
-        entry,
-        prepared_arch,
-        asm_prefix,
-        minimal_param_register,
+        },
         render_materialized_compare_join_return_if_supported,
         emit_same_module_global_data);
-  };
-  if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
-      !entry.terminator.value.has_value()) {
-    if (const auto rendered_branch = render_minimal_compare_branch_if_supported();
-        rendered_branch.has_value()) {
-      return *rendered_branch;
-    }
-    if (const auto rendered_join = render_materialized_compare_join_if_supported();
-        rendered_join.has_value()) {
-      return *rendered_join;
+        rendered_compare_driven_entry.has_value()) {
+      return *rendered_compare_driven_entry;
     }
     if (const auto rendered_local_i32_guard = render_local_i32_arithmetic_guard_if_supported();
         rendered_local_i32_guard.has_value()) {

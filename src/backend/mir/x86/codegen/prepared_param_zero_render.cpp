@@ -652,6 +652,50 @@ std::optional<std::string> render_prepared_materialized_compare_join_entry_if_su
       emit_same_module_global_data);
 }
 
+std::optional<std::string> render_prepared_compare_driven_entry_if_supported(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
+        minimal_param_register,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Value&)>&
+        render_param_derived_return,
+    const std::function<std::optional<std::string>(
+        const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&,
+        const c4c::backend::bir::Param&)>& render_materialized_compare_join_return,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
+        emit_same_module_global_data) {
+  if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !entry.terminator.value.has_value()) {
+    if (const auto rendered_branch = render_prepared_minimal_compare_branch_entry_if_supported(
+            function_control_flow,
+            function,
+            entry,
+            prepared_arch,
+            asm_prefix,
+            minimal_param_register,
+            render_param_derived_return);
+        rendered_branch.has_value()) {
+      return rendered_branch;
+    }
+    return render_prepared_materialized_compare_join_entry_if_supported(
+        module,
+        function_control_flow,
+        function,
+        entry,
+        prepared_arch,
+        asm_prefix,
+        minimal_param_register,
+        render_materialized_compare_join_return,
+        emit_same_module_global_data);
+  }
+
+  return std::nullopt;
+}
+
 std::optional<CompareDrivenBranchRenderPlan> build_prepared_short_circuit_entry_render_plan(
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Function& function,

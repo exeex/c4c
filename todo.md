@@ -5,29 +5,29 @@ Source Idea Path: ideas/open/58_bir_cfg_and_join_materialization_for_x86.md
 Source Plan Path: plan.md
 Current Step ID: 4.2
 Current Step Title: Single-Function Entry Orchestration Extraction
-Plan Review Counter: 7 / 10
+Plan Review Counter: 8 / 10
 # Current Packet
 
 ## Just Finished
 
 Completed another Step 4.2 organization packet by extracting the prepared
-compare-driven branch callback adapter group out of
+compare-driven single-function entry route-selection wrapper out of
 `src/backend/mir/x86/codegen/prepared_module_emit.cpp` and onto the existing
 prepared param-zero / branch helper seam in
 `src/backend/mir/x86/codegen/prepared_param_zero_render.cpp` plus
-`src/backend/mir/x86/codegen/x86_codegen.hpp`, so the single-function entry
-renderer now delegates `ShortCircuitTarget -> render_block()` translation
-through one shared helper while keeping recursive block rendering local and
-leaving prepared control-flow semantics unchanged.
+`src/backend/mir/x86/codegen/x86_codegen.hpp`, so the emitter now delegates
+the “minimal prepared compare branch first, prepared compare-join second”
+entry-orchestration check through one shared helper while leaving prepared
+control-flow semantics unchanged.
 
 ## Suggested Next
 
 Continue Step 4.2 with the next bounded single-function entry helper group
-still owned directly by `prepared_module_emit.cpp`, most likely the local
-compare-driven route-selection wrapper that chooses between compare-join,
-short-circuit, and plain conditional entry plans, if that logic can move onto
-the active prepared param-zero seam without dragging unrelated block-local
-state across the API boundary.
+still owned directly by `prepared_module_emit.cpp`, most likely one coherent
+non-return dispatch group after the prepared param-zero helper call if an
+existing seam such as the prepared local-slot or countdown helper surface can
+own that wrapper without dragging unrelated block-local state across the API
+boundary.
 
 ## Watchouts
 
@@ -43,9 +43,11 @@ state across the API boundary.
   new file unless no current translation unit can own the responsibility.
 - The prepared param-zero seam now owns compare-driven entry plan building,
   branch-plan rendering, short-circuit target translation, prepared
-  short-circuit join-context lookup, and the recursive block-render callback
-  adapter. `prepared_module_emit.cpp` should keep owning recursive block
-  rendering itself; the next packet should only move another coherent entry
+  short-circuit join-context lookup, the recursive block-render callback
+  adapter, and the top-level prepared compare-driven entry wrapper that tries
+  the minimal compare branch lane before the prepared compare-join lane.
+  `prepared_module_emit.cpp` should keep owning recursive block rendering
+  itself; the next packet should only move another coherent entry
   orchestration group if it does not require threading wider emitter state
   through the helper API.
 - The shared prepared immediate-branch helper still covers the immediate local
@@ -63,6 +65,6 @@ state across the API boundary.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' | tee test_after.log`
-for this Step 4.2 packet after moving the compare-driven branch callback
-adapter onto the active prepared param-zero / branch helper surface; the
-proof passed and `test_after.log` is the canonical proof log.
+for this Step 4.2 packet after moving the compare-driven entry
+route-selection wrapper onto the active prepared param-zero / branch helper
+surface; the proof passed and `test_after.log` is the canonical proof log.
