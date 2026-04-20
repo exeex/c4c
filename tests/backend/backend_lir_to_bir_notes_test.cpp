@@ -54,6 +54,7 @@ bool contains_note(const std::vector<BirLoweringNote>& notes,
 
 LirModule make_admitted_scalar_float_globals_module();
 LirModule make_admitted_scalar_i16_globals_module();
+LirModule make_admitted_aggregate_pointer_field_global_module();
 
 int expect_failure_notes(std::string_view case_name,
                          const LirModule& module,
@@ -164,6 +165,43 @@ int expect_admitted_scalar_i16_globals() {
       !value_global->initializer.has_value() ||
       *value_global->initializer != c4c::backend::bir::Value::immediate_i16(17)) {
     return fail("scalar i16 nonzero globals should lower into an admitted I16 BIR initializer lane");
+  }
+
+  return 0;
+}
+
+int expect_admitted_aggregate_pointer_field_global() {
+  auto result = try_lower_to_bir_with_options(make_admitted_aggregate_pointer_field_global_module(),
+                                              BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("expected semantic BIR lowering to admit aggregate globals with pointer fields");
+  }
+
+  const auto find_global = [&](std::string_view name) -> const c4c::backend::bir::Global* {
+    for (const auto& global : result.module->globals) {
+      if (global.name == name) {
+        return &global;
+      }
+    }
+    return nullptr;
+  };
+
+  const auto* global = find_global("gptrpad");
+  if (global == nullptr || global->type != TypeKind::I8 || global->size_bytes != 16 ||
+      global->initializer_elements.size() != 9) {
+    return fail("aggregate pointer-field globals should lower into byte-addressable aggregate storage");
+  }
+  if (global->initializer_elements.front() !=
+      c4c::backend::bir::Value::named(TypeKind::Ptr, "@.str0")) {
+    return fail("aggregate pointer-field globals should preserve the pointed-to string symbol");
+  }
+  if (global->initializer_elements[1] != c4c::backend::bir::Value::immediate_i8(99)) {
+    return fail("aggregate pointer-field globals should preserve the explicit byte payload");
+  }
+  for (std::size_t index = 2; index < global->initializer_elements.size(); ++index) {
+    if (global->initializer_elements[index] != c4c::backend::bir::Value::immediate_i8(0)) {
+      return fail("aggregate pointer-field globals should zero-fill the aggregate tail bytes");
+    }
   }
 
   return 0;
@@ -938,6 +976,42 @@ LirModule make_admitted_scalar_i16_globals_module() {
   return module;
 }
 
+LirModule make_admitted_aggregate_pointer_field_global_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.type_decls.push_back("%struct.ptrpad = type { ptr, [1 x i8], [7 x i8] }");
+  module.string_pool.push_back(c4c::codegen::lir::LirStringConst{
+      .pool_name = "@.str0",
+      .raw_bytes = "bugs\0",
+      .byte_length = 5,
+  });
+
+  LirGlobal global;
+  global.name = "gptrpad";
+  global.qualifier = "global ";
+  global.llvm_type = "%struct.ptrpad";
+  global.init_text =
+      "{ ptr getelementptr inbounds ([5 x i8], ptr @.str0, i64 0, i64 0), [1 x i8] [i8 99], "
+      "[7 x i8] zeroinitializer }";
+  global.align_bytes = 8;
+  module.globals.push_back(std::move(global));
+
+  LirFunction function;
+  function.name = "admitted_aggregate_pointer_field_global";
+  function.signature_text = "define i32 @admitted_aggregate_pointer_field_global()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = "0",
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_bad_local_memory_umbrella_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -1639,6 +1713,12 @@ int main() {
   if (const int scalar_i16_globals_status = expect_admitted_scalar_i16_globals();
       scalar_i16_globals_status != 0) {
     return scalar_i16_globals_status;
+  }
+
+  if (const int aggregate_pointer_field_global_status =
+          expect_admitted_aggregate_pointer_field_global();
+      aggregate_pointer_field_global_status != 0) {
+    return aggregate_pointer_field_global_status;
   }
 
   if (const int local_memory_umbrella_status = expect_failure_notes(

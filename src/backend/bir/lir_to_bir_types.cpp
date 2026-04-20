@@ -150,9 +150,9 @@ std::vector<std::string_view> split_top_level_initializer_items(std::string_view
   int depth = 0;
   for (std::size_t index = 0; index < text.size(); ++index) {
     const char ch = text[index];
-    if (ch == '[' || ch == '{') {
+    if (ch == '[' || ch == '{' || ch == '(') {
       ++depth;
-    } else if (ch == ']' || ch == '}') {
+    } else if (ch == ']' || ch == '}' || ch == ')') {
       --depth;
     } else if (ch == ',' && depth == 0) {
       items.push_back(text.substr(item_start, index - item_start));
