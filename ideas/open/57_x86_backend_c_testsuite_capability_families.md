@@ -1,94 +1,128 @@
-# Prepared-BIR-To-X86 Route Decomposition Umbrella
+# Backend C-Testsuite Failure-Cluster Replan Umbrella
 
 Status: Open
 Created: 2026-04-18
-Last-Updated: 2026-04-18
+Last-Updated: 2026-04-20
 
 ## Intent
 
-Idea 57 is the umbrella source note for removing x86 prepared-emitter matcher
-growth and replacing it with explicit upstream contracts.
+Idea 57 is the umbrella source note for rebuilding the x86 backend capability
+roadmap from current `backend` c-testsuite reality instead of from contract
+shape alone.
 
-It is intentionally not the next execution target.
+The previous decomposition over-weighted the presence of prepared-handoff
+fields and boundary tests. It did not stay grounded in the actual failure set
+from:
 
-It exists to keep the decomposition coherent and to stop future plans from
-silently collapsing several separate ownership problems back into one vague
-"make x86 pass more tests" initiative.
+`ctest --test-dir build -j8 -R backend --output-on-failure`
+
+The current failure picture is broader than "prepared handoff exists or not".
+A large slice still fails before x86 prepared consumption, several x86 emit
+lanes remain bounded to minimal special cases, and a small set has already
+crossed from unsupported capability into correctness bugs.
+
+This umbrella exists to keep those ownership boundaries explicit.
+
+## Current Failure Clusters This Umbrella Covers
+
+The replanned series is grounded in these current clusters:
+
+1. `semantic lir_to_bir` lowering gaps before x86 prepared emission
+   Current size: 41 failures.
+2. minimal single-block terminator / branch emission support
+   Current size: 34 failures.
+3. minimal direct-immediate scalar return expression support
+   Current size: 30 failures.
+4. single-function prepared-module restriction
+   Current size: 18 failures.
+5. authoritative prepared short-circuit handoff misses
+   Current size: 6 failures.
+6. authoritative prepared call-bundle handoff misses
+   Current size: 5 failures.
+7. authoritative prepared guard-chain handoff misses
+   Current size: 4 failures.
+8. runtime correctness failures after codegen succeeds
+   Current size: 2 failures.
 
 ## The Decomposition
 
-The route is split into four concrete source ideas:
+This umbrella is now split into six concrete source ideas:
 
-1. [58_bir_cfg_and_join_materialization_for_x86.md](/workspaces/c4c/ideas/open/58_bir_cfg_and_join_materialization_for_x86.md)
-   Shared control-flow meaning: branches, joins, short-circuit flow, loop
-   carries.
-2. [60_prepared_value_location_consumption.md](/workspaces/c4c/ideas/open/60_prepared_value_location_consumption.md)
-   Canonical value homes and move obligations: register homes, stack homes,
-   join/call/return copy plans.
-3. [61_stack_frame_and_addressing_consumption.md](/workspaces/c4c/ideas/open/61_stack_frame_and_addressing_consumption.md)
-   Canonical frame and memory-address consumption: frame slots, stack-relative
-   addressing, local/global/pointer provenance.
-4. [59_generic_scalar_instruction_selection_for_x86.md](/workspaces/c4c/ideas/open/59_generic_scalar_instruction_selection_for_x86.md)
-   Generic x86 scalar lowering over the contracts produced by 58, 60, and 61.
+1. [58_semantic_lir_to_bir_gap_closure_for_x86_backend.md](/workspaces/c4c/ideas/open/58_semantic_lir_to_bir_gap_closure_for_x86_backend.md)
+   Owns current failures that stop in semantic lowering before prepared x86
+   emission begins.
+2. [59_cfg_contract_consumption_for_short_circuit_and_guard_chain.md](/workspaces/c4c/ideas/open/59_cfg_contract_consumption_for_short_circuit_and_guard_chain.md)
+   Owns current prepared control-flow handoff misses: short-circuit and
+   guard-chain families.
+3. [60_scalar_expression_and_terminator_selection_for_x86_backend.md](/workspaces/c4c/ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md)
+   Owns current minimal single-block return and direct-immediate-only scalar
+   return restrictions.
+4. [61_call_bundle_and_multi_function_prepared_module_consumption.md](/workspaces/c4c/ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md)
+   Owns current call-bundle and single-function prepared-module restrictions.
+5. [62_stack_addressing_and_dynamic_local_access_for_x86_backend.md](/workspaces/c4c/ideas/open/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md)
+   Owns the stack/addressing portion of the current semantic-lowering gap,
+   especially dynamic local/member/array access families.
+6. [63_x86_backend_runtime_correctness_regressions.md](/workspaces/c4c/ideas/open/63_x86_backend_runtime_correctness_regressions.md)
+   Owns cases that already compile and run far enough to expose wrong behavior
+   instead of explicit unsupported-capability diagnostics.
 
-## Required Ordering
+## Ownership Rules
 
-The expected dependency order is:
+These ideas are intended to be mutually readable, but not vague:
+
+- idea 58 owns upstream lowering blockers that prevent prepared-x86 handoff
+  from existing at all
+- idea 59 owns prepared CFG contract consumption gaps once lowering reaches
+  x86
+- idea 60 owns generic scalar expression and terminator selection after the
+  needed CFG/value facts exist
+- idea 61 owns call-bundle and cross-function prepared-module consumption
+- idea 62 owns stack/addressing semantics where the right value or memory
+  meaning is still not made canonical enough for x86 to consume generally
+- idea 63 owns correctness bugs and should not be used to hide capability gaps
+
+If a testcase fails before prepared emission exists, it belongs in idea 58 or
+idea 62, not idea 60 or 61.
+
+If a testcase reaches x86 prepared emission but fails because x86 still only
+accepts tiny matcher-shaped programs, it belongs in idea 59, 60, or 61.
+
+If a testcase reaches runtime and produces the wrong behavior, it belongs in
+idea 63 even when the root cause may later trace back into another leaf.
+
+## Suggested Ordering
+
+The default route is:
 
 1. idea 58
-2. idea 60
-3. idea 61
-4. idea 59
+2. idea 62
+3. idea 59
+4. idea 61
+5. idea 60
+6. idea 63
 
-The exact execution slicing may interleave 60 and 61, but idea 59 should not
-be activated before x86 has canonical value-home and memory-address inputs.
+The exact execution order can interleave ideas 59, 60, and 61 where shared
+infrastructure justifies it, but the series should stay failure-cluster-driven
+instead of returning to a vague "more x86 support" packet.
 
-## Concrete Boundary Statement
+## Acceptance Standard For Future Plans
 
-The public x86 prepared route should eventually consume a handoff shaped more
-like this:
+Future plans under this umbrella should prove progress against the owned failed
+cases named in the leaf source ideas, not only against narrow boundary tests or
+contract-field presence.
 
-```cpp
-struct PreparedBirModule {
-  bir::Module module;
-  PreparedControlFlow control_flow;    // idea 58
-  PreparedValueLocationMap locations;  // idea 60
-  PreparedAddressingMap addressing;    // idea 61
-  PreparedRegalloc regalloc;           // idea 60 producer data
-  PreparedStackLayout stack_layout;    // idea 61 producer data
-};
-```
-
-Then x86 scalar lowering should look like this:
-
-```cpp
-emit_prepared_function(function, prepared);
-emit_prepared_block(block, function_ctx);
-emit_prepared_inst(inst, block_ctx);
-emit_prepared_terminator(term, block_ctx);
-```
-
-The emitter should no longer need to answer:
-
-- "what does this CFG shape mean"
-- "where does this value live"
-- "what stack slot is this local"
-- "what address form is this load/store really using"
-
-Those answers must already be upstream-owned.
+No leaf should be considered complete merely because a prepared contract struct
+exists. Completion means the owned c-testsuite failure families are either
+repaired or intentionally moved to a better-fitting source idea with an updated
+durable note.
 
 ## What This Umbrella Does Not Own
 
-This idea does not define exact struct fields by itself.
-That detail belongs in 58, 59, 60, and 61.
+This idea is not itself the next execution target.
 
-This idea does not justify one more x86 `try_*` helper.
+It does not justify activating one large umbrella plan.
 
-This idea does not define a runbook.
+It does not accept testcase-shaped special cases as completion.
 
-## Recommendation For Future Activation
-
-Activate one of the leaf ideas, not this umbrella.
-
-The best next activation target is usually idea 60 or idea 61 if the current
-x86 emitter is still rebuilding value homes or frame addresses locally.
+Activate a leaf idea whose owned failed-case families match the next intended
+repair slice.
