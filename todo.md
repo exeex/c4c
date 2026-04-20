@@ -5,22 +5,23 @@ Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
 Source Plan Path: plan.md
 Current Step ID: 3.3.3
 Current Step Title: Close Residual Call, Result, And Return Boundary Seams
-Plan Review Counter: 0 / 10
+Plan Review Counter: 1 / 10
 # Current Packet
 
 ## Just Finished
 
-Lifecycle review confirmed that Step 3.3.2's short-circuit and
-`EdgeStoreSlot` ownership checkpoint is already covered by the existing
-prepared helper and bounded proof surfaces, so the active route advances past
-that stale executor target and onto Step 3.3.3.
+Closed two residual Step 3.3.3 boundary seams in the bounded x86 prepared
+consumer: the call-lane helper no longer accepts a missing `AfterCall` bundle
+just because a call result already looks like `eax`, and the minimal scalar
+passthrough return route now rejects missing prepared `BeforeReturn` bundles
+or value homes instead of falling back to legacy local return sourcing.
 
 ## Suggested Next
 
-Advance Step 3.3.3 by closing the remaining bounded call/result/return
-boundary seams in the x86 prepared consumer, keeping the route focused on
-authoritative prepared move bundles and emitted homes instead of local ABI or
-return fallback logic.
+Keep Step 3.3.3 on residual boundary cleanup by checking whether any remaining
+single-block named-return or direct-call lanes still route around prepared
+bundle authority, then broaden proof only if another bounded seam is found or
+if Step 3.3.3 is ready to hand off to Step 4 validation.
 
 ## Watchouts
 
@@ -64,6 +65,5 @@ return fallback logic.
 
 ## Proof
 
-Lifecycle-only review checkpoint that moved active execution from Step
-3.3.1/3.3.2 onto Step 3.3.3. No new build or test command was run for this
-lifecycle repair.
+`cmake --build --preset default`
+`ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$'`

@@ -369,6 +369,48 @@ int check_route_requires_authoritative_prepared_before_call_bundle() {
   return fail("bounded direct extern call contract drift route: x86 prepared-module consumer reopened a local call-argument ABI fallback when the authoritative prepared BeforeCall bundle was removed");
 }
 
+int check_route_requires_authoritative_prepared_after_call_bundle() {
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(make_x86_direct_extern_call_lane_module(),
+                                                        x86_target_profile());
+  auto* function_locations =
+      find_mutable_prepared_value_location_function(prepared, "main");
+  if (function_locations == nullptr) {
+    return fail("bounded direct extern call contract drift route: missing prepared value-location function");
+  }
+
+  auto* first_call_result_home =
+      find_mutable_prepared_value_home(prepared, *function_locations, "%t0");
+  if (first_call_result_home == nullptr) {
+    return fail("bounded direct extern call contract drift route: missing first call result home");
+  }
+  first_call_result_home->kind = prepare::PreparedValueHomeKind::Register;
+  first_call_result_home->register_name = "rax";
+  first_call_result_home->slot_id.reset();
+  first_call_result_home->offset_bytes.reset();
+  first_call_result_home->immediate_i32.reset();
+
+  erase_prepared_move_bundle(*function_locations, prepare::PreparedMovePhase::AfterCall, 0, 0);
+
+  try {
+    static_cast<void>(c4c::backend::x86::emit_prepared_module(prepared));
+  } catch (const std::invalid_argument& ex) {
+    if (std::string(ex.what()).find("authoritative prepared call-bundle handoff") !=
+        std::string::npos) {
+      return 0;
+    }
+    return fail((std::string("bounded direct extern call contract drift route: x86 prepared-module consumer rejected the mutated prepared handoff with the wrong exception: ") +
+                 ex.what())
+                    .c_str());
+  } catch (const std::exception& ex) {
+    return fail((std::string("bounded direct extern call contract drift route: x86 prepared-module consumer rejected the mutated prepared handoff with the wrong exception type: ") +
+                 ex.what())
+                    .c_str());
+  }
+
+  return fail("bounded direct extern call contract drift route: x86 prepared-module consumer reopened a local call-result ABI fallback when the authoritative prepared AfterCall bundle was removed");
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_direct_extern_call_tests() {
@@ -385,6 +427,10 @@ int run_backend_x86_handoff_boundary_direct_extern_call_tests() {
     return status;
   }
   if (const auto status = check_route_requires_authoritative_prepared_before_call_bundle();
+      status != 0) {
+    return status;
+  }
+  if (const auto status = check_route_requires_authoritative_prepared_after_call_bundle();
       status != 0) {
     return status;
   }

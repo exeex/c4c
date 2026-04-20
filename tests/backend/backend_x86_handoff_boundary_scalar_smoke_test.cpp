@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/bir_printer.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
@@ -244,6 +245,109 @@ int check_id_i32_prepared_value_location_contract() {
   }
 
   return 0;
+}
+
+prepare::PreparedValueLocationFunction* find_mutable_prepared_value_location_function(
+    prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto function_name_id =
+      prepare::resolve_prepared_function_name_id(prepared.names, function_name);
+  if (!function_name_id.has_value()) {
+    return nullptr;
+  }
+  for (auto& function_locations : prepared.value_locations.functions) {
+    if (function_locations.function_name == *function_name_id) {
+      return &function_locations;
+    }
+  }
+  return nullptr;
+}
+
+void erase_prepared_move_bundle(prepare::PreparedValueLocationFunction& function_locations,
+                                prepare::PreparedMovePhase phase,
+                                std::size_t block_index,
+                                std::size_t instruction_index) {
+  function_locations.move_bundles.erase(
+      std::remove_if(function_locations.move_bundles.begin(),
+                     function_locations.move_bundles.end(),
+                     [&](const prepare::PreparedMoveBundle& move_bundle) {
+                       return move_bundle.phase == phase &&
+                              move_bundle.block_index == block_index &&
+                              move_bundle.instruction_index == instruction_index;
+                     }),
+      function_locations.move_bundles.end());
+}
+
+int check_id_i32_requires_authoritative_prepared_return_bundle() {
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(make_x86_param_passthrough_module(),
+                                                        x86_target_profile());
+  auto* function_locations =
+      find_mutable_prepared_value_location_function(prepared, "id_i32");
+  if (function_locations == nullptr) {
+    return fail("minimal i32 parameter passthrough route: missing prepared value-location function");
+  }
+
+  erase_prepared_move_bundle(*function_locations, prepare::PreparedMovePhase::BeforeReturn, 0, 0);
+
+  try {
+    static_cast<void>(c4c::backend::x86::emit_prepared_module(prepared));
+  } catch (const std::invalid_argument& ex) {
+    if (std::string(ex.what()).find("canonical prepared-module handoff") !=
+        std::string::npos) {
+      return 0;
+    }
+    return fail((std::string("minimal i32 parameter passthrough route: x86 prepared-module consumer rejected the missing prepared return bundle with the wrong contract message: ") +
+                 ex.what())
+                    .c_str());
+  } catch (const std::exception& ex) {
+    return fail((std::string("minimal i32 parameter passthrough route: x86 prepared-module consumer rejected the missing prepared return bundle with the wrong exception type: ") +
+                 ex.what())
+                    .c_str());
+  }
+
+  return fail("minimal i32 parameter passthrough route: x86 prepared-module consumer reopened a local return fallback when the authoritative prepared return bundle was removed");
+}
+
+int check_id_i32_requires_authoritative_prepared_return_home() {
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(make_x86_param_passthrough_module(),
+                                                        x86_target_profile());
+  auto* function_locations =
+      find_mutable_prepared_value_location_function(prepared, "id_i32");
+  if (function_locations == nullptr) {
+    return fail("minimal i32 parameter passthrough route: missing prepared value-location function");
+  }
+
+  const auto value_name_id = prepare::resolve_prepared_value_name_id(prepared.names, "p.x");
+  if (!value_name_id.has_value()) {
+    return fail("minimal i32 parameter passthrough route: missing prepared parameter name id");
+  }
+  function_locations->value_homes.erase(
+      std::remove_if(function_locations->value_homes.begin(),
+                     function_locations->value_homes.end(),
+                     [&](const prepare::PreparedValueHome& home) {
+                       return home.value_name == *value_name_id;
+                     }),
+      function_locations->value_homes.end());
+
+  try {
+    static_cast<void>(c4c::backend::x86::emit_prepared_module(prepared));
+  } catch (const std::invalid_argument& ex) {
+    if (std::string(ex.what()).find("canonical prepared-module handoff") !=
+        std::string::npos) {
+      return 0;
+    }
+    return fail((std::string("minimal i32 parameter passthrough route: x86 prepared-module consumer rejected the missing prepared return home with the wrong contract message: ") +
+                 ex.what())
+                    .c_str());
+  } catch (const std::exception& ex) {
+    return fail((std::string("minimal i32 parameter passthrough route: x86 prepared-module consumer rejected the missing prepared return home with the wrong exception type: ") +
+                 ex.what())
+                    .c_str());
+  }
+
+  return fail("minimal i32 parameter passthrough route: x86 prepared-module consumer reopened a local return fallback when the authoritative prepared home was removed");
 }
 
 int check_named_immediate_prepared_value_location_contract() {
@@ -1278,6 +1382,14 @@ int run_backend_x86_handoff_boundary_scalar_smoke_tests() {
                               expected_minimal_param_passthrough_asm("id_i32"),
                               "bir.func @id_i32(i32 p.x) -> i32 {",
                               "minimal i32 parameter passthrough route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status = check_id_i32_requires_authoritative_prepared_return_bundle();
+      status != 0) {
+    return status;
+  }
+  if (const auto status = check_id_i32_requires_authoritative_prepared_return_home();
       status != 0) {
     return status;
   }

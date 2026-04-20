@@ -606,6 +606,8 @@ std::string emit_prepared_module(
   };
   const auto render_minimal_scalar_move_bundle_return_if_supported =
       [&]() -> std::optional<std::string> {
+    constexpr std::string_view kScalarReturnContractError =
+        "x86 backend emitter requires authoritative prepared value-home and move-bundle data for minimal scalar return routes through the canonical prepared-module handoff";
     if (prepared_arch != c4c::TargetArch::X86_64 || function.blocks.size() != 1 ||
         entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
         !entry.terminator.value.has_value()) {
@@ -649,12 +651,14 @@ std::string emit_prepared_module(
         0,
         entry.insts.size());
     if (before_return_bundle == nullptr || before_return_bundle->moves.size() != 1) {
-      return std::nullopt;
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared return-bundle handoff through the canonical prepared-module handoff");
     }
     const auto return_destination_register =
         narrow_destination_register(before_return_bundle->moves.front());
     if (!return_destination_register.has_value()) {
-      return std::nullopt;
+      throw std::invalid_argument(
+          "x86 backend emitter requires the authoritative prepared return-bundle handoff through the canonical prepared-module handoff");
     }
 
     const auto& returned = *entry.terminator.value;
@@ -665,13 +669,15 @@ std::string emit_prepared_module(
     if (function.params.empty() && entry.insts.size() <= 1) {
       const auto* returned_home =
           c4c::backend::prepare::find_prepared_value_home(module.names, *function_locations, returned.name);
-      if (returned_home != nullptr) {
-        std::string body;
-        if (append_i32_home_move(body, *returned_home, *return_register)) {
-          return render_frame_wrapped_return(
-              body, required_frame_size_for_home(*returned_home), true);
-        }
+      if (returned_home == nullptr) {
+        throw std::invalid_argument(std::string(kScalarReturnContractError));
       }
+      std::string body;
+      if (!append_i32_home_move(body, *returned_home, *return_destination_register)) {
+        throw std::invalid_argument(std::string(kScalarReturnContractError));
+      }
+      return render_frame_wrapped_return(
+          body, required_frame_size_for_home(*returned_home), true);
     }
     if (function.params.size() != 1) {
       return std::nullopt;
@@ -684,7 +690,7 @@ std::string emit_prepared_module(
     }
     const auto* source_param_home = find_named_source_home(param.name);
     if (source_param_home == nullptr) {
-      return std::nullopt;
+      throw std::invalid_argument(std::string(kScalarReturnContractError));
     }
 
     if (entry.insts.empty()) {
@@ -693,7 +699,7 @@ std::string emit_prepared_module(
       }
       std::string body;
       if (!append_i32_home_move(body, *source_param_home, *return_destination_register)) {
-        return std::nullopt;
+        throw std::invalid_argument(std::string(kScalarReturnContractError));
       }
       return render_frame_wrapped_return(
           body, required_frame_size_for_home(*source_param_home), true);
@@ -729,22 +735,22 @@ std::string emit_prepared_module(
         0,
         0);
     if (before_instruction_bundle == nullptr || before_instruction_bundle->moves.size() != 1) {
-      return std::nullopt;
+      throw std::invalid_argument(std::string(kScalarReturnContractError));
     }
     const auto& entry_move = before_instruction_bundle->moves.front();
     if (entry_move.destination_kind != c4c::backend::prepare::PreparedMoveDestinationKind::Value ||
         entry_move.to_value_id == 0 || entry_move.to_value_id != before_return_bundle->moves.front().from_value_id) {
-      return std::nullopt;
+      throw std::invalid_argument(std::string(kScalarReturnContractError));
     }
     const auto instruction_destination_register = narrow_destination_register(entry_move);
     if (!instruction_destination_register.has_value()) {
-      return std::nullopt;
+      throw std::invalid_argument(std::string(kScalarReturnContractError));
     }
 
     const auto immediate = lhs_is_param_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
     std::string body;
     if (!append_i32_home_move(body, *source_param_home, *instruction_destination_register)) {
-      return std::nullopt;
+      throw std::invalid_argument(std::string(kScalarReturnContractError));
     }
     if (binary->opcode == c4c::backend::bir::BinaryOpcode::Add) {
       body += "    add " + *instruction_destination_register + ", " +
