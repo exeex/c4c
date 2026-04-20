@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 3.3
-Current Step Title: Consume Canonical Move Bundles For Join, Call, And Return Boundaries
-Plan Review Counter: 10 / 10
+Current Step ID: 3.3.1
+Current Step Title: Finish Compare-Driven Boundary Home Authority
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
@@ -20,10 +20,10 @@ authoritative prepared entry home is removed.
 
 ## Suggested Next
 
-Keep Step 3.3 on boundary move-bundle consumption and push the same
-authoritative entry-home checks into the remaining compare-join and
-short-circuit helper lanes, especially any `EdgeStoreSlot`-style routes that
-still need bounded proof for stack-backed or rematerializable entry sources.
+Advance Step 3.3.1 on compare-driven boundary home authority by proving the
+remaining compare-join entry and parameter-selected return lanes consume shared
+prepared homes and `BeforeReturn` bundles for stack-backed or rematerializable
+sources without reopening ABI or local-home fallback.
 
 ## Watchouts
 
@@ -56,10 +56,10 @@ still need bounded proof for stack-backed or rematerializable entry sources.
   include materialized prepared call-result homes (`r11d`/`r12d` or stack
   stores), so future route changes should treat those emitted homes as part of
   the prepared handoff contract rather than as incidental register noise.
-- Compare-driven compare-join entry setup now follows authoritative prepared
-  stack, and rematerializable homes in the bounded compare-branch lane, but
-  the adjacent compare-join and short-circuit families still need the same
-  explicit proof before treating those routes as broadly covered.
+- Compare-driven compare-join entry and parameter-selected return lanes are the
+  next active Step 3.3.1 scope; short-circuit and `EdgeStoreSlot`-style routes
+  now belong to later Step 3.3.2 follow-up rather than being silently mixed
+  into the same packet.
 
 ## Proof
 

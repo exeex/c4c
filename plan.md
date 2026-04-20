@@ -300,6 +300,83 @@ Completion check:
 - x86 boundary movement reads prepared move bundles directly enough that join,
   call, and return handling no longer depends on local ABI/home guesswork
 
+#### Step 3.3.1: Finish Compare-Driven Boundary Home Authority
+
+Goal: complete the compare-driven boundary lanes so entry and return handling
+consume authoritative prepared homes and bundles for non-register as well as
+register-backed sources.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_param_zero_render.cpp`
+- compare-driven boundary proof surfaces under `tests/backend/`
+
+Actions:
+
+- finish the remaining compare-join entry and parameter-selected return lanes
+  that still need explicit stack-backed or rematerializable prepared-home proof
+- require missing compare-driven entry homes or return bundles to fail on the
+  shared prepared contract instead of reopening ABI or local-home fallback
+- keep all entry and return sourcing shared-home and shared-bundle driven
+  rather than adding x86-local carrier recovery
+
+Completion check:
+
+- compare-driven boundary lanes read authoritative prepared homes and
+  `BeforeReturn` bundles directly enough that the remaining compare-join route
+  no longer depends on ABI or local-home fallback
+
+#### Step 3.3.2: Cover Short-Circuit And EdgeStoreSlot Boundary Routes
+
+Goal: push the same authoritative prepared home and bundle contract into the
+remaining short-circuit and adjacent EdgeStoreSlot-style boundary helpers.
+
+Primary targets:
+
+- short-circuit or EdgeStoreSlot helper surfaces under
+  `src/backend/mir/x86/codegen/`
+- bounded short-circuit proof surfaces under `tests/backend/`
+
+Actions:
+
+- audit the remaining short-circuit and EdgeStoreSlot-like boundary helpers
+  for stack-backed or rematerializable entry-source handling that still leans
+  on local carrier assumptions
+- execute or require the authoritative prepared boundary bundles those routes
+  need instead of re-deriving movement locally
+- keep any phase or home refinements shared in prepared ownership rather than
+  pushing them into x86-only helper logic
+
+Completion check:
+
+- the short-circuit and EdgeStoreSlot boundary routes consume shared prepared
+  homes and bundles without reopening x86-local fallback logic
+
+#### Step 3.3.3: Close Residual Call, Result, And Return Boundary Seams
+
+Goal: finish the bounded call/result/return lanes that still need explicit
+proof or cleanup before Step 3.3 can be treated as complete.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- call/result boundary proof surfaces under `tests/backend/`
+
+Actions:
+
+- remove any remaining local call-argument, call-result, or return movement
+  decisions that duplicate prepared bundle ownership
+- tighten bounded proof for direct extern-call and multi-defined call/result
+  lanes so emitted homes and missing-bundle failures stay part of the shared
+  contract
+- keep the slice limited to residual Step 3.3 boundary cleanup rather than
+  widening into broader validation or instruction-selection work
+
+Completion check:
+
+- the bounded join, call, result, and return routes now read prepared move
+  bundles directly enough that Step 3.3 can hand off to Step 4 validation
+
 ## Step 4: Validate The Prepared Value-Location Route
 
 Goal: prove the new contract holds across the shared prepare handoff and its
