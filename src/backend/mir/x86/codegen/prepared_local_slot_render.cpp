@@ -211,6 +211,41 @@ std::optional<std::string> select_prepared_materialized_i32_compare_setup_if_sup
   return std::nullopt;
 }
 
+struct PreparedI32EaxImmediateBinarySelection {
+  std::int32_t immediate = 0;
+};
+
+std::optional<PreparedI32EaxImmediateBinarySelection>
+select_prepared_i32_eax_immediate_binary_if_supported(
+    const c4c::backend::bir::BinaryInst& binary,
+    const std::optional<std::string_view>& current_i32_name) {
+  if (!current_i32_name.has_value() ||
+      (binary.opcode != c4c::backend::bir::BinaryOpcode::Add &&
+       binary.opcode != c4c::backend::bir::BinaryOpcode::Sub) ||
+      binary.operand_type != c4c::backend::bir::TypeKind::I32 ||
+      binary.result.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  const bool lhs_is_current_rhs_is_imm =
+      binary.lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+      binary.lhs.name == *current_i32_name &&
+      binary.rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+      binary.rhs.type == c4c::backend::bir::TypeKind::I32;
+  const bool rhs_is_current_lhs_is_imm =
+      binary.opcode == c4c::backend::bir::BinaryOpcode::Add &&
+      binary.rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+      binary.rhs.name == *current_i32_name &&
+      binary.lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+      binary.lhs.type == c4c::backend::bir::TypeKind::I32;
+  if (!lhs_is_current_rhs_is_imm && !rhs_is_current_lhs_is_imm) {
+    return std::nullopt;
+  }
+  return PreparedI32EaxImmediateBinarySelection{
+      .immediate = static_cast<std::int32_t>(
+          lhs_is_current_rhs_is_imm ? binary.rhs.immediate : binary.lhs.immediate),
+  };
+}
+
 bool prepared_frame_memory_accesses_match(
     const c4c::backend::prepare::PreparedMemoryAccess* lhs,
     const c4c::backend::prepare::PreparedMemoryAccess* rhs) {
@@ -845,29 +880,15 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
       }
 
       const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&block.insts[index]);
-      if (binary != nullptr &&
-          (binary->opcode == c4c::backend::bir::BinaryOpcode::Add ||
-           binary->opcode == c4c::backend::bir::BinaryOpcode::Sub) &&
-          binary->operand_type == c4c::backend::bir::TypeKind::I32 &&
-          binary->result.type == c4c::backend::bir::TypeKind::I32 &&
-          current_i32_name.has_value()) {
-        const bool lhs_is_current_rhs_is_imm =
-            binary->lhs.kind == c4c::backend::bir::Value::Kind::Named &&
-            binary->lhs.name == *current_i32_name &&
-            binary->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-            binary->rhs.type == c4c::backend::bir::TypeKind::I32;
-        const bool rhs_is_current_lhs_is_imm =
-            binary->opcode == c4c::backend::bir::BinaryOpcode::Add &&
-            binary->rhs.kind == c4c::backend::bir::Value::Kind::Named &&
-            binary->rhs.name == *current_i32_name &&
-            binary->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-            binary->lhs.type == c4c::backend::bir::TypeKind::I32;
-        if (lhs_is_current_rhs_is_imm || rhs_is_current_lhs_is_imm) {
-          const auto immediate = lhs_is_current_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
+      if (binary != nullptr) {
+        const auto selected_binary =
+            select_prepared_i32_eax_immediate_binary_if_supported(
+                *binary, current_i32_name);
+        if (selected_binary.has_value()) {
           body += "    mov ecx, eax\n";
           body += std::string("    ") +
                   (binary->opcode == c4c::backend::bir::BinaryOpcode::Add ? "add" : "sub") +
-                  " eax, " + std::to_string(static_cast<std::int32_t>(immediate)) + "\n";
+                  " eax, " + std::to_string(selected_binary->immediate) + "\n";
           current_materialized_compare = std::nullopt;
           previous_i32_name = current_i32_name;
           current_i32_name = binary->result.name;
