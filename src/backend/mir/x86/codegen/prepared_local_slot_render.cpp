@@ -130,11 +130,6 @@ struct PreparedI32ValueSelection {
   bool in_eax = false;
 };
 
-struct PreparedI32NamedImmediateCompareSelection {
-  const c4c::backend::bir::Value* named_value = nullptr;
-  std::int64_t immediate = 0;
-};
-
 std::optional<std::string_view> prepared_scalar_memory_operand_size_name(
     c4c::backend::bir::TypeKind type);
 std::optional<std::string> render_prepared_symbol_memory_operand_if_supported(
@@ -270,6 +265,8 @@ std::optional<std::string> select_prepared_previous_i32_operand_if_supported(
   return std::nullopt;
 }
 
+}  // namespace
+
 std::optional<PreparedI32NamedImmediateCompareSelection>
 select_prepared_i32_named_immediate_compare_if_supported(
     const c4c::backend::bir::Value& lhs,
@@ -335,6 +332,8 @@ std::string render_prepared_i32_eax_immediate_compare_setup(std::int64_t compare
   return "    cmp eax, " +
          std::to_string(static_cast<std::int32_t>(compare_immediate)) + "\n";
 }
+
+namespace {
 
 std::optional<std::string> select_prepared_materialized_i32_compare_setup_if_supported(
     const c4c::backend::bir::BinaryInst& compare,

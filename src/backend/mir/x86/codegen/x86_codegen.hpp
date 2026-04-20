@@ -167,6 +167,11 @@ struct MaterializedI32Compare {
   std::string compare_setup;
 };
 
+struct PreparedI32NamedImmediateCompareSelection {
+  const c4c::backend::bir::Value* named_value = nullptr;
+  std::int64_t immediate = 0;
+};
+
 struct ShortCircuitEntryCompareContext {
   const c4c::backend::prepare::PreparedBranchCondition* branch_condition = nullptr;
   std::string compare_setup;
@@ -1112,6 +1117,14 @@ std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_b
     const c4c::backend::bir::BinaryInst& compare,
     const std::optional<MaterializedI32Compare>& current_materialized_compare,
     const std::optional<std::string_view>& current_i32_name);
+
+std::optional<PreparedI32NamedImmediateCompareSelection>
+select_prepared_i32_named_immediate_compare_for_value_if_supported(
+    const c4c::backend::bir::Value& lhs,
+    const c4c::backend::bir::Value& rhs,
+    std::string_view compared_value_name);
+
+std::string render_prepared_i32_eax_immediate_compare_setup(std::int64_t compare_immediate);
 
 std::optional<std::pair<std::string, std::string>>
 render_prepared_guard_false_branch_compare_from_condition(

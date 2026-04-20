@@ -97,19 +97,10 @@ std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_b
     const std::optional<std::string_view>& current_i32_name) {
   if (current_materialized_compare.has_value() &&
       current_materialized_compare->i32_name.has_value()) {
-    const bool lhs_is_materialized_rhs_is_zero =
-        compare.lhs.kind == c4c::backend::bir::Value::Kind::Named &&
-        compare.lhs.name == *current_materialized_compare->i32_name &&
-        compare.rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-        compare.rhs.type == c4c::backend::bir::TypeKind::I32 &&
-        compare.rhs.immediate == 0;
-    const bool rhs_is_materialized_lhs_is_zero =
-        compare.rhs.kind == c4c::backend::bir::Value::Kind::Named &&
-        compare.rhs.name == *current_materialized_compare->i32_name &&
-        compare.lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-        compare.lhs.type == c4c::backend::bir::TypeKind::I32 &&
-        compare.lhs.immediate == 0;
-    if (lhs_is_materialized_rhs_is_zero || rhs_is_materialized_lhs_is_zero) {
+    const auto selected_compare =
+        select_prepared_i32_named_immediate_compare_for_value_if_supported(
+            compare.lhs, compare.rhs, *current_materialized_compare->i32_name);
+    if (selected_compare.has_value() && selected_compare->immediate == 0) {
       const bool branch_when_original_false =
           compare.opcode == c4c::backend::bir::BinaryOpcode::Ne;
       const char* branch_opcode = nullptr;
@@ -162,26 +153,15 @@ std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_b
   if (!current_i32_name.has_value()) {
     return std::nullopt;
   }
-  const bool lhs_is_current_rhs_is_imm =
-      compare.lhs.kind == c4c::backend::bir::Value::Kind::Named &&
-      compare.lhs.name == *current_i32_name &&
-      compare.rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-      compare.rhs.type == c4c::backend::bir::TypeKind::I32;
-  const bool rhs_is_current_lhs_is_imm =
-      compare.rhs.kind == c4c::backend::bir::Value::Kind::Named &&
-      compare.rhs.name == *current_i32_name &&
-      compare.lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-      compare.lhs.type == c4c::backend::bir::TypeKind::I32;
-  if (!lhs_is_current_rhs_is_imm && !rhs_is_current_lhs_is_imm) {
+  const auto selected_compare =
+      select_prepared_i32_named_immediate_compare_for_value_if_supported(
+          compare.lhs, compare.rhs, *current_i32_name);
+  if (!selected_compare.has_value()) {
     return std::nullopt;
   }
-  const auto compare_immediate =
-      lhs_is_current_rhs_is_imm ? compare.rhs.immediate : compare.lhs.immediate;
+  const bool current_is_lhs = selected_compare->named_value == &compare.lhs;
   const auto compare_setup =
-      compare_immediate == 0
-          ? std::string("    test eax, eax\n")
-          : "    cmp eax, " + std::to_string(static_cast<std::int32_t>(compare_immediate)) +
-                "\n";
+      render_prepared_i32_eax_immediate_compare_setup(selected_compare->immediate);
   const auto branch_opcode_for_current_immediate =
       [&](bool current_is_lhs) -> const char* {
     switch (compare.opcode) {
@@ -201,7 +181,7 @@ std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_b
         return nullptr;
     }
   };
-  const char* branch_opcode = branch_opcode_for_current_immediate(lhs_is_current_rhs_is_imm);
+  const char* branch_opcode = branch_opcode_for_current_immediate(current_is_lhs);
   if (branch_opcode == nullptr) {
     return std::nullopt;
   }
