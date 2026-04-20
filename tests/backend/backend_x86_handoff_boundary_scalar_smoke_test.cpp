@@ -111,6 +111,7 @@ std::string minimal_i32_param_register() {
 }
 
 bir::Module make_x86_param_add_immediate_module();
+bir::Module make_x86_immediate_add_param_module();
 
 std::string asm_header(const char* function_name) {
   return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
@@ -316,6 +317,47 @@ int check_add_one_stack_home_consumes_prepared_value_location_contract() {
   return 0;
 }
 
+int check_immediate_add_param_stack_home_consumes_prepared_value_location_contract() {
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(make_x86_immediate_add_param_module(),
+                                                        x86_target_profile());
+  if (prepared.value_locations.functions.empty()) {
+    return fail(
+        "stack-backed i32 commuted add-immediate route: missing prepared value-location function");
+  }
+
+  const auto value_name_id = prepare::resolve_prepared_value_name_id(prepared.names, "p.x");
+  if (!value_name_id.has_value()) {
+    return fail("stack-backed i32 commuted add-immediate route: missing prepared parameter name id");
+  }
+
+  auto& function_locations = prepared.value_locations.functions.front();
+  prepare::PreparedValueHome* param_home = nullptr;
+  for (auto& candidate : function_locations.value_homes) {
+    if (candidate.value_name == *value_name_id) {
+      param_home = &candidate;
+      break;
+    }
+  }
+  if (param_home == nullptr) {
+    return fail("stack-backed i32 commuted add-immediate route: missing prepared parameter home");
+  }
+
+  param_home->kind = prepare::PreparedValueHomeKind::StackSlot;
+  param_home->register_name.reset();
+  param_home->slot_id = 0;
+  param_home->offset_bytes = 0;
+  prepared.stack_layout.frame_size_bytes = 4;
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm !=
+      expected_minimal_stack_home_param_binary_asm("add_one_commuted", "add", 1, 4, 0)) {
+    return fail("stack-backed i32 commuted add-immediate route: x86 prepared-module consumer stopped following authoritative prepared stack homes");
+  }
+
+  return 0;
+}
+
 std::string expected_minimal_param_add_immediate_asm(const char* function_name, int immediate) {
   return expected_minimal_param_binary_asm(function_name, "add", immediate);
 }
@@ -391,6 +433,38 @@ bir::Module make_x86_param_add_immediate_module() {
       .operand_type = bir::TypeKind::I32,
       .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
       .rhs = bir::Value::immediate_i32(1),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "sum"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+bir::Module make_x86_immediate_add_param_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "add_one_commuted";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "sum"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
   });
   entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, "sum"),
@@ -737,6 +811,11 @@ int run_backend_x86_handoff_boundary_scalar_smoke_tests() {
       status != 0) {
     return status;
   }
+  if (const auto status =
+          check_immediate_add_param_stack_home_consumes_prepared_value_location_contract();
+      status != 0) {
+    return status;
+  }
 
   if (const auto status =
           check_route_outputs(make_x86_return_constant_module(),
@@ -761,6 +840,15 @@ int run_backend_x86_handoff_boundary_scalar_smoke_tests() {
                               expected_minimal_param_add_immediate_asm("add_one", 1),
                               "bir.func @add_one(i32 p.x) -> i32 {",
                               "minimal i32 parameter add-immediate route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_route_outputs(make_x86_immediate_add_param_module(),
+                              expected_minimal_param_add_immediate_asm("add_one_commuted", 1),
+                              "bir.func @add_one_commuted(i32 p.x) -> i32 {",
+                              "minimal i32 commuted add-immediate route");
       status != 0) {
     return status;
   }
