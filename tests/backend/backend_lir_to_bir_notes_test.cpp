@@ -838,6 +838,83 @@ LirModule make_bad_scalar_binop_module() {
   return module;
 }
 
+LirModule make_admitted_float_scalar_binop_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "admitted_float_scalar_binop";
+  function.signature_text = "define float @admitted_float_scalar_binop()";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_FLOAT};
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%lhs0"),
+      .kind = LirCastKind::SIToFP,
+      .from_type = "i32",
+      .operand = LirOperand("3"),
+      .to_type = "float",
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%rhs0"),
+      .kind = LirCastKind::SIToFP,
+      .from_type = "i32",
+      .operand = LirOperand("4"),
+      .to_type = "float",
+  });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%t0"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::FAdd,
+      .type_str = "float",
+      .lhs = LirOperand("%lhs0"),
+      .rhs = LirOperand("%rhs0"),
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%rhs1"),
+      .kind = LirCastKind::SIToFP,
+      .from_type = "i32",
+      .operand = LirOperand("1"),
+      .to_type = "float",
+  });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%t1"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::FSub,
+      .type_str = "float",
+      .lhs = LirOperand("%t0"),
+      .rhs = LirOperand("%rhs1"),
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%rhs2"),
+      .kind = LirCastKind::SIToFP,
+      .from_type = "i32",
+      .operand = LirOperand("2"),
+      .to_type = "float",
+  });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%t2"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::FMul,
+      .type_str = "float",
+      .lhs = LirOperand("%t1"),
+      .rhs = LirOperand("%rhs2"),
+  });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%t3"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::FDiv,
+      .type_str = "float",
+      .lhs = LirOperand("%t2"),
+      .rhs = LirOperand("%rhs2"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::string("%t3"),
+      .type_str = "float",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_bad_gep_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -1391,6 +1468,20 @@ int main() {
           "missing module note carrying the scalar-binop semantic family failure");
       scalar_binop_status != 0) {
     return scalar_binop_status;
+  }
+
+  if (const int admitted_float_scalar_binop_status = expect_success_without_function_note(
+          "admitted_float_scalar_binop",
+          make_admitted_float_scalar_binop_module(),
+          "latest function failure: semantic lir_to_bir function 'admitted_float_scalar_binop' "
+          "failed in scalar-binop semantic family",
+          "failed in scalar-binop semantic family",
+          "float scalar binops that already map into BIR should not keep reporting the "
+          "scalar-binop semantic family",
+          "float scalar binops that already map into BIR should not keep the module on the "
+          "scalar-binop semantic-family note");
+      admitted_float_scalar_binop_status != 0) {
+    return admitted_float_scalar_binop_status;
   }
 
   if (const int gep_status = expect_failure_notes(

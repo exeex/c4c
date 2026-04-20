@@ -275,8 +275,8 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     }
 
     const auto opcode = lower_scalar_binary_opcode(bin->opcode);
-    const auto value_type = lower_integer_type(bin->type_str.str());
-    if (!opcode.has_value() || !value_type.has_value()) {
+    const auto value_type = lower_scalar_or_function_pointer_type(bin->type_str.str());
+    if (!opcode.has_value() || !value_type.has_value() || *value_type == bir::TypeKind::Ptr) {
       return fail_scalar_binop();
     }
 

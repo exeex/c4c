@@ -128,15 +128,20 @@ std::optional<bir::BinaryOpcode> BirFunctionLowerer::lower_scalar_binary_opcode(
   using c4c::codegen::lir::LirBinaryOpcode;
   switch (opcode.typed().value_or(LirBinaryOpcode::FNeg)) {
     case LirBinaryOpcode::Add:
+    case LirBinaryOpcode::FAdd:
       return bir::BinaryOpcode::Add;
     case LirBinaryOpcode::Sub:
+    case LirBinaryOpcode::FSub:
       return bir::BinaryOpcode::Sub;
     case LirBinaryOpcode::Mul:
+    case LirBinaryOpcode::FMul:
       return bir::BinaryOpcode::Mul;
     case LirBinaryOpcode::SDiv:
       return bir::BinaryOpcode::SDiv;
     case LirBinaryOpcode::UDiv:
       return bir::BinaryOpcode::UDiv;
+    case LirBinaryOpcode::FDiv:
+      return bir::BinaryOpcode::SDiv;
     case LirBinaryOpcode::SRem:
       return bir::BinaryOpcode::SRem;
     case LirBinaryOpcode::URem:
