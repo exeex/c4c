@@ -204,6 +204,80 @@ Completion check:
 - x86 storage sourcing no longer depends on ad hoc regalloc-array inspection or
   local slot-order assumptions
 
+#### Step 3.2.1: Finish The Remaining Bounded Scalar Home-Proof Lanes
+
+Goal: close the remaining minimal scalar proof gaps so the prepared-home
+consumer route is covered across the immediate-binary family before broader
+cleanup.
+
+Primary targets:
+
+- `tests/backend/backend_x86_handoff_boundary_scalar_smoke_test.cpp`
+
+Actions:
+
+- finish the remaining bounded right-shift prepared-home lane coverage without
+  widening the route beyond the minimal scalar family
+- keep the proof work focused on authoritative prepared home consumption rather
+  than target-local fallback helpers
+- note whether any naturally produced stack-backed or rematerializable fixture
+  can replace the current mutated-home probes while staying bounded
+
+Completion check:
+
+- the bounded scalar smoke route covers the remaining immediate-binary
+  prepared-home gaps needed before broader Step 3.2 cleanup
+
+#### Step 3.2.2: Prove A Naturally Produced Or Rematerializable Home Path
+
+Goal: reduce dependence on mutated test-only prepared-home fixtures by proving
+at least one bounded scalar route from a naturally produced stack-backed or
+rematerializable home when the shared producer can supply it.
+
+Primary targets:
+
+- shared prepared producer surfaces if fixture support is missing
+- `tests/backend/backend_x86_handoff_boundary_scalar_smoke_test.cpp`
+
+Actions:
+
+- confirm whether shared prepare already emits a naturally produced stack-backed
+  or rematerializable scalar home for a bounded x86 handoff fixture
+- if not, add only the minimal shared-producer support needed for one bounded
+  proof lane
+- keep the consumer contract shared and lookup-oriented rather than adding
+  x86-only fixture shortcuts
+
+Completion check:
+
+- Step 3.2 has at least one bounded proof lane that reads a non-mutated shared
+  prepared home or a shared rematerializable home
+
+#### Step 3.2.3: Remove Residual Scalar Home-Reconstruction Seams
+
+Goal: finish the minimal scalar consumer cleanup so x86 storage sourcing reads
+prepared homes directly instead of reconstructing them from local conventions.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- nearby x86 prepared helper surfaces if extraction is needed
+
+Actions:
+
+- remove any remaining scalar-home reconstruction that still depends on local
+  register or slot-order assumptions
+- keep target logic limited to legality, spelling, and execution of already
+  prepared moves
+- prove the cleaned-up route still reads the shared prepared value-location
+  contract for register-backed, stack-backed, and rematerializable-capable
+  cases
+
+Completion check:
+
+- the minimal scalar x86 consumer no longer reconstructs storage that the
+  prepared value-location contract already publishes
+
 ### Step 3.3: Consume Canonical Move Bundles For Join, Call, And Return Boundaries
 
 Goal: move x86 boundary movement onto shared prepared move bundles.

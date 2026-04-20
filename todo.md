@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 3.2
-Current Step Title: Replace Value-Home Guessing With Prepared Lookups
-Plan Review Counter: 10 / 10
+Current Step ID: 3.2.1
+Current Step Title: Finish The Remaining Bounded Scalar Home-Proof Lanes
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
@@ -23,11 +23,10 @@ focused baseline.
 
 ## Suggested Next
 
-Continue Step 3.2 by extending the same prepared-home lookup route to the next
-bounded scalar case that still lacks direct prepared-home proof, preferably the
-remaining arithmetic-right-shift (`ashr`) lane so Step 3.2 keeps expanding the
-same authoritative prepared-home consumer path without widening into Step 3.3
-boundary-move execution.
+Continue Step 3.2.1 by extending the same prepared-home lookup route to the
+remaining arithmetic-right-shift (`ashr`) lane so the narrowed bounded-scalar
+proof substep can finish before Step 3.2 moves on to non-mutated or
+rematerializable home coverage.
 
 ## Watchouts
 
