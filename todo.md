@@ -5,21 +5,18 @@ Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
 Source Plan Path: plan.md
 Current Step ID: 3.2
 Current Step Title: Replace Value-Home Guessing With Prepared Lookups
-Plan Review Counter: 5 / 10
+Plan Review Counter: 6 / 10
 # Current Packet
 
 ## Just Finished
 
 Step 3.2 (`Replace Value-Home Guessing With Prepared Lookups`) now covers one
 more bounded scalar immediate-binary shape inside
-`tests/backend/backend_x86_handoff_boundary_scalar_smoke_test.cpp`: a new
-commuted `set_low_bits_commuted` or fixture proves the minimal scalar x86
-consumer still reads the authoritative prepared value-home contract when the
-immediate is on the left and the named parameter source is on the right, and
-the same fixture mutates the prepared `p.x` home to
-`PreparedValueHomeKind::StackSlot` so another previously unproved
-`rhs_is_param_lhs_is_imm` opcode lane consumes shared prepared stack-home data
-instead of reintroducing register-only assumptions. Focused
+`tests/backend/backend_x86_handoff_boundary_scalar_smoke_test.cpp`: the
+existing `mul_three` fixture now mutates the prepared `p.x` home to
+`PreparedValueHomeKind::StackSlot` so the minimal scalar x86 consumer proves it
+still reads authoritative prepared stack-home data for the `imul` lane instead
+of silently falling back to register-only assumptions. Focused
 `backend_x86_handoff_boundary` proof passed for the new lane, and the
 delegated `^backend_` acceptance proof finished with the same four pre-existing
 failures already present in `test_before.log`.
@@ -30,9 +27,9 @@ Continue Step 3.2 by extending the same prepared-home lookup route to the next
 bounded scalar case that still lacks direct prepared-home proof, preferably a
 small naturally produced stack-backed or rematerializable-immediate lane if
 shared prepare can materialize that home kind cleanly without test-only home
-mutation, or else one more bounded commutative scalar shape such as `mul` or
-`and` that exercises the same immediate-left consumer path without widening
-into Step 3.3 boundary-move execution.
+mutation, or else one more bounded scalar opcode such as `and` that exercises
+the same shared prepared-home lookup route without widening into Step 3.3
+boundary-move execution.
 
 ## Watchouts
 
