@@ -124,6 +124,48 @@ const c4c::backend::prepare::PreparedMemoryAccess* find_prepared_symbol_memory_a
   return access;
 }
 
+struct PreparedI32ValueSelection {
+  std::optional<std::int32_t> immediate;
+  std::optional<std::string> operand;
+  bool in_eax = false;
+};
+
+template <class ResolveNamedOperand>
+std::optional<PreparedI32ValueSelection> select_prepared_i32_value_if_supported(
+    const c4c::backend::bir::Value& value,
+    const std::optional<std::string_view>& current_i32_name,
+    ResolveNamedOperand&& resolve_named_operand) {
+  if (value.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    return PreparedI32ValueSelection{
+        .immediate = static_cast<std::int32_t>(value.immediate),
+        .operand = std::nullopt,
+        .in_eax = false,
+    };
+  }
+  if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  if (current_i32_name.has_value() && value.name == *current_i32_name) {
+    return PreparedI32ValueSelection{
+        .immediate = std::nullopt,
+        .operand = std::nullopt,
+        .in_eax = true,
+    };
+  }
+  const auto operand = resolve_named_operand(value.name);
+  if (!operand.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedI32ValueSelection{
+      .immediate = std::nullopt,
+      .operand = std::move(*operand),
+      .in_eax = false,
+  };
+}
+
 bool prepared_frame_memory_accesses_match(
     const c4c::backend::prepare::PreparedMemoryAccess* lhs,
     const c4c::backend::prepare::PreparedMemoryAccess* rhs) {
@@ -572,21 +614,28 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
         *current_materialized_compare = std::nullopt;
         *current_i8_name = std::nullopt;
         *current_ptr_name = std::nullopt;
-        if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+        const auto selected_store_value = select_prepared_i32_value_if_supported(
+            store->value,
+            *current_i32_name,
+            [&](std::string_view value_name) -> std::optional<std::string> {
+              if (previous_i32_name->has_value() && value_name == *previous_i32_name) {
+                return std::string("ecx");
+              }
+              return std::nullopt;
+            });
+        if (!selected_store_value.has_value()) {
+          return std::nullopt;
+        }
+        if (selected_store_value->immediate.has_value()) {
           *current_i32_name = std::nullopt;
           *previous_i32_name = std::nullopt;
           return "    mov " + *memory + ", " +
-                 std::to_string(static_cast<std::int32_t>(store->value.immediate)) + "\n";
+                 std::to_string(*selected_store_value->immediate) + "\n";
         }
-        if (store->value.kind == c4c::backend::bir::Value::Kind::Named &&
-            current_i32_name->has_value() && *current_i32_name == store->value.name) {
+        if (selected_store_value->in_eax) {
           return "    mov " + *memory + ", eax\n";
         }
-        if (store->value.kind == c4c::backend::bir::Value::Kind::Named &&
-            previous_i32_name->has_value() && *previous_i32_name == store->value.name) {
-          return "    mov " + *memory + ", ecx\n";
-        }
-        return std::nullopt;
+        return "    mov " + *memory + ", " + *selected_store_value->operand + "\n";
       }
 
       const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
@@ -605,29 +654,39 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
         return std::nullopt;
       }
       *current_materialized_compare = std::nullopt;
-      if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate &&
-          store->value.type == c4c::backend::bir::TypeKind::I32) {
-        *current_i32_name = std::nullopt;
-        *previous_i32_name = std::nullopt;
-        *current_i8_name = std::nullopt;
-        *current_ptr_name = std::nullopt;
-        return "    mov " + *memory + ", " +
-               std::to_string(static_cast<std::int32_t>(store->value.immediate)) + "\n";
-      }
-      if (store->value.kind == c4c::backend::bir::Value::Kind::Named &&
-          store->value.type == c4c::backend::bir::TypeKind::I32 &&
-          current_i32_name->has_value() && *current_i32_name == store->value.name) {
-        *current_i32_name = store->value.name;
-        *current_i8_name = std::nullopt;
-        *current_ptr_name = std::nullopt;
-        return "    mov " + *memory + ", eax\n";
-      }
-      if (store->value.kind == c4c::backend::bir::Value::Kind::Named &&
-          store->value.type == c4c::backend::bir::TypeKind::I32 &&
-          previous_i32_name->has_value() && *previous_i32_name == store->value.name) {
-        *current_i8_name = std::nullopt;
-        *current_ptr_name = std::nullopt;
-        return "    mov " + *memory + ", ecx\n";
+      if (store->value.type == c4c::backend::bir::TypeKind::I32) {
+        const auto selected_store_value = select_prepared_i32_value_if_supported(
+            store->value,
+            *current_i32_name,
+            [&](std::string_view value_name) -> std::optional<std::string> {
+              if (previous_i32_name->has_value() && value_name == *previous_i32_name) {
+                return std::string("ecx");
+              }
+              return std::nullopt;
+            });
+        if (selected_store_value.has_value()) {
+          if (selected_store_value->immediate.has_value()) {
+            *current_i32_name = std::nullopt;
+            *previous_i32_name = std::nullopt;
+            *current_i8_name = std::nullopt;
+            *current_ptr_name = std::nullopt;
+          } else if (selected_store_value->in_eax) {
+            *current_i32_name = store->value.name;
+            *current_i8_name = std::nullopt;
+            *current_ptr_name = std::nullopt;
+          } else {
+            *current_i8_name = std::nullopt;
+            *current_ptr_name = std::nullopt;
+          }
+          if (selected_store_value->immediate.has_value()) {
+            return "    mov " + *memory + ", " +
+                   std::to_string(*selected_store_value->immediate) + "\n";
+          }
+          if (selected_store_value->in_eax) {
+            return "    mov " + *memory + ", eax\n";
+          }
+          return "    mov " + *memory + ", " + *selected_store_value->operand + "\n";
+        }
       }
       if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate &&
           store->value.type == c4c::backend::bir::TypeKind::I8) {
@@ -862,13 +921,17 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
         return std::nullopt;
       }
       const auto& returned = *block.terminator.value;
-      if (returned.kind == c4c::backend::bir::Value::Kind::Immediate &&
-          returned.type == c4c::backend::bir::TypeKind::I32) {
-        return body + render_function_return(static_cast<std::int32_t>(returned.immediate));
+      const auto selected_return = select_prepared_i32_value_if_supported(
+          returned,
+          current_i32_name,
+          [](std::string_view) -> std::optional<std::string> { return std::nullopt; });
+      if (!selected_return.has_value()) {
+        return std::nullopt;
       }
-      if (returned.kind == c4c::backend::bir::Value::Kind::Named &&
-          returned.type == c4c::backend::bir::TypeKind::I32 &&
-          current_i32_name.has_value() && *current_i32_name == returned.name) {
+      if (selected_return->immediate.has_value()) {
+        return body + render_function_return(*selected_return->immediate);
+      }
+      if (selected_return->in_eax) {
         if (layout->frame_size != 0) {
           body += "    add rsp, " + std::to_string(layout->frame_size) + "\n";
         }
@@ -3153,45 +3216,50 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
     const auto render_value_to_eax =
         [&](const c4c::backend::bir::Value& value,
             const std::optional<std::string_view>& current_i32_name) -> std::optional<std::string> {
-          if (value.type != c4c::backend::bir::TypeKind::I32) {
+          const auto selected_value = select_prepared_i32_value_if_supported(
+              value,
+              current_i32_name,
+              [&](std::string_view value_name) -> std::optional<std::string> {
+                const auto param_it = param_registers.find(value_name);
+                if (param_it == param_registers.end()) {
+                  return std::nullopt;
+                }
+                return param_it->second;
+              });
+          if (!selected_value.has_value()) {
             return std::nullopt;
           }
-          if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
-            return "    mov eax, " +
-                   std::to_string(static_cast<std::int32_t>(value.immediate)) + "\n";
+          if (selected_value->immediate.has_value()) {
+            return "    mov eax, " + std::to_string(*selected_value->immediate) + "\n";
           }
-          if (value.kind != c4c::backend::bir::Value::Kind::Named) {
-            return std::nullopt;
-          }
-          if (current_i32_name.has_value() && value.name == *current_i32_name) {
+          if (selected_value->in_eax) {
             return std::string{};
           }
-          const auto param_it = param_registers.find(value.name);
-          if (param_it == param_registers.end()) {
-            return std::nullopt;
-          }
-          return "    mov eax, " + param_it->second + "\n";
+          return "    mov eax, " + *selected_value->operand + "\n";
         };
     const auto render_i32_operand =
         [&](const c4c::backend::bir::Value& value,
             const std::optional<std::string_view>& current_i32_name) -> std::optional<std::string> {
-          if (value.type != c4c::backend::bir::TypeKind::I32) {
+          const auto selected_value = select_prepared_i32_value_if_supported(
+              value,
+              current_i32_name,
+              [&](std::string_view value_name) -> std::optional<std::string> {
+                const auto param_it = param_registers.find(value_name);
+                if (param_it == param_registers.end()) {
+                  return std::nullopt;
+                }
+                return param_it->second;
+              });
+          if (!selected_value.has_value()) {
             return std::nullopt;
           }
-          if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
-            return std::to_string(static_cast<std::int32_t>(value.immediate));
+          if (selected_value->immediate.has_value()) {
+            return std::to_string(*selected_value->immediate);
           }
-          if (value.kind != c4c::backend::bir::Value::Kind::Named) {
-            return std::nullopt;
-          }
-          if (current_i32_name.has_value() && value.name == *current_i32_name) {
+          if (selected_value->in_eax) {
             return std::string("eax");
           }
-          const auto param_it = param_registers.find(value.name);
-          if (param_it == param_registers.end()) {
-            return std::nullopt;
-          }
-          return param_it->second;
+          return *selected_value->operand;
         };
     const auto apply_binary_in_eax =
         [&](const c4c::backend::bir::BinaryInst& binary,
@@ -3321,49 +3389,57 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
       }
       used_same_module_globals.insert(global->name);
 
-      if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+      const auto selected_store_value = select_prepared_i32_value_if_supported(
+          store->value,
+          current_i32_name,
+          [&](std::string_view value_name) -> std::optional<std::string> {
+            const auto param_it = param_registers.find(value_name);
+            if (param_it == param_registers.end()) {
+              return std::nullopt;
+            }
+            return param_it->second;
+          });
+      if (!selected_store_value.has_value()) {
+        return std::nullopt;
+      }
+      if (selected_store_value->immediate.has_value()) {
         body += "    mov " + *memory + ", ";
-        body += std::to_string(static_cast<std::int32_t>(store->value.immediate));
+        body += std::to_string(*selected_store_value->immediate);
         body += "\n";
         continue;
       }
-      if (store->value.kind != c4c::backend::bir::Value::Kind::Named) {
-        return std::nullopt;
-      }
       body += "    mov " + *memory + ", ";
-      if (current_i32_name.has_value() && store->value.name == *current_i32_name) {
+      if (selected_store_value->in_eax) {
         body += "eax\n";
         continue;
       }
-      const auto param_it = param_registers.find(store->value.name);
-      if (param_it == param_registers.end()) {
-        return std::nullopt;
-      }
-      body += param_it->second;
+      body += *selected_store_value->operand;
       body += "\n";
     }
 
     const auto& returned = *candidate.blocks.front().terminator.value;
-    if (returned.type != c4c::backend::bir::TypeKind::I32) {
+    const auto selected_return = select_prepared_i32_value_if_supported(
+        returned,
+        current_i32_name,
+        [&](std::string_view value_name) -> std::optional<std::string> {
+          const auto param_it = param_registers.find(value_name);
+          if (param_it == param_registers.end()) {
+            return std::nullopt;
+          }
+          return param_it->second;
+        });
+    if (!selected_return.has_value()) {
       return std::nullopt;
     }
-    if (returned.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    if (selected_return->immediate.has_value()) {
       body += "    mov " + *candidate_return_register + ", " +
-              std::to_string(static_cast<std::int32_t>(returned.immediate)) + "\n";
-    } else if (returned.kind == c4c::backend::bir::Value::Kind::Named) {
-      if (current_i32_name.has_value() && returned.name == *current_i32_name) {
-        if (*candidate_return_register != "eax") {
-          body += "    mov " + *candidate_return_register + ", eax\n";
-        }
-      } else {
-        const auto param_it = param_registers.find(returned.name);
-        if (param_it == param_registers.end()) {
-          return std::nullopt;
-        }
-        body += "    mov " + *candidate_return_register + ", " + param_it->second + "\n";
+              std::to_string(*selected_return->immediate) + "\n";
+    } else if (selected_return->in_eax) {
+      if (*candidate_return_register != "eax") {
+        body += "    mov " + *candidate_return_register + ", eax\n";
       }
     } else {
-      return std::nullopt;
+      body += "    mov " + *candidate_return_register + ", " + *selected_return->operand + "\n";
     }
     body += "    ret\n";
     return BoundedSameModuleHelperRender{
