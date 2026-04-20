@@ -35,12 +35,21 @@ int fail(const char* message) {
 
 std::string narrow_abi_register(std::string_view wide_register) {
   if (wide_register == "rax") return "eax";
+  if (wide_register == "rbx") return "ebx";
+  if (wide_register == "rcx") return "ecx";
+  if (wide_register == "rdx") return "edx";
   if (wide_register == "rdi") return "edi";
   if (wide_register == "rsi") return "esi";
-  if (wide_register == "rdx") return "edx";
-  if (wide_register == "rcx") return "ecx";
+  if (wide_register == "rbp") return "ebp";
+  if (wide_register == "rsp") return "esp";
   if (wide_register == "r8") return "r8d";
   if (wide_register == "r9") return "r9d";
+  if (wide_register == "r10") return "r10d";
+  if (wide_register == "r11") return "r11d";
+  if (wide_register == "r12") return "r12d";
+  if (wide_register == "r13") return "r13d";
+  if (wide_register == "r14") return "r14d";
+  if (wide_register == "r15") return "r15d";
   return std::string(wide_register);
 }
 
@@ -101,6 +110,8 @@ std::string minimal_i32_param_register() {
   return narrow_abi_register(*wide_register);
 }
 
+bir::Module make_x86_param_add_immediate_module();
+
 std::string asm_header(const char* function_name) {
   return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
          "\n.type " + function_name + ", @function\n" + function_name + ":\n";
@@ -119,11 +130,47 @@ std::string expected_minimal_param_passthrough_asm(const char* function_name) {
 std::string expected_minimal_param_binary_asm(const char* function_name,
                                               const char* mnemonic,
                                               int immediate) {
-  const auto return_register = minimal_i32_return_register();
-  const auto param_register = minimal_i32_param_register();
-  return asm_header(function_name) + "    mov " + return_register + ", " + param_register +
-         "\n    " + mnemonic + " " + return_register + ", " + std::to_string(immediate) +
-         "\n    ret\n";
+  return asm_header(function_name) + "    mov r11d, " + minimal_i32_param_register() + "\n    " +
+         mnemonic + " r11d, " + std::to_string(immediate) + "\n    mov " +
+         minimal_i32_return_register() + ", r11d\n    ret\n";
+}
+
+int check_add_one_prepared_move_bundle_contract() {
+  const auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(make_x86_param_add_immediate_module(),
+                                                        x86_target_profile());
+  const auto* function_locations =
+      prepare::find_prepared_value_location_function(prepared, "add_one");
+  if (function_locations == nullptr) {
+    return fail("minimal i32 parameter add-immediate route: missing prepared value-location function");
+  }
+
+  const auto* sum_home = prepare::find_prepared_value_home(prepared.names, *function_locations, "sum");
+  if (sum_home == nullptr || sum_home->kind != prepare::PreparedValueHomeKind::Register ||
+      !sum_home->register_name.has_value() || narrow_abi_register(*sum_home->register_name) != "r11d") {
+    return fail("minimal i32 parameter add-immediate route: prepared value-location contract lost the canonical result home");
+  }
+
+  const auto* before_instruction = prepare::find_prepared_move_bundle(
+      *function_locations, prepare::PreparedMovePhase::BeforeInstruction, 0, 0);
+  if (before_instruction == nullptr || before_instruction->moves.size() != 1 ||
+      before_instruction->moves.front().destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+      before_instruction->moves.front().destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      before_instruction->moves.front().to_value_id != sum_home->value_id) {
+    return fail("minimal i32 parameter add-immediate route: prepared move-bundle contract lost the instruction-0 result-home move");
+  }
+
+  const auto* before_return = prepare::find_prepared_move_bundle(
+      *function_locations, prepare::PreparedMovePhase::BeforeReturn, 0, 1);
+  if (before_return == nullptr || before_return->moves.size() != 1 ||
+      before_return->moves.front().destination_kind != prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
+      !before_return->moves.front().destination_register_name.has_value() ||
+      narrow_abi_register(*before_return->moves.front().destination_register_name) !=
+          minimal_i32_return_register()) {
+    return fail("minimal i32 parameter add-immediate route: prepared move-bundle contract lost the return ABI move");
+  }
+
+  return 0;
 }
 
 std::string expected_minimal_param_add_immediate_asm(const char* function_name, int immediate) {
@@ -531,6 +578,10 @@ int run_backend_x86_handoff_boundary_scalar_smoke_tests() {
   // Keep the minimal scalar smoke lane isolated so Step 5 can keep shrinking
   // the monolithic handoff file around the remaining local guard and helper
   // ownership seams.
+  if (const auto status = check_add_one_prepared_move_bundle_contract(); status != 0) {
+    return status;
+  }
+
   if (const auto status =
           check_route_outputs(make_x86_return_constant_module(),
                               expected_minimal_constant_return_asm("main", 7),
