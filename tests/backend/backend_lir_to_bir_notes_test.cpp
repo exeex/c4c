@@ -14,6 +14,7 @@ using c4c::codegen::lir::LirBlock;
 using c4c::codegen::lir::LirCastKind;
 using c4c::codegen::lir::LirCastOp;
 using c4c::codegen::lir::LirCallOp;
+using c4c::codegen::lir::LirCmpOp;
 using c4c::codegen::lir::LirGepOp;
 using c4c::codegen::lir::LirFunction;
 using c4c::codegen::lir::LirGlobal;
@@ -471,6 +472,127 @@ LirModule make_admitted_scalar_cast_lane_module() {
   entry.terminator = LirRet{
       .value_str = std::string("%t9"),
       .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_admitted_scalar_local_memory_float_cmp_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "admitted_scalar_local_memory_float_cmp";
+  function.signature_text = "define i32 @admitted_scalar_local_memory_float_cmp()";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.a"),
+      .type_str = "i32",
+      .count = LirOperand(""),
+      .align = 4,
+  });
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.f"),
+      .type_str = "float",
+      .count = LirOperand(""),
+      .align = 4,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "i32",
+      .val = LirOperand("0"),
+      .ptr = LirOperand("%lv.a"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%t0"),
+      .type_str = "i32",
+      .ptr = LirOperand("%lv.a"),
+  });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%t1"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::Add,
+      .type_str = "i32",
+      .lhs = LirOperand("%t0"),
+      .rhs = LirOperand("1"),
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%t2"),
+      .kind = LirCastKind::SIToFP,
+      .from_type = "i32",
+      .operand = LirOperand("%t1"),
+      .to_type = "float",
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "float",
+      .val = LirOperand("%t2"),
+      .ptr = LirOperand("%lv.f"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%t3"),
+      .type_str = "float",
+      .ptr = LirOperand("%lv.f"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%t4"),
+      .type_str = "i32",
+      .ptr = LirOperand("%lv.a"),
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%t5"),
+      .kind = LirCastKind::SIToFP,
+      .from_type = "i32",
+      .operand = LirOperand("%t4"),
+      .to_type = "float",
+  });
+  entry.insts.push_back(LirCmpOp{
+      .result = LirOperand("%t6"),
+      .is_float = true,
+      .predicate = "oeq",
+      .type_str = "float",
+      .lhs = LirOperand("%t3"),
+      .rhs = LirOperand("%t5"),
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%t7"),
+      .kind = LirCastKind::ZExt,
+      .from_type = "i1",
+      .operand = LirOperand("%t6"),
+      .to_type = "i32",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::string("%t7"),
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_admitted_null_indirect_call_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "admitted_null_indirect_call";
+  function.signature_text = "define void @admitted_null_indirect_call()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("null"),
+      .callee_type_suffix = "()",
+      .args_str = "",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
   };
 
   function.blocks.push_back(std::move(entry));
@@ -1150,6 +1272,36 @@ int main() {
           "memory-path scalar casts that already have BIR opcodes should not keep the module on the scalar-cast semantic-family note");
       admitted_scalar_cast_status != 0) {
     return admitted_scalar_cast_status;
+  }
+
+  if (const int admitted_scalar_local_memory_float_cmp_status =
+          expect_success_without_function_note(
+              "admitted_scalar_local_memory_float_cmp",
+              make_admitted_scalar_local_memory_float_cmp_module(),
+              "failed in scalar/local-memory semantic family",
+              "latest function failure: semantic lir_to_bir function "
+              "'admitted_scalar_local_memory_float_cmp' failed in scalar/local-memory "
+              "semantic family",
+              "float local-memory compare lanes should not keep reporting the "
+              "scalar/local-memory semantic family",
+              "float local-memory compare lanes should not keep the module on the "
+              "scalar/local-memory semantic-family note");
+      admitted_scalar_local_memory_float_cmp_status != 0) {
+    return admitted_scalar_local_memory_float_cmp_status;
+  }
+
+  if (const int admitted_null_indirect_call_status = expect_success_without_function_note(
+          "admitted_null_indirect_call",
+          make_admitted_null_indirect_call_module(),
+          "failed in scalar/local-memory semantic family",
+          "latest function failure: semantic lir_to_bir function "
+          "'admitted_null_indirect_call' failed in scalar/local-memory semantic family",
+          "typed null indirect callees should not keep reporting the scalar/local-memory "
+          "semantic family",
+          "typed null indirect callees should not keep the module on the "
+          "scalar/local-memory semantic-family note");
+      admitted_null_indirect_call_status != 0) {
+    return admitted_null_indirect_call_status;
   }
 
   if (const int alloca_status = expect_failure_notes(

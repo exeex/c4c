@@ -197,16 +197,22 @@ std::optional<bir::BinaryOpcode> BirFunctionLowerer::lower_cmp_predicate(
   using c4c::codegen::lir::LirCmpPredicate;
   switch (predicate.typed().value_or(LirCmpPredicate::Ord)) {
     case LirCmpPredicate::Eq:
+    case LirCmpPredicate::OEq:
       return bir::BinaryOpcode::Eq;
     case LirCmpPredicate::Ne:
+    case LirCmpPredicate::ONe:
       return bir::BinaryOpcode::Ne;
     case LirCmpPredicate::Slt:
+    case LirCmpPredicate::OLt:
       return bir::BinaryOpcode::Slt;
     case LirCmpPredicate::Sle:
+    case LirCmpPredicate::OLe:
       return bir::BinaryOpcode::Sle;
     case LirCmpPredicate::Sgt:
+    case LirCmpPredicate::OGt:
       return bir::BinaryOpcode::Sgt;
     case LirCmpPredicate::Sge:
+    case LirCmpPredicate::OGe:
       return bir::BinaryOpcode::Sge;
     case LirCmpPredicate::Ult:
       return bir::BinaryOpcode::Ult;
@@ -345,12 +351,12 @@ bool BirFunctionLowerer::lower_scalar_compare_inst(const c4c::codegen::lir::LirI
                                                    CompareMap& compare_exprs,
                                                    std::vector<bir::Inst>* lowered_insts) const {
   if (const auto* cmp = std::get_if<c4c::codegen::lir::LirCmpOp>(&inst)) {
-    if (cmp->is_float) {
-      return false;
-    }
-    const auto operand_type = lower_integer_type(cmp->type_str.str());
+    const auto operand_type = cmp->is_float ? lower_scalar_or_function_pointer_type(cmp->type_str.str())
+                                            : lower_integer_type(cmp->type_str.str());
     const auto opcode = lower_cmp_predicate(cmp->predicate);
-    if (!operand_type.has_value() || !opcode.has_value()) {
+    if (!operand_type.has_value() || !opcode.has_value() ||
+        (cmp->is_float && *operand_type != bir::TypeKind::F32 &&
+         *operand_type != bir::TypeKind::F64 && *operand_type != bir::TypeKind::F128)) {
       return false;
     }
     const auto lhs = lower_value(cmp->lhs, *operand_type, value_aliases);

@@ -1738,7 +1738,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       } else {
         return fail_call_family(call_family);
       }
-    } else if (call->callee.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+    } else {
       call_family = kIndirectCallFamily;
       const auto parsed_call = parse_typed_call(*call);
       if (!parsed_call.has_value()) {
@@ -1747,7 +1747,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       is_variadic_call = parsed_call->is_variadic;
       callee_value = lower_value(call->callee, bir::TypeKind::Ptr, value_aliases);
       if (!callee_value.has_value()) {
-        return fail_call_family(call_family);
+        return false;
       }
       lowered_args.reserve(parsed_call->args.size());
       lowered_arg_types.reserve(parsed_call->param_types.size());
@@ -1811,8 +1811,6 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
             *lir_to_bir_detail::compute_call_arg_abi(context_.target_profile, *arg_type));
       }
       is_indirect_call = true;
-    } else {
-      return false;
     }
 
     bir::CallInst lowered_call;
