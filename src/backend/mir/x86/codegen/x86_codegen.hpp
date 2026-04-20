@@ -177,6 +177,11 @@ struct PreparedI32CallResultAbiSelection {
   std::string abi_register;
 };
 
+struct PreparedCallResultAbiSelection {
+  const c4c::backend::prepare::PreparedMoveResolution* move = nullptr;
+  std::string abi_register;
+};
+
 struct ShortCircuitEntryCompareContext {
   const c4c::backend::prepare::PreparedBranchCondition* branch_condition = nullptr;
   std::string compare_setup;
@@ -227,7 +232,7 @@ inline std::optional<std::string> narrow_i32_register(std::string_view wide_regi
   return std::string(wide_register);
 }
 
-inline std::optional<std::string> select_prepared_i32_call_argument_abi_register_if_supported(
+inline std::optional<std::string> select_prepared_call_argument_abi_register_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::size_t block_index,
     std::size_t instruction_index,
@@ -248,9 +253,30 @@ inline std::optional<std::string> select_prepared_i32_call_argument_abi_register
         !move.destination_register_name.has_value()) {
       continue;
     }
-    return narrow_i32_register(*move.destination_register_name);
+    return *move.destination_register_name;
   }
   return std::nullopt;
+}
+
+inline std::optional<std::string> select_prepared_call_argument_abi_register_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t instruction_index,
+    std::size_t arg_index) {
+  return select_prepared_call_argument_abi_register_if_supported(
+      function_locations, 0, instruction_index, arg_index);
+}
+
+inline std::optional<std::string> select_prepared_i32_call_argument_abi_register_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::size_t arg_index) {
+  const auto abi_register = select_prepared_call_argument_abi_register_if_supported(
+      function_locations, block_index, instruction_index, arg_index);
+  if (!abi_register.has_value()) {
+    return std::nullopt;
+  }
+  return narrow_i32_register(*abi_register);
 }
 
 inline std::optional<std::string> select_prepared_i32_call_argument_abi_register_if_supported(
@@ -261,8 +287,8 @@ inline std::optional<std::string> select_prepared_i32_call_argument_abi_register
       function_locations, 0, instruction_index, arg_index);
 }
 
-inline std::optional<PreparedI32CallResultAbiSelection>
-select_prepared_i32_call_result_abi_if_supported(
+inline std::optional<PreparedCallResultAbiSelection>
+select_prepared_call_result_abi_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::size_t block_index,
     std::size_t instruction_index,
@@ -297,12 +323,38 @@ select_prepared_i32_call_result_abi_if_supported(
   if (after_call_move == nullptr || !after_call_move->destination_register_name.has_value()) {
     return std::nullopt;
   }
-  const auto abi_register = narrow_i32_register(*after_call_move->destination_register_name);
+  return PreparedCallResultAbiSelection{
+      .move = after_call_move,
+      .abi_register = *after_call_move->destination_register_name,
+  };
+}
+
+inline std::optional<PreparedCallResultAbiSelection>
+select_prepared_call_result_abi_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedValueHome* result_home) {
+  return select_prepared_call_result_abi_if_supported(
+      function_locations, 0, instruction_index, result_home);
+}
+
+inline std::optional<PreparedI32CallResultAbiSelection>
+select_prepared_i32_call_result_abi_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedValueHome* result_home) {
+  const auto selection = select_prepared_call_result_abi_if_supported(
+      function_locations, block_index, instruction_index, result_home);
+  if (!selection.has_value()) {
+    return std::nullopt;
+  }
+  const auto abi_register = narrow_i32_register(selection->abi_register);
   if (!abi_register.has_value()) {
     return std::nullopt;
   }
   return PreparedI32CallResultAbiSelection{
-      .move = after_call_move,
+      .move = selection->move,
       .abi_register = std::move(*abi_register),
   };
 }
@@ -1428,7 +1480,14 @@ std::optional<std::string> render_prepared_compare_driven_entry_if_supported(
 std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_branch_compare(
     const c4c::backend::bir::BinaryInst& compare,
     const std::optional<MaterializedI32Compare>& current_materialized_compare,
-    const std::optional<std::string_view>& current_i32_name);
+    const std::optional<std::string_view>& current_i32_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
+
+std::optional<PreparedI32NamedImmediateCompareSelection>
+select_prepared_i32_named_immediate_compare_if_supported(
+    const c4c::backend::bir::Value& lhs,
+    const c4c::backend::bir::Value& rhs);
 
 std::optional<PreparedI32NamedImmediateCompareSelection>
 select_prepared_i32_named_immediate_compare_for_value_if_supported(
@@ -1442,12 +1501,16 @@ std::optional<std::pair<std::string, std::string>>
 render_prepared_guard_false_branch_compare_from_condition(
     const c4c::backend::prepare::PreparedBranchCondition& condition,
     const std::optional<MaterializedI32Compare>& current_materialized_compare,
-    const std::optional<std::string_view>& current_i32_name);
+    const std::optional<std::string_view>& current_i32_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
 
 std::optional<ShortCircuitEntryCompareContext> build_prepared_guard_compare_context(
     const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
     const std::optional<MaterializedI32Compare>& current_materialized_compare,
-    const std::optional<std::string_view>& current_i32_name);
+    const std::optional<std::string_view>& current_i32_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
 
 std::optional<c4c::backend::prepare::PreparedShortCircuitJoinContext>
 find_prepared_short_circuit_join_context_if_supported(
@@ -1469,6 +1532,7 @@ std::optional<ShortCircuitPlan> build_prepared_short_circuit_plan(
 std::optional<CompareDrivenBranchRenderPlan> build_prepared_short_circuit_entry_render_plan(
     const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& source_block,
     const c4c::backend::prepare::PreparedShortCircuitJoinContext& join_context,
@@ -1482,6 +1546,7 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_short_circuit_entry_
 std::optional<CompareDrivenBranchRenderPlan> build_prepared_plain_cond_entry_render_plan(
     const c4c::backend::prepare::PreparedNameTables& prepared_names,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     const c4c::backend::bir::Block& source_block,
     std::size_t compare_index,
     const std::optional<MaterializedI32Compare>& current_materialized_compare,
