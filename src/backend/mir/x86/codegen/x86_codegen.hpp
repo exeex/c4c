@@ -321,6 +321,56 @@ struct PreparedModuleMultiDefinedDispatchState {
   bool has_bounded_same_module_helpers = false;
 };
 
+struct PreparedX86FunctionDispatchContext;
+
+struct PreparedX86BlockDispatchContext {
+  const PreparedX86FunctionDispatchContext* function_context = nullptr;
+  const c4c::backend::bir::Block* block = nullptr;
+  const PreparedModuleLocalSlotLayout* local_layout = nullptr;
+  c4c::BlockLabelId block_label_id = c4c::kInvalidBlockLabel;
+};
+
+struct PreparedX86FunctionDispatchContext {
+  const c4c::backend::bir::Module* module = nullptr;
+  const c4c::backend::bir::Function* function = nullptr;
+  const c4c::backend::bir::Block* entry = nullptr;
+  const c4c::backend::prepare::PreparedStackLayout* stack_layout = nullptr;
+  const c4c::backend::prepare::PreparedAddressingFunction* function_addressing = nullptr;
+  const c4c::backend::prepare::PreparedNameTables* prepared_names = nullptr;
+  const c4c::backend::prepare::PreparedValueLocationFunction* function_locations = nullptr;
+  const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow = nullptr;
+  c4c::TargetArch prepared_arch = c4c::TargetArch::Unknown;
+  std::string_view asm_prefix;
+  const std::unordered_set<std::string_view>* bounded_same_module_helper_names = nullptr;
+  const std::unordered_set<std::string_view>* bounded_same_module_helper_global_names = nullptr;
+  std::function<const c4c::backend::bir::Block*(std::string_view)> find_block;
+  std::function<const c4c::backend::bir::Global*(std::string_view)> find_same_module_global;
+  std::function<bool(const c4c::backend::bir::Global&,
+                     c4c::backend::bir::TypeKind,
+                     std::size_t)>
+      same_module_global_supports_scalar_load;
+  std::function<std::string(std::string_view)> render_asm_symbol_name;
+  std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>
+      emit_same_module_global_data;
+  std::function<std::string(std::string)> prepend_bounded_same_module_helpers;
+
+  PreparedX86BlockDispatchContext make_block_context(
+      const c4c::backend::bir::Block& block,
+      const PreparedModuleLocalSlotLayout& local_layout) const {
+    const c4c::BlockLabelId block_label_id =
+        prepared_names == nullptr ? c4c::kInvalidBlockLabel
+                                  : c4c::backend::prepare::resolve_prepared_block_label_id(
+                                        *prepared_names, block.label)
+                                        .value_or(c4c::kInvalidBlockLabel);
+    return PreparedX86BlockDispatchContext{
+        .function_context = this,
+        .block = &block,
+        .local_layout = &local_layout,
+        .block_label_id = block_label_id,
+    };
+  }
+};
+
 std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
@@ -401,27 +451,7 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
     std::string_view asm_prefix);
 
 std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
-    const c4c::backend::bir::Module& module,
-    const c4c::backend::bir::Function& function,
-    const c4c::backend::bir::Block& entry,
-    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
-    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
-    c4c::TargetArch prepared_arch,
-    std::string_view asm_prefix,
-    const std::unordered_set<std::string_view>& bounded_same_module_helper_names,
-    const std::unordered_set<std::string_view>& bounded_same_module_helper_global_names,
-    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block,
-    const std::function<const c4c::backend::bir::Global*(std::string_view)>& find_same_module_global,
-    const std::function<bool(const c4c::backend::bir::Global&,
-                             c4c::backend::bir::TypeKind,
-                             std::size_t)>& same_module_global_supports_scalar_load,
-    const std::function<std::string(std::string_view)>& render_asm_symbol_name,
-    const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
-        emit_same_module_global_data,
-    const std::function<std::string(std::string)>& prepend_bounded_same_module_helpers);
+    const PreparedX86FunctionDispatchContext& context);
 
 std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_supported(
     const c4c::backend::bir::Function& function,

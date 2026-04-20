@@ -409,27 +409,31 @@ std::string emit_prepared_module(
   }
 
   const auto& entry = function.blocks.front();
+  const PreparedX86FunctionDispatchContext function_dispatch_context{
+      .module = &module.module,
+      .function = &function,
+      .entry = &entry,
+      .stack_layout = &module.stack_layout,
+      .function_addressing = find_addressing_function(),
+      .prepared_names = &module.names,
+      .function_locations = c4c::backend::prepare::find_prepared_value_location_function(
+          module, function.name),
+      .function_control_flow = find_control_flow_function(),
+      .prepared_arch = prepared_arch,
+      .asm_prefix = asm_prefix,
+      .bounded_same_module_helper_names = &bounded_same_module_helper_names,
+      .bounded_same_module_helper_global_names = &bounded_same_module_helper_global_names,
+      .find_block = find_block,
+      .find_same_module_global = find_same_module_global,
+      .same_module_global_supports_scalar_load = same_module_global_supports_scalar_load,
+      .render_asm_symbol_name = render_asm_symbol_name,
+      .emit_same_module_global_data = emit_same_module_global_data,
+      .prepend_bounded_same_module_helpers = prepend_bounded_same_module_helpers,
+  };
   const auto render_local_slot_guard_chain_if_supported =
       [&]() -> std::optional<std::string> {
     return c4c::backend::x86::render_prepared_local_slot_guard_chain_if_supported(
-        module.module,
-        function,
-        entry,
-        &module.stack_layout,
-        find_addressing_function(),
-        &module.names,
-        c4c::backend::prepare::find_prepared_value_location_function(module, function.name),
-        find_control_flow_function(),
-        prepared_arch,
-        asm_prefix,
-        bounded_same_module_helper_names,
-        bounded_same_module_helper_global_names,
-        find_block,
-        find_same_module_global,
-        same_module_global_supports_scalar_load,
-        render_asm_symbol_name,
-        emit_same_module_global_data,
-        prepend_bounded_same_module_helpers);
+        function_dispatch_context);
   };
   const auto render_local_i32_arithmetic_guard_if_supported =
       [&]() -> std::optional<std::string> {

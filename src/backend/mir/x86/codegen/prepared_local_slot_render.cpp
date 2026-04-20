@@ -321,27 +321,37 @@ std::optional<std::string> render_prepared_local_slot_memory_operand_if_supporte
 }
 
 std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
-    const c4c::backend::bir::Module& module,
-    const c4c::backend::bir::Function& function,
-    const c4c::backend::bir::Block& entry,
-    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
-    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
-    c4c::TargetArch prepared_arch,
-    std::string_view asm_prefix,
-    const std::unordered_set<std::string_view>& bounded_same_module_helper_names,
-    const std::unordered_set<std::string_view>& bounded_same_module_helper_global_names,
-    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block,
-    const std::function<const c4c::backend::bir::Global*(std::string_view)>& find_same_module_global,
-    const std::function<bool(const c4c::backend::bir::Global&,
-                             c4c::backend::bir::TypeKind,
-                             std::size_t)>& same_module_global_supports_scalar_load,
-    const std::function<std::string(std::string_view)>& render_asm_symbol_name,
-    const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
-        emit_same_module_global_data,
-    const std::function<std::string(std::string)>& prepend_bounded_same_module_helpers) {
+    const PreparedX86FunctionDispatchContext& context) {
+  if (context.module == nullptr || context.function == nullptr || context.entry == nullptr) {
+    return std::nullopt;
+  }
+  const auto& module = *context.module;
+  const auto& function = *context.function;
+  const auto& entry = *context.entry;
+  const auto* stack_layout = context.stack_layout;
+  const auto* function_addressing = context.function_addressing;
+  const auto* prepared_names = context.prepared_names;
+  const auto* function_locations = context.function_locations;
+  const auto* function_control_flow = context.function_control_flow;
+  const auto prepared_arch = context.prepared_arch;
+  const auto asm_prefix = context.asm_prefix;
+  static const std::unordered_set<std::string_view> kEmptyHelperNames;
+  const auto& bounded_same_module_helper_names =
+      context.bounded_same_module_helper_names == nullptr
+          ? kEmptyHelperNames
+          : *context.bounded_same_module_helper_names;
+  const auto& bounded_same_module_helper_global_names =
+      context.bounded_same_module_helper_global_names == nullptr
+          ? kEmptyHelperNames
+          : *context.bounded_same_module_helper_global_names;
+  const auto& find_block = context.find_block;
+  const auto& find_same_module_global = context.find_same_module_global;
+  const auto& same_module_global_supports_scalar_load =
+      context.same_module_global_supports_scalar_load;
+  const auto& render_asm_symbol_name = context.render_asm_symbol_name;
+  const auto& emit_same_module_global_data = context.emit_same_module_global_data;
+  const auto& prepend_bounded_same_module_helpers =
+      context.prepend_bounded_same_module_helpers;
   if (!function.params.empty() || function.blocks.empty() || prepared_arch != c4c::TargetArch::X86_64) {
     return std::nullopt;
   }
@@ -374,15 +384,12 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
           [&](const c4c::backend::bir::Block& block,
               const std::optional<c4c::backend::prepare::PreparedShortCircuitContinuationLabels>&
                   continuation) -> std::optional<std::string> {
+    const auto block_context = context.make_block_context(block, *layout);
     if (!rendered_blocks.insert(block.label).second &&
         block.terminator.kind != c4c::backend::bir::TerminatorKind::Return) {
       return std::nullopt;
     }
-    const c4c::BlockLabelId block_label_id =
-        prepared_names == nullptr ? c4c::kInvalidBlockLabel
-                                  : c4c::backend::prepare::resolve_prepared_block_label_id(
-                                        *prepared_names, block.label)
-                                        .value_or(c4c::kInvalidBlockLabel);
+    const c4c::BlockLabelId block_label_id = block_context.block_label_id;
 
     auto rendered_load_or_store =
         [&](const c4c::backend::bir::Inst& inst,
