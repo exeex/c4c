@@ -313,6 +313,27 @@ select_prepared_i32_immediate_branch_plan_if_supported(
   };
 }
 
+std::optional<PreparedI32ImmediateBranchPlan>
+select_prepared_or_raw_i32_immediate_branch_plan_if_supported(
+    const PreparedX86FunctionDispatchContext& context,
+    c4c::BlockLabelId entry_label_id,
+    const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedBranchCondition* prepared_branch_condition,
+    std::string_view compared_value_name) {
+  if (prepared_branch_condition != nullptr) {
+    return select_prepared_i32_immediate_branch_plan_if_supported(
+        context, entry_label_id, entry, *prepared_branch_condition, compared_value_name);
+  }
+
+  const auto raw_branch_plan = select_raw_i32_immediate_branch_plan_if_supported(entry);
+  if (!raw_branch_plan.has_value() ||
+      raw_branch_plan->compared_value.kind != c4c::backend::bir::Value::Kind::Named ||
+      raw_branch_plan->compared_value.name != compared_value_name) {
+    return std::nullopt;
+  }
+  return raw_branch_plan->branch_plan;
+}
+
 std::string render_prepared_i32_compare_and_branch(c4c::backend::bir::BinaryOpcode compare_opcode,
                                                    std::int64_t compare_immediate,
                                                    std::string_view function_name,
@@ -1716,21 +1737,15 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
         "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
   }
 
-  auto compare_opcode = compare->opcode;
-  std::int64_t compare_immediate = compare->rhs.immediate;
-  std::string true_label = entry.terminator.true_label;
-  std::string false_label = entry.terminator.false_label;
-  if (prepared_branch_condition != nullptr) {
-    const auto prepared_branch_plan = select_prepared_i32_immediate_branch_plan_if_supported(
-        context, entry_label_id, entry, *prepared_branch_condition, sext_updated->result.name);
-    if (!prepared_branch_plan.has_value()) {
-      return std::nullopt;
-    }
-    compare_opcode = prepared_branch_plan->compare_opcode;
-    compare_immediate = prepared_branch_plan->compare_immediate;
-    true_label = prepared_branch_plan->true_label;
-    false_label = prepared_branch_plan->false_label;
+  const auto branch_plan = select_prepared_or_raw_i32_immediate_branch_plan_if_supported(
+      context, entry_label_id, entry, prepared_branch_condition, sext_updated->result.name);
+  if (!branch_plan.has_value()) {
+    return std::nullopt;
   }
+  auto compare_opcode = branch_plan->compare_opcode;
+  std::int64_t compare_immediate = branch_plan->compare_immediate;
+  std::string true_label = branch_plan->true_label;
+  std::string false_label = branch_plan->false_label;
   if (compare_opcode != c4c::backend::bir::BinaryOpcode::Eq &&
       compare_opcode != c4c::backend::bir::BinaryOpcode::Ne) {
     return std::nullopt;
