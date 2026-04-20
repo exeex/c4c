@@ -229,13 +229,14 @@ inline std::optional<std::string> narrow_i32_register(std::string_view wide_regi
 
 inline std::optional<std::string> select_prepared_i32_call_argument_abi_register_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t block_index,
     std::size_t instruction_index,
     std::size_t arg_index) {
   if (function_locations == nullptr) {
     return std::nullopt;
   }
   const auto* before_call_bundle = c4c::backend::prepare::find_prepared_move_bundle(
-      *function_locations, c4c::backend::prepare::PreparedMovePhase::BeforeCall, 0,
+      *function_locations, c4c::backend::prepare::PreparedMovePhase::BeforeCall, block_index,
       instruction_index);
   if (before_call_bundle == nullptr) {
     return std::nullopt;
@@ -252,16 +253,25 @@ inline std::optional<std::string> select_prepared_i32_call_argument_abi_register
   return std::nullopt;
 }
 
+inline std::optional<std::string> select_prepared_i32_call_argument_abi_register_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t instruction_index,
+    std::size_t arg_index) {
+  return select_prepared_i32_call_argument_abi_register_if_supported(
+      function_locations, 0, instruction_index, arg_index);
+}
+
 inline std::optional<PreparedI32CallResultAbiSelection>
 select_prepared_i32_call_result_abi_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t block_index,
     std::size_t instruction_index,
     const c4c::backend::prepare::PreparedValueHome* result_home) {
   if (function_locations == nullptr) {
     return std::nullopt;
   }
   const auto* after_call_bundle = c4c::backend::prepare::find_prepared_move_bundle(
-      *function_locations, c4c::backend::prepare::PreparedMovePhase::AfterCall, 0,
+      *function_locations, c4c::backend::prepare::PreparedMovePhase::AfterCall, block_index,
       instruction_index);
   if (after_call_bundle == nullptr) {
     return std::nullopt;
@@ -295,6 +305,15 @@ select_prepared_i32_call_result_abi_if_supported(
       .move = after_call_move,
       .abi_register = std::move(*abi_register),
   };
+}
+
+inline std::optional<PreparedI32CallResultAbiSelection>
+select_prepared_i32_call_result_abi_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedValueHome* result_home) {
+  return select_prepared_i32_call_result_abi_if_supported(
+      function_locations, 0, instruction_index, result_home);
 }
 
 template <typename RenderMoveToEaxFn, typename RenderI32OperandFn>
@@ -588,6 +607,7 @@ struct PreparedX86BlockDispatchContext {
   const c4c::backend::bir::Block* block = nullptr;
   const PreparedModuleLocalSlotLayout* local_layout = nullptr;
   c4c::BlockLabelId block_label_id = c4c::kInvalidBlockLabel;
+  std::size_t block_index = 0;
 };
 
 struct PreparedX86FunctionDispatchContext {
@@ -619,10 +639,24 @@ struct PreparedX86FunctionDispatchContext {
       emit_same_module_global_data;
   std::function<std::string(std::string)> prepend_bounded_same_module_helpers;
   std::function<std::optional<std::string>(const c4c::backend::bir::Param&)> minimal_param_register;
+  std::unordered_set<std::string_view>* used_string_names = nullptr;
+  std::unordered_set<std::string_view>* used_same_module_global_names = nullptr;
+  bool defer_module_data_emission = false;
 
   PreparedX86BlockDispatchContext make_block_context(
       const c4c::backend::bir::Block& block,
       const PreparedModuleLocalSlotLayout& local_layout) const {
+    std::size_t block_index = 0;
+    if (function != nullptr) {
+      for (; block_index < function->blocks.size(); ++block_index) {
+        if (&function->blocks[block_index] == &block) {
+          break;
+        }
+      }
+      if (block_index == function->blocks.size()) {
+        block_index = 0;
+      }
+    }
     const c4c::BlockLabelId block_label_id =
         prepared_names == nullptr ? c4c::kInvalidBlockLabel
                                   : c4c::backend::prepare::resolve_prepared_block_label_id(
@@ -633,6 +667,7 @@ struct PreparedX86FunctionDispatchContext {
         .block = &block,
         .local_layout = &local_layout,
         .block_label_id = block_label_id,
+        .block_index = block_index,
     };
   }
 };

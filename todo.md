@@ -3,47 +3,49 @@
 Status: Active
 Source Idea Path: ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit Prepared-Module And Call-Bundle Boundaries
-Plan Review Counter: 2 / 10
+Current Step ID: 2
+Current Step Title: Canonicalize Prepared-Module Traversal
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 1 audit completed. `c_testsuite_x86_backend_src_00040_c` still fails at
-the prepared-module front door before prepared call-bundle handling matters,
-while `backend_x86_handoff_boundary` stays green. The first bounded repair seam
-is generic multi-function prepared-module traversal in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` and
-`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`, not new x86-only
-`main + helper` matching and not immediate call-bundle contract growth.
+Step 2 packet extended the generic local-slot traversal in
+`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` to keep `i32 ->
+i64` index aliases alive across pointer-backed scalar loads and to consume the
+resulting `bir.select eq i64 ..., i32 ...` ladders as normal `eax`-tracked
+value selection. That lets `00040` advance past the old minimal-emitter
+fallback while `backend_x86_handoff_boundary` stays green.
 
 ## Suggested Next
 
-Implement the first Step 2 slice by replacing the current bounded
-multi-defined-module gate with generic per-function prepared traversal over the
-existing prepared module inventory, then prove it with
-`backend_x86_handoff_boundary` plus `c_testsuite_x86_backend_src_00040_c`
-before touching prepared call-bundle contract surfaces.
+Build the next Step 2 packet around the next explicit generic-renderer seam in
+`prepared_local_slot_render.cpp`: consume the prepared guard-chain handoff now
+visible in `chk`/`go` after the pointer-backed select ladders render, without
+reopening the bounded local guard fallback or reintroducing topology-specific
+same-module helper routing.
 
 ## Watchouts
 
-- Do not reopen idea-62 stack/addressing work unless a new case reproduces a
-  pre-prepared semantic lowering miss.
-- Do not add another x86-only `main + helper` acceptance lane to get `00040`
-  through prepared emission.
-- The existing `BeforeCall` / `AfterCall` boundary coverage already shows the
-  authoritative call-bundle contract is exercised separately, so the next
-  packet should treat multi-function traversal as the first root cause and only
-  grow shared prepared contract fields if traversal work proves the inventory
-  itself is too weak.
+- The new select-ladder support depends on the prepared `i32 -> i64` index cast
+  staying as a pure alias to an already-home-synced `i32` value; if a later
+  case introduces non-aliasing `i64` compare sources, that needs a broader
+  prepared scalar state model rather than another local one-off.
+- `00040` now fails with `x86 backend emitter requires the authoritative
+  prepared guard-chain handoff through the canonical prepared-module handoff`,
+  so the next packet should inspect the remaining conditional chain contracts
+  inside `chk`/`go` instead of adding another fallback lane.
+- Keep the pointer-backed load route generic: the new `bir.select` support is
+  for prepared contiguous scalar selections over authoritative pointer-backed
+  accesses, not for named-case-only `00040` topology matching.
+- The guarded `r11` scratch fallback remains intentionally narrow: if future
+  cases already assign a prepared home to `r11`, pointer-base materialization
+  still returns `nullopt` instead of silently clobbering an authoritative home.
 
 ## Proof
 
-Selected the first idea-61 proof command and refreshed
-`/workspaces/c4c/test_before.log` with it:
-`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00040_c)$'`.
-Current baseline result: `backend_x86_handoff_boundary` passes and
-`c_testsuite_x86_backend_src_00040_c` fails with the single-function prepared
-module restriction. No new `test_after.log` was produced in this audit-only
-slice.
+Ran the delegated proof command and preserved `/workspaces/c4c/test_after.log`:
+`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00040_c)$' | tee test_after.log`.
+Result: `backend_x86_handoff_boundary` passed again and
+`c_testsuite_x86_backend_src_00040_c` still failed with
+`x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff`.
