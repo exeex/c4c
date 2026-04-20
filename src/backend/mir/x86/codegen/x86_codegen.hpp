@@ -368,6 +368,7 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_i
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
     std::string_view return_register);
@@ -395,6 +396,7 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix);
 
@@ -405,6 +407,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,

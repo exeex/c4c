@@ -418,6 +418,7 @@ std::string emit_prepared_module(
         &module.stack_layout,
         find_addressing_function(),
         &module.names,
+        c4c::backend::prepare::find_prepared_value_location_function(module, function.name),
         find_control_flow_function(),
         prepared_arch,
         asm_prefix,

@@ -179,41 +179,21 @@ std::optional<std::string> render_prepared_symbol_memory_operand_if_supported(
   return memory;
 }
 
-std::optional<std::size_t> find_prepared_value_backed_stack_object_frame_offset(
-    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+std::optional<std::size_t> find_prepared_value_home_frame_offset(
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::string_view value_name) {
-  if (stack_layout == nullptr || prepared_names == nullptr || function_name == c4c::kInvalidFunctionName ||
-      value_name.empty()) {
+  if (prepared_names == nullptr || function_locations == nullptr || value_name.empty()) {
     return std::nullopt;
   }
 
-  const auto value_name_id =
-      c4c::backend::prepare::resolve_prepared_value_name_id(*prepared_names, value_name);
-  if (!value_name_id.has_value()) {
+  const auto* home =
+      c4c::backend::prepare::find_prepared_value_home(*prepared_names, *function_locations, value_name);
+  if (home == nullptr || home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
+      !home->offset_bytes.has_value()) {
     return std::nullopt;
   }
-
-  const auto* matched_object = [&]() -> const c4c::backend::prepare::PreparedStackObject* {
-    for (const auto& object : stack_layout->objects) {
-      if (object.function_name != function_name || object.value_name != value_name_id) {
-        continue;
-      }
-      return &object;
-    }
-    return nullptr;
-  }();
-  if (matched_object == nullptr) {
-    return std::nullopt;
-  }
-
-  for (const auto& frame_slot : stack_layout->frame_slots) {
-    if (frame_slot.function_name == function_name && frame_slot.object_id == matched_object->object_id) {
-      return frame_slot.offset_bytes;
-    }
-  }
-  return std::nullopt;
+  return *home->offset_bytes;
 }
 
 const c4c::backend::prepare::PreparedBranchCondition*
@@ -308,13 +288,12 @@ std::string render_prepared_stack_address_expr(std::size_t byte_offset) {
   return "[rsp + " + std::to_string(byte_offset) + "]";
 }
 
-std::optional<std::string> render_prepared_value_backed_stack_object_address_if_supported(
-    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+std::optional<std::string> render_prepared_value_home_stack_address_if_supported(
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::string_view value_name) {
-  const auto frame_offset = find_prepared_value_backed_stack_object_frame_offset(
-      stack_layout, prepared_names, function_name, value_name);
+  const auto frame_offset =
+      find_prepared_value_home_frame_offset(prepared_names, function_locations, value_name);
   if (!frame_offset.has_value()) {
     return std::nullopt;
   }
@@ -340,6 +319,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
@@ -366,11 +346,6 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
   if (!layout.has_value()) {
     return std::nullopt;
   }
-  const c4c::FunctionNameId function_name_id =
-      prepared_names == nullptr ? c4c::kInvalidFunctionName
-                                : c4c::backend::prepare::resolve_prepared_function_name_id(
-                                      *prepared_names, function.name)
-                                      .value_or(c4c::kInvalidFunctionName);
   static constexpr const char* kArgRegs32[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
   const auto render_function_return =
       [&](std::int32_t returned_imm) -> std::string {
@@ -599,8 +574,8 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
           *current_ptr_name = std::nullopt;
           return "    mov " + *memory + ", rax\n";
         }
-        const auto pointee_address = render_prepared_value_backed_stack_object_address_if_supported(
-            stack_layout, prepared_names, function_name_id, store->value.name);
+        const auto pointee_address = render_prepared_value_home_stack_address_if_supported(
+            prepared_names, function_locations, store->value.name);
         if (!pointee_address.has_value()) {
           *current_ptr_name = std::nullopt;
           return std::string{};
@@ -1723,6 +1698,7 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_i
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
     std::string_view return_register) {
@@ -1730,7 +1706,7 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_i
       function.blocks.front().terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
       !function.blocks.front().terminator.value.has_value() ||
       prepared_arch != c4c::TargetArch::X86_64 || stack_layout == nullptr ||
-      function_addressing == nullptr || prepared_names == nullptr) {
+      function_addressing == nullptr || prepared_names == nullptr || function_locations == nullptr) {
     return std::nullopt;
   }
 
@@ -1738,11 +1714,9 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_i
   const auto wrap_i32 = [](std::int64_t value) -> std::int32_t {
     return static_cast<std::int32_t>(static_cast<std::uint32_t>(value));
   };
-  const auto function_name_id =
-      c4c::backend::prepare::resolve_prepared_function_name_id(*prepared_names, function.name);
   const auto entry_label_id =
       c4c::backend::prepare::resolve_prepared_block_label_id(*prepared_names, entry.label);
-  if (!function_name_id.has_value() || !entry_label_id.has_value()) {
+  if (!entry_label_id.has_value()) {
     return std::nullopt;
   }
   const auto layout = build_prepared_module_local_slot_layout(
@@ -1800,8 +1774,8 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_i
           }
           return static_cast<std::size_t>(value_it->second.value);
         }
-        return find_prepared_value_backed_stack_object_frame_offset(
-            stack_layout, prepared_names, *function_name_id, value.name);
+        return find_prepared_value_home_frame_offset(
+            prepared_names, function_locations, value.name);
       };
 
   const auto resolve_prepared_memory_address = [&](std::size_t inst_index)
@@ -2131,6 +2105,7 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix) {
   if (function.params.empty() == false || function.blocks.size() != 1 ||
@@ -2161,11 +2136,6 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
   }
 
   auto asm_text = std::string(asm_prefix);
-  const c4c::FunctionNameId function_name_id =
-      prepared_names == nullptr ? c4c::kInvalidFunctionName
-                                : c4c::backend::prepare::resolve_prepared_function_name_id(
-                                      *prepared_names, function.name)
-                                      .value_or(c4c::kInvalidFunctionName);
   const c4c::BlockLabelId entry_label_id =
       prepared_names == nullptr ? c4c::kInvalidBlockLabel
                                 : c4c::backend::prepare::resolve_prepared_block_label_id(
@@ -2201,8 +2171,8 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
       }
       if (store->value.kind == c4c::backend::bir::Value::Kind::Named &&
           store->value.type == c4c::backend::bir::TypeKind::Ptr) {
-        const auto pointee_address = render_prepared_value_backed_stack_object_address_if_supported(
-            stack_layout, prepared_names, function_name_id, store->value.name);
+        const auto pointee_address = render_prepared_value_home_stack_address_if_supported(
+            prepared_names, function_locations, store->value.name);
         if (!pointee_address.has_value()) {
           return std::nullopt;
         }
@@ -2755,13 +2725,23 @@ std::optional<std::string> render_prepared_single_block_return_dispatch_if_suppo
   }
   if (const auto rendered_local_slot =
           render_prepared_minimal_local_slot_return_if_supported(
-              function, stack_layout, function_addressing, prepared_names, prepared_arch, asm_prefix);
+              function,
+              stack_layout,
+              function_addressing,
+              prepared_names,
+              function_locations,
+              prepared_arch,
+              asm_prefix);
       rendered_local_slot.has_value()) {
     return *rendered_local_slot;
   }
   if (const auto rendered_constant_folded =
           render_prepared_constant_folded_single_block_return_if_supported(
-              function, stack_layout, function_addressing, prepared_names,
+              function,
+              stack_layout,
+              function_addressing,
+              prepared_names,
+              function_locations,
               prepared_arch, asm_prefix, return_register);
       rendered_constant_folded.has_value()) {
     return *rendered_constant_folded;
