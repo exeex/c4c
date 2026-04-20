@@ -1,5 +1,6 @@
 #include "src/backend/bir/lir_to_bir.hpp"
 
+#include <array>
 #include <iostream>
 #include <optional>
 #include <string_view>
@@ -57,6 +58,7 @@ LirModule make_admitted_scalar_i16_globals_module();
 LirModule make_admitted_aggregate_pointer_field_global_module();
 LirModule make_admitted_aggregate_zero_sized_member_global_module();
 LirModule make_admitted_aggregate_string_array_field_global_module();
+LirModule make_admitted_aggregate_long_double_field_global_module();
 
 int expect_failure_notes(std::string_view case_name,
                          const LirModule& module,
@@ -275,6 +277,47 @@ int expect_admitted_aggregate_string_array_field_global() {
   }
   if (global->initializer_elements[16] != c4c::backend::bir::Value::immediate_i8(42)) {
     return fail("aggregate globals with string-backed array fields should preserve following scalar payload bytes");
+  }
+
+  return 0;
+}
+
+int expect_admitted_aggregate_long_double_field_global() {
+  auto result =
+      try_lower_to_bir_with_options(make_admitted_aggregate_long_double_field_global_module(),
+                                    BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("expected semantic BIR lowering to admit aggregate globals with x86_fp80 fields");
+  }
+
+  const auto find_global = [&](std::string_view name) -> const c4c::backend::bir::Global* {
+    for (const auto& global : result.module->globals) {
+      if (global.name == name) {
+        return &global;
+      }
+    }
+    return nullptr;
+  };
+
+  const auto* global = find_global("gld_field");
+  if (global == nullptr || global->type != TypeKind::I8 || global->size_bytes != 16 ||
+      global->initializer_elements.size() != 16) {
+    return fail("aggregate globals with x86_fp80 fields should lower into 16-byte byte-addressable storage");
+  }
+
+  const std::array<std::int8_t, 16> expected_bytes = {
+      static_cast<std::int8_t>(0x00), static_cast<std::int8_t>(0xD0),
+      static_cast<std::int8_t>(0xCC), static_cast<std::int8_t>(0xCC),
+      static_cast<std::int8_t>(0xCC), static_cast<std::int8_t>(0xCC),
+      static_cast<std::int8_t>(0xCC), static_cast<std::int8_t>(0xF8),
+      static_cast<std::int8_t>(0x03), static_cast<std::int8_t>(0x40),
+      0, 0, 0, 0, 0, 0,
+  };
+  for (std::size_t index = 0; index < expected_bytes.size(); ++index) {
+    if (global->initializer_elements[index] !=
+        c4c::backend::bir::Value::immediate_i8(expected_bytes[index])) {
+      return fail("aggregate globals with x86_fp80 fields should preserve little-endian long-double bytes with tail padding");
+    }
   }
 
   return 0;
@@ -1144,6 +1187,35 @@ LirModule make_admitted_aggregate_string_array_field_global_module() {
   return module;
 }
 
+LirModule make_admitted_aggregate_long_double_field_global_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.type_decls.push_back("%struct.long_double_field = type { x86_fp80 }");
+
+  LirGlobal global;
+  global.name = "gld_field";
+  global.qualifier = "global ";
+  global.llvm_type = "%struct.long_double_field";
+  global.init_text = "{ x86_fp80 0xK4003F8CCCCCCCCCCD000 }";
+  global.align_bytes = 16;
+  module.globals.push_back(std::move(global));
+
+  LirFunction function;
+  function.name = "admitted_aggregate_long_double_field_global";
+  function.signature_text = "define i32 @admitted_aggregate_long_double_field_global()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = "0",
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_bad_local_memory_umbrella_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -1863,6 +1935,12 @@ int main() {
           expect_admitted_aggregate_string_array_field_global();
       aggregate_string_array_field_global_status != 0) {
     return aggregate_string_array_field_global_status;
+  }
+
+  if (const int aggregate_long_double_field_global_status =
+          expect_admitted_aggregate_long_double_field_global();
+      aggregate_long_double_field_global_status != 0) {
+    return aggregate_long_double_field_global_status;
   }
 
   if (const int local_memory_umbrella_status = expect_failure_notes(

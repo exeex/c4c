@@ -62,6 +62,9 @@ std::optional<bir::TypeKind> lower_scalar_storage_type(std::string_view text) {
   if (text == "double" || text == "f64") {
     return bir::TypeKind::F64;
   }
+  if (text == "x86_fp80" || text == "f128") {
+    return bir::TypeKind::F128;
+  }
   return std::nullopt;
 }
 
@@ -139,6 +142,9 @@ std::size_t type_size_bytes(bir::TypeKind type) {
     case bir::TypeKind::Ptr:
     case bir::TypeKind::F64:
       return 8;
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F128:
+      return 16;
     default:
       return 0;
   }

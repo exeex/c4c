@@ -1,5 +1,6 @@
 #include "lir_to_bir.hpp"
 
+#include <array>
 #include <charconv>
 #include <cstring>
 
@@ -85,6 +86,31 @@ std::optional<int> parse_hex_digit(char ch) {
     return 10 + (ch - 'A');
   }
   return std::nullopt;
+}
+
+bool append_x86_fp80_initializer_bytes(std::string_view text, std::vector<bir::Value>* out) {
+  if (text.size() != 23 || text[0] != '0' || (text[1] != 'x' && text[1] != 'X') ||
+      (text[2] != 'K' && text[2] != 'k')) {
+    return false;
+  }
+
+  std::array<std::uint8_t, 10> payload{};
+  for (std::size_t index = 0; index < payload.size(); ++index) {
+    const auto hi = parse_hex_digit(text[3 + index * 2]);
+    const auto lo = parse_hex_digit(text[4 + index * 2]);
+    if (!hi.has_value() || !lo.has_value()) {
+      return false;
+    }
+    payload[index] = static_cast<std::uint8_t>((*hi << 4) | *lo);
+  }
+
+  for (auto it = payload.rbegin(); it != payload.rend(); ++it) {
+    out->push_back(bir::Value::immediate_i8(static_cast<std::int8_t>(*it)));
+  }
+  for (std::size_t index = payload.size(); index < type_size_bytes(bir::TypeKind::F128); ++index) {
+    out->push_back(bir::Value::immediate_i8(0));
+  }
+  return true;
 }
 
 std::optional<std::vector<bir::Value>> lower_llvm_byte_string_initializer(
@@ -535,6 +561,12 @@ bool append_zero_aggregate_initializer(
   const auto layout = compute_aggregate_type_layout(type_text, type_decls);
   switch (layout.kind) {
     case AggregateTypeLayout::Kind::Scalar: {
+      if (layout.scalar_type == bir::TypeKind::F128) {
+        for (std::size_t index = 0; index < layout.size_bytes; ++index) {
+          out->push_back(bir::Value::immediate_i8(0));
+        }
+        return true;
+      }
       const auto zero_value = lower_zero_initializer_value(layout.scalar_type);
       if (!zero_value.has_value()) {
         return false;
@@ -599,6 +631,9 @@ bool lower_aggregate_initializer_recursive(
   }
 
   if (layout.kind == AggregateTypeLayout::Kind::Scalar) {
+    if (layout.scalar_type == bir::TypeKind::F128) {
+      return append_x86_fp80_initializer_bytes(trimmed_init, out);
+    }
     if (layout.scalar_type == bir::TypeKind::Ptr) {
       if (const auto address = parse_global_address_initializer(trimmed_init, type_decls);
           address.has_value()) {
