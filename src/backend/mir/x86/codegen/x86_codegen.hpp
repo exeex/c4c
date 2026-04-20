@@ -386,6 +386,22 @@ inline std::optional<std::string> render_prepared_i32_binary_in_eax_if_supported
   }
 }
 
+template <typename RenderI32OperandFn>
+inline std::optional<std::string> render_prepared_i32_store_to_memory_if_supported(
+    const c4c::backend::bir::Value& value,
+    const std::optional<std::string_view>& current_i32_name,
+    std::string_view memory_operand,
+    const RenderI32OperandFn& render_i32_operand) {
+  if (value.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  const auto operand = render_i32_operand(value, current_i32_name);
+  if (!operand.has_value()) {
+    return std::nullopt;
+  }
+  return "    mov " + std::string(memory_operand) + ", " + *operand + "\n";
+}
+
 // Active intrinsic inventory carried by the translated x86 intrinsics owner.
 enum class IntrinsicOp : std::uint16_t {
   Lfence,

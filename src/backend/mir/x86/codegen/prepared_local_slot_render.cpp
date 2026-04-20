@@ -1207,14 +1207,20 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
             *current_i8_name = std::nullopt;
             *current_ptr_name = std::nullopt;
           }
-          if (selected_store_value->immediate.has_value()) {
-            return "    mov " + *memory + ", " +
-                   std::to_string(*selected_store_value->immediate) + "\n";
-          }
-          if (selected_store_value->in_eax) {
-            return "    mov " + *memory + ", eax\n";
-          }
-          return "    mov " + *memory + ", " + *selected_store_value->operand + "\n";
+          return render_prepared_i32_store_to_memory_if_supported(
+              store->value,
+              *current_i32_name,
+              *memory,
+              [&](const c4c::backend::bir::Value& value,
+                  const std::optional<std::string_view>& current_name) -> std::optional<std::string> {
+                return render_prepared_i32_operand_if_supported(
+                    value,
+                    current_name,
+                    [&](std::string_view value_name) -> std::optional<std::string> {
+                      return select_prepared_previous_i32_operand_if_supported(
+                          value_name, *previous_i32_name);
+                    });
+              });
         }
       }
       if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate &&
@@ -3490,21 +3496,27 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
       }
       used_same_module_globals.insert(selected_global_memory->global->name);
 
-      const auto selected_store_operand = render_prepared_i32_operand_if_supported(
+      const auto rendered_store = render_prepared_i32_store_to_memory_if_supported(
           store->value,
           current_i32_name,
-          [&](std::string_view value_name) -> std::optional<std::string> {
-            const auto param_it = param_registers.find(value_name);
-            if (param_it == param_registers.end()) {
-              return std::nullopt;
-            }
-            return param_it->second;
+          selected_global_memory->memory_operand,
+          [&](const c4c::backend::bir::Value& value,
+              const std::optional<std::string_view>& current_name) -> std::optional<std::string> {
+            return render_prepared_i32_operand_if_supported(
+                value,
+                current_name,
+                [&](std::string_view value_name) -> std::optional<std::string> {
+                  const auto param_it = param_registers.find(value_name);
+                  if (param_it == param_registers.end()) {
+                    return std::nullopt;
+                  }
+                  return param_it->second;
+                });
           });
-      if (!selected_store_operand.has_value()) {
+      if (!rendered_store.has_value()) {
         return std::nullopt;
       }
-      body += "    mov " + selected_global_memory->memory_operand + ", " +
-              *selected_store_operand + "\n";
+      body += *rendered_store;
       continue;
     }
 
