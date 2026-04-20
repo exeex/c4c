@@ -155,7 +155,7 @@ std::string emit_module(const BackendModuleInput& input,
   const auto target_profile = resolve_public_lir_target_profile(lir_module, options.target_profile);
 
   c4c::backend::BirLoweringOptions lowering_options{};
-  lowering_options.preserve_dynamic_alloca = options.emit_semantic_bir;
+  lowering_options.preserve_dynamic_alloca = true;
   auto lowering = c4c::backend::try_lower_to_bir_with_options(lir_module, lowering_options);
 
   if (lowering.module.has_value()) {
