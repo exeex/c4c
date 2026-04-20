@@ -46,6 +46,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
   auto& local_pointer_value_aliases = local_pointer_value_aliases_;
   auto& local_indirect_pointer_slots = local_indirect_pointer_slots_;
   auto& pointer_value_addresses = pointer_value_addresses_;
+  auto& pointer_address_ints = pointer_address_ints_;
   auto& local_pointer_slot_addresses = local_pointer_slot_addresses_;
   auto& local_address_slots = local_address_slots_;
   auto& local_slot_address_slots = local_slot_address_slots_;
@@ -88,6 +89,67 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
   const auto fail_load = [&]() {
     note_function_lowering_family_failure("load local-memory semantic family");
     return false;
+  };
+  const auto resolve_runtime_pointer_address =
+      [&](std::string_view operand_name) -> std::optional<PointerAddress> {
+    const auto operand = std::string(operand_name);
+    if (const auto addressed_ptr_it = pointer_value_addresses.find(operand);
+        addressed_ptr_it != pointer_value_addresses.end()) {
+      return addressed_ptr_it->second;
+    }
+
+    if (const auto local_slot_ptr_it = local_slot_pointer_values.find(operand);
+        local_slot_ptr_it != local_slot_pointer_values.end()) {
+      if (local_slot_ptr_it->second.byte_offset < 0) {
+        return std::nullopt;
+      }
+
+      const std::string base_slot =
+          local_slot_ptr_it->second.array_element_slots.empty()
+              ? local_slot_ptr_it->second.slot_name
+              : local_slot_ptr_it->second.array_element_slots.front();
+      return PointerAddress{
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, base_slot),
+          .value_type = local_slot_ptr_it->second.value_type,
+          .byte_offset = static_cast<std::size_t>(local_slot_ptr_it->second.byte_offset),
+          .storage_type_text = local_slot_ptr_it->second.storage_type_text,
+          .type_text = local_slot_ptr_it->second.type_text,
+      };
+    }
+
+    const auto local_ptr_it = local_pointer_slots.find(operand);
+    if (local_ptr_it == local_pointer_slots.end()) {
+      return std::nullopt;
+    }
+
+    const auto slot_type_it = local_slot_types.find(local_ptr_it->second);
+    if (slot_type_it == local_slot_types.end()) {
+      return std::nullopt;
+    }
+
+    std::string base_slot = local_ptr_it->second;
+    std::size_t byte_offset = 0;
+    if (const auto array_base_it = local_pointer_array_bases.find(operand);
+        array_base_it != local_pointer_array_bases.end()) {
+      if (array_base_it->second.element_slots.empty()) {
+        return std::nullopt;
+      }
+      const auto slot_size = type_size_bytes(slot_type_it->second);
+      if (slot_size == 0) {
+        return std::nullopt;
+      }
+      base_slot = array_base_it->second.element_slots.front();
+      byte_offset = array_base_it->second.base_index * slot_size;
+    }
+
+    const auto type_text = render_type(slot_type_it->second);
+    return PointerAddress{
+        .base_value = bir::Value::named(bir::TypeKind::Ptr, std::move(base_slot)),
+        .value_type = slot_type_it->second,
+        .byte_offset = byte_offset,
+        .storage_type_text = type_text,
+        .type_text = type_text,
+    };
   };
   if (lower_scalar_compare_inst(inst, value_aliases, compare_exprs, lowered_insts)) {
     return true;
@@ -137,16 +199,28 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       }
 
       const auto global_ptr_it = global_pointer_slots.find(cast->operand.str());
-      if (global_ptr_it == global_pointer_slots.end()) {
+      if (global_ptr_it != global_pointer_slots.end()) {
+        global_address_ints[cast->result.str()] = global_ptr_it->second;
+        return true;
+      }
+
+      const auto pointer_addr = resolve_runtime_pointer_address(cast->operand.str());
+      if (!pointer_addr.has_value()) {
         return fail_scalar_cast();
       }
-      global_address_ints[cast->result.str()] = global_ptr_it->second;
+      pointer_address_ints[cast->result.str()] = *pointer_addr;
       return true;
     }
 
     if (cast->kind == c4c::codegen::lir::LirCastKind::IntToPtr &&
         cast->from_type.str() == "i64" && cast->to_type.str() == "ptr" &&
         cast->operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+      const auto pointer_addr_it = pointer_address_ints.find(cast->operand.str());
+      if (pointer_addr_it != pointer_address_ints.end()) {
+        pointer_value_addresses[cast->result.str()] = pointer_addr_it->second;
+        return true;
+      }
+
       const auto global_object_addr_it = global_object_address_ints.find(cast->operand.str());
       if (global_object_addr_it != global_object_address_ints.end()) {
         global_object_pointer_slots[cast->result.str()] = global_object_addr_it->second;
@@ -202,6 +276,17 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     if (*opcode == bir::BinaryOpcode::Sub && *value_type == bir::TypeKind::I64 &&
         bin->lhs.kind() == c4c::codegen::lir::LirOperandKind::SsaValue &&
         bin->rhs.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+      const auto lhs_pointer_addr_it = pointer_address_ints.find(bin->lhs.str());
+      const auto rhs_pointer_addr_it = pointer_address_ints.find(bin->rhs.str());
+      if (lhs_pointer_addr_it != pointer_address_ints.end() &&
+          rhs_pointer_addr_it != pointer_address_ints.end() &&
+          lhs_pointer_addr_it->second.base_value == rhs_pointer_addr_it->second.base_value) {
+        value_aliases[bin->result.str()] = bir::Value::immediate_i64(
+            static_cast<std::int64_t>(lhs_pointer_addr_it->second.byte_offset) -
+            static_cast<std::int64_t>(rhs_pointer_addr_it->second.byte_offset));
+        return true;
+      }
+
       const auto lhs_addr_it = global_address_ints.find(bin->lhs.str());
       const auto rhs_addr_it = global_address_ints.find(bin->rhs.str());
       if (lhs_addr_it != global_address_ints.end() && rhs_addr_it != global_address_ints.end() &&

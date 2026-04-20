@@ -370,6 +370,7 @@ class BirFunctionLowerer {
   };
 
   using PointerAddressMap = std::unordered_map<std::string, PointerAddress>;
+  using PointerAddressIntMap = std::unordered_map<std::string, PointerAddress>;
   using GlobalPointerValueSlots = std::unordered_map<std::string, std::optional<PointerAddress>>;
   using AddressedGlobalPointerValueSlots =
       std::unordered_map<GlobalPointerSlotKey,
@@ -1038,6 +1039,7 @@ class BirFunctionLowerer {
   LocalPointerValueAliasMap local_pointer_value_aliases_;
   LocalIndirectPointerSlotSet local_indirect_pointer_slots_;
   PointerAddressMap pointer_value_addresses_;
+  PointerAddressIntMap pointer_address_ints_;
   PointerAddressMap local_pointer_slot_addresses_;
   LocalAddressSlots local_address_slots_;
   LocalSlotAddressSlots local_slot_address_slots_;
