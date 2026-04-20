@@ -180,6 +180,7 @@ std::optional<std::string> render_prepared_symbol_memory_operand_if_supported(
 }
 
 std::optional<std::size_t> find_prepared_value_home_frame_offset(
+    const PreparedModuleLocalSlotLayout& local_layout,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::string_view value_name) {
@@ -190,7 +191,16 @@ std::optional<std::size_t> find_prepared_value_home_frame_offset(
   const auto* home =
       c4c::backend::prepare::find_prepared_value_home(*prepared_names, *function_locations, value_name);
   if (home == nullptr || home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
-      !home->offset_bytes.has_value()) {
+      (!home->slot_id.has_value() && !home->offset_bytes.has_value())) {
+    return std::nullopt;
+  }
+  if (home->slot_id.has_value()) {
+    const auto frame_slot_it = local_layout.frame_slot_offsets.find(*home->slot_id);
+    if (frame_slot_it != local_layout.frame_slot_offsets.end()) {
+      return frame_slot_it->second;
+    }
+  }
+  if (!home->offset_bytes.has_value()) {
     return std::nullopt;
   }
   return *home->offset_bytes;
@@ -289,11 +299,13 @@ std::string render_prepared_stack_address_expr(std::size_t byte_offset) {
 }
 
 std::optional<std::string> render_prepared_value_home_stack_address_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::string_view value_name) {
   const auto frame_offset =
-      find_prepared_value_home_frame_offset(prepared_names, function_locations, value_name);
+      find_prepared_value_home_frame_offset(
+          local_layout, prepared_names, function_locations, value_name);
   if (!frame_offset.has_value()) {
     return std::nullopt;
   }
@@ -575,7 +587,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
           return "    mov " + *memory + ", rax\n";
         }
         const auto pointee_address = render_prepared_value_home_stack_address_if_supported(
-            prepared_names, function_locations, store->value.name);
+            *layout, prepared_names, function_locations, store->value.name);
         if (!pointee_address.has_value()) {
           *current_ptr_name = std::nullopt;
           return std::string{};
@@ -1775,7 +1787,7 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_i
           return static_cast<std::size_t>(value_it->second.value);
         }
         return find_prepared_value_home_frame_offset(
-            prepared_names, function_locations, value.name);
+            *layout, prepared_names, function_locations, value.name);
       };
 
   const auto resolve_prepared_memory_address = [&](std::size_t inst_index)
@@ -2172,7 +2184,7 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
       if (store->value.kind == c4c::backend::bir::Value::Kind::Named &&
           store->value.type == c4c::backend::bir::TypeKind::Ptr) {
         const auto pointee_address = render_prepared_value_home_stack_address_if_supported(
-            prepared_names, function_locations, store->value.name);
+            *layout, prepared_names, function_locations, store->value.name);
         if (!pointee_address.has_value()) {
           return std::nullopt;
         }

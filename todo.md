@@ -3,44 +3,49 @@
 Status: Active
 Source Idea Path: ideas/open/61_stack_frame_and_addressing_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 3.3.2
-Current Step Title: Stack-Home Consumer Audit Boundary
+Current Step ID: 3.3.3
+Current Step Title: Pointer-Indirect Base-Plus-Offset Cleanup
 Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3.3.1 by removing the residual frame-size
-reconstruction in `prepared_module_emit.cpp` for the covered prepared
-return/move-bundle consumers. Stack-slot-backed return helpers now size the
-wrapper frame from canonical prepared function frame data
-(`PreparedAddressingFunction::frame_size_bytes` with the prepared
-`PreparedStackLayout::frame_size_bytes` handoff as fallback) instead of
-inflating it from stack-home byte offsets.
+Completed Step 3.3.2 by auditing the remaining
+`PreparedValueHomeKind::StackSlot` consumers in
+`prepared_module_emit.cpp` and `prepared_local_slot_render.cpp`. The
+residual pointer-address helpers in `prepared_local_slot_render.cpp` now
+prefer canonical prepared frame-slot identity through
+`PreparedModuleLocalSlotLayout::frame_slot_offsets` before falling back to a
+recorded stack-home byte offset, while the remaining explicit stack-home
+sites stay bounded to scalar value-home loads/stores and wrapper-frame
+sizing.
 
 ## Suggested Next
 
-Continue Step 3.3.2 by auditing the remaining
-`PreparedValueHomeKind::StackSlot` consumers in
-`prepared_module_emit.cpp` and `prepared_local_slot_render.cpp` to separate
-acceptable scalar value-home moves from any leftover stack-relative address
-recovery. If another consumer still rebuilds frame/address meaning locally,
-move it onto prepared frame/address facts without widening into raw symbol
-call-lane setup or idea 60 move-bundle work.
+Continue with Step 3.3.3 by auditing the remaining pointer-indirect and
+base-plus-offset consumers in `prepared_local_slot_render.cpp`, especially
+the compatibility fallback where pointer-value resolution still uses a
+recorded stack-home byte offset when no prepared frame-slot mapping is
+available. Remove or isolate any remaining residual address-recovery paths
+only when the surrounding lane can stay on prepared frame/address facts
+without widening into raw symbol pointer call-lane setup or idea 60
+move-bundle work.
 
 ## Watchouts
 
 - Do not reopen closed idea 60 value-home or move-bundle work while touching
-  address consumers.
+  pointer-indirect cleanup.
 - Keep frame size, slot identity, and address provenance in shared prepare,
   not x86-local slot-name/object-name or suffix reconstruction.
-- `prepared_module_emit.cpp` still needs the prepared stack-layout fallback
-  when boundary tests mutate stack-home/value-location state without updating
-  prepared addressing in lockstep; do not delete that fallback unless the
-  handoff contract itself is tightened.
-- Treat the remaining `PreparedValueHomeKind::StackSlot` sites as an audit
-  boundary, not automatic follow-on implementation; some are acceptable scalar
-  value-home moves rather than residual address provenance recovery.
+- The remaining explicit `PreparedValueHomeKind::StackSlot` sites in
+  `prepared_module_emit.cpp` and `prepared_local_slot_render.cpp` are the
+  bounded scalar value-home consumers from the Step 3.3.2 audit boundary; do
+  not churn them unless a site starts reconstructing provenance again.
+- `prepared_local_slot_render.cpp` still carries a compatibility fallback to
+  `PreparedValueHome::offset_bytes` when a stack-home `slot_id` cannot be
+  mapped through `PreparedModuleLocalSlotLayout::frame_slot_offsets`; treat
+  that fallback as the first residual Step 3.3.3 target rather than evidence
+  that Step 3.3.2 stayed open.
 - The bounded multi-defined call-lane pointer-arg consumer near the raw
   `@name` checks remains out of scope unless lifecycle work later adds a
   separate prepared producer contract for `CallInst` pointer arguments.
