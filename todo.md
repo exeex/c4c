@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/58_semantic_lir_to_bir_gap_closure_for_x86_backend.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair The First Semantic/BIR Seam
-Plan Review Counter: 10 / 10
+Current Step ID: 2.1
+Current Step Title: Refresh Remaining Idea-58 Ownership And Pick The Next Seam
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished

@@ -25,9 +25,9 @@ lowering or canonical BIR shaping seam first.
 
 - `ideas/open/58_semantic_lir_to_bir_gap_closure_for_x86_backend.md`
 - `ideas/open/57_x86_backend_c_testsuite_capability_families.md`
-- `src/backend/prealloc/legalize.cpp`
-- `src/backend/prealloc/prealloc.hpp`
-- `src/backend/prealloc/regalloc.cpp`
+- `src/backend/bir/lir_to_bir.hpp`
+- `src/backend/bir/lir_to_bir_scalar.cpp`
+- `src/backend/bir/lir_to_bir_memory.cpp`
 - `tests/backend/codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir.c`
 - `tests/backend/codegen_route_x86_64_variadic_pair_second_observe_semantic_bir.c`
 
@@ -95,10 +95,37 @@ Completion check:
 - the first implementation packet is narrowed to one semantic-lowering seam
   with named proof targets and a clear ownership boundary
 
-## Step 2: Repair The First Semantic/BIR Seam
+## Step 2.1: Refresh Remaining Idea-58 Ownership And Pick The Next Seam
+
+Goal: keep the active packet focused on one still-owned semantic-lowering seam
+after each accepted graduation out of idea 58.
+
+Primary targets:
+
+- the narrow owned subset that still reports the semantic `lir_to_bir`
+  lowering diagnostic
+- `todo.md` routing notes for recently graduated cases
+- shared semantic/BIR lowering files nearest the next failure seam
+
+Actions:
+
+- rerun or inspect the narrow owned subset after the latest accepted slice
+- exclude cases that now belong in ideas 62, 59, 60, or 61 instead of pulling
+  them back into idea 58
+- identify one concrete next semantic/BIR seam and the nearest backend
+  coverage that can prove it without relying only on a named c-testsuite case
+- keep the next packet upstream and semantic rather than drifting into
+  prepared-emitter work
+
+Completion check:
+
+- the next executor packet is narrowed to one still-owned semantic/BIR seam
+  with named proof targets after the latest graduations are accounted for
+
+## Step 2.2: Repair The Selected Semantic/BIR Seam
 
 Goal: implement the smallest durable semantic/BIR lowering repair that advances
-the chosen owned cases into prepared x86 consumption.
+the selected still-owned cases into prepared x86 consumption.
 
 Primary targets:
 
@@ -118,22 +145,41 @@ Completion check:
 - the targeted owned cases no longer fail with the semantic `lir_to_bir`
   lowering diagnostic and instead reach the next downstream owned route
 
-## Step 3: Extend Proof And Rehome Graduated Cases
+## Step 2.3: Prove Family Shrinkage And Record Rehoming
 
-Goal: show the accepted slice improves the real semantic-lowering family rather
-than one named failure.
+Goal: show the accepted slice shrinks the real idea-58 diagnostic family and
+preserves explicit routing for any graduated cases.
 
 Actions:
 
 - require a fresh build for each accepted code slice
 - prove the repaired seam on the targeted owned cases plus the nearest backend
   coverage that protects the changed lowering path
-- check whether the advanced cases now belong in ideas 62, 59, 60, or 61 and
-  keep that routing explicit in `todo.md`
-- continue with the next still-owned semantic seam only after the previous one
-  is proven and reclassified if needed
+- record in `todo.md` when advanced cases now belong in ideas 62, 59, 60, or
+  61
+- only return to Step 2.1 after the current seam is proven and any graduated
+  routing is explicit
 
 Completion check:
 
 - accepted slices show real shrinkage of the idea-58 diagnostic family and
   preserve clear routing for any graduated downstream cases
+
+## Step 3: Continue The Loop Until Idea 58 Is Exhausted
+
+Goal: keep repeating the Step 2.1 -> 2.3 loop until the remaining failures no
+longer belong to idea 58.
+
+Actions:
+
+- keep idea 58 active only while cases still fail before prepared x86 handoff
+  with the semantic `lir_to_bir` diagnostic family
+- use `todo.md` to preserve which cases graduated downstream after each packet
+- call lifecycle review again when the next step becomes oversized or when the
+  remaining family is exhausted
+
+Completion check:
+
+- the next active packet is queued under Step 2.1 for a still-owned seam, or
+  lifecycle state is ready to hand off/close because idea 58 no longer owns
+  the remaining failures
