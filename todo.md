@@ -3,19 +3,19 @@
 Status: Active
 Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 3.2.1
-Current Step Title: Finish The Remaining Bounded Scalar Home-Proof Lanes
-Plan Review Counter: 0 / 10
+Current Step ID: 3.2.2
+Current Step Title: Prove A Naturally Produced Or Rematerializable Home Path
+Plan Review Counter: 1 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 3.2 (`Replace Value-Home Guessing With Prepared Lookups`) now covers one
-more bounded scalar immediate-binary shape inside
+Step 3.2.1 (`Finish The Remaining Bounded Scalar Home-Proof Lanes`) now covers
+the last remaining right-shift immediate-binary shape inside
 `tests/backend/backend_x86_handoff_boundary_scalar_smoke_test.cpp`: the new
-`shift_right_two` stack-home check mutates the prepared `p.x` home to
+`shift_right_signed` stack-home check mutates the prepared `p.x` home to
 `PreparedValueHomeKind::StackSlot` so the minimal scalar x86 consumer proves it
-reads authoritative prepared stack-home data for the `shr` lane instead of
+reads authoritative prepared stack-home data for the `sar` lane instead of
 falling back to register-only assumptions. Focused
 `backend_x86_handoff_boundary` proof passed for the added lane, and
 supervisor-side monotonic regression guard stayed flat against the matching
@@ -23,10 +23,10 @@ focused baseline.
 
 ## Suggested Next
 
-Continue Step 3.2.1 by extending the same prepared-home lookup route to the
-remaining arithmetic-right-shift (`ashr`) lane so the narrowed bounded-scalar
-proof substep can finish before Step 3.2 moves on to non-mutated or
-rematerializable home coverage.
+Advance to Step 3.2.2 by confirming whether shared prepare can produce one
+bounded scalar stack-backed or rematerializable home without mutating the
+value-location contract inside the smoke test, and add the smallest honest
+proof lane for that naturally produced case if it exists.
 
 ## Watchouts
 
@@ -43,11 +43,10 @@ rematerializable home coverage.
   contract inside the scalar smoke tests; a later Step 3.2 slice should prefer
   a naturally produced stack-backed or rematerializable scalar fixture if one
   can stay bounded.
-- The `and` and `shl` lanes now have bounded stack-home coverage alongside
-  `add`, `or`, `xor`, `mul`, and now `lshr`; the remaining obvious scalar-home
-  gaps in this file are the `ashr` right-shift-immediate route and any
-  naturally produced non-mutated stack-home fixture the shared producer can
-  emit cleanly.
+- The bounded immediate-binary stack-home lanes now cover `add`, `or`, `xor`,
+  `mul`, `and`, `shl`, `lshr`, and `ashr`; the next honest proof gap is a
+  naturally produced non-mutated stack-home or rematerializable scalar fixture
+  that the shared producer can emit cleanly.
 - `PreparedValueHomeKind::RematerializableImmediate` is declared in shared
   prepare but still does not appear to be produced by current shared producer
   code, so a rematerializable follow-up should confirm producer support before
@@ -69,8 +68,9 @@ rematerializable home coverage.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary' > test_after.log 2>&1`,
-which passed with the new Step 3.2 `shift_right_two` stack-home prepared-home
-coverage. `test_after.log` is the canonical proof artifact for this packet.
+which passed with the new Step 3.2.1 `shift_right_signed` stack-home
+prepared-home coverage. `test_after.log` is the canonical proof artifact for
+this packet.
 Supervisor-side monotonic regression guard
 (`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
 --before test_before.log --after test_after.log
