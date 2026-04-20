@@ -3,14 +3,14 @@
 Status: Active
 Source Idea Path: ideas/open/59_generic_scalar_instruction_selection_for_x86.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Establish Prepared Dispatch Surface
-Plan Review Counter: 10 / 10
+Current Step ID: 1.3
+Current Step Title: Audit Remaining Dispatch Seams And Hand Off To Selector Work
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 1 kept the prepared x86 route structural by pushing the compare-driven
+Step 1.2 kept the prepared x86 route structural by pushing the compare-driven
 entry dispatcher behind a `PreparedX86FunctionDispatchContext` overload. The
 prepared module emitter now hands the stable function/module/control-flow
 surface through the shared context and only keeps the packet-specific return
@@ -19,10 +19,10 @@ long raw argument bundle.
 
 ## Suggested Next
 
-Re-check whether any Step 1 prepared-x86 dispatch seams still unwrap
+Re-check whether any Step 1.3 prepared-x86 dispatch seams still unwrap
 function-wide context into raw argument lists after compare-driven entry
-routing moved onto the shared dispatch context. If Step 1 is now structurally
-exhausted, move the next packet into Step 2 selector extraction instead of
+routing moved onto the shared dispatch context. If no real structural seam
+remains, move the next packet into Step 2 selector extraction instead of
 extending context-only churn.
 
 ## Watchouts
@@ -36,9 +36,9 @@ extending context-only churn.
   emitter rewrites.
 - `render_prepared_single_block_return_dispatch_if_supported` and
   `render_prepared_compare_driven_entry_if_supported` now consume the
-  function-dispatch context directly, so Step 1 should only stay open if a real
-  remaining structural seam still unwraps that context elsewhere in the active
-  scalar path.
+  function-dispatch context directly, so Step 1.3 should only stay open if a
+  real remaining structural seam still unwraps that context elsewhere in the
+  active scalar path.
 - The matching `^backend_` before/after logs are not fully green: both
   `test_before.log` and `test_after.log` fail in
   `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
