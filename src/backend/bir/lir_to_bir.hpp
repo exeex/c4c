@@ -98,6 +98,8 @@ struct GlobalInfo {
   std::string initializer_symbol_name;
   bir::TypeKind initializer_offset_type = bir::TypeKind::Void;
   std::size_t initializer_byte_offset = 0;
+  std::size_t runtime_element_count = 0;
+  std::size_t runtime_element_stride_bytes = 0;
   std::unordered_map<std::size_t, GlobalAddress> pointer_initializer_offsets;
 };
 
@@ -361,11 +363,18 @@ class BirFunctionLowerer {
     bir::Value base_value;
     bir::TypeKind value_type = bir::TypeKind::Void;
     std::size_t byte_offset = 0;
+    std::size_t dynamic_element_count = 0;
+    std::size_t dynamic_element_stride_bytes = 0;
     std::string storage_type_text;
     std::string type_text;
   };
 
   using PointerAddressMap = std::unordered_map<std::string, PointerAddress>;
+  using GlobalPointerValueSlots = std::unordered_map<std::string, std::optional<PointerAddress>>;
+  using AddressedGlobalPointerValueSlots =
+      std::unordered_map<GlobalPointerSlotKey,
+                         std::optional<PointerAddress>,
+                         GlobalPointerSlotKeyHash>;
 
   struct CompareExpr {
     bir::BinaryOpcode opcode = bir::BinaryOpcode::Eq;
@@ -913,8 +922,11 @@ class BirFunctionLowerer {
       const GlobalTypes& global_types,
       const GlobalAddressSlots& global_address_slots,
       const AddressedGlobalPointerSlots& addressed_global_pointer_slots,
+      const GlobalPointerValueSlots& global_pointer_value_slots,
+      const AddressedGlobalPointerValueSlots& addressed_global_pointer_value_slots,
       GlobalPointerMap* global_pointer_slots,
       GlobalObjectPointerMap* global_object_pointer_slots,
+      PointerAddressMap* pointer_value_addresses,
       std::vector<bir::Inst>* lowered_insts);
   static std::optional<bool> try_lower_global_provenance_store(
       const c4c::codegen::lir::LirStoreOp& store,
@@ -924,8 +936,11 @@ class BirFunctionLowerer {
       const FunctionSymbolSet& function_symbols,
       const GlobalPointerMap& global_pointer_slots,
       const GlobalObjectPointerMap& global_object_pointer_slots,
+      const PointerAddressMap& pointer_value_addresses,
       GlobalAddressSlots* global_address_slots,
       AddressedGlobalPointerSlots* addressed_global_pointer_slots,
+      GlobalPointerValueSlots* global_pointer_value_slots,
+      AddressedGlobalPointerValueSlots* addressed_global_pointer_value_slots,
       std::vector<bir::Inst>* lowered_insts);
   std::optional<bool> try_lower_pointer_provenance_store(
       std::string_view ptr_name,
@@ -1028,6 +1043,8 @@ class BirFunctionLowerer {
   LocalSlotPointerValues local_slot_pointer_values_;
   GlobalAddressSlots global_address_slots_;
   AddressedGlobalPointerSlots addressed_global_pointer_slots_;
+  GlobalPointerValueSlots global_pointer_value_slots_;
+  AddressedGlobalPointerValueSlots addressed_global_pointer_value_slots_;
   GlobalPointerMap global_pointer_slots_;
   DynamicGlobalPointerArrayMap dynamic_global_pointer_arrays_;
   DynamicGlobalAggregateArrayMap dynamic_global_aggregate_arrays_;

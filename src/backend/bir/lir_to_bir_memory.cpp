@@ -18,6 +18,7 @@ using DynamicLocalPointerArrayAccess = BirFunctionLowerer::DynamicLocalPointerAr
 using GlobalAddress = BirFunctionLowerer::GlobalAddress;
 using LocalArraySlots = BirFunctionLowerer::LocalArraySlots;
 using LocalPointerArrayBase = BirFunctionLowerer::LocalPointerArrayBase;
+using PointerAddress = BirFunctionLowerer::PointerAddress;
 using lir_to_bir_detail::compute_aggregate_type_layout;
 using lir_to_bir_detail::GlobalInfo;
 using lir_to_bir_detail::is_known_function_symbol;
@@ -51,6 +52,8 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
   auto& local_slot_pointer_values = local_slot_pointer_values_;
   auto& global_address_slots = global_address_slots_;
   auto& global_pointer_slots = global_pointer_slots_;
+  auto& global_pointer_value_slots = global_pointer_value_slots_;
+  auto& addressed_global_pointer_value_slots = addressed_global_pointer_value_slots_;
   auto& dynamic_global_pointer_arrays = dynamic_global_pointer_arrays_;
   auto& dynamic_global_aggregate_arrays = dynamic_global_aggregate_arrays_;
   auto& dynamic_global_scalar_arrays = dynamic_global_scalar_arrays_;
@@ -796,8 +799,10 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
 
           if (addressed_ptr_it != pointer_value_addresses.end() &&
               (gep->indices.size() == 1 || gep->indices.size() == 2) &&
-              !addressed_ptr_it->second.storage_type_text.empty() &&
-              !addressed_ptr_it->second.type_text.empty()) {
+              ((addressed_ptr_it->second.dynamic_element_count != 0 &&
+                addressed_ptr_it->second.dynamic_element_stride_bytes != 0) ||
+               (!addressed_ptr_it->second.storage_type_text.empty() &&
+                !addressed_ptr_it->second.type_text.empty()))) {
             std::size_t dynamic_index_pos = 0;
             if (gep->indices.size() == 2) {
               const auto base_index = parse_typed_operand(gep->indices.front());
@@ -815,6 +820,24 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
                 !resolve_index_operand(parsed_index->operand, value_aliases).has_value()) {
               const auto lowered_index = lower_typed_index_value(*parsed_index, value_aliases);
               if (lowered_index.has_value()) {
+                const auto dynamic_element_type =
+                    lower_scalar_or_function_pointer_type(gep->element_type.str());
+                if (addressed_ptr_it->second.dynamic_element_count != 0 &&
+                    addressed_ptr_it->second.dynamic_element_stride_bytes != 0 &&
+                    dynamic_element_type.has_value() &&
+                    type_size_bytes(*dynamic_element_type) ==
+                        addressed_ptr_it->second.dynamic_element_stride_bytes) {
+                  dynamic_pointer_value_arrays[gep->result.str()] = DynamicPointerValueArrayAccess{
+                      .base_value = addressed_ptr_it->second.base_value,
+                      .element_type = *dynamic_element_type,
+                      .byte_offset = addressed_ptr_it->second.byte_offset,
+                      .element_count = addressed_ptr_it->second.dynamic_element_count,
+                      .element_stride_bytes =
+                          addressed_ptr_it->second.dynamic_element_stride_bytes,
+                      .index = *lowered_index,
+                  };
+                  return true;
+                }
                 const auto element_layout = compute_aggregate_type_layout(
                     addressed_ptr_it->second.type_text, type_decls);
                 if (element_layout.kind == AggregateTypeLayout::Kind::Array) {
@@ -1010,8 +1033,11 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
                                                                     function_symbols,
                                                                     global_pointer_slots,
                                                                     global_object_pointer_slots,
+                                                                    pointer_value_addresses,
                                                                     &global_address_slots,
                                                                     &addressed_global_pointer_slots_,
+                                                                    &global_pointer_value_slots,
+                                                                    &addressed_global_pointer_value_slots,
                                                                     lowered_insts);
         global_store.has_value()) {
       return *global_store ? true : fail_store();
@@ -1073,8 +1099,11 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
                                                                   global_types,
                                                                   global_address_slots,
                                                                   addressed_global_pointer_slots_,
+                                                                  global_pointer_value_slots,
+                                                                  addressed_global_pointer_value_slots,
                                                                   &global_pointer_slots,
                                                                   &global_object_pointer_slots,
+                                                                  &pointer_value_addresses,
                                                                   lowered_insts);
         global_load.has_value()) {
       return *global_load ? true : fail_load();
@@ -1259,6 +1288,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     std::vector<bir::CallArgAbiInfo> lowered_arg_abi;
     std::optional<std::string> callee_name;
     std::optional<bir::Value> callee_value;
+    std::optional<PointerAddress> returned_pointer_address;
     bool is_indirect_call = false;
     bool is_variadic_call = false;
     std::optional<std::string> sret_slot_name;
@@ -1383,6 +1413,41 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       }
       return true;
     };
+    const auto maybe_resolve_direct_calloc_pointer_address =
+        [&](std::string_view symbol_name,
+            const ParsedTypedCall& typed_call) -> std::optional<PointerAddress> {
+      if (symbol_name != "calloc" || return_info->returned_via_sret ||
+          return_info->type != bir::TypeKind::Ptr ||
+          call->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+          typed_call.args.size() != 2 || typed_call.param_types.size() != 2) {
+        return std::nullopt;
+      }
+      const auto count_type =
+          lower_integer_type(c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[0]));
+      const auto size_type =
+          lower_integer_type(c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[1]));
+      if (!count_type.has_value() || !size_type.has_value()) {
+        return std::nullopt;
+      }
+      const auto count_value =
+          lower_value(c4c::codegen::lir::LirOperand(std::string(typed_call.args[0].operand)),
+                      *count_type,
+                      value_aliases);
+      const auto size_value =
+          lower_value(c4c::codegen::lir::LirOperand(std::string(typed_call.args[1].operand)),
+                      *size_type,
+                      value_aliases);
+      if (!count_value.has_value() || count_value->kind != bir::Value::Kind::Immediate ||
+          !size_value.has_value() || size_value->kind != bir::Value::Kind::Immediate ||
+          count_value->immediate <= 0 || size_value->immediate <= 0) {
+        return std::nullopt;
+      }
+      return PointerAddress{
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, call->result.str()),
+          .dynamic_element_count = static_cast<std::size_t>(count_value->immediate),
+          .dynamic_element_stride_bytes = static_cast<std::size_t>(size_value->immediate),
+      };
+    };
 
     if (return_info->returned_via_sret) {
       if (call->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
@@ -1434,6 +1499,10 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
             lowered_memcpy.has_value()) {
           return *lowered_memcpy;
         }
+        if (!returned_pointer_address.has_value()) {
+          returned_pointer_address =
+              maybe_resolve_direct_calloc_pointer_address(semantic_direct_callee, *inferred_call);
+        }
       }
 
       if (const auto parsed_call = parse_direct_global_typed_call(*call);
@@ -1449,6 +1518,10 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
                 try_lower_direct_memcpy_call(semantic_direct_callee, parsed_call->typed_call);
             lowered_memcpy.has_value()) {
           return *lowered_memcpy;
+        }
+        if (!returned_pointer_address.has_value()) {
+          returned_pointer_address = maybe_resolve_direct_calloc_pointer_address(
+              semantic_direct_callee, parsed_call->typed_call);
         }
         callee_name = std::move(semantic_direct_callee);
         is_variadic_call = parsed_call->is_variadic;
@@ -1627,6 +1700,9 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       lowered_call.sret_storage_name = *sret_slot_name;
     }
     lowered_insts->push_back(std::move(lowered_call));
+    if (returned_pointer_address.has_value()) {
+      pointer_value_addresses[call->result.str()] = *returned_pointer_address;
+    }
     return true;
   }
 

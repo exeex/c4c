@@ -12,9 +12,11 @@ using lir_to_bir_detail::build_type_decl_map;
 using lir_to_bir_detail::FunctionSymbolSet;
 using lir_to_bir_detail::GlobalInfo;
 using lir_to_bir_detail::GlobalTypes;
+using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::lower_minimal_global;
 using lir_to_bir_detail::lower_string_constant_global;
 using lir_to_bir_detail::resolve_known_global_address;
+using lir_to_bir_detail::resolve_index_operand;
 using lir_to_bir_detail::resolve_pointer_initializer_offsets;
 using lir_to_bir_detail::TypeDeclMap;
 
@@ -124,6 +126,22 @@ c4c::codegen::lir::LirExternDecl extern_decl_with_resolved_name(
     resolved.name = std::string(resolved_name);
   }
   return resolved;
+}
+
+void record_block_integer_constant_alias(
+    const c4c::codegen::lir::LirInst& inst,
+    BirFunctionLowerer::ValueMap* block_value_aliases) {
+  if (const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&inst)) {
+    if (cast->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+        !lower_integer_type(cast->to_type.str()).has_value()) {
+      return;
+    }
+    const auto immediate = resolve_index_operand(cast->operand, *block_value_aliases);
+    if (!immediate.has_value()) {
+      return;
+    }
+    (*block_value_aliases)[cast->result.str()] = bir::Value::immediate_i64(*immediate);
+  }
 }
 
 }  // namespace
@@ -652,6 +670,68 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
           "module",
           "bootstrap lir_to_bir only supports pointer globals initialized from addressable globals or pointer-global aliases that resolve to in-bounds global data right now");
       return std::nullopt;
+    }
+  }
+
+  for (const auto& function : context.lir_module.functions) {
+    for (const auto& block : function.blocks) {
+      BirFunctionLowerer::ValueMap block_value_aliases;
+      std::unordered_map<std::string, std::pair<std::size_t, std::size_t>> block_calloc_results;
+      for (const auto& inst : block.insts) {
+        record_block_integer_constant_alias(inst, &block_value_aliases);
+        if (const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst)) {
+          if (call->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+            continue;
+          }
+          const auto parsed_call = BirFunctionLowerer::parse_direct_global_typed_call(*call);
+          if (!parsed_call.has_value() || parsed_call->symbol_name != "calloc" ||
+              parsed_call->typed_call.args.size() != 2 ||
+              parsed_call->typed_call.param_types.size() != 2) {
+            continue;
+          }
+          const auto count_arg = lir_to_bir_detail::parse_typed_operand(
+              std::string(parsed_call->typed_call.args[0].type) + " " +
+              std::string(parsed_call->typed_call.args[0].operand));
+          const auto size_arg = lir_to_bir_detail::parse_typed_operand(
+              std::string(parsed_call->typed_call.args[1].type) + " " +
+              std::string(parsed_call->typed_call.args[1].operand));
+          if (!count_arg.has_value() || !size_arg.has_value()) {
+            continue;
+          }
+          const auto count_value = resolve_index_operand(count_arg->operand, block_value_aliases);
+          const auto size_value = resolve_index_operand(size_arg->operand, block_value_aliases);
+          if (!count_value.has_value() || !size_value.has_value() || *count_value <= 0 ||
+              *size_value <= 0) {
+            continue;
+          }
+          block_calloc_results[call->result.str()] = std::make_pair(
+              static_cast<std::size_t>(*count_value),
+              static_cast<std::size_t>(*size_value));
+          continue;
+        }
+
+        const auto* store = std::get_if<c4c::codegen::lir::LirStoreOp>(&inst);
+        if (store == nullptr || store->type_str.str() != "ptr" ||
+            store->ptr.kind() != c4c::codegen::lir::LirOperandKind::Global ||
+            store->val.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+          continue;
+        }
+
+        const std::string global_name = store->ptr.str().substr(1);
+        const auto global_it = global_types.find(global_name);
+        if (global_it == global_types.end() || !global_it->second.supports_direct_value ||
+            global_it->second.value_type != bir::TypeKind::Ptr) {
+          continue;
+        }
+
+        const auto calloc_it = block_calloc_results.find(store->val.str());
+        if (calloc_it == block_calloc_results.end()) {
+          continue;
+        }
+
+        global_it->second.runtime_element_count = calloc_it->second.first;
+        global_it->second.runtime_element_stride_bytes = calloc_it->second.second;
+      }
     }
   }
 

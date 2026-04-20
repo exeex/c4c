@@ -122,6 +122,19 @@ void BirFunctionLowerer::record_pointer_global_object_alias(
   };
 }
 
+static std::optional<BirFunctionLowerer::PointerAddress> make_runtime_global_pointer_address(
+    std::string_view result_name,
+    const lir_to_bir_detail::GlobalInfo& global_info) {
+  if (global_info.runtime_element_count == 0 || global_info.runtime_element_stride_bytes == 0) {
+    return std::nullopt;
+  }
+  return BirFunctionLowerer::PointerAddress{
+      .base_value = bir::Value::named(bir::TypeKind::Ptr, std::string(result_name)),
+      .dynamic_element_count = global_info.runtime_element_count,
+      .dynamic_element_stride_bytes = global_info.runtime_element_stride_bytes,
+  };
+}
+
 std::optional<GlobalAddress> BirFunctionLowerer::resolve_pointer_store_address(
     const c4c::codegen::lir::LirOperand& operand,
     const GlobalPointerMap& global_pointer_slots,
@@ -159,6 +172,20 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_pointer_store_address(
     return std::nullopt;
   }
   return global_ptr_it->second;
+}
+
+static std::optional<BirFunctionLowerer::PointerAddress> resolve_pointer_store_value_address(
+    const c4c::codegen::lir::LirOperand& operand,
+    const BirFunctionLowerer::PointerAddressMap& pointer_value_addresses) {
+  if (operand.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+    return std::nullopt;
+  }
+
+  const auto addressed_ptr_it = pointer_value_addresses.find(operand.str());
+  if (addressed_ptr_it == pointer_value_addresses.end()) {
+    return std::nullopt;
+  }
+  return addressed_ptr_it->second;
 }
 
 std::optional<bir::Value> BirFunctionLowerer::resolve_local_aggregate_pointer_value_alias(
@@ -262,8 +289,11 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
     const GlobalTypes& global_types,
     const GlobalAddressSlots& global_address_slots,
     const AddressedGlobalPointerSlots& addressed_global_pointer_slots,
+    const GlobalPointerValueSlots& global_pointer_value_slots,
+    const AddressedGlobalPointerValueSlots& addressed_global_pointer_value_slots,
     GlobalPointerMap* global_pointer_slots,
     GlobalObjectPointerMap* global_object_pointer_slots,
+    PointerAddressMap* pointer_value_addresses,
     std::vector<bir::Inst>* lowered_insts) {
   if (load.ptr.kind() == c4c::codegen::lir::LirOperandKind::Global) {
     const std::string global_name = load.ptr.str().substr(1);
@@ -277,6 +307,17 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
           runtime_it != global_address_slots.end()) {
         if (runtime_it->second.has_value()) {
           (*global_pointer_slots)[load.result.str()] = *runtime_it->second;
+        }
+      } else if (const auto runtime_global =
+                     make_runtime_global_pointer_address(load.result.str(), global_it->second);
+                 runtime_global.has_value()) {
+        (*pointer_value_addresses)[load.result.str()] = *runtime_global;
+      } else if (const auto runtime_ptr_it = global_pointer_value_slots.find(global_name);
+                 runtime_ptr_it != global_pointer_value_slots.end()) {
+        if (runtime_ptr_it->second.has_value()) {
+          auto runtime_pointer = *runtime_ptr_it->second;
+          runtime_pointer.base_value = bir::Value::named(bir::TypeKind::Ptr, load.result.str());
+          (*pointer_value_addresses)[load.result.str()] = std::move(runtime_pointer);
         }
       } else if (global_it->second.known_global_address.has_value()) {
         (*global_pointer_slots)[load.result.str()] = *global_it->second.known_global_address;
@@ -303,6 +344,18 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
           runtime_it != global_address_slots.end()) {
         if (runtime_it->second.has_value()) {
           (*global_pointer_slots)[load.result.str()] = *runtime_it->second;
+        }
+      } else if (const auto runtime_global =
+                     make_runtime_global_pointer_address(load.result.str(), global_it->second);
+                 runtime_global.has_value()) {
+        (*pointer_value_addresses)[load.result.str()] = *runtime_global;
+      } else if (const auto runtime_ptr_it =
+                     global_pointer_value_slots.find(global_object_it->second.global_name);
+                 runtime_ptr_it != global_pointer_value_slots.end()) {
+        if (runtime_ptr_it->second.has_value()) {
+          auto runtime_pointer = *runtime_ptr_it->second;
+          runtime_pointer.base_value = bir::Value::named(bir::TypeKind::Ptr, load.result.str());
+          (*pointer_value_addresses)[load.result.str()] = std::move(runtime_pointer);
         }
       } else if (global_it->second.known_global_address.has_value()) {
         (*global_pointer_slots)[load.result.str()] = *global_it->second.known_global_address;
@@ -354,11 +407,19 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
   }
 
   if (value_type == bir::TypeKind::Ptr) {
-    const auto addressed_it =
-        addressed_global_pointer_slots.find(make_global_pointer_slot_key(global_ptr_it->second));
+    const auto addressed_key = make_global_pointer_slot_key(global_ptr_it->second);
+    const auto addressed_it = addressed_global_pointer_slots.find(addressed_key);
     if (addressed_it != addressed_global_pointer_slots.end()) {
       if (addressed_it->second.has_value()) {
         (*global_pointer_slots)[load.result.str()] = *addressed_it->second;
+      }
+    } else if (const auto addressed_ptr_it =
+                   addressed_global_pointer_value_slots.find(addressed_key);
+               addressed_ptr_it != addressed_global_pointer_value_slots.end()) {
+      if (addressed_ptr_it->second.has_value()) {
+        auto runtime_pointer = *addressed_ptr_it->second;
+        runtime_pointer.base_value = bir::Value::named(bir::TypeKind::Ptr, load.result.str());
+        (*pointer_value_addresses)[load.result.str()] = std::move(runtime_pointer);
       }
     } else {
       const auto global_it = global_types.find(global_ptr_it->second.global_name);
@@ -371,6 +432,18 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
             runtime_it != global_address_slots.end()) {
           if (runtime_it->second.has_value()) {
             (*global_pointer_slots)[load.result.str()] = *runtime_it->second;
+          }
+        } else if (const auto runtime_global =
+                       make_runtime_global_pointer_address(load.result.str(), global_it->second);
+                   runtime_global.has_value()) {
+          (*pointer_value_addresses)[load.result.str()] = *runtime_global;
+        } else if (const auto runtime_ptr_it =
+                       global_pointer_value_slots.find(global_ptr_it->second.global_name);
+                   runtime_ptr_it != global_pointer_value_slots.end()) {
+          if (runtime_ptr_it->second.has_value()) {
+            auto runtime_pointer = *runtime_ptr_it->second;
+            runtime_pointer.base_value = bir::Value::named(bir::TypeKind::Ptr, load.result.str());
+            (*pointer_value_addresses)[load.result.str()] = std::move(runtime_pointer);
           }
         } else if (global_it->second.known_global_address.has_value()) {
           (*global_pointer_slots)[load.result.str()] = *global_it->second.known_global_address;
@@ -402,8 +475,11 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_store(
     const FunctionSymbolSet& function_symbols,
     const GlobalPointerMap& global_pointer_slots,
     const GlobalObjectPointerMap& global_object_pointer_slots,
+    const PointerAddressMap& pointer_value_addresses,
     GlobalAddressSlots* global_address_slots,
     AddressedGlobalPointerSlots* addressed_global_pointer_slots,
+    GlobalPointerValueSlots* global_pointer_value_slots,
+    AddressedGlobalPointerValueSlots* addressed_global_pointer_value_slots,
     std::vector<bir::Inst>* lowered_insts) {
   if (store.ptr.kind() == c4c::codegen::lir::LirOperandKind::Global) {
     const std::string global_name = store.ptr.str().substr(1);
@@ -415,6 +491,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_store(
     if (value_type == bir::TypeKind::Ptr) {
       (*global_address_slots)[global_name] =
           resolve_pointer_store_address(store.val, global_pointer_slots, global_types, function_symbols);
+      (*global_pointer_value_slots)[global_name] =
+          resolve_pointer_store_value_address(store.val, pointer_value_addresses);
     }
     lowered_insts->push_back(bir::StoreGlobalInst{
         .global_name = global_name,
@@ -433,6 +511,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_store(
       }
       (*global_address_slots)[global_object_it->second.global_name] =
           resolve_pointer_store_address(store.val, global_pointer_slots, global_types, function_symbols);
+      (*global_pointer_value_slots)[global_object_it->second.global_name] =
+          resolve_pointer_store_value_address(store.val, pointer_value_addresses);
       lowered_insts->push_back(bir::StoreGlobalInst{
           .global_name = global_object_it->second.global_name,
           .value = value,
@@ -453,6 +533,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_store(
   if (value_type == bir::TypeKind::Ptr) {
     (*addressed_global_pointer_slots)[make_global_pointer_slot_key(global_ptr_it->second)] =
         resolve_pointer_store_address(store.val, global_pointer_slots, global_types, function_symbols);
+    (*addressed_global_pointer_value_slots)[make_global_pointer_slot_key(global_ptr_it->second)] =
+        resolve_pointer_store_value_address(store.val, pointer_value_addresses);
   }
   lowered_insts->push_back(bir::StoreGlobalInst{
       .global_name = global_ptr_it->second.global_name,
