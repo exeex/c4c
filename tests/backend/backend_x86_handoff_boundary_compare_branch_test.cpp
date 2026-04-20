@@ -564,6 +564,75 @@ int check_minimal_compare_branch_param_return_requires_authoritative_prepared_re
   return 0;
 }
 
+int check_minimal_compare_branch_param_return_requires_authoritative_prepared_return_home(
+    const bir::Module& module,
+    const char* function_name,
+    const char* returned_value_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto function_name_id = prepare::resolve_prepared_function_name_id(prepared.names, function_name);
+  if (!function_name_id.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer resolves the compare-branch function name for value-home ownership")
+                    .c_str());
+  }
+  const auto value_name_id = prepare::resolve_prepared_value_name_id(prepared.names, returned_value_name);
+  if (!value_name_id.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer resolves the compare-branch returned value name for value-home ownership")
+                    .c_str());
+  }
+
+  auto function_locations_it =
+      std::find_if(prepared.value_locations.functions.begin(),
+                   prepared.value_locations.functions.end(),
+                   [&](const prepare::PreparedValueLocationFunction& function_locations) {
+                     return function_locations.function_name == *function_name_id;
+                   });
+  if (function_locations_it == prepared.value_locations.functions.end()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the compare-branch value-location contract")
+                    .c_str());
+  }
+  const auto erased_homes = static_cast<std::size_t>(std::count_if(
+      function_locations_it->value_homes.begin(),
+      function_locations_it->value_homes.end(),
+      [&](const prepare::PreparedValueHome& value_home) {
+        return value_home.value_name == *value_name_id;
+      }));
+  if (erased_homes == 0) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the authoritative prepared return home for the compare-branch leaf")
+                    .c_str());
+  }
+  function_locations_it->value_homes.erase(
+      std::remove_if(
+          function_locations_it->value_homes.begin(),
+          function_locations_it->value_homes.end(),
+          [&](const prepare::PreparedValueHome& value_home) {
+            return value_home.value_name == *value_name_id;
+          }),
+      function_locations_it->value_homes.end());
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted a parameter-leaf return after the authoritative prepared return home was removed")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the missing prepared return home with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_compare_branch_tests() {
@@ -692,6 +761,15 @@ int run_backend_x86_handoff_boundary_compare_branch_tests() {
               make_x86_param_eq_zero_branch_param_or_immediate_module(),
               "branch_zero_or_passthrough",
               "scalar-control-flow compare-against-zero branch lane with parameter leaf return rejects reopening local return fallback when the authoritative prepared return bundle is missing");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_param_return_requires_authoritative_prepared_return_home(
+              make_x86_param_eq_zero_branch_param_or_immediate_module(),
+              "branch_zero_or_passthrough",
+              "p.x",
+              "scalar-control-flow compare-against-zero branch lane with parameter leaf return rejects reopening local return fallback when the authoritative prepared home is missing");
       status != 0) {
     return status;
   }

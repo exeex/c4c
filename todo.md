@@ -5,26 +5,24 @@ Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
 Source Plan Path: plan.md
 Current Step ID: 3.3
 Current Step Title: Consume Canonical Move Bundles For Join, Call, And Return Boundaries
-Plan Review Counter: 6 / 10
+Plan Review Counter: 7 / 10
 # Current Packet
 
 ## Just Finished
 
 Step 3.3 (`Consume Canonical Move Bundles For Join, Call, And Return
-Boundaries`) now removes the remaining named-`i32` call-argument ABI fallback
-from the bounded x86 prepared call lanes. The generic call renderer and the
-local-slot fast path now require an authoritative prepared `BeforeCall` bundle
-instead of defaulting missing argument moves to raw ABI registers, and the
-bounded direct extern-call plus multi-defined same-module call routes now
-reject reopening that local call-argument fallback when the shared bundle is
-removed.
+Boundaries`) now removes the remaining named-return boundary fallback from the
+bounded x86 compare-branch lane. The prepared-module emitter no longer falls
+back to local param-derived return rendering when a named branch leaf loses its
+authoritative prepared value home, and the bounded compare-branch proof now
+rejects reopening that local return fallback when the shared home is removed.
 
 ## Suggested Next
 
 Keep Step 3.3 on boundary move-bundle consumption and audit the remaining
 join/return helper paths for any stale local movement assumptions that still
-survive when the authoritative prepared bundle is missing or partially
-rewired.
+survive when authoritative prepared homes or bundles are missing or partially
+rewired, especially in the joined-branch and compare-join return helpers.
 
 ## Watchouts
 
@@ -69,7 +67,8 @@ rewired.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' > test_after.log 2>&1`,
-which passed after the x86 prepared call renderers stopped defaulting missing
-named-`i32` call arguments to raw ABI registers and the bounded direct-call
-tests added `BeforeCall` bundle-removal rejection proof. `test_after.log` is
-the canonical proof artifact for this packet.
+which passed after the x86 prepared compare-branch renderer stopped reopening
+local named-return fallback when the authoritative prepared home is missing and
+the bounded compare-branch tests added prepared-home-removal rejection proof.
+The accepted proof log was rolled forward into the canonical `test_before.log`
+baseline.

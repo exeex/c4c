@@ -576,11 +576,13 @@ std::string emit_prepared_module(
               named_binaries,
           const c4c::backend::bir::Param& param) -> std::optional<std::string> {
     if (value.kind == c4c::backend::bir::Value::Kind::Named) {
-      if (const auto prepared_return =
-              render_named_before_return_body_if_supported(return_block, value.name);
-          prepared_return.has_value()) {
-        return prepared_return;
+      const auto prepared_return =
+          render_named_before_return_body_if_supported(return_block, value.name);
+      if (!prepared_return.has_value()) {
+        throw std::invalid_argument(
+            "x86 backend emitter requires authoritative prepared value-home and return-bundle data for named return values through the canonical prepared-module handoff");
       }
+      return prepared_return;
     }
     const auto value_render = c4c::backend::x86::render_prepared_param_derived_i32_value_if_supported(
         *return_register, value, named_binaries, param, minimal_param_register);
