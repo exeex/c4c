@@ -1182,6 +1182,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     if (const auto global_load = try_lower_global_provenance_load(*load,
                                                                   *value_type,
                                                                   global_types,
+                                                                  type_decls,
                                                                   global_address_slots,
                                                                   addressed_global_pointer_slots_,
                                                                   global_pointer_value_slots,

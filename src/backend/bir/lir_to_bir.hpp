@@ -921,6 +921,7 @@ class BirFunctionLowerer {
       const c4c::codegen::lir::LirLoadOp& load,
       bir::TypeKind value_type,
       const GlobalTypes& global_types,
+      const TypeDeclMap& type_decls,
       const GlobalAddressSlots& global_address_slots,
       const AddressedGlobalPointerSlots& addressed_global_pointer_slots,
       const GlobalPointerValueSlots& global_pointer_value_slots,

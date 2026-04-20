@@ -276,6 +276,32 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_honest_addressed_global
   return resolved;
 }
 
+static std::optional<GlobalAddress> resolve_linear_addressed_global_scalar_access(
+    const GlobalAddress& address,
+    bir::TypeKind accessed_type,
+    const BirFunctionLowerer::GlobalTypes& global_types,
+    const BirFunctionLowerer::TypeDeclMap& type_decls) {
+  const auto global_it = global_types.find(address.global_name);
+  if (global_it == global_types.end() || !global_it->second.supports_linear_addressing) {
+    return std::nullopt;
+  }
+
+  if (!can_address_scalar_subobject(static_cast<std::int64_t>(address.byte_offset),
+                                    bir::TypeKind::Void,
+                                    global_it->second.type_text,
+                                    accessed_type,
+                                    type_decls,
+                                    false)) {
+    return std::nullopt;
+  }
+
+  return GlobalAddress{
+      .global_name = address.global_name,
+      .value_type = accessed_type,
+      .byte_offset = address.byte_offset,
+  };
+}
+
 GlobalPointerSlotKey BirFunctionLowerer::make_global_pointer_slot_key(const GlobalAddress& address) {
   return GlobalPointerSlotKey{
       .global_name = address.global_name,
@@ -287,6 +313,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
     const c4c::codegen::lir::LirLoadOp& load,
     bir::TypeKind value_type,
     const GlobalTypes& global_types,
+    const TypeDeclMap& type_decls,
     const GlobalAddressSlots& global_address_slots,
     const AddressedGlobalPointerSlots& addressed_global_pointer_slots,
     const GlobalPointerValueSlots& global_pointer_value_slots,
@@ -384,6 +411,16 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
           .result = bir::Value::named(value_type, load.result.str()),
           .global_name = honest_address->global_name,
           .byte_offset = honest_address->byte_offset,
+      });
+      return true;
+    }
+    if (const auto linear_address = resolve_linear_addressed_global_scalar_access(
+            global_ptr_it->second, value_type, global_types, type_decls);
+        linear_address.has_value()) {
+      lowered_insts->push_back(bir::LoadGlobalInst{
+          .result = bir::Value::named(value_type, load.result.str()),
+          .global_name = linear_address->global_name,
+          .byte_offset = linear_address->byte_offset,
       });
       return true;
     }
