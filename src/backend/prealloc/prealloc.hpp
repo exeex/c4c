@@ -537,6 +537,80 @@ struct PreparedRegalloc {
   std::vector<PreparedRegallocFunction> functions;
 };
 
+enum class PreparedValueHomeKind {
+  None,
+  Register,
+  StackSlot,
+  RematerializableImmediate,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_value_home_kind_name(
+    PreparedValueHomeKind kind) {
+  switch (kind) {
+    case PreparedValueHomeKind::None:
+      return "none";
+    case PreparedValueHomeKind::Register:
+      return "register";
+    case PreparedValueHomeKind::StackSlot:
+      return "stack_slot";
+    case PreparedValueHomeKind::RematerializableImmediate:
+      return "rematerializable_immediate";
+  }
+  return "unknown";
+}
+
+enum class PreparedMovePhase {
+  BlockEntry,
+  BeforeInstruction,
+  BeforeCall,
+  AfterCall,
+  BeforeReturn,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_move_phase_name(PreparedMovePhase phase) {
+  switch (phase) {
+    case PreparedMovePhase::BlockEntry:
+      return "block_entry";
+    case PreparedMovePhase::BeforeInstruction:
+      return "before_instruction";
+    case PreparedMovePhase::BeforeCall:
+      return "before_call";
+    case PreparedMovePhase::AfterCall:
+      return "after_call";
+    case PreparedMovePhase::BeforeReturn:
+      return "before_return";
+  }
+  return "unknown";
+}
+
+struct PreparedValueHome {
+  PreparedValueId value_id = 0;
+  FunctionNameId function_name = kInvalidFunctionName;
+  ValueNameId value_name = kInvalidValueName;
+  PreparedValueHomeKind kind = PreparedValueHomeKind::None;
+  std::optional<std::string> register_name;
+  std::optional<PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> offset_bytes;
+};
+
+struct PreparedMoveBundle {
+  FunctionNameId function_name = kInvalidFunctionName;
+  PreparedMovePhase phase = PreparedMovePhase::BeforeInstruction;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+  std::vector<PreparedMoveResolution> moves;
+};
+
+struct PreparedValueLocationFunction {
+  FunctionNameId function_name = kInvalidFunctionName;
+  std::vector<PreparedValueHome> value_homes;
+  std::vector<PreparedMoveBundle> move_bundles;
+};
+
+struct PreparedValueLocations {
+  std::vector<PreparedValueLocationFunction> functions;
+};
+
 enum class PrepareRoute {
   SemanticBirShared,
 };
@@ -3030,6 +3104,7 @@ struct PreparedBirModule {
   std::vector<PreparedBirInvariant> invariants;
   PreparedNameTables names;
   PreparedControlFlow control_flow;
+  PreparedValueLocations value_locations;
   PreparedStackLayout stack_layout;
   PreparedAddressing addressing;
   PreparedLiveness liveness;
@@ -3042,6 +3117,87 @@ struct PreparedBirModule {
     const PreparedBirModule& module,
     FunctionNameId function_name) {
   return find_prepared_addressing_function(module.addressing, function_name);
+}
+
+[[nodiscard]] inline const PreparedValueLocationFunction* find_prepared_value_location_function(
+    const PreparedValueLocations& value_locations,
+    FunctionNameId function_name) {
+  for (const auto& function_locations : value_locations.functions) {
+    if (function_locations.function_name == function_name) {
+      return &function_locations;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedValueLocationFunction* find_prepared_value_location_function(
+    const PreparedBirModule& module,
+    FunctionNameId function_name) {
+  return find_prepared_value_location_function(module.value_locations, function_name);
+}
+
+[[nodiscard]] inline const PreparedValueLocationFunction* find_prepared_value_location_function(
+    const PreparedNameTables& names,
+    const PreparedValueLocations& value_locations,
+    std::string_view function_name) {
+  const auto function_name_id = resolve_prepared_function_name_id(names, function_name);
+  if (!function_name_id.has_value()) {
+    return nullptr;
+  }
+  return find_prepared_value_location_function(value_locations, *function_name_id);
+}
+
+[[nodiscard]] inline const PreparedValueLocationFunction* find_prepared_value_location_function(
+    const PreparedBirModule& module,
+    std::string_view function_name) {
+  return find_prepared_value_location_function(module.names, module.value_locations, function_name);
+}
+
+[[nodiscard]] inline const PreparedValueHome* find_prepared_value_home(
+    const PreparedValueLocationFunction& function_locations,
+    PreparedValueId value_id) {
+  for (const auto& value_home : function_locations.value_homes) {
+    if (value_home.value_id == value_id) {
+      return &value_home;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedValueHome* find_prepared_value_home(
+    const PreparedValueLocationFunction& function_locations,
+    ValueNameId value_name) {
+  for (const auto& value_home : function_locations.value_homes) {
+    if (value_home.value_name == value_name) {
+      return &value_home;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedValueHome* find_prepared_value_home(
+    const PreparedNameTables& names,
+    const PreparedValueLocationFunction& function_locations,
+    std::string_view value_name) {
+  const auto value_name_id = resolve_prepared_value_name_id(names, value_name);
+  if (!value_name_id.has_value()) {
+    return nullptr;
+  }
+  return find_prepared_value_home(function_locations, *value_name_id);
+}
+
+[[nodiscard]] inline const PreparedMoveBundle* find_prepared_move_bundle(
+    const PreparedValueLocationFunction& function_locations,
+    PreparedMovePhase phase,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  for (const auto& move_bundle : function_locations.move_bundles) {
+    if (move_bundle.phase == phase && move_bundle.block_index == block_index &&
+        move_bundle.instruction_index == instruction_index) {
+      return &move_bundle;
+    }
+  }
+  return nullptr;
 }
 
 class BirPreAlloc {
