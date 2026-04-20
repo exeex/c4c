@@ -1061,26 +1061,31 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
           return std::nullopt;
         }
         *current_materialized_compare = std::nullopt;
+        const auto rendered_load = render_prepared_scalar_load_from_memory_if_supported(
+            load->result.type, *memory);
+        if (!rendered_load.has_value()) {
+          return std::nullopt;
+        }
         if (load->result.type == c4c::backend::bir::TypeKind::Ptr) {
           *current_i32_name = std::nullopt;
           *previous_i32_name = std::nullopt;
           *current_i8_name = std::nullopt;
           *current_ptr_name = load->result.name;
-          return "    mov rax, " + *memory + "\n";
+          return rendered_load;
         }
         if (load->result.type == c4c::backend::bir::TypeKind::I32) {
           *current_i32_name = load->result.name;
           *previous_i32_name = std::nullopt;
           *current_i8_name = std::nullopt;
           *current_ptr_name = std::nullopt;
-          return "    mov eax, " + *memory + "\n";
+          return rendered_load;
         }
         if (load->result.type == c4c::backend::bir::TypeKind::I8) {
           *current_i32_name = std::nullopt;
           *previous_i32_name = std::nullopt;
           *current_i8_name = load->result.name;
           *current_ptr_name = std::nullopt;
-          return "    movsx eax, " + *memory + "\n";
+          return rendered_load;
         }
         return std::nullopt;
       }
@@ -1111,16 +1116,21 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
         same_module_global_names.insert(selected_global_memory->global->name);
         *current_materialized_compare = std::nullopt;
         *current_i8_name = std::nullopt;
+        const auto rendered_load = render_prepared_scalar_load_from_memory_if_supported(
+            load->result.type, selected_global_memory->memory_operand);
+        if (!rendered_load.has_value()) {
+          return std::nullopt;
+        }
         if (load->result.type == c4c::backend::bir::TypeKind::Ptr) {
           *current_i32_name = std::nullopt;
           *previous_i32_name = std::nullopt;
           *current_ptr_name = load->result.name;
-          return "    mov rax, " + selected_global_memory->memory_operand + "\n";
+          return rendered_load;
         }
         *current_i32_name = load->result.name;
         *previous_i32_name = std::nullopt;
         *current_ptr_name = std::nullopt;
-        return "    mov eax, " + selected_global_memory->memory_operand + "\n";
+        return rendered_load;
       }
 
       if (const auto* store = std::get_if<c4c::backend::bir::StoreGlobalInst>(&inst)) {
@@ -2743,15 +2753,12 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_from_contex
     if (!memory.has_value()) {
       return std::nullopt;
     }
-    if (load->result.type == c4c::backend::bir::TypeKind::Ptr) {
-      asm_text += "    mov rax, " + *memory + "\n";
-      continue;
+    const auto rendered_load =
+        render_prepared_scalar_load_from_memory_if_supported(load->result.type, *memory);
+    if (!rendered_load.has_value()) {
+      return std::nullopt;
     }
-    if (load->result.type == c4c::backend::bir::TypeKind::I32) {
-      asm_text += "    mov eax, " + *memory + "\n";
-      continue;
-    }
-    return std::nullopt;
+    asm_text += *rendered_load;
   }
 
   if (layout->frame_size != 0) {

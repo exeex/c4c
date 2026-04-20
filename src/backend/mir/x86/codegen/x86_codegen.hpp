@@ -402,6 +402,21 @@ inline std::optional<std::string> render_prepared_i32_store_to_memory_if_support
   return "    mov " + std::string(memory_operand) + ", " + *operand + "\n";
 }
 
+inline std::optional<std::string> render_prepared_scalar_load_from_memory_if_supported(
+    c4c::backend::bir::TypeKind result_type,
+    std::string_view memory_operand) {
+  switch (result_type) {
+    case c4c::backend::bir::TypeKind::Ptr:
+      return "    mov rax, " + std::string(memory_operand) + "\n";
+    case c4c::backend::bir::TypeKind::I32:
+      return "    mov eax, " + std::string(memory_operand) + "\n";
+    case c4c::backend::bir::TypeKind::I8:
+      return "    movsx eax, " + std::string(memory_operand) + "\n";
+    default:
+      return std::nullopt;
+  }
+}
+
 // Active intrinsic inventory carried by the translated x86 intrinsics owner.
 enum class IntrinsicOp : std::uint16_t {
   Lfence,
