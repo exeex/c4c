@@ -1,128 +1,77 @@
-# Stack Frame And Addressing Consumption For Prepared X86
+# Generic Scalar Instruction Selection For Prepared X86
 
 Status: Active
-Source Idea: ideas/open/61_stack_frame_and_addressing_consumption.md
-Activated from: ideas/closed/60_prepared_value_location_consumption.md
+Source Idea: ideas/open/59_generic_scalar_instruction_selection_for_x86.md
+Activated from: ideas/closed/61_stack_frame_and_addressing_consumption.md
 
 ## Purpose
 
-Turn idea 61 into an execution runbook that makes prepared frame and address
-facts authoritative before x86 emission.
+Turn idea 59 into an execution runbook that replaces prepared-x86 whole-function
+matcher growth with ordinary per-operation and per-terminator instruction
+selection over authoritative prepared inputs.
 
 ## Goal
 
-Make shared prepare ownership publish canonical frame layout and memory-access
-addressing facts so x86 consumes prepared frame/address data instead of
-rebuilding local-slot offsets and provenance locally.
+Make x86 scalar lowering dispatch on prepared operations, operands, and
+terminators so legality decisions are local and machine-shaped instead of being
+encoded as bounded whole-function matcher families.
 
 ## Core Rule
 
-Do not grow new x86-local local-slot layout rebuilders or testcase-shaped
-address matchers. Frame and addressing meaning must be produced in shared
-prepare code and consumed by x86 as data.
+Do not add new whole-function or named-testcase x86 matcher families. Repair
+the lowering structure by consuming prepared CFG, value-home, move-bundle, and
+addressing facts through ordinary selector helpers and per-op dispatch.
 
 ## Read First
 
-- `ideas/open/61_stack_frame_and_addressing_consumption.md`
-- `src/backend/prealloc/prealloc.hpp`
-- `src/backend/prealloc/legalize.cpp`
+- `ideas/open/59_generic_scalar_instruction_selection_for_x86.md`
 - `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
 - `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- `src/backend/prealloc/prealloc.hpp`
 
 ## Scope
 
-- define consumer-oriented prepared frame and addressing data
-- produce frame-size, frame-slot, and memory-access facts in shared prepare
-- teach x86 to consume those facts for prologue/epilogue and load/store routes
-- prove the route with build plus narrow backend/x86 coverage, then broaden as
-  needed
+- define an x86 prepared-function/block context that exposes authoritative
+  prepared inputs to scalar lowering
+- extract legality-oriented selector helpers for scalar values, memory
+  operands, compares, calls, and terminators
+- migrate covered scalar operations and terminators onto per-op dispatch
+- prove the route with build plus narrow backend/x86 coverage, then broaden
+  when the dispatch blast radius grows
 
 ## Non-Goals
 
-- reactivating idea 58 control-flow ownership work
-- reopening closed idea 60 value-home or move-bundle work
-- activating idea 59 generic scalar instruction selection
-- extending prepared ownership to direct `CallInst` pointer-argument symbol
-  materialization that is not already represented as prepared memory/address
-  data
-- introducing new x86 matcher families whose practical scope is one testcase
+- introducing a separate machine IR in the same slice
+- x86 peephole optimization
+- target-independent SSA rewrites
+- reopening prepared CFG ownership from idea 58, prepared value-home ownership
+  from idea 60, or frame/address ownership from idea 61
 
 ## Working Model
 
-- shared prepare owns frame size, frame-slot identity, and address provenance
-- prepared addressing data is keyed by function, block, and instruction
-- the current idea covers frame/layout and memory-address consumers, not every
-  direct symbol spelling that might appear in x86 call-lane setup
-- x86 may reject unsupported operand forms, but it must not rediscover local
-  slot offsets or memory provenance when prepared data exists
-- prior idea 61 work already moved direct frame-slot and same-module global
-  guard/helper consumers toward prepared addressing; reactivation resumes the
-  remaining Step 3.2 string-backed and residual direct-symbol memory-access
-  lanes
+- upstream prepared ownership already publishes CFG meaning, value homes,
+  move obligations, and frame/address facts for the covered route
+- x86 instruction selection should ask prepared data what an operation means,
+  then choose a legal machine spelling
+- selector helpers should answer operand and legality questions, not recover
+  whole-program semantics from function shape
+- routine execution should prefer small migrations of coherent instruction or
+  terminator families over broad emitter rewrites
 
 ## Execution Rules
 
-- prefer prepared addressing lookup helpers over x86-local slot-name analysis
-- keep packet boundaries small enough for `todo.md` tracking
+- prefer extracted selector helpers and per-op dispatch over growth in `try_*`
+  whole-function matcher families
+- keep legality decisions target-local and semantic ownership upstream
 - update `todo.md`, not this file, for routine packet progress
 - require `build -> narrow proof` for each code slice
-- escalate to broader validation when shared prepare helpers or x86 memory
-  consumers change across multiple families
+- escalate to broader backend validation when a slice changes shared selector
+  helpers or several narrow instruction-family packets have landed
 
-## Step 1: Lock The Prepared Addressing Contract
+## Step 1: Establish Prepared Dispatch Surface
 
-Goal: define the data and lookup surface that make frame layout and address
-meaning explicit to x86.
-
-Primary targets:
-
-- `src/backend/prealloc/prealloc.hpp`
-
-Actions:
-
-- add or refine prepared frame/addressing enums and structs for frame-slot,
-  global-symbol, pointer-value, and string-constant access bases
-- expose function-level addressing records that can answer frame size,
-  alignment, and per-instruction access questions
-- add consumer lookup helpers for prepared addressing by function, block, and
-  instruction identity
-- keep names flexible, but preserve the source-idea semantics and invariants
-
-Completion check:
-
-- the header exposes a consumer-oriented prepared addressing contract that can
-  answer frame and memory-access questions without emitter-local slot rebuilds
-
-## Step 2: Produce Frame And Addressing Facts In Shared Prepare
-
-Goal: populate the prepared addressing contract from shared prepare ownership.
-
-Primary targets:
-
-- `src/backend/prealloc/legalize.cpp`
-- related shared prepare helpers if extraction is needed
-
-Actions:
-
-- build prepared frame-size and alignment facts from the canonical stack layout
-- classify direct frame-slot, global-symbol, string-constant, and
-  pointer-indirect memory accesses into prepared addressing records
-- do not widen this producer step into new call-argument symbol payloads unless
-  the linked source idea is revised to cover that ownership explicitly
-- keep address provenance ownership in shared prepare rather than x86-local
-  helper paths
-- ensure the producer path records enough information for later consumer
-  lookups by function, block label, and instruction index
-
-Completion check:
-
-- prepared modules carry frame and addressing facts that cover ordinary
-  prologue/epilogue and load/store consumption without x86-local slot analysis
-
-## Step 3: Consume Prepared Addressing In X86
-
-Goal: remove x86 dependence on private frame-slot and address reconstruction
-for the covered routes.
+Goal: define the x86 prepared-function and block context plus the top-level
+dispatch boundaries needed for ordinary scalar lowering.
 
 Primary targets:
 
@@ -131,127 +80,71 @@ Primary targets:
 
 Actions:
 
-- execute this step through the ordered substeps below rather than treating all
-  frame/address consumption as one undifferentiated packet stream
-- keep target-specific decisions limited to x86 legality and spelling
-- do not widen this step into idea 60 value-home work, idea 59 instruction
-  selection, or unrelated control-flow work
-- delete or simplify x86-local layout/address helpers only when the prepared
-  consumer path makes the emitter-local reconstruction unnecessary
+- identify or extract one authoritative prepared-function context surface that
+  can hand scalar lowering the current function, block, control-flow,
+  value-home, move-bundle, and addressing views
+- separate top-level function, block, instruction, and terminator emission
+  responsibilities so later packets can migrate families without whole-function
+  matcher coupling
+- keep this step structural; do not widen it into full family migration yet
 
 Completion check:
 
-- Step 3.1 through Step 3.3.3 are all complete
-- the covered x86 prologue/epilogue and load/store paths consult prepared
-  frame/address data instead of rebuilding slot layout or provenance locally
+- the x86 prepared route has a visible dispatch surface that later packets can
+  target without first re-deriving whole-function matcher structure
 
-### Step 3.1: Frame Layout Consumer Migration
+## Step 2: Extract Operand And Legality Selectors
 
-Goal: move prologue/epilogue and direct frame-size consumers onto prepared
-frame data.
+Goal: provide reusable selector helpers for the prepared scalar route.
 
 Primary targets:
 
 - `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- helper extraction sites under x86 codegen if needed
 
 Actions:
 
-- add or refine one shared frame-layout lookup/helper path in the x86 prepared
-  consumer
-- route covered prologue/epilogue emission through prepared frame size and
-  alignment facts instead of x86-local layout recomputation
-- keep this substep focused on frame-layout consumption, not memory-access
-  breadth
+- extract or refine selector helpers for named/immediate scalar values, stack
+  and symbol memory operands, prepared compare planning, and bounded call-lane
+  legality
+- keep helper contracts framed around prepared inputs and x86 legality, not
+  testcase-shaped whole-function success conditions
+- preserve upstream ownership boundaries: do not re-derive CFG meaning, value
+  homes, or frame/address provenance locally
 
 Completion check:
 
-- the covered x86 frame-layout paths consume prepared frame facts as the
-  authoritative source of stack size and alignment
+- covered scalar lowering questions can be answered through local selector
+  helpers instead of by growing another bounded whole-function matcher
 
-### Step 3.2: Direct Frame And Symbol Access Consumption
+## Step 3: Migrate Covered Scalar Instruction Families
 
-Goal: move direct frame-slot, global-symbol, and string-constant access lanes
-onto prepared addressing lookups.
+Goal: move the covered scalar instruction families onto per-operation
+instruction selection.
 
 Primary targets:
 
 - `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
-- focused backend/x86 proof coverage that matches the changed route
+- focused backend/x86 proof coverage matched to each migrated family
 
 Actions:
 
-- add one shared prepared-address lookup/helper path in the x86 consumer
-- begin consuming canonical prepared addressing for direct frame-slot loads and
-  stores, plus symbol-backed accesses where the same contract applies
-- finish the remaining string-backed and residual direct-symbol consumer lanes
-  that were still open when idea 61 was deactivated, but only when those lanes
-  already correspond to prepared memory/address ownership
-- treat bounded call-lane pointer-argument materialization that still inspects
-  raw `@name` spellings as out of scope for this step unless a separate
-  lifecycle change expands shared prepare ownership for that family
-- cover adjacent bounded local/global memory cases through prepared addressing
-  ownership rather than local slot-name or byte-offset reconstruction
+- migrate binary, load/store, select, and related covered scalar instruction
+  families through per-op dispatch and selector helpers
+- keep each packet bounded to one coherent family or adjacent helper surface
+- delete or isolate matcher-only branches only when the replacement path is
+  already driven by prepared per-op dispatch
 
 Completion check:
 
-- the covered x86 direct frame and symbol-backed memory-access paths consume
-  prepared addressing data without emitter-local slot analysis
+- the covered scalar instruction families are emitted through ordinary
+  instruction selection over prepared inputs, not through whole-function shape
+  recognition
 
-### Step 3.3: Pointer-Indirect And Residual Address Cleanup
+## Step 4: Migrate Covered Terminator And Call Families
 
-Goal: finish the remaining prepared-address consumer paths without widening
-scope beyond frame/address consumption.
-
-Primary targets:
-
-- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
-- focused backend/x86 proof coverage that matches the changed route
-
-Actions:
-
-- execute this step through the ordered substeps below rather than treating
-  residual cleanup as one undifferentiated packet stream
-- finish pointer-value-based addressing and residual base-plus-offset consumer
-  paths through prepared addressing lookups
-- remove or isolate any remaining x86-local local-slot root/suffix rebuilders
-  once prepared addressing covers the matched family
-- stop the step when the remaining x86 ownership is target legality rather
-  than semantic address recovery
-
-Completion check:
-
-- the remaining covered pointer-indirect and residual address lanes consult
-  prepared frame/address data instead of local slot or provenance recovery,
-  and Step 3 can be treated as exhausted
-
-#### Step 3.3.1: Return And Move-Bundle Frame Size Cleanup
-
-Goal: remove residual stack-home frame-size reconstruction from prepared
-return and move-bundle consumers.
-
-Primary targets:
-
-- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
-
-Actions:
-
-- route covered stack-slot-backed return and move-bundle frame sizing through
-  canonical prepared function frame facts
-- keep compatibility with the current boundary contract where tests may mutate
-  prepared stack-layout frame size without rewriting prepared addressing in
-  lockstep
-- do not widen this substep into raw symbol call-lane setup or unrelated
-  value-home rewrites
-
-Completion check:
-
-- covered prepared return/move-bundle consumers no longer size wrapper frames
-  from stack-home byte offsets
-
-#### Step 3.3.2: Stack-Home Consumer Audit Boundary
-
-Goal: separate acceptable scalar value-home stack-slot consumers from
-remaining residual address-recovery sites.
+Goal: move the covered branch and call emission paths onto prepared
+per-terminator and per-call selection.
 
 Primary targets:
 
@@ -260,59 +153,35 @@ Primary targets:
 
 Actions:
 
-- audit the remaining `PreparedValueHomeKind::StackSlot` consumers in the x86
-  prepared path
-- move only the consumers that still reconstruct frame/address meaning onto
-  prepared frame/address facts
-- leave purely scalar value-home loads/stores alone when they no longer infer
-  slot identity, provenance, or frame size
+- migrate covered compare-and-branch, boolean-branch, and scalar call families
+  onto prepared control-flow, move-bundle, and operand selectors
+- keep unsupported families explicitly unsupported rather than adding new
+  matcher-shaped acceptance paths
+- stop when the remaining x86-only decisions are machine legality and spelling,
+  not whole-function semantic recovery
 
 Completion check:
 
-- the remaining `PreparedValueHomeKind::StackSlot` consumers are either
-  bounded scalar value-home moves or prepared frame/address consumers, not
-  local provenance reconstruction
+- the covered branch and call routes dispatch through prepared per-terminator
+  or per-call selection instead of bounded whole-function x86 matchers
 
-#### Step 3.3.3: Pointer-Indirect Base-Plus-Offset Cleanup
+## Step 5: Validate The Route
 
-Goal: finish any remaining pointer-indirect and residual base-plus-offset
-consumer cleanup after the stack-home audit boundary is clear.
-
-Primary targets:
-
-- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
-- focused backend/x86 proof coverage that matches the changed route
-
-Actions:
-
-- finish pointer-value-based and residual base-plus-offset consumer paths that
-  still recover address meaning locally
-- remove or isolate any remaining x86-local local-slot root/suffix rebuilders
-  only after the matched family consumes prepared addressing
-- stop when the remaining x86-only work is target legality or spelling rather
-  than semantic address recovery
-
-Completion check:
-
-- the remaining covered pointer-indirect/base-plus-offset lanes consume
-  prepared frame/address facts, and Step 3.3 can be treated as exhausted
-
-## Step 4: Validate The Route
-
-Goal: prove the prepared frame/address boundary without relying on one named
-testcase.
+Goal: prove the new scalar instruction-selection structure without relying on
+one named testcase.
 
 Actions:
 
 - require a fresh build for every accepted slice
-- choose the narrowest proving test that exercises the changed memory/address
-  family
-- broaden validation when shared prepare changes affect multiple backend
-  buckets or when several narrow-only packets have landed
-- reject slices whose main effect is expectation weakening or local matcher
-  growth instead of prepared-address consumption
+- choose the narrowest proving subset that exercises the migrated instruction
+  or terminator family
+- broaden validation when shared selector helpers or dispatch boundaries change
+  across multiple backend buckets, or when the route is being treated as a
+  milestone
+- reject slices whose practical effect is matcher growth or expectation
+  weakening rather than selector-based capability repair
 
 Completion check:
 
 - accepted slices have fresh proof logs and validation proportional to the
-  frame/addressing blast radius
+  scalar-lowering blast radius

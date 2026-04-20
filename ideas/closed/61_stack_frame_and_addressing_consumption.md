@@ -1,12 +1,23 @@
 # Stack Frame And Addressing Consumption For Prepared X86
 
-Status: Open
+Status: Closed
 Created: 2026-04-18
-Last-Updated: 2026-04-18
+Last-Updated: 2026-04-20
 Depends-On:
 - idea 58 shared CFG, join, and loop materialization
 Blocks:
 - idea 59 generic scalar instruction selection for x86
+
+## Close Note
+
+2026-04-20: closed after prepared x86 frame/layout and memory-address consumers
+finished migrating to canonical prepared frame/address facts. The final Step
+3.3.3 slice removed the residual pointer-derived stack-address fallback to raw
+`PreparedValueHome::offset_bytes`, so the covered pointer-indirect and
+base-plus-offset lanes now require prepared frame-slot identity instead of
+recovering address meaning locally. Close-time broad backend regression guard
+on `^backend_` passed monotonically against `HEAD~1`; the remaining four
+backend failures stayed unchanged baseline noise outside this idea's route.
 
 ## Deactivation Note
 
