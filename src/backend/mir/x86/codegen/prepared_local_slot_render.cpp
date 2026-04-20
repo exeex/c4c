@@ -179,6 +179,40 @@ std::optional<std::string> render_prepared_symbol_memory_operand_if_supported(
   return memory;
 }
 
+std::optional<std::size_t> find_prepared_named_stack_object_frame_offset(
+    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    c4c::FunctionNameId function_name,
+    std::string_view object_name) {
+  if (stack_layout == nullptr || prepared_names == nullptr || function_name == c4c::kInvalidFunctionName ||
+      object_name.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* matched_object = [&]() -> const c4c::backend::prepare::PreparedStackObject* {
+    for (const auto& object : stack_layout->objects) {
+      if (object.function_name != function_name) {
+        continue;
+      }
+      if (c4c::backend::prepare::prepared_stack_object_name(*prepared_names, object) ==
+          object_name) {
+        return &object;
+      }
+    }
+    return nullptr;
+  }();
+  if (matched_object == nullptr) {
+    return std::nullopt;
+  }
+
+  for (const auto& frame_slot : stack_layout->frame_slots) {
+    if (frame_slot.function_name == function_name && frame_slot.object_id == matched_object->object_id) {
+      return frame_slot.offset_bytes;
+    }
+  }
+  return std::nullopt;
+}
+
 const c4c::backend::prepare::PreparedBranchCondition*
 find_required_prepared_guard_branch_condition(
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
@@ -1747,12 +1781,17 @@ std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported
 
 std::optional<std::string> render_prepared_constant_folded_single_block_return_if_supported(
     const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
     std::string_view return_register) {
   if (!function.params.empty() || function.blocks.size() != 1 ||
       function.blocks.front().terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
-      !function.blocks.front().terminator.value.has_value()) {
+      !function.blocks.front().terminator.value.has_value() ||
+      prepared_arch != c4c::TargetArch::X86_64 || stack_layout == nullptr ||
+      function_addressing == nullptr || prepared_names == nullptr) {
     return std::nullopt;
   }
 
@@ -1760,143 +1799,17 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_i
   const auto wrap_i32 = [](std::int64_t value) -> std::int32_t {
     return static_cast<std::int32_t>(static_cast<std::uint32_t>(value));
   };
-
-  PreparedModuleLocalSlotLayout constant_layout;
-  if (prepared_arch != c4c::TargetArch::X86_64) {
+  const auto function_name_id =
+      c4c::backend::prepare::resolve_prepared_function_name_id(*prepared_names, function.name);
+  const auto entry_label_id =
+      c4c::backend::prepare::resolve_prepared_block_label_id(*prepared_names, entry.label);
+  if (!function_name_id.has_value() || !entry_label_id.has_value()) {
     return std::nullopt;
   }
-  {
-    struct SyntheticRootSlot {
-      std::size_t size_bytes = 0;
-      std::size_t align_bytes = 1;
-    };
-    std::size_t next_offset = 0;
-    std::size_t max_align = 16;
-    std::vector<std::string_view> local_slot_names;
-    std::unordered_map<std::string, SyntheticRootSlot> synthetic_root_slots;
-    const auto note_numeric_suffix_root =
-        [&](std::string_view slot_name, std::size_t size_bytes, std::size_t align_bytes) {
-          const auto dot = slot_name.rfind('.');
-          if (dot == std::string_view::npos || dot + 1 >= slot_name.size()) {
-            return;
-          }
-          std::size_t suffix_offset = 0;
-          for (std::size_t index = dot + 1; index < slot_name.size(); ++index) {
-            const char ch = slot_name[index];
-            if (ch < '0' || ch > '9') {
-              return;
-            }
-            suffix_offset = suffix_offset * 10 + static_cast<std::size_t>(ch - '0');
-          }
-          auto& root_slot = synthetic_root_slots[std::string(slot_name.substr(0, dot))];
-          root_slot.size_bytes = std::max(root_slot.size_bytes, suffix_offset + size_bytes);
-          root_slot.align_bytes = std::max(root_slot.align_bytes, align_bytes);
-        };
-    local_slot_names.reserve(function.local_slots.size());
-    for (const auto& slot : function.local_slots) {
-      local_slot_names.push_back(slot.name);
-    }
-    for (const auto& inst : entry.insts) {
-      if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
-        if (!store->address.has_value()) {
-          const auto stored_size = store->value.type == c4c::backend::bir::TypeKind::Ptr ? 8u
-                                   : store->value.type == c4c::backend::bir::TypeKind::I64 ? 8u
-                                   : store->value.type == c4c::backend::bir::TypeKind::I16 ? 2u
-                                   : store->value.type == c4c::backend::bir::TypeKind::I32 ? 4u
-                                   : store->value.type == c4c::backend::bir::TypeKind::I8  ? 1u
-                                                                                             : 0u;
-          if (stored_size != 0) {
-            note_numeric_suffix_root(store->slot_name, stored_size,
-                                     std::max<std::size_t>(1, stored_size));
-          }
-        }
-        if (store->address.has_value() &&
-            store->address->base_kind == c4c::backend::bir::MemoryAddress::BaseKind::LocalSlot &&
-            store->address->size_bytes != 0) {
-          note_numeric_suffix_root(store->address->base_name, store->address->size_bytes,
-                                   std::max<std::size_t>(1, store->address->align_bytes));
-        }
-        continue;
-      }
-      if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
-          load != nullptr && load->address.has_value() &&
-          load->address->base_kind == c4c::backend::bir::MemoryAddress::BaseKind::LocalSlot &&
-          load->address->size_bytes != 0) {
-        note_numeric_suffix_root(load->address->base_name, load->address->size_bytes,
-                                 std::max<std::size_t>(1, load->address->align_bytes));
-      }
-    }
-    for (const auto& slot : function.local_slots) {
-      const auto slot_size = slot.size_bytes != 0
-                                 ? slot.size_bytes
-                                 : (slot.type == c4c::backend::bir::TypeKind::Ptr ? 8u
-                                    : slot.type == c4c::backend::bir::TypeKind::I64 ? 8u
-                                    : slot.type == c4c::backend::bir::TypeKind::I16 ? 2u
-                                    : slot.type == c4c::backend::bir::TypeKind::I32 ? 4u
-                                    : slot.type == c4c::backend::bir::TypeKind::I8 ? 1u
-                                                                                  : 0u);
-      const auto slot_align =
-          slot.align_bytes != 0 ? slot.align_bytes
-                                : (slot_size != 0 ? slot_size : static_cast<std::size_t>(1));
-      if (slot_size == 0 || slot_align > 16) {
-        continue;
-      }
-      const bool has_descendant_slots = [&]() {
-        const std::string prefix = slot.name + ".";
-        for (const auto candidate_name : local_slot_names) {
-          if (candidate_name == slot.name) {
-            continue;
-          }
-          if (candidate_name.rfind(prefix, 0) == 0) {
-            return true;
-          }
-        }
-        return false;
-      }();
-      const bool scalar_like_slot = slot.type == c4c::backend::bir::TypeKind::I8 ||
-                                    slot.type == c4c::backend::bir::TypeKind::I16 ||
-                                    slot.type == c4c::backend::bir::TypeKind::I32 ||
-                                    slot.type == c4c::backend::bir::TypeKind::I64 ||
-                                    slot.type == c4c::backend::bir::TypeKind::Ptr;
-      if (!scalar_like_slot && slot_size > 8) {
-        next_offset = align_up(next_offset, slot_align);
-        constant_layout.offsets.emplace(slot.name, next_offset);
-        if (!has_descendant_slots) {
-          next_offset += slot_size;
-        }
-        max_align = std::max(max_align, slot_align);
-        continue;
-      }
-      next_offset = align_up(next_offset, slot_align);
-      constant_layout.offsets.emplace(slot.name, next_offset);
-      next_offset += slot_size;
-      max_align = std::max(max_align, slot_align);
-    }
-    for (const auto& [root_name, root_slot] : synthetic_root_slots) {
-      if (constant_layout.offsets.find(root_name) != constant_layout.offsets.end() ||
-          root_slot.size_bytes == 0 || root_slot.align_bytes > 16) {
-        continue;
-      }
-      std::optional<std::size_t> aggregate_offset;
-      const std::string prefix = root_name + ".";
-      for (const auto& [candidate_name, candidate_offset] : constant_layout.offsets) {
-        if (candidate_name.rfind(prefix, 0) != 0) {
-          continue;
-        }
-        if (!aggregate_offset.has_value() || candidate_offset < *aggregate_offset) {
-          aggregate_offset = candidate_offset;
-        }
-      }
-      if (aggregate_offset.has_value()) {
-        constant_layout.offsets.emplace(root_name, *aggregate_offset);
-        continue;
-      }
-      next_offset = align_up(next_offset, root_slot.align_bytes);
-      constant_layout.offsets.emplace(root_name, next_offset);
-      next_offset += root_slot.size_bytes;
-      max_align = std::max(max_align, root_slot.align_bytes);
-    }
-    constant_layout.frame_size = align_up(next_offset, max_align);
+  const auto layout = build_prepared_module_local_slot_layout(
+      function, stack_layout, function_addressing, prepared_names, prepared_arch);
+  if (!layout.has_value()) {
+    return std::nullopt;
   }
 
   struct ConstantValue {
@@ -1906,58 +1819,6 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_i
 
   std::unordered_map<std::string_view, ConstantValue> named_values;
   std::unordered_map<std::size_t, ConstantValue> local_memory;
-
-  std::function<std::optional<std::size_t>(std::string_view)> resolve_local_slot_base_offset =
-      [&](std::string_view slot_name) -> std::optional<std::size_t> {
-        if (const auto slot_it = constant_layout.offsets.find(slot_name);
-            slot_it != constant_layout.offsets.end()) {
-          return slot_it->second;
-        }
-        if (const auto dot = slot_name.rfind('.'); dot != std::string_view::npos &&
-            dot + 1 < slot_name.size()) {
-          std::size_t suffix_offset = 0;
-          bool numeric_suffix = true;
-          for (std::size_t index = dot + 1; index < slot_name.size(); ++index) {
-            const char ch = slot_name[index];
-            if (ch < '0' || ch > '9') {
-              numeric_suffix = false;
-              break;
-            }
-            suffix_offset = suffix_offset * 10 + static_cast<std::size_t>(ch - '0');
-          }
-          if (numeric_suffix) {
-            const auto base_offset = resolve_local_slot_base_offset(slot_name.substr(0, dot));
-            if (base_offset.has_value()) {
-              return *base_offset + suffix_offset;
-            }
-          }
-        }
-        std::optional<std::size_t> aggregate_offset;
-        const std::string prefix = std::string(slot_name) + ".";
-        for (const auto& [candidate_name, candidate_offset] : constant_layout.offsets) {
-          if (candidate_name.rfind(prefix, 0) != 0) {
-            continue;
-          }
-          const auto suffix = candidate_name.substr(prefix.size());
-          if (suffix.empty()) {
-            continue;
-          }
-          bool numeric_suffix = true;
-          for (const char ch : suffix) {
-            if (ch < '0' || ch > '9') {
-              numeric_suffix = false;
-              break;
-            }
-          }
-          if (!numeric_suffix) {
-            continue;
-          }
-          if (!aggregate_offset.has_value() || candidate_offset < *aggregate_offset) {
-            aggregate_offset = candidate_offset;
-          }
-        }
-        return aggregate_offset;
-      };
 
   const auto resolve_i32_value =
       [&](const c4c::backend::bir::Value& value) -> std::optional<std::int32_t> {
@@ -1992,55 +1853,72 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_i
         if (value.kind != c4c::backend::bir::Value::Kind::Named) {
           return std::nullopt;
         }
-        if (const auto slot_offset = resolve_local_slot_base_offset(value.name);
-            slot_offset.has_value()) {
-          return *slot_offset;
-        }
         const auto value_it = named_values.find(value.name);
-        if (value_it == named_values.end() ||
-            value_it->second.type != c4c::backend::bir::TypeKind::Ptr ||
-            value_it->second.value < 0) {
-          return std::nullopt;
+        if (value_it != named_values.end()) {
+          if (value_it->second.type != c4c::backend::bir::TypeKind::Ptr ||
+              value_it->second.value < 0) {
+            return std::nullopt;
+          }
+          return static_cast<std::size_t>(value_it->second.value);
         }
-        return static_cast<std::size_t>(value_it->second.value);
+        return find_prepared_named_stack_object_frame_offset(
+            stack_layout, prepared_names, *function_name_id, value.name);
       };
 
-  const auto resolve_local_address =
-      [&](std::string_view slot_name,
-          std::size_t byte_offset,
-          const std::optional<c4c::backend::bir::MemoryAddress>& address)
+  const auto resolve_prepared_memory_address = [&](std::size_t inst_index)
       -> std::optional<std::size_t> {
-        if (!address.has_value()) {
-          const auto slot_offset = resolve_local_slot_base_offset(slot_name);
-          if (!slot_offset.has_value()) {
-            return std::nullopt;
-          }
-          return *slot_offset + byte_offset;
-        }
+    const auto* prepared_access =
+        find_prepared_function_memory_access(function_addressing, *entry_label_id, inst_index);
+    if (prepared_access == nullptr) {
+      return std::nullopt;
+    }
 
-        std::optional<std::size_t> base_offset;
-        if (address->base_kind == c4c::backend::bir::MemoryAddress::BaseKind::LocalSlot) {
-          base_offset = resolve_local_slot_base_offset(address->base_name);
-          if (!base_offset.has_value()) {
-            return std::nullopt;
-          }
-        } else if (address->base_kind ==
-                   c4c::backend::bir::MemoryAddress::BaseKind::PointerValue) {
-          base_offset = resolve_ptr_value(address->base_value);
-        } else {
+    std::optional<std::size_t> base_offset;
+    switch (prepared_access->address.base_kind) {
+      case c4c::backend::prepare::PreparedAddressBaseKind::FrameSlot: {
+        if (!prepared_access->address.frame_slot_id.has_value()) {
           return std::nullopt;
         }
+        const auto frame_slot_it =
+            layout->frame_slot_offsets.find(*prepared_access->address.frame_slot_id);
+        if (frame_slot_it == layout->frame_slot_offsets.end()) {
+          return std::nullopt;
+        }
+        base_offset = frame_slot_it->second;
+        break;
+      }
+      case c4c::backend::prepare::PreparedAddressBaseKind::PointerValue: {
+        if (!prepared_access->address.pointer_value_name.has_value() ||
+            !prepared_access->address.can_use_base_plus_offset) {
+          return std::nullopt;
+        }
+        const auto pointer_name =
+            c4c::backend::prepare::prepared_value_name(
+                *prepared_names, *prepared_access->address.pointer_value_name);
+        if (pointer_name.empty()) {
+          return std::nullopt;
+        }
+        base_offset = resolve_ptr_value(c4c::backend::bir::Value{
+            .kind = c4c::backend::bir::Value::Kind::Named,
+            .type = c4c::backend::bir::TypeKind::Ptr,
+            .name = std::string(pointer_name),
+        });
+        break;
+      }
+      default:
+        return std::nullopt;
+    }
 
-        if (!base_offset.has_value()) {
-          return std::nullopt;
-        }
-        const auto signed_offset = static_cast<std::int64_t>(*base_offset) +
-                                   static_cast<std::int64_t>(byte_offset) + address->byte_offset;
-        if (signed_offset < 0) {
-          return std::nullopt;
-        }
-        return static_cast<std::size_t>(signed_offset);
-      };
+    if (!base_offset.has_value()) {
+      return std::nullopt;
+    }
+    const auto signed_offset = static_cast<std::int64_t>(*base_offset) +
+                               prepared_access->address.byte_offset;
+    if (signed_offset < 0) {
+      return std::nullopt;
+    }
+    return static_cast<std::size_t>(signed_offset);
+  };
 
   const auto fold_binary_i32 =
       [&](const c4c::backend::bir::BinaryInst& binary) -> std::optional<std::int32_t> {
@@ -2085,10 +1963,10 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_i
         }
       };
 
-  for (const auto& inst : entry.insts) {
+  for (std::size_t inst_index = 0; inst_index < entry.insts.size(); ++inst_index) {
+    const auto& inst = entry.insts[inst_index];
     if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
-      const auto address =
-          resolve_local_address(store->slot_name, store->byte_offset, store->address);
+      const auto address = resolve_prepared_memory_address(inst_index);
       if (!address.has_value()) {
         return std::nullopt;
       }
@@ -2115,7 +1993,7 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_i
     }
 
     if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst)) {
-      const auto address = resolve_local_address(load->slot_name, load->byte_offset, load->address);
+      const auto address = resolve_prepared_memory_address(inst_index);
       if (!address.has_value()) {
         return std::nullopt;
       }
@@ -2941,7 +2819,8 @@ std::optional<std::string> render_prepared_single_block_return_dispatch_if_suppo
   }
   if (const auto rendered_constant_folded =
           render_prepared_constant_folded_single_block_return_if_supported(
-              function, prepared_arch, asm_prefix, return_register);
+              function, stack_layout, function_addressing, prepared_names,
+              prepared_arch, asm_prefix, return_register);
       rendered_constant_folded.has_value()) {
     return *rendered_constant_folded;
   }
