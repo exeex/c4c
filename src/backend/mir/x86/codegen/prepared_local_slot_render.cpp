@@ -3682,24 +3682,28 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
                 return param_it->second;
               });
         };
-    std::unordered_set<std::string_view> used_same_module_globals;
-    std::string body;
-    std::optional<std::string_view> current_i32_name;
-    for (const auto& inst : candidate.blocks.front().insts) {
-      const auto inst_index = static_cast<std::size_t>(&inst - candidate.blocks.front().insts.data());
-      const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
-      if (binary != nullptr) {
+    const auto render_supported_helper_inst =
+        [&](const c4c::backend::bir::Inst& inst,
+            std::size_t inst_index,
+            std::optional<std::string_view>* current_i32_name)
+        -> std::optional<BoundedSameModuleHelperRender> {
+      if (current_i32_name == nullptr) {
+        return std::nullopt;
+      }
+      if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst)) {
         if (binary->result.kind != c4c::backend::bir::Value::Kind::Named) {
           return std::nullopt;
         }
         const auto rendered_binary = render_prepared_i32_binary_in_eax_if_supported(
-            *binary, current_i32_name, render_value_to_eax, render_i32_operand);
+            *binary, *current_i32_name, render_value_to_eax, render_i32_operand);
         if (!rendered_binary.has_value()) {
           return std::nullopt;
         }
-        body += *rendered_binary;
-        current_i32_name = binary->result.name;
-        continue;
+        *current_i32_name = binary->result.name;
+        return BoundedSameModuleHelperRender{
+            .asm_text = std::move(*rendered_binary),
+            .used_same_module_globals = {},
+        };
       }
 
       const auto* store = std::get_if<c4c::backend::bir::StoreGlobalInst>(&inst);
@@ -3722,11 +3726,10 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
       if (!selected_global_memory.has_value()) {
         return std::nullopt;
       }
-      used_same_module_globals.insert(selected_global_memory->global->name);
 
       const auto rendered_store = render_prepared_i32_store_to_memory_if_supported(
           store->value,
-          current_i32_name,
+          *current_i32_name,
           selected_global_memory->memory_operand,
           [&](const c4c::backend::bir::Value& value,
               const std::optional<std::string_view>& current_name) -> std::optional<std::string> {
@@ -3744,8 +3747,27 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
       if (!rendered_store.has_value()) {
         return std::nullopt;
       }
-      body += *rendered_store;
-      continue;
+      BoundedSameModuleHelperRender rendered{
+          .asm_text = std::move(*rendered_store),
+          .used_same_module_globals = {},
+      };
+      rendered.used_same_module_globals.insert(selected_global_memory->global->name);
+      return rendered;
+    };
+    std::unordered_set<std::string_view> used_same_module_globals;
+    std::string body;
+    std::optional<std::string_view> current_i32_name;
+    for (const auto& inst : candidate.blocks.front().insts) {
+      const auto inst_index = static_cast<std::size_t>(&inst - candidate.blocks.front().insts.data());
+      const auto rendered_inst =
+          render_supported_helper_inst(inst, inst_index, &current_i32_name);
+      if (!rendered_inst.has_value()) {
+        return std::nullopt;
+      }
+      body += rendered_inst->asm_text;
+      used_same_module_globals.insert(
+          rendered_inst->used_same_module_globals.begin(),
+          rendered_inst->used_same_module_globals.end());
     }
 
     const auto& returned = *candidate.blocks.front().terminator.value;
