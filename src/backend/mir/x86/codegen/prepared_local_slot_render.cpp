@@ -1247,18 +1247,19 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
         *current_i32_name = std::nullopt;
         *previous_i32_name = std::nullopt;
         *current_i8_name = std::nullopt;
-        if (current_ptr_name->has_value() && *current_ptr_name == store->value.name) {
-          *current_ptr_name = std::nullopt;
-          return "    mov " + *memory + ", rax\n";
-        }
-        const auto pointee_address = render_prepared_value_home_stack_address_if_supported(
-            *layout, prepared_names, function_locations, store->value.name);
-        if (!pointee_address.has_value()) {
-          *current_ptr_name = std::nullopt;
+        const auto rendered_store = render_prepared_ptr_store_to_memory_if_supported(
+            store->value,
+            *current_ptr_name,
+            *memory,
+            [&](std::string_view value_name) -> std::optional<std::string> {
+              return render_prepared_value_home_stack_address_if_supported(
+                  *layout, prepared_names, function_locations, value_name);
+            });
+        *current_ptr_name = std::nullopt;
+        if (!rendered_store.has_value()) {
           return std::string{};
         }
-        *current_ptr_name = std::nullopt;
-        return "    lea rax, " + *pointee_address + "\n    mov " + *memory + ", rax\n";
+        return rendered_store;
       }
       return std::nullopt;
     };
@@ -2720,19 +2721,37 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_from_contex
       }
       if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate &&
           store->value.type == c4c::backend::bir::TypeKind::I32) {
-        asm_text += "    mov " + *memory + ", " +
-                    std::to_string(static_cast<std::int32_t>(store->value.immediate)) + "\n";
+        const auto rendered_store = render_prepared_i32_store_to_memory_if_supported(
+            store->value,
+            std::nullopt,
+            *memory,
+            [](const c4c::backend::bir::Value& value,
+               const std::optional<std::string_view>&) -> std::optional<std::string> {
+              if (value.kind != c4c::backend::bir::Value::Kind::Immediate) {
+                return std::nullopt;
+              }
+              return std::to_string(static_cast<std::int32_t>(value.immediate));
+            });
+        if (!rendered_store.has_value()) {
+          return std::nullopt;
+        }
+        asm_text += *rendered_store;
         continue;
       }
       if (store->value.kind == c4c::backend::bir::Value::Kind::Named &&
           store->value.type == c4c::backend::bir::TypeKind::Ptr) {
-        const auto pointee_address = render_prepared_value_home_stack_address_if_supported(
-            *layout, prepared_names, function_locations, store->value.name);
-        if (!pointee_address.has_value()) {
+        const auto rendered_store = render_prepared_ptr_store_to_memory_if_supported(
+            store->value,
+            std::nullopt,
+            *memory,
+            [&](std::string_view value_name) -> std::optional<std::string> {
+              return render_prepared_value_home_stack_address_if_supported(
+                  *layout, prepared_names, function_locations, value_name);
+            });
+        if (!rendered_store.has_value()) {
           return std::nullopt;
         }
-        asm_text += "    lea rax, " + *pointee_address + "\n";
-        asm_text += "    mov " + *memory + ", rax\n";
+        asm_text += *rendered_store;
         continue;
       }
       return std::nullopt;

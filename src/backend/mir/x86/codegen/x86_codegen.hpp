@@ -402,6 +402,27 @@ inline std::optional<std::string> render_prepared_i32_store_to_memory_if_support
   return "    mov " + std::string(memory_operand) + ", " + *operand + "\n";
 }
 
+template <typename RenderNamedPtrAddressFn>
+inline std::optional<std::string> render_prepared_ptr_store_to_memory_if_supported(
+    const c4c::backend::bir::Value& value,
+    const std::optional<std::string_view>& current_ptr_name,
+    std::string_view memory_operand,
+    const RenderNamedPtrAddressFn& render_named_ptr_address) {
+  if (value.kind != c4c::backend::bir::Value::Kind::Named ||
+      value.type != c4c::backend::bir::TypeKind::Ptr) {
+    return std::nullopt;
+  }
+  if (current_ptr_name.has_value() && *current_ptr_name == value.name) {
+    return "    mov " + std::string(memory_operand) + ", rax\n";
+  }
+  const auto pointee_address = render_named_ptr_address(value.name);
+  if (!pointee_address.has_value()) {
+    return std::nullopt;
+  }
+  return "    lea rax, " + *pointee_address + "\n    mov " + std::string(memory_operand) +
+         ", rax\n";
+}
+
 inline std::optional<std::string> render_prepared_scalar_load_from_memory_if_supported(
     c4c::backend::bir::TypeKind result_type,
     std::string_view memory_operand) {
