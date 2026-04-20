@@ -20,6 +20,9 @@ run, including crashes and wrong-result executions.
 
 ## Current Known Failed Cases It Owns
 
+- `c_testsuite_x86_backend_src_00040_c`
+  Current observed failure mode: segmentation fault after advancing past the
+  old prepared call-bundle rejection path.
 - `c_testsuite_x86_backend_src_00086_c`
   Current observed failure mode: segmentation fault.
 - `c_testsuite_x86_backend_src_00130_c`

@@ -21,14 +21,13 @@ This idea owns these current diagnostic families:
 Current sizes from the 2026-04-20 backend run plus same-day graduations from
 upstream lowering work:
 
-- single-function prepared-module restriction: 20 failures
+- single-function prepared-module restriction: 19 failures
 - prepared call-bundle requirement: 5 failures
 
 ## Current Known Failed Cases It Owns
 
 Single-function prepared-module restriction cases:
 
-- `c_testsuite_x86_backend_src_00040_c`
 - `c_testsuite_x86_backend_src_00077_c`
 - `c_testsuite_x86_backend_src_00078_c`
 - `c_testsuite_x86_backend_src_00083_c`
@@ -50,7 +49,10 @@ Single-function prepared-module restriction cases:
 - `c_testsuite_x86_backend_src_00219_c`
 
 `c_testsuite_x86_backend_src_00040_c` joined this restriction set on
-2026-04-20 after graduating out of idea-62 stack/addressing ownership.
+2026-04-20 after graduating out of idea-62 stack/addressing ownership, then
+graduated again the same day into idea-63 runtime-correctness ownership once
+prepared-module traversal and authoritative call-bundle consumption advanced it
+past codegen rejection into a runtime segmentation fault.
 
 Prepared call-bundle failures:
 

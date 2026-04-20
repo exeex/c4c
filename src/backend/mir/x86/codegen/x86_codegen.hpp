@@ -255,6 +255,17 @@ inline std::optional<std::string> select_prepared_call_argument_abi_register_if_
     }
     return *move.destination_register_name;
   }
+  for (const auto& binding : before_call_bundle->abi_bindings) {
+    if (binding.destination_kind !=
+            c4c::backend::prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+        binding.destination_storage_kind !=
+            c4c::backend::prepare::PreparedMoveStorageKind::Register ||
+        binding.destination_abi_index != std::optional<std::size_t>{arg_index} ||
+        !binding.destination_register_name.has_value()) {
+      continue;
+    }
+    return *binding.destination_register_name;
+  }
   return std::nullopt;
 }
 
@@ -320,13 +331,26 @@ select_prepared_call_result_abi_if_supported(
     }
     return nullptr;
   }();
-  if (after_call_move == nullptr || !after_call_move->destination_register_name.has_value()) {
-    return std::nullopt;
+  if (after_call_move != nullptr && after_call_move->destination_register_name.has_value()) {
+    return PreparedCallResultAbiSelection{
+        .move = after_call_move,
+        .abi_register = *after_call_move->destination_register_name,
+    };
   }
-  return PreparedCallResultAbiSelection{
-      .move = after_call_move,
-      .abi_register = *after_call_move->destination_register_name,
-  };
+  for (const auto& binding : after_call_bundle->abi_bindings) {
+    if (binding.destination_kind !=
+            c4c::backend::prepare::PreparedMoveDestinationKind::CallResultAbi ||
+        binding.destination_storage_kind !=
+            c4c::backend::prepare::PreparedMoveStorageKind::Register ||
+        !binding.destination_register_name.has_value()) {
+      continue;
+    }
+    return PreparedCallResultAbiSelection{
+        .move = nullptr,
+        .abi_register = *binding.destination_register_name,
+    };
+  }
+  return std::nullopt;
 }
 
 inline std::optional<PreparedCallResultAbiSelection>

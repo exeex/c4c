@@ -551,6 +551,103 @@ void append_prepared_move_bundle(PreparedValueLocationFunction& function_locatio
   });
 }
 
+void append_prepared_abi_binding(PreparedValueLocationFunction& function_locations,
+                                 PreparedMovePhase phase,
+                                 std::size_t block_index,
+                                 std::size_t instruction_index,
+                                 PreparedAbiBinding binding) {
+  auto existing = std::find_if(
+      function_locations.move_bundles.begin(),
+      function_locations.move_bundles.end(),
+      [&](const PreparedMoveBundle& bundle) {
+        return bundle.phase == phase && bundle.block_index == block_index &&
+               bundle.instruction_index == instruction_index;
+      });
+  if (existing == function_locations.move_bundles.end()) {
+    function_locations.move_bundles.push_back(PreparedMoveBundle{
+        .function_name = function_locations.function_name,
+        .phase = phase,
+        .block_index = block_index,
+        .instruction_index = instruction_index,
+        .moves = {},
+        .abi_bindings = {},
+    });
+    existing = std::prev(function_locations.move_bundles.end());
+  }
+
+  const auto duplicate = std::find_if(
+      existing->abi_bindings.begin(),
+      existing->abi_bindings.end(),
+      [&](const PreparedAbiBinding& existing_binding) {
+        return existing_binding.destination_kind == binding.destination_kind &&
+               existing_binding.destination_storage_kind == binding.destination_storage_kind &&
+               existing_binding.destination_abi_index == binding.destination_abi_index &&
+               existing_binding.destination_register_name == binding.destination_register_name;
+      });
+  if (duplicate != existing->abi_bindings.end()) {
+    return;
+  }
+  existing->abi_bindings.push_back(std::move(binding));
+}
+
+[[nodiscard]] PreparedMoveStorageKind call_arg_storage_kind(const bir::CallInst& call,
+                                                            std::size_t arg_index);
+[[nodiscard]] PreparedMoveStorageKind call_result_storage_kind(const bir::CallInst& call);
+
+void append_prepared_call_abi_bindings(const c4c::TargetProfile& target_profile,
+                                       const c4c::backend::bir::Function& function,
+                                       PreparedValueLocationFunction& function_locations) {
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    for (std::size_t instruction_index = 0; instruction_index < block.insts.size(); ++instruction_index) {
+      const auto* call = std::get_if<bir::CallInst>(&block.insts[instruction_index]);
+      if (call == nullptr) {
+        continue;
+      }
+
+      for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
+        const PreparedMoveStorageKind destination_storage_kind = call_arg_storage_kind(*call, arg_index);
+        if (destination_storage_kind == PreparedMoveStorageKind::None) {
+          continue;
+        }
+        const auto destination_register_name =
+            arg_index < call->arg_abi.size()
+                ? call_arg_destination_register_name(target_profile, call->arg_abi[arg_index], arg_index)
+                : std::nullopt;
+        append_prepared_abi_binding(function_locations,
+                                    PreparedMovePhase::BeforeCall,
+                                    block_index,
+                                    instruction_index,
+                                    PreparedAbiBinding{
+                                        .destination_kind = PreparedMoveDestinationKind::CallArgumentAbi,
+                                        .destination_storage_kind = destination_storage_kind,
+                                        .destination_abi_index = arg_index,
+                                        .destination_register_name = destination_register_name,
+                                    });
+      }
+
+      const PreparedMoveStorageKind result_storage_kind = call_result_storage_kind(*call);
+      if (result_storage_kind == PreparedMoveStorageKind::None) {
+        continue;
+      }
+      const auto destination_register_name =
+          call->result_abi.has_value()
+              ? call_result_destination_register_name(target_profile, *call->result_abi)
+              : std::nullopt;
+      append_prepared_abi_binding(function_locations,
+                                  PreparedMovePhase::AfterCall,
+                                  block_index,
+                                  instruction_index,
+                                  PreparedAbiBinding{
+                                      .destination_kind = PreparedMoveDestinationKind::CallResultAbi,
+                                      .destination_storage_kind = result_storage_kind,
+                                      .destination_abi_index = std::nullopt,
+                                      .destination_register_name = destination_register_name,
+                                  });
+    }
+  }
+}
+
 [[nodiscard]] PreparedValueLocationFunction build_prepared_value_location_function(
     PreparedNameTables& names,
     const c4c::TargetProfile& target_profile,
@@ -568,6 +665,9 @@ void append_prepared_move_bundle(PreparedValueLocationFunction& function_locatio
   }
   for (const auto& move : regalloc_function.move_resolution) {
     append_prepared_move_bundle(function_locations, move);
+  }
+  if (function != nullptr) {
+    append_prepared_call_abi_bindings(target_profile, *function, function_locations);
   }
   return function_locations;
 }

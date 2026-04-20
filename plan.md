@@ -1,169 +1,136 @@
-# Call-Bundle And Multi-Function Prepared-Module Consumption
+# X86 Backend Runtime Correctness Regressions
 
 Status: Active
-Source Idea: ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md
-Supersedes: ideas/open/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md
+Source Idea: ideas/open/63_x86_backend_runtime_correctness_regressions.md
+Supersedes: ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md
 
 ## Purpose
 
-Turn idea 61 into an execution runbook that repairs prepared-module traversal
-and prepared call-bundle consumption for x86 without reopening local ABI or
-module-shape special cases in the emitter.
+Turn idea 63 into an execution runbook for x86 backend cases that already
+compile and emit asm but still crash or return the wrong result at runtime.
 
 ## Goal
 
-Make owned prepared-module and prepared call-bundle failures, including the
-newly graduated `c_testsuite_x86_backend_src_00040_c`, advance through generic
-prepared x86 consumption instead of stopping at single-function or missing
-call-bundle restrictions.
+Repair the active runtime-correctness failures, starting with the newly
+graduated `c_testsuite_x86_backend_src_00040_c`, without hiding wrong-code or
+runtime crashes behind unsupported-capability fallbacks.
 
 ## Core Rule
 
-Do not add another bounded `main + helper` lane or local ABI fallback in x86.
-Prefer target-independent prepared contract publication or shared plan helpers,
-then keep x86 rendering thin over that contract.
+Do not route runtime failures back into unsupported or emitter-rejection
+buckets. Fix the concrete correctness seam that produces bad asm or bad
+execution, then keep the proof on real running cases.
 
 ## Read First
 
+- `ideas/open/63_x86_backend_runtime_correctness_regressions.md`
 - `ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md`
-- `ideas/open/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md`
-- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
 - `src/backend/mir/x86/codegen/x86_codegen.hpp`
 - `src/backend/prealloc/prealloc.hpp`
 - `src/backend/prealloc/regalloc.cpp`
-- `tests/backend/backend_x86_handoff_boundary_multi_defined_call_test.cpp`
-- `tests/backend/backend_x86_handoff_boundary_direct_extern_call_test.cpp`
 - `tests/c/external/c-testsuite/src/00040.c`
+- `build/c_testsuite_x86_backend/src/00040.c.s`
 
 ## Scope
 
-- generic prepared-module traversal across same-module multi-function cases
-- authoritative prepared `BeforeCall` / `AfterCall` bundle consumption for x86
-- shared prepared contract or helper growth when current prepared facts are not
-  expressive enough for generic module or call-lane plans
-- proof on owned backend and c-testsuite cases, not only handoff boundary tests
+- runtime crashes after the backend already emits asm
+- wrong-result executions after the backend already emits asm
+- prepared pointer, local-slot, addressing, or call/result rendering defects
+  that manifest as runtime failure
+- proof on owned runtime cases plus nearby backend coverage when a packet
+  changes shared x86/prepared logic
 
 ## Non-Goals
 
-- reopening semantic lowering or stack/addressing work that already reaches the
-  prepared-module handoff
-- CFG/guard-chain ownership from idea 59
-- scalar selection or terminator shaping unrelated to call lanes or
-  multi-function module traversal
-- runtime correctness bugs once codegen already succeeds
+- reopening idea-61 ownership for prepared-module traversal or authoritative
+  call-bundle publication once those gates are crossed
+- downgrading runtime failures into unsupported diagnostics
+- broad semantic-lowering or frontend work unrelated to the emitted runtime bug
+- hiding wrong-code with testcase-specific x86 shortcuts
 
 ## Working Model
 
-- the dominant failure is now prepared-module consumption, not missing semantic
-  lowering
-- `prepared_module_emit.cpp` currently rejects valid same-module inventory
-  shapes too early instead of following a generic prepared traversal
-- `x86_codegen.hpp` should consume authoritative `PreparedMoveBundle` metadata
-  rather than inferring call setup or results locally
-- if owned cases expose a real contract gap, the fix belongs in shared
-  prepared structures and producers before x86 matching logic grows
+- `c_testsuite_x86_backend_src_00040_c` now passes the old prepared-module and
+  call-bundle gates and fails at runtime with a segmentation fault
+- the current emitted `chk` asm repeatedly dereferences
+  `QWORD PTR [rsp + 1560]` instead of using the initialized global-backed `t`
+- the most likely first seam is prepared pointer/local-slot rendering in
+  `prepared_local_slot_render.cpp`, not a return to local ABI inference
+- other runtime cases may reveal different seams, so keep each packet bounded
+  to one correctness root cause at a time
 
 ## Execution Rules
 
-- prefer one bounded prepared-module or call-lane seam per packet
+- prefer one runtime root cause per packet
 - update `todo.md`, not this file, for routine packet progress
-- use `build -> narrow backend proof` for every accepted code slice
-- include at least one owned c-testsuite case whenever a packet claims backend
-  c-testsuite progress
-- reject slices whose main effect is topology-specific x86 matching or local
-  ABI fallback reopening
+- use `build -> narrow runtime proof` for every accepted code slice
+- when a packet touches shared prepared or x86 helpers, keep at least one real
+  runtime case in proof and add nearby backend coverage if it protects the seam
+- reject slices that convert runtime failures into unsupported behavior or
+  testcase-shaped special cases
 
-## Step 1: Audit Prepared-Module And Call-Bundle Boundaries
+## Step 1: Audit Runtime Failure Surface
 
-Goal: map the current prepared-module restriction and call-bundle failures to
-the specific shared contract or traversal seams that need repair.
+Goal: confirm the first active runtime failure and isolate the smallest codegen
+or prepared-contract seam responsible for it.
 
 Primary targets:
 
-- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
-- `src/backend/mir/x86/codegen/x86_codegen.hpp`
-- `src/backend/prealloc/prealloc.hpp`
-- `tests/backend/backend_x86_handoff_boundary_multi_defined_call_test.cpp`
-- `tests/backend/backend_x86_handoff_boundary_direct_extern_call_test.cpp`
 - `tests/c/external/c-testsuite/src/00040.c`
+- `build/c_testsuite_x86_backend/src/00040.c.s`
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
 
 Actions:
 
-- trace why `00040` now stops at the single-function prepared-module boundary
-- inspect the existing bounded multi-defined-call and direct-extern-call
-  boundary fixtures to see which prepared facts are already authoritative
-- identify whether the first repair belongs to generic module traversal, call
-  plan construction, or missing shared prepared contract fields
+- confirm the current `00040` runtime symptom from the emitted asm and runtime
+  proof log
+- map the bad pointer/local-slot behavior back to the prepared addressing or
+  value-home path that produced it
+- decide whether the first repair belongs in x86 rendering, shared prepared
+  contract publication, or another runtime-owned seam
 
 Completion check:
 
-- the first implementation packet is narrowed to one concrete prepared-module
-  or call-bundle seam with proof targets that cover both boundary tests and an
-  owned c-testsuite case when relevant
+- the first implementation packet is narrowed to one concrete runtime seam with
+  proof targets that include `00040` and any nearest protective backend test
 
-## Step 2: Canonicalize Prepared-Module Traversal
+## Step 2: Repair The First Runtime Seam
 
-Goal: let x86 consume supported same-module multi-function inventory without
-hard-coding one bounded entry topology.
+Goal: fix the concrete emitted-asm or prepared-consumption bug behind the
+active runtime failure without reopening unsupported-capability work.
 
 Primary targets:
 
-- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
-- `src/backend/prealloc/prealloc.hpp`
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- shared prepared helpers only if the runtime bug exposes a real missing fact
 
 Actions:
 
-- factor or extend a generic prepared-module traversal/classification helper
-  over the prepared module inventory already published at handoff
-- keep any new facts target-independent when the current handoff does not
-  describe supported function relationships clearly enough
-- reject emitter-local shortcuts that only accept one named module shape
+- repair the pointer/local-slot or related runtime logic identified in Step 1
+- keep shared contract changes target-independent when they express durable
+  prepared meaning
+- avoid x86-only bounded-case fallbacks that merely hide the symptom
 
 Completion check:
 
-- owned multi-function cases stop failing solely because x86 insists on a
-  single-function or one special-case same-module topology
+- `c_testsuite_x86_backend_src_00040_c` advances past the current runtime
+  crash for the repaired seam, with no regression in the protective subset
 
-## Step 3: Consume Authoritative Prepared Call Bundles
+## Step 3: Extend Proof Across Owned Runtime Cases
 
-Goal: make x86 follow prepared `BeforeCall` and `AfterCall` obligations as the
-canonical call-lane contract.
-
-Primary targets:
-
-- `src/backend/mir/x86/codegen/x86_codegen.hpp`
-- `src/backend/prealloc/prealloc.hpp`
-- `src/backend/prealloc/regalloc.cpp`
+Goal: show the accepted slice improves real runtime correctness rather than one
+named case.
 
 Actions:
 
-- build or tighten a normalized call-lane plan from `PreparedMoveBundle` and
-  `PreparedValueLocations` data
-- extend shared prepared contract surfaces first if existing bundles do not
-  publish enough durable call-lane meaning
-- keep x86 rendering thin and do not reopen local ABI inference
+- require a fresh build for each accepted code slice
+- prove the repaired seam with `00040` plus the nearest backend coverage that
+  protects the changed rendering path
+- broaden to other owned runtime cases when they plausibly share the repaired
+  seam
 
 Completion check:
 
-- owned prepared call-bundle cases stop failing because the emitter consumes
-  authoritative prepared call metadata generically
-
-## Step 4: Validate Progress Against Owned Families
-
-Goal: prove that accepted slices advance real prepared-module and call-bundle
-capability instead of only moving boundary fixtures.
-
-Actions:
-
-- require a fresh build for every accepted code slice
-- prove single-function restriction work with at least one owned c-testsuite
-  case plus relevant backend handoff boundary coverage
-- prove call-bundle work with the affected backend handoff boundary coverage
-  plus an owned c-testsuite case when a c-testsuite claim is made
-- broaden validation when a packet changes both module traversal and call-lane
-  consumption or extends shared prepared contract fields
-
-Completion check:
-
-- accepted slices have fresh proof and show credible progress across owned
-  prepared-module or call-bundle failures rather than a new bounded x86 lane
+- accepted slices have fresh proof and demonstrate real runtime-correctness
+  progress without changing failure classification back to unsupported

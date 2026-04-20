@@ -506,6 +506,13 @@ struct PreparedMoveResolution {
   std::string reason;
 };
 
+struct PreparedAbiBinding {
+  PreparedMoveDestinationKind destination_kind = PreparedMoveDestinationKind::Value;
+  PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
+  std::optional<std::size_t> destination_abi_index;
+  std::optional<std::string> destination_register_name;
+};
+
 struct PreparedSpillReloadOp {
   PreparedValueId value_id = 0;
   PreparedSpillReloadOpKind op_kind = PreparedSpillReloadOpKind::Spill;
@@ -608,6 +615,7 @@ struct PreparedMoveBundle {
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
   std::vector<PreparedMoveResolution> moves;
+  std::vector<PreparedAbiBinding> abi_bindings;
 };
 
 struct PreparedValueLocationFunction {
