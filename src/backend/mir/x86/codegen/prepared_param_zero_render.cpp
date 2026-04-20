@@ -1188,12 +1188,32 @@ std::optional<std::string> render_prepared_materialized_compare_join_value_if_su
     const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&
         prepared_return_arm,
     const c4c::backend::bir::Param& param,
+    const c4c::backend::prepare::PreparedValueHome* param_home,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
         minimal_param_register,
     const std::function<std::string(std::string_view)>& render_asm_symbol_name,
     const std::function<bool(const c4c::backend::bir::Global&,
                              c4c::backend::bir::TypeKind,
                              std::size_t)>& same_module_global_supports_scalar_load) {
+  const auto narrow_i32_register = [](std::string_view wide_register) -> std::optional<std::string> {
+    if (wide_register == "rax") return std::string("eax");
+    if (wide_register == "rbx") return std::string("ebx");
+    if (wide_register == "rcx") return std::string("ecx");
+    if (wide_register == "rdx") return std::string("edx");
+    if (wide_register == "rdi") return std::string("edi");
+    if (wide_register == "rsi") return std::string("esi");
+    if (wide_register == "rbp") return std::string("ebp");
+    if (wide_register == "rsp") return std::string("esp");
+    if (wide_register == "r8") return std::string("r8d");
+    if (wide_register == "r9") return std::string("r9d");
+    if (wide_register == "r10") return std::string("r10d");
+    if (wide_register == "r11") return std::string("r11d");
+    if (wide_register == "r12") return std::string("r12d");
+    if (wide_register == "r13") return std::string("r13d");
+    if (wide_register == "r14") return std::string("r14d");
+    if (wide_register == "r15") return std::string("r15d");
+    return std::string(wide_register);
+  };
   const auto& computed_value = prepared_return_arm.arm.context.selected_value;
   std::string rendered;
   switch (computed_value.base.kind) {
@@ -1207,6 +1227,24 @@ std::optional<std::string> render_prepared_materialized_compare_join_value_if_su
                                                      computed_value.base.param_name_id) !=
           param.name) {
         return std::nullopt;
+      }
+      if (param_home != nullptr) {
+        if (param_home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+            param_home->register_name.has_value()) {
+          const auto narrowed_home_register = narrow_i32_register(*param_home->register_name);
+          if (!narrowed_home_register.has_value()) {
+            return std::nullopt;
+          }
+          rendered = "    mov " + std::string(return_register) + ", " + *narrowed_home_register + "\n";
+          break;
+        }
+        if (param_home->kind ==
+                c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
+            param_home->immediate_i32.has_value()) {
+          rendered = "    mov " + std::string(return_register) + ", " +
+                     std::to_string(static_cast<std::int32_t>(*param_home->immediate_i32)) + "\n";
+          break;
+        }
       }
       const auto param_register = minimal_param_register(param);
       if (!param_register.has_value()) {
@@ -1296,6 +1334,9 @@ std::optional<std::string> render_prepared_materialized_compare_join_return_if_s
     return std::string(wide_register);
   };
   std::string authoritative_return_register(return_register);
+  const c4c::backend::prepare::PreparedValueHome* authoritative_param_home = nullptr;
+  const auto param_value_name_id =
+      c4c::backend::prepare::resolve_prepared_value_name_id(module.names, param.name);
   if (prepared_return_arm.arm.context.selected_value.base.kind ==
       c4c::backend::prepare::PreparedComputedBaseKind::ParamValue) {
     const auto* function_locations = c4c::backend::prepare::find_prepared_value_location_function(
@@ -1319,6 +1360,16 @@ std::optional<std::string> render_prepared_materialized_compare_join_return_if_s
       throw std::invalid_argument(
           "x86 backend emitter requires the authoritative prepared return-bundle handoff through the canonical prepared-module handoff");
     }
+    if (!param_value_name_id.has_value() || *param_value_name_id == c4c::kInvalidValueName) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires authoritative prepared value-home data for compare-join parameter returns through the canonical prepared-module handoff");
+    }
+    authoritative_param_home = c4c::backend::prepare::find_prepared_value_home(
+        *function_locations, *param_value_name_id);
+    if (authoritative_param_home == nullptr) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires authoritative prepared value-home data for compare-join parameter returns through the canonical prepared-module handoff");
+    }
     const auto& return_move = before_return_bundle->moves.front();
     if (return_move.destination_kind !=
             c4c::backend::prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
@@ -1341,6 +1392,7 @@ std::optional<std::string> render_prepared_materialized_compare_join_return_if_s
       module.names,
       prepared_return_arm,
       param,
+      authoritative_param_home,
       minimal_param_register,
       render_asm_symbol_name,
       same_module_global_supports_scalar_load);

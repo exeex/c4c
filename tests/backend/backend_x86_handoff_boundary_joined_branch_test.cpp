@@ -215,6 +215,23 @@ std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_xor_asm
          minimal_i32_return_register() + ", " + std::to_string(joined_immediate) + "\n    ret\n";
 }
 
+std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_xor_with_source_asm(
+    const char* function_name,
+    const char* false_label,
+    const char* source_register,
+    int true_immediate,
+    int false_immediate,
+    int joined_immediate) {
+  return expected_branch_prefix(function_name, false_label) + "    mov " +
+         minimal_i32_return_register() + ", " + source_register + "\n    add " +
+         minimal_i32_return_register() + ", " + std::to_string(true_immediate) +
+         "\n    xor " + minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " + source_register + "\n    sub " +
+         minimal_i32_return_register() + ", " + std::to_string(false_immediate) + "\n    xor " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) + "\n    ret\n";
+}
+
 std::string expected_minimal_param_eq_zero_branch_joined_immediates_then_xor_asm(
     const char* function_name,
     const char* false_label,
@@ -1886,6 +1903,37 @@ bir::Module make_x86_param_eq_zero_branch_joined_add_or_sub_then_ashr_module() {
   function.blocks.push_back(std::move(join));
   module.functions.push_back(std::move(function));
   return module;
+}
+
+prepare::PreparedValueLocationFunction* find_mutable_prepared_value_location_function(
+    prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto function_name_id = prepare::resolve_prepared_function_name_id(prepared.names, function_name);
+  if (!function_name_id.has_value()) {
+    return nullptr;
+  }
+  for (auto& function_locations : prepared.value_locations.functions) {
+    if (function_locations.function_name == *function_name_id) {
+      return &function_locations;
+    }
+  }
+  return nullptr;
+}
+
+prepare::PreparedValueHome* find_mutable_prepared_value_home(
+    prepare::PreparedBirModule& prepared,
+    prepare::PreparedValueLocationFunction& function_locations,
+    std::string_view value_name) {
+  const auto value_name_id = prepare::resolve_prepared_value_name_id(prepared.names, value_name);
+  if (!value_name_id.has_value()) {
+    return nullptr;
+  }
+  for (auto& value_home : function_locations.value_homes) {
+    if (value_home.value_name == *value_name_id) {
+      return &value_home;
+    }
+  }
+  return nullptr;
 }
 
 
@@ -4442,6 +4490,44 @@ int check_materialized_compare_join_route_requires_authoritative_prepared_return
                    ": x86 prepared-module consumer rejected the missing compare-join return bundle with the wrong contract message")
                       .c_str());
     }
+  }
+
+  return 0;
+}
+
+int check_materialized_compare_join_route_consumes_authoritative_prepared_param_home(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* function_locations = find_mutable_prepared_value_location_function(prepared, function_name);
+  if (function_locations == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": missing prepared value-location function")
+                    .c_str());
+  }
+  auto* param_home = find_mutable_prepared_value_home(prepared, *function_locations, "p.x");
+  if (param_home == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": missing prepared parameter home")
+                    .c_str());
+  }
+
+  param_home->kind = prepare::PreparedValueHomeKind::Register;
+  param_home->register_name = "r10";
+  param_home->slot_id.reset();
+  param_home->offset_bytes.reset();
+  param_home->immediate_i32.reset();
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following the authoritative prepared parameter home in compare-join returns")
+                    .c_str());
   }
 
   return 0;
@@ -7467,6 +7553,16 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
               make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
               "branch_join_adjust_then_xor",
               "scalar-control-flow compare-against-zero compare-join route rejects reopening raw recovery when the authoritative prepared branch record is missing");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_route_consumes_authoritative_prepared_param_home(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_xor_with_source_asm(
+                  "branch_join_adjust_then_xor", "is_nonzero", "r10d", 5, 1, 3),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero compare-join route sources parameter-selected returns from the authoritative prepared value home");
       status != 0) {
     return status;
   }
