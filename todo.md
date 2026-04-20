@@ -3,30 +3,31 @@
 Status: Active
 Source Idea Path: ideas/open/63_complete_phi_legalization_and_parallel_copy_resolution.md
 Source Plan Path: plan.md
-Current Step ID: 3.2.4
-Current Step Title: Inventory Carrier-Kind Consumers Outside The Joined-Branch Surface
-Plan Review Counter: 0 / 10
+Current Step ID: 4
+Current Step Title: Validate The Phi Legalization Route
+Plan Review Counter: 1 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed a Step 3.2.3 (`Re-evaluate Remaining Downstream Consumers After The
-Immediate-Op Batch`) slice by keeping the next bounded packet in the same
-joined-branch surface and tightening the non-offset pointer-backed
-same-module global selected-value chain
-`branch_join_pointer_backed_global_then_xor` compare-join proof. The
-follow-on work added the missing contract-strict rejection coverage so the
-default carrier and a forced `EdgeStoreSlot` carrier now reject drifted
-prepared branch conditions and missing authoritative branch records instead of
-reopening raw recovery past the compare-join handoff.
+Completed Step 3.2.4 (`Inventory Carrier-Kind Consumers Outside The
+Joined-Branch Surface`) by confirming that the remaining carrier-kind readers
+outside `backend_x86_handoff_boundary_joined_branch_test.cpp` are the existing
+prealloc/regalloc helper surfaces and x86 prepared-render paths, not a new
+uncovered downstream consumer family. The active short-circuit handoff proof
+already exercises the authoritative join-contract rejection and passthrough
+target behavior for that remaining x86 consumer surface, so Step 3.2 is ready
+to hand off to Step 4 validation instead of extending the exhausted
+joined-branch test chain.
 
 ## Suggested Next
 
-Inventory whether any downstream consumer outside this exhausted joined-branch
-family still observes compare-join transfer semantics through the transitional
-`effective_prepared_join_transfer_carrier_kind(...)` surface, starting from
-the remaining prealloc/regalloc carrier-kind readers; if none remain, close or
-re-scope Step 3.2 instead of extending the current test-only file again.
+Execute Step 4 (`Validate The Phi Legalization Route`) with a bounded
+validation-focused packet that proves the current authoritative phi-transfer
+route at the next appropriate checkpoint without reopening the exhausted
+joined-branch family. Prefer a packet that either strengthens the remaining
+non-joined-branch proof surface or establishes that the current backend proof
+scope is sufficient for Step 3 closure-quality confidence.
 
 ## Watchouts
 
@@ -34,28 +35,21 @@ re-scope Step 3.2 instead of extending the current test-only file again.
 - Keep typed semantic ids as the public identity boundary.
 - Do not silently fold branch/join ownership work from idea 62 back into this
   route.
-- This packet did not change the x86 emitter or the authoritative prepared
-  compare-join contract itself; it only tightened downstream consumer proof.
-- The same-module global selected-value chain route reused the existing helper
-  surface cleanly, so Step 3.2 can stay in `backend_x86_handoff_boundary`
-  without a `plan.md` rewrite yet.
-- The non-offset pointer-backed same-module global selected-value chain family
-  now has the same compare-join rejection coverage as the immediate-op batch,
-  the direct same-module global chain route, the direct fixed-offset global
-  chain route, and the fixed-offset pointer-backed global chain route.
-- `effective_prepared_join_transfer_carrier_kind(...)` remains a transitional
-  compatibility surface for other prepared consumers and manual fixtures, so
-  the next packet should come from a fresh remaining-consumer inventory in
-  prealloc/regalloc or another narrow proof surface, not another assumed gap
-  inside this joined-branch file.
+- Step 3.2 inventory did not justify another packet in
+  `backend_x86_handoff_boundary_joined_branch_test.cpp`.
+- The remaining carrier-kind helper readers in prealloc/regalloc and the x86
+  prepared-render callers are already represented by the current
+  authoritative-handoff proof surfaces, especially
+  `backend_x86_handoff_boundary_short_circuit`.
+- Do not reopen joined-branch or short-circuit proof just to grow redundant
+  assertion counts unless a new uncovered consumer path is identified.
+- Keep Step 4 focused on validation scope and proof sufficiency, not on
+  inventing a new implementation initiative.
 
 ## Proof
 
+No new proof command ran for the Step 3.2.4 inventory decision. The active
+canonical proof remains the recent
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_x86_handoff_boundary$' > test_after.log 2>&1`
-ran for this Step 3.2.3 packet and preserved the canonical proof log in
-`test_after.log`; `backend_x86_handoff_boundary` passed with the joined-branch
-pointer-backed same-module global selected-value chain
-`branch_join_pointer_backed_global_then_xor` compare-join family now rejecting
-drifted prepared branch conditions and missing authoritative branch records for
-the default carrier and a forced `EdgeStoreSlot` carrier against the same
-authoritative prepared-control-flow contract.
+run, which covered the joined-branch and short-circuit authoritative-handoff
+surfaces used to decide that Step 3.2 is exhausted.
