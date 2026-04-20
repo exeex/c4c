@@ -3,27 +3,28 @@
 Status: Active
 Source Idea Path: ideas/open/59_generic_scalar_instruction_selection_for_x86.md
 Source Plan Path: plan.md
-Current Step ID: 4.3
-Current Step Title: Audit The Bounded Multi-Defined Call Lane
-Plan Review Counter: 3 / 10
+Current Step ID: 4.4
+Current Step Title: Finish Remaining Covered Branch And Residual Call Families
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 4.3 moved the last real covered per-terminator seam out of the bounded
-multi-defined call lane in `x86_codegen.hpp`: the body matcher now routes the
-bounded lane's immediate `i32` return finalization through
-`finalize_prepared_bounded_multi_defined_return_if_supported` instead of
-open-coding the return-register handoff, frame teardown, and `ret` sequence
-inline inside `render_prepared_bounded_multi_defined_call_lane_body_if_supported`.
+Step 4.4 moved the covered cond-branch plan-selection seam out of
+`render_prepared_block_cond_branch_terminator_if_supported` in
+`prepared_local_slot_render.cpp`: the block terminator now delegates
+short-circuit-vs-plain-cond render-plan selection to
+`select_prepared_block_cond_branch_render_if_supported` instead of
+open-coding both branch-plan paths inline before rendering.
 
 ## Suggested Next
 
-Move the next packet to Step 4.4. After the bounded multi-defined call lane's
-argument, result, and return seams are explicit helpers, the remaining code in
-that lane is callee admission, call spelling, and module/data wrapper glue, so
-the next coherent work item is the remaining covered branch and residual
-call-family migration rather than another thin Step 4.3 extraction.
+Keep Step 4.4 in `prepared_local_slot_render.cpp`, but limit the next packet to
+a short audit of whether the nearby plain-branch or compare-join block-target
+handoff still owns one more real covered per-terminator seam; if the remaining
+logic is only target recursion or final block rendering glue after that audit,
+hand the following packet to the next residual covered Step 4.4 route instead
+of forcing another thin helper split.
 
 ## Watchouts
 
@@ -34,11 +35,10 @@ call-family migration rather than another thin Step 4.3 extraction.
   reopening upstream ownership from ideas 58, 60, or 61.
 - Prefer one coherent instruction-family migration per packet over broad
   emitter rewrites.
-- Step 4.3 is implemented in `src/backend/mir/x86/codegen/x86_codegen.hpp`,
-  not in `prepared_local_slot_render.cpp`; keep the next packet scoped to the
-  header body matcher and avoid bouncing ownership back to the `.cpp` unless
-  Step 4.4 genuinely needs it.
-- The bounded multi-defined call lane is now structurally exhausted for Step
+- Step 4.4 genuinely lives in `prepared_local_slot_render.cpp` now: stay on the
+  branch terminator helpers there instead of reopening the exhausted Step 4.3
+  bounded multi-defined call lane in `x86_codegen.hpp`.
+- The bounded multi-defined call lane remains structurally exhausted for Step
   4.3: its remaining body logic is callee admission, `call` spelling, and
   wrapper/data glue, not another real selector seam worth extracting.
 - The same-module helper-call lane remains exhausted for Step 4; do not reopen
@@ -59,8 +59,8 @@ call-family migration rather than another thin Step 4.3 extraction.
 Ran the proof command `cmake --build --preset default && ctest --test-dir
 build -j --output-on-failure -R '^backend_' 2>&1 | tee
 /workspaces/c4c/test_after.log`. The build completed successfully after this
-Step 4.3 bounded multi-defined return-finalization helper extraction. The
-final `^backend_` subset in `test_after.log` preserved the accepted
+Step 4.4 cond-branch render-plan selection helper extraction. The final
+`^backend_` subset in `test_after.log` preserved the accepted
 `test_before.log` failure set exactly, with no new failures:
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
 `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
