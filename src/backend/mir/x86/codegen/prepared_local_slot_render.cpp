@@ -318,20 +318,23 @@ std::optional<std::string> render_prepared_named_stack_object_address_if_support
   return render_prepared_stack_address_expr(*frame_offset);
 }
 
-std::optional<std::string> render_prepared_local_address_operand_if_supported(
-    const PreparedModuleLocalSlotLayout& local_layout,
+std::optional<std::string> render_prepared_named_stack_object_memory_operand_if_supported(
+    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    c4c::FunctionNameId function_name,
     const std::optional<c4c::backend::bir::MemoryAddress>& address,
     std::string_view size_name) {
   if (!address.has_value() ||
       address->base_kind != c4c::backend::bir::MemoryAddress::BaseKind::LocalSlot) {
     return std::nullopt;
   }
-  const auto slot_it = local_layout.offsets.find(address->base_name);
-  if (slot_it == local_layout.offsets.end()) {
+  const auto frame_offset = find_prepared_named_stack_object_frame_offset(
+      stack_layout, prepared_names, function_name, address->base_name);
+  if (!frame_offset.has_value()) {
     return std::nullopt;
   }
   const auto signed_byte_offset =
-      static_cast<std::int64_t>(slot_it->second) + address->byte_offset;
+      static_cast<std::int64_t>(*frame_offset) + address->byte_offset;
   if (signed_byte_offset < 0) {
     return std::nullopt;
   }
@@ -441,22 +444,11 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
                                                                      : "DWORD");
         }
         if (!memory.has_value() && load->address.has_value()) {
-          memory = render_prepared_local_address_operand_if_supported(
-              *layout,
+          memory = render_prepared_named_stack_object_memory_operand_if_supported(
+              stack_layout,
+              prepared_names,
+              function_name_id,
               load->address,
-              load->result.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD"
-              : load->result.type == c4c::backend::bir::TypeKind::I8 ? "BYTE"
-                                                                     : "DWORD");
-        } else if (!memory.has_value()) {
-          if (load->byte_offset != 0) {
-            return std::nullopt;
-          }
-          const auto slot_it = layout->offsets.find(load->slot_name);
-          if (slot_it == layout->offsets.end()) {
-            return std::nullopt;
-          }
-          memory = render_prepared_stack_memory_operand(
-              slot_it->second,
               load->result.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD"
               : load->result.type == c4c::backend::bir::TypeKind::I8 ? "BYTE"
                                                                      : "DWORD");
@@ -593,19 +585,11 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
                                                                    : "DWORD");
       }
       if (!memory.has_value() && store->address.has_value()) {
-        memory = render_prepared_local_address_operand_if_supported(
-            *layout,
+        memory = render_prepared_named_stack_object_memory_operand_if_supported(
+            stack_layout,
+            prepared_names,
+            function_name_id,
             store->address,
-            store->value.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD"
-            : store->value.type == c4c::backend::bir::TypeKind::I8 ? "BYTE"
-                                                                   : "DWORD");
-      } else if (!memory.has_value()) {
-        const auto slot_it = layout->offsets.find(store->slot_name);
-        if (slot_it == layout->offsets.end()) {
-          return std::nullopt;
-        }
-        memory = render_prepared_stack_memory_operand(
-            slot_it->second,
             store->value.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD"
             : store->value.type == c4c::backend::bir::TypeKind::I8 ? "BYTE"
                                                                    : "DWORD");
@@ -1167,6 +1151,11 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
   if (layout->frame_size != 0) {
     asm_text += "    sub rsp, " + std::to_string(layout->frame_size) + "\n";
   }
+  const c4c::FunctionNameId function_name_id =
+      prepared_names == nullptr ? c4c::kInvalidFunctionName
+                                : c4c::backend::prepare::resolve_prepared_function_name_id(
+                                      *prepared_names, function.name)
+                                      .value_or(c4c::kInvalidFunctionName);
   const c4c::BlockLabelId entry_label_id =
       prepared_names == nullptr ? c4c::kInvalidBlockLabel
                                 : c4c::backend::prepare::resolve_prepared_block_label_id(
@@ -1188,13 +1177,8 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
             *layout, prepared_access->address, "DWORD");
       }
       if (!memory.has_value() && store->address.has_value()) {
-        memory = render_prepared_local_address_operand_if_supported(*layout, store->address, "DWORD");
-      } else if (!memory.has_value()) {
-        const auto slot_it = layout->offsets.find(store->slot_name);
-        if (slot_it == layout->offsets.end()) {
-          return std::nullopt;
-        }
-        memory = render_prepared_stack_memory_operand(slot_it->second, "DWORD");
+        memory = render_prepared_named_stack_object_memory_operand_if_supported(
+            stack_layout, prepared_names, function_name_id, store->address, "DWORD");
       }
       if (!memory.has_value()) {
         return std::nullopt;
@@ -1216,13 +1200,8 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
             *layout, prepared_access->address, "DWORD");
       }
       if (!memory.has_value() && load->address.has_value()) {
-        memory = render_prepared_local_address_operand_if_supported(*layout, load->address, "DWORD");
-      } else if (!memory.has_value()) {
-        const auto slot_it = layout->offsets.find(load->slot_name);
-        if (slot_it == layout->offsets.end()) {
-          return std::nullopt;
-        }
-        memory = render_prepared_stack_memory_operand(slot_it->second, "DWORD");
+        memory = render_prepared_named_stack_object_memory_operand_if_supported(
+            stack_layout, prepared_names, function_name_id, load->address, "DWORD");
       }
       if (!memory.has_value()) {
         return std::nullopt;
@@ -1524,6 +1503,11 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
                                 : c4c::backend::prepare::resolve_prepared_block_label_id(
                                       *prepared_names, entry.label)
                                       .value_or(c4c::kInvalidBlockLabel);
+  const c4c::FunctionNameId function_name_id =
+      prepared_names == nullptr ? c4c::kInvalidFunctionName
+                                : c4c::backend::prepare::resolve_prepared_function_name_id(
+                                      *prepared_names, function.name)
+                                      .value_or(c4c::kInvalidFunctionName);
   std::optional<std::string> short_memory;
   if (const auto* prepared_access =
           find_prepared_function_memory_access(function_addressing, entry_label_id, 0);
@@ -1533,12 +1517,12 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
                                                                prepared_access->address,
                                                                "WORD");
   }
+  if (!short_memory.has_value() && store_zero->address.has_value()) {
+    short_memory = render_prepared_named_stack_object_memory_operand_if_supported(
+        stack_layout, prepared_names, function_name_id, store_zero->address, "WORD");
+  }
   if (!short_memory.has_value()) {
-    const auto slot_it = layout->offsets.find(store_zero->slot_name);
-    if (slot_it == layout->offsets.end()) {
-      return std::nullopt;
-    }
-    short_memory = render_prepared_stack_memory_operand(slot_it->second, "WORD");
+    return std::nullopt;
   }
   const auto render_return_block =
       [&](const c4c::backend::bir::Block& block) -> std::optional<std::string> {
