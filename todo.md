@@ -5,29 +5,31 @@ Source Idea Path: ideas/open/63_complete_phi_legalization_and_parallel_copy_reso
 Source Plan Path: plan.md
 Current Step ID: 4
 Current Step Title: Validate The Phi Legalization Route
-Plan Review Counter: 1 / 10
+Plan Review Counter: 2 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3.2.4 (`Inventory Carrier-Kind Consumers Outside The
-Joined-Branch Surface`) by confirming that the remaining carrier-kind readers
-outside `backend_x86_handoff_boundary_joined_branch_test.cpp` are the existing
-prealloc/regalloc helper surfaces and x86 prepared-render paths, not a new
-uncovered downstream consumer family. The active short-circuit handoff proof
-already exercises the authoritative join-contract rejection and passthrough
-target behavior for that remaining x86 consumer surface, so Step 3.2 is ready
-to hand off to Step 4 validation instead of extending the exhausted
-joined-branch test chain.
+Executed Step 4 (`Validate The Phi Legalization Route`) with a broader backend
+checkpoint by rerunning `cmake --build --preset default && ctest --test-dir
+build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`. The
+targeted authoritative-handoff surface still passed
+(`backend_x86_handoff_boundary` stayed green), but the broadened backend proof
+did not clear closure-quality validation because four backend-route cases still
+fail in semantic `lir_to_bir` lowering outside the current narrowed handoff
+subset.
 
 ## Suggested Next
 
-Execute Step 4 (`Validate The Phi Legalization Route`) with a bounded
-validation-focused packet that proves the current authoritative phi-transfer
-route at the next appropriate checkpoint without reopening the exhausted
-joined-branch family. Prefer a packet that either strengthens the remaining
-non-joined-branch proof surface or establishes that the current backend proof
-scope is sufficient for Step 3 closure-quality confidence.
+Keep Step 4 active and route the next bounded packet to classify the four
+broader-backend failures seen in `test_after.log`
+(`backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
+`backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
+`backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`,
+and `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`).
+Decide whether they are pre-existing out-of-scope backend-route failures or the
+next required validation blocker for this phi-transfer route before claiming
+closure-quality confidence.
 
 ## Watchouts
 
@@ -41,15 +43,23 @@ scope is sufficient for Step 3 closure-quality confidence.
   prepared-render callers are already represented by the current
   authoritative-handoff proof surfaces, especially
   `backend_x86_handoff_boundary_short_circuit`.
-- Do not reopen joined-branch or short-circuit proof just to grow redundant
-  assertion counts unless a new uncovered consumer path is identified.
-- Keep Step 4 focused on validation scope and proof sufficiency, not on
-  inventing a new implementation initiative.
+- The Step 4 broadened backend proof is currently blocked by semantic
+  `lir_to_bir` route failures outside the narrow joined-branch/handoff subset;
+  do not paper over that by rerunning only the narrow proof.
+- `backend_x86_handoff_boundary` still passed inside the broadened run, so the
+  current blocker is proof breadth, not an observed regression in the recent
+  joined-branch contract-strict slices.
+- Keep Step 4 focused on validation scope and blocker classification, not on
+  inventing a new implementation initiative without proving the failures are
+  actually in-scope.
 
 ## Proof
 
-No new proof command ran for the Step 3.2.4 inventory decision. The active
-canonical proof remains the recent
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_x86_handoff_boundary$' > test_after.log 2>&1`
-run, which covered the joined-branch and short-circuit authoritative-handoff
-surfaces used to decide that Step 3.2 is exhausted.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
+ran for this Step 4 checkpoint. `backend_x86_handoff_boundary` passed inside
+that broader run, but the backend-focused validation failed overall with four
+backend-route cases still failing in semantic `lir_to_bir` lowering:
+`backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
+`backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
+`backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`,
+and `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`.
