@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/63_complete_phi_legalization_and_parallel_copy_resolution.md
 Source Plan Path: plan.md
-Current Step ID: 3.2.3
-Current Step Title: Re-evaluate Remaining Downstream Consumers After The Immediate-Op Batch
-Plan Review Counter: 3 / 10
+Current Step ID: 3.2.4
+Current Step Title: Inventory Carrier-Kind Consumers Outside The Joined-Branch Surface
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
@@ -22,11 +22,11 @@ reopening raw recovery past the compare-join handoff.
 
 ## Suggested Next
 
-Route the next slice by inventorying whether any downstream consumer outside
-this joined-branch family still observes compare-join transfer semantics
-through the transitional `effective_prepared_join_transfer_carrier_kind(...)`
-surface; if not, close or re-scope Step 3.2.3 instead of extending this
-test-only packet chain.
+Inventory whether any downstream consumer outside this exhausted joined-branch
+family still observes compare-join transfer semantics through the transitional
+`effective_prepared_join_transfer_carrier_kind(...)` surface, starting from
+the remaining prealloc/regalloc carrier-kind readers; if none remain, close or
+re-scope Step 3.2 instead of extending the current test-only file again.
 
 ## Watchouts
 
@@ -45,8 +45,9 @@ test-only packet chain.
   chain route, and the fixed-offset pointer-backed global chain route.
 - `effective_prepared_join_transfer_carrier_kind(...)` remains a transitional
   compatibility surface for other prepared consumers and manual fixtures, so
-  the next packet should come from a fresh remaining-consumer inventory rather
-  than another assumed gap inside this joined-branch file.
+  the next packet should come from a fresh remaining-consumer inventory in
+  prealloc/regalloc or another narrow proof surface, not another assumed gap
+  inside this joined-branch file.
 
 ## Proof
 

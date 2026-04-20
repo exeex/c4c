@@ -321,6 +321,35 @@ Completion check:
 - the remaining downstream phi consumers stay aligned with authoritative
   prepared transfer semantics without testcase-shaped recovery
 
+#### Step 3.2.4: Inventory Carrier-Kind Consumers Outside The Joined-Branch Surface
+
+Goal: decide whether any downstream consumer outside the exhausted
+`backend_x86_handoff_boundary` joined-branch compare-join families still needs
+Step 3.2 attention through the transitional carrier-kind compatibility surface.
+
+Primary targets:
+
+- `src/backend/prealloc/prealloc.hpp`
+- `src/backend/prealloc/regalloc.cpp`
+- the narrowest remaining proof surface, if any, under `tests/backend/`
+
+Actions:
+
+- inventory non-joined-branch consumers that still branch on
+  `effective_prepared_join_transfer_carrier_kind(...)` or equivalent prepared
+  carrier-kind compatibility logic
+- decide whether one bounded Step 3.2 packet remains outside the current
+  joined-branch test surface or whether this downstream consumer route is ready
+  to close or re-scope
+- capture that next bounded route in `todo.md` without extending the exhausted
+  joined-branch test chain
+
+Completion check:
+
+- Step 3.2 is either routed to one specific remaining consumer family outside
+  the joined-branch handoff-boundary surface or explicitly ready for
+  closure/re-scope without another test-only packet in the same file
+
 ## Step 4: Validate The Phi Legalization Route
 
 Goal: prove the general phi-transfer route without bundling unrelated backend
