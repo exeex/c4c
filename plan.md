@@ -1,169 +1,169 @@
-# Stack Addressing And Dynamic Local Access For X86 Backend
+# Call-Bundle And Multi-Function Prepared-Module Consumption
 
 Status: Active
-Source Idea: ideas/open/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md
-Supersedes: ideas/open/58_semantic_lir_to_bir_gap_closure_for_x86_backend.md
+Source Idea: ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md
+Supersedes: ideas/open/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md
 
 ## Purpose
 
-Turn idea 62 into an execution runbook that makes stack layout and addressing
-semantics canonical enough for dynamic local/member/array access cases to reach
-prepared-x86 consumption, without drifting back into generic idea-58 lowering
-work or downstream x86 matcher growth.
+Turn idea 61 into an execution runbook that repairs prepared-module traversal
+and prepared call-bundle consumption for x86 without reopening local ABI or
+module-shape special cases in the emitter.
 
 ## Goal
 
-Repair the owned stack/addressing family so confirmed cases such as `00040` and
-the dynamic member-array boundary fixtures stop failing in `gep` or related
-local-memory semantic lanes before prepared-x86 handoff.
+Make owned prepared-module and prepared call-bundle failures, including the
+newly graduated `c_testsuite_x86_backend_src_00040_c`, advance through generic
+prepared x86 consumption instead of stopping at single-function or missing
+call-bundle restrictions.
 
 ## Core Rule
 
-Do not patch x86-local emitters or add testcase-shaped address matchers.
-Repair shared stack-slot, pointer-value, and address-form lowering so the
-prepared/BIR route carries canonical memory meaning across nearby owned cases.
+Do not add another bounded `main + helper` lane or local ABI fallback in x86.
+Prefer target-independent prepared contract publication or shared plan helpers,
+then keep x86 rendering thin over that contract.
 
 ## Read First
 
+- `ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md`
 - `ideas/open/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md`
-- `ideas/open/58_semantic_lir_to_bir_gap_closure_for_x86_backend.md`
-- `src/backend/bir/lir_to_bir_memory.cpp`
-- `src/backend/bir/lir_to_bir_memory_addressing.cpp`
-- `src/backend/bir/lir_to_bir_memory_local_slots.cpp`
-- `tests/backend/backend_lir_to_bir_notes_test.cpp`
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- `src/backend/mir/x86/codegen/x86_codegen.hpp`
+- `src/backend/prealloc/prealloc.hpp`
+- `src/backend/prealloc/regalloc.cpp`
+- `tests/backend/backend_x86_handoff_boundary_multi_defined_call_test.cpp`
+- `tests/backend/backend_x86_handoff_boundary_direct_extern_call_test.cpp`
 - `tests/c/external/c-testsuite/src/00040.c`
 
 ## Scope
 
-- canonical stack-slot meaning for dynamic locals, member access, and array
-  access that still fail before prepared-x86 consumption
-- shared semantic lowering for `gep` and related local-memory routes when the
-  missing capability is address-form or stack-layout meaning
-- proof against owned backend and c-testsuite cases, not only synthetic notes
-  coverage
+- generic prepared-module traversal across same-module multi-function cases
+- authoritative prepared `BeforeCall` / `AfterCall` bundle consumption for x86
+- shared prepared contract or helper growth when current prepared facts are not
+  expressive enough for generic module or call-lane plans
+- proof on owned backend and c-testsuite cases, not only handoff boundary tests
 
 ## Non-Goals
 
-- generic semantic-lowering gaps unrelated to stack/addressing ownership
-- prepared short-circuit or guard-chain consumption once lowering reaches x86
-- call-bundle or multi-function prepared-module support
-- runtime correctness bugs after codegen succeeds
+- reopening semantic lowering or stack/addressing work that already reaches the
+  prepared-module handoff
+- CFG/guard-chain ownership from idea 59
+- scalar selection or terminator shaping unrelated to call lanes or
+  multi-function module traversal
+- runtime correctness bugs once codegen already succeeds
 
 ## Working Model
 
-- the current failures in this bucket are not best described as "x86 still
-  needs handoff" but as "shared lowering still does not publish canonical local
-  address meaning"
-- the right repair surface is shared `lir_to_bir` memory lowering and its
-  address/slot helpers, not x86-local fallback recognition
-- accepted slices should move multiple nearby addressing cases together or make
-  the ownership boundary clearer when a remaining failure belongs elsewhere
+- the dominant failure is now prepared-module consumption, not missing semantic
+  lowering
+- `prepared_module_emit.cpp` currently rejects valid same-module inventory
+  shapes too early instead of following a generic prepared traversal
+- `x86_codegen.hpp` should consume authoritative `PreparedMoveBundle` metadata
+  rather than inferring call setup or results locally
+- if owned cases expose a real contract gap, the fix belongs in shared
+  prepared structures and producers before x86 matching logic grows
 
 ## Execution Rules
 
-- prefer one bounded addressing seam per packet over broad memory-lowering
-  rewrites
+- prefer one bounded prepared-module or call-lane seam per packet
 - update `todo.md`, not this file, for routine packet progress
-- use `build -> narrow backend proof` for accepted code slices, then broaden
-  when one packet moves multiple address/slot surfaces together
-- reject slices whose main effect is expectation rewrites or one-case address
-  shortcuts instead of canonical stack/address semantics
-- when a repaired case graduates into x86-prepared consumption failures, route
-  it to the correct downstream idea instead of keeping it in this plan
+- use `build -> narrow backend proof` for every accepted code slice
+- include at least one owned c-testsuite case whenever a packet claims backend
+  c-testsuite progress
+- reject slices whose main effect is topology-specific x86 matching or local
+  ABI fallback reopening
 
-## Step 1: Audit Confirmed Stack/Addressing Blockers
+## Step 1: Audit Prepared-Module And Call-Bundle Boundaries
 
-Goal: map the currently confirmed owned failures to concrete shared addressing
-or stack-slot seams before changing behavior.
+Goal: map the current prepared-module restriction and call-bundle failures to
+the specific shared contract or traversal seams that need repair.
 
 Primary targets:
 
-- `src/backend/bir/lir_to_bir_memory.cpp`
-- `src/backend/bir/lir_to_bir_memory_addressing.cpp`
-- `src/backend/bir/lir_to_bir_memory_local_slots.cpp`
-- `tests/backend/backend_lir_to_bir_notes_test.cpp`
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- `src/backend/mir/x86/codegen/x86_codegen.hpp`
+- `src/backend/prealloc/prealloc.hpp`
+- `tests/backend/backend_x86_handoff_boundary_multi_defined_call_test.cpp`
+- `tests/backend/backend_x86_handoff_boundary_direct_extern_call_test.cpp`
 - `tests/c/external/c-testsuite/src/00040.c`
 
 Actions:
 
-- trace why `00040` and the dynamic indexed/member-array boundary fixtures fail
-  in the `gep local-memory semantic family`
-- identify which stack-slot, pointer-value, or address-form facts are missing
-  from shared lowering
-- keep the idea-62 versus downstream-x86 boundary explicit when a case starts
-  reaching prepared emission
+- trace why `00040` now stops at the single-function prepared-module boundary
+- inspect the existing bounded multi-defined-call and direct-extern-call
+  boundary fixtures to see which prepared facts are already authoritative
+- identify whether the first repair belongs to generic module traversal, call
+  plan construction, or missing shared prepared contract fields
 
 Completion check:
 
-- the active owned failures are mapped to one or more concrete shared
-  addressing seams, and the first implementation packet can stay inside idea
-  62 scope
+- the first implementation packet is narrowed to one concrete prepared-module
+  or call-bundle seam with proof targets that cover both boundary tests and an
+  owned c-testsuite case when relevant
 
-## Step 2: Canonicalize Dynamic Local And Address-Form Lowering
+## Step 2: Canonicalize Prepared-Module Traversal
 
-Goal: make shared lowering publish the stack/addressing facts required for
-owned cases to survive `gep` and related local-memory lowering.
+Goal: let x86 consume supported same-module multi-function inventory without
+hard-coding one bounded entry topology.
 
 Primary targets:
 
-- `src/backend/bir/lir_to_bir_memory.cpp`
-- `src/backend/bir/lir_to_bir_memory_addressing.cpp`
-- `src/backend/bir/lir_to_bir_memory_local_slots.cpp`
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- `src/backend/prealloc/prealloc.hpp`
 
 Actions:
 
-- implement the missing stack-slot or address-form rules identified by Step 1
-- keep the repair general across local/member/array access instead of matching
-  one testcase spelling
-- do not substitute x86-local render logic for missing shared memory meaning
+- factor or extend a generic prepared-module traversal/classification helper
+  over the prepared module inventory already published at handoff
+- keep any new facts target-independent when the current handoff does not
+  describe supported function relationships clearly enough
+- reject emitter-local shortcuts that only accept one named module shape
 
 Completion check:
 
-- owned cases no longer fail solely because `lir_to_bir` cannot lower the
-  required dynamic local/member/array addressing route
+- owned multi-function cases stop failing solely because x86 insists on a
+  single-function or one special-case same-module topology
 
-## Step 3: Stabilize Prepared-Handoff Boundaries
+## Step 3: Consume Authoritative Prepared Call Bundles
 
-Goal: keep idea 62 narrowly honest once repaired cases start reaching later
-backend stages.
+Goal: make x86 follow prepared `BeforeCall` and `AfterCall` obligations as the
+canonical call-lane contract.
 
 Primary targets:
 
-- `ideas/open/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md`
-- `ideas/open/59_cfg_contract_consumption_for_short_circuit_and_guard_chain.md`
-- `ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md`
+- `src/backend/mir/x86/codegen/x86_codegen.hpp`
+- `src/backend/prealloc/prealloc.hpp`
+- `src/backend/prealloc/regalloc.cpp`
 
 Actions:
 
-- confirm whether newly exposed failures after Step 2 still belong to
-  stack/addressing ownership or to downstream x86-prepared leaves
-- preserve only durable routing notes in lifecycle state when a case graduates
-  out of idea 62
-- avoid silently expanding this plan into CFG, scalar-emission, or
-  multi-function ownership
+- build or tighten a normalized call-lane plan from `PreparedMoveBundle` and
+  `PreparedValueLocations` data
+- extend shared prepared contract surfaces first if existing bundles do not
+  publish enough durable call-lane meaning
+- keep x86 rendering thin and do not reopen local ABI inference
 
 Completion check:
 
-- remaining failures are clearly separated between stack/addressing work and
-  downstream x86-prepared work, preventing scope drift
+- owned prepared call-bundle cases stop failing because the emitter consumes
+  authoritative prepared call metadata generically
 
-## Step 4: Validate Progress Against Owned Failures
+## Step 4: Validate Progress Against Owned Families
 
-Goal: prove that accepted slices advance real stack/addressing capability
-instead of only moving boundary-test notes.
+Goal: prove that accepted slices advance real prepared-module and call-bundle
+capability instead of only moving boundary fixtures.
 
 Actions:
 
 - require a fresh build for every accepted code slice
-- prove repaired seams with backend-focused tests that exercise owned
-  stack/addressing routes and at least one real c-testsuite case when the
-  touched seam claims c-testsuite progress
-- broaden validation when one packet changes multiple addressing helpers or
-  both local and global addressing surfaces together
-- reject proof that only demonstrates fixture coverage while owned c-testsuite
-  failures remain unexamined
+- prove single-function restriction work with at least one owned c-testsuite
+  case plus relevant backend handoff boundary coverage
+- prove call-bundle work with the affected backend handoff boundary coverage
+  plus an owned c-testsuite case when a c-testsuite claim is made
+- broaden validation when a packet changes both module traversal and call-lane
+  consumption or extends shared prepared contract fields
 
 Completion check:
 
-- accepted slices have fresh proof and show credible progress on owned
-  stack/addressing failures rather than only on synthetic diagnostics
+- accepted slices have fresh proof and show credible progress across owned
+  prepared-module or call-bundle failures rather than a new bounded x86 lane

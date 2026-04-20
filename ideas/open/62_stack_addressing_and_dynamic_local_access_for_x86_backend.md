@@ -30,7 +30,14 @@ Named cases already identified in this family:
 
 - `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`
 - `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`
-- `c_testsuite_x86_backend_src_00040_c`
+
+## Latest Durable Note
+
+As of 2026-04-20, `c_testsuite_x86_backend_src_00040_c` no longer fails for
+missing stack/addressing semantics. It now reaches semantic BIR and stops at
+the downstream prepared-module restriction owned by idea 61, so future work on
+that case should start from prepared-module consumption rather than reopening
+idea-62 local-address lowering.
 
 As additional stack/addressing-related backend c-testsuite cases are confirmed
 to fail for the same underlying reason, they should be routed here instead of

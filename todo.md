@@ -1,54 +1,40 @@
 # Execution State
 
 Status: Active
-Source Idea Path: ideas/open/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md
+Source Idea Path: ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Stabilize Prepared-Handoff Boundaries
+Current Step ID: 1
+Current Step Title: Audit Prepared-Module And Call-Bundle Boundaries
 Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed a Step 2 follow-on packet that teaches the module-level `calloc`
-runtime-extent prepass to carry simple block-local integer cast aliases, so a
-store like `@t = calloc(sext 64, 4)` publishes usable cross-function runtime
-pointer extent back into semantic lowering. With that in place, `chk` in
-`00040` now lowers through the former `gep local-memory semantic family`
-frontier and reaches semantic BIR successfully.
+Lifecycle switch only. The prior idea-62 route is parked because `00040` now
+reaches semantic BIR and fails at the downstream prepared-module restriction
+owned by idea 61.
 
 ## Suggested Next
 
-Take a bounded Step 3 packet, or equivalent lifecycle routing pass, that treats
-`00040` as graduated from idea 62 into downstream prepared-module ownership.
-The current failure is no longer shared stack/addressing lowering; it is now
-the prepared x86 boundary for multi-function same-module consumption, which
-belongs with idea 61 rather than more semantic local-memory repair here.
+Start Step 1 by tracing `c_testsuite_x86_backend_src_00040_c` through
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp`, then compare that
+restriction with the prepared facts already exercised by
+`backend_x86_handoff_boundary_multi_defined_call_test` and
+`backend_x86_handoff_boundary_direct_extern_call_test` to choose the first
+bounded implementation seam.
 
 ## Watchouts
 
-- `00040`'s actual frontend shape is still the same cross-function route:
-  `main` stores the result of `calloc(64, 4)` into global `@t`, and `chk`
-  reloads `@t` before issuing dynamic `getelementptr i32, ptr %tN, i64 ...`.
-- Keep idea 62 closed over shared stack/addressing semantics now that the
-  former semantic frontier is gone for `00040`; do not spend more packets on
-  pointer-value bookkeeping unless a new owned lowering miss is reproduced.
-- The remaining `00040` failure is
-  `x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane...`,
-  which is downstream prepared-module ownership, not a reason to reopen Step 2.
-- The existing dynamic member-array backend route fixtures still pass under the
-  same proof command, so this slice should be treated as boundary progress, not
-  a regression fix attempt.
+- Do not reopen idea-62 stack/addressing work unless a new case reproduces a
+  pre-prepared semantic lowering miss.
+- Do not add another x86-only `main + helper` acceptance lane to get `00040`
+  through prepared emission.
+- Prefer target-independent prepared contract or helper growth when current
+  module inventory or call-bundle facts are too weak for generic consumption.
 
 ## Proof
 
-Ran the delegated proof unchanged:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir|backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir|c_testsuite_x86_backend_src_00040_c)$' > test_after.log 2>&1`
-
-The two backend member-array fixtures still pass, and `00040` no longer fails
-in semantic `gep` lowering. The c-testsuite case now stops later with the
-prepared-module boundary message
-`x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane...`.
-Direct semantic BIR observation for the graduated route was captured with
-`./build/c4cll --backend-bir-stage semantic --codegen asm --target x86_64-unknown-linux-gnu tests/c/external/c-testsuite/src/00040.c -o logs/00040_semantic_after.txt`.
-Proof log path: `test_after.log`.
+Lifecycle-only switch. No new executor proof has run under the idea-61 plan
+yet. Reuse the existing `test_before.log` / `test_after.log` pair only as
+historical context until the first idea-61 executor packet selects its own
+exact proof command.
