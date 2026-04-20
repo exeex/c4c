@@ -809,6 +809,39 @@ std::optional<std::string> render_prepared_cast_inst_if_supported(
   return std::string{};
 }
 
+std::optional<std::string> render_prepared_block_return_terminator_if_supported(
+    const PreparedX86BlockDispatchContext& block_context,
+    std::string body,
+    const c4c::backend::bir::Value& returned,
+    const std::optional<std::string_view>& current_i32_name) {
+  if (block_context.local_layout == nullptr) {
+    return std::nullopt;
+  }
+  const auto selected_return = select_prepared_i32_value_if_supported(
+      returned,
+      current_i32_name,
+      [](std::string_view) -> std::optional<std::string> { return std::nullopt; });
+  if (!selected_return.has_value()) {
+    return std::nullopt;
+  }
+  if (selected_return->immediate.has_value()) {
+    body += "    mov eax, " + std::to_string(*selected_return->immediate) + "\n";
+    if (block_context.local_layout->frame_size != 0) {
+      body += "    add rsp, " + std::to_string(block_context.local_layout->frame_size) + "\n";
+    }
+    body += "    ret\n";
+    return body;
+  }
+  if (!selected_return->in_eax) {
+    return std::nullopt;
+  }
+  if (block_context.local_layout->frame_size != 0) {
+    body += "    add rsp, " + std::to_string(block_context.local_layout->frame_size) + "\n";
+  }
+  body += "    ret\n";
+  return body;
+}
+
 std::optional<std::string> render_prepared_scalar_load_inst_if_supported(
     const c4c::backend::bir::Inst& inst,
     const PreparedModuleLocalSlotLayout& layout,
@@ -1478,15 +1511,6 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
   if (!layout.has_value()) {
     return std::nullopt;
   }
-  const auto render_function_return =
-      [&](std::int32_t returned_imm) -> std::string {
-    std::string rendered = "    mov eax, " + std::to_string(returned_imm) + "\n";
-    if (layout->frame_size != 0) {
-      rendered += "    add rsp, " + std::to_string(layout->frame_size) + "\n";
-    }
-    rendered += "    ret\n";
-    return rendered;
-  };
   std::unordered_set<std::string_view> same_module_global_names;
 
   std::unordered_set<std::string_view> rendered_blocks;
@@ -1640,25 +1664,8 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
       if (compare_index != block.insts.size() || !block.terminator.value.has_value()) {
         return std::nullopt;
       }
-      const auto& returned = *block.terminator.value;
-      const auto selected_return = select_prepared_i32_value_if_supported(
-          returned,
-          current_i32_name,
-          [](std::string_view) -> std::optional<std::string> { return std::nullopt; });
-      if (!selected_return.has_value()) {
-        return std::nullopt;
-      }
-      if (selected_return->immediate.has_value()) {
-        return body + render_function_return(*selected_return->immediate);
-      }
-      if (selected_return->in_eax) {
-        if (layout->frame_size != 0) {
-          body += "    add rsp, " + std::to_string(layout->frame_size) + "\n";
-        }
-        body += "    ret\n";
-        return body;
-      }
-      return std::nullopt;
+      return render_prepared_block_return_terminator_if_supported(
+          block_context, std::move(body), *block.terminator.value, current_i32_name);
     }
 
     if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
