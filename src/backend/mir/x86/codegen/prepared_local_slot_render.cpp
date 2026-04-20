@@ -175,6 +175,42 @@ std::optional<std::string> select_prepared_previous_i32_operand_if_supported(
   return std::nullopt;
 }
 
+std::optional<std::string> select_prepared_materialized_i32_compare_setup_if_supported(
+    const c4c::backend::bir::BinaryInst& compare,
+    const std::optional<std::string_view>& current_i32_name) {
+  if (current_i32_name.has_value()) {
+    const bool lhs_is_current_rhs_is_imm =
+        compare.lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+        compare.lhs.name == *current_i32_name &&
+        compare.rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+        compare.rhs.type == c4c::backend::bir::TypeKind::I32;
+    const bool rhs_is_current_lhs_is_imm =
+        compare.rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+        compare.rhs.name == *current_i32_name &&
+        compare.lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+        compare.lhs.type == c4c::backend::bir::TypeKind::I32;
+    if (lhs_is_current_rhs_is_imm || rhs_is_current_lhs_is_imm) {
+      const auto compare_immediate =
+          lhs_is_current_rhs_is_imm ? compare.rhs.immediate : compare.lhs.immediate;
+      if (compare_immediate == 0) {
+        return std::string("    test eax, eax\n");
+      }
+      return "    cmp eax, " +
+             std::to_string(static_cast<std::int32_t>(compare_immediate)) + "\n";
+    }
+  }
+  if (compare.lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+      compare.lhs.type == c4c::backend::bir::TypeKind::I32 &&
+      compare.rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+      compare.rhs.type == c4c::backend::bir::TypeKind::I32) {
+    return "    mov eax, " +
+           std::to_string(static_cast<std::int32_t>(compare.lhs.immediate)) +
+           "\n    cmp eax, " +
+           std::to_string(static_cast<std::int32_t>(compare.rhs.immediate)) + "\n";
+  }
+  return std::nullopt;
+}
+
 bool prepared_frame_memory_accesses_match(
     const c4c::backend::prepare::PreparedMemoryAccess* lhs,
     const c4c::backend::prepare::PreparedMemoryAccess* rhs) {
@@ -845,39 +881,9 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
            binary->opcode == c4c::backend::bir::BinaryOpcode::Ne) &&
           binary->operand_type == c4c::backend::bir::TypeKind::I32 &&
           binary->result.type == c4c::backend::bir::TypeKind::I1) {
-        auto compare_setup = [&]() -> std::optional<std::string> {
-          if (current_i32_name.has_value()) {
-            const bool lhs_is_current_rhs_is_imm =
-                binary->lhs.kind == c4c::backend::bir::Value::Kind::Named &&
-                binary->lhs.name == *current_i32_name &&
-                binary->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-                binary->rhs.type == c4c::backend::bir::TypeKind::I32;
-            const bool rhs_is_current_lhs_is_imm =
-                binary->rhs.kind == c4c::backend::bir::Value::Kind::Named &&
-                binary->rhs.name == *current_i32_name &&
-                binary->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-                binary->lhs.type == c4c::backend::bir::TypeKind::I32;
-            if (lhs_is_current_rhs_is_imm || rhs_is_current_lhs_is_imm) {
-              const auto compare_immediate =
-                  lhs_is_current_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
-              if (compare_immediate == 0) {
-                return std::string("    test eax, eax\n");
-              }
-              return "    cmp eax, " +
-                     std::to_string(static_cast<std::int32_t>(compare_immediate)) + "\n";
-            }
-          }
-          if (binary->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-              binary->lhs.type == c4c::backend::bir::TypeKind::I32 &&
-              binary->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-              binary->rhs.type == c4c::backend::bir::TypeKind::I32) {
-            return "    mov eax, " +
-                   std::to_string(static_cast<std::int32_t>(binary->lhs.immediate)) +
-                   "\n    cmp eax, " +
-                   std::to_string(static_cast<std::int32_t>(binary->rhs.immediate)) + "\n";
-          }
-          return std::nullopt;
-        }();
+        const auto compare_setup =
+            select_prepared_materialized_i32_compare_setup_if_supported(
+                *binary, current_i32_name);
         if (!compare_setup.has_value()) {
           return std::nullopt;
         }
