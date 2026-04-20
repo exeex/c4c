@@ -397,6 +397,8 @@ Primary targets:
 
 Actions:
 
+- execute this step through the ordered substeps below rather than treating
+  all remaining branch and call migration as one undifferentiated packet stream
 - migrate covered compare-and-branch, boolean-branch, and scalar call families
   onto prepared control-flow, move-bundle, and operand selectors
 - keep unsupported families explicitly unsupported rather than adding new
@@ -406,8 +408,105 @@ Actions:
 
 Completion check:
 
+- Step 4.1 through Step 4.4 are complete
 - the covered branch and call routes dispatch through prepared per-terminator
   or per-call selection instead of bounded whole-function x86 matchers
+
+### Step 4.1: Exhaust The Covered Direct Extern-Call Lane
+
+Goal: finish the selector-oriented cleanup of the covered single-block direct
+extern-call route without reopening broader call support.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+
+Actions:
+
+- keep the covered direct extern-call family bounded to real per-call or
+  per-terminator seams such as argument selection, result-carrier handoff, and
+  return-value finalization
+- treat remaining constant folding and data emission as route glue unless a
+  concrete legality or dispatch seam appears
+- explicitly mark this family structurally exhausted once the remaining code is
+  only call spelling or data wrapping
+
+Completion check:
+
+- the covered direct extern-call lane uses explicit helpers for its real
+  selector seams and is explicitly exhausted as a Step 4 family
+
+### Step 4.2: Exhaust The Covered Same-Module Helper-Call Lane
+
+Goal: finish the same-module helper-call family by extracting only real
+covered per-call seams and rejecting wrapper-only churn.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+
+Actions:
+
+- keep argument selection and post-call state/result handling explicit where
+  they represent real covered call-lane decisions
+- do not widen this family into indirect, variadic, generic non-helper, or
+  fallback call routes
+- stop when the remaining `call` spelling and block-loop handoff are just
+  route glue rather than another selector seam
+
+Completion check:
+
+- the same-module helper-call lane either gains the last real selector seam it
+  still owns or is explicitly marked structurally exhausted
+
+### Step 4.3: Audit The Bounded Multi-Defined Call Lane
+
+Goal: inspect the bounded multi-defined call lane for the next real covered
+per-call or per-terminator seam that should become explicit helper selection.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+
+Actions:
+
+- start at `render_prepared_bounded_multi_defined_call_lane_body_if_supported`
+  and nearby helpers rather than reopening already exhausted Step 4 call lanes
+- extract only real covered legality, move-bundle, call-result, or terminator
+  seams that improve prepared per-call or per-terminator dispatch structure
+- if the remaining code is only matcher glue, explicitly mark this family
+  exhausted and hand off to the next covered Step 4 family
+
+Completion check:
+
+- the bounded multi-defined call lane either routes one real covered selector
+  seam through explicit helpers or is explicitly exhausted with a clear handoff
+
+### Step 4.4: Finish Remaining Covered Branch And Residual Call Families
+
+Goal: complete the remaining covered compare/boolean branch work and any
+residual covered call-family cleanup after the bounded call lanes are audited.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+
+Actions:
+
+- migrate remaining covered compare-driven branch, boolean-branch, and
+  residual call-family seams onto prepared control-flow, move-bundle, and
+  operand selectors
+- keep unsupported families explicitly unsupported rather than weakening tests
+  or adding new matcher-shaped acceptance paths
+- stop when the remaining x86-only decisions are machine legality and spelling,
+  not whole-function semantic recovery
+
+Completion check:
+
+- the remaining covered branch and residual call routes dispatch through
+  prepared per-terminator or per-call selection instead of bounded whole-function
+  x86 matchers
 
 ## Step 5: Validate The Route
 

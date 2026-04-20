@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/59_generic_scalar_instruction_selection_for_x86.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Migrate Covered Terminator And Call Families
-Plan Review Counter: 10 / 10
+Current Step ID: 4.3
+Current Step Title: Audit The Bounded Multi-Defined Call Lane
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
