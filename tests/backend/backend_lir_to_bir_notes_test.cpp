@@ -9,6 +9,7 @@ namespace {
 
 using c4c::backend::BirLoweringNote;
 using c4c::backend::BirLoweringOptions;
+using c4c::backend::bir::TypeKind;
 using c4c::backend::try_lower_to_bir_with_options;
 using c4c::codegen::lir::LirBlock;
 using c4c::codegen::lir::LirCastKind;
@@ -50,6 +51,8 @@ bool contains_note(const std::vector<BirLoweringNote>& notes,
   }
   return false;
 }
+
+LirModule make_admitted_scalar_float_globals_module();
 
 int expect_failure_notes(std::string_view case_name,
                          const LirModule& module,
@@ -95,6 +98,40 @@ int expect_success_without_function_note(std::string_view case_name,
   if (contains_note(result.notes, "module", unexpected_module_failure)) {
     return fail(unexpected_module_note);
   }
+  return 0;
+}
+
+int expect_admitted_scalar_float_globals() {
+  auto result = try_lower_to_bir_with_options(make_admitted_scalar_float_globals_module(),
+                                              BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("expected semantic BIR lowering to admit scalar floating globals");
+  }
+
+  const auto find_global = [&](std::string_view name) -> const c4c::backend::bir::Global* {
+    for (const auto& global : result.module->globals) {
+      if (global.name == name) {
+        return &global;
+      }
+    }
+    return nullptr;
+  };
+
+  const auto* float_global = find_global("gf");
+  if (float_global == nullptr || float_global->type != TypeKind::F32 ||
+      !float_global->initializer.has_value() ||
+      *float_global->initializer != c4c::backend::bir::Value::immediate_f32_bits(0x3FA00000U)) {
+    return fail("scalar float globals should lower into an admitted F32 BIR initializer lane");
+  }
+
+  const auto* double_global = find_global("gd");
+  if (double_global == nullptr || double_global->type != TypeKind::F64 ||
+      !double_global->initializer.has_value() ||
+      *double_global->initializer !=
+          c4c::backend::bir::Value::immediate_f64_bits(0x4059000000000000ULL)) {
+    return fail("scalar double globals should lower into an admitted F64 BIR initializer lane");
+  }
+
   return 0;
 }
 
@@ -795,6 +832,42 @@ LirModule make_return_global_pointer_symbol_module() {
   return module;
 }
 
+LirModule make_admitted_scalar_float_globals_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirGlobal float_global;
+  float_global.name = "gf";
+  float_global.qualifier = "global ";
+  float_global.llvm_type = "float";
+  float_global.init_text = "0x3FF4000000000000";
+  float_global.align_bytes = 4;
+  module.globals.push_back(std::move(float_global));
+
+  LirGlobal double_global;
+  double_global.name = "gd";
+  double_global.qualifier = "global ";
+  double_global.llvm_type = "double";
+  double_global.init_text = "0x4059000000000000";
+  double_global.align_bytes = 8;
+  module.globals.push_back(std::move(double_global));
+
+  LirFunction function;
+  function.name = "admitted_scalar_float_globals";
+  function.signature_text = "define i32 @admitted_scalar_float_globals()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = "0",
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_bad_local_memory_umbrella_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -1486,6 +1559,11 @@ int main() {
           "unexpected global pointer-symbol return scalar-control-flow module failure note");
       global_pointer_return_status != 0) {
     return global_pointer_return_status;
+  }
+
+  if (const int scalar_float_globals_status = expect_admitted_scalar_float_globals();
+      scalar_float_globals_status != 0) {
+    return scalar_float_globals_status;
   }
 
   if (const int local_memory_umbrella_status = expect_failure_notes(

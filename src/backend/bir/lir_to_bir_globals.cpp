@@ -1,20 +1,23 @@
 #include "lir_to_bir.hpp"
 
+#include <charconv>
+#include <cstring>
+
 namespace c4c::backend::lir_to_bir_detail {
 
 namespace {
 
-bool global_text_uses_nonminimal_types(std::string_view text) {
-  return text.find("float") != std::string_view::npos ||
-         text.find("double") != std::string_view::npos ||
-         text.find("fp128") != std::string_view::npos ||
-         text.find("i128") != std::string_view::npos;
-}
-
-bool global_uses_nonminimal_types(const c4c::codegen::lir::LirGlobal& global) {
-  return global_text_uses_nonminimal_types(global.llvm_type) ||
-         global.init_text.find("double") != std::string::npos ||
-         global.init_text.find("float") != std::string::npos;
+std::optional<bir::TypeKind> lower_scalar_global_type(std::string_view text) {
+  if (const auto lowered = lower_integer_type(text); lowered.has_value()) {
+    return lowered;
+  }
+  if (text == "float" || text == "f32") {
+    return bir::TypeKind::F32;
+  }
+  if (text == "double" || text == "f64") {
+    return bir::TypeKind::F64;
+  }
+  return std::nullopt;
 }
 
 struct IntegerArrayType {
@@ -298,6 +301,10 @@ std::optional<bir::Value> lower_global_initializer(std::string_view text,
         return bir::Value::immediate_i32(0);
       case bir::TypeKind::I64:
         return bir::Value::immediate_i64(0);
+      case bir::TypeKind::F32:
+        return bir::Value::immediate_f32_bits(0u);
+      case bir::TypeKind::F64:
+        return bir::Value::immediate_f64_bits(0u);
       default:
         return std::nullopt;
     }
@@ -319,6 +326,36 @@ std::optional<bir::Value> lower_global_initializer(std::string_view text,
     if (trimmed == "false") {
       return bir::Value::immediate_i1(false);
     }
+  }
+
+  if (type == bir::TypeKind::F32 || type == bir::TypeKind::F64) {
+    if (trimmed.size() < 3 || trimmed[0] != '0' || (trimmed[1] != 'x' && trimmed[1] != 'X')) {
+      return std::nullopt;
+    }
+
+    std::uint64_t bits = 0;
+    const auto* begin = trimmed.data() + 2;
+    const auto* end = trimmed.data() + trimmed.size();
+    const auto result = std::from_chars(begin, end, bits, 16);
+    if (result.ec != std::errc() || result.ptr != end) {
+      return std::nullopt;
+    }
+
+    if (type == bir::TypeKind::F64) {
+      return bir::Value::immediate_f64_bits(bits);
+    }
+
+    if (bits <= 0xFFFF'FFFFULL) {
+      return bir::Value::immediate_f32_bits(static_cast<std::uint32_t>(bits));
+    }
+
+    double as_double = 0.0;
+    std::memcpy(&as_double, &bits, sizeof(as_double));
+    const float as_float = static_cast<float>(as_double);
+
+    std::uint32_t float_bits = 0;
+    std::memcpy(&float_bits, &as_float, sizeof(float_bits));
+    return bir::Value::immediate_f32_bits(float_bits);
   }
 
   const auto parsed = parse_i64(trimmed);
@@ -352,6 +389,10 @@ std::optional<bir::Value> lower_zero_initializer_value(bir::TypeKind type) {
       return bir::Value::immediate_i32(0);
     case bir::TypeKind::I64:
       return bir::Value::immediate_i64(0);
+    case bir::TypeKind::F32:
+      return bir::Value::immediate_f32_bits(0u);
+    case bir::TypeKind::F64:
+      return bir::Value::immediate_f64_bits(0u);
     case bir::TypeKind::Ptr:
       return bir::Value{
           .kind = bir::Value::Kind::Immediate,
@@ -654,11 +695,7 @@ std::optional<std::vector<bir::Value>> lower_aggregate_initializer(
 
 std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGlobal& global,
                                                const TypeDeclMap& type_decls) {
-  if (global_uses_nonminimal_types(global)) {
-    return std::nullopt;
-  }
-
-  const auto lowered_type = lower_integer_type(global.llvm_type);
+  const auto lowered_type = lower_scalar_global_type(global.llvm_type);
   if (!lowered_type.has_value()) {
     return std::nullopt;
   }
@@ -684,7 +721,8 @@ std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGloba
         lowered.initializer_symbol_name = initializer_address->global_name;
       }
     } else {
-      const auto initializer = lower_global_initializer(global.init_text, *lowered_type);
+      const auto trimmed_init = strip_typed_initializer_prefix(global.init_text, global.llvm_type);
+      const auto initializer = lower_global_initializer(trimmed_init, *lowered_type);
       if (!initializer.has_value()) {
         return std::nullopt;
       }
