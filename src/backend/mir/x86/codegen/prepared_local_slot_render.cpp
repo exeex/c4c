@@ -1236,8 +1236,41 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
         *previous_i32_name = std::nullopt;
         *current_i8_name = std::nullopt;
         *current_ptr_name = std::nullopt;
-        return "    mov " + *memory + ", " +
-               std::to_string(static_cast<std::int8_t>(store->value.immediate)) + "\n";
+        return render_prepared_i8_store_to_memory_if_supported(
+            store->value,
+            std::nullopt,
+            *memory,
+            [](const c4c::backend::bir::Value& value,
+               const std::optional<std::string_view>&) -> std::optional<std::string> {
+              if (value.kind != c4c::backend::bir::Value::Kind::Immediate) {
+                return std::nullopt;
+              }
+              return std::to_string(static_cast<std::int8_t>(value.immediate));
+            });
+      }
+      if (store->value.kind == c4c::backend::bir::Value::Kind::Named &&
+          store->value.type == c4c::backend::bir::TypeKind::I8) {
+        const auto rendered_store = render_prepared_i8_store_to_memory_if_supported(
+            store->value,
+            *current_i8_name,
+            *memory,
+            [](const c4c::backend::bir::Value& value,
+               const std::optional<std::string_view>& current_name) -> std::optional<std::string> {
+              if (value.kind != c4c::backend::bir::Value::Kind::Named ||
+                  !current_name.has_value() || *current_name != value.name) {
+                return std::nullopt;
+              }
+              return "al";
+            });
+        *current_i32_name = std::nullopt;
+        *previous_i32_name = std::nullopt;
+        *current_ptr_name = std::nullopt;
+        if (rendered_store.has_value()) {
+          *current_i8_name = store->value.name;
+        } else {
+          *current_i8_name = std::nullopt;
+        }
+        return rendered_store;
       }
       if (store->value.kind == c4c::backend::bir::Value::Kind::Named &&
           store->value.type == c4c::backend::bir::TypeKind::Ptr) {

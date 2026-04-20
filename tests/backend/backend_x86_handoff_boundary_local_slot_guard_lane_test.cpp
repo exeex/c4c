@@ -117,6 +117,24 @@ std::string expected_minimal_local_i8_address_guard_asm(const char* function_nam
          "    ret\n";
 }
 
+std::string expected_minimal_local_i8_copy_guard_asm(const char* function_name,
+                                                     int immediate) {
+  return asm_header(function_name) + "    sub rsp, 16\n"
+         "    mov BYTE PTR [rsp + 7], " + std::to_string(immediate) + "\n"
+         "    movsx eax, BYTE PTR [rsp + 7]\n"
+         "    mov BYTE PTR [rsp + 6], al\n"
+         "    movsx eax, BYTE PTR [rsp + 6]\n"
+         "    cmp eax, " + std::to_string(immediate) + "\n"
+         "    je .L" + std::string(function_name) + "_block_2\n"
+         "    mov eax, 1\n"
+         "    add rsp, 16\n"
+         "    ret\n"
+         ".L" + function_name + "_block_2:\n"
+         "    mov eax, 0\n"
+         "    add rsp, 16\n"
+         "    ret\n";
+}
+
 std::string expected_minimal_local_i32_branch_passthrough_asm(const char* function_name) {
   return asm_header(function_name) + "    sub rsp, 16\n"
          "    mov DWORD PTR [rsp], 5\n"
@@ -443,6 +461,74 @@ bir::Module make_x86_local_i8_address_guard_module() {
   function.blocks.push_back(std::move(block_2));
   function.blocks.push_back(std::move(block_3));
   function.blocks.push_back(std::move(block_4));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+bir::Module make_x86_local_i8_copy_guard_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+  for (int index = 0; index < 8; ++index) {
+    function.local_slots.push_back(bir::LocalSlot{
+        .name = "%lv.arr." + std::to_string(index),
+        .type = bir::TypeKind::I8,
+        .size_bytes = 1,
+        .align_bytes = 1,
+        .is_address_taken = true,
+    });
+  }
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.arr.7",
+      .value = bir::Value::immediate_i8(2),
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I8, "loaded.byte"),
+      .slot_name = "%lv.arr.7",
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.arr.6",
+      .value = bir::Value::named(bir::TypeKind::I8, "loaded.byte"),
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I8, "copied.byte"),
+      .slot_name = "%lv.arr.6",
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = bir::Value::named(bir::TypeKind::I32, "extended.byte"),
+      .operand = bir::Value::named(bir::TypeKind::I8, "copied.byte"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "entry.cmp"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "extended.byte"),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "entry.cmp"),
+      .true_label = "block_1",
+      .false_label = "block_2",
+  };
+
+  bir::Block block_1;
+  block_1.label = "block_1";
+  block_1.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(1)};
+
+  bir::Block block_2;
+  block_2.label = "block_2";
+  block_2.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
   module.functions.push_back(std::move(function));
   return module;
 }
@@ -803,6 +889,14 @@ int run_backend_x86_handoff_boundary_local_slot_guard_lane_tests() {
               expected_minimal_local_i8_address_guard_asm("main", 2),
               "main",
               "minimal local-slot byte addressed-guard route follows authoritative prepared branch labels over drifted raw entry carriers");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_route_outputs(make_x86_local_i8_copy_guard_module(),
+                              expected_minimal_local_i8_copy_guard_asm("main", 2),
+                              "bir.store_local %lv.arr.6, i8 ",
+                              "minimal local-slot byte copy guard route");
       status != 0) {
     return status;
   }

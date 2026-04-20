@@ -402,6 +402,22 @@ inline std::optional<std::string> render_prepared_i32_store_to_memory_if_support
   return "    mov " + std::string(memory_operand) + ", " + *operand + "\n";
 }
 
+template <typename RenderI8OperandFn>
+inline std::optional<std::string> render_prepared_i8_store_to_memory_if_supported(
+    const c4c::backend::bir::Value& value,
+    const std::optional<std::string_view>& current_i8_name,
+    std::string_view memory_operand,
+    const RenderI8OperandFn& render_i8_operand) {
+  if (value.type != c4c::backend::bir::TypeKind::I8) {
+    return std::nullopt;
+  }
+  const auto operand = render_i8_operand(value, current_i8_name);
+  if (!operand.has_value()) {
+    return std::nullopt;
+  }
+  return "    mov " + std::string(memory_operand) + ", " + *operand + "\n";
+}
+
 template <typename RenderNamedPtrAddressFn>
 inline std::optional<std::string> render_prepared_ptr_store_to_memory_if_supported(
     const c4c::backend::bir::Value& value,
