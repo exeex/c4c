@@ -436,7 +436,8 @@ bool BirFunctionLowerer::lower_block_insts(const c4c::codegen::lir::LirBlock& bl
 }
 
 bool BirFunctionLowerer::lower_block_terminator(const c4c::codegen::lir::LirBlock& block,
-                                                bir::Block* lowered_block) {
+                                                bir::Block* lowered_block,
+                                                std::vector<bir::Block>* trailing_blocks) {
   if (!return_info_.has_value()) {
     note_function_lowering_family_failure("scalar-control-flow semantic family");
     return false;
@@ -505,6 +506,93 @@ bool BirFunctionLowerer::lower_block_terminator(const c4c::codegen::lir::LirBloc
     return true;
   }
 
+  if (const auto* sw = std::get_if<c4c::codegen::lir::LirSwitch>(&block.terminator)) {
+    const auto selector_type = lower_integer_type(sw->selector_type);
+    if (!selector_type.has_value()) {
+      note_function_lowering_family_failure("scalar-control-flow semantic family");
+      return false;
+    }
+    const auto selector =
+        lower_value(c4c::codegen::lir::LirOperand(sw->selector_name), *selector_type);
+    if (!selector.has_value()) {
+      note_function_lowering_family_failure("scalar-control-flow semantic family");
+      return false;
+    }
+    if (sw->cases.empty()) {
+      lowered_block->terminator = bir::BranchTerminator{.target_label = sw->default_label};
+      return true;
+    }
+
+    std::unordered_set<std::string> used_labels;
+    used_labels.reserve(function_.blocks.size() + trailing_blocks->size() + 1u);
+    for (const auto& function_block : function_.blocks) {
+      used_labels.insert(function_block.label);
+    }
+    for (const auto& trailing_block : *trailing_blocks) {
+      used_labels.insert(trailing_block.label);
+    }
+    used_labels.insert(block.label);
+
+    auto make_unique_switch_label = [&](std::size_t case_index) {
+      std::string label = block.label + ".switch.case." + std::to_string(case_index);
+      std::size_t dedupe_index = 0;
+      while (!used_labels.emplace(label).second) {
+        ++dedupe_index;
+        label = block.label + ".switch.case." + std::to_string(case_index) + "." +
+                std::to_string(dedupe_index);
+      }
+      return label;
+    };
+
+    std::vector<std::string> compare_labels;
+    compare_labels.reserve(sw->cases.size() > 0 ? sw->cases.size() - 1u : 0u);
+    for (std::size_t case_index = 1; case_index < sw->cases.size(); ++case_index) {
+      compare_labels.push_back(make_unique_switch_label(case_index));
+    }
+
+    std::vector<bir::Block> switch_blocks;
+    if (sw->cases.size() > 1u) {
+      switch_blocks.resize(sw->cases.size() - 1u);
+      for (std::size_t block_index = 0; block_index < switch_blocks.size(); ++block_index) {
+        switch_blocks[block_index].label = compare_labels[block_index];
+      }
+    }
+
+    for (std::size_t case_index = 0; case_index < sw->cases.size(); ++case_index) {
+      auto* compare_block = case_index == 0 ? lowered_block : &switch_blocks[case_index - 1u];
+      const auto case_immediate = make_integer_immediate(*selector_type, sw->cases[case_index].first);
+      if (!case_immediate.has_value()) {
+        note_function_lowering_family_failure("scalar-control-flow semantic family");
+        return false;
+      }
+
+      const std::string compare_name =
+          "%" + block.label + ".switch.case." + std::to_string(case_index) + ".match";
+      compare_block->insts.push_back(bir::BinaryInst{
+          .opcode = bir::BinaryOpcode::Eq,
+          .result = bir::Value::named(bir::TypeKind::I1, compare_name),
+          .operand_type = *selector_type,
+          .lhs = *selector,
+          .rhs = *case_immediate,
+      });
+
+      const std::string false_label = case_index + 1u < sw->cases.size()
+                                          ? compare_labels[case_index]
+                                          : sw->default_label;
+      compare_block->terminator = bir::CondBranchTerminator{
+          .condition = bir::Value::named(bir::TypeKind::I1, compare_name),
+          .true_label = sw->cases[case_index].second,
+          .false_label = false_label,
+      };
+    }
+
+    trailing_blocks->insert(
+        trailing_blocks->end(),
+        std::make_move_iterator(switch_blocks.begin()),
+        std::make_move_iterator(switch_blocks.end()));
+    return true;
+  }
+
   note_function_lowering_family_failure("scalar-control-flow semantic family");
   return false;
 }
@@ -512,6 +600,7 @@ bool BirFunctionLowerer::lower_block_terminator(const c4c::codegen::lir::LirBloc
 bool BirFunctionLowerer::lower_block(const c4c::codegen::lir::LirBlock& block,
                                      bool* emitted_hoisted_alloca_scratch) {
   bir::Block lowered_block;
+  std::vector<bir::Block> trailing_blocks;
   lowered_block.label = block.label;
   if (!*emitted_hoisted_alloca_scratch &&
       block.label == function_.blocks.front().label &&
@@ -522,11 +611,15 @@ bool BirFunctionLowerer::lower_block(const c4c::codegen::lir::LirBlock& block,
 
   if (!lower_block_phi_insts(block, &lowered_block) ||
       !lower_block_insts(block, &lowered_block) ||
-      !lower_block_terminator(block, &lowered_block)) {
+      !lower_block_terminator(block, &lowered_block, &trailing_blocks)) {
     return false;
   }
 
   lowered_function_.blocks.push_back(std::move(lowered_block));
+  lowered_function_.blocks.insert(
+      lowered_function_.blocks.end(),
+      std::make_move_iterator(trailing_blocks.begin()),
+      std::make_move_iterator(trailing_blocks.end()));
   return true;
 }
 

@@ -1009,7 +1009,8 @@ class BirFunctionLowerer {
   bool lower_block_insts(const c4c::codegen::lir::LirBlock& block,
                          bir::Block* lowered_block);
   bool lower_block_terminator(const c4c::codegen::lir::LirBlock& block,
-                              bir::Block* lowered_block);
+                              bir::Block* lowered_block,
+                              std::vector<bir::Block>* trailing_blocks);
 
   // Lowering state.
   BirLoweringContext& context_;
