@@ -30,8 +30,17 @@ Named cases already identified in this family:
 
 - `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`
 - `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`
+- `c_testsuite_x86_backend_src_00204_c`
 
 ## Latest Durable Note
+
+As of 2026-04-20, `c_testsuite_x86_backend_src_00204_c` has graduated out of
+idea 58's bootstrap-global semantic-lowering lane. The frontend LLVM route for
+`fa3` now lowers `%p.b` and `%p.c` as byval aggregate pointers, takes member
+GEPs from `%p.c`, loads two `x86_fp80` fields, and feeds them into variadic
+`printf`. Future work on that case should start from byval
+stack/member-addressing semantics around local aggregate access instead of
+reopening idea 58's aggregate-global ownership.
 
 As of 2026-04-20, `c_testsuite_x86_backend_src_00040_c` no longer fails for
 missing stack/addressing semantics. It now reaches semantic BIR and stops at
