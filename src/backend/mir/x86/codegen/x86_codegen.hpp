@@ -297,6 +297,95 @@ select_prepared_i32_call_result_abi_if_supported(
   };
 }
 
+template <typename RenderMoveToEaxFn, typename RenderI32OperandFn>
+inline std::optional<std::string> render_prepared_i32_binary_in_eax_if_supported(
+    const c4c::backend::bir::BinaryInst& binary,
+    const std::optional<std::string_view>& current_i32_name,
+    const RenderMoveToEaxFn& render_value_to_eax,
+    const RenderI32OperandFn& render_i32_operand) {
+  if (binary.operand_type != c4c::backend::bir::TypeKind::I32 ||
+      binary.result.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  const auto render_rhs =
+      [&](const c4c::backend::bir::Value& rhs) -> std::optional<std::string> {
+    return render_i32_operand(rhs, current_i32_name);
+  };
+  const auto render_with_lhs_in_eax =
+      [&](const c4c::backend::bir::Value& lhs,
+          const c4c::backend::bir::Value& rhs) -> std::optional<std::string> {
+    const auto setup = render_value_to_eax(lhs, current_i32_name);
+    const auto rhs_operand = render_rhs(rhs);
+    if (!setup.has_value() || !rhs_operand.has_value()) {
+      return std::nullopt;
+    }
+
+    std::string rendered = *setup;
+    switch (binary.opcode) {
+      case c4c::backend::bir::BinaryOpcode::Add:
+        rendered += "    add eax, " + *rhs_operand + "\n";
+        return rendered;
+      case c4c::backend::bir::BinaryOpcode::Sub:
+        rendered += "    sub eax, " + *rhs_operand + "\n";
+        return rendered;
+      case c4c::backend::bir::BinaryOpcode::Mul:
+        rendered += "    imul eax, " + *rhs_operand + "\n";
+        return rendered;
+      case c4c::backend::bir::BinaryOpcode::And:
+        rendered += "    and eax, " + *rhs_operand + "\n";
+        return rendered;
+      case c4c::backend::bir::BinaryOpcode::Or:
+        rendered += "    or eax, " + *rhs_operand + "\n";
+        return rendered;
+      case c4c::backend::bir::BinaryOpcode::Xor:
+        rendered += "    xor eax, " + *rhs_operand + "\n";
+        return rendered;
+      case c4c::backend::bir::BinaryOpcode::Shl:
+        if (rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+            rhs.type != c4c::backend::bir::TypeKind::I32) {
+          return std::nullopt;
+        }
+        rendered += "    shl eax, " +
+                    std::to_string(static_cast<std::int32_t>(rhs.immediate)) + "\n";
+        return rendered;
+      case c4c::backend::bir::BinaryOpcode::LShr:
+        if (rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+            rhs.type != c4c::backend::bir::TypeKind::I32) {
+          return std::nullopt;
+        }
+        rendered += "    shr eax, " +
+                    std::to_string(static_cast<std::int32_t>(rhs.immediate)) + "\n";
+        return rendered;
+      case c4c::backend::bir::BinaryOpcode::AShr:
+        if (rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+            rhs.type != c4c::backend::bir::TypeKind::I32) {
+          return std::nullopt;
+        }
+        rendered += "    sar eax, " +
+                    std::to_string(static_cast<std::int32_t>(rhs.immediate)) + "\n";
+        return rendered;
+      default:
+        return std::nullopt;
+    }
+  };
+
+  if (const auto rendered = render_with_lhs_in_eax(binary.lhs, binary.rhs);
+      rendered.has_value()) {
+    return rendered;
+  }
+  switch (binary.opcode) {
+    case c4c::backend::bir::BinaryOpcode::Add:
+    case c4c::backend::bir::BinaryOpcode::Mul:
+    case c4c::backend::bir::BinaryOpcode::And:
+    case c4c::backend::bir::BinaryOpcode::Or:
+    case c4c::backend::bir::BinaryOpcode::Xor:
+      return render_with_lhs_in_eax(binary.rhs, binary.lhs);
+    default:
+      return std::nullopt;
+  }
+}
+
 // Active intrinsic inventory carried by the translated x86 intrinsics owner.
 enum class IntrinsicOp : std::uint16_t {
   Lfence,
