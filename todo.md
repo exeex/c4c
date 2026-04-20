@@ -5,28 +5,26 @@ Source Idea Path: ideas/open/59_generic_scalar_instruction_selection_for_x86.md
 Source Plan Path: plan.md
 Current Step ID: 4.4
 Current Step Title: Finish Remaining Covered Branch And Residual Call Families
-Plan Review Counter: 1 / 10
+Plan Review Counter: 2 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 4.4 moved the nearby covered `Branch` compare-join vs plain-branch
-handoff out of the main block renderer in
-`prepared_local_slot_render.cpp`: `render_prepared_local_slot_guard_chain_if_supported`
-now delegates that per-terminator decision to
-`select_prepared_block_branch_render_if_supported` and
-`render_prepared_block_branch_terminator_if_supported` instead of open-coding
-the compare-join render-plan build inline before falling back to the plain
-branch path.
+Step 4.4 extracted the remaining inline terminator-owned compare split out of
+`render_prepared_local_slot_guard_chain_if_supported` in
+`prepared_local_slot_render.cpp`: the main block renderer now asks
+`select_prepared_block_terminator_compare_index_if_supported` whether a
+covered `CondBranch` or compare-driven `Branch` consumes the trailing compare
+before dispatching to the per-terminator render helpers.
 
 ## Suggested Next
 
-Treat this nearby branch-terminator helper lane in
+Treat the nearby terminator compare-index split in
 `prepared_local_slot_render.cpp` as structurally exhausted for Step 4.4 unless
-the next audit finds a genuinely new prepared per-terminator selector
-contract; otherwise move the next packet to the remaining residual covered
-Step 4.4 call or terminator route instead of forcing another thin branch-only
-helper extraction.
+the next audit finds a genuinely new prepared selector contract beyond the
+now-extracted compare ownership and branch render-selection helpers; otherwise
+move the next packet to a remaining residual covered Step 4.4 call or
+terminator route instead of forcing another thin branch-only refactor.
 
 ## Watchouts
 
@@ -53,6 +51,9 @@ helper extraction.
   helper seam; do not spend another packet on that area unless a new
   authoritative prepared selector boundary appears beyond target recursion or
   final block-render glue.
+- The inline terminator compare-index split is now also extracted; avoid
+  reopening the main block renderer unless a later packet needs a new
+  selector boundary rather than another local helper shuffle.
 - The matching `^backend_` before/after logs are not fully green: both
   `test_before.log` and `test_after.log` fail in
   `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
@@ -65,9 +66,9 @@ helper extraction.
 Ran the proof command `cmake --build --preset default && ctest --test-dir
 build -j --output-on-failure -R '^backend_' 2>&1 | tee
 /workspaces/c4c/test_after.log`. The build completed successfully after this
-Step 4.4 branch compare-join/plain-branch helper extraction. The final
-`^backend_` subset in `test_after.log` preserved the accepted
-`test_before.log` failure set exactly, with no new failures:
+Step 4.4 terminator compare-index helper extraction. The final `^backend_`
+subset in `test_after.log` preserved the accepted `test_before.log` failure
+set exactly, with no new failures:
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
 `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
 `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`,

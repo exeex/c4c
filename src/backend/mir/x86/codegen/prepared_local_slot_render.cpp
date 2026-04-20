@@ -892,6 +892,34 @@ std::optional<std::string> render_prepared_block_plain_branch_terminator_if_supp
   return body + *rendered_target;
 }
 
+std::optional<std::size_t> select_prepared_block_terminator_compare_index_if_supported(
+    const c4c::backend::bir::Block& block,
+    const std::optional<c4c::backend::prepare::PreparedShortCircuitContinuationLabels>&
+        continuation) {
+  if (block.terminator.kind == c4c::backend::bir::TerminatorKind::CondBranch) {
+    if (block.insts.empty()) {
+      return std::nullopt;
+    }
+    return block.insts.size() - 1;
+  }
+
+  if (continuation.has_value() &&
+      block.terminator.kind == c4c::backend::bir::TerminatorKind::Branch &&
+      !block.insts.empty()) {
+    const auto* branch_compare = std::get_if<c4c::backend::bir::BinaryInst>(&block.insts.back());
+    if (branch_compare != nullptr &&
+        (branch_compare->opcode == c4c::backend::bir::BinaryOpcode::Eq ||
+         branch_compare->opcode == c4c::backend::bir::BinaryOpcode::Ne) &&
+        branch_compare->operand_type == c4c::backend::bir::TypeKind::I32 &&
+        (branch_compare->result.type == c4c::backend::bir::TypeKind::I1 ||
+         branch_compare->result.type == c4c::backend::bir::TypeKind::I32)) {
+      return block.insts.size() - 1;
+    }
+  }
+
+  return block.insts.size();
+}
+
 struct PreparedBlockCondBranchRenderSelection {
   CompareDrivenBranchRenderPlan render_plan;
   const c4c::backend::prepare::PreparedNameTables* prepared_names = nullptr;
@@ -1909,27 +1937,13 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
     std::optional<std::string_view> current_i8_name;
     std::optional<std::string_view> current_ptr_name;
     std::optional<MaterializedI32Compare> current_materialized_compare;
-    std::size_t compare_index = block.insts.size();
-    if (block.terminator.kind == c4c::backend::bir::TerminatorKind::CondBranch) {
-      if (block.insts.empty()) {
-        return std::nullopt;
-      }
-      compare_index = block.insts.size() - 1;
-    } else if (continuation.has_value() &&
-               block.terminator.kind == c4c::backend::bir::TerminatorKind::Branch &&
-               !block.insts.empty()) {
-      const auto* branch_compare = std::get_if<c4c::backend::bir::BinaryInst>(&block.insts.back());
-      if (branch_compare != nullptr &&
-          (branch_compare->opcode == c4c::backend::bir::BinaryOpcode::Eq ||
-           branch_compare->opcode == c4c::backend::bir::BinaryOpcode::Ne) &&
-          branch_compare->operand_type == c4c::backend::bir::TypeKind::I32 &&
-          (branch_compare->result.type == c4c::backend::bir::TypeKind::I1 ||
-           branch_compare->result.type == c4c::backend::bir::TypeKind::I32)) {
-        compare_index = block.insts.size() - 1;
-      }
+    const auto compare_index =
+        select_prepared_block_terminator_compare_index_if_supported(block, continuation);
+    if (!compare_index.has_value()) {
+      return std::nullopt;
     }
 
-    for (std::size_t index = 0; index < compare_index; ++index) {
+    for (std::size_t index = 0; index < *compare_index; ++index) {
       const auto rendered_inst =
           rendered_load_or_store(block.insts[index],
                                  index,
@@ -1989,7 +2003,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
     }
 
     if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Return) {
-      if (compare_index != block.insts.size() || !block.terminator.value.has_value()) {
+      if (*compare_index != block.insts.size() || !block.terminator.value.has_value()) {
         return std::nullopt;
       }
       return render_prepared_block_return_terminator_if_supported(
@@ -1999,7 +2013,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
     if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
       return render_prepared_block_branch_terminator_if_supported(block_context,
                                                                   std::move(body),
-                                                                  compare_index,
+                                                                  *compare_index,
                                                                   current_materialized_compare,
                                                                   current_i32_name,
                                                                   continuation,
@@ -2010,7 +2024,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
     return render_prepared_block_cond_branch_terminator_if_supported(
         block_context,
         std::move(body),
-        compare_index,
+        *compare_index,
         current_materialized_compare,
         current_i32_name,
         find_block,
