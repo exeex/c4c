@@ -388,6 +388,85 @@ template <typename CanEvict>
   return slot;
 }
 
+[[nodiscard]] PreparedValueHome classify_prepared_value_home(const PreparedRegallocValue& value) {
+  PreparedValueHome home{
+      .value_id = value.value_id,
+      .function_name = value.function_name,
+      .value_name = value.value_name,
+      .kind = PreparedValueHomeKind::None,
+      .register_name = std::nullopt,
+      .slot_id = std::nullopt,
+      .offset_bytes = std::nullopt,
+  };
+  if (value.assigned_register.has_value()) {
+    home.kind = PreparedValueHomeKind::Register;
+    home.register_name = value.assigned_register->register_name;
+    return home;
+  }
+  if (value.assigned_stack_slot.has_value()) {
+    home.kind = PreparedValueHomeKind::StackSlot;
+    home.slot_id = value.assigned_stack_slot->slot_id;
+    home.offset_bytes = value.assigned_stack_slot->offset_bytes;
+    return home;
+  }
+  return home;
+}
+
+[[nodiscard]] PreparedMovePhase classify_prepared_move_phase(const PreparedMoveResolution& move) {
+  switch (move.destination_kind) {
+    case PreparedMoveDestinationKind::CallArgumentAbi:
+      return PreparedMovePhase::BeforeCall;
+    case PreparedMoveDestinationKind::CallResultAbi:
+      return PreparedMovePhase::AfterCall;
+    case PreparedMoveDestinationKind::FunctionReturnAbi:
+      return PreparedMovePhase::BeforeReturn;
+    case PreparedMoveDestinationKind::Value:
+      return move.reason.rfind("phi_", 0) == 0 ? PreparedMovePhase::BlockEntry
+                                               : PreparedMovePhase::BeforeInstruction;
+  }
+  return PreparedMovePhase::BeforeInstruction;
+}
+
+void append_prepared_move_bundle(PreparedValueLocationFunction& function_locations,
+                                 const PreparedMoveResolution& move) {
+  const PreparedMovePhase phase = classify_prepared_move_phase(move);
+  const auto existing = std::find_if(
+      function_locations.move_bundles.begin(),
+      function_locations.move_bundles.end(),
+      [&](const PreparedMoveBundle& bundle) {
+        return bundle.phase == phase && bundle.block_index == move.block_index &&
+               bundle.instruction_index == move.instruction_index;
+      });
+  if (existing != function_locations.move_bundles.end()) {
+    existing->moves.push_back(move);
+    return;
+  }
+  function_locations.move_bundles.push_back(PreparedMoveBundle{
+      .function_name = function_locations.function_name,
+      .phase = phase,
+      .block_index = move.block_index,
+      .instruction_index = move.instruction_index,
+      .moves = {move},
+  });
+}
+
+[[nodiscard]] PreparedValueLocationFunction build_prepared_value_location_function(
+    const PreparedRegallocFunction& regalloc_function) {
+  PreparedValueLocationFunction function_locations{
+      .function_name = regalloc_function.function_name,
+      .value_homes = {},
+      .move_bundles = {},
+  };
+  function_locations.value_homes.reserve(regalloc_function.values.size());
+  for (const auto& value : regalloc_function.values) {
+    function_locations.value_homes.push_back(classify_prepared_value_home(value));
+  }
+  for (const auto& move : regalloc_function.move_resolution) {
+    append_prepared_move_bundle(function_locations, move);
+  }
+  return function_locations;
+}
+
 [[nodiscard]] std::size_t interval_start_sort_key(const PreparedRegallocValue& value) {
   if (!value.live_interval.has_value()) {
     return std::numeric_limits<std::size_t>::max();
@@ -862,6 +941,8 @@ void BirPreAlloc::run_regalloc() {
   prepared_.completed_phases.push_back("regalloc");
   prepared_.regalloc.functions.clear();
   prepared_.regalloc.functions.reserve(prepared_.liveness.functions.size());
+  prepared_.value_locations.functions.clear();
+  prepared_.value_locations.functions.reserve(prepared_.liveness.functions.size());
 
   for (const auto& liveness_function : prepared_.liveness.functions) {
     PreparedRegallocFunction regalloc_function{
@@ -1144,6 +1225,8 @@ void BirPreAlloc::run_regalloc() {
                    std::to_string(assigned_register_count) + " register(s) and " +
                    std::to_string(assigned_stack_count) + " stack slot(s)",
     });
+    prepared_.value_locations.functions.push_back(
+        build_prepared_value_location_function(regalloc_function));
     prepared_.regalloc.functions.push_back(std::move(regalloc_function));
   }
 }

@@ -3,28 +3,28 @@
 Status: Active
 Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Producer And Consumer Surfaces
-Plan Review Counter: 1 / 10
+Current Step ID: 2.2
+Current Step Title: Build The Consumer View From Regalloc And Wire It Into The Prepared Module
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 1 (`Inventory Producer And Consumer Surfaces`) now has a concrete shared
-handoff scaffold in `src/backend/prealloc/prealloc.hpp`: `PreparedRegalloc`
-was confirmed as the producer for per-function `values` and `move_resolution`,
-the active x86 prepared route still leans on `stack_layout`, ABI register
-helpers, and prepared control-flow/addressing lookups, and the header now
-publishes additive `PreparedValueHome`, `PreparedMoveBundle`, and
-`PreparedValueLocations` types plus direct lookup helpers on
-`PreparedBirModule`.
+Step 2.2 (`Build The Consumer View From Regalloc And Wire It Into The
+Prepared Module`) now materializes `PreparedBirModule::value_locations` in
+`src/backend/prealloc/regalloc.cpp`: each `PreparedRegallocFunction` is
+translated into per-function `PreparedValueHome` records from assigned
+register/stack-slot data, and shared `move_resolution` records are grouped
+into `PreparedMoveBundle`s keyed by phase plus block/instruction coordinates
+before the finalized consumer view is published on the prepared-module
+handoff.
 
 ## Suggested Next
 
-Move into Step 2.2 by populating `PreparedBirModule::value_locations` from the
-existing `PreparedRegalloc` and `PreparedStackLayout` outputs in
-`src/backend/prealloc/regalloc.cpp`, keeping move-phase classification in
-shared prepare instead of teaching x86 new home or ABI guesses.
+Move into Step 3.1 by switching the x86 prepared emitter to
+`PreparedBirModule::value_locations` lookups for register/stack homes instead
+of reading `stack_layout`, ABI register helpers, or regalloc-adjacent
+conventions to rediscover storage locally.
 
 ## Watchouts
 
@@ -34,6 +34,10 @@ shared prepare instead of teaching x86 new home or ABI guesses.
   instruction selection into this route.
 - Keep the new consumer surface keyed by existing prepared IDs and name-table
   lookups rather than widening into string-owned parallel state.
+- `PreparedMovePhase::BlockEntry` is currently inferred from shared
+  `phi_...` move reasons, while call/result/return bundles come from
+  destination-kind classification in shared prepare; keep any later phase
+  refinement shared instead of pushing it into x86.
 - The delegated `^backend_` proof subset still has four pre-existing failing
   cases in both `test_before.log` and `test_after.log`:
   `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
