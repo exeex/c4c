@@ -5,26 +5,27 @@ Source Idea Path: ideas/open/59_generic_scalar_instruction_selection_for_x86.md
 Source Plan Path: plan.md
 Current Step ID: 4
 Current Step Title: Migrate Covered Terminator And Call Families
-Plan Review Counter: 5 / 10
+Plan Review Counter: 6 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 4 extracted the covered same-module helper-call lane in
-`prepared_local_slot_render.cpp` out of the inline `render_block` path and
-into the named helper
-`render_prepared_block_same_module_helper_call_inst_if_supported`, so the
-bounded prepared helper-call dispatch now routes through one dedicated
-per-call helper instead of invoking the bounded same-module helper-call
-renderer directly inside the block loop.
+Step 4 extracted the covered direct extern-call lane in the
+single-block return dispatch path in `prepared_local_slot_render.cpp` into
+the named helper
+`render_prepared_single_block_return_direct_extern_call_if_supported`, so
+that prepared per-call handoff now routes through one explicit helper
+instead of calling the direct extern-call renderer inline from
+`render_prepared_single_block_return_dispatch_if_supported`.
 
 ## Suggested Next
 
-Keep Step 4 bounded to the next covered call-family seam in
-`prepared_local_slot_render.cpp` by extracting the remaining inline direct
-extern-call lane in the single-block return dispatch path onto one named
-prepared per-call helper, without widening into variadic, indirect-call, or
-branch-plan rewrites.
+Keep Step 4 bounded to a short audit packet in
+`prepared_local_slot_render.cpp` that checks whether any real covered
+per-call or per-terminator seam still remains near the single-block return
+dispatch path; if not, explicitly hand the next Step 4 packet off to the
+next non-cosmetic call or terminator family instead of forcing another thin
+wrapper extraction.
 
 ## Watchouts
 
@@ -35,10 +36,13 @@ branch-plan rewrites.
   reopening upstream ownership from ideas 58, 60, or 61.
 - Prefer one coherent instruction-family migration per packet over broad
   emitter rewrites.
-- The new helper is intentionally bounded to the covered same-module
-  helper-call lane in `render_block`; do not widen it into indirect-call,
-  variadic, external-call, or broader call-result rewrites in the same
-  packet.
+- The new helper is intentionally bounded to the covered direct extern-call
+  lane in `render_prepared_single_block_return_dispatch_if_supported`; do
+  not widen it into variadic, indirect-call, broader call-result, or
+  fallback-family rewrites in the same packet.
+- The nearby single-block return fallbacks are already mostly named helpers,
+  so the next packet should confirm a real Step 4 seam exists before adding
+  another wrapper-level extraction.
 - Step 4 should keep moving the active route toward prepared per-call or
   per-terminator selection, not back into Step 3 scalar family cleanup or
   into broad single-block fallback rewrites.
@@ -54,8 +58,8 @@ branch-plan rewrites.
 Ran the proof command `cmake --build --preset default && ctest --test-dir
 build -j --output-on-failure -R '^backend_' 2>&1 | tee
 /workspaces/c4c/test_after.log`. The build completed successfully after this
-Step 4 same-module helper-call lane extraction. The final `^backend_` subset
-in `test_after.log` preserved the accepted `test_before.log` failure set
+Step 4 direct extern-call helper extraction. The final `^backend_` subset in
+`test_after.log` preserved the accepted `test_before.log` failure set
 exactly, with no new failures:
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
 `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,

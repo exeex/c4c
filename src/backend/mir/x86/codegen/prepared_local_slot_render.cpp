@@ -3598,6 +3598,11 @@ std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_i
   return render_prepared_minimal_direct_extern_call_sequence_from_context(context);
 }
 
+std::optional<std::string> render_prepared_single_block_return_direct_extern_call_if_supported(
+    const PreparedX86FunctionDispatchContext& context) {
+  return render_prepared_minimal_direct_extern_call_sequence_if_supported(context);
+}
+
 std::optional<std::string> render_prepared_single_block_return_dispatch_if_supported(
     const PreparedX86FunctionDispatchContext& context) {
   if (context.module == nullptr || context.function == nullptr || context.entry == nullptr ||
@@ -3609,7 +3614,7 @@ std::optional<std::string> render_prepared_single_block_return_dispatch_if_suppo
     return std::nullopt;
   }
   if (const auto rendered_direct_calls =
-          render_prepared_minimal_direct_extern_call_sequence_if_supported(context);
+          render_prepared_single_block_return_direct_extern_call_if_supported(context);
       rendered_direct_calls.has_value()) {
     return *rendered_direct_calls;
   }
