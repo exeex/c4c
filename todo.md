@@ -5,26 +5,26 @@ Source Idea Path: ideas/open/59_generic_scalar_instruction_selection_for_x86.md
 Source Plan Path: plan.md
 Current Step ID: 4.4
 Current Step Title: Finish Remaining Covered Branch And Residual Call Families
-Plan Review Counter: 2 / 10
+Plan Review Counter: 3 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 4.4 extracted the remaining inline terminator-owned compare split out of
-`render_prepared_local_slot_guard_chain_if_supported` in
-`prepared_local_slot_render.cpp`: the main block renderer now asks
-`select_prepared_block_terminator_compare_index_if_supported` whether a
-covered `CondBranch` or compare-driven `Branch` consumes the trailing compare
-before dispatching to the per-terminator render helpers.
+Step 4.4 split the bounded same-module helper call lane in
+`prepared_local_slot_render.cpp` into a selector-oriented render contract:
+`select_prepared_bounded_same_module_helper_call_render_if_supported` now
+decides whether the covered helper call is admitted and pre-renders its
+argument moves plus callee spelling before
+`render_prepared_bounded_same_module_helper_call_if_supported` applies the
+post-call state update.
 
 ## Suggested Next
 
-Treat the nearby terminator compare-index split in
-`prepared_local_slot_render.cpp` as structurally exhausted for Step 4.4 unless
-the next audit finds a genuinely new prepared selector contract beyond the
-now-extracted compare ownership and branch render-selection helpers; otherwise
-move the next packet to a remaining residual covered Step 4.4 call or
-terminator route instead of forcing another thin branch-only refactor.
+Treat the same-module helper call lane as structurally exhausted again for
+Step 4.4 unless a later audit finds a genuinely new prepared selector contract
+beyond the new helper-call render selection and post-call state split;
+otherwise move the next packet to the remaining residual Step 4.4 bounded
+multi-defined call or branch route instead of reopening this helper lane.
 
 ## Watchouts
 
@@ -54,6 +54,10 @@ terminator route instead of forcing another thin branch-only refactor.
 - The inline terminator compare-index split is now also extracted; avoid
   reopening the main block renderer unless a later packet needs a new
   selector boundary rather than another local helper shuffle.
+- The bounded same-module helper call lane now has an explicit selector/result
+  split for argument moves and callee spelling; avoid reopening it unless a
+  later residual call route needs another authoritative prepared per-call
+  contract beyond that selector boundary.
 - The matching `^backend_` before/after logs are not fully green: both
   `test_before.log` and `test_after.log` fail in
   `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
@@ -66,7 +70,7 @@ terminator route instead of forcing another thin branch-only refactor.
 Ran the proof command `cmake --build --preset default && ctest --test-dir
 build -j --output-on-failure -R '^backend_' 2>&1 | tee
 /workspaces/c4c/test_after.log`. The build completed successfully after this
-Step 4.4 terminator compare-index helper extraction. The final `^backend_`
+Step 4.4 same-module helper-call render selector split. The final `^backend_`
 subset in `test_after.log` preserved the accepted `test_before.log` failure
 set exactly, with no new failures:
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
