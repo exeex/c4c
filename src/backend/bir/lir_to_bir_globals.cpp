@@ -8,7 +8,6 @@ bool global_text_uses_nonminimal_types(std::string_view text) {
   return text.find("float") != std::string_view::npos ||
          text.find("double") != std::string_view::npos ||
          text.find("fp128") != std::string_view::npos ||
-         text.find("i64") != std::string_view::npos ||
          text.find("i128") != std::string_view::npos;
 }
 
@@ -302,6 +301,15 @@ std::optional<bir::Value> lower_global_initializer(std::string_view text,
       default:
         return std::nullopt;
     }
+  }
+
+  if (type == bir::TypeKind::Ptr && trimmed == "null") {
+    return bir::Value{
+        .kind = bir::Value::Kind::Immediate,
+        .type = bir::TypeKind::Ptr,
+        .immediate = 0,
+        .immediate_bits = 0,
+    };
   }
 
   if (type == bir::TypeKind::I1) {
@@ -663,11 +671,18 @@ std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGloba
   lowered.align_bytes = global.align_bytes > 0 ? static_cast<std::size_t>(global.align_bytes) : 0;
   if (!global.is_extern_decl) {
     if (*lowered_type == bir::TypeKind::Ptr) {
-      const auto initializer_address = parse_global_address_initializer(global.init_text, type_decls);
-      if (!initializer_address.has_value()) {
-        return std::nullopt;
+      const auto trimmed_init = strip_typed_initializer_prefix(global.init_text, global.llvm_type);
+      if (const auto initializer = lower_global_initializer(trimmed_init, *lowered_type);
+          initializer.has_value()) {
+        lowered.initializer = *initializer;
+      } else {
+        const auto initializer_address =
+            parse_global_address_initializer(trimmed_init, type_decls);
+        if (!initializer_address.has_value()) {
+          return std::nullopt;
+        }
+        lowered.initializer_symbol_name = initializer_address->global_name;
       }
-      lowered.initializer_symbol_name = initializer_address->global_name;
     } else {
       const auto initializer = lower_global_initializer(global.init_text, *lowered_type);
       if (!initializer.has_value()) {
@@ -835,7 +850,9 @@ std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlob
     info->supports_direct_value = true;
     info->supports_linear_addressing = true;
     if (lowered->initializer_symbol_name.has_value()) {
-      const auto initializer_address = parse_global_address_initializer(global.init_text, type_decls);
+      const auto initializer_address = parse_global_address_initializer(
+          strip_typed_initializer_prefix(global.init_text, global.llvm_type),
+          type_decls);
       if (!initializer_address.has_value()) {
         return std::nullopt;
       }
