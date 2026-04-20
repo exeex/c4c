@@ -930,6 +930,117 @@ struct PreparedBlockBranchRenderSelection {
   const c4c::backend::prepare::PreparedNameTables* prepared_names = nullptr;
 };
 
+std::optional<PreparedBlockCondBranchRenderSelection>
+select_prepared_short_circuit_cond_branch_render_if_supported(
+    const PreparedX86BlockDispatchContext& block_context,
+    std::size_t compare_index,
+    const std::optional<MaterializedI32Compare>& current_materialized_compare,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block) {
+  if (block_context.function_context == nullptr || block_context.block == nullptr) {
+    return std::nullopt;
+  }
+  const auto& function_context = *block_context.function_context;
+  if (function_context.function == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto& function = *function_context.function;
+  const auto& block = *block_context.block;
+  const auto* function_control_flow = function_context.function_control_flow;
+  const auto* prepared_names = function_context.prepared_names;
+  if (function_control_flow == nullptr || prepared_names == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto resolved_block_label_id =
+      c4c::backend::prepare::resolve_prepared_block_label_id(*prepared_names, block.label);
+  if (!resolved_block_label_id.has_value()) {
+    return std::nullopt;
+  }
+  const auto join_context =
+      c4c::backend::x86::find_prepared_short_circuit_join_context_if_supported(
+          *prepared_names, *function_control_flow, function, *resolved_block_label_id);
+  if (!join_context.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto short_circuit_render_plan =
+      c4c::backend::x86::build_prepared_short_circuit_entry_render_plan(
+          *prepared_names,
+          function_control_flow,
+          function,
+          block,
+          *join_context,
+          compare_index,
+          current_materialized_compare,
+          current_i32_name,
+          [&](const c4c::backend::prepare::PreparedShortCircuitBranchPlan& prepared_plan)
+              -> std::optional<ShortCircuitPlan> {
+            return c4c::backend::x86::build_prepared_short_circuit_plan(
+                *prepared_names, prepared_plan, find_block);
+          });
+  if (!short_circuit_render_plan.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedBlockCondBranchRenderSelection{
+      .render_plan = std::move(*short_circuit_render_plan),
+      .prepared_names = prepared_names,
+  };
+}
+
+std::optional<PreparedBlockCondBranchRenderSelection>
+select_prepared_plain_cond_branch_render_if_supported(
+    const PreparedX86BlockDispatchContext& block_context,
+    std::size_t compare_index,
+    const std::optional<MaterializedI32Compare>& current_materialized_compare,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block) {
+  if (block_context.function_context == nullptr || block_context.block == nullptr) {
+    return std::nullopt;
+  }
+  const auto& function_context = *block_context.function_context;
+  const auto& block = *block_context.block;
+  const auto* function_control_flow = function_context.function_control_flow;
+  const auto* prepared_names = function_context.prepared_names;
+  const auto block_label_id = block_context.block_label_id;
+
+  if (has_authoritative_prepared_control_flow_block(function_control_flow, block_label_id) &&
+      c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
+                                                            block_label_id) == nullptr) {
+    throw std::invalid_argument(
+        "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
+  }
+  if (function_control_flow != nullptr &&
+      prepared_names != nullptr &&
+      c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
+          *prepared_names, *function_control_flow, block_label_id)
+          .has_value()) {
+    throw std::invalid_argument(
+        "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
+  }
+
+  if (prepared_names == nullptr) {
+    return std::nullopt;
+  }
+  const auto plain_cond_render_plan =
+      c4c::backend::x86::build_prepared_plain_cond_entry_render_plan(
+          *prepared_names,
+          function_control_flow,
+          block,
+          compare_index,
+          current_materialized_compare,
+          current_i32_name,
+          find_block);
+  if (!plain_cond_render_plan.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedBlockCondBranchRenderSelection{
+      .render_plan = std::move(*plain_cond_render_plan),
+      .prepared_names = nullptr,
+  };
+}
+
 std::optional<PreparedBlockBranchRenderSelection>
 select_prepared_block_branch_render_if_supported(
     const PreparedX86BlockDispatchContext& block_context,
@@ -1001,84 +1112,28 @@ select_prepared_block_cond_branch_render_if_supported(
   if (function_context.function == nullptr) {
     return std::nullopt;
   }
-  const auto& function = *function_context.function;
   const auto& block = *block_context.block;
-  const auto* function_control_flow = function_context.function_control_flow;
-  const auto* prepared_names = function_context.prepared_names;
-  const auto block_label_id = block_context.block_label_id;
 
   if (block.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
       compare_index != block.insts.size() - 1) {
     return std::nullopt;
   }
 
-  if (function_control_flow != nullptr && prepared_names != nullptr) {
-    const auto resolved_block_label_id =
-        c4c::backend::prepare::resolve_prepared_block_label_id(*prepared_names, block.label);
-    if (resolved_block_label_id.has_value()) {
-      const auto join_context =
-          c4c::backend::x86::find_prepared_short_circuit_join_context_if_supported(
-              *prepared_names, *function_control_flow, function, *resolved_block_label_id);
-      if (join_context.has_value()) {
-        const auto short_circuit_render_plan =
-            c4c::backend::x86::build_prepared_short_circuit_entry_render_plan(
-                *prepared_names,
-                function_control_flow,
-                function,
-                block,
-                *join_context,
-                compare_index,
-                current_materialized_compare,
-                current_i32_name,
-                [&](const c4c::backend::prepare::PreparedShortCircuitBranchPlan& prepared_plan)
-                    -> std::optional<ShortCircuitPlan> {
-                  return c4c::backend::x86::build_prepared_short_circuit_plan(
-                      *prepared_names, prepared_plan, find_block);
-                });
-        if (short_circuit_render_plan.has_value()) {
-          return PreparedBlockCondBranchRenderSelection{
-              .render_plan = std::move(*short_circuit_render_plan),
-              .prepared_names = prepared_names,
-          };
-        }
-      }
-    }
+  const auto short_circuit_render =
+      select_prepared_short_circuit_cond_branch_render_if_supported(block_context,
+                                                                    compare_index,
+                                                                    current_materialized_compare,
+                                                                    current_i32_name,
+                                                                    find_block);
+  if (short_circuit_render.has_value()) {
+    return short_circuit_render;
   }
 
-  if (has_authoritative_prepared_control_flow_block(function_control_flow, block_label_id) &&
-      c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
-                                                            block_label_id) == nullptr) {
-    throw std::invalid_argument(
-        "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
-  }
-  if (function_control_flow != nullptr &&
-      prepared_names != nullptr &&
-      c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
-          *prepared_names, *function_control_flow, block_label_id)
-          .has_value()) {
-    throw std::invalid_argument(
-        "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
-  }
-
-  if (prepared_names == nullptr) {
-    return std::nullopt;
-  }
-  const auto plain_cond_render_plan =
-      c4c::backend::x86::build_prepared_plain_cond_entry_render_plan(
-          *prepared_names,
-          function_control_flow,
-          block,
-          compare_index,
-          current_materialized_compare,
-          current_i32_name,
-          find_block);
-  if (!plain_cond_render_plan.has_value()) {
-    return std::nullopt;
-  }
-  return PreparedBlockCondBranchRenderSelection{
-      .render_plan = std::move(*plain_cond_render_plan),
-      .prepared_names = nullptr,
-  };
+  return select_prepared_plain_cond_branch_render_if_supported(block_context,
+                                                               compare_index,
+                                                               current_materialized_compare,
+                                                               current_i32_name,
+                                                               find_block);
 }
 
 std::optional<std::string> render_prepared_block_cond_branch_terminator_if_supported(
