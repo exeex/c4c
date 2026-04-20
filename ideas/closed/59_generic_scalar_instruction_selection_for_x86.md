@@ -1,12 +1,65 @@
 # Generic Scalar Instruction Selection For Prepared X86
 
-Status: Open
+Status: Closed
 Created: 2026-04-18
-Last-Updated: 2026-04-18
+Last-Updated: 2026-04-20
+Closed: 2026-04-20
+Disposition: Completed; prepared x86 scalar lowering now routes through ordinary per-operation and per-terminator dispatch over authoritative prepared inputs instead of growing bounded whole-function matcher families for the covered scalar route.
 Depends-On:
 - idea 58 shared CFG, join, and loop materialization
 - idea 60 prepared value-location consumption
 - idea 61 stack-frame and addressing consumption
+
+## Why This Was Closed
+
+Idea 59 was about replacing matcher-shaped prepared x86 scalar lowering with a
+selector-driven dispatch surface over prepared operands, value homes,
+addressing facts, and terminator semantics. That route is now complete on its
+stated scope: the covered scalar instruction, call, and branch families dispatch
+through explicit helpers and prepared context instead of depending on new
+whole-function or named-testcase matcher growth.
+
+## What Landed Before Closure
+
+- prepared x86 lowering now exposes shared function and block dispatch context
+  surfaces instead of repeatedly unpacking raw whole-function helper arguments
+- covered scalar operand, compare, call-lane, and local-memory legality
+  questions are answered through selector helpers framed around prepared inputs
+  and x86 legality
+- covered scalar instruction families lower through explicit per-operation
+  dispatch surfaces rather than inline matcher-shaped control flow
+- covered compare/boolean branch and bounded scalar call families route through
+  prepared per-terminator or per-call selection instead of whole-function x86
+  shape recognition
+- remaining x86-only decisions on the covered route are machine spelling and
+  legality, not semantic recovery from raw function shape
+
+## Validation At Closure
+
+Closure used a backend-scoped regression guard:
+
+- `cmake --build --preset default`
+- `ctest --test-dir build -j --output-on-failure -R '^backend_'`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result:
+
+- regression guard passed
+- before and after both reported `68` passed / `4` failed / `72` total
+- the same four pre-existing backend route failures remained:
+  - `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`
+  - `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`
+  - `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`
+  - `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`
+
+## Follow-On Context
+
+- `ideas/open/57_x86_backend_c_testsuite_capability_families.md` remains the
+  umbrella route for broader backend capability debt that still fails before the
+  canonical prepared-module handoff
+- idea 59 closure does not claim to resolve unresolved variadic or dynamic
+  member-array semantic lowering outside the covered scalar instruction-selection
+  route
 
 ## Intent
 
