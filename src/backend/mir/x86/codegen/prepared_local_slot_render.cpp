@@ -305,6 +305,19 @@ std::string render_prepared_stack_address_expr(std::size_t byte_offset) {
   return "[rsp + " + std::to_string(byte_offset) + "]";
 }
 
+std::optional<std::string> render_prepared_named_stack_object_address_if_supported(
+    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    c4c::FunctionNameId function_name,
+    std::string_view object_name) {
+  const auto frame_offset = find_prepared_named_stack_object_frame_offset(
+      stack_layout, prepared_names, function_name, object_name);
+  if (!frame_offset.has_value()) {
+    return std::nullopt;
+  }
+  return render_prepared_stack_address_expr(*frame_offset);
+}
+
 std::optional<std::string> render_prepared_local_address_operand_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     const std::optional<c4c::backend::bir::MemoryAddress>& address,
@@ -371,6 +384,11 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
   if (!layout.has_value()) {
     return std::nullopt;
   }
+  const c4c::FunctionNameId function_name_id =
+      prepared_names == nullptr ? c4c::kInvalidFunctionName
+                                : c4c::backend::prepare::resolve_prepared_function_name_id(
+                                      *prepared_names, function.name)
+                                      .value_or(c4c::kInvalidFunctionName);
   static constexpr const char* kArgRegs32[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
   const auto render_function_return =
       [&](std::int32_t returned_imm) -> std::string {
@@ -638,14 +656,14 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
           *current_ptr_name = std::nullopt;
           return "    mov " + *memory + ", rax\n";
         }
-        const auto pointee_slot_it = layout->offsets.find(store->value.name);
-        if (pointee_slot_it == layout->offsets.end()) {
+        const auto pointee_address = render_prepared_named_stack_object_address_if_supported(
+            stack_layout, prepared_names, function_name_id, store->value.name);
+        if (!pointee_address.has_value()) {
           *current_ptr_name = std::nullopt;
           return std::string{};
         }
         *current_ptr_name = std::nullopt;
-        return "    lea rax, " + render_prepared_stack_address_expr(pointee_slot_it->second) +
-               "\n    mov " + *memory + ", rax\n";
+        return "    lea rax, " + *pointee_address + "\n    mov " + *memory + ", rax\n";
       }
       return std::nullopt;
     };
@@ -2222,6 +2240,11 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
   }
 
   auto asm_text = std::string(asm_prefix);
+  const c4c::FunctionNameId function_name_id =
+      prepared_names == nullptr ? c4c::kInvalidFunctionName
+                                : c4c::backend::prepare::resolve_prepared_function_name_id(
+                                      *prepared_names, function.name)
+                                      .value_or(c4c::kInvalidFunctionName);
   const c4c::BlockLabelId entry_label_id =
       prepared_names == nullptr ? c4c::kInvalidBlockLabel
                                 : c4c::backend::prepare::resolve_prepared_block_label_id(
@@ -2257,14 +2280,12 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
       }
       if (store->value.kind == c4c::backend::bir::Value::Kind::Named &&
           store->value.type == c4c::backend::bir::TypeKind::Ptr) {
-        const auto pointee_slot_it = layout->offsets.find(store->value.name);
-        if (pointee_slot_it == layout->offsets.end()) {
+        const auto pointee_address = render_prepared_named_stack_object_address_if_supported(
+            stack_layout, prepared_names, function_name_id, store->value.name);
+        if (!pointee_address.has_value()) {
           return std::nullopt;
         }
-        asm_text += "    lea rax, " +
-                    render_prepared_stack_memory_operand(pointee_slot_it->second, "QWORD")
-                        .substr(10) +
-                    "\n";
+        asm_text += "    lea rax, " + *pointee_address + "\n";
         asm_text += "    mov " + *memory + ", rax\n";
         continue;
       }
