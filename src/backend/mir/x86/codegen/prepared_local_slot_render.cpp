@@ -211,6 +211,83 @@ std::optional<std::string> select_prepared_materialized_i32_compare_setup_if_sup
   return std::nullopt;
 }
 
+struct PreparedI32ImmediateBranchPlan {
+  std::int64_t compare_immediate = 0;
+  c4c::backend::bir::BinaryOpcode compare_opcode = c4c::backend::bir::BinaryOpcode::Eq;
+  std::string true_label;
+  std::string false_label;
+};
+
+std::optional<PreparedI32ImmediateBranchPlan>
+select_prepared_i32_immediate_branch_plan_if_supported(
+    const PreparedX86FunctionDispatchContext& context,
+    c4c::BlockLabelId entry_label_id,
+    const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedBranchCondition& prepared_branch_condition,
+    std::string_view compared_value_name) {
+  if (!context.prepared_names || !prepared_branch_condition.predicate.has_value() ||
+      !prepared_branch_condition.compare_type.has_value() ||
+      !prepared_branch_condition.lhs.has_value() || !prepared_branch_condition.rhs.has_value() ||
+      *prepared_branch_condition.compare_type != c4c::backend::bir::TypeKind::I32 ||
+      prepared_branch_condition.condition_value.kind != c4c::backend::bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+
+  const bool lhs_is_value_rhs_is_imm =
+      prepared_branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Named &&
+      prepared_branch_condition.lhs->name == compared_value_name &&
+      prepared_branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+      prepared_branch_condition.rhs->type == c4c::backend::bir::TypeKind::I32;
+  const bool rhs_is_value_lhs_is_imm =
+      prepared_branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Named &&
+      prepared_branch_condition.rhs->name == compared_value_name &&
+      prepared_branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+      prepared_branch_condition.lhs->type == c4c::backend::bir::TypeKind::I32;
+  if (!lhs_is_value_rhs_is_imm && !rhs_is_value_lhs_is_imm) {
+    return std::nullopt;
+  }
+
+  const auto target_labels = c4c::backend::prepare::resolve_prepared_compare_branch_target_labels(
+      *context.prepared_names,
+      context.function_control_flow,
+      entry_label_id,
+      entry,
+      prepared_branch_condition);
+  if (!target_labels.has_value()) {
+    throw std::invalid_argument(
+        "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
+  }
+
+  return PreparedI32ImmediateBranchPlan{
+      .compare_immediate = lhs_is_value_rhs_is_imm ? prepared_branch_condition.rhs->immediate
+                                                   : prepared_branch_condition.lhs->immediate,
+      .compare_opcode = *prepared_branch_condition.predicate,
+      .true_label = std::string(c4c::backend::prepare::prepared_block_label(
+          *context.prepared_names, target_labels->true_label)),
+      .false_label = std::string(c4c::backend::prepare::prepared_block_label(
+          *context.prepared_names, target_labels->false_label)),
+  };
+}
+
+std::string render_prepared_i32_compare_and_branch(c4c::backend::bir::BinaryOpcode compare_opcode,
+                                                   std::int64_t compare_immediate,
+                                                   std::string_view function_name,
+                                                   std::string_view false_label) {
+  std::string rendered = compare_immediate == 0
+                             ? "    test eax, eax\n"
+                             : "    cmp eax, " +
+                                   std::to_string(static_cast<std::int32_t>(compare_immediate)) +
+                                   "\n";
+  rendered += "    ";
+  rendered += compare_opcode == c4c::backend::bir::BinaryOpcode::Eq ? "jne" : "je";
+  rendered += " .L";
+  rendered += function_name;
+  rendered += "_";
+  rendered += false_label;
+  rendered += "\n";
+  return rendered;
+}
+
 struct PreparedI32EaxImmediateBinarySelection {
   std::int32_t immediate = 0;
 };
@@ -1380,35 +1457,21 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
       return std::nullopt;
     }
 
-    const bool lhs_is_value_rhs_is_imm =
-        prepared_immediate_branch->rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-        prepared_immediate_branch->rhs->type == c4c::backend::bir::TypeKind::I32;
-    const bool rhs_is_value_lhs_is_imm =
-        prepared_immediate_branch->lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-        prepared_immediate_branch->lhs->type == c4c::backend::bir::TypeKind::I32;
-    if (!lhs_is_value_rhs_is_imm && !rhs_is_value_lhs_is_imm) {
+    const auto prepared_branch_plan = select_prepared_i32_immediate_branch_plan_if_supported(
+        context,
+        entry_label_id,
+        entry,
+        *prepared_immediate_branch,
+        prepared_compared_value->name);
+    if (!prepared_branch_plan.has_value()) {
       return std::nullopt;
     }
 
     compared_value = *prepared_compared_value;
-    compare_immediate = lhs_is_value_rhs_is_imm ? prepared_immediate_branch->rhs->immediate
-                                                : prepared_immediate_branch->lhs->immediate;
-    compare_opcode = *prepared_immediate_branch->predicate;
-    const auto target_labels =
-        c4c::backend::prepare::resolve_prepared_compare_branch_target_labels(
-            *context.prepared_names,
-            context.function_control_flow,
-            entry_label_id,
-            entry,
-            *prepared_immediate_branch);
-    if (!target_labels.has_value()) {
-      throw std::invalid_argument(
-          "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
-    }
-    true_label = std::string(
-        c4c::backend::prepare::prepared_block_label(*context.prepared_names, target_labels->true_label));
-    false_label = std::string(
-        c4c::backend::prepare::prepared_block_label(*context.prepared_names, target_labels->false_label));
+    compare_immediate = prepared_branch_plan->compare_immediate;
+    compare_opcode = prepared_branch_plan->compare_opcode;
+    true_label = prepared_branch_plan->true_label;
+    false_label = prepared_branch_plan->false_label;
   } else {
     const auto* compare = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.back());
     if (compare == nullptr ||
@@ -1465,13 +1528,8 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
     return std::nullopt;
   }
   asm_text += *compared_render;
-  asm_text += compare_immediate == 0
-                  ? "    test eax, eax\n"
-                  : "    cmp eax, " +
-                        std::to_string(static_cast<std::int32_t>(compare_immediate)) + "\n";
-  asm_text += std::string("    ") +
-              (compare_opcode == c4c::backend::bir::BinaryOpcode::Eq ? "jne" : "je") + " .L" +
-              function.name + "_" + false_block->label + "\n";
+  asm_text += render_prepared_i32_compare_and_branch(
+      compare_opcode, compare_immediate, function.name, false_block->label);
 
   const auto render_return_block =
       [&](const c4c::backend::bir::Block& block) -> std::optional<std::string> {
@@ -1642,50 +1700,15 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
   std::string true_label = entry.terminator.true_label;
   std::string false_label = entry.terminator.false_label;
   if (prepared_branch_condition != nullptr) {
-    if (!prepared_branch_condition->predicate.has_value() ||
-        !prepared_branch_condition->compare_type.has_value() ||
-        !prepared_branch_condition->lhs.has_value() ||
-        !prepared_branch_condition->rhs.has_value() ||
-        *prepared_branch_condition->compare_type != c4c::backend::bir::TypeKind::I32 ||
-        prepared_branch_condition->condition_value.kind != c4c::backend::bir::Value::Kind::Named) {
+    const auto prepared_branch_plan = select_prepared_i32_immediate_branch_plan_if_supported(
+        context, entry_label_id, entry, *prepared_branch_condition, sext_updated->result.name);
+    if (!prepared_branch_plan.has_value()) {
       return std::nullopt;
     }
-
-    const bool lhs_is_value_rhs_is_imm =
-        prepared_branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Named &&
-        prepared_branch_condition->lhs->name == sext_updated->result.name &&
-        prepared_branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-        prepared_branch_condition->rhs->type == c4c::backend::bir::TypeKind::I32;
-    const bool rhs_is_value_lhs_is_imm =
-        prepared_branch_condition->rhs->kind == c4c::backend::bir::Value::Kind::Named &&
-        prepared_branch_condition->rhs->name == sext_updated->result.name &&
-        prepared_branch_condition->lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-        prepared_branch_condition->lhs->type == c4c::backend::bir::TypeKind::I32;
-    if (!lhs_is_value_rhs_is_imm && !rhs_is_value_lhs_is_imm) {
-      return std::nullopt;
-    }
-
-    compare_opcode = *prepared_branch_condition->predicate;
-    compare_immediate =
-        lhs_is_value_rhs_is_imm ? prepared_branch_condition->rhs->immediate
-                                : prepared_branch_condition->lhs->immediate;
-    const auto target_labels =
-        c4c::backend::prepare::resolve_prepared_compare_branch_target_labels(
-            *context.prepared_names,
-            context.function_control_flow,
-            entry_label_id,
-            entry,
-            *prepared_branch_condition);
-    if (!target_labels.has_value()) {
-      throw std::invalid_argument(
-          "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
-    }
-    true_label = std::string(
-        c4c::backend::prepare::prepared_block_label(*context.prepared_names,
-                                                    target_labels->true_label));
-    false_label = std::string(
-        c4c::backend::prepare::prepared_block_label(*context.prepared_names,
-                                                    target_labels->false_label));
+    compare_opcode = prepared_branch_plan->compare_opcode;
+    compare_immediate = prepared_branch_plan->compare_immediate;
+    true_label = prepared_branch_plan->true_label;
+    false_label = prepared_branch_plan->false_label;
   }
   if (compare_opcode != c4c::backend::bir::BinaryOpcode::Eq &&
       compare_opcode != c4c::backend::bir::BinaryOpcode::Ne) {
@@ -1719,13 +1742,8 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
   asm_text += "    add eax, 1\n";
   asm_text += "    mov " + *short_memory + ", ax\n";
   asm_text += "    movsx eax, " + *short_memory + "\n";
-  asm_text += compare_immediate == 0
-                  ? "    test eax, eax\n"
-                  : "    cmp eax, " +
-                        std::to_string(static_cast<std::int32_t>(compare_immediate)) + "\n";
-  asm_text += "    " +
-              std::string(compare_opcode == c4c::backend::bir::BinaryOpcode::Eq ? "jne" : "je") +
-              " .L" + function.name + "_" + false_block->label + "\n";
+  asm_text += render_prepared_i32_compare_and_branch(
+      compare_opcode, compare_immediate, function.name, false_block->label);
   asm_text += *rendered_true;
   asm_text += ".L" + function.name + "_" + false_block->label + ":\n";
   asm_text += *rendered_false;
