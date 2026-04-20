@@ -1329,6 +1329,23 @@ std::optional<std::string> select_prepared_i32_call_argument_move_if_supported(
       [](std::string_view) -> std::optional<std::string> { return std::nullopt; });
 }
 
+void finalize_prepared_same_module_helper_call_state(
+    const c4c::backend::bir::CallInst& call,
+    std::optional<std::string_view>* current_i32_name,
+    std::optional<std::string_view>* previous_i32_name,
+    std::optional<std::string_view>* current_i8_name,
+    std::optional<std::string_view>* current_ptr_name,
+    std::optional<MaterializedI32Compare>* current_materialized_compare) {
+  *current_materialized_compare = std::nullopt;
+  *previous_i32_name = std::nullopt;
+  *current_i8_name = std::nullopt;
+  *current_ptr_name = std::nullopt;
+  *current_i32_name =
+      call.result.has_value() && call.result->type == c4c::backend::bir::TypeKind::I32
+          ? std::optional<std::string_view>(call.result->name)
+          : std::nullopt;
+}
+
 std::optional<std::string> render_prepared_bounded_same_module_helper_call_if_supported(
     const c4c::backend::bir::Inst& inst,
     const std::unordered_set<std::string_view>& bounded_same_module_helper_names,
@@ -1366,14 +1383,13 @@ std::optional<std::string> render_prepared_bounded_same_module_helper_call_if_su
   rendered_call += render_asm_symbol_name(call->callee);
   rendered_call += "\n";
 
-  *current_materialized_compare = std::nullopt;
-  *previous_i32_name = std::nullopt;
-  *current_i8_name = std::nullopt;
-  *current_ptr_name = std::nullopt;
-  *current_i32_name =
-      call->result.has_value() && call->result->type == c4c::backend::bir::TypeKind::I32
-          ? std::optional<std::string_view>(call->result->name)
-          : std::nullopt;
+  finalize_prepared_same_module_helper_call_state(
+      *call,
+      current_i32_name,
+      previous_i32_name,
+      current_i8_name,
+      current_ptr_name,
+      current_materialized_compare);
   return rendered_call;
 }
 
