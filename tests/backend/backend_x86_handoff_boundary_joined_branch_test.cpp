@@ -4384,6 +4384,69 @@ int check_materialized_compare_join_edge_store_slot_route_requires_authoritative
       module, function_name, failure_context, true);
 }
 
+int check_materialized_compare_join_route_requires_authoritative_prepared_return_bundle(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto function_name_id = prepare::resolve_prepared_function_name_id(prepared.names, function_name);
+  if (!function_name_id.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer resolves the function name for value-location ownership")
+                    .c_str());
+  }
+  auto function_locations_it =
+      std::find_if(prepared.value_locations.functions.begin(),
+                   prepared.value_locations.functions.end(),
+                   [&](const prepare::PreparedValueLocationFunction& function_locations) {
+                     return function_locations.function_name == *function_name_id;
+                   });
+  if (function_locations_it == prepared.value_locations.functions.end()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the compare-join value-location contract")
+                    .c_str());
+  }
+  const auto erased_bundles =
+      static_cast<std::size_t>(std::count_if(
+          function_locations_it->move_bundles.begin(),
+          function_locations_it->move_bundles.end(),
+          [](const prepare::PreparedMoveBundle& bundle) {
+            return bundle.phase == prepare::PreparedMovePhase::BeforeReturn;
+          }));
+  if (erased_bundles == 0) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the authoritative compare-join return bundle")
+                    .c_str());
+  }
+  function_locations_it->move_bundles.erase(
+      std::remove_if(
+          function_locations_it->move_bundles.begin(),
+          function_locations_it->move_bundles.end(),
+          [](const prepare::PreparedMoveBundle& bundle) {
+            return bundle.phase == prepare::PreparedMovePhase::BeforeReturn;
+          }),
+      function_locations_it->move_bundles.end());
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted a compare-join return after the authoritative prepared return bundle was removed")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the missing compare-join return bundle with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_minimal_compare_branch_route_rejects_authoritative_join_contract_impl(
     const bir::Module& module,
     const char* function_name,
@@ -7253,6 +7316,14 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
               make_x86_param_eq_zero_branch_joined_add_or_sub_then_add_module(),
               "branch_join_adjust_then_add",
               "scalar-control-flow compare-against-zero trailing-arithmetic compare-join route rejects reopening raw recovery when the authoritative prepared branch record is missing");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_route_requires_authoritative_prepared_return_bundle(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_add_module(),
+              "branch_join_adjust_then_add",
+              "scalar-control-flow compare-against-zero trailing-arithmetic compare-join route rejects reopening a direct ABI return when the authoritative prepared return bundle is missing");
       status != 0) {
     return status;
   }

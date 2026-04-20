@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include "../bir/bir.hpp"
 #include "../../shared/text_id_table.hpp"
 #include "../../target_profile.hpp"
@@ -886,6 +888,9 @@ struct PreparedMaterializedCompareJoinContext {
 struct PreparedMaterializedCompareJoinReturnContext {
   PreparedComputedValue selected_value;
   std::optional<PreparedSupportedImmediateBinary> trailing_binary;
+  FunctionNameId function_name = kInvalidFunctionName;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
 };
 
 enum class PreparedMaterializedCompareJoinReturnShape {
@@ -2699,6 +2704,18 @@ find_prepared_materialized_compare_join_return_context(
       compare_join_context.carrier_index > join_block->insts.size()) {
     return std::nullopt;
   }
+  const auto function_name =
+      resolve_prepared_function_name_id(names, compare_join_context.function->name);
+  if (!function_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto block_it =
+      std::find_if(compare_join_context.function->blocks.begin(),
+                   compare_join_context.function->blocks.end(),
+                   [&](const bir::Block& block) { return &block == join_block; });
+  if (block_it == compare_join_context.function->blocks.end()) {
+    return std::nullopt;
+  }
 
   std::unordered_map<std::string_view, const bir::BinaryInst*> named_binaries;
   std::unordered_map<std::string_view, const bir::LoadGlobalInst*> named_global_loads;
@@ -2736,6 +2753,12 @@ find_prepared_materialized_compare_join_return_context(
   return PreparedMaterializedCompareJoinReturnContext{
       .selected_value = std::move(*computed_selected_value),
       .trailing_binary = std::move(trailing_binary),
+      .function_name = *function_name,
+      .block_index =
+          static_cast<std::size_t>(std::distance(compare_join_context.function->blocks.begin(),
+                                                 block_it)),
+      .instruction_index = compare_join_context.carrier_index +
+                           (compare_join_context.trailing_binary != nullptr ? 1U : 0U),
   };
 }
 
@@ -3199,6 +3222,23 @@ struct PreparedBirModule {
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] inline const PreparedMoveBundle* find_prepared_unique_move_bundle(
+    const PreparedValueLocationFunction& function_locations,
+    PreparedMovePhase phase,
+    std::size_t block_index) {
+  const PreparedMoveBundle* match = nullptr;
+  for (const auto& move_bundle : function_locations.move_bundles) {
+    if (move_bundle.phase != phase || move_bundle.block_index != block_index) {
+      continue;
+    }
+    if (match != nullptr) {
+      return nullptr;
+    }
+    match = &move_bundle;
+  }
+  return match;
 }
 
 class BirPreAlloc {

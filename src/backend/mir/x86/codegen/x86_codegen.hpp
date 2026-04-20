@@ -1166,7 +1166,7 @@ std::optional<std::string> render_prepared_supported_immediate_binary(
 
 std::optional<std::string> render_prepared_materialized_compare_join_return_if_supported(
     std::string_view return_register,
-    const c4c::backend::prepare::PreparedNameTables& prepared_names,
+    const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&
         prepared_return_arm,
     const c4c::backend::bir::Param& param,
