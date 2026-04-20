@@ -146,6 +146,9 @@ std::size_t type_size_bytes(bir::TypeKind type) {
 
 std::vector<std::string_view> split_top_level_initializer_items(std::string_view text) {
   std::vector<std::string_view> items;
+  if (c4c::codegen::lir::trim_lir_arg_text(text).empty()) {
+    return items;
+  }
   std::size_t item_start = 0;
   int depth = 0;
   for (std::size_t index = 0; index < text.size(); ++index) {
@@ -243,8 +246,8 @@ AggregateTypeLayout compute_aggregate_type_layout(std::string_view text,
       return {};
     }
     const auto field_layout = compute_aggregate_type_layout(field_type, type_decls);
-    if (field_layout.kind == AggregateTypeLayout::Kind::Invalid ||
-        field_layout.size_bytes == 0 || field_layout.align_bytes == 0) {
+    if (field_layout.kind == AggregateTypeLayout::Kind::Invalid || field_layout.align_bytes == 0 ||
+        (field_layout.kind == AggregateTypeLayout::Kind::Scalar && field_layout.size_bytes == 0)) {
       return {};
     }
     current_offset = align_up(current_offset, field_layout.align_bytes);
@@ -256,9 +259,6 @@ AggregateTypeLayout compute_aggregate_type_layout(std::string_view text,
     struct_align = std::max(struct_align, field_layout.align_bytes);
   }
 
-  if (layout.fields.empty()) {
-    return {};
-  }
   layout.align_bytes = struct_align;
   layout.size_bytes = align_up(current_offset, struct_align);
   return layout;

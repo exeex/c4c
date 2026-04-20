@@ -55,6 +55,8 @@ bool contains_note(const std::vector<BirLoweringNote>& notes,
 LirModule make_admitted_scalar_float_globals_module();
 LirModule make_admitted_scalar_i16_globals_module();
 LirModule make_admitted_aggregate_pointer_field_global_module();
+LirModule make_admitted_aggregate_zero_sized_member_global_module();
+LirModule make_admitted_aggregate_string_array_field_global_module();
 
 int expect_failure_notes(std::string_view case_name,
                          const LirModule& module,
@@ -202,6 +204,77 @@ int expect_admitted_aggregate_pointer_field_global() {
     if (global->initializer_elements[index] != c4c::backend::bir::Value::immediate_i8(0)) {
       return fail("aggregate pointer-field globals should zero-fill the aggregate tail bytes");
     }
+  }
+
+  return 0;
+}
+
+int expect_admitted_aggregate_zero_sized_member_global() {
+  auto result =
+      try_lower_to_bir_with_options(make_admitted_aggregate_zero_sized_member_global_module(),
+                                    BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("expected semantic BIR lowering to admit aggregate globals with zero-sized aggregate members");
+  }
+
+  const auto find_global = [&](std::string_view name) -> const c4c::backend::bir::Global* {
+    for (const auto& global : result.module->globals) {
+      if (global.name == name) {
+        return &global;
+      }
+    }
+    return nullptr;
+  };
+
+  const auto* global = find_global("gzero_member");
+  if (global == nullptr || global->type != TypeKind::I8 || global->size_bytes != 2 ||
+      global->initializer_elements.size() != 2) {
+    return fail("aggregate globals with zero-sized members should collapse to the surrounding byte-addressable storage");
+  }
+  if (global->initializer_elements[0] != c4c::backend::bir::Value::immediate_i8(1) ||
+      global->initializer_elements[1] != c4c::backend::bir::Value::immediate_i8(18)) {
+    return fail("aggregate globals with zero-sized members should preserve only the concrete surrounding payload bytes");
+  }
+
+  return 0;
+}
+
+int expect_admitted_aggregate_string_array_field_global() {
+  auto result =
+      try_lower_to_bir_with_options(make_admitted_aggregate_string_array_field_global_module(),
+                                    BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("expected semantic BIR lowering to admit aggregate globals with string-backed array fields");
+  }
+
+  const auto find_global = [&](std::string_view name) -> const c4c::backend::bir::Global* {
+    for (const auto& global : result.module->globals) {
+      if (global.name == name) {
+        return &global;
+      }
+    }
+    return nullptr;
+  };
+
+  const auto* global = find_global("gstring_field");
+  if (global == nullptr || global->type != TypeKind::I8 || global->size_bytes != 17 ||
+      global->initializer_elements.size() != 17) {
+    return fail("aggregate globals with string-backed array fields should lower into byte-addressable aggregate storage");
+  }
+  if (global->initializer_elements[0] != c4c::backend::bir::Value::immediate_i8('h') ||
+      global->initializer_elements[1] != c4c::backend::bir::Value::immediate_i8('e') ||
+      global->initializer_elements[2] != c4c::backend::bir::Value::immediate_i8('l') ||
+      global->initializer_elements[3] != c4c::backend::bir::Value::immediate_i8('l') ||
+      global->initializer_elements[4] != c4c::backend::bir::Value::immediate_i8('o')) {
+    return fail("aggregate globals with string-backed array fields should preserve the string byte prefix");
+  }
+  for (std::size_t index = 5; index < 16; ++index) {
+    if (global->initializer_elements[index] != c4c::backend::bir::Value::immediate_i8(0)) {
+      return fail("aggregate globals with string-backed array fields should zero-fill the remaining array bytes");
+    }
+  }
+  if (global->initializer_elements[16] != c4c::backend::bir::Value::immediate_i8(42)) {
+    return fail("aggregate globals with string-backed array fields should preserve following scalar payload bytes");
   }
 
   return 0;
@@ -1012,6 +1085,65 @@ LirModule make_admitted_aggregate_pointer_field_global_module() {
   return module;
 }
 
+LirModule make_admitted_aggregate_zero_sized_member_global_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.type_decls.push_back("%struct.empty = type {}");
+  module.type_decls.push_back("%struct.contains_empty = type { i8, %struct.empty, i8 }");
+
+  LirGlobal global;
+  global.name = "gzero_member";
+  global.qualifier = "global ";
+  global.llvm_type = "%struct.contains_empty";
+  global.init_text = "{ i8 1, %struct.empty { }, i8 18 }";
+  global.align_bytes = 1;
+  module.globals.push_back(std::move(global));
+
+  LirFunction function;
+  function.name = "admitted_aggregate_zero_sized_member_global";
+  function.signature_text = "define i32 @admitted_aggregate_zero_sized_member_global()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = "0",
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_admitted_aggregate_string_array_field_global_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.type_decls.push_back("%struct.T = type { [16 x i8], i8 }");
+
+  LirGlobal global;
+  global.name = "gstring_field";
+  global.qualifier = "global ";
+  global.llvm_type = "%struct.T";
+  global.init_text = "{ [16 x i8] c\"hello\\00\\00\\00\\00\\00\\00\\00\\00\\00\\00\\00\", i8 42 }";
+  global.align_bytes = 1;
+  module.globals.push_back(std::move(global));
+
+  LirFunction function;
+  function.name = "admitted_aggregate_string_array_field_global";
+  function.signature_text = "define i32 @admitted_aggregate_string_array_field_global()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = "0",
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_bad_local_memory_umbrella_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -1719,6 +1851,18 @@ int main() {
           expect_admitted_aggregate_pointer_field_global();
       aggregate_pointer_field_global_status != 0) {
     return aggregate_pointer_field_global_status;
+  }
+
+  if (const int aggregate_zero_sized_member_global_status =
+          expect_admitted_aggregate_zero_sized_member_global();
+      aggregate_zero_sized_member_global_status != 0) {
+    return aggregate_zero_sized_member_global_status;
+  }
+
+  if (const int aggregate_string_array_field_global_status =
+          expect_admitted_aggregate_string_array_field_global();
+      aggregate_string_array_field_global_status != 0) {
+    return aggregate_string_array_field_global_status;
   }
 
   if (const int local_memory_umbrella_status = expect_failure_notes(

@@ -619,6 +619,11 @@ bool lower_aggregate_initializer_recursive(
   }
 
   if (layout.kind == AggregateTypeLayout::Kind::Array) {
+    if (const auto integer_array_elements = lower_integer_array_initializer(trimmed_init, type_text);
+        integer_array_elements.has_value()) {
+      out->insert(out->end(), integer_array_elements->begin(), integer_array_elements->end());
+      return true;
+    }
     if (trimmed_init.front() != '[' || trimmed_init.back() != ']') {
       return false;
     }
