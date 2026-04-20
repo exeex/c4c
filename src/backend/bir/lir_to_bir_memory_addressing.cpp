@@ -116,6 +116,17 @@ BirFunctionLowerer::resolve_relative_gep_target(
     }
 
     if (layout.kind == AggregateTypeLayout::Kind::Scalar) {
+      if (index_pos == 0 && gep_element_type != current_type) {
+        const auto element_layout = compute_aggregate_type_layout(gep_element_type, type_decls);
+        if (element_layout.kind != AggregateTypeLayout::Kind::Scalar ||
+            element_layout.size_bytes == 0) {
+          return std::nullopt;
+        }
+        byte_offset +=
+            static_cast<std::int64_t>(element_layout.size_bytes) * *index_value;
+        current_type = gep_element_type;
+        continue;
+      }
       if (index_pos + 1 != gep.indices.size()) {
         return std::nullopt;
       }

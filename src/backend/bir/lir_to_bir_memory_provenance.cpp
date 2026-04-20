@@ -24,20 +24,27 @@ static bool can_address_scalar_subobject(std::int64_t byte_offset,
   if (byte_offset < 0) {
     return false;
   }
+  const auto access_size = type_size_bytes(access_type);
+  if (access_size == 0) {
+    return false;
+  }
   if (stored_type == access_type) {
     return true;
   }
   if (stored_type != bir::TypeKind::Void) {
-    return false;
+    const auto stored_size = type_size_bytes(stored_type);
+    if (stored_size == 0 ||
+        static_cast<std::size_t>(byte_offset) + access_size > stored_size) {
+      return false;
+    }
+    // Preserve byte-wise inspection/update of scalar object representations
+    // after pointer reinterpretation through unsigned char* style views.
+    return access_type == bir::TypeKind::I8;
   }
   if (allow_opaque_ptr_base && byte_offset == 0 && (type_text.empty() || type_text == "ptr")) {
     return true;
   }
 
-  const auto access_size = type_size_bytes(access_type);
-  if (access_size == 0) {
-    return false;
-  }
   const auto view_layout = compute_aggregate_type_layout(type_text, type_decls);
   if (view_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
       view_layout.size_bytes == 0) {

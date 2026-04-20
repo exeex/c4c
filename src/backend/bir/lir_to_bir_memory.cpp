@@ -365,16 +365,34 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
               .base_byte_offset = static_cast<std::size_t>(resolved_target->byte_offset),
               .leaf_slots = aggregate_it->second.leaf_slots,
           };
+          if (target_layout.kind == AggregateTypeLayout::Kind::Array) {
+            if (const auto array_slots = collect_local_scalar_array_slots(
+                    local_aggregate_slots[gep->result.str()].type_text,
+                    type_decls,
+                    local_aggregate_slots[gep->result.str()]);
+                array_slots.has_value()) {
+              local_pointer_array_bases[gep->result.str()] = LocalPointerArrayBase{
+                  .element_slots = *array_slots,
+                  .base_index = 0,
+              };
+            }
+          }
           const auto leaf_it = aggregate_it->second.leaf_slots.find(
               static_cast<std::size_t>(resolved_target->byte_offset));
           if (leaf_it != aggregate_it->second.leaf_slots.end()) {
-            local_slot_pointer_values[gep->result.str()] = LocalSlotAddress{
+            auto subobject_address = LocalSlotAddress{
                 .slot_name = leaf_it->second,
                 .value_type = bir::TypeKind::Void,
                 .byte_offset = 0,
                 .storage_type_text = aggregate_it->second.storage_type_text,
                 .type_text = local_aggregate_slots[gep->result.str()].type_text,
             };
+            if (const auto array_base_it = local_pointer_array_bases.find(gep->result.str());
+                array_base_it != local_pointer_array_bases.end()) {
+              subobject_address.array_element_slots = array_base_it->second.element_slots;
+              subobject_address.array_base_index = array_base_it->second.base_index;
+            }
+            local_slot_pointer_values[gep->result.str()] = std::move(subobject_address);
           }
           established_aggregate_subobject = true;
         }

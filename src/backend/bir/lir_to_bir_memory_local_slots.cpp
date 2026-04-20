@@ -417,6 +417,43 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
     const LocalPointerArrayBaseMap& local_pointer_array_bases,
     const LocalAggregateSlotMap& local_aggregate_slots,
     std::vector<bir::Inst>* lowered_insts) {
+  const auto build_memcpy_leaf_view_from_aggregate =
+      [&](const LocalAggregateSlots& aggregate_slots) -> std::optional<LocalMemcpyLeafView> {
+    const auto aggregate_layout =
+        lower_byval_aggregate_layout(aggregate_slots.type_text, type_decls);
+    if (!aggregate_layout.has_value()) {
+      return std::nullopt;
+    }
+    LocalMemcpyLeafView view{
+        .size_bytes = aggregate_layout->size_bytes,
+    };
+    std::vector<std::pair<std::size_t, std::string>> leaves;
+    leaves.reserve(aggregate_slots.leaf_slots.size());
+    const auto begin_offset = aggregate_slots.base_byte_offset;
+    const auto end_offset = begin_offset + aggregate_layout->size_bytes;
+    for (const auto& [byte_offset, slot_name] : aggregate_slots.leaf_slots) {
+      if (byte_offset < begin_offset || byte_offset >= end_offset) {
+        continue;
+      }
+      leaves.push_back({byte_offset - begin_offset, slot_name});
+    }
+    std::sort(leaves.begin(),
+              leaves.end(),
+              [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+    view.leaves.reserve(leaves.size());
+    for (const auto& [byte_offset, slot_name] : leaves) {
+      const auto slot_type_it = local_slot_types.find(slot_name);
+      if (slot_type_it == local_slot_types.end()) {
+        return std::nullopt;
+      }
+      view.leaves.push_back(LocalMemcpyLeaf{
+          .byte_offset = byte_offset,
+          .type = slot_type_it->second,
+          .slot_name = slot_name,
+      });
+    }
+    return view;
+  };
   const auto resolve_local_array_view =
       [&](std::string_view operand) -> std::optional<LocalArrayView> {
     if (const auto array_it = local_array_slots.find(std::string(operand));
@@ -510,51 +547,33 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
       [&](std::string_view operand) -> std::optional<LocalMemcpyLeafView> {
     if (const auto aggregate_it = local_aggregate_slots.find(std::string(operand));
         aggregate_it != local_aggregate_slots.end()) {
-      const auto aggregate_layout =
-          lower_byval_aggregate_layout(aggregate_it->second.type_text, type_decls);
-      if (!aggregate_layout.has_value()) {
-        return std::nullopt;
-      }
-      LocalMemcpyLeafView view{
-          .size_bytes = aggregate_layout->size_bytes,
-      };
-      const auto collect_sorted_leaf_slots_for_memops =
-          [&](const LocalAggregateSlots& aggregate_slots)
-          -> std::vector<std::pair<std::size_t, std::string>> {
-        const auto layout = lower_byval_aggregate_layout(aggregate_slots.type_text, type_decls);
-        if (!layout.has_value()) {
-          return {};
-        }
+      return build_memcpy_leaf_view_from_aggregate(aggregate_it->second);
+    }
 
-        const auto begin_offset = aggregate_slots.base_byte_offset;
-        const auto end_offset = begin_offset + layout->size_bytes;
-        std::vector<std::pair<std::size_t, std::string>> leaves;
-        leaves.reserve(aggregate_slots.leaf_slots.size());
-        for (const auto& [byte_offset, slot_name] : aggregate_slots.leaf_slots) {
-          if (byte_offset < begin_offset || byte_offset >= end_offset) {
-            continue;
-          }
-          leaves.push_back({byte_offset - begin_offset, slot_name});
+    if (const auto ptr_it = local_pointer_slots.find(std::string(operand));
+        ptr_it != local_pointer_slots.end()) {
+      const LocalAggregateSlots* best_match = nullptr;
+      std::size_t best_size = 0;
+      for (const auto& [aggregate_name, aggregate_slots] : local_aggregate_slots) {
+        (void)aggregate_name;
+        const auto base_leaf_it = aggregate_slots.leaf_slots.find(aggregate_slots.base_byte_offset);
+        if (base_leaf_it == aggregate_slots.leaf_slots.end() ||
+            base_leaf_it->second != ptr_it->second) {
+          continue;
         }
-        std::sort(leaves.begin(),
-                  leaves.end(),
-                  [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
-        return leaves;
-      };
-      const auto leaf_slots = collect_sorted_leaf_slots_for_memops(aggregate_it->second);
-      view.leaves.reserve(leaf_slots.size());
-      for (const auto& [byte_offset, slot_name] : leaf_slots) {
-        const auto slot_type_it = local_slot_types.find(slot_name);
-        if (slot_type_it == local_slot_types.end()) {
-          return std::nullopt;
+        const auto aggregate_layout =
+            lower_byval_aggregate_layout(aggregate_slots.type_text, type_decls);
+        if (!aggregate_layout.has_value()) {
+          continue;
         }
-        view.leaves.push_back(LocalMemcpyLeaf{
-            .byte_offset = byte_offset,
-            .type = slot_type_it->second,
-            .slot_name = slot_name,
-        });
+        if (best_match == nullptr || aggregate_layout->size_bytes < best_size) {
+          best_match = &aggregate_slots;
+          best_size = aggregate_layout->size_bytes;
+        }
       }
-      return view;
+      if (best_match != nullptr) {
+        return build_memcpy_leaf_view_from_aggregate(*best_match);
+      }
     }
 
     const auto array_view = resolve_local_array_view(operand);
@@ -1631,6 +1650,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
       .byte_offset = 0,
       .element_count = array_base_it->second.element_slots.size(),
       .element_stride_bytes = element_size,
+      .index = *index_value,
   };
   for (std::size_t element_index = 0; element_index < array_base_it->second.element_slots.size();
        ++element_index) {
