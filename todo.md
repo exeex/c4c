@@ -3,25 +3,27 @@
 Status: Active
 Source Idea Path: ideas/open/59_generic_scalar_instruction_selection_for_x86.md
 Source Plan Path: plan.md
-Current Step ID: 3.4
-Current Step Title: Audit Remaining Scalar Family Seams And Hand Off
+Current Step ID: 4
+Current Step Title: Migrate Covered Terminator And Call Families
 Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 3.3 extracted the bounded same-module helper lane in
-`prepared_local_slot_render.cpp` into a named per-inst dispatcher,
-`render_supported_helper_inst`, so the helper-function loop now routes its
-covered scalar binary and same-module `i32` store families through one local
-instruction-selection surface instead of open-coding those families inline.
+Step 3.4 audited `prepared_local_slot_render.cpp` for any remaining real
+covered scalar instruction-family seam and concluded Step 3 is structurally
+exhausted. The active prepared single-block route already sends supported
+scalar load/store, binary, and cast families through the named per-op helper
+surfaces in this file, and the remaining inline work in that route is the call
+lane plus branch/return terminator handling that belongs to Step 4.
 
 ## Suggested Next
 
-Execute Step 3.4 by auditing `prepared_local_slot_render.cpp` for any real
-remaining covered scalar instruction-family seam; if no such seam remains,
-close out Step 3 and move the next packet to Step 4 call or terminator
-migration instead of forcing another helper-only refactor.
+Execute Step 4 with one bounded call or terminator migration packet in the
+prepared single-block route. The strongest next seam is the inline same-module
+helper/direct-call lane inside `render_block`, keeping the packet limited to
+prepared per-call selection rather than reopening scalar instruction-family
+work.
 
 ## Watchouts
 
@@ -32,13 +34,10 @@ migration instead of forcing another helper-only refactor.
   reopening upstream ownership from ideas 58, 60, or 61.
 - Prefer one coherent instruction-family migration per packet over broad
   emitter rewrites.
-- The new same-module helper dispatcher is intentionally limited to the
-  already-covered scalar binary and same-module `i32` store families inside
-  the bounded helper-function lane; do not widen it into call-lane, terminator,
-  or unrelated whole-block ownership.
-- The scalar load/store helpers and the bounded helper dispatcher now form the
-  main Step 3 per-op surfaces in this file; any follow-up should prove a real
-  uncovered scalar family remains before adding another extraction packet.
+- Step 3 is closed out by audit, so follow-up should stay on Step 4 call or
+  terminator migration instead of forcing another scalar helper extraction.
+- Keep Step 4 focused on prepared per-call or per-terminator selection in the
+  active route, not on widening legacy whole-function fallback families.
 - The matching `^backend_` before/after logs are not fully green: both
   `test_before.log` and `test_after.log` fail in
   `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
@@ -50,10 +49,9 @@ migration instead of forcing another helper-only refactor.
 
 Ran the proof command `cmake --build --preset default && ctest --test-dir
 build -j --output-on-failure -R '^backend_' 2>&1 | tee
-/workspaces/c4c/test_after.log`. The build completed successfully after this
-Step 3 bounded same-module helper dispatcher slice. The final `^backend_`
-subset in `test_after.log` matched the accepted `test_before.log` failure set
-exactly:
+/workspaces/c4c/test_after.log`. The build completed successfully after the
+Step 3.4 audit. The final `^backend_` subset in `test_after.log` matched the
+accepted `test_before.log` failure set exactly, with no new failures:
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
 `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
 `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`,
