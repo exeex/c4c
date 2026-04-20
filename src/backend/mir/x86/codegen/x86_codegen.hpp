@@ -792,6 +792,87 @@ std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_i
 std::optional<std::string> render_prepared_single_block_return_dispatch_if_supported(
     const PreparedX86FunctionDispatchContext& context);
 
+struct PreparedBoundedMultiDefinedCurrentI32Carrier {
+  std::string_view value_name;
+  std::optional<std::string> register_name;
+  std::optional<std::string> stack_operand;
+};
+
+inline const c4c::backend::prepare::PreparedValueHome*
+find_prepared_bounded_multi_defined_named_value_home(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    std::string_view value_name) {
+  return c4c::backend::prepare::find_prepared_value_home(module.names, function_locations, value_name);
+}
+
+inline bool finalize_prepared_bounded_multi_defined_call_result_if_supported(
+    const c4c::backend::bir::CallInst& call,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    std::string* body,
+    std::optional<PreparedBoundedMultiDefinedCurrentI32Carrier>* current_i32) {
+  if (!call.result.has_value() || call.result->type != c4c::backend::bir::TypeKind::I32 ||
+      call.result->kind != c4c::backend::bir::Value::Kind::Named) {
+    *current_i32 = std::nullopt;
+    return true;
+  }
+
+  const auto* result_home = find_prepared_bounded_multi_defined_named_value_home(
+      module, function_locations, call.result->name);
+  const auto call_result_selection = select_prepared_i32_call_result_abi_if_supported(
+      &function_locations, instruction_index, result_home);
+  if (!call_result_selection.has_value()) {
+    throw std::invalid_argument(std::string(kPreparedCallBundleHandoffRequired));
+  }
+  if (call_result_selection->move != nullptr) {
+    if (call_result_selection->move->destination_storage_kind !=
+        c4c::backend::prepare::PreparedMoveStorageKind::Register) {
+      return false;
+    }
+    if (result_home == nullptr) {
+      return false;
+    }
+    if (result_home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+        result_home->register_name.has_value()) {
+      const auto home_register = narrow_i32_register(*result_home->register_name);
+      if (!home_register.has_value()) {
+        return false;
+      }
+      if (*home_register != call_result_selection->abi_register) {
+        *body += "    mov " + *home_register + ", " + call_result_selection->abi_register + "\n";
+      }
+      *current_i32 = PreparedBoundedMultiDefinedCurrentI32Carrier{
+          .value_name = call.result->name,
+          .register_name = *home_register,
+          .stack_operand = std::nullopt,
+      };
+      return true;
+    }
+    if (result_home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+        result_home->offset_bytes.has_value()) {
+      const auto stack_operand =
+          render_prepared_stack_memory_operand(*result_home->offset_bytes, "DWORD");
+      *body += "    mov " + stack_operand + ", " + call_result_selection->abi_register + "\n";
+      *current_i32 = PreparedBoundedMultiDefinedCurrentI32Carrier{
+          .value_name = call.result->name,
+          .register_name = std::nullopt,
+          .stack_operand = stack_operand,
+      };
+      return true;
+    }
+    return false;
+  }
+
+  *current_i32 = PreparedBoundedMultiDefinedCurrentI32Carrier{
+      .value_name = call.result->name,
+      .register_name = call_result_selection->abi_register,
+      .stack_operand = std::nullopt,
+  };
+  return true;
+}
+
 inline std::optional<PreparedBoundedMultiDefinedCallLaneRender>
 render_prepared_bounded_multi_defined_call_lane_body_if_supported(
     const c4c::backend::prepare::PreparedBirModule& module,
@@ -810,17 +891,12 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
   PreparedBoundedMultiDefinedCallLaneRender rendered{
       .body = "    sub rsp, " + std::to_string(local_layout.frame_size + 8) + "\n",
   };
-  struct CurrentI32Carrier {
-    std::string_view value_name;
-    std::optional<std::string> register_name;
-    std::optional<std::string> stack_operand;
-  };
   struct NamedI32Source {
     std::optional<std::string> register_name;
     std::optional<std::string> stack_operand;
     std::optional<std::int64_t> immediate_i32;
   };
-  std::optional<CurrentI32Carrier> current_i32;
+  std::optional<PreparedBoundedMultiDefinedCurrentI32Carrier> current_i32;
   const auto note_once = [](std::vector<std::string>* names, std::string_view name) {
     const auto it = std::find(names->begin(), names->end(), std::string(name));
     if (it == names->end()) {
@@ -829,7 +905,7 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
   };
   const auto find_named_value_home =
       [&](std::string_view value_name) -> const c4c::backend::prepare::PreparedValueHome* {
-    return c4c::backend::prepare::find_prepared_value_home(module.names, function_locations, value_name);
+    return find_prepared_bounded_multi_defined_named_value_home(module, function_locations, value_name);
   };
   const auto source_for_named_i32 = [&](std::string_view value_name) -> std::optional<NamedI32Source> {
     if (current_i32.has_value() && current_i32->value_name == value_name) {
@@ -1008,60 +1084,9 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
       rendered.body += "    call ";
       rendered.body += render_asm_symbol_name(callee_name);
       rendered.body += "\n";
-      if (call->result.has_value() && call->result->type == c4c::backend::bir::TypeKind::I32 &&
-          call->result->kind == c4c::backend::bir::Value::Kind::Named) {
-        const auto* result_home = find_named_value_home(call->result->name);
-        const auto call_result_selection = select_prepared_i32_call_result_abi_if_supported(
-            &function_locations, instruction_index, result_home);
-        if (!call_result_selection.has_value()) {
-          throw std::invalid_argument(std::string(kPreparedCallBundleHandoffRequired));
-        }
-        if (call_result_selection->move != nullptr) {
-          if (call_result_selection->move->destination_storage_kind !=
-              c4c::backend::prepare::PreparedMoveStorageKind::Register) {
-            return std::nullopt;
-          }
-          if (result_home == nullptr) {
-            return std::nullopt;
-          }
-          if (result_home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
-              result_home->register_name.has_value()) {
-            const auto home_register = narrow_i32_register(*result_home->register_name);
-            if (!home_register.has_value()) {
-              return std::nullopt;
-            }
-            if (*home_register != call_result_selection->abi_register) {
-              rendered.body +=
-                  "    mov " + *home_register + ", " + call_result_selection->abi_register + "\n";
-            }
-            current_i32 = CurrentI32Carrier{
-                .value_name = call->result->name,
-                .register_name = *home_register,
-                .stack_operand = std::nullopt,
-            };
-          } else if (result_home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-                     result_home->offset_bytes.has_value()) {
-            const auto stack_operand =
-                render_prepared_stack_memory_operand(*result_home->offset_bytes, "DWORD");
-            rendered.body +=
-                "    mov " + stack_operand + ", " + call_result_selection->abi_register + "\n";
-            current_i32 = CurrentI32Carrier{
-                .value_name = call->result->name,
-                .register_name = std::nullopt,
-                .stack_operand = stack_operand,
-            };
-          } else {
-            return std::nullopt;
-          }
-        } else {
-          current_i32 = CurrentI32Carrier{
-              .value_name = call->result->name,
-              .register_name = call_result_selection->abi_register,
-              .stack_operand = std::nullopt,
-          };
-        }
-      } else {
-        current_i32 = std::nullopt;
+      if (!finalize_prepared_bounded_multi_defined_call_result_if_supported(
+              *call, instruction_index, module, function_locations, &rendered.body, &current_i32)) {
+        return std::nullopt;
       }
       continue;
     }
@@ -1106,7 +1131,7 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
       return std::nullopt;
     }
     rendered.body += "    mov eax, " + *memory + "\n";
-    current_i32 = CurrentI32Carrier{
+    current_i32 = PreparedBoundedMultiDefinedCurrentI32Carrier{
         .value_name = load->result.name,
         .register_name = std::string("eax"),
         .stack_operand = std::nullopt,
