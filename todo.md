@@ -5,26 +5,28 @@ Source Idea Path: ideas/open/59_generic_scalar_instruction_selection_for_x86.md
 Source Plan Path: plan.md
 Current Step ID: 4.4
 Current Step Title: Finish Remaining Covered Branch And Residual Call Families
-Plan Review Counter: 0 / 10
+Plan Review Counter: 1 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 4.4 moved the covered cond-branch plan-selection seam out of
-`render_prepared_block_cond_branch_terminator_if_supported` in
-`prepared_local_slot_render.cpp`: the block terminator now delegates
-short-circuit-vs-plain-cond render-plan selection to
-`select_prepared_block_cond_branch_render_if_supported` instead of
-open-coding both branch-plan paths inline before rendering.
+Step 4.4 moved the nearby covered `Branch` compare-join vs plain-branch
+handoff out of the main block renderer in
+`prepared_local_slot_render.cpp`: `render_prepared_local_slot_guard_chain_if_supported`
+now delegates that per-terminator decision to
+`select_prepared_block_branch_render_if_supported` and
+`render_prepared_block_branch_terminator_if_supported` instead of open-coding
+the compare-join render-plan build inline before falling back to the plain
+branch path.
 
 ## Suggested Next
 
-Keep Step 4.4 in `prepared_local_slot_render.cpp`, but limit the next packet to
-a short audit of whether the nearby plain-branch or compare-join block-target
-handoff still owns one more real covered per-terminator seam; if the remaining
-logic is only target recursion or final block rendering glue after that audit,
-hand the following packet to the next residual covered Step 4.4 route instead
-of forcing another thin helper split.
+Treat this nearby branch-terminator helper lane in
+`prepared_local_slot_render.cpp` as structurally exhausted for Step 4.4 unless
+the next audit finds a genuinely new prepared per-terminator selector
+contract; otherwise move the next packet to the remaining residual covered
+Step 4.4 call or terminator route instead of forcing another thin branch-only
+helper extraction.
 
 ## Watchouts
 
@@ -47,6 +49,10 @@ of forcing another thin helper split.
 - Step 4 should keep moving the active route toward prepared per-call or
   per-terminator selection, not back into Step 3 scalar family cleanup or
   into broad single-block fallback rewrites.
+- The nearby branch compare-join/plain-branch handoff now has an explicit
+  helper seam; do not spend another packet on that area unless a new
+  authoritative prepared selector boundary appears beyond target recursion or
+  final block-render glue.
 - The matching `^backend_` before/after logs are not fully green: both
   `test_before.log` and `test_after.log` fail in
   `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
@@ -59,7 +65,7 @@ of forcing another thin helper split.
 Ran the proof command `cmake --build --preset default && ctest --test-dir
 build -j --output-on-failure -R '^backend_' 2>&1 | tee
 /workspaces/c4c/test_after.log`. The build completed successfully after this
-Step 4.4 cond-branch render-plan selection helper extraction. The final
+Step 4.4 branch compare-join/plain-branch helper extraction. The final
 `^backend_` subset in `test_after.log` preserved the accepted
 `test_before.log` failure set exactly, with no new failures:
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
