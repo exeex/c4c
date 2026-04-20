@@ -642,10 +642,6 @@ std::string emit_prepared_module(
     if (!lhs_is_param_rhs_is_imm && !rhs_is_param_lhs_is_imm) {
       return std::nullopt;
     }
-    if (!source_param_home->register_name.has_value()) {
-      return std::nullopt;
-    }
-
     const auto* before_instruction_bundle = c4c::backend::prepare::find_prepared_move_bundle(
         *function_locations,
         c4c::backend::prepare::PreparedMovePhase::BeforeInstruction,
@@ -666,9 +662,15 @@ std::string emit_prepared_module(
 
     const auto immediate = lhs_is_param_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
     std::string body;
-    if (*instruction_destination_register != *source_param_home->register_name) {
+    if (source_param_home->register_name.has_value() &&
+        *instruction_destination_register != *source_param_home->register_name) {
       body += "    mov " + *instruction_destination_register + ", " +
               *source_param_home->register_name + "\n";
+    } else if (source_param_home->stack_operand.has_value()) {
+      body += "    mov " + *instruction_destination_register + ", " +
+              *source_param_home->stack_operand + "\n";
+    } else {
+      return std::nullopt;
     }
     if (binary->opcode == c4c::backend::bir::BinaryOpcode::Add) {
       body += "    add " + *instruction_destination_register + ", " +
@@ -703,7 +705,7 @@ std::string emit_prepared_module(
     if (*return_destination_register != *instruction_destination_register) {
       body += "    mov " + *return_destination_register + ", " + *instruction_destination_register + "\n";
     }
-    return render_frame_wrapped_return(body, 0);
+    return render_frame_wrapped_return(body, source_param_home->frame_size);
   };
   if (const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*>
           named_binaries;

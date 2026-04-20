@@ -144,6 +144,18 @@ std::string expected_minimal_param_binary_asm(const char* function_name,
          minimal_i32_return_register() + ", r11d\n    ret\n";
 }
 
+std::string expected_minimal_stack_home_param_binary_asm(const char* function_name,
+                                                         const char* mnemonic,
+                                                         int immediate,
+                                                         std::size_t frame_size,
+                                                         std::size_t byte_offset) {
+  return asm_header(function_name) + "    sub rsp, " + std::to_string(frame_size) + "\n    mov r11d, " +
+         c4c::backend::x86::render_prepared_stack_memory_operand(byte_offset, "DWORD") + "\n    " +
+         mnemonic + " r11d, " + std::to_string(immediate) + "\n    mov " +
+         minimal_i32_return_register() + ", r11d\n    add rsp, " + std::to_string(frame_size) +
+         "\n    ret\n";
+}
+
 int check_add_one_prepared_move_bundle_contract() {
   const auto prepared =
       prepare::prepare_semantic_bir_module_with_options(make_x86_param_add_immediate_module(),
@@ -259,6 +271,46 @@ int check_id_i32_stack_home_passthrough_consumes_prepared_value_location_contrac
   const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
   if (prepared_asm != expected_minimal_stack_home_passthrough_asm("id_i32", 4, 0)) {
     return fail("stack-backed i32 parameter passthrough route: x86 prepared-module consumer stopped following authoritative prepared stack homes");
+  }
+
+  return 0;
+}
+
+int check_add_one_stack_home_consumes_prepared_value_location_contract() {
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(make_x86_param_add_immediate_module(),
+                                                        x86_target_profile());
+  if (prepared.value_locations.functions.empty()) {
+    return fail("stack-backed i32 add-immediate route: missing prepared value-location function");
+  }
+
+  const auto value_name_id = prepare::resolve_prepared_value_name_id(prepared.names, "p.x");
+  if (!value_name_id.has_value()) {
+    return fail("stack-backed i32 add-immediate route: missing prepared parameter name id");
+  }
+
+  auto& function_locations = prepared.value_locations.functions.front();
+  prepare::PreparedValueHome* param_home = nullptr;
+  for (auto& candidate : function_locations.value_homes) {
+    if (candidate.value_name == *value_name_id) {
+      param_home = &candidate;
+      break;
+    }
+  }
+  if (param_home == nullptr) {
+    return fail("stack-backed i32 add-immediate route: missing prepared parameter home");
+  }
+
+  param_home->kind = prepare::PreparedValueHomeKind::StackSlot;
+  param_home->register_name.reset();
+  param_home->slot_id = 0;
+  param_home->offset_bytes = 0;
+  prepared.stack_layout.frame_size_bytes = 4;
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm !=
+      expected_minimal_stack_home_param_binary_asm("add_one", "add", 1, 4, 0)) {
+    return fail("stack-backed i32 add-immediate route: x86 prepared-module consumer stopped following authoritative prepared stack homes");
   }
 
   return 0;
@@ -677,6 +729,11 @@ int run_backend_x86_handoff_boundary_scalar_smoke_tests() {
   }
   if (const auto status =
           check_id_i32_stack_home_passthrough_consumes_prepared_value_location_contract();
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_add_one_stack_home_consumes_prepared_value_location_contract();
       status != 0) {
     return status;
   }
