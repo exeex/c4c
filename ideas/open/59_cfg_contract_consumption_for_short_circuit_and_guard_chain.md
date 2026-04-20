@@ -44,6 +44,7 @@ Guard-chain handoff failures:
 - `c_testsuite_x86_backend_src_00057_c`
 - `c_testsuite_x86_backend_src_00092_c`
 - `c_testsuite_x86_backend_src_00093_c`
+- `c_testsuite_x86_backend_src_00088_c`
 
 ## Scope Notes
 

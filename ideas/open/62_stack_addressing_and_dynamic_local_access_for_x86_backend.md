@@ -30,6 +30,7 @@ Named cases already identified in this family:
 
 - `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`
 - `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`
+- `c_testsuite_x86_backend_src_00040_c`
 
 As additional stack/addressing-related backend c-testsuite cases are confirmed
 to fail for the same underlying reason, they should be routed here instead of

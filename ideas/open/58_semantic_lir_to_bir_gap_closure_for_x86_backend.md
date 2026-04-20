@@ -34,11 +34,8 @@ Representative named failures already observed in this cluster:
 - `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`
 - `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`
 - `c_testsuite_x86_backend_src_00037_c`
-- `c_testsuite_x86_backend_src_00040_c`
-- `c_testsuite_x86_backend_src_00045_c`
 - `c_testsuite_x86_backend_src_00050_c`
 - `c_testsuite_x86_backend_src_00051_c`
-- `c_testsuite_x86_backend_src_00088_c`
 - `c_testsuite_x86_backend_src_00089_c`
 - `c_testsuite_x86_backend_src_00095_c`
 - `c_testsuite_x86_backend_src_00207_c`
@@ -47,6 +44,18 @@ Representative named failures already observed in this cluster:
 This idea also owns any other current backend c-testsuite failures that report
 the same diagnostic family and are not more precisely split into the dedicated
 stack/addressing leaf in idea 62.
+
+## Routing Checkpoint
+
+The current lifecycle checkpoint after the bootstrap-global lowering repair is:
+
+- `c_testsuite_x86_backend_src_00040_c` now fails in `chk` in the `gep
+  local-memory semantic family` and is better described by idea 62's
+  stack/addressing ownership.
+- `c_testsuite_x86_backend_src_00045_c` now reaches x86 prepared emission and
+  fails under idea 60's minimal single-block terminator restriction.
+- `c_testsuite_x86_backend_src_00088_c` now reaches x86 prepared emission and
+  fails under idea 59's authoritative prepared guard-chain handoff family.
 
 ## Scope Notes
 

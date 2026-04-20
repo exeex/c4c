@@ -37,6 +37,7 @@ Minimal single-block terminator / branch restriction examples:
 - `c_testsuite_x86_backend_src_00035_c`
 - `c_testsuite_x86_backend_src_00036_c`
 - `c_testsuite_x86_backend_src_00041_c`
+- `c_testsuite_x86_backend_src_00045_c`
 - `c_testsuite_x86_backend_src_00058_c`
 - `c_testsuite_x86_backend_src_00066_c`
 - `c_testsuite_x86_backend_src_00081_c`
