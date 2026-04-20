@@ -134,6 +134,20 @@ const prepare::PreparedMoveResolution* find_move_resolution(
   return nullptr;
 }
 
+const prepare::PreparedMoveResolution* find_move_resolution_by_op_kind(
+    const prepare::PreparedRegallocFunction& function,
+    prepare::PreparedMoveResolutionOpKind op_kind,
+    prepare::PreparedValueId from_value_id,
+    prepare::PreparedValueId to_value_id) {
+  for (const auto& move : function.move_resolution) {
+    if (move.op_kind == op_kind && move.from_value_id == from_value_id &&
+        move.to_value_id == to_value_id) {
+      return &move;
+    }
+  }
+  return nullptr;
+}
+
 int count_move_resolution_reason_prefix_to_value(
     const prepare::PreparedRegallocFunction& function,
     prepare::PreparedValueId to_value_id,
@@ -1753,9 +1767,26 @@ int check_phi_loop_cycle_move_resolution(const prepare::PreparedBirModule& prepa
     return fail("expected loop phi cycle resolution to publish move-resolution bookkeeping");
   }
 
+  const auto* save_a_to_temp = find_move_resolution_by_op_kind(
+      *function,
+      prepare::PreparedMoveResolutionOpKind::SaveDestinationToTemp,
+      a->value_id,
+      a->value_id);
+  if (save_a_to_temp == nullptr ||
+      !move_resolution_reason_has_prefix(*save_a_to_temp, "phi_loop_carry_save_destination_to_temp")) {
+    return fail("expected the loop backedge to publish an explicit move-resolution temp-save contract");
+  }
+  if (save_a_to_temp->uses_cycle_temp_source ||
+      save_a_to_temp->destination_kind != prepare::PreparedMoveDestinationKind::Value) {
+    return fail("expected the temp-save contract to publish a first-class save step without reopening a special destination surface");
+  }
+
   const auto* b_to_a = find_move_resolution(*function, b->value_id, a->value_id);
   if (b_to_a == nullptr || !move_resolution_reason_has_prefix(*b_to_a, "phi_loop_carry_")) {
     return fail("expected the direct backedge move to use authoritative loop-carry move resolution");
+  }
+  if (b_to_a->op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
+    return fail("expected the direct backedge move to stay a normal move-resolution operation");
   }
   if (b_to_a->uses_cycle_temp_source) {
     return fail("expected the first backedge move to read directly from the original incoming value");
@@ -1765,6 +1796,9 @@ int check_phi_loop_cycle_move_resolution(const prepare::PreparedBirModule& prepa
   if (a_to_b == nullptr ||
       !move_resolution_reason_has_prefix(*a_to_b, "phi_loop_carry_cycle_temp_")) {
     return fail("expected the cycle-broken backedge move to record the authoritative cycle-temp source");
+  }
+  if (a_to_b->op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
+    return fail("expected the cycle-broken backedge transfer to stay a normal move-resolution operation");
   }
   if (!a_to_b->uses_cycle_temp_source) {
     return fail("expected the cycle-broken backedge move to publish first-class cycle-temp sourcing");

@@ -187,10 +187,12 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                                    std::size_t block_index,
                                    std::size_t instruction_index,
                                    bool uses_cycle_temp_source,
+                                   PreparedMoveResolutionOpKind op_kind,
                                    std::string reason) {
   if (assigned_storage_kind(source) == PreparedMoveStorageKind::None ||
       assigned_storage_kind(destination) == PreparedMoveStorageKind::None ||
-      assigned_storage_matches(source, destination)) {
+      (op_kind == PreparedMoveResolutionOpKind::Move &&
+       assigned_storage_matches(source, destination))) {
     return;
   }
 
@@ -204,6 +206,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                !move.destination_abi_index.has_value() &&
                !move.destination_register_name.has_value() &&
                move.uses_cycle_temp_source == uses_cycle_temp_source &&
+               move.op_kind == op_kind &&
                move.block_index == block_index &&
                move.instruction_index == instruction_index;
       });
@@ -221,6 +224,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       .block_index = block_index,
       .instruction_index = instruction_index,
       .uses_cycle_temp_source = uses_cycle_temp_source,
+      .op_kind = op_kind,
       .reason = std::move(reason),
   });
 }
@@ -236,6 +240,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                                    std::size_t block_index,
                                    std::size_t instruction_index,
                                    bool uses_cycle_temp_source,
+                                   PreparedMoveResolutionOpKind op_kind,
                                    std::string reason) {
   if (from_kind == PreparedMoveStorageKind::None || to_kind == PreparedMoveStorageKind::None) {
     return;
@@ -252,7 +257,8 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                move.destination_register_name == destination_register_name &&
                move.block_index == block_index &&
                move.instruction_index == instruction_index &&
-               move.uses_cycle_temp_source == uses_cycle_temp_source;
+               move.uses_cycle_temp_source == uses_cycle_temp_source &&
+               move.op_kind == op_kind;
       });
   if (duplicate != regalloc_function.move_resolution.end()) {
     return;
@@ -268,6 +274,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       .block_index = block_index,
       .instruction_index = instruction_index,
       .uses_cycle_temp_source = uses_cycle_temp_source,
+      .op_kind = op_kind,
       .reason = std::move(reason),
   });
 }
@@ -659,6 +666,12 @@ void append_prepared_move_bundle(PreparedValueLocationFunction& function_locatio
   return prefix;
 }
 
+[[nodiscard]] std::string phi_temp_save_reason(const PreparedJoinTransfer& join_transfer) {
+  std::string prefix = phi_transfer_reason_prefix(join_transfer, false);
+  prefix += "_save_destination_to_temp";
+  return prefix;
+}
+
 void append_phi_move_resolution(const PreparedNameTables& names,
                                 const bir::Function& function,
                                 const PreparedControlFlowFunction& function_cf,
@@ -670,13 +683,12 @@ void append_phi_move_resolution(const PreparedNameTables& names,
     }
 
     for (const auto& step : bundle.steps) {
-      if (step.kind != PreparedParallelCopyStepKind::Move || step.move_index >= bundle.moves.size()) {
+      if (step.move_index >= bundle.moves.size()) {
         continue;
       }
 
       const auto& move = bundle.moves[step.move_index];
       if (move.join_transfer_index >= function_cf.join_transfers.size() ||
-          move.source_value.kind != bir::Value::Kind::Named ||
           move.destination_value.kind != bir::Value::Kind::Named) {
         continue;
       }
@@ -699,6 +711,23 @@ void append_phi_move_resolution(const PreparedNameTables& names,
         continue;
       }
 
+      if (step.kind == PreparedParallelCopyStepKind::SaveDestinationToTemp) {
+        append_move_resolution_record(regalloc_function,
+                                      *destination,
+                                      *destination,
+                                      *predecessor_block_index,
+                                      instruction_index,
+                                      false,
+                                      PreparedMoveResolutionOpKind::SaveDestinationToTemp,
+                                      phi_temp_save_reason(join_transfer));
+        continue;
+      }
+
+      if (step.kind != PreparedParallelCopyStepKind::Move ||
+          move.source_value.kind != bir::Value::Kind::Named) {
+        continue;
+      }
+
       const auto* source = find_regalloc_value(regalloc_function, names, move.source_value.name);
       if (source == nullptr || assigned_storage_kind(*source) == PreparedMoveStorageKind::None ||
           assigned_storage_matches(*source, *destination)) {
@@ -712,6 +741,7 @@ void append_phi_move_resolution(const PreparedNameTables& names,
           *predecessor_block_index,
           instruction_index,
           step.uses_cycle_temp_source,
+          PreparedMoveResolutionOpKind::Move,
           storage_transfer_reason(
               phi_transfer_reason_prefix(join_transfer, step.uses_cycle_temp_source), *source, *destination));
     }
@@ -768,6 +798,7 @@ void append_consumer_move_resolution(const PreparedNameTables& names,
                                     block_index,
                                     instruction_index,
                                     false,
+                                    PreparedMoveResolutionOpKind::Move,
                                     storage_transfer_reason("consumer", *source, *destination));
     }
   };
@@ -892,6 +923,7 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
                                       block_index,
                                       instruction_index,
                                       false,
+                                      PreparedMoveResolutionOpKind::Move,
                                       storage_transfer_reason("call_arg",
                                                               source_kind,
                                                               consumed_kind));
@@ -939,6 +971,7 @@ void append_call_result_move_resolution(const PreparedNameTables& names,
                                     block_index,
                                     instruction_index,
                                     false,
+                                    PreparedMoveResolutionOpKind::Move,
                                     storage_transfer_reason("call_result",
                                                             source_kind,
                                                             consumed_kind));
@@ -988,6 +1021,7 @@ void append_return_move_resolution(const PreparedNameTables& names,
                                   block_index,
                                   block.insts.size(),
                                   false,
+                                  PreparedMoveResolutionOpKind::Move,
                                   storage_transfer_reason("return",
                                                           source_kind,
                                                           consumed_kind));

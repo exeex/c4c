@@ -487,6 +487,11 @@ enum class PreparedMoveDestinationKind {
   FunctionReturnAbi,
 };
 
+enum class PreparedMoveResolutionOpKind {
+  Move,
+  SaveDestinationToTemp,
+};
+
 struct PreparedMoveResolution {
   PreparedValueId from_value_id = 0;
   PreparedValueId to_value_id = 0;
@@ -497,6 +502,7 @@ struct PreparedMoveResolution {
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
   bool uses_cycle_temp_source = false;
+  PreparedMoveResolutionOpKind op_kind = PreparedMoveResolutionOpKind::Move;
   std::string reason;
 };
 
