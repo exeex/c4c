@@ -3044,6 +3044,7 @@ render_prepared_bounded_multi_defined_call_lane_module_if_supported(
 
 std::optional<PreparedBoundedSameModuleHelperPrefixRender>
 render_prepared_bounded_same_module_helper_prefix_if_supported(
+    const c4c::backend::prepare::PreparedBirModule& module,
     const std::vector<const c4c::backend::bir::Function*>& defined_functions,
     const c4c::backend::bir::Function& entry_function,
     c4c::TargetArch prepared_arch,
@@ -3094,6 +3095,15 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
     if (!candidate_return_register.has_value()) {
       return std::nullopt;
     }
+    const auto candidate_function_name_id =
+        c4c::backend::prepare::resolve_prepared_function_name_id(module.names, candidate.name)
+            .value_or(c4c::kInvalidFunctionName);
+    const auto* candidate_function_addressing =
+        c4c::backend::prepare::find_prepared_addressing(module, candidate_function_name_id);
+    const c4c::BlockLabelId entry_block_label_id =
+        c4c::backend::prepare::resolve_prepared_block_label_id(
+            module.names, candidate.blocks.front().label)
+            .value_or(c4c::kInvalidBlockLabel);
 
     const auto render_value_to_eax =
         [&](const c4c::backend::bir::Value& value,
@@ -3227,6 +3237,7 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
     std::string body;
     std::optional<std::string_view> current_i32_name;
     for (const auto& inst : candidate.blocks.front().insts) {
+      const auto inst_index = static_cast<std::size_t>(&inst - candidate.blocks.front().insts.data());
       const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
       if (binary != nullptr) {
         if (binary->result.kind != c4c::backend::bir::Value::Kind::Named) {
@@ -3246,16 +3257,27 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
           store->value.type != c4c::backend::bir::TypeKind::I32) {
         return std::nullopt;
       }
-      const auto* global = find_same_module_global(store->global_name);
-      if (global == nullptr || global->type != c4c::backend::bir::TypeKind::I32) {
+      const auto* prepared_access = find_prepared_symbol_memory_access(
+          &module.names, candidate_function_addressing, entry_block_label_id, inst_index);
+      if (prepared_access == nullptr) {
+        return std::nullopt;
+      }
+      auto memory = render_prepared_symbol_memory_operand_if_supported(
+          module.names, prepared_access->address, "DWORD", render_asm_symbol_name);
+      if (!memory.has_value()) {
+        return std::nullopt;
+      }
+      const std::string_view resolved_global_name = c4c::backend::prepare::prepared_link_name(
+          module.names, *prepared_access->address.symbol_name);
+      const auto* global = find_same_module_global(resolved_global_name);
+      if (global == nullptr || global->type != c4c::backend::bir::TypeKind::I32 ||
+          prepared_access->address.byte_offset != 0) {
         return std::nullopt;
       }
       used_same_module_globals.insert(global->name);
 
       if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate) {
-        body += "    mov DWORD PTR [rip + ";
-        body += render_asm_symbol_name(store->global_name);
-        body += "], ";
+        body += "    mov " + *memory + ", ";
         body += std::to_string(static_cast<std::int32_t>(store->value.immediate));
         body += "\n";
         continue;
@@ -3263,9 +3285,7 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
       if (store->value.kind != c4c::backend::bir::Value::Kind::Named) {
         return std::nullopt;
       }
-      body += "    mov DWORD PTR [rip + ";
-      body += render_asm_symbol_name(store->global_name);
-      body += "], ";
+      body += "    mov " + *memory + ", ";
       if (current_i32_name.has_value() && store->value.name == *current_i32_name) {
         body += "eax\n";
         continue;
@@ -3436,9 +3456,10 @@ PreparedModuleMultiDefinedDispatchState build_prepared_module_multi_defined_disp
   PreparedModuleMultiDefinedDispatchState state;
   if (entry_function != nullptr) {
     if (const auto helpers = render_prepared_bounded_same_module_helper_prefix_if_supported(
-            defined_functions, *entry_function, prepared_arch, render_trivial_defined_function,
-            minimal_function_return_register, minimal_function_asm_prefix, find_same_module_global,
-            minimal_param_register_at, render_asm_symbol_name);
+            module, defined_functions, *entry_function, prepared_arch,
+            render_trivial_defined_function, minimal_function_return_register,
+            minimal_function_asm_prefix, find_same_module_global, minimal_param_register_at,
+            render_asm_symbol_name);
         helpers.has_value()) {
       state.helper_prefix = helpers->helper_prefix;
       state.helper_names = std::move(helpers->helper_names);
