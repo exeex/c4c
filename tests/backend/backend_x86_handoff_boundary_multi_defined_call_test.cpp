@@ -4,6 +4,7 @@
 #include "src/backend/mir/x86/codegen/x86_codegen.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -71,20 +72,24 @@ std::string expected_minimal_multi_defined_direct_call_lane_asm() {
          asm_header("main") + "    sub rsp, 24\n"
          "    xor eax, eax\n"
          "    call actual_function\n"
-         "    mov DWORD PTR [rsp + 16], eax\n"
+         "    mov r11d, eax\n"
+         "    mov DWORD PTR [rsp + 16], r11d\n"
          "    mov eax, DWORD PTR [rsp + 16]\n"
          "    lea rdi, [rip + .L.str0]\n"
          "    mov esi, eax\n"
          "    xor eax, eax\n"
          "    call printf\n"
+         "    mov DWORD PTR [rsp + 8], eax\n"
          "    xor eax, eax\n"
          "    call actual_function\n"
-         "    mov DWORD PTR [rsp + 20], eax\n"
+         "    mov r11d, eax\n"
+         "    mov DWORD PTR [rsp + 20], r11d\n"
          "    mov eax, DWORD PTR [rsp + 20]\n"
          "    lea rdi, [rip + .L.str0]\n"
          "    mov esi, eax\n"
          "    xor eax, eax\n"
          "    call printf\n"
+         "    mov DWORD PTR [rsp + 12], eax\n"
          "    mov eax, 0\n"
          "    add rsp, 24\n"
          "    ret\n"
@@ -107,14 +112,17 @@ std::string expected_multi_defined_direct_call_lane_contract_drift_asm() {
          "    mov edx, eax\n"
          "    xor eax, eax\n"
          "    call printf\n"
+         "    mov DWORD PTR [rsp + 8], eax\n"
          "    xor eax, eax\n"
          "    call actual_function\n"
-         "    mov DWORD PTR [rsp + 20], eax\n"
+         "    mov r11d, eax\n"
+         "    mov DWORD PTR [rsp + 20], r11d\n"
          "    mov eax, DWORD PTR [rsp + 20]\n"
          "    lea rdi, [rip + .L.str0]\n"
          "    mov esi, eax\n"
          "    xor eax, eax\n"
          "    call printf\n"
+         "    mov DWORD PTR [rsp + 12], eax\n"
          "    mov eax, 0\n"
          "    add rsp, 24\n"
          "    ret\n"
@@ -336,6 +344,21 @@ prepare::PreparedMoveBundle* find_mutable_prepared_move_bundle(
   return nullptr;
 }
 
+void erase_prepared_move_bundle(prepare::PreparedValueLocationFunction& function_locations,
+                                prepare::PreparedMovePhase phase,
+                                std::size_t block_index,
+                                std::size_t instruction_index) {
+  function_locations.move_bundles.erase(
+      std::remove_if(function_locations.move_bundles.begin(),
+                     function_locations.move_bundles.end(),
+                     [&](const prepare::PreparedMoveBundle& move_bundle) {
+                       return move_bundle.phase == phase &&
+                              move_bundle.block_index == block_index &&
+                              move_bundle.instruction_index == instruction_index;
+                     }),
+      function_locations.move_bundles.end());
+}
+
 int check_route_consumes_prepared_call_move_bundle_contract() {
   auto prepared =
       prepare::prepare_semantic_bir_module_with_options(make_x86_multi_defined_direct_call_lane_module(),
@@ -452,6 +475,48 @@ int check_route_consumes_prepared_call_move_bundle_contract() {
   return 0;
 }
 
+int check_route_requires_authoritative_prepared_after_call_bundle() {
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(make_x86_multi_defined_direct_call_lane_module(),
+                                                        x86_target_profile());
+  auto* function_locations =
+      find_mutable_prepared_value_location_function(prepared, "main");
+  if (function_locations == nullptr) {
+    return fail("bounded multi-defined call contract drift route: missing prepared value-location function");
+  }
+
+  auto* first_call_result_home =
+      find_mutable_prepared_value_home(prepared, *function_locations, "%t1");
+  if (first_call_result_home == nullptr) {
+    return fail("bounded multi-defined call contract drift route: missing first call result home");
+  }
+  first_call_result_home->kind = prepare::PreparedValueHomeKind::Register;
+  first_call_result_home->register_name = "r10";
+  first_call_result_home->slot_id.reset();
+  first_call_result_home->offset_bytes.reset();
+  first_call_result_home->immediate_i32.reset();
+
+  erase_prepared_move_bundle(*function_locations, prepare::PreparedMovePhase::AfterCall, 0, 0);
+
+  try {
+    static_cast<void>(c4c::backend::x86::emit_prepared_module(prepared));
+  } catch (const std::invalid_argument& ex) {
+    if (std::string(ex.what()).find("authoritative prepared call-bundle handoff") !=
+        std::string::npos) {
+      return 0;
+    }
+    return fail((std::string("bounded multi-defined call contract drift route: x86 prepared-module consumer rejected the mutated prepared handoff with the wrong exception: ") +
+                 ex.what())
+                    .c_str());
+  } catch (const std::exception& ex) {
+    return fail((std::string("bounded multi-defined call contract drift route: x86 prepared-module consumer rejected the mutated prepared handoff with the wrong exception type: ") +
+                 ex.what())
+                    .c_str());
+  }
+
+  return fail("bounded multi-defined call contract drift route: x86 prepared-module consumer reopened a local call-result ABI fallback when the authoritative prepared AfterCall bundle was removed");
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_multi_defined_call_tests() {
@@ -467,6 +532,10 @@ int run_backend_x86_handoff_boundary_multi_defined_call_tests() {
     return status;
   }
   if (const auto status = check_route_consumes_prepared_call_move_bundle_contract(); status != 0) {
+    return status;
+  }
+  if (const auto status = check_route_requires_authoritative_prepared_after_call_bundle();
+      status != 0) {
     return status;
   }
 

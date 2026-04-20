@@ -32,10 +32,12 @@ std::string expected_minimal_direct_extern_call_lane_asm() {
   return asm_header("main") + "    sub rsp, 8\n"
          "    xor eax, eax\n"
          "    call actual_function\n"
+         "    mov r11d, eax\n"
          "    lea rdi, [rip + .L.str0]\n"
-         "    mov esi, eax\n"
+         "    mov esi, r11d\n"
          "    xor eax, eax\n"
          "    call printf\n"
+         "    mov r12d, eax\n"
          "    mov eax, 0\n"
          "    add rsp, 8\n"
          "    ret\n"
@@ -53,6 +55,7 @@ std::string expected_direct_extern_call_lane_contract_drift_asm() {
          "    mov edx, r10d\n"
          "    xor eax, eax\n"
          "    call printf\n"
+         "    mov r12d, eax\n"
          "    mov eax, 0\n"
          "    add rsp, 8\n"
          "    ret\n"
@@ -333,6 +336,5 @@ int run_backend_x86_handoff_boundary_direct_extern_call_tests() {
       status != 0) {
     return status;
   }
-
   return 0;
 }

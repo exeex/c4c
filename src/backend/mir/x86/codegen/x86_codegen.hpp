@@ -782,10 +782,27 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
           }
           return nullptr;
         }();
+        if (after_call_move == nullptr || !after_call_move->destination_register_name.has_value()) {
+          if (result_home == nullptr ||
+              result_home->kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+              !result_home->register_name.has_value()) {
+            throw std::invalid_argument(
+                "x86 backend emitter requires the authoritative prepared call-bundle handoff through the canonical prepared-module handoff");
+          }
+          const auto home_register = narrow_i32_register(*result_home->register_name);
+          if (!home_register.has_value() || *home_register != "eax") {
+            throw std::invalid_argument(
+                "x86 backend emitter requires the authoritative prepared call-bundle handoff through the canonical prepared-module handoff");
+          }
+          current_i32 = CurrentI32Carrier{
+              .value_name = call->result->name,
+              .register_name = *home_register,
+              .stack_operand = std::nullopt,
+          };
+          continue;
+        }
         const auto abi_result_register =
-            after_call_move != nullptr && after_call_move->destination_register_name.has_value()
-                ? narrow_i32_register(*after_call_move->destination_register_name)
-                : std::optional<std::string>{std::string("eax")};
+            narrow_i32_register(*after_call_move->destination_register_name);
         if (!abi_result_register.has_value()) {
           return std::nullopt;
         }

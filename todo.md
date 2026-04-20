@@ -5,25 +5,26 @@ Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
 Source Plan Path: plan.md
 Current Step ID: 3.3
 Current Step Title: Consume Canonical Move Bundles For Join, Call, And Return Boundaries
-Plan Review Counter: 4 / 10
+Plan Review Counter: 5 / 10
 # Current Packet
 
 ## Just Finished
 
 Step 3.3 (`Consume Canonical Move Bundles For Join, Call, And Return
-Boundaries`) now finishes the compare-join return-bundle handoff. The shared
-compare-join return context no longer points at `join_block->insts.size()`;
-instead it records the join-return source point, and the x86 consumer resolves
-the authoritative `BeforeReturn` bundle from prepared value locations at that
-block boundary. Temporary debug instrumentation and the extra post-render drift
-hack were removed, and the focused missing-bundle compare-join test still
-proves that x86 rejects reopening a local ABI return fallback.
+Boundaries`) now fills the missing call-site ABI metadata for pre-built BIR
+call lanes so shared prepare publishes the bounded `BeforeCall` and
+`AfterCall` facts that x86 needs. The direct extern-call and bounded
+multi-defined call routes now materialize prepared call-result homes instead of
+threading raw `eax` passthrough assumptions through the consumer, and the
+multi-defined same-module symbol-call lane now rejects reopening a local
+call-result fallback when its authoritative prepared `AfterCall` bundle is
+removed.
 
 ## Suggested Next
 
-Keep Step 3.3 on boundary consumption and audit the next prepared leaf that
-still reconstructs a call/return/register boundary from local x86 assumptions
-instead of consuming shared move bundles directly.
+Keep Step 3.3 on call-boundary consumption and audit the remaining bounded lane
+that still falls back to local argument-register assumptions when a supported
+route lacks an authoritative prepared `BeforeCall` bundle.
 
 ## Watchouts
 
@@ -47,10 +48,13 @@ instead of consuming shared move bundles directly.
   `phi_...` move reasons, while call/result/return bundles come from
   destination-kind classification in shared prepare; keep any later phase
   refinement shared instead of pushing it into x86.
-- The bounded direct extern-call route now depends on prepared
-  value-location context being threaded through the single-block dispatch
-  path; keep any follow-up boundary work on that shared handoff instead of
-  reintroducing default ABI register assumptions in local helpers.
+- The bounded call lanes now depend on shared `CallInst.arg_abi` and
+  `CallInst.result_abi` inference in `legalize.cpp`; any follow-up should keep
+  that metadata shared instead of reopening x86-local ABI defaults.
+- The bounded direct extern-call and multi-defined call expectations now
+  include materialized prepared call-result homes (`r11d`/`r12d` or stack
+  stores), so future route changes should treat those emitted homes as part of
+  the prepared handoff contract rather than as incidental register noise.
 - Compare-join return rendering now tolerates stale local instruction-index
   hints by resolving the unique authoritative `BeforeReturn` bundle for the
   block when the exact hinted point is not present; keep any future refinement
@@ -60,6 +64,7 @@ instead of consuming shared move bundles directly.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' > test_after.log 2>&1`,
-which passed after the compare-join return handoff was rewired onto the
-authoritative prepared `BeforeReturn` bundle lookup. `test_after.log` is the
-canonical proof artifact for this packet.
+which passed after shared prepare inferred the missing bounded call-site ABI
+metadata and the x86 handoff expectations were updated to the resulting
+prepared call-result-home contract. `test_after.log` is the canonical proof
+artifact for this packet.

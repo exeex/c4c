@@ -123,6 +123,10 @@ std::optional<bir::CallArgAbiInfo> infer_call_arg_abi(
   return std::nullopt;
 }
 
+std::optional<bir::CallResultAbiInfo> infer_call_result_abi(
+    const c4c::TargetProfile& target_profile,
+    bir::TypeKind return_type);
+
 std::optional<bir::CallResultAbiInfo> infer_function_return_abi(
     const c4c::TargetProfile& target_profile,
     const bir::Function& function) {
@@ -130,9 +134,19 @@ std::optional<bir::CallResultAbiInfo> infer_function_return_abi(
     return std::nullopt;
   }
 
+  return infer_call_result_abi(target_profile, function.return_type);
+}
+
+std::optional<bir::CallResultAbiInfo> infer_call_result_abi(
+    const c4c::TargetProfile& target_profile,
+    bir::TypeKind return_type) {
+  if (return_type == bir::TypeKind::Void) {
+    return std::nullopt;
+  }
+
   bir::CallResultAbiInfo abi;
-  abi.type = function.return_type;
-  switch (function.return_type) {
+  abi.type = return_type;
+  switch (return_type) {
     case bir::TypeKind::F32:
     case bir::TypeKind::F64:
     case bir::TypeKind::F128:
@@ -1576,8 +1590,20 @@ void legalize_module(const c4c::TargetProfile& target_profile,
                 for (auto& arg_type : lowered.arg_types) {
                   arg_type = legalize_type(target_profile, arg_type);
                 }
+                while (lowered.arg_abi.size() < lowered.arg_types.size()) {
+                  const auto inferred_arg_abi =
+                      infer_call_arg_abi(target_profile, lowered.arg_types[lowered.arg_abi.size()]);
+                  if (!inferred_arg_abi.has_value()) {
+                    break;
+                  }
+                  lowered.arg_abi.push_back(*inferred_arg_abi);
+                }
                 for (auto& arg_abi : lowered.arg_abi) {
                   legalize_call_arg_abi(target_profile, arg_abi);
+                }
+                if (!lowered.result_abi.has_value() && lowered.result.has_value() &&
+                    lowered.result->kind == bir::Value::Kind::Named) {
+                  lowered.result_abi = infer_call_result_abi(target_profile, lowered.return_type);
                 }
                 if (lowered.result_abi.has_value()) {
                   legalize_call_result_abi(target_profile, *lowered.result_abi);
