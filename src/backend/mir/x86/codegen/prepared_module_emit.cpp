@@ -1,5 +1,6 @@
 #include "x86_codegen.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace c4c::backend::x86 {
@@ -507,16 +508,53 @@ std::string emit_prepared_module(
       }
       return narrow_i32_register(*home.register_name);
     };
-    const auto find_named_home_register = [&](std::string_view value_name) -> std::optional<std::string> {
+    struct MinimalScalarSourceHome {
+      std::optional<std::string> register_name;
+      std::optional<std::string> stack_operand;
+      std::size_t frame_size = 0;
+    };
+    const auto find_named_source_home =
+        [&](std::string_view value_name) -> std::optional<MinimalScalarSourceHome> {
       const auto* home =
           c4c::backend::prepare::find_prepared_value_home(module.names, *function_locations, value_name);
       if (home == nullptr) {
         return std::nullopt;
       }
-      return narrow_home_register(*home);
+      if (const auto register_name = narrow_home_register(*home); register_name.has_value()) {
+        return MinimalScalarSourceHome{
+            .register_name = *register_name,
+            .stack_operand = std::nullopt,
+            .frame_size = 0,
+        };
+      }
+      if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+          home->offset_bytes.has_value()) {
+        return MinimalScalarSourceHome{
+            .register_name = std::nullopt,
+            .stack_operand = c4c::backend::x86::render_prepared_stack_memory_operand(
+                *home->offset_bytes, "DWORD"),
+            .frame_size =
+                std::max(module.stack_layout.frame_size_bytes,
+                         *home->offset_bytes + sizeof(std::int32_t)),
+        };
+      }
+      return std::nullopt;
     };
-    const auto source_param_register = find_named_home_register(param.name);
-    if (!source_param_register.has_value()) {
+    const auto render_frame_wrapped_return =
+        [&](std::string body, std::size_t frame_size) -> std::string {
+      std::string rendered = asm_prefix;
+      if (frame_size != 0) {
+        rendered += "    sub rsp, " + std::to_string(frame_size) + "\n";
+      }
+      rendered += body;
+      if (frame_size != 0) {
+        rendered += "    add rsp, " + std::to_string(frame_size) + "\n";
+      }
+      rendered += "    ret\n";
+      return rendered;
+    };
+    const auto source_param_home = find_named_source_home(param.name);
+    if (!source_param_home.has_value()) {
       return std::nullopt;
     }
 
@@ -566,10 +604,18 @@ std::string emit_prepared_module(
         return std::nullopt;
       }
       std::string body;
-      if (*return_destination_register != *source_param_register) {
-        body += "    mov " + *return_destination_register + ", " + *source_param_register + "\n";
+      if (source_param_home->register_name.has_value()) {
+        if (*return_destination_register != *source_param_home->register_name) {
+          body += "    mov " + *return_destination_register + ", " +
+                  *source_param_home->register_name + "\n";
+        }
+      } else if (source_param_home->stack_operand.has_value()) {
+        body += "    mov " + *return_destination_register + ", " +
+                *source_param_home->stack_operand + "\n";
+      } else {
+        return std::nullopt;
       }
-      return asm_prefix + c4c::backend::x86::render_prepared_return_body(body);
+      return render_frame_wrapped_return(body, source_param_home->frame_size);
     }
 
     if (entry.insts.size() != 1) {
@@ -596,6 +642,9 @@ std::string emit_prepared_module(
     if (!lhs_is_param_rhs_is_imm && !rhs_is_param_lhs_is_imm) {
       return std::nullopt;
     }
+    if (!source_param_home->register_name.has_value()) {
+      return std::nullopt;
+    }
 
     const auto* before_instruction_bundle = c4c::backend::prepare::find_prepared_move_bundle(
         *function_locations,
@@ -617,8 +666,9 @@ std::string emit_prepared_module(
 
     const auto immediate = lhs_is_param_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
     std::string body;
-    if (*instruction_destination_register != *source_param_register) {
-      body += "    mov " + *instruction_destination_register + ", " + *source_param_register + "\n";
+    if (*instruction_destination_register != *source_param_home->register_name) {
+      body += "    mov " + *instruction_destination_register + ", " +
+              *source_param_home->register_name + "\n";
     }
     if (binary->opcode == c4c::backend::bir::BinaryOpcode::Add) {
       body += "    add " + *instruction_destination_register + ", " +
@@ -653,7 +703,7 @@ std::string emit_prepared_module(
     if (*return_destination_register != *instruction_destination_register) {
       body += "    mov " + *return_destination_register + ", " + *instruction_destination_register + "\n";
     }
-    return asm_prefix + c4c::backend::x86::render_prepared_return_body(body);
+    return render_frame_wrapped_return(body, 0);
   };
   if (const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*>
           named_binaries;
