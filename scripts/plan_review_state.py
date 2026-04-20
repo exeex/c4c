@@ -205,10 +205,16 @@ def cmd_prepare_commit(args) -> int:
     if not args.todo.exists():
         return 0
 
-    state = ensure_state(args.todo, args.state)
-    todo = parse_todo(args.todo)
     staged = staged_paths()
     has_plan_change = "plan.md" in staged
+    has_todo_change = "todo.md" in staged
+
+    # Pure idea-only commits should not rewrite or stage todo metadata.
+    if not has_plan_change and not has_todo_change:
+        return 0
+
+    state = ensure_state(args.todo, args.state)
+    todo = parse_todo(args.todo)
 
     next_step_id = todo["current_step_id"]
     next_step_title = todo["current_step_title"]
