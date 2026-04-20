@@ -879,6 +879,22 @@ inline bool finalize_prepared_bounded_multi_defined_call_result_if_supported(
   return true;
 }
 
+inline bool finalize_prepared_bounded_multi_defined_return_if_supported(
+    const c4c::backend::bir::Value& returned,
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view return_register,
+    std::string* body) {
+  if (returned.kind != c4c::backend::bir::Value::Kind::Immediate ||
+      returned.type != c4c::backend::bir::TypeKind::I32) {
+    return false;
+  }
+  *body += "    mov " + std::string(return_register) + ", " +
+           std::to_string(static_cast<std::int32_t>(returned.immediate)) + "\n";
+  *body += "    add rsp, " + std::to_string(local_layout.frame_size + 8) + "\n";
+  *body += "    ret\n";
+  return true;
+}
+
 inline void note_prepared_bounded_multi_defined_name_once(std::vector<std::string>* names,
                                                           std::string_view name) {
   const auto it = std::find(names->begin(), names->end(), std::string(name));
@@ -1182,13 +1198,10 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
   }
 
   const auto& returned = *candidate.blocks.front().terminator.value;
-  if (returned.kind != c4c::backend::bir::Value::Kind::Immediate ||
-      returned.type != c4c::backend::bir::TypeKind::I32) {
+  if (!finalize_prepared_bounded_multi_defined_return_if_supported(
+          returned, local_layout, return_register, &rendered.body)) {
     return std::nullopt;
   }
-  rendered.body += "    mov " + std::string(return_register) + ", " +
-                   std::to_string(static_cast<std::int32_t>(returned.immediate)) +
-                   "\n    add rsp, " + std::to_string(local_layout.frame_size + 8) + "\n    ret\n";
   return rendered;
 }
 
