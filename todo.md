@@ -3,26 +3,25 @@
 Status: Active
 Source Idea Path: ideas/open/59_generic_scalar_instruction_selection_for_x86.md
 Source Plan Path: plan.md
-Current Step ID: 1.3
-Current Step Title: Audit Remaining Dispatch Seams And Hand Off To Selector Work
-Plan Review Counter: 1 / 10
+Current Step ID: 2
+Current Step Title: Extract Operand And Legality Selectors
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 1.3 audited the remaining prepared-x86 structural dispatch seams and
-collapsed the single-block return family onto context-native helpers. The
-active return dispatch no longer unwraps `PreparedX86FunctionDispatchContext`
-back into long raw helper argument bundles, and the remaining Step 1 entry and
-guard helpers in the active scalar path already consume the shared context
-directly.
+Step 2 extracted a reusable prepared scalar memory-operand selector in
+`prepared_local_slot_render.cpp`. The active guard-chain and minimal local-slot
+return helpers now ask one shared selector to map prepared frame-slot or
+global-symbol accesses into legal x86 memory operands instead of open-coding
+that lookup and sizing logic at each call site.
 
 ## Suggested Next
 
-Move into Step 2 selector extraction. Start with one bounded helper surface for
-prepared scalar operand legality, such as extracting reusable stack/symbol
-memory operand or named/immediate value selection from the current return and
-guard helpers without widening into whole-family migration.
+Stay in Step 2 and extract the next operand helper surface around named versus
+immediate scalar value selection, reusing the new memory selector so current
+guard and return helpers stop open-coding value-kind checks alongside operand
+rendering.
 
 ## Watchouts
 
@@ -33,11 +32,9 @@ guard helpers without widening into whole-family migration.
   reopening upstream ownership from ideas 58, 60, or 61.
 - Prefer one coherent instruction-family migration per packet over broad
   emitter rewrites.
-- `render_prepared_single_block_return_dispatch_if_supported` now stays on
-  context-native helpers through the whole active return family, and the
-  remaining Step 1 entry/guard helpers were already consuming the shared
-  context, so additional Step 1 work would be route drift unless a new
-  function-wide raw seam is found.
+- The new helper only covers scalar memory operand selection. Value rendering,
+  compare planning, and broader family migration are still separate Step 2 or
+  Step 3 work.
 - The matching `^backend_` before/after logs are not fully green: both
   `test_before.log` and `test_after.log` fail in
   `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
@@ -49,8 +46,8 @@ guard helpers without widening into whole-family migration.
 
 Ran the delegated proof command `cmake --build --preset default && ctest
 --test-dir build -j --output-on-failure -R '^backend_'` and captured the
-output in `test_after.log`. The build completed successfully after the Step
-1.3 return-family context refactor, and the `^backend_` subset still matches
+output in `test_after.log`. The build completed successfully after the Step 2
+memory-operand selector extraction, and the `^backend_` subset still matches
 the current `test_before.log` baseline with these same four failing tests:
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
 `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
