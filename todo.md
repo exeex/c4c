@@ -5,25 +5,24 @@ Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
 Source Plan Path: plan.md
 Current Step ID: 3.3.1
 Current Step Title: Finish Compare-Driven Boundary Home Authority
-Plan Review Counter: 0 / 10
+Plan Review Counter: 1 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 3.3 (`Consume Canonical Move Bundles For Join, Call, And Return
-Boundaries`) now makes compare-driven param-zero entry require authoritative
-prepared parameter homes instead of reopening ABI fallback when the home is
-missing, and it frame-wraps stack-slot entry loads using the prepared frame
-size. The bounded compare-branch proof now covers both stack-slot and
-rematerializable parameter-home entry lanes and rejects the route when the
-authoritative prepared entry home is removed.
+Step 3.3.1 (`Finish Compare-Driven Boundary Home Authority`) now makes
+compare-join parameter-selected returns consume authoritative prepared homes
+for stack-backed and rematerializable sources instead of falling back to the
+ABI parameter register, and the bounded compare-branch proof now covers those
+compare-join entry/return lanes while still rejecting missing prepared entry
+homes, return bundles, and return homes.
 
 ## Suggested Next
 
-Advance Step 3.3.1 on compare-driven boundary home authority by proving the
-remaining compare-join entry and parameter-selected return lanes consume shared
-prepared homes and `BeforeReturn` bundles for stack-backed or rematerializable
-sources without reopening ABI or local-home fallback.
+If supervisor accepts Step 3.3.1 as complete, advance to Step 3.3.2 by pushing
+the same authoritative prepared-home and bundle contract into the remaining
+short-circuit and `EdgeStoreSlot` boundary helpers without reopening x86-local
+fallback logic.
 
 ## Watchouts
 
@@ -56,15 +55,18 @@ sources without reopening ABI or local-home fallback.
   include materialized prepared call-result homes (`r11d`/`r12d` or stack
   stores), so future route changes should treat those emitted homes as part of
   the prepared handoff contract rather than as incidental register noise.
-- Compare-driven compare-join entry and parameter-selected return lanes are the
-  next active Step 3.3.1 scope; short-circuit and `EdgeStoreSlot`-style routes
-  now belong to later Step 3.3.2 follow-up rather than being silently mixed
-  into the same packet.
+- Compare-driven stack-slot parameter returns now frame-wrap their
+  compare-join loads the same way entry setup does; keep any later stack-home
+  refinement shared instead of reintroducing return-side ABI fallback.
+- Step 3.3.2 short-circuit and `EdgeStoreSlot` boundary helpers are the next
+  route; do not silently mix that follow-up into compare-join cleanup.
 
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' > test_after.log 2>&1`,
-which passed after the compare-driven entry helper rejected missing prepared
-entry homes, frame-wrapped stack-slot entry loads, and the compare-branch
-tests added bounded stack-slot and rematerializable entry-home coverage.
+which passed in `test_after.log` after the compare-join return helper started
+loading stack-backed parameter homes from authoritative prepared slots instead
+of reopening ABI fallback, and the compare-branch tests added bounded
+stack-slot/rematerializable compare-join return coverage plus missing-home and
+missing-`BeforeReturn` rejection checks.

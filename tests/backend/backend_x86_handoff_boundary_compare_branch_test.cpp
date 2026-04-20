@@ -192,6 +192,47 @@ std::string expected_minimal_param_eq_zero_branch_param_or_immediate_asm(
          minimal_i32_return_register() + ", " + minimal_i32_param_register() + "\n    ret\n";
 }
 
+std::string expected_stack_home_zero_branch_joined_add_or_sub_then_xor_asm(
+    const char* function_name,
+    const char* false_label,
+    std::size_t frame_size,
+    std::size_t byte_offset,
+    int true_immediate,
+    int false_immediate,
+    int joined_immediate) {
+  const auto stack_operand =
+      c4c::backend::x86::render_prepared_stack_memory_operand(byte_offset, "DWORD");
+  return expected_stack_home_zero_branch_prefix(
+             function_name, false_label, "jne", frame_size, byte_offset) +
+         "    sub rsp, " + std::to_string(frame_size) + "\n    mov " +
+         minimal_i32_return_register() + ", " + stack_operand + "\n    add " +
+         minimal_i32_return_register() + ", " + std::to_string(true_immediate) + "\n    xor " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    add rsp, " + std::to_string(frame_size) + "\n    ret\n.L" + function_name +
+         "_" + false_label + ":\n    sub rsp, " + std::to_string(frame_size) + "\n    mov " +
+         minimal_i32_return_register() + ", " + stack_operand + "\n    sub " +
+         minimal_i32_return_register() + ", " + std::to_string(false_immediate) + "\n    xor " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    add rsp, " + std::to_string(frame_size) + "\n    ret\n";
+}
+
+std::string expected_rematerialized_zero_branch_joined_add_or_sub_then_xor_asm(
+    const char* function_name,
+    const char* false_label,
+    int immediate,
+    int true_immediate,
+    int false_immediate,
+    int joined_immediate) {
+  return expected_rematerialized_zero_branch_prefix(function_name, false_label, "jne", immediate) +
+         "    mov " + minimal_i32_return_register() + ", " + std::to_string(immediate) +
+         "\n    add " + minimal_i32_return_register() + ", " + std::to_string(true_immediate) +
+         "\n    xor " + minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
+         "\n    ret\n.L" + function_name + "_" + false_label + ":\n    mov " +
+         minimal_i32_return_register() + ", " + std::to_string(immediate) + "\n    sub " +
+         minimal_i32_return_register() + ", " + std::to_string(false_immediate) + "\n    xor " +
+         minimal_i32_return_register() + ", " + std::to_string(joined_immediate) + "\n    ret\n";
+}
+
 std::string expected_minimal_param_ne_zero_branch_asm(const char* function_name,
                                                       const char* false_label,
                                                       int true_returned_value,
@@ -295,6 +336,91 @@ bir::Module make_x86_param_eq_zero_branch_param_or_immediate_module() {
   function.blocks.push_back(std::move(entry));
   function.blocks.push_back(std::move(is_zero));
   function.blocks.push_back(std::move(is_nonzero));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+bir::Module make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "branch_join_adjust_then_xor";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .true_label = "is_zero",
+      .false_label = "is_nonzero",
+  };
+
+  bir::Block is_zero;
+  is_zero.label = "is_zero";
+  is_zero.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "zero.adjusted"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(5),
+  });
+  is_zero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block is_nonzero;
+  is_nonzero.label = "is_nonzero";
+  is_nonzero.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "nonzero.adjusted"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  is_nonzero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block join;
+  join.label = "join";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "is_zero",
+              .value = bir::Value::named(bir::TypeKind::I32, "zero.adjusted"),
+          },
+          bir::PhiIncoming{
+              .label = "is_nonzero",
+              .value = bir::Value::named(bir::TypeKind::I32, "nonzero.adjusted"),
+          },
+      },
+  });
+  join.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Xor,
+      .result = bir::Value::named(bir::TypeKind::I32, "joined"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  join.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "joined"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(is_zero));
+  function.blocks.push_back(std::move(is_nonzero));
+  function.blocks.push_back(std::move(join));
   module.functions.push_back(std::move(function));
   return module;
 }
@@ -744,6 +870,69 @@ int check_minimal_compare_branch_rematerialized_home_consumes_prepared_entry_hom
   return 0;
 }
 
+int check_compare_join_stack_home_consumes_prepared_entry_and_return_home(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* param_home = find_mutable_value_home(prepared, function_name, "p.x");
+  if (param_home == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the authoritative prepared parameter home")
+                    .c_str());
+  }
+
+  param_home->kind = prepare::PreparedValueHomeKind::StackSlot;
+  param_home->register_name.reset();
+  param_home->slot_id = 0;
+  param_home->offset_bytes = 0;
+  param_home->immediate_i32.reset();
+  prepared.stack_layout.frame_size_bytes = 4;
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following the authoritative prepared stack home through compare-join entry and return")
+                    .c_str());
+  }
+
+  return 0;
+}
+
+int check_compare_join_rematerialized_home_consumes_prepared_entry_and_return_home(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* param_home = find_mutable_value_home(prepared, function_name, "p.x");
+  if (param_home == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the authoritative prepared parameter home")
+                    .c_str());
+  }
+
+  param_home->kind = prepare::PreparedValueHomeKind::RematerializableImmediate;
+  param_home->register_name.reset();
+  param_home->slot_id.reset();
+  param_home->offset_bytes.reset();
+  param_home->immediate_i32 = 13;
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following the authoritative prepared rematerialized home through compare-join entry and return")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_minimal_compare_branch_requires_authoritative_prepared_entry_home(
     const bir::Module& module,
     const char* function_name,
@@ -967,6 +1156,51 @@ int run_backend_x86_handoff_boundary_compare_branch_tests() {
               "branch_zero_or_passthrough",
               "p.x",
               "scalar-control-flow compare-against-zero branch lane with parameter leaf return rejects reopening local return fallback when the authoritative prepared home is missing");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_compare_join_stack_home_consumes_prepared_entry_and_return_home(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              expected_stack_home_zero_branch_joined_add_or_sub_then_xor_asm(
+                  "branch_join_adjust_then_xor", "is_nonzero", 4, 0, 5, 1, 3),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero compare-join lane with stack-backed parameter home");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_compare_join_rematerialized_home_consumes_prepared_entry_and_return_home(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              expected_rematerialized_zero_branch_joined_add_or_sub_then_xor_asm(
+                  "branch_join_adjust_then_xor", "is_nonzero", 13, 5, 1, 3),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero compare-join lane with rematerializable parameter home");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_requires_authoritative_prepared_entry_home(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero compare-join lane rejects reopening ABI entry fallback when the authoritative prepared home is missing");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_param_return_requires_authoritative_prepared_return_bundle(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero compare-join lane rejects reopening local return fallback when the authoritative prepared return bundle is missing");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_param_return_requires_authoritative_prepared_return_home(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              "branch_join_adjust_then_xor",
+              "p.x",
+              "scalar-control-flow compare-against-zero compare-join lane rejects reopening local return fallback when the authoritative prepared home is missing");
       status != 0) {
     return status;
   }
