@@ -5,25 +5,26 @@ Source Idea Path: ideas/open/59_generic_scalar_instruction_selection_for_x86.md
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Establish Prepared Dispatch Surface
-Plan Review Counter: 8 / 10
+Plan Review Counter: 9 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 1 kept the prepared x86 route structural by moving
-`render_prepared_single_block_return_dispatch_if_supported` onto
-`PreparedX86FunctionDispatchContext` end to end. The active single-block return
-dispatch path now owns its routing logic directly from the function-dispatch
-context instead of immediately unpacking that context back into a long raw
-argument bundle.
+Step 1 kept the prepared x86 route structural by pushing the active
+single-block return dispatch helpers behind
+`PreparedX86FunctionDispatchContext` overloads. The dispatcher now routes
+directly through context-based helper entry points for direct extern-call
+returns, local-slot returns, constant-folded returns, the local i16/i64 sub
+return lane, and immediate-or-param returns instead of unpacking the function
+context into long raw argument bundles at each call site.
 
 ## Suggested Next
 
-Re-check whether any other Step 1 helpers in the active prepared x86 scalar
-route still unwrap `PreparedX86FunctionDispatchContext` into long raw argument
-bundles. If this was the last real structural seam, close Step 1 and route the
-next packet into Step 2 selector extraction rather than inventing more
-dispatch-surface churn.
+Re-check whether the active prepared-x86 scalar route still has any real Step 1
+dispatch seams after the single-block return dispatcher stopped exploding the
+function context into raw helper argument lists. If not, close Step 1 and move
+the next packet into Step 2 selector extraction instead of extending
+context-only churn.
 
 ## Watchouts
 
@@ -34,10 +35,10 @@ dispatch-surface churn.
   reopening upstream ownership from ideas 58, 60, or 61.
 - Prefer one coherent instruction-family migration per packet over broad
   emitter rewrites.
-- `render_prepared_single_block_return_dispatch_if_supported` now consumes the
-  function-dispatch context directly, so Step 1 should only stay open if a real
-  remaining structural seam still unwraps that context in the active scalar
-  path.
+- `render_prepared_single_block_return_dispatch_if_supported` and its covered
+  single-block return helpers now consume the function-dispatch context
+  directly, so Step 1 should only stay open if a real remaining structural seam
+  still unwraps that context elsewhere in the active scalar path.
 - The matching `^backend_` before/after logs are not fully green: both
   `test_before.log` and `test_after.log` fail in
   `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
@@ -50,9 +51,9 @@ dispatch-surface churn.
 Ran the delegated proof command `cmake --build --preset default && ctest
 --test-dir build -j --output-on-failure -R '^backend_'` and captured the
 output in `test_after.log`. The build completed successfully after the
-single-block return dispatch-context refactor, and the `^backend_` subset is
-not fully green because `test_before.log` and `test_after.log` still share the
-same four failing tests:
+single-block return helper refactor, and the `^backend_` subset is not fully
+green because `test_before.log` and `test_after.log` still share the same four
+failing tests:
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
 `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
 `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`,

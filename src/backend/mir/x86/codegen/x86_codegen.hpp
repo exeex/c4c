@@ -428,6 +428,9 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_i
     std::string_view asm_prefix,
     std::string_view return_register);
 
+std::optional<std::string> render_prepared_constant_folded_single_block_return_if_supported(
+    const PreparedX86FunctionDispatchContext& context);
+
 std::optional<std::string> render_prepared_param_derived_i32_value_if_supported(
     std::string_view return_register,
     const c4c::backend::bir::Value& value,
@@ -446,6 +449,9 @@ std::optional<std::string> render_prepared_minimal_immediate_or_param_return_if_
     const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
         minimal_param_register);
 
+std::optional<std::string> render_prepared_minimal_immediate_or_param_return_if_supported(
+    const PreparedX86FunctionDispatchContext& context);
+
 std::optional<std::string> render_prepared_minimal_local_slot_return_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
@@ -454,6 +460,9 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix);
+
+std::optional<std::string> render_prepared_minimal_local_slot_return_if_supported(
+    const PreparedX86FunctionDispatchContext& context);
 
 std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
     const PreparedX86FunctionDispatchContext& context);
@@ -484,6 +493,9 @@ std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix);
 
+std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported(
+    const PreparedX86FunctionDispatchContext& context);
+
 std::optional<std::string> render_prepared_trivial_defined_function_if_supported(
     const c4c::backend::bir::Function& candidate,
     c4c::TargetArch prepared_arch,
@@ -512,6 +524,9 @@ std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_i
     const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
         emit_same_module_global_data,
     const std::function<std::string(std::string)>& prepend_bounded_same_module_helpers);
+
+std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_if_supported(
+    const PreparedX86FunctionDispatchContext& context);
 
 std::optional<std::string> render_prepared_single_block_return_dispatch_if_supported(
     const PreparedX86FunctionDispatchContext& context);

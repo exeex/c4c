@@ -1728,6 +1728,21 @@ std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported
   return asm_text;
 }
 
+std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported(
+    const PreparedX86FunctionDispatchContext& context) {
+  if (context.function == nullptr || context.entry == nullptr) {
+    return std::nullopt;
+  }
+  return render_prepared_local_i16_i64_sub_return_if_supported(
+      *context.function,
+      *context.entry,
+      context.stack_layout,
+      context.function_addressing,
+      context.prepared_names,
+      context.prepared_arch,
+      context.asm_prefix);
+}
+
 std::optional<std::string> render_prepared_constant_folded_single_block_return_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
@@ -1976,6 +1991,22 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_i
          std::to_string(static_cast<std::int32_t>(*folded_return)) + "\n    ret\n";
 }
 
+std::optional<std::string> render_prepared_constant_folded_single_block_return_if_supported(
+    const PreparedX86FunctionDispatchContext& context) {
+  if (context.function == nullptr) {
+    return std::nullopt;
+  }
+  return render_prepared_constant_folded_single_block_return_if_supported(
+      *context.function,
+      context.stack_layout,
+      context.function_addressing,
+      context.prepared_names,
+      context.function_locations,
+      context.prepared_arch,
+      context.asm_prefix,
+      context.return_register);
+}
+
 std::optional<std::string> render_prepared_param_derived_i32_value_if_supported(
     std::string_view return_register,
     const c4c::backend::bir::Value& value,
@@ -2135,6 +2166,20 @@ std::optional<std::string> render_prepared_minimal_immediate_or_param_return_if_
   return std::string(asm_prefix) + render_prepared_return_body(*value_render);
 }
 
+std::optional<std::string> render_prepared_minimal_immediate_or_param_return_if_supported(
+    const PreparedX86FunctionDispatchContext& context) {
+  if (context.function == nullptr || context.entry == nullptr || !context.minimal_param_register) {
+    return std::nullopt;
+  }
+  return render_prepared_minimal_immediate_or_param_return_if_supported(
+      *context.function,
+      *context.entry,
+      context.prepared_arch,
+      context.asm_prefix,
+      context.return_register,
+      context.minimal_param_register);
+}
+
 std::optional<std::string> render_prepared_minimal_local_slot_return_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
@@ -2250,6 +2295,21 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
   }
   asm_text += "    ret\n";
   return asm_text;
+}
+
+std::optional<std::string> render_prepared_minimal_local_slot_return_if_supported(
+    const PreparedX86FunctionDispatchContext& context) {
+  if (context.function == nullptr) {
+    return std::nullopt;
+  }
+  return render_prepared_minimal_local_slot_return_if_supported(
+      *context.function,
+      context.stack_layout,
+      context.function_addressing,
+      context.prepared_names,
+      context.function_locations,
+      context.prepared_arch,
+      context.asm_prefix);
 }
 
 std::optional<std::string> render_prepared_trivial_defined_function_if_supported(
@@ -2723,6 +2783,34 @@ std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_i
   return prepend_bounded_same_module_helpers(std::string(asm_prefix) + body + rendered_data);
 }
 
+std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_if_supported(
+    const PreparedX86FunctionDispatchContext& context) {
+  if (context.module == nullptr || context.function == nullptr || context.entry == nullptr ||
+      context.bounded_same_module_helper_global_names == nullptr || !context.find_string_constant ||
+      !context.find_same_module_global || !context.render_private_data_label ||
+      !context.render_asm_symbol_name || !context.emit_string_constant_data ||
+      !context.emit_same_module_global_data || !context.prepend_bounded_same_module_helpers) {
+    return std::nullopt;
+  }
+  return render_prepared_minimal_direct_extern_call_sequence_if_supported(
+      *context.module,
+      *context.function,
+      *context.entry,
+      context.prepared_names,
+      context.function_locations,
+      context.prepared_arch,
+      context.asm_prefix,
+      context.return_register,
+      *context.bounded_same_module_helper_global_names,
+      context.find_string_constant,
+      context.find_same_module_global,
+      context.render_private_data_label,
+      context.render_asm_symbol_name,
+      context.emit_string_constant_data,
+      context.emit_same_module_global_data,
+      context.prepend_bounded_same_module_helpers);
+}
+
 std::optional<std::string> render_prepared_single_block_return_dispatch_if_supported(
     const PreparedX86FunctionDispatchContext& context) {
   if (context.module == nullptr || context.function == nullptr || context.entry == nullptr ||
@@ -2733,64 +2821,27 @@ std::optional<std::string> render_prepared_single_block_return_dispatch_if_suppo
       !context.prepend_bounded_same_module_helpers || !context.minimal_param_register) {
     return std::nullopt;
   }
-  const auto& module = *context.module;
-  const auto& function = *context.function;
-  const auto& entry = *context.entry;
   if (const auto rendered_direct_calls =
-          render_prepared_minimal_direct_extern_call_sequence_if_supported(
-              module, function, entry, context.prepared_names, context.function_locations,
-              context.prepared_arch, context.asm_prefix, context.return_register,
-              *context.bounded_same_module_helper_global_names, context.find_string_constant,
-              context.find_same_module_global, context.render_private_data_label,
-              context.render_asm_symbol_name, context.emit_string_constant_data,
-              context.emit_same_module_global_data, context.prepend_bounded_same_module_helpers);
+          render_prepared_minimal_direct_extern_call_sequence_if_supported(context);
       rendered_direct_calls.has_value()) {
     return *rendered_direct_calls;
   }
   if (const auto rendered_local_slot =
-          render_prepared_minimal_local_slot_return_if_supported(
-              function,
-              context.stack_layout,
-              context.function_addressing,
-              context.prepared_names,
-              context.function_locations,
-              context.prepared_arch,
-              context.asm_prefix);
+          render_prepared_minimal_local_slot_return_if_supported(context);
       rendered_local_slot.has_value()) {
     return *rendered_local_slot;
   }
   if (const auto rendered_constant_folded =
-          render_prepared_constant_folded_single_block_return_if_supported(
-              function,
-              context.stack_layout,
-              context.function_addressing,
-              context.prepared_names,
-              context.function_locations,
-              context.prepared_arch,
-              context.asm_prefix,
-              context.return_register);
+          render_prepared_constant_folded_single_block_return_if_supported(context);
       rendered_constant_folded.has_value()) {
     return *rendered_constant_folded;
   }
   if (const auto rendered_local_i16_i64_return =
-          render_prepared_local_i16_i64_sub_return_if_supported(
-              function,
-              entry,
-              context.stack_layout,
-              context.function_addressing,
-              context.prepared_names,
-              context.prepared_arch,
-              context.asm_prefix);
+          render_prepared_local_i16_i64_sub_return_if_supported(context);
       rendered_local_i16_i64_return.has_value()) {
     return *rendered_local_i16_i64_return;
   }
-  return render_prepared_minimal_immediate_or_param_return_if_supported(
-      function,
-      entry,
-      context.prepared_arch,
-      context.asm_prefix,
-      context.return_register,
-      context.minimal_param_register);
+  return render_prepared_minimal_immediate_or_param_return_if_supported(context);
 }
 
 std::optional<PreparedBoundedMultiDefinedCallLaneModuleRender>
