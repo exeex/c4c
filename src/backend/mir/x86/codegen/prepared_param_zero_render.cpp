@@ -785,6 +785,31 @@ std::optional<std::string> render_prepared_materialized_compare_join_entry_if_su
 }
 
 std::optional<std::string> render_prepared_compare_driven_entry_if_supported(
+    const PreparedX86FunctionDispatchContext& context,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Block&,
+                                                   const c4c::backend::bir::Value&)>&
+        render_param_derived_return,
+    const std::function<std::optional<std::string>(
+        const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&,
+        const c4c::backend::bir::Param&)>& render_materialized_compare_join_return) {
+  if (context.prepared_module == nullptr || context.function == nullptr || context.entry == nullptr ||
+      !context.minimal_param_register || !context.emit_same_module_global_data) {
+    return std::nullopt;
+  }
+  return render_prepared_compare_driven_entry_if_supported(
+      *context.prepared_module,
+      context.function_control_flow,
+      *context.function,
+      *context.entry,
+      context.prepared_arch,
+      context.asm_prefix,
+      context.minimal_param_register,
+      render_param_derived_return,
+      render_materialized_compare_join_return,
+      context.emit_same_module_global_data);
+}
+
+std::optional<std::string> render_prepared_compare_driven_entry_if_supported(
     const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Function& function,

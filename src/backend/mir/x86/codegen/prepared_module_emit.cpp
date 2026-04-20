@@ -410,6 +410,7 @@ std::string emit_prepared_module(
 
   const auto& entry = function.blocks.front();
   const PreparedX86FunctionDispatchContext function_dispatch_context{
+      .prepared_module = &module,
       .module = &module.module,
       .function = &function,
       .entry = &entry,
@@ -796,20 +797,14 @@ std::string emit_prepared_module(
       !entry.terminator.value.has_value()) {
     if (const auto rendered_compare_driven_entry =
             c4c::backend::x86::render_prepared_compare_driven_entry_if_supported(
-        module,
-        find_control_flow_function(),
-        function,
-        entry,
-        prepared_arch,
-        asm_prefix,
-        minimal_param_register,
-        [&](const c4c::backend::bir::Block& return_block, const c4c::backend::bir::Value& value) {
-          const auto& param = function.params.front();
-          return render_param_derived_return_if_supported(
-              return_block, value, named_binaries, param);
-        },
-        render_materialized_compare_join_return_if_supported,
-        emit_same_module_global_data);
+                function_dispatch_context,
+                [&](const c4c::backend::bir::Block& return_block,
+                    const c4c::backend::bir::Value& value) {
+                  const auto& param = function.params.front();
+                  return render_param_derived_return_if_supported(
+                      return_block, value, named_binaries, param);
+                },
+                render_materialized_compare_join_return_if_supported);
         rendered_compare_driven_entry.has_value()) {
       return *rendered_compare_driven_entry;
     }

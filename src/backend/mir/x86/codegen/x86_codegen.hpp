@@ -331,6 +331,7 @@ struct PreparedX86BlockDispatchContext {
 };
 
 struct PreparedX86FunctionDispatchContext {
+  const c4c::backend::prepare::PreparedBirModule* prepared_module = nullptr;
   const c4c::backend::bir::Module* module = nullptr;
   const c4c::backend::bir::Function* function = nullptr;
   const c4c::backend::bir::Block* entry = nullptr;
@@ -1079,6 +1080,15 @@ std::optional<std::string> render_prepared_materialized_compare_join_entry_if_su
         const c4c::backend::bir::Param&)>& render_return,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
         emit_same_module_global_data);
+
+std::optional<std::string> render_prepared_compare_driven_entry_if_supported(
+    const PreparedX86FunctionDispatchContext& context,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Block&,
+                                                   const c4c::backend::bir::Value&)>&
+        render_param_derived_return,
+    const std::function<std::optional<std::string>(
+        const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&,
+        const c4c::backend::bir::Param&)>& render_materialized_compare_join_return);
 
 std::optional<std::string> render_prepared_compare_driven_entry_if_supported(
     const c4c::backend::prepare::PreparedBirModule& module,
