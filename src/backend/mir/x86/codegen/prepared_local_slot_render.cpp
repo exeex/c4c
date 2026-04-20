@@ -3428,6 +3428,33 @@ bool finalize_prepared_direct_extern_call_result_if_supported(
   return true;
 }
 
+bool finalize_prepared_direct_extern_return_if_supported(
+    const c4c::backend::bir::Value& returned,
+    std::string_view return_register,
+    const std::optional<PreparedDirectExternCurrentI32Carrier>& current_i32,
+    const std::function<std::optional<std::int64_t>(const c4c::backend::bir::Value&)>&
+        resolve_i32_constant,
+    std::string* body) {
+  if (returned.kind == c4c::backend::bir::Value::Kind::Named &&
+      current_i32.has_value() && returned.name == current_i32->value_name &&
+      current_i32->register_name.has_value() &&
+      *current_i32->register_name == std::string(return_register)) {
+    *body += "    add rsp, 8\n    ret\n";
+    return true;
+  }
+
+  const auto returned_value = resolve_i32_constant(returned);
+  if (!returned_value.has_value()) {
+    return false;
+  }
+  *body += "    mov ";
+  *body += std::string(return_register);
+  *body += ", ";
+  *body += std::to_string(static_cast<std::int32_t>(*returned_value));
+  *body += "\n    add rsp, 8\n    ret\n";
+  return true;
+}
+
 std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_from_context(
     const PreparedX86FunctionDispatchContext& context) {
   if (context.module == nullptr || context.function == nullptr || context.entry == nullptr ||
@@ -3581,21 +3608,9 @@ std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_f
     return std::nullopt;
   }
 
-  if (entry.terminator.value->kind == c4c::backend::bir::Value::Kind::Named &&
-      current_i32.has_value() && entry.terminator.value->name == current_i32->value_name &&
-      current_i32->register_name.has_value() &&
-      *current_i32->register_name == std::string(return_register)) {
-    body += "    add rsp, 8\n    ret\n";
-  } else {
-    const auto returned_value = resolve_i32_constant(*entry.terminator.value);
-    if (!returned_value.has_value()) {
-      return std::nullopt;
-    }
-    body += "    mov ";
-    body += std::string(return_register);
-    body += ", ";
-    body += std::to_string(static_cast<std::int32_t>(*returned_value));
-    body += "\n    add rsp, 8\n    ret\n";
+  if (!finalize_prepared_direct_extern_return_if_supported(
+          *entry.terminator.value, return_register, current_i32, resolve_i32_constant, &body)) {
+    return std::nullopt;
   }
 
   std::string rendered_data;
