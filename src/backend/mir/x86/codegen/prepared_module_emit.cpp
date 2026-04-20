@@ -502,37 +502,45 @@ std::string emit_prepared_module(
       }
       return narrow_i32_register(*home.register_name);
     };
-    struct MinimalScalarSourceHome {
-      std::optional<std::string> register_name;
-      std::optional<std::string> stack_operand;
-      std::size_t frame_size = 0;
-    };
     const auto find_named_source_home =
-        [&](std::string_view value_name) -> std::optional<MinimalScalarSourceHome> {
-      const auto* home =
-          c4c::backend::prepare::find_prepared_value_home(module.names, *function_locations, value_name);
-      if (home == nullptr) {
-        return std::nullopt;
+        [&](std::string_view value_name) -> const c4c::backend::prepare::PreparedValueHome* {
+      return c4c::backend::prepare::find_prepared_value_home(
+          module.names, *function_locations, value_name);
+    };
+    const auto required_frame_size_for_home =
+        [&](const c4c::backend::prepare::PreparedValueHome& home) -> std::size_t {
+      if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
+          !home.offset_bytes.has_value()) {
+        return 0;
       }
-      if (const auto register_name = narrow_home_register(*home); register_name.has_value()) {
-        return MinimalScalarSourceHome{
-            .register_name = *register_name,
-            .stack_operand = std::nullopt,
-            .frame_size = 0,
-        };
+      return std::max(module.stack_layout.frame_size_bytes,
+                      *home.offset_bytes + sizeof(std::int32_t));
+    };
+    const auto append_i32_home_move =
+        [&](std::string& body,
+            const c4c::backend::prepare::PreparedValueHome& home,
+            std::string_view destination_register) -> bool {
+      if (const auto source_register = narrow_home_register(home); source_register.has_value()) {
+        if (*source_register != destination_register) {
+          body += "    mov " + std::string(destination_register) + ", " + *source_register + "\n";
+        }
+        return true;
       }
-      if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-          home->offset_bytes.has_value()) {
-        return MinimalScalarSourceHome{
-            .register_name = std::nullopt,
-            .stack_operand = c4c::backend::x86::render_prepared_stack_memory_operand(
-                *home->offset_bytes, "DWORD"),
-            .frame_size =
-                std::max(module.stack_layout.frame_size_bytes,
-                         *home->offset_bytes + sizeof(std::int32_t)),
-        };
+      if (home.kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+          home.offset_bytes.has_value()) {
+        body += "    mov " + std::string(destination_register) + ", " +
+                c4c::backend::x86::render_prepared_stack_memory_operand(*home.offset_bytes, "DWORD") +
+                "\n";
+        return true;
       }
-      return std::nullopt;
+      if (home.kind ==
+              c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
+          home.immediate_i32.has_value()) {
+        body += "    mov " + std::string(destination_register) + ", " +
+                std::to_string(static_cast<std::int32_t>(*home.immediate_i32)) + "\n";
+        return true;
+      }
+      return false;
     };
     const auto render_frame_wrapped_return =
         [&](std::string body, std::size_t frame_size) -> std::string {
@@ -590,11 +598,11 @@ std::string emit_prepared_module(
     if (function.params.empty() && entry.insts.size() <= 1) {
       const auto* returned_home =
           c4c::backend::prepare::find_prepared_value_home(module.names, *function_locations, returned.name);
-      if (returned_home != nullptr &&
-          returned_home->kind == c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
-          returned_home->immediate_i32.has_value()) {
-        return asm_prefix + "    mov " + *return_register + ", " +
-               std::to_string(static_cast<std::int32_t>(*returned_home->immediate_i32)) + "\n    ret\n";
+      if (returned_home != nullptr) {
+        std::string body;
+        if (append_i32_home_move(body, *returned_home, *return_register)) {
+          return render_frame_wrapped_return(body, required_frame_size_for_home(*returned_home));
+        }
       }
     }
     if (function.params.size() != 1) {
@@ -606,8 +614,8 @@ std::string emit_prepared_module(
         param.is_byval) {
       return std::nullopt;
     }
-    const auto source_param_home = find_named_source_home(param.name);
-    if (!source_param_home.has_value()) {
+    const auto* source_param_home = find_named_source_home(param.name);
+    if (source_param_home == nullptr) {
       return std::nullopt;
     }
 
@@ -616,18 +624,10 @@ std::string emit_prepared_module(
         return std::nullopt;
       }
       std::string body;
-      if (source_param_home->register_name.has_value()) {
-        if (*return_destination_register != *source_param_home->register_name) {
-          body += "    mov " + *return_destination_register + ", " +
-                  *source_param_home->register_name + "\n";
-        }
-      } else if (source_param_home->stack_operand.has_value()) {
-        body += "    mov " + *return_destination_register + ", " +
-                *source_param_home->stack_operand + "\n";
-      } else {
+      if (!append_i32_home_move(body, *source_param_home, *return_destination_register)) {
         return std::nullopt;
       }
-      return render_frame_wrapped_return(body, source_param_home->frame_size);
+      return render_frame_wrapped_return(body, required_frame_size_for_home(*source_param_home));
     }
 
     if (entry.insts.size() != 1) {
@@ -674,14 +674,7 @@ std::string emit_prepared_module(
 
     const auto immediate = lhs_is_param_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
     std::string body;
-    if (source_param_home->register_name.has_value() &&
-        *instruction_destination_register != *source_param_home->register_name) {
-      body += "    mov " + *instruction_destination_register + ", " +
-              *source_param_home->register_name + "\n";
-    } else if (source_param_home->stack_operand.has_value()) {
-      body += "    mov " + *instruction_destination_register + ", " +
-              *source_param_home->stack_operand + "\n";
-    } else {
+    if (!append_i32_home_move(body, *source_param_home, *instruction_destination_register)) {
       return std::nullopt;
     }
     if (binary->opcode == c4c::backend::bir::BinaryOpcode::Add) {
@@ -717,7 +710,7 @@ std::string emit_prepared_module(
     if (*return_destination_register != *instruction_destination_register) {
       body += "    mov " + *return_destination_register + ", " + *instruction_destination_register + "\n";
     }
-    return render_frame_wrapped_return(body, source_param_home->frame_size);
+    return render_frame_wrapped_return(body, required_frame_size_for_home(*source_param_home));
   };
   if (const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*>
           named_binaries;
