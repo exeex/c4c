@@ -141,7 +141,7 @@ Actions:
 
 Completion check:
 
-- Step 3.1 through Step 3.3 are all complete
+- Step 3.1 through Step 3.3.3 are all complete
 - the covered x86 prologue/epilogue and load/store paths consult prepared
   frame/address data instead of rebuilding slot layout or provenance locally
 
@@ -209,6 +209,8 @@ Primary targets:
 
 Actions:
 
+- execute this step through the ordered substeps below rather than treating
+  residual cleanup as one undifferentiated packet stream
 - finish pointer-value-based addressing and residual base-plus-offset consumer
   paths through prepared addressing lookups
 - remove or isolate any remaining x86-local local-slot root/suffix rebuilders
@@ -221,6 +223,79 @@ Completion check:
 - the remaining covered pointer-indirect and residual address lanes consult
   prepared frame/address data instead of local slot or provenance recovery,
   and Step 3 can be treated as exhausted
+
+#### Step 3.3.1: Return And Move-Bundle Frame Size Cleanup
+
+Goal: remove residual stack-home frame-size reconstruction from prepared
+return and move-bundle consumers.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+
+Actions:
+
+- route covered stack-slot-backed return and move-bundle frame sizing through
+  canonical prepared function frame facts
+- keep compatibility with the current boundary contract where tests may mutate
+  prepared stack-layout frame size without rewriting prepared addressing in
+  lockstep
+- do not widen this substep into raw symbol call-lane setup or unrelated
+  value-home rewrites
+
+Completion check:
+
+- covered prepared return/move-bundle consumers no longer size wrapper frames
+  from stack-home byte offsets
+
+#### Step 3.3.2: Stack-Home Consumer Audit Boundary
+
+Goal: separate acceptable scalar value-home stack-slot consumers from
+remaining residual address-recovery sites.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+
+Actions:
+
+- audit the remaining `PreparedValueHomeKind::StackSlot` consumers in the x86
+  prepared path
+- move only the consumers that still reconstruct frame/address meaning onto
+  prepared frame/address facts
+- leave purely scalar value-home loads/stores alone when they no longer infer
+  slot identity, provenance, or frame size
+
+Completion check:
+
+- the remaining `PreparedValueHomeKind::StackSlot` consumers are either
+  bounded scalar value-home moves or prepared frame/address consumers, not
+  local provenance reconstruction
+
+#### Step 3.3.3: Pointer-Indirect Base-Plus-Offset Cleanup
+
+Goal: finish any remaining pointer-indirect and residual base-plus-offset
+consumer cleanup after the stack-home audit boundary is clear.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- focused backend/x86 proof coverage that matches the changed route
+
+Actions:
+
+- finish pointer-value-based and residual base-plus-offset consumer paths that
+  still recover address meaning locally
+- remove or isolate any remaining x86-local local-slot root/suffix rebuilders
+  only after the matched family consumes prepared addressing
+- stop when the remaining x86-only work is target legality or spelling rather
+  than semantic address recovery
+
+Completion check:
+
+- the remaining covered pointer-indirect/base-plus-offset lanes consume
+  prepared frame/address facts, and Step 3.3 can be treated as exhausted
 
 ## Step 4: Validate The Route
 

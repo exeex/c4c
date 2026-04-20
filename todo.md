@@ -3,14 +3,14 @@
 Status: Active
 Source Idea Path: ideas/open/61_stack_frame_and_addressing_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 3.3
-Current Step Title: Pointer-Indirect And Residual Address Cleanup
-Plan Review Counter: 10 / 10
+Current Step ID: 3.3.2
+Current Step Title: Stack-Home Consumer Audit Boundary
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed a Step 3.3 packet that removed the residual frame-size
+Completed Step 3.3.1 by removing the residual frame-size
 reconstruction in `prepared_module_emit.cpp` for the covered prepared
 return/move-bundle consumers. Stack-slot-backed return helpers now size the
 wrapper frame from canonical prepared function frame data
@@ -20,7 +20,7 @@ inflating it from stack-home byte offsets.
 
 ## Suggested Next
 
-Continue Step 3.3 by auditing the remaining
+Continue Step 3.3.2 by auditing the remaining
 `PreparedValueHomeKind::StackSlot` consumers in
 `prepared_module_emit.cpp` and `prepared_local_slot_render.cpp` to separate
 acceptable scalar value-home moves from any leftover stack-relative address
