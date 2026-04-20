@@ -457,14 +457,27 @@ std::string emit_prepared_module(
         asm_prefix,
         find_block);
   };
+  const auto required_function_frame_size = [&]() -> std::size_t {
+    const auto* function_addressing = find_addressing_function();
+    if (function_addressing == nullptr) {
+      return module.stack_layout.frame_size_bytes;
+    }
+    const auto required_frame_alignment =
+        std::max<std::size_t>(16, function_addressing->frame_alignment_bytes);
+    if (function_addressing->frame_size_bytes == 0) {
+      return module.stack_layout.frame_size_bytes;
+    }
+    const auto addressed_frame_size =
+        ((function_addressing->frame_size_bytes + required_frame_alignment - 1) /
+         required_frame_alignment) *
+        required_frame_alignment;
+    return std::max(module.stack_layout.frame_size_bytes, addressed_frame_size);
+  };
   const auto required_frame_size_for_home =
       [&](const c4c::backend::prepare::PreparedValueHome& home) -> std::size_t {
-    if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
-        !home.offset_bytes.has_value()) {
-      return 0;
-    }
-    return std::max(module.stack_layout.frame_size_bytes,
-                    *home.offset_bytes + sizeof(std::int32_t));
+    return home.kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot
+               ? required_function_frame_size()
+               : 0;
   };
   const auto narrow_home_register =
       [&](const c4c::backend::prepare::PreparedValueHome& home) -> std::optional<std::string> {

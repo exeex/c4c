@@ -5,28 +5,28 @@ Source Idea Path: ideas/open/61_stack_frame_and_addressing_consumption.md
 Source Plan Path: plan.md
 Current Step ID: 3.3
 Current Step Title: Pointer-Indirect And Residual Address Cleanup
-Plan Review Counter: 8 / 10
+Plan Review Counter: 10 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed a Step 3.3 packet that moved the remaining pointer `lea`
-materialization paths in `prepared_local_slot_render.cpp` off local
-`PreparedStackLayout::objects` / `frame_slots` scans and onto canonical
-prepared value-home data. The guard-chain, minimal-local-slot-return, and
-constant-folded pointer fallback paths now resolve stack-backed pointer values
-through `PreparedValueLocationFunction` stack-slot homes, and
-`prepared_module_emit.cpp` now passes function-location data into the guard
-consumer.
+Completed a Step 3.3 packet that removed the residual frame-size
+reconstruction in `prepared_module_emit.cpp` for the covered prepared
+return/move-bundle consumers. Stack-slot-backed return helpers now size the
+wrapper frame from canonical prepared function frame data
+(`PreparedAddressingFunction::frame_size_bytes` with the prepared
+`PreparedStackLayout::frame_size_bytes` handoff as fallback) instead of
+inflating it from stack-home byte offsets.
 
 ## Suggested Next
 
-Continue Step 3.3 by auditing the remaining x86 consumers of
-`PreparedValueHomeKind::StackSlot`, especially in
-`prepared_module_emit.cpp`, and separate acceptable value-home consumption from
-any lingering stack-relative address recovery that should instead consume
-prepared frame/address facts. Keep raw symbol-pointer call-lane setup and
-idea 60 move-bundle work out of scope.
+Continue Step 3.3 by auditing the remaining
+`PreparedValueHomeKind::StackSlot` consumers in
+`prepared_module_emit.cpp` and `prepared_local_slot_render.cpp` to separate
+acceptable scalar value-home moves from any leftover stack-relative address
+recovery. If another consumer still rebuilds frame/address meaning locally,
+move it onto prepared frame/address facts without widening into raw symbol
+call-lane setup or idea 60 move-bundle work.
 
 ## Watchouts
 
@@ -34,11 +34,13 @@ idea 60 move-bundle work out of scope.
   address consumers.
 - Keep frame size, slot identity, and address provenance in shared prepare,
   not x86-local slot-name/object-name or suffix reconstruction.
-- This packet replaced the local stack-object/frame-slot scan with prepared
-  value-home lookup, which is more authoritative but still distinct from
-  direct prepared-memory-access consumption; treat the remaining
-  `PreparedValueHomeKind::StackSlot` sites as an audit boundary, not automatic
-  follow-on implementation.
+- `prepared_module_emit.cpp` still needs the prepared stack-layout fallback
+  when boundary tests mutate stack-home/value-location state without updating
+  prepared addressing in lockstep; do not delete that fallback unless the
+  handoff contract itself is tightened.
+- Treat the remaining `PreparedValueHomeKind::StackSlot` sites as an audit
+  boundary, not automatic follow-on implementation; some are acceptable scalar
+  value-home moves rather than residual address provenance recovery.
 - The bounded multi-defined call-lane pointer-arg consumer near the raw
   `@name` checks remains out of scope unless lifecycle work later adds a
   separate prepared producer contract for `CallInst` pointer arguments.
@@ -69,5 +71,4 @@ and
 `backend_codegen_route_x86_64_local_direct_dynamic_struct_array_call_observe_semantic_bir`
 remain green after this packet. Regression guard:
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
-returned `PASS`, and the accepted proof baseline was rolled forward into
-`test_before.log`.
+returned `PASS`. Proof log path: `test_after.log`.
