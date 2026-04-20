@@ -3,26 +3,26 @@
 Status: Active
 Source Idea Path: ideas/open/61_stack_frame_and_addressing_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 3.2
-Current Step Title: Direct Frame And Symbol Access Consumption
+Current Step ID: 3.3
+Current Step Title: Pointer-Indirect And Residual Address Cleanup
 Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Plan-owner reviewed the Step 3.2 blocker and repaired the runbook: the bounded
-multi-defined call-lane pointer-argument path in
-`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` is not an
-executable Step 3.2 target under idea 61 unless a future lifecycle change
-extends shared prepare ownership beyond the current prepared memory/address
-contract.
+Audited the remaining Step 3.2 x86 direct-memory consumers after the scope
+repair. The direct frame-slot load/store paths and the direct same-module
+global load/store lanes already consume `PreparedAddressing`, and no additional
+string-backed direct memory-access consumer remains in scope after excluding
+the bounded raw-`@name` call-lane pointer-argument route.
 
 ## Suggested Next
 
-Continue Step 3.2 by auditing only direct frame/symbol memory-access consumers
-that already map to `PreparedAddressing` records. If no such residual
-memory-access lane remains, report Step 3.2 exhaustion instead of revisiting
-the bounded call-lane raw-`@name` pointer-argument route.
+Start Step 3.3 by auditing pointer-indirect and residual base-plus-offset x86
+memory consumers that still fall back to local-slot or pointer-root recovery.
+Keep the next packet focused on consumers that should already be covered by
+prepared frame/address data, and continue to leave raw symbol-pointer call
+setup out of scope.
 
 ## Watchouts
 
@@ -31,14 +31,15 @@ the bounded call-lane raw-`@name` pointer-argument route.
 - Keep frame size, slot identity, and address provenance in shared prepare,
   not x86-local slot-name or suffix reconstruction.
 - The bounded multi-defined call-lane pointer-arg consumer near the raw
-  `@name` checks stays out of scope for Step 3.2 unless lifecycle work later
-  adds a separate prepared producer contract for `CallInst` pointer arguments.
-- Do not treat raw symbol-pointer call setup as a memory-address consumer just
-  to keep Step 3.2 busy; that would expand the idea instead of executing it.
+  `@name` checks remains out of scope unless lifecycle work later adds a
+  separate prepared producer contract for `CallInst` pointer arguments.
+- Do not treat raw symbol-pointer call setup as a residual address consumer
+  just to keep Step 3.3 busy; that would expand the idea instead of executing
+  it.
 - Do not silently activate idea 59 instruction-selection work from this plan.
 
 ## Proof
 
-No proof rerun for this lifecycle repair. The prior executor packet was
-correctly blocked before code proof because the reviewed call-lane pointer-arg
-route is now explicitly out of scope for Step 3.2 under the current runbook.
+No proof rerun for this audit-only packet. The current code already satisfies
+the in-scope direct frame/symbol consumer coverage, so the change here is the
+`todo.md` handoff to Step 3.3 rather than a code slice.
