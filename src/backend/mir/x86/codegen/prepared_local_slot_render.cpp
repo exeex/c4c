@@ -1134,6 +1134,54 @@ std::optional<std::string> select_prepared_i32_call_argument_move_if_supported(
       [](std::string_view) -> std::optional<std::string> { return std::nullopt; });
 }
 
+std::optional<std::string> render_prepared_bounded_same_module_helper_call_if_supported(
+    const c4c::backend::bir::Inst& inst,
+    const std::unordered_set<std::string_view>& bounded_same_module_helper_names,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name,
+    std::optional<std::string_view>* current_i32_name,
+    std::optional<std::string_view>* previous_i32_name,
+    std::optional<std::string_view>* current_i8_name,
+    std::optional<std::string_view>* current_ptr_name,
+    std::optional<MaterializedI32Compare>* current_materialized_compare) {
+  if (current_i32_name == nullptr || previous_i32_name == nullptr || current_i8_name == nullptr ||
+      current_ptr_name == nullptr || current_materialized_compare == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+  if (call == nullptr || call->is_indirect || call->callee.empty() || call->callee_value.has_value() ||
+      call->is_variadic || call->args.size() != call->arg_types.size() || call->args.size() > 6 ||
+      bounded_same_module_helper_names.find(call->callee) == bounded_same_module_helper_names.end()) {
+    return std::nullopt;
+  }
+
+  static constexpr const char* kArgRegs32[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
+
+  std::string rendered_call;
+  for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
+    const auto selected_arg_move = select_prepared_i32_call_argument_move_if_supported(
+        call->args[arg_index], call->arg_types[arg_index], kArgRegs32[arg_index], *current_i32_name);
+    if (!selected_arg_move.has_value()) {
+      return std::nullopt;
+    }
+    rendered_call += *selected_arg_move;
+  }
+  rendered_call += "    xor eax, eax\n";
+  rendered_call += "    call ";
+  rendered_call += render_asm_symbol_name(call->callee);
+  rendered_call += "\n";
+
+  *current_materialized_compare = std::nullopt;
+  *previous_i32_name = std::nullopt;
+  *current_i8_name = std::nullopt;
+  *current_ptr_name = std::nullopt;
+  *current_i32_name =
+      call->result.has_value() && call->result->type == c4c::backend::bir::TypeKind::I32
+          ? std::optional<std::string_view>(call->result->name)
+          : std::nullopt;
+  return rendered_call;
+}
+
 bool prepared_frame_memory_accesses_match(
     const c4c::backend::prepare::PreparedMemoryAccess* lhs,
     const c4c::backend::prepare::PreparedMemoryAccess* rhs) {
@@ -1430,7 +1478,6 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
   if (!layout.has_value()) {
     return std::nullopt;
   }
-  static constexpr const char* kArgRegs32[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
   const auto render_function_return =
       [&](std::int32_t returned_imm) -> std::string {
     std::string rendered = "    mov eax, " + std::to_string(returned_imm) + "\n";
@@ -1543,36 +1590,17 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
         continue;
       }
 
-      if (const auto* call = std::get_if<c4c::backend::bir::CallInst>(&block.insts[index])) {
-        if (call->is_indirect || call->callee.empty() || call->callee_value.has_value() ||
-            call->is_variadic || call->args.size() != call->arg_types.size() || call->args.size() > 6 ||
-            bounded_same_module_helper_names.find(call->callee) ==
-                bounded_same_module_helper_names.end()) {
-          return std::nullopt;
-        }
-        std::string rendered_call;
-        for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
-          const auto& arg = call->args[arg_index];
-          const auto selected_arg_move = select_prepared_i32_call_argument_move_if_supported(
-              arg, call->arg_types[arg_index], kArgRegs32[arg_index], current_i32_name);
-          if (!selected_arg_move.has_value()) {
-            return std::nullopt;
-          }
-          rendered_call += *selected_arg_move;
-        }
-        rendered_call += "    xor eax, eax\n";
-        rendered_call += "    call ";
-        rendered_call += render_asm_symbol_name(call->callee);
-        rendered_call += "\n";
-        current_materialized_compare = std::nullopt;
-        previous_i32_name = std::nullopt;
-        current_i8_name = std::nullopt;
-        current_ptr_name = std::nullopt;
-        current_i32_name =
-            call->result.has_value() && call->result->type == c4c::backend::bir::TypeKind::I32
-                ? std::optional<std::string_view>(call->result->name)
-                : std::nullopt;
-        body += rendered_call;
+      if (const auto rendered_call = render_prepared_bounded_same_module_helper_call_if_supported(
+              block.insts[index],
+              bounded_same_module_helper_names,
+              render_asm_symbol_name,
+              &current_i32_name,
+              &previous_i32_name,
+              &current_i8_name,
+              &current_ptr_name,
+              &current_materialized_compare);
+          rendered_call.has_value()) {
+        body += *rendered_call;
         continue;
       }
 
