@@ -291,6 +291,43 @@ select_prepared_i32_named_immediate_compare_if_supported(
   };
 }
 
+std::optional<PreparedI32NamedImmediateCompareSelection>
+select_prepared_i32_named_immediate_compare_for_value_if_supported(
+    const c4c::backend::bir::Value& lhs,
+    const c4c::backend::bir::Value& rhs,
+    std::string_view compared_value_name) {
+  const auto selected_compare =
+      select_prepared_i32_named_immediate_compare_if_supported(lhs, rhs);
+  if (!selected_compare.has_value() ||
+      selected_compare->named_value->name != compared_value_name) {
+    return std::nullopt;
+  }
+  return selected_compare;
+}
+
+bool prepared_i32_compare_value_name_matches_any_candidate(
+    std::string_view compared_value_name,
+    const std::vector<std::string_view>& candidate_compare_value_names) {
+  return std::find(candidate_compare_value_names.begin(),
+                   candidate_compare_value_names.end(),
+                   compared_value_name) != candidate_compare_value_names.end();
+}
+
+std::optional<PreparedI32NamedImmediateCompareSelection>
+select_prepared_i32_named_immediate_compare_for_candidates_if_supported(
+    const c4c::backend::bir::Value& lhs,
+    const c4c::backend::bir::Value& rhs,
+    const std::vector<std::string_view>& candidate_compare_value_names) {
+  const auto selected_compare =
+      select_prepared_i32_named_immediate_compare_if_supported(lhs, rhs);
+  if (!selected_compare.has_value() ||
+      !prepared_i32_compare_value_name_matches_any_candidate(
+          selected_compare->named_value->name, candidate_compare_value_names)) {
+    return std::nullopt;
+  }
+  return selected_compare;
+}
+
 std::string render_prepared_i32_eax_immediate_compare_setup(std::int64_t compare_immediate) {
   if (compare_immediate == 0) {
     return std::string("    test eax, eax\n");
@@ -303,10 +340,10 @@ std::optional<std::string> select_prepared_materialized_i32_compare_setup_if_sup
     const c4c::backend::bir::BinaryInst& compare,
     const std::optional<std::string_view>& current_i32_name) {
   if (current_i32_name.has_value()) {
-    const auto selected_compare = select_prepared_i32_named_immediate_compare_if_supported(
-        compare.lhs, compare.rhs);
-    if (selected_compare.has_value() &&
-        selected_compare->named_value->name == *current_i32_name) {
+    const auto selected_compare =
+        select_prepared_i32_named_immediate_compare_for_value_if_supported(
+            compare.lhs, compare.rhs, *current_i32_name);
+    if (selected_compare.has_value()) {
       return render_prepared_i32_eax_immediate_compare_setup(selected_compare->immediate);
     }
   }
@@ -430,7 +467,9 @@ select_prepared_local_i32_guard_expression_surface_if_supported(
 }
 
 std::optional<PreparedI32ComparedImmediateBranchPlan>
-select_raw_i32_immediate_branch_plan_if_supported(const c4c::backend::bir::Block& entry) {
+select_raw_i32_compared_immediate_branch_plan_if_supported(
+    const c4c::backend::bir::Block& entry,
+    const std::vector<std::string_view>& compared_value_names) {
   const auto* compare = entry.insts.empty()
                             ? nullptr
                             : std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.back());
@@ -445,8 +484,9 @@ select_raw_i32_immediate_branch_plan_if_supported(const c4c::backend::bir::Block
     return std::nullopt;
   }
 
-  const auto selected_compare = select_prepared_i32_named_immediate_compare_if_supported(
-      compare->lhs, compare->rhs);
+  const auto selected_compare =
+      select_prepared_i32_named_immediate_compare_for_candidates_if_supported(
+          compare->lhs, compare->rhs, compared_value_names);
   if (!selected_compare.has_value()) {
     return std::nullopt;
   }
@@ -464,6 +504,18 @@ select_raw_i32_immediate_branch_plan_if_supported(const c4c::backend::bir::Block
 }
 
 std::optional<PreparedI32ImmediateBranchPlan>
+select_raw_i32_immediate_branch_plan_if_supported(
+    const c4c::backend::bir::Block& entry,
+    std::string_view compared_value_name) {
+  const auto raw_branch_plan = select_raw_i32_compared_immediate_branch_plan_if_supported(
+      entry, {compared_value_name});
+  if (!raw_branch_plan.has_value()) {
+    return std::nullopt;
+  }
+  return raw_branch_plan->branch_plan;
+}
+
+std::optional<PreparedI32ImmediateBranchPlan>
 select_prepared_i32_immediate_branch_plan_if_supported(
     const PreparedX86FunctionDispatchContext& context,
     c4c::BlockLabelId entry_label_id,
@@ -478,10 +530,12 @@ select_prepared_i32_immediate_branch_plan_if_supported(
     return std::nullopt;
   }
 
-  const auto selected_compare = select_prepared_i32_named_immediate_compare_if_supported(
-      *prepared_branch_condition.lhs, *prepared_branch_condition.rhs);
-  if (!selected_compare.has_value() ||
-      selected_compare->named_value->name != compared_value_name) {
+  const auto selected_compare =
+      select_prepared_i32_named_immediate_compare_for_value_if_supported(
+          *prepared_branch_condition.lhs,
+          *prepared_branch_condition.rhs,
+          compared_value_name);
+  if (!selected_compare.has_value()) {
     return std::nullopt;
   }
 
@@ -528,11 +582,13 @@ select_prepared_i32_compared_immediate_branch_plan_if_supported(
       continue;
     }
 
-    const auto* candidate_value =
-        candidate->lhs->kind == c4c::backend::bir::Value::Kind::Named &&
-                candidate->lhs->name == value_name
-            ? &*candidate->lhs
-            : &*candidate->rhs;
+    const auto selected_compare =
+        select_prepared_i32_named_immediate_compare_for_value_if_supported(
+            *candidate->lhs, *candidate->rhs, value_name);
+    if (!selected_compare.has_value()) {
+      return std::nullopt;
+    }
+    const auto* candidate_value = selected_compare->named_value;
     if (matched_prepared_immediate_branch != nullptr &&
         candidate_value->name != matched_prepared_compared_value->name) {
       return std::nullopt;
@@ -573,13 +629,12 @@ select_prepared_or_raw_i32_immediate_branch_plan_if_supported(
         context, entry_label_id, entry, *prepared_branch_condition, compared_value_name);
   }
 
-  const auto raw_branch_plan = select_raw_i32_immediate_branch_plan_if_supported(entry);
-  if (!raw_branch_plan.has_value() ||
-      raw_branch_plan->compared_value.kind != c4c::backend::bir::Value::Kind::Named ||
-      raw_branch_plan->compared_value.name != compared_value_name) {
+  const auto raw_branch_plan =
+      select_raw_i32_immediate_branch_plan_if_supported(entry, compared_value_name);
+  if (!raw_branch_plan.has_value()) {
     return std::nullopt;
   }
-  return raw_branch_plan->branch_plan;
+  return raw_branch_plan;
 }
 
 std::optional<PreparedI32ComparedImmediateBranchPlan>
@@ -593,7 +648,7 @@ select_prepared_or_raw_i32_compared_immediate_branch_plan_if_supported(
     return select_prepared_i32_compared_immediate_branch_plan_if_supported(
         context, entry_label_id, entry, *prepared_branch_condition, compared_value_names);
   }
-  return select_raw_i32_immediate_branch_plan_if_supported(entry);
+  return select_raw_i32_compared_immediate_branch_plan_if_supported(entry, compared_value_names);
 }
 
 std::string render_prepared_i32_compare_and_branch(c4c::backend::bir::BinaryOpcode compare_opcode,
