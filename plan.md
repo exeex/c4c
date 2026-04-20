@@ -153,9 +153,37 @@ Completion check:
 Goal: make the x86 prepared route consume canonical value-home and move-bundle
 lookups instead of rebuilding those answers locally.
 
-### Step 3.1: Replace Value-Home Guessing With Prepared Lookups
+### Step 3.1: Establish Minimal Move-Bundle Consumption For Scalar Home Queries
 
-Goal: move operand and storage sourcing onto shared value-home queries.
+Goal: consume the bounded prepared move bundles required before minimal scalar
+home lookups are authoritative.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- narrow backend proof surfaces under `tests/backend/`
+
+Actions:
+
+- identify the bounded single-block scalar routes where shared prepared homes
+  still require `BeforeInstruction` or `BeforeReturn` moves before x86 can use
+  them directly
+- execute those prepared move bundles from shared move-plan data rather than
+  keeping ABI/home fallbacks for the same routes
+- keep the slice limited to the minimal scalar handoff family needed to make
+  later value-home lookups authoritative; do not widen into the broader
+  join/call/return surface yet
+
+Completion check:
+
+- the minimal scalar x86 handoff route consumes the required prepared
+  `BeforeInstruction` and `BeforeReturn` bundles instead of assuming ABI-home
+  placement at entry or return time
+
+### Step 3.2: Replace Value-Home Guessing With Prepared Lookups
+
+Goal: move operand and storage sourcing onto shared value-home queries once the
+bounded prerequisite move execution exists.
 
 Primary targets:
 
@@ -176,7 +204,7 @@ Completion check:
 - x86 storage sourcing no longer depends on ad hoc regalloc-array inspection or
   local slot-order assumptions
 
-### Step 3.2: Consume Canonical Move Bundles For Join, Call, And Return Boundaries
+### Step 3.3: Consume Canonical Move Bundles For Join, Call, And Return Boundaries
 
 Goal: move x86 boundary movement onto shared prepared move bundles.
 
