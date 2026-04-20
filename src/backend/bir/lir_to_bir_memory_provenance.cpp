@@ -508,6 +508,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_store(
     const c4c::codegen::lir::LirStoreOp& store,
     bir::TypeKind value_type,
     const bir::Value& value,
+    const TypeDeclMap& type_decls,
     const GlobalTypes& global_types,
     const FunctionSymbolSet& function_symbols,
     const GlobalPointerMap& global_pointer_slots,
@@ -562,6 +563,29 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_store(
   const auto global_ptr_it = global_pointer_slots.find(store.ptr.str());
   if (global_ptr_it == global_pointer_slots.end()) {
     return std::nullopt;
+  }
+
+  if (value_type != bir::TypeKind::Ptr) {
+    if (const auto honest_address =
+            resolve_honest_addressed_global_access(global_ptr_it->second, value_type, global_types);
+        honest_address.has_value()) {
+      lowered_insts->push_back(bir::StoreGlobalInst{
+          .global_name = honest_address->global_name,
+          .value = value,
+          .byte_offset = honest_address->byte_offset,
+      });
+      return true;
+    }
+    if (const auto linear_address = resolve_linear_addressed_global_scalar_access(
+            global_ptr_it->second, value_type, global_types, type_decls);
+        linear_address.has_value()) {
+      lowered_insts->push_back(bir::StoreGlobalInst{
+          .global_name = linear_address->global_name,
+          .value = value,
+          .byte_offset = linear_address->byte_offset,
+      });
+      return true;
+    }
   }
 
   if (global_ptr_it->second.value_type != value_type) {

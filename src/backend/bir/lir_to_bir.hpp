@@ -934,6 +934,7 @@ class BirFunctionLowerer {
       const c4c::codegen::lir::LirStoreOp& store,
       bir::TypeKind value_type,
       const bir::Value& value,
+      const TypeDeclMap& type_decls,
       const GlobalTypes& global_types,
       const FunctionSymbolSet& function_symbols,
       const GlobalPointerMap& global_pointer_slots,
@@ -1038,6 +1039,8 @@ class BirFunctionLowerer {
   LocalAggregateSlotMap local_aggregate_slots_;
   LocalAggregateFieldSet local_aggregate_field_slots_;
   LocalPointerValueAliasMap local_pointer_value_aliases_;
+  ValueMap local_scalar_slot_values_;
+  ValueMap loaded_local_scalar_immediates_;
   LocalIndirectPointerSlotSet local_indirect_pointer_slots_;
   PointerAddressMap pointer_value_addresses_;
   PointerAddressIntMap pointer_address_ints_;
