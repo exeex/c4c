@@ -1228,6 +1228,9 @@ std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
     std::string_view asm_prefix);
 
 std::optional<std::string> render_prepared_countdown_entry_routes_if_supported(
+    const PreparedX86FunctionDispatchContext& context);
+
+std::optional<std::string> render_prepared_countdown_entry_routes_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,

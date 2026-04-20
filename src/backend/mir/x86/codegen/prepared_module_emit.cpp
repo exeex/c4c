@@ -440,12 +440,7 @@ std::string emit_prepared_module(
     }
     if (const auto rendered_countdown_entry =
             c4c::backend::x86::render_prepared_countdown_entry_routes_if_supported(
-                function,
-                entry,
-                &module.names,
-                find_control_flow_function(),
-                prepared_arch,
-                asm_prefix);
+                function_dispatch_context);
         rendered_countdown_entry.has_value()) {
       return rendered_countdown_entry;
     }

@@ -370,6 +370,45 @@ std::optional<std::string> render_prepared_loop_join_countdown_if_supported(
 }
 
 std::optional<std::string> render_prepared_countdown_entry_routes_if_supported(
+    const PreparedX86FunctionDispatchContext& context) {
+  if (context.function == nullptr || context.entry == nullptr) {
+    return std::nullopt;
+  }
+  if (context.prepared_names == nullptr || context.function_control_flow == nullptr) {
+    return std::nullopt;
+  }
+
+  if (const auto rendered_loop_join = render_prepared_loop_join_countdown_if_supported(
+          *context.function,
+          *context.entry,
+          *context.prepared_names,
+          *context.function_control_flow,
+          context.prepared_arch,
+          context.asm_prefix);
+      rendered_loop_join.has_value()) {
+    return rendered_loop_join;
+  }
+
+  const auto layout =
+      build_prepared_module_local_slot_layout(*context.function,
+                                              context.stack_layout,
+                                              context.function_addressing,
+                                              context.prepared_names,
+                                              context.prepared_arch);
+  if (!layout.has_value()) {
+    return std::nullopt;
+  }
+
+  return render_prepared_local_i32_countdown_loop_if_supported(*context.function,
+                                                               *context.entry,
+                                                               context.prepared_names,
+                                                               context.function_control_flow,
+                                                               context.prepared_arch,
+                                                               context.asm_prefix,
+                                                               *layout);
+}
+
+std::optional<std::string> render_prepared_countdown_entry_routes_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
