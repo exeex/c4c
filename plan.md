@@ -42,17 +42,23 @@ prepare code and consumed by x86 as data.
 - reactivating idea 58 control-flow ownership work
 - reopening closed idea 60 value-home or move-bundle work
 - activating idea 59 generic scalar instruction selection
+- extending prepared ownership to direct `CallInst` pointer-argument symbol
+  materialization that is not already represented as prepared memory/address
+  data
 - introducing new x86 matcher families whose practical scope is one testcase
 
 ## Working Model
 
 - shared prepare owns frame size, frame-slot identity, and address provenance
 - prepared addressing data is keyed by function, block, and instruction
+- the current idea covers frame/layout and memory-address consumers, not every
+  direct symbol spelling that might appear in x86 call-lane setup
 - x86 may reject unsupported operand forms, but it must not rediscover local
   slot offsets or memory provenance when prepared data exists
 - prior idea 61 work already moved direct frame-slot and same-module global
   guard/helper consumers toward prepared addressing; reactivation resumes the
-  remaining Step 3.2 string-backed and residual direct-symbol lanes
+  remaining Step 3.2 string-backed and residual direct-symbol memory-access
+  lanes
 
 ## Execution Rules
 
@@ -101,6 +107,8 @@ Actions:
 - build prepared frame-size and alignment facts from the canonical stack layout
 - classify direct frame-slot, global-symbol, string-constant, and
   pointer-indirect memory accesses into prepared addressing records
+- do not widen this producer step into new call-argument symbol payloads unless
+  the linked source idea is revised to cover that ownership explicitly
 - keep address provenance ownership in shared prepare rather than x86-local
   helper paths
 - ensure the producer path records enough information for later consumer
@@ -176,14 +184,18 @@ Actions:
 - begin consuming canonical prepared addressing for direct frame-slot loads and
   stores, plus symbol-backed accesses where the same contract applies
 - finish the remaining string-backed and residual direct-symbol consumer lanes
-  that were still open when idea 61 was deactivated
+  that were still open when idea 61 was deactivated, but only when those lanes
+  already correspond to prepared memory/address ownership
+- treat bounded call-lane pointer-argument materialization that still inspects
+  raw `@name` spellings as out of scope for this step unless a separate
+  lifecycle change expands shared prepare ownership for that family
 - cover adjacent bounded local/global memory cases through prepared addressing
   ownership rather than local slot-name or byte-offset reconstruction
 
 Completion check:
 
-- the covered x86 direct frame and symbol-backed access paths consume prepared
-  addressing data without emitter-local slot analysis
+- the covered x86 direct frame and symbol-backed memory-access paths consume
+  prepared addressing data without emitter-local slot analysis
 
 ### Step 3.3: Pointer-Indirect And Residual Address Cleanup
 
