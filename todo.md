@@ -3,34 +3,35 @@
 Status: Active
 Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 3.1
-Current Step Title: Establish Minimal Move-Bundle Consumption For Scalar Home Queries
-Plan Review Counter: 1 / 10
+Current Step ID: 3.2
+Current Step Title: Replace Value-Home Guessing With Prepared Lookups
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 3.1 (`Establish Minimal Move-Bundle Consumption For Scalar Home
-Queries`) now lands in the x86 prepared emitter for the minimal one-block
-scalar immediate-binary family: `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
-reads the shared prepared value-location function, narrows non-ABI home
-registers like `r11` to their i32 spellings, and executes the canonical
-`BeforeInstruction` and `BeforeReturn` move bundles before rendering the
-final asm instead of assuming the result lives in the return ABI register.
-The scalar smoke proof was tightened in
-`tests/backend/backend_x86_handoff_boundary_scalar_smoke_test.cpp` to assert
-that the `add_one` fixture publishes the expected prepared result-home and
-move-bundle contract, and the backend handoff subset now returns to the same
-four pre-existing backend-route failures without reintroducing the earlier
-`backend_x86_handoff_boundary` regression.
+Step 3.2 (`Replace Value-Home Guessing With Prepared Lookups`) now covers the
+remaining minimal scalar passthrough and immediate-binary source-home lane:
+`src/backend/prealloc/regalloc.cpp` publishes canonical parameter entry homes
+into `PreparedValueLocations` from function ABI metadata instead of exposing
+only regalloc-assigned destinations, and
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` now reads those shared
+parameter homes plus the canonical `BeforeInstruction` and `BeforeReturn`
+move bundles when rendering the bounded one-block i32 passthrough and
+immediate-binary routes. The scalar smoke proof in
+`tests/backend/backend_x86_handoff_boundary_scalar_smoke_test.cpp` was
+tightened to assert the `id_i32` passthrough fixture publishes the expected
+prepared parameter-home and return-bundle contract alongside the existing
+`add_one` move-bundle checks, and the backend subset returned to the same
+four pre-existing backend-route failures already present in `test_before.log`.
 
 ## Suggested Next
 
-Move into Step 3.2 (`Replace Value-Home Guessing With Prepared Lookups`) by
-switching the remaining minimal scalar source/storage selection off ABI-based
-register guesses and onto direct `PreparedBirModule::value_locations` home
-queries, using the landed Step 3.1 move-bundle execution as the bounded
-prerequisite for those broader lookup-based reads.
+Continue Step 3.2 by extending the shared value-home lookup route beyond the
+minimal register-backed passthrough/immediate-binary lane to the next bounded
+scalar cases that still rely on emitter-local storage assumptions, especially
+any stack-backed or rematerializable reads that can now consume the same
+prepared contract without widening into Step 3.3 boundary-move work.
 
 ## Watchouts
 
@@ -40,14 +41,13 @@ prerequisite for those broader lookup-based reads.
   instruction selection into this route.
 - Keep the new consumer surface keyed by existing prepared IDs and name-table
   lookups rather than widening into string-owned parallel state.
+- Parameter value homes now need to mean the canonical entry ABI location for
+  consumers, not the later regalloc-assigned destination register that
+  `BeforeInstruction` bundles may target.
 - `PreparedMovePhase::BlockEntry` is currently inferred from shared
   `phi_...` move reasons, while call/result/return bundles come from
   destination-kind classification in shared prepare; keep any later phase
   refinement shared instead of pushing it into x86.
-- Step 3.1 only covers the bounded one-block scalar immediate-binary lane.
-  The direct parameter passthrough case still routes through the older minimal
-  helper until Step 3.2 lifts source-home reads onto prepared value-location
-  lookups more broadly.
 - The delegated `^backend_` proof subset still has four pre-existing failing
   cases in both `test_before.log` and `test_after.log`:
   `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
@@ -60,7 +60,7 @@ prerequisite for those broader lookup-based reads.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_' > test_after.log 2>&1`. The build
-completed, `backend_x86_handoff_boundary` passed again with the new Step 3.1
-route and tightened scalar smoke contract checks, and the subset finished with
-the same four pre-existing backend-route failures already present in
-`test_before.log`.
+completed, `backend_x86_handoff_boundary` passed with the new Step 3.2
+prepared-home contract checks and x86 lookup consumption, and the subset
+finished with the same four pre-existing backend-route failures already
+present in `test_before.log`.

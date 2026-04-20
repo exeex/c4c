@@ -173,6 +173,49 @@ int check_add_one_prepared_move_bundle_contract() {
   return 0;
 }
 
+int check_id_i32_prepared_value_location_contract() {
+  const auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(make_x86_param_passthrough_module(),
+                                                        x86_target_profile());
+  const auto* function_locations =
+      prepare::find_prepared_value_location_function(prepared, "id_i32");
+  if (function_locations == nullptr) {
+    return fail("minimal i32 parameter passthrough route: missing prepared value-location function");
+  }
+
+  const auto* param_home =
+      prepare::find_prepared_value_home(prepared.names, *function_locations, "p.x");
+  if (param_home == nullptr || param_home->kind != prepare::PreparedValueHomeKind::Register ||
+      !param_home->register_name.has_value() ||
+      narrow_abi_register(*param_home->register_name) != minimal_i32_param_register()) {
+    std::string detail =
+        "minimal i32 parameter passthrough route: prepared value-location contract lost the canonical parameter home";
+    if (param_home == nullptr) {
+      detail += " (missing home)";
+    } else {
+      detail += " (kind=" + std::string(prepare::prepared_value_home_kind_name(param_home->kind));
+      detail += ", register=";
+      detail += param_home->register_name.has_value() ? *param_home->register_name : "<none>";
+      detail += ")";
+    }
+    return fail(detail.c_str());
+  }
+
+  const auto* before_return = prepare::find_prepared_move_bundle(
+      *function_locations, prepare::PreparedMovePhase::BeforeReturn, 0, 0);
+  if (before_return == nullptr || before_return->moves.size() != 1 ||
+      before_return->moves.front().destination_kind !=
+          prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
+      before_return->moves.front().from_value_id != param_home->value_id ||
+      !before_return->moves.front().destination_register_name.has_value() ||
+      narrow_abi_register(*before_return->moves.front().destination_register_name) !=
+          minimal_i32_return_register()) {
+    return fail("minimal i32 parameter passthrough route: prepared value-location contract lost the return move bundle");
+  }
+
+  return 0;
+}
+
 std::string expected_minimal_param_add_immediate_asm(const char* function_name, int immediate) {
   return expected_minimal_param_binary_asm(function_name, "add", immediate);
 }
@@ -579,6 +622,9 @@ int run_backend_x86_handoff_boundary_scalar_smoke_tests() {
   // the monolithic handoff file around the remaining local guard and helper
   // ownership seams.
   if (const auto status = check_add_one_prepared_move_bundle_contract(); status != 0) {
+    return status;
+  }
+  if (const auto status = check_id_i32_prepared_value_location_contract(); status != 0) {
     return status;
   }
 

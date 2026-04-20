@@ -494,11 +494,29 @@ std::string emit_prepared_module(
     }
 
     const auto& param = function.params.front();
-    if (param.type != c4c::backend::bir::TypeKind::I32 || param.is_varargs || param.is_sret || param.is_byval) {
+    if (param.type != c4c::backend::bir::TypeKind::I32 || param.is_varargs || param.is_sret ||
+        param.is_byval) {
       return std::nullopt;
     }
-    const auto abi_param_register = minimal_param_register(param);
-    if (!abi_param_register.has_value()) {
+
+    const auto narrow_home_register =
+        [&](const c4c::backend::prepare::PreparedValueHome& home) -> std::optional<std::string> {
+      if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+          !home.register_name.has_value()) {
+        return std::nullopt;
+      }
+      return narrow_i32_register(*home.register_name);
+    };
+    const auto find_named_home_register = [&](std::string_view value_name) -> std::optional<std::string> {
+      const auto* home =
+          c4c::backend::prepare::find_prepared_value_home(module.names, *function_locations, value_name);
+      if (home == nullptr) {
+        return std::nullopt;
+      }
+      return narrow_home_register(*home);
+    };
+    const auto source_param_register = find_named_home_register(param.name);
+    if (!source_param_register.has_value()) {
       return std::nullopt;
     }
 
@@ -541,6 +559,17 @@ std::string emit_prepared_module(
     if (returned.type != c4c::backend::bir::TypeKind::I32 ||
         returned.kind != c4c::backend::bir::Value::Kind::Named) {
       return std::nullopt;
+    }
+
+    if (entry.insts.empty()) {
+      if (returned.name != param.name) {
+        return std::nullopt;
+      }
+      std::string body;
+      if (*return_destination_register != *source_param_register) {
+        body += "    mov " + *return_destination_register + ", " + *source_param_register + "\n";
+      }
+      return asm_prefix + c4c::backend::x86::render_prepared_return_body(body);
     }
 
     if (entry.insts.size() != 1) {
@@ -588,8 +617,8 @@ std::string emit_prepared_module(
 
     const auto immediate = lhs_is_param_rhs_is_imm ? binary->rhs.immediate : binary->lhs.immediate;
     std::string body;
-    if (*instruction_destination_register != *abi_param_register) {
-      body += "    mov " + *instruction_destination_register + ", " + *abi_param_register + "\n";
+    if (*instruction_destination_register != *source_param_register) {
+      body += "    mov " + *instruction_destination_register + ", " + *source_param_register + "\n";
     }
     if (binary->opcode == c4c::backend::bir::BinaryOpcode::Add) {
       body += "    add " + *instruction_destination_register + ", " +

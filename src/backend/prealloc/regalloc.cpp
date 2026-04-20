@@ -388,7 +388,11 @@ template <typename CanEvict>
   return slot;
 }
 
-[[nodiscard]] PreparedValueHome classify_prepared_value_home(const PreparedRegallocValue& value) {
+[[nodiscard]] PreparedValueHome classify_prepared_value_home(
+    const PreparedNameTables& names,
+    const c4c::TargetProfile& target_profile,
+    const c4c::backend::bir::Function* function,
+    const PreparedRegallocValue& value) {
   PreparedValueHome home{
       .value_id = value.value_id,
       .function_name = value.function_name,
@@ -398,6 +402,23 @@ template <typename CanEvict>
       .slot_id = std::nullopt,
       .offset_bytes = std::nullopt,
   };
+  if (function != nullptr && value.value_kind == PreparedValueKind::Parameter) {
+    const std::string_view value_name = prepared_value_name(names, value.value_name);
+    for (std::size_t param_index = 0; param_index < function->params.size(); ++param_index) {
+      const auto& param = function->params[param_index];
+      if (param.name != value_name || !param.abi.has_value() || param.is_varargs || param.is_sret ||
+          param.is_byval) {
+        continue;
+      }
+      if (const auto register_name =
+              call_arg_destination_register_name(target_profile, *param.abi, param_index);
+          register_name.has_value()) {
+        home.kind = PreparedValueHomeKind::Register;
+        home.register_name = *register_name;
+      }
+      return home;
+    }
+  }
   if (value.assigned_register.has_value()) {
     home.kind = PreparedValueHomeKind::Register;
     home.register_name = value.assigned_register->register_name;
@@ -451,6 +472,9 @@ void append_prepared_move_bundle(PreparedValueLocationFunction& function_locatio
 }
 
 [[nodiscard]] PreparedValueLocationFunction build_prepared_value_location_function(
+    const PreparedNameTables& names,
+    const c4c::TargetProfile& target_profile,
+    const c4c::backend::bir::Function* function,
     const PreparedRegallocFunction& regalloc_function) {
   PreparedValueLocationFunction function_locations{
       .function_name = regalloc_function.function_name,
@@ -459,7 +483,8 @@ void append_prepared_move_bundle(PreparedValueLocationFunction& function_locatio
   };
   function_locations.value_homes.reserve(regalloc_function.values.size());
   for (const auto& value : regalloc_function.values) {
-    function_locations.value_homes.push_back(classify_prepared_value_home(value));
+    function_locations.value_homes.push_back(
+        classify_prepared_value_home(names, target_profile, function, value));
   }
   for (const auto& move : regalloc_function.move_resolution) {
     append_prepared_move_bundle(function_locations, move);
@@ -1188,9 +1213,9 @@ void BirPreAlloc::run_regalloc() {
     }
 
     append_spill_reload_ops(liveness_function, spill_points, regalloc_function);
-    if (const auto* function =
-            find_bir_function(prepared_.module, prepared_.names, regalloc_function.function_name);
-        function != nullptr) {
+    const auto* function =
+        find_bir_function(prepared_.module, prepared_.names, regalloc_function.function_name);
+    if (function != nullptr) {
       if (const auto* function_cf =
               find_prepared_control_flow_function(prepared_.control_flow, regalloc_function.function_name);
           function_cf != nullptr) {
@@ -1225,8 +1250,8 @@ void BirPreAlloc::run_regalloc() {
                    std::to_string(assigned_register_count) + " register(s) and " +
                    std::to_string(assigned_stack_count) + " stack slot(s)",
     });
-    prepared_.value_locations.functions.push_back(
-        build_prepared_value_location_function(regalloc_function));
+    prepared_.value_locations.functions.push_back(build_prepared_value_location_function(
+        prepared_.names, prepared_.target_profile, function, regalloc_function));
     prepared_.regalloc.functions.push_back(std::move(regalloc_function));
   }
 }
