@@ -1377,6 +1377,34 @@ std::optional<std::string> render_prepared_bounded_same_module_helper_call_if_su
   return rendered_call;
 }
 
+std::optional<std::string> render_prepared_block_same_module_helper_call_inst_if_supported(
+    const PreparedX86BlockDispatchContext& block_context,
+    const c4c::backend::bir::Inst& inst,
+    std::optional<std::string_view>* current_i32_name,
+    std::optional<std::string_view>* previous_i32_name,
+    std::optional<std::string_view>* current_i8_name,
+    std::optional<std::string_view>* current_ptr_name,
+    std::optional<MaterializedI32Compare>* current_materialized_compare) {
+  if (block_context.function_context == nullptr) {
+    return std::nullopt;
+  }
+  static const std::unordered_set<std::string_view> kEmptyHelperNames;
+  const auto& function_context = *block_context.function_context;
+  const auto& bounded_same_module_helper_names =
+      function_context.bounded_same_module_helper_names == nullptr
+          ? kEmptyHelperNames
+          : *function_context.bounded_same_module_helper_names;
+  return render_prepared_bounded_same_module_helper_call_if_supported(
+      inst,
+      bounded_same_module_helper_names,
+      function_context.render_asm_symbol_name,
+      current_i32_name,
+      previous_i32_name,
+      current_i8_name,
+      current_ptr_name,
+      current_materialized_compare);
+}
+
 bool prepared_frame_memory_accesses_match(
     const c4c::backend::prepare::PreparedMemoryAccess* lhs,
     const c4c::backend::prepare::PreparedMemoryAccess* rhs) {
@@ -1776,10 +1804,9 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
         continue;
       }
 
-      if (const auto rendered_call = render_prepared_bounded_same_module_helper_call_if_supported(
+      if (const auto rendered_call = render_prepared_block_same_module_helper_call_inst_if_supported(
+              block_context,
               block.insts[index],
-              bounded_same_module_helper_names,
-              render_asm_symbol_name,
               &current_i32_name,
               &previous_i32_name,
               &current_i8_name,
