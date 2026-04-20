@@ -137,6 +137,12 @@ std::optional<std::string> render_prepared_symbol_memory_operand_if_supported(
     const c4c::backend::prepare::PreparedAddress& address,
     std::string_view size_name,
     const std::function<std::string(std::string_view)>& render_asm_symbol_name);
+const c4c::backend::bir::Block* resolve_authoritative_prepared_branch_target(
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    c4c::BlockLabelId block_label_id,
+    const c4c::backend::bir::Block& block,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block);
 std::optional<std::string> render_prepared_scalar_memory_operand_for_inst_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
@@ -840,6 +846,44 @@ std::optional<std::string> render_prepared_block_return_terminator_if_supported(
   }
   body += "    ret\n";
   return body;
+}
+
+std::optional<std::string> render_prepared_block_plain_branch_terminator_if_supported(
+    const PreparedX86BlockDispatchContext& block_context,
+    std::string body,
+    std::size_t compare_index,
+    const std::optional<c4c::backend::prepare::PreparedShortCircuitContinuationLabels>& continuation,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block,
+    const std::function<std::optional<std::string>(
+        const c4c::backend::bir::Block&,
+        const std::optional<c4c::backend::prepare::PreparedShortCircuitContinuationLabels>&)>&
+        render_block) {
+  if (block_context.function_context == nullptr || block_context.block == nullptr) {
+    return std::nullopt;
+  }
+  const auto& function_context = *block_context.function_context;
+  const auto& block = *block_context.block;
+  if (block.terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
+      compare_index != block.insts.size()) {
+    return std::nullopt;
+  }
+  const auto* target = resolve_authoritative_prepared_branch_target(
+      function_context.function_control_flow,
+      function_context.prepared_names,
+      block_context.block_label_id,
+      block,
+      find_block);
+  if (target == nullptr) {
+    target = find_block(block.terminator.target_label);
+    if (target == nullptr || target == &block) {
+      return std::nullopt;
+    }
+  }
+  const auto rendered_target = render_block(*target, continuation);
+  if (!rendered_target.has_value()) {
+    return std::nullopt;
+  }
+  return body + *rendered_target;
 }
 
 std::optional<std::string> render_prepared_scalar_load_inst_if_supported(
@@ -1702,22 +1746,8 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
               "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
         }
       }
-      if (compare_index != block.insts.size()) {
-        return std::nullopt;
-      }
-      const auto* target = resolve_authoritative_prepared_branch_target(
-          function_control_flow, prepared_names, block_label_id, block, find_block);
-      if (target == nullptr) {
-        target = find_block(block.terminator.target_label);
-        if (target == nullptr || target == &block) {
-          return std::nullopt;
-        }
-      }
-      const auto rendered_target = render_block(*target, continuation);
-      if (!rendered_target.has_value()) {
-        return std::nullopt;
-      }
-      return body + *rendered_target;
+      return render_prepared_block_plain_branch_terminator_if_supported(
+          block_context, std::move(body), compare_index, continuation, find_block, render_block);
     }
 
     if (block.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
