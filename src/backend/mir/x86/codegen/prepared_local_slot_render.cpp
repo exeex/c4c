@@ -130,6 +130,11 @@ struct PreparedI32ValueSelection {
   bool in_eax = false;
 };
 
+struct PreparedI32NamedImmediateCompareSelection {
+  const c4c::backend::bir::Value* named_value = nullptr;
+  std::int64_t immediate = 0;
+};
+
 std::optional<std::string_view> prepared_scalar_memory_operand_size_name(
     c4c::backend::bir::TypeKind type);
 std::optional<std::string> render_prepared_symbol_memory_operand_if_supported(
@@ -265,28 +270,44 @@ std::optional<std::string> select_prepared_previous_i32_operand_if_supported(
   return std::nullopt;
 }
 
+std::optional<PreparedI32NamedImmediateCompareSelection>
+select_prepared_i32_named_immediate_compare_if_supported(
+    const c4c::backend::bir::Value& lhs,
+    const c4c::backend::bir::Value& rhs) {
+  const bool lhs_is_value_rhs_is_imm =
+      lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+      rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+      rhs.type == c4c::backend::bir::TypeKind::I32;
+  const bool rhs_is_value_lhs_is_imm =
+      rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+      lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+      lhs.type == c4c::backend::bir::TypeKind::I32;
+  if (!lhs_is_value_rhs_is_imm && !rhs_is_value_lhs_is_imm) {
+    return std::nullopt;
+  }
+  return PreparedI32NamedImmediateCompareSelection{
+      .named_value = lhs_is_value_rhs_is_imm ? &lhs : &rhs,
+      .immediate = lhs_is_value_rhs_is_imm ? rhs.immediate : lhs.immediate,
+  };
+}
+
+std::string render_prepared_i32_eax_immediate_compare_setup(std::int64_t compare_immediate) {
+  if (compare_immediate == 0) {
+    return std::string("    test eax, eax\n");
+  }
+  return "    cmp eax, " +
+         std::to_string(static_cast<std::int32_t>(compare_immediate)) + "\n";
+}
+
 std::optional<std::string> select_prepared_materialized_i32_compare_setup_if_supported(
     const c4c::backend::bir::BinaryInst& compare,
     const std::optional<std::string_view>& current_i32_name) {
   if (current_i32_name.has_value()) {
-    const bool lhs_is_current_rhs_is_imm =
-        compare.lhs.kind == c4c::backend::bir::Value::Kind::Named &&
-        compare.lhs.name == *current_i32_name &&
-        compare.rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-        compare.rhs.type == c4c::backend::bir::TypeKind::I32;
-    const bool rhs_is_current_lhs_is_imm =
-        compare.rhs.kind == c4c::backend::bir::Value::Kind::Named &&
-        compare.rhs.name == *current_i32_name &&
-        compare.lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-        compare.lhs.type == c4c::backend::bir::TypeKind::I32;
-    if (lhs_is_current_rhs_is_imm || rhs_is_current_lhs_is_imm) {
-      const auto compare_immediate =
-          lhs_is_current_rhs_is_imm ? compare.rhs.immediate : compare.lhs.immediate;
-      if (compare_immediate == 0) {
-        return std::string("    test eax, eax\n");
-      }
-      return "    cmp eax, " +
-             std::to_string(static_cast<std::int32_t>(compare_immediate)) + "\n";
+    const auto selected_compare = select_prepared_i32_named_immediate_compare_if_supported(
+        compare.lhs, compare.rhs);
+    if (selected_compare.has_value() &&
+        selected_compare->named_value->name == *current_i32_name) {
+      return render_prepared_i32_eax_immediate_compare_setup(selected_compare->immediate);
     }
   }
   if (compare.lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
@@ -424,22 +445,17 @@ select_raw_i32_immediate_branch_plan_if_supported(const c4c::backend::bir::Block
     return std::nullopt;
   }
 
-  const bool lhs_is_value_rhs_is_imm =
-      compare->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-      compare->rhs.type == c4c::backend::bir::TypeKind::I32;
-  const bool rhs_is_value_lhs_is_imm =
-      compare->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-      compare->lhs.type == c4c::backend::bir::TypeKind::I32;
-  if (!lhs_is_value_rhs_is_imm && !rhs_is_value_lhs_is_imm) {
+  const auto selected_compare = select_prepared_i32_named_immediate_compare_if_supported(
+      compare->lhs, compare->rhs);
+  if (!selected_compare.has_value()) {
     return std::nullopt;
   }
 
   return PreparedI32ComparedImmediateBranchPlan{
-      .compared_value = lhs_is_value_rhs_is_imm ? compare->lhs : compare->rhs,
+      .compared_value = *selected_compare->named_value,
       .branch_plan =
           PreparedI32ImmediateBranchPlan{
-              .compare_immediate = lhs_is_value_rhs_is_imm ? compare->rhs.immediate
-                                                           : compare->lhs.immediate,
+              .compare_immediate = selected_compare->immediate,
               .compare_opcode = compare->opcode,
               .true_label = entry.terminator.true_label,
               .false_label = entry.terminator.false_label,
@@ -462,17 +478,10 @@ select_prepared_i32_immediate_branch_plan_if_supported(
     return std::nullopt;
   }
 
-  const bool lhs_is_value_rhs_is_imm =
-      prepared_branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Named &&
-      prepared_branch_condition.lhs->name == compared_value_name &&
-      prepared_branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-      prepared_branch_condition.rhs->type == c4c::backend::bir::TypeKind::I32;
-  const bool rhs_is_value_lhs_is_imm =
-      prepared_branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Named &&
-      prepared_branch_condition.rhs->name == compared_value_name &&
-      prepared_branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
-      prepared_branch_condition.lhs->type == c4c::backend::bir::TypeKind::I32;
-  if (!lhs_is_value_rhs_is_imm && !rhs_is_value_lhs_is_imm) {
+  const auto selected_compare = select_prepared_i32_named_immediate_compare_if_supported(
+      *prepared_branch_condition.lhs, *prepared_branch_condition.rhs);
+  if (!selected_compare.has_value() ||
+      selected_compare->named_value->name != compared_value_name) {
     return std::nullopt;
   }
 
@@ -488,8 +497,7 @@ select_prepared_i32_immediate_branch_plan_if_supported(
   }
 
   return PreparedI32ImmediateBranchPlan{
-      .compare_immediate = lhs_is_value_rhs_is_imm ? prepared_branch_condition.rhs->immediate
-                                                   : prepared_branch_condition.lhs->immediate,
+      .compare_immediate = selected_compare->immediate,
       .compare_opcode = *prepared_branch_condition.predicate,
       .true_label = std::string(c4c::backend::prepare::prepared_block_label(
           *context.prepared_names, target_labels->true_label)),
@@ -592,11 +600,8 @@ std::string render_prepared_i32_compare_and_branch(c4c::backend::bir::BinaryOpco
                                                    std::int64_t compare_immediate,
                                                    std::string_view function_name,
                                                    std::string_view false_label) {
-  std::string rendered = compare_immediate == 0
-                             ? "    test eax, eax\n"
-                             : "    cmp eax, " +
-                                   std::to_string(static_cast<std::int32_t>(compare_immediate)) +
-                                   "\n";
+  std::string rendered =
+      render_prepared_i32_eax_immediate_compare_setup(compare_immediate);
   rendered += "    ";
   rendered += compare_opcode == c4c::backend::bir::BinaryOpcode::Eq ? "jne" : "je";
   rendered += " .L";
