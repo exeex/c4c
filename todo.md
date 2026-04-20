@@ -5,23 +5,25 @@ Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
 Source Plan Path: plan.md
 Current Step ID: 3.3.3
 Current Step Title: Close Residual Call, Result, And Return Boundary Seams
-Plan Review Counter: 1 / 10
+Plan Review Counter: 2 / 10
 # Current Packet
 
 ## Just Finished
 
 Closed two residual Step 3.3.3 boundary seams in the bounded x86 prepared
-consumer: the call-lane helper no longer accepts a missing `AfterCall` bundle
-just because a call result already looks like `eax`, and the minimal scalar
-passthrough return route now rejects missing prepared `BeforeReturn` bundles
-or value homes instead of falling back to legacy local return sourcing.
+consumer: the direct extern-call helper no longer defaults a missing
+`AfterCall` bundle to `eax`, and the minimal scalar move-bundle return helper
+now stays scoped to named one-parameter home-return lanes instead of rejecting
+plain immediate or no-parameter constant-evaluable returns before the existing
+single-block dispatch can handle them.
 
 ## Suggested Next
 
-Keep Step 3.3.3 on residual boundary cleanup by checking whether any remaining
-single-block named-return or direct-call lanes still route around prepared
-bundle authority, then broaden proof only if another bounded seam is found or
-if Step 3.3.3 is ready to hand off to Step 4 validation.
+Treat Step 3.3.3 as ready to hand off toward Step 4 validation unless another
+new bounded call/result/return seam is found. The current narrow handoff suite
+is green again after restoring the missing prepared `AfterCall` failure path
+and unblocking the immediate-return lane from the over-tightened return-bundle
+gate.
 
 ## Watchouts
 

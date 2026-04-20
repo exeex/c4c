@@ -2801,10 +2801,12 @@ std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_i
         }
         return nullptr;
       }();
+      if (after_call_move == nullptr || !after_call_move->destination_register_name.has_value()) {
+        throw std::invalid_argument(
+            "x86 backend emitter requires the authoritative prepared call-bundle handoff through the canonical prepared-module handoff");
+      }
       const auto abi_result_register =
-          after_call_move != nullptr && after_call_move->destination_register_name.has_value()
-              ? narrow_i32_register(*after_call_move->destination_register_name)
-              : std::optional<std::string>{std::string("eax")};
+          narrow_i32_register(*after_call_move->destination_register_name);
       if (!abi_result_register.has_value()) {
         return std::nullopt;
       }

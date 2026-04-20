@@ -619,6 +619,15 @@ std::string emit_prepared_module(
       return std::nullopt;
     }
 
+    const auto& returned = *entry.terminator.value;
+    if (returned.type != c4c::backend::bir::TypeKind::I32 ||
+        returned.kind != c4c::backend::bir::Value::Kind::Named) {
+      return std::nullopt;
+    }
+    if (function.params.size() != 1) {
+      return std::nullopt;
+    }
+
     const auto find_named_source_home =
         [&](std::string_view value_name) -> const c4c::backend::prepare::PreparedValueHome* {
       return c4c::backend::prepare::find_prepared_value_home(
@@ -659,28 +668,6 @@ std::string emit_prepared_module(
     if (!return_destination_register.has_value()) {
       throw std::invalid_argument(
           "x86 backend emitter requires the authoritative prepared return-bundle handoff through the canonical prepared-module handoff");
-    }
-
-    const auto& returned = *entry.terminator.value;
-    if (returned.type != c4c::backend::bir::TypeKind::I32 ||
-        returned.kind != c4c::backend::bir::Value::Kind::Named) {
-      return std::nullopt;
-    }
-    if (function.params.empty() && entry.insts.size() <= 1) {
-      const auto* returned_home =
-          c4c::backend::prepare::find_prepared_value_home(module.names, *function_locations, returned.name);
-      if (returned_home == nullptr) {
-        throw std::invalid_argument(std::string(kScalarReturnContractError));
-      }
-      std::string body;
-      if (!append_i32_home_move(body, *returned_home, *return_destination_register)) {
-        throw std::invalid_argument(std::string(kScalarReturnContractError));
-      }
-      return render_frame_wrapped_return(
-          body, required_frame_size_for_home(*returned_home), true);
-    }
-    if (function.params.size() != 1) {
-      return std::nullopt;
     }
 
     const auto& param = function.params.front();
