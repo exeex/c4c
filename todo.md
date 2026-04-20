@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/59_generic_scalar_instruction_selection_for_x86.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Extract Operand And Legality Selectors
-Plan Review Counter: 10 / 10
+Current Step ID: 2.1
+Current Step Title: Exhaust The Remaining Local Guard Selector Seams
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
@@ -20,12 +20,11 @@ inline before branch-plan selection.
 
 ## Suggested Next
 
-Stay in Step 2 and audit whether the nearby local `i32` guard operand/value
-render recursion still hides one reusable selector seam, or whether this guard
-surface is now structurally exhausted and the next packet should move to a
-different Step 2 selector surface, but do not widen into broader arithmetic
-family migration, prepared move-bundle call routing, or Step 3 per-op
-dispatch.
+Stay in Step 2.1 and audit whether the nearby local `i32` guard operand/value
+render recursion still hides one reusable selector seam, or whether this local
+guard surface is now structurally exhausted and the next packet should move to
+Step 2.2 instead, but do not widen into broader arithmetic family migration,
+prepared move-bundle call routing, or Step 3 per-op dispatch.
 
 ## Watchouts
 

@@ -177,6 +177,8 @@ Primary targets:
 
 Actions:
 
+- execute this step through the ordered substeps below rather than treating
+  all remaining selector work as one undifferentiated stream
 - extract or refine selector helpers for named/immediate scalar values, stack
   and symbol memory operands, prepared compare planning, and bounded call-lane
   legality
@@ -187,8 +189,83 @@ Actions:
 
 Completion check:
 
+- Step 2.1 through Step 2.3 are complete
 - covered scalar lowering questions can be answered through local selector
   helpers instead of by growing another bounded whole-function matcher
+
+### Step 2.1: Exhaust The Remaining Local Guard Selector Seams
+
+Goal: finish the local guard-path selector audit so any remaining cleanup is a
+real reusable legality surface rather than cosmetic refactoring.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+
+Actions:
+
+- inspect the nearby local `i32` guard operand/value rendering recursion and
+  extract it only if the result is a reusable selector helper with a clear
+  prepared-legality contract
+- keep the local `i16` and `i32` arithmetic guard routes aligned when a helper
+  is truly shared, but do not widen into family migration or broad emitter
+  cleanup
+- if no real selector seam remains, treat the local guard audit as exhausted
+  and hand off to the next Step 2 substep instead of forcing one more refactor
+
+Completion check:
+
+- the remaining local guard rendering logic is either extracted into a real
+  selector helper or explicitly judged structurally exhausted
+
+### Step 2.2: Consolidate Shared Scalar Operand And Compare Selectors
+
+Goal: finish the reusable selector surfaces for scalar values, memory operands,
+  and compare planning that other prepared-x86 lowering packets should consume.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- helper extraction sites under x86 codegen if needed
+
+Actions:
+
+- consolidate selector entry points for named/immediate scalar operands, stack
+  and symbol memory operands, and prepared compare planning where nearby
+  lowering sites still assemble those legality answers ad hoc
+- keep helper contracts centered on prepared inputs and x86 legality decisions,
+  not on specific testcase shapes or one whole-function success path
+- stop when nearby scalar lowering callers can ask selector helpers for operand
+  and compare decisions without re-deriving local prepared facts inline
+
+Completion check:
+
+- the remaining covered scalar operand and compare questions route through
+  shared selector helpers instead of local ad hoc scans
+
+### Step 2.3: Extract Bounded Call-Lane Legality Selectors
+
+Goal: isolate the bounded scalar-call legality surface needed before Step 3
+  family migration starts.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- adjacent x86 helper extraction sites if needed
+
+Actions:
+
+- extract or refine the bounded prepared call-lane legality helpers required by
+  the currently covered scalar call route
+- keep the route framed as selector-based legality answers over prepared
+  move-bundle and operand facts rather than matcher growth
+- stop once the remaining Step 2 blocker for scalar-call routing is a clear
+  helper surface that Step 4 can consume
+
+Completion check:
+
+- the covered scalar-call legality questions are answered by selector helpers
+  instead of open-coded call-lane checks
 
 ## Step 3: Migrate Covered Scalar Instruction Families
 
