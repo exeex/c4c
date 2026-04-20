@@ -5,31 +5,30 @@ Source Idea Path: ideas/open/63_complete_phi_legalization_and_parallel_copy_reso
 Source Plan Path: plan.md
 Current Step ID: 4
 Current Step Title: Validate The Phi Legalization Route
-Plan Review Counter: 2 / 10
+Plan Review Counter: 3 / 10
 # Current Packet
 
 ## Just Finished
 
-Executed Step 4 (`Validate The Phi Legalization Route`) with a broader backend
-checkpoint by rerunning `cmake --build --preset default && ctest --test-dir
-build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`. The
-targeted authoritative-handoff surface still passed
-(`backend_x86_handoff_boundary` stayed green), but the broadened backend proof
-did not clear closure-quality validation because four backend-route cases still
-fail in semantic `lir_to_bir` lowering outside the current narrowed handoff
-subset.
+Classified the four `^backend_` checkpoint failures for Step 4 (`Validate The
+Phi Legalization Route`) as pre-handoff semantic `lir_to_bir` backend-route
+gaps outside the active phi-transfer scope. The failing cases all stop before
+the canonical prepared-module handoff in `src/backend/backend.cpp` and
+`src/backend/bir/lir_to_bir_module.cpp`, while the active idea and runbook are
+scoped to authoritative phi-transfer work in `prealloc/legalize/regalloc`.
+The targeted handoff proof surface still passed inside the broader run
+(`backend_x86_handoff_boundary` stayed green), so the current Step 4 blocker
+is validation-scope classification rather than an observed phi-route
+regression.
 
 ## Suggested Next
 
-Keep Step 4 active and route the next bounded packet to classify the four
-broader-backend failures seen in `test_after.log`
-(`backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
-`backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
-`backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`,
-and `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`).
-Decide whether they are pre-existing out-of-scope backend-route failures or the
-next required validation blocker for this phi-transfer route before claiming
-closure-quality confidence.
+Treat `backend_x86_handoff_boundary` plus the recorded out-of-scope
+`lir_to_bir` classification as the honest Step 4 validation state, then hand
+the lifecycle decision to the plan owner: either close the active phi-transfer
+runbook as complete on its chosen validation scope or rewrite Step 4 only if
+the source idea truly requires broader backend-route closure beyond the
+prepared-module handoff.
 
 ## Watchouts
 
@@ -49,16 +48,19 @@ closure-quality confidence.
 - `backend_x86_handoff_boundary` still passed inside the broadened run, so the
   current blocker is proof breadth, not an observed regression in the recent
   joined-branch contract-strict slices.
-- Keep Step 4 focused on validation scope and blocker classification, not on
-  inventing a new implementation initiative without proving the failures are
-  actually in-scope.
+- The broader failures all die before `prepare_semantic_bir_pipeline(...)`
+  reaches the authoritative phi-transfer surfaces, so they should not be
+  reframed as `prealloc` or regalloc regressions without contrary proof.
+- Keep Step 4 focused on validation-scope honesty and lifecycle disposition,
+  not on inventing a new backend-route implementation initiative under idea 63.
 
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
 ran for this Step 4 checkpoint. `backend_x86_handoff_boundary` passed inside
 that broader run, but the backend-focused validation failed overall with four
-backend-route cases still failing in semantic `lir_to_bir` lowering:
+backend-route cases still failing before the prepared-module handoff in
+semantic `lir_to_bir` lowering:
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
 `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`,
 `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`,
