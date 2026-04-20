@@ -233,6 +233,11 @@ std::optional<bir::Value> BirFunctionLowerer::lower_value(
     };
   }
 
+  if (expected_type == bir::TypeKind::Ptr &&
+      operand.kind() == c4c::codegen::lir::LirOperandKind::Global) {
+    return bir::Value::named(bir::TypeKind::Ptr, operand.str());
+  }
+
   const auto try_parse_fp_bits = [&](bir::TypeKind float_type) -> std::optional<bir::Value> {
     const auto text = operand.str();
     if (text.size() < 3 || text[0] != '0' || (text[1] != 'x' && text[1] != 'X')) {

@@ -19,6 +19,7 @@ using c4c::codegen::lir::LirFunction;
 using c4c::codegen::lir::LirGlobal;
 using c4c::codegen::lir::LirInlineAsmOp;
 using c4c::codegen::lir::LirBinOp;
+using c4c::codegen::lir::LirCondBr;
 using c4c::codegen::lir::LirLoadOp;
 using c4c::codegen::lir::LirModule;
 using c4c::codegen::lir::LirOperand;
@@ -463,6 +464,65 @@ LirModule make_bad_scalar_control_flow_module() {
   function.blocks.push_back(std::move(entry));
   function.blocks.push_back(std::move(case_one));
   function.blocks.push_back(std::move(case_default));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_return_global_pointer_symbol_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirGlobal global;
+  global.name = "g";
+  global.qualifier = "global ";
+  global.llvm_type = "i32";
+  global.init_text = "0";
+  global.align_bytes = 4;
+  module.globals.push_back(std::move(global));
+
+  LirFunction function;
+  function.name = "return_global_pointer_symbol";
+  function.signature_text = "define ptr @return_global_pointer_symbol()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirCondBr{
+      .cond_name = "true",
+      .true_label = "left",
+      .false_label = "right",
+  };
+
+  LirBlock left;
+  left.label = "left";
+  left.terminator = LirBr{
+      .target_label = "join",
+  };
+
+  LirBlock right;
+  right.label = "right";
+  right.terminator = LirBr{
+      .target_label = "join",
+  };
+
+  LirBlock join;
+  join.label = "join";
+  join.insts.push_back(LirPhiOp{
+      .result = LirOperand("%merged"),
+      .type_str = "ptr",
+      .incoming = {
+          {"@g", "left"},
+          {"null", "right"},
+      },
+  });
+  join.terminator = LirRet{
+      .value_str = "%merged",
+      .type_str = "ptr",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(left));
+  function.blocks.push_back(std::move(right));
   function.blocks.push_back(std::move(join));
   module.functions.push_back(std::move(function));
   return module;
@@ -1009,6 +1069,17 @@ int main() {
           "missing module note carrying the scalar-control-flow umbrella failure");
       scalar_control_flow_status != 0) {
     return scalar_control_flow_status;
+  }
+
+  if (const int global_pointer_return_status = expect_success_without_function_note(
+          "return_global_pointer_symbol",
+          make_return_global_pointer_symbol_module(),
+          "latest function failure: semantic lir_to_bir function 'return_global_pointer_symbol' failed in scalar-control-flow semantic family",
+          "failed in scalar-control-flow semantic family",
+          "unexpected global pointer-symbol return scalar-control-flow function failure note",
+          "unexpected global pointer-symbol return scalar-control-flow module failure note");
+      global_pointer_return_status != 0) {
+    return global_pointer_return_status;
   }
 
   if (const int local_memory_umbrella_status = expect_failure_notes(
