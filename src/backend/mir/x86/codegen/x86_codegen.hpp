@@ -744,7 +744,8 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
           }
         }
         if (!destination_register.has_value()) {
-          destination_register = std::string(kArgRegs32[arg_index]);
+          throw std::invalid_argument(
+              "x86 backend emitter requires the authoritative prepared call-bundle handoff through the canonical prepared-module handoff");
         }
         if (!append_move_into_register(&rendered.body, *destination_register, *source)) {
           return std::nullopt;

@@ -2756,7 +2756,8 @@ std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_i
         }
       }
       if (!destination_register.has_value()) {
-        destination_register = std::string(kArgRegs32[arg_index]);
+        throw std::invalid_argument(
+            "x86 backend emitter requires the authoritative prepared call-bundle handoff through the canonical prepared-module handoff");
       }
       if (!append_move_into_register(&body, *destination_register, source)) {
         return std::nullopt;

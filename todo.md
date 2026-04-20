@@ -5,26 +5,26 @@ Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
 Source Plan Path: plan.md
 Current Step ID: 3.3
 Current Step Title: Consume Canonical Move Bundles For Join, Call, And Return Boundaries
-Plan Review Counter: 5 / 10
+Plan Review Counter: 6 / 10
 # Current Packet
 
 ## Just Finished
 
 Step 3.3 (`Consume Canonical Move Bundles For Join, Call, And Return
-Boundaries`) now fills the missing call-site ABI metadata for pre-built BIR
-call lanes so shared prepare publishes the bounded `BeforeCall` and
-`AfterCall` facts that x86 needs. The direct extern-call and bounded
-multi-defined call routes now materialize prepared call-result homes instead of
-threading raw `eax` passthrough assumptions through the consumer, and the
-multi-defined same-module symbol-call lane now rejects reopening a local
-call-result fallback when its authoritative prepared `AfterCall` bundle is
+Boundaries`) now removes the remaining named-`i32` call-argument ABI fallback
+from the bounded x86 prepared call lanes. The generic call renderer and the
+local-slot fast path now require an authoritative prepared `BeforeCall` bundle
+instead of defaulting missing argument moves to raw ABI registers, and the
+bounded direct extern-call plus multi-defined same-module call routes now
+reject reopening that local call-argument fallback when the shared bundle is
 removed.
 
 ## Suggested Next
 
-Keep Step 3.3 on call-boundary consumption and audit the remaining bounded lane
-that still falls back to local argument-register assumptions when a supported
-route lacks an authoritative prepared `BeforeCall` bundle.
+Keep Step 3.3 on boundary move-bundle consumption and audit the remaining
+join/return helper paths for any stale local movement assumptions that still
+survive when the authoritative prepared bundle is missing or partially
+rewired.
 
 ## Watchouts
 
@@ -51,6 +51,11 @@ route lacks an authoritative prepared `BeforeCall` bundle.
 - The bounded call lanes now depend on shared `CallInst.arg_abi` and
   `CallInst.result_abi` inference in `legalize.cpp`; any follow-up should keep
   that metadata shared instead of reopening x86-local ABI defaults.
+- The local-slot fast path now throws the same authoritative prepared
+  call-bundle contract error as the generic emitter when a named `i32`
+  argument loses its `BeforeCall` bundle; later call-lane work should preserve
+  that shared failure surface instead of degrading back to generic
+  unsupported-route rejection.
 - The bounded direct extern-call and multi-defined call expectations now
   include materialized prepared call-result homes (`r11d`/`r12d` or stack
   stores), so future route changes should treat those emitted homes as part of
@@ -64,7 +69,7 @@ route lacks an authoritative prepared `BeforeCall` bundle.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' > test_after.log 2>&1`,
-which passed after shared prepare inferred the missing bounded call-site ABI
-metadata and the x86 handoff expectations were updated to the resulting
-prepared call-result-home contract. `test_after.log` is the canonical proof
-artifact for this packet.
+which passed after the x86 prepared call renderers stopped defaulting missing
+named-`i32` call arguments to raw ABI registers and the bounded direct-call
+tests added `BeforeCall` bundle-removal rejection proof. `test_after.log` is
+the canonical proof artifact for this packet.
