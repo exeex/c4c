@@ -1332,46 +1332,26 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
   if (context.function == nullptr || context.entry == nullptr) {
     return std::nullopt;
   }
-  return render_prepared_local_i16_arithmetic_guard_if_supported(
-      *context.function,
-      *context.entry,
-      context.stack_layout,
-      context.function_addressing,
-      context.prepared_names,
-      context.function_control_flow,
-      context.prepared_arch,
-      context.asm_prefix,
-      context.find_block);
-}
-
-std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_supported(
-    const c4c::backend::bir::Function& function,
-    const c4c::backend::bir::Block& entry,
-    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
-    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
-    c4c::TargetArch prepared_arch,
-    std::string_view asm_prefix,
-    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block) {
+  const auto& function = *context.function;
+  const auto& entry = *context.entry;
   if (!function.params.empty() || function.blocks.size() != 3 ||
-      prepared_arch != c4c::TargetArch::X86_64 ||
+      context.prepared_arch != c4c::TargetArch::X86_64 ||
       entry.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
       entry.insts.size() != 9) {
     return std::nullopt;
   }
   const auto layout =
       build_prepared_module_local_slot_layout(function,
-                                              stack_layout,
-                                              function_addressing,
-                                              prepared_names,
-                                              prepared_arch);
+                                              context.stack_layout,
+                                              context.function_addressing,
+                                              context.prepared_names,
+                                              context.prepared_arch);
   if (!layout.has_value()) {
     return std::nullopt;
   }
 
-  const c4c::backend::bir::Block* true_block = find_block(entry.terminator.true_label);
-  const c4c::backend::bir::Block* false_block = find_block(entry.terminator.false_label);
+  const c4c::backend::bir::Block* true_block = context.find_block(entry.terminator.true_label);
+  const c4c::backend::bir::Block* false_block = context.find_block(entry.terminator.false_label);
   if (true_block == nullptr || false_block == nullptr || true_block == &entry ||
       false_block == &entry ||
       true_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
@@ -1449,13 +1429,13 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
   }
 
   const c4c::BlockLabelId entry_label_id =
-      prepared_names == nullptr ? c4c::kInvalidBlockLabel
+      context.prepared_names == nullptr ? c4c::kInvalidBlockLabel
                                 : c4c::backend::prepare::resolve_prepared_block_label_id(
-                                      *prepared_names, entry.label)
+                                      *context.prepared_names, entry.label)
                                       .value_or(c4c::kInvalidBlockLabel);
   std::optional<std::string> short_memory;
   if (const auto* prepared_access =
-          find_prepared_function_memory_access(function_addressing, entry_label_id, 0);
+          find_prepared_function_memory_access(context.function_addressing, entry_label_id, 0);
       prepared_access != nullptr) {
     short_memory =
         render_prepared_frame_slot_memory_operand_if_supported(*layout,
@@ -1482,10 +1462,10 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
   };
   const auto* prepared_branch_condition =
       find_required_prepared_guard_branch_condition(
-          function_control_flow, prepared_names, entry_label_id);
-  if (function_control_flow != nullptr && prepared_names != nullptr &&
+          context.function_control_flow, context.prepared_names, entry_label_id);
+  if (context.function_control_flow != nullptr && context.prepared_names != nullptr &&
       c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
-          *prepared_names, *function_control_flow, entry_label_id)
+          *context.prepared_names, *context.function_control_flow, entry_label_id)
           .has_value()) {
     throw std::invalid_argument(
         "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
@@ -1525,8 +1505,8 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
                                 : prepared_branch_condition->lhs->immediate;
     const auto target_labels =
         c4c::backend::prepare::resolve_prepared_compare_branch_target_labels(
-            *prepared_names,
-            function_control_flow,
+            *context.prepared_names,
+            context.function_control_flow,
             entry_label_id,
             entry,
             *prepared_branch_condition);
@@ -1535,17 +1515,19 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
           "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
     }
     true_label = std::string(
-        c4c::backend::prepare::prepared_block_label(*prepared_names, target_labels->true_label));
+        c4c::backend::prepare::prepared_block_label(*context.prepared_names,
+                                                    target_labels->true_label));
     false_label = std::string(
-        c4c::backend::prepare::prepared_block_label(*prepared_names, target_labels->false_label));
+        c4c::backend::prepare::prepared_block_label(*context.prepared_names,
+                                                    target_labels->false_label));
   }
   if (compare_opcode != c4c::backend::bir::BinaryOpcode::Eq &&
       compare_opcode != c4c::backend::bir::BinaryOpcode::Ne) {
     return std::nullopt;
   }
 
-  true_block = find_block(true_label);
-  false_block = find_block(false_label);
+  true_block = context.find_block(true_label);
+  false_block = context.find_block(false_label);
   if (true_block == nullptr || false_block == nullptr || true_block == &entry ||
       false_block == &entry ||
       true_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
@@ -1561,7 +1543,7 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
     return std::nullopt;
   }
 
-  std::string asm_text = std::string(asm_prefix);
+  std::string asm_text = std::string(context.asm_prefix);
   if (layout->frame_size != 0) {
     asm_text += "    sub rsp, " + std::to_string(layout->frame_size) + "\n";
   }
@@ -1582,6 +1564,30 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
   asm_text += ".L" + function.name + "_" + false_block->label + ":\n";
   asm_text += *rendered_false;
   return asm_text;
+}
+
+std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_supported(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block) {
+  return render_prepared_local_i16_arithmetic_guard_if_supported(
+      PreparedX86FunctionDispatchContext{
+          .function = &function,
+          .entry = &entry,
+          .stack_layout = stack_layout,
+          .function_addressing = function_addressing,
+          .prepared_names = prepared_names,
+          .function_control_flow = function_control_flow,
+          .prepared_arch = prepared_arch,
+          .asm_prefix = asm_prefix,
+          .find_block = find_block,
+      });
 }
 
 std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported(
