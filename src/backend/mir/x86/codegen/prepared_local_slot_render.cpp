@@ -753,6 +753,49 @@ std::optional<std::string> render_prepared_i32_binary_inst_if_supported(
   return std::string{};
 }
 
+std::optional<std::string> render_prepared_cast_inst_if_supported(
+    const c4c::backend::bir::CastInst& cast,
+    std::optional<std::string_view>* current_i32_name,
+    std::optional<std::string_view>* previous_i32_name,
+    std::optional<std::string_view>* current_i8_name,
+    std::optional<std::string_view>* current_ptr_name,
+    std::optional<MaterializedI32Compare>* current_materialized_compare) {
+  if (current_i32_name == nullptr || previous_i32_name == nullptr ||
+      current_i8_name == nullptr || current_ptr_name == nullptr ||
+      current_materialized_compare == nullptr) {
+    return std::nullopt;
+  }
+
+  if (cast.opcode == c4c::backend::bir::CastOpcode::ZExt &&
+      cast.operand.type == c4c::backend::bir::TypeKind::I1 &&
+      cast.result.type == c4c::backend::bir::TypeKind::I32 &&
+      cast.operand.kind == c4c::backend::bir::Value::Kind::Named &&
+      current_materialized_compare->has_value() &&
+      (*current_materialized_compare)->i1_name == cast.operand.name) {
+    (*current_materialized_compare)->i32_name = cast.result.name;
+    *current_i32_name = cast.result.name;
+    *previous_i32_name = std::nullopt;
+    *current_i8_name = std::nullopt;
+    *current_ptr_name = std::nullopt;
+    return std::string{};
+  }
+
+  if (cast.opcode != c4c::backend::bir::CastOpcode::SExt ||
+      cast.operand.type != c4c::backend::bir::TypeKind::I8 ||
+      cast.result.type != c4c::backend::bir::TypeKind::I32 ||
+      cast.operand.kind != c4c::backend::bir::Value::Kind::Named ||
+      !current_i8_name->has_value() || **current_i8_name != cast.operand.name) {
+    return std::nullopt;
+  }
+
+  *current_materialized_compare = std::nullopt;
+  *current_i8_name = std::nullopt;
+  *current_i32_name = cast.result.name;
+  *previous_i32_name = std::nullopt;
+  *current_ptr_name = std::nullopt;
+  return std::string{};
+}
+
 std::optional<std::string> select_prepared_i32_call_argument_move_if_supported(
     const c4c::backend::bir::Value& arg,
     c4c::backend::bir::TypeKind arg_type,
@@ -1476,31 +1519,20 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
       }
 
       const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&block.insts[index]);
-      if (cast != nullptr && cast->opcode == c4c::backend::bir::CastOpcode::ZExt &&
-          cast->operand.type == c4c::backend::bir::TypeKind::I1 &&
-          cast->result.type == c4c::backend::bir::TypeKind::I32 &&
-          cast->operand.kind == c4c::backend::bir::Value::Kind::Named &&
-          current_materialized_compare.has_value() &&
-          current_materialized_compare->i1_name == cast->operand.name) {
-        current_materialized_compare->i32_name = cast->result.name;
-        current_i32_name = cast->result.name;
-        previous_i32_name = std::nullopt;
-        current_i8_name = std::nullopt;
-        current_ptr_name = std::nullopt;
-        continue;
+      if (cast != nullptr) {
+        const auto rendered_cast = render_prepared_cast_inst_if_supported(
+            *cast,
+            &current_i32_name,
+            &previous_i32_name,
+            &current_i8_name,
+            &current_ptr_name,
+            &current_materialized_compare);
+        if (rendered_cast.has_value()) {
+          body += *rendered_cast;
+          continue;
+        }
       }
-      if (cast == nullptr || cast->opcode != c4c::backend::bir::CastOpcode::SExt ||
-          cast->operand.type != c4c::backend::bir::TypeKind::I8 ||
-          cast->result.type != c4c::backend::bir::TypeKind::I32 ||
-          cast->operand.kind != c4c::backend::bir::Value::Kind::Named ||
-          !current_i8_name.has_value() || *current_i8_name != cast->operand.name) {
-        return std::nullopt;
-      }
-      current_materialized_compare = std::nullopt;
-      current_i8_name = std::nullopt;
-      current_i32_name = cast->result.name;
-      previous_i32_name = std::nullopt;
-      current_ptr_name = std::nullopt;
+      return std::nullopt;
     }
 
     if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Return) {
