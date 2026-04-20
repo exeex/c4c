@@ -573,6 +573,42 @@ LirModule make_admitted_scalar_local_memory_float_cmp_module() {
   return module;
 }
 
+LirModule make_admitted_float_une_compare_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "admitted_float_une_compare";
+  function.signature_text = "define i32 @admitted_float_une_compare()";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{
+      .result = LirOperand("%t0"),
+      .is_float = true,
+      .predicate = "une",
+      .type_str = "double",
+      .lhs = LirOperand("0x4028AE147AE147AE"),
+      .rhs = LirOperand("0x404C63D70A3D70A4"),
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%t1"),
+      .kind = LirCastKind::ZExt,
+      .from_type = "i1",
+      .operand = LirOperand("%t0"),
+      .to_type = "i32",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::string("%t1"),
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_admitted_null_indirect_call_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -1365,6 +1401,20 @@ int main() {
               "scalar/local-memory semantic-family note");
       admitted_scalar_local_memory_float_cmp_status != 0) {
     return admitted_scalar_local_memory_float_cmp_status;
+  }
+
+  if (const int admitted_float_une_compare_status = expect_success_without_function_note(
+          "admitted_float_une_compare",
+          make_admitted_float_une_compare_module(),
+          "failed in scalar/local-memory semantic family",
+          "latest function failure: semantic lir_to_bir function "
+          "'admitted_float_une_compare' failed in scalar/local-memory semantic family",
+          "float une compare lanes should not keep reporting the scalar/local-memory "
+          "semantic family",
+          "float une compare lanes should not keep the module on the "
+          "scalar/local-memory semantic-family note");
+      admitted_float_une_compare_status != 0) {
+    return admitted_float_une_compare_status;
   }
 
   if (const int admitted_null_indirect_call_status = expect_success_without_function_note(

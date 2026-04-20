@@ -206,6 +206,7 @@ std::optional<bir::BinaryOpcode> BirFunctionLowerer::lower_cmp_predicate(
       return bir::BinaryOpcode::Eq;
     case LirCmpPredicate::Ne:
     case LirCmpPredicate::ONe:
+    case LirCmpPredicate::UNe:
       return bir::BinaryOpcode::Ne;
     case LirCmpPredicate::Slt:
     case LirCmpPredicate::OLt:
