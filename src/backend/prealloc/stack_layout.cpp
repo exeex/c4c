@@ -2,6 +2,7 @@
 #include "stack_layout/support.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <optional>
 #include <string_view>
 #include <unordered_map>
@@ -12,6 +13,29 @@ namespace c4c::backend::prepare {
 namespace {
 
 using FrameSlotMap = std::unordered_map<SlotNameId, const PreparedFrameSlot*>;
+
+struct ResolvedFrameSlot {
+  const PreparedFrameSlot* frame_slot = nullptr;
+  std::int64_t byte_offset_adjust = 0;
+};
+
+[[nodiscard]] std::optional<std::pair<std::string_view, std::size_t>> parse_slot_slice_name(
+    std::string_view slot_name) {
+  const auto dot = slot_name.rfind('.');
+  if (dot == std::string_view::npos || dot + 1 >= slot_name.size()) {
+    return std::nullopt;
+  }
+
+  std::size_t slice_offset = 0;
+  const auto suffix = slot_name.substr(dot + 1);
+  const auto* begin = suffix.data();
+  const auto* end = begin + suffix.size();
+  const auto [ptr, ec] = std::from_chars(begin, end, slice_offset);
+  if (ec != std::errc{} || ptr != end) {
+    return std::nullopt;
+  }
+  return std::pair<std::string_view, std::size_t>{slot_name.substr(0, dot), slice_offset};
+}
 
 [[nodiscard]] FrameSlotMap build_frame_slot_map(
     const std::vector<PreparedStackObject>& function_objects,
@@ -37,25 +61,64 @@ using FrameSlotMap = std::unordered_map<SlotNameId, const PreparedFrameSlot*>;
   return frame_slots_by_name;
 }
 
-[[nodiscard]] const PreparedFrameSlot* find_direct_frame_slot(
+[[nodiscard]] ResolvedFrameSlot find_direct_frame_slot(
     PreparedNameTables& names,
     std::string_view slot_name,
     const std::optional<bir::MemoryAddress>& address,
+    std::int64_t access_byte_offset,
+    std::size_t access_size_bytes,
     const FrameSlotMap& frame_slots_by_name) {
+  std::string_view requested_slot_name = slot_name;
   if (address.has_value()) {
     if (address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot ||
         address->base_name.empty()) {
-      return nullptr;
+      return {};
     }
-    const auto address_slot_it =
-        frame_slots_by_name.find(names.slot_names.find(address->base_name));
-    if (address_slot_it != frame_slots_by_name.end()) {
-      return address_slot_it->second;
+    requested_slot_name = address->base_name;
+  }
+
+  ResolvedFrameSlot resolved;
+  if (const auto slot_it = frame_slots_by_name.find(names.slot_names.find(requested_slot_name));
+      slot_it != frame_slots_by_name.end()) {
+    resolved.frame_slot = slot_it->second;
+  }
+
+  const auto requested_slice = parse_slot_slice_name(requested_slot_name);
+  if (!requested_slice.has_value()) {
+    return resolved;
+  }
+
+  const auto requested_begin =
+      static_cast<std::int64_t>(requested_slice->second) + access_byte_offset;
+  const auto requested_end = requested_begin + static_cast<std::int64_t>(access_size_bytes);
+  if (requested_begin < 0 || requested_end < requested_begin) {
+    return resolved;
+  }
+
+  std::optional<std::size_t> best_covering_offset;
+  for (const auto& [candidate_name_id, candidate_slot] : frame_slots_by_name) {
+    const auto candidate_name = prepared_slot_name(names, candidate_name_id);
+    const auto candidate_slice = parse_slot_slice_name(candidate_name);
+    if (!candidate_slice.has_value() || candidate_slice->first != requested_slice->first) {
+      continue;
+    }
+
+    const auto candidate_begin = static_cast<std::int64_t>(candidate_slice->second);
+    const auto candidate_end =
+        candidate_begin + static_cast<std::int64_t>(candidate_slot->size_bytes);
+    if (requested_begin < candidate_begin || requested_end > candidate_end) {
+      continue;
+    }
+
+    if (!best_covering_offset.has_value() || candidate_slice->second < *best_covering_offset) {
+      best_covering_offset = candidate_slice->second;
+      resolved.frame_slot = candidate_slot;
+      resolved.byte_offset_adjust =
+          static_cast<std::int64_t>(requested_slice->second) - candidate_begin;
     }
   }
 
-  const auto slot_it = frame_slots_by_name.find(names.slot_names.find(slot_name));
-  return slot_it == frame_slots_by_name.end() ? nullptr : slot_it->second;
+  return resolved;
 }
 
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_frame_slot_access(
@@ -69,20 +132,21 @@ using FrameSlotMap = std::unordered_map<SlotNameId, const PreparedFrameSlot*>;
       inst.address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot) {
     return std::nullopt;
   }
-  const auto* frame_slot =
-      find_direct_frame_slot(names, inst.slot_name, inst.address, frame_slots_by_name);
-  if (frame_slot == nullptr) {
-    return std::nullopt;
-  }
-
   const std::size_t size_bytes =
       stack_layout::normalize_size(inst.result.type, inst.result.type == bir::TypeKind::Void
                                                          ? 0
                                                          : stack_layout::fallback_type_size(
                                                                inst.result.type));
-  const auto byte_offset =
+  const auto access_byte_offset =
       static_cast<std::int64_t>(inst.byte_offset) +
       (inst.address.has_value() ? inst.address->byte_offset : 0);
+  const auto resolved_frame_slot =
+      find_direct_frame_slot(
+          names, inst.slot_name, inst.address, access_byte_offset, size_bytes, frame_slots_by_name);
+  if (resolved_frame_slot.frame_slot == nullptr) {
+    return std::nullopt;
+  }
+  const auto byte_offset = access_byte_offset + resolved_frame_slot.byte_offset_adjust;
   return PreparedMemoryAccess{
       .function_name = function_name_id,
       .block_label = block_label_id,
@@ -91,7 +155,7 @@ using FrameSlotMap = std::unordered_map<SlotNameId, const PreparedFrameSlot*>;
       .address =
           PreparedAddress{
               .base_kind = PreparedAddressBaseKind::FrameSlot,
-              .frame_slot_id = frame_slot->slot_id,
+              .frame_slot_id = resolved_frame_slot.frame_slot->slot_id,
               .byte_offset = byte_offset,
               .size_bytes = size_bytes,
               .align_bytes = stack_layout::normalize_alignment(
@@ -112,20 +176,21 @@ using FrameSlotMap = std::unordered_map<SlotNameId, const PreparedFrameSlot*>;
       inst.address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot) {
     return std::nullopt;
   }
-  const auto* frame_slot =
-      find_direct_frame_slot(names, inst.slot_name, inst.address, frame_slots_by_name);
-  if (frame_slot == nullptr) {
-    return std::nullopt;
-  }
-
   const std::size_t size_bytes =
       stack_layout::normalize_size(inst.value.type, inst.value.type == bir::TypeKind::Void
                                                         ? 0
                                                         : stack_layout::fallback_type_size(
                                                               inst.value.type));
-  const auto byte_offset =
+  const auto access_byte_offset =
       static_cast<std::int64_t>(inst.byte_offset) +
       (inst.address.has_value() ? inst.address->byte_offset : 0);
+  const auto resolved_frame_slot =
+      find_direct_frame_slot(
+          names, inst.slot_name, inst.address, access_byte_offset, size_bytes, frame_slots_by_name);
+  if (resolved_frame_slot.frame_slot == nullptr) {
+    return std::nullopt;
+  }
+  const auto byte_offset = access_byte_offset + resolved_frame_slot.byte_offset_adjust;
   return PreparedMemoryAccess{
       .function_name = function_name_id,
       .block_label = block_label_id,
@@ -134,7 +199,7 @@ using FrameSlotMap = std::unordered_map<SlotNameId, const PreparedFrameSlot*>;
       .address =
           PreparedAddress{
               .base_kind = PreparedAddressBaseKind::FrameSlot,
-              .frame_slot_id = frame_slot->slot_id,
+              .frame_slot_id = resolved_frame_slot.frame_slot->slot_id,
               .byte_offset = byte_offset,
               .size_bytes = size_bytes,
               .align_bytes = stack_layout::normalize_alignment(
