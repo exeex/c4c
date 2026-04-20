@@ -166,6 +166,15 @@ std::optional<PreparedI32ValueSelection> select_prepared_i32_value_if_supported(
   };
 }
 
+std::optional<std::string> select_prepared_previous_i32_operand_if_supported(
+    std::string_view value_name,
+    const std::optional<std::string_view>& previous_i32_name) {
+  if (previous_i32_name.has_value() && value_name == *previous_i32_name) {
+    return std::string("ecx");
+  }
+  return std::nullopt;
+}
+
 bool prepared_frame_memory_accesses_match(
     const c4c::backend::prepare::PreparedMemoryAccess* lhs,
     const c4c::backend::prepare::PreparedMemoryAccess* rhs) {
@@ -618,10 +627,8 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
             store->value,
             *current_i32_name,
             [&](std::string_view value_name) -> std::optional<std::string> {
-              if (previous_i32_name->has_value() && value_name == *previous_i32_name) {
-                return std::string("ecx");
-              }
-              return std::nullopt;
+              return select_prepared_previous_i32_operand_if_supported(
+                  value_name, *previous_i32_name);
             });
         if (!selected_store_value.has_value()) {
           return std::nullopt;
@@ -659,10 +666,8 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
             store->value,
             *current_i32_name,
             [&](std::string_view value_name) -> std::optional<std::string> {
-              if (previous_i32_name->has_value() && value_name == *previous_i32_name) {
-                return std::string("ecx");
-              }
-              return std::nullopt;
+              return select_prepared_previous_i32_operand_if_supported(
+                  value_name, *previous_i32_name);
             });
         if (selected_store_value.has_value()) {
           if (selected_store_value->immediate.has_value()) {
