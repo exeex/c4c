@@ -363,7 +363,7 @@ std::string emit_prepared_module(
         candidate, prepared_arch, minimal_function_return_register, minimal_function_asm_prefix);
   };
   const auto multi_defined_dispatch = c4c::backend::x86::build_prepared_module_multi_defined_dispatch_state(
-      module.module, defined_functions, function_ptr, prepared_arch,
+      module, defined_functions, function_ptr, prepared_arch,
       render_trivial_defined_function_if_supported, minimal_function_return_register,
       minimal_function_asm_prefix, find_same_module_global, minimal_param_register_at,
       [&](std::string_view symbol_name) { return find_string_constant(symbol_name) != nullptr; },

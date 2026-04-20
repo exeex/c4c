@@ -2723,6 +2723,7 @@ std::optional<std::string> render_prepared_single_block_return_dispatch_if_suppo
 
 std::optional<PreparedBoundedMultiDefinedCallLaneModuleRender>
 render_prepared_bounded_multi_defined_call_lane_module_if_supported(
+    const c4c::backend::prepare::PreparedBirModule& module,
     const std::vector<const c4c::backend::bir::Function*>& defined_functions,
     c4c::TargetArch prepared_arch,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
@@ -2771,9 +2772,15 @@ render_prepared_bounded_multi_defined_call_lane_module_if_supported(
     if (!candidate_layout.has_value()) {
       return std::nullopt;
     }
+    const auto* function_locations =
+        c4c::backend::prepare::find_prepared_value_location_function(module, candidate->name);
+    if (function_locations == nullptr) {
+      return std::nullopt;
+    }
     const auto rendered_candidate =
         render_prepared_bounded_multi_defined_call_lane_body_if_supported(
-            *candidate, defined_functions, *candidate_layout, *candidate_return_register,
+            module, *function_locations, *candidate, defined_functions, *candidate_layout,
+            *candidate_return_register,
             has_string_constant, has_same_module_global, render_private_data_label,
             render_asm_symbol_name);
     if (!rendered_candidate.has_value()) {
@@ -3129,7 +3136,7 @@ render_prepared_bounded_multi_defined_call_lane_data_if_supported(
 }
 
 std::optional<std::string> render_prepared_bounded_multi_defined_call_lane_if_supported(
-    const c4c::backend::bir::Module& module,
+    const c4c::backend::prepare::PreparedBirModule& module,
     const std::vector<const c4c::backend::bir::Function*>& defined_functions,
     c4c::TargetArch prepared_arch,
     const std::unordered_set<std::string_view>& helper_global_names,
@@ -3150,7 +3157,7 @@ std::optional<std::string> render_prepared_bounded_multi_defined_call_lane_if_su
     const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
         emit_same_module_global_data) {
   const auto rendered_module = render_prepared_bounded_multi_defined_call_lane_module_if_supported(
-      defined_functions, prepared_arch, render_trivial_defined_function,
+      module, defined_functions, prepared_arch, render_trivial_defined_function,
       minimal_function_return_register, minimal_function_asm_prefix, has_string_constant,
       has_same_module_global, render_private_data_label, render_asm_symbol_name);
   if (!rendered_module.has_value()) {
@@ -3158,7 +3165,8 @@ std::optional<std::string> render_prepared_bounded_multi_defined_call_lane_if_su
   }
 
   const auto rendered_data = render_prepared_bounded_multi_defined_call_lane_data_if_supported(
-      *rendered_module, module, helper_global_names, find_string_constant, emit_string_constant_data,
+      *rendered_module, module.module, helper_global_names, find_string_constant,
+      emit_string_constant_data,
       emit_same_module_global_data);
   if (!rendered_data.has_value()) {
     return std::nullopt;
@@ -3167,7 +3175,7 @@ std::optional<std::string> render_prepared_bounded_multi_defined_call_lane_if_su
 }
 
 PreparedModuleMultiDefinedDispatchState build_prepared_module_multi_defined_dispatch_state(
-    const c4c::backend::bir::Module& module,
+    const c4c::backend::prepare::PreparedBirModule& module,
     const std::vector<const c4c::backend::bir::Function*>& defined_functions,
     const c4c::backend::bir::Function* entry_function,
     c4c::TargetArch prepared_arch,
