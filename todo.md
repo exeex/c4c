@@ -3,26 +3,24 @@
 Status: Active
 Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 3.3.1
-Current Step Title: Finish Compare-Driven Boundary Home Authority
-Plan Review Counter: 1 / 10
+Current Step ID: 3.3.3
+Current Step Title: Close Residual Call, Result, And Return Boundary Seams
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 3.3.1 (`Finish Compare-Driven Boundary Home Authority`) now makes
-compare-join parameter-selected returns consume authoritative prepared homes
-for stack-backed and rematerializable sources instead of falling back to the
-ABI parameter register, and the bounded compare-branch proof now covers those
-compare-join entry/return lanes while still rejecting missing prepared entry
-homes, return bundles, and return homes.
+Lifecycle review confirmed that Step 3.3.2's short-circuit and
+`EdgeStoreSlot` ownership checkpoint is already covered by the existing
+prepared helper and bounded proof surfaces, so the active route advances past
+that stale executor target and onto Step 3.3.3.
 
 ## Suggested Next
 
-If supervisor accepts Step 3.3.1 as complete, advance to Step 3.3.2 by pushing
-the same authoritative prepared-home and bundle contract into the remaining
-short-circuit and `EdgeStoreSlot` boundary helpers without reopening x86-local
-fallback logic.
+Advance Step 3.3.3 by closing the remaining bounded call/result/return
+boundary seams in the x86 prepared consumer, keeping the route focused on
+authoritative prepared move bundles and emitted homes instead of local ABI or
+return fallback logic.
 
 ## Watchouts
 
@@ -58,15 +56,14 @@ fallback logic.
 - Compare-driven stack-slot parameter returns now frame-wrap their
   compare-join loads the same way entry setup does; keep any later stack-home
   refinement shared instead of reintroducing return-side ABI fallback.
-- Step 3.3.2 short-circuit and `EdgeStoreSlot` boundary helpers are the next
-  route; do not silently mix that follow-up into compare-join cleanup.
+- Step 3.3.2 is now treated as a covered checkpoint rather than a remaining
+  executor packet; do not reopen short-circuit churn unless a new uncovered
+  consumer seam is identified.
+- Keep Step 3.3.3 focused on residual call/result/return boundary cleanup; do
+  not silently widen back into short-circuit or compare-join helper work.
 
 ## Proof
 
-Ran `cmake --build --preset default && ctest --test-dir build -j
---output-on-failure -R '^backend_x86_handoff_boundary$' > test_after.log 2>&1`,
-which passed in `test_after.log` after the compare-join return helper started
-loading stack-backed parameter homes from authoritative prepared slots instead
-of reopening ABI fallback, and the compare-branch tests added bounded
-stack-slot/rematerializable compare-join return coverage plus missing-home and
-missing-`BeforeReturn` rejection checks.
+Lifecycle-only review checkpoint that moved active execution from Step
+3.3.1/3.3.2 onto Step 3.3.3. No new build or test command was run for this
+lifecycle repair.

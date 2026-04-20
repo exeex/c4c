@@ -326,10 +326,11 @@ Completion check:
   `BeforeReturn` bundles directly enough that the remaining compare-join route
   no longer depends on ABI or local-home fallback
 
-#### Step 3.3.2: Cover Short-Circuit And EdgeStoreSlot Boundary Routes
+#### Step 3.3.2: Confirm Short-Circuit And EdgeStoreSlot Boundary Coverage
 
-Goal: push the same authoritative prepared home and bundle contract into the
-remaining short-circuit and adjacent EdgeStoreSlot-style boundary helpers.
+Goal: treat the short-circuit and adjacent EdgeStoreSlot-style boundary
+helpers as a review checkpoint so execution does not keep targeting an already
+covered consumer surface.
 
 Primary targets:
 
@@ -339,18 +340,20 @@ Primary targets:
 
 Actions:
 
-- audit the remaining short-circuit and EdgeStoreSlot-like boundary helpers
-  for stack-backed or rematerializable entry-source handling that still leans
-  on local carrier assumptions
-- execute or require the authoritative prepared boundary bundles those routes
-  need instead of re-deriving movement locally
-- keep any phase or home refinements shared in prepared ownership rather than
-  pushing them into x86-only helper logic
+- confirm whether the existing short-circuit and EdgeStoreSlot helper surfaces
+  already consume authoritative prepared entry targets, continuation labels,
+  and join carriers without local fallback
+- confirm the bounded short-circuit proof surface still rejects missing or
+  drifted prepared labels and carriers for both plain and EdgeStoreSlot routes
+- if a new uncovered short-circuit seam is found later, record it as a fresh
+  route correction instead of assuming this checkpoint still owns an executor
+  packet
 
 Completion check:
 
-- the short-circuit and EdgeStoreSlot boundary routes consume shared prepared
-  homes and bundles without reopening x86-local fallback logic
+- existing short-circuit and EdgeStoreSlot boundary routes are confirmed to
+  consume shared prepared ownership without reopening x86-local fallback logic,
+  so active execution advances to Step 3.3.3
 
 #### Step 3.3.3: Close Residual Call, Result, And Return Boundary Seams
 
