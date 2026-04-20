@@ -1,71 +1,37 @@
 # Execution State
 
 Status: Active
-Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
+Source Idea Path: ideas/open/61_stack_frame_and_addressing_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 3.3.3
-Current Step Title: Close Residual Call, Result, And Return Boundary Seams
-Plan Review Counter: 2 / 10
+Current Step ID: 3.2
+Current Step Title: Direct Frame And Symbol Access Consumption
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Closed two residual Step 3.3.3 boundary seams in the bounded x86 prepared
-consumer: the direct extern-call helper no longer defaults a missing
-`AfterCall` bundle to `eax`, and the minimal scalar move-bundle return helper
-now stays scoped to named one-parameter home-return lanes instead of rejecting
-plain immediate or no-parameter constant-evaluable returns before the existing
-single-block dispatch can handle them.
+Closed idea 60 and reactivated idea 61 into `plan.md`; the next execution
+packet should resume Step 3.2 from the prior deactivation point instead of
+restarting the runbook from Step 1.
 
 ## Suggested Next
 
-Treat Step 3.3.3 as ready to hand off toward Step 4 validation unless another
-new bounded call/result/return seam is found. The current narrow handoff suite
-is green again after restoring the missing prepared `AfterCall` failure path
-and unblocking the immediate-return lane from the over-tightened return-bundle
-gate.
+Resume Step 3.2 by moving the remaining string-backed and residual
+direct-symbol x86 addressing consumers onto prepared-address lookups in
+`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`, then prove the
+slice with `build ->` the narrowest honest backend/x86 memory-address subset.
 
 ## Watchouts
 
-- Do not grow x86-local matcher or ABI/home guessing shortcuts.
-- Keep value-home and move-bundle ownership in shared prepare.
-- Do not silently fold idea 61 addressing/frame work or idea 59 generic
-  instruction selection into this route.
-- Keep the new consumer surface keyed by existing prepared IDs and name-table
-  lookups rather than widening into string-owned parallel state.
-- The bounded stack-home proofs still mutate prepared value homes inside the
-  scalar smoke tests; that is acceptable as bounded proof for the cleaned
-  consumer, but later validation should still look for a naturally produced
-  stack-backed lane if one can stay honest and narrow.
-- The rematerializable scalar proof is still limited to the immediate-root
-  no-parameter lane; later widening should confirm shared producer support
-  before depending on rematerializable parameter-style sources.
-- `PreparedMovePhase::BlockEntry` is currently inferred from shared
-  `phi_...` move reasons, while call/result/return bundles come from
-  destination-kind classification in shared prepare; keep any later phase
-  refinement shared instead of pushing it into x86.
-- The bounded call lanes now depend on shared `CallInst.arg_abi` and
-  `CallInst.result_abi` inference in `legalize.cpp`; any follow-up should keep
-  that metadata shared instead of reopening x86-local ABI defaults.
-- The local-slot fast path now throws the same authoritative prepared
-  call-bundle contract error as the generic emitter when a named `i32`
-  argument loses its `BeforeCall` bundle; later call-lane work should preserve
-  that shared failure surface instead of degrading back to generic
-  unsupported-route rejection.
-- The bounded direct extern-call and multi-defined call expectations now
-  include materialized prepared call-result homes (`r11d`/`r12d` or stack
-  stores), so future route changes should treat those emitted homes as part of
-  the prepared handoff contract rather than as incidental register noise.
-- Compare-driven stack-slot parameter returns now frame-wrap their
-  compare-join loads the same way entry setup does; keep any later stack-home
-  refinement shared instead of reintroducing return-side ABI fallback.
-- Step 3.3.2 is now treated as a covered checkpoint rather than a remaining
-  executor packet; do not reopen short-circuit churn unless a new uncovered
-  consumer seam is identified.
-- Keep Step 3.3.3 focused on residual call/result/return boundary cleanup; do
-  not silently widen back into short-circuit or compare-join helper work.
+- Do not reopen closed idea 60 value-home or move-bundle work while touching
+  address consumers.
+- Keep frame size, slot identity, and address provenance in shared prepare,
+  not x86-local slot-name or suffix reconstruction.
+- Treat same-module direct frame-slot and guard/helper consumers as already
+  progressed; focus the next packet on the residual string-backed and
+  direct-symbol Step 3.2 seams.
+- Do not silently activate idea 59 instruction-selection work from this plan.
 
 ## Proof
 
-`cmake --build --preset default`
-`ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$'`
+Not run yet for idea 61 reactivation.

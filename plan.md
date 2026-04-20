@@ -1,111 +1,72 @@
-# Prepared Value-Location And Move Consumption For X86
+# Stack Frame And Addressing Consumption For Prepared X86
 
 Status: Active
-Source Idea: ideas/open/60_prepared_value_location_consumption.md
-Activated from: ideas/closed/58_bir_cfg_and_join_materialization_for_x86.md
+Source Idea: ideas/open/61_stack_frame_and_addressing_consumption.md
+Activated from: ideas/closed/60_prepared_value_location_consumption.md
 
 ## Purpose
 
-Turn idea 60 into an execution runbook that makes prepared value homes and
-move obligations authoritative inputs to the x86 prepared emitter instead of
-leaving x86 to reconstruct storage and ABI movement from regalloc internals,
-slot order, or ad hoc conventions.
+Turn idea 61 into an execution runbook that makes prepared frame and address
+facts authoritative before x86 emission.
 
 ## Goal
 
-Publish a consumer-oriented prepared value-location contract so x86 and nearby
-downstream consumers can ask where a value lives and which moves are required
-at joins, calls, and returns without reverse-engineering that meaning locally.
+Make shared prepare ownership publish canonical frame layout and memory-access
+addressing facts so x86 consumes prepared frame/address data instead of
+rebuilding local-slot offsets and provenance locally.
 
 ## Core Rule
 
-Do not count one more x86 matcher or testcase-shaped home guess as progress.
-New work must generalize the prepared handoff so value-home and move semantics
-are shared, direct lookups.
+Do not grow new x86-local local-slot layout rebuilders or testcase-shaped
+address matchers. Frame and addressing meaning must be produced in shared
+prepare code and consumed by x86 as data.
 
 ## Read First
 
-- `ideas/open/60_prepared_value_location_consumption.md`
-- `ideas/closed/58_bir_cfg_and_join_materialization_for_x86.md`
+- `ideas/open/61_stack_frame_and_addressing_consumption.md`
 - `src/backend/prealloc/prealloc.hpp`
-- `src/backend/prealloc/regalloc.cpp`
-- `src/backend/backend.cpp`
+- `src/backend/prealloc/legalize.cpp`
 - `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
 
 ## Scope
 
-- publish direct prepared lookups for value homes and grouped move obligations
-- build the consumer view from existing regalloc and stack-layout outputs
-- wire the new contract into the prepared-module handoff
-- migrate x86 consumers away from emitter-local home reconstruction and ABI
-  movement guessing
+- define consumer-oriented prepared frame and addressing data
+- produce frame-size, frame-slot, and memory-access facts in shared prepare
+- teach x86 to consume those facts for prologue/epilogue and load/store routes
+- prove the route with build plus narrow backend/x86 coverage, then broaden as
+  needed
 
 ## Non-Goals
 
-- stack-frame and addressing provenance work tracked by idea 61
-- generic scalar instruction-selection work tracked by idea 59
-- rebuilding branch/join semantics already owned by closed idea 58
-- target-specific matcher growth that bypasses shared prepared ownership
+- reactivating idea 58 control-flow ownership work
+- reopening closed idea 60 value-home or move-bundle work
+- activating idea 59 generic scalar instruction selection
+- introducing new x86 matcher families whose practical scope is one testcase
 
 ## Working Model
 
-- shared prepare already knows assigned registers, stack slots, and move
-  resolution details through `PreparedRegalloc`
-- x86 should consume a narrower, lookup-oriented value-location surface instead
-  of reading regalloc arrays and rediscovering intent
-- join, call, and return movement remain shared prepared facts even when x86 is
-  the immediate consumer
-- the prepared-module handoff stays authoritative: consumers ask the module for
-  value homes and move bundles rather than inferring storage from local order
+- shared prepare owns frame size, frame-slot identity, and address provenance
+- prepared addressing data is keyed by function, block, and instruction
+- x86 may reject unsupported operand forms, but it must not rediscover local
+  slot offsets or memory provenance when prepared data exists
+- prior idea 61 work already moved direct frame-slot and same-module global
+  guard/helper consumers toward prepared addressing; reactivation resumes the
+  remaining Step 3.2 string-backed and residual direct-symbol lanes
 
 ## Execution Rules
 
-- keep value-home and move-bundle ownership in shared prepare, not x86-local
-  fallback helpers
-- preserve existing typed identity boundaries and prepared lookup conventions
-- prefer `todo.md` for packet progress; rewrite this file only for route
-  corrections
-- require `build -> narrow backend proof` for each code slice that changes the
-  contract or its x86 consumer
-- broaden validation when a slice changes shared prepare plus multiple consumer
-  families
+- prefer prepared addressing lookup helpers over x86-local slot-name analysis
+- keep packet boundaries small enough for `todo.md` tracking
+- update `todo.md`, not this file, for routine packet progress
+- require `build -> narrow proof` for each code slice
+- escalate to broader validation when shared prepare helpers or x86 memory
+  consumers change across multiple families
 
-## Step 1: Inventory Producer And Consumer Surfaces
+## Step 1: Lock The Prepared Addressing Contract
 
-Goal: map the exact prepared/regalloc producers and x86 consumers so the route
-stays focused on publishing a consumer contract instead of growing new local
-guesses.
-
-Primary targets:
-
-- `src/backend/prealloc/prealloc.hpp`
-- `src/backend/prealloc/regalloc.cpp`
-- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
-
-Actions:
-
-- identify where assigned registers, stack slots, and move-resolution records
-  already exist in `PreparedRegalloc`
-- identify the current x86 or adjacent consumer paths that still infer value
-  homes or ABI movement indirectly
-- record the narrow handoff helpers that should become canonical prepared
-  lookups
-
-Completion check:
-
-- the route has a concrete inventory of producer data, missing consumer-facing
-  lookups, and the x86 call/join/return surfaces that must migrate
-
-## Step 2: Publish An Authoritative Prepared Value-Location Contract
-
-Goal: add a consumer-oriented value-location model to shared prepare so
-downstream code can query value homes and move obligations directly.
-
-### Step 2.1: Add Prepared Value-Location Data And Lookup Helpers
-
-Goal: define the public prepared structures and lookup surface that expose
-value homes and grouped move obligations without leaking regalloc-private
-details.
+Goal: define the data and lookup surface that make frame layout and address
+meaning explicit to x86.
 
 Primary targets:
 
@@ -113,293 +74,158 @@ Primary targets:
 
 Actions:
 
-- add the value-home, move-phase, move-bundle, and per-function container
-  structures needed for direct consumer lookups
-- add find/helper functions that match existing prepared lookup style
-- keep the contract aligned with existing `PreparedBirModule` ownership rather
-  than inventing x86-only parallel state
+- add or refine prepared frame/addressing enums and structs for frame-slot,
+  global-symbol, pointer-value, and string-constant access bases
+- expose function-level addressing records that can answer frame size,
+  alignment, and per-instruction access questions
+- add consumer lookup helpers for prepared addressing by function, block, and
+  instruction identity
+- keep names flexible, but preserve the source-idea semantics and invariants
 
 Completion check:
 
-- shared headers expose a consumer-readable value-location contract and direct
-  lookup helpers for function, value-home, and move-bundle queries
+- the header exposes a consumer-oriented prepared addressing contract that can
+  answer frame and memory-access questions without emitter-local slot rebuilds
 
-### Step 2.2: Build The Consumer View From Regalloc And Wire It Into The Prepared Module
+## Step 2: Produce Frame And Addressing Facts In Shared Prepare
 
-Goal: materialize the new value-location contract from existing regalloc and
-stack-layout outputs and publish it in the prepared-module handoff.
+Goal: populate the prepared addressing contract from shared prepare ownership.
 
 Primary targets:
 
-- `src/backend/prealloc/regalloc.cpp`
-- `src/backend/prealloc/prealloc.hpp`
-- `src/backend/backend.cpp`
+- `src/backend/prealloc/legalize.cpp`
+- related shared prepare helpers if extraction is needed
 
 Actions:
 
-- classify assigned register and stack-slot results into canonical value-home
-  records
-- group move-resolution output into stable join/call/return-oriented bundles
-- store the resulting consumer view on `PreparedBirModule` without making x86
-  re-read regalloc internals to recover the same meaning
+- build prepared frame-size and alignment facts from the canonical stack layout
+- classify direct frame-slot, global-symbol, string-constant, and
+  pointer-indirect memory accesses into prepared addressing records
+- keep address provenance ownership in shared prepare rather than x86-local
+  helper paths
+- ensure the producer path records enough information for later consumer
+  lookups by function, block label, and instruction index
 
 Completion check:
 
-- the prepared pipeline publishes populated value-location data on the module
-  handoff using shared producer code
+- prepared modules carry frame and addressing facts that cover ordinary
+  prologue/epilogue and load/store consumption without x86-local slot analysis
 
-## Step 3: Move X86 Consumers To The Shared Value-Location Contract
+## Step 3: Consume Prepared Addressing In X86
 
-Goal: make the x86 prepared route consume canonical value-home and move-bundle
-lookups instead of rebuilding those answers locally.
-
-### Step 3.1: Establish Minimal Move-Bundle Consumption For Scalar Home Queries
-
-Goal: consume the bounded prepared move bundles required before minimal scalar
-home lookups are authoritative.
+Goal: remove x86 dependence on private frame-slot and address reconstruction
+for the covered routes.
 
 Primary targets:
 
 - `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
-- narrow backend proof surfaces under `tests/backend/`
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
 
 Actions:
 
-- identify the bounded single-block scalar routes where shared prepared homes
-  still require `BeforeInstruction` or `BeforeReturn` moves before x86 can use
-  them directly
-- execute those prepared move bundles from shared move-plan data rather than
-  keeping ABI/home fallbacks for the same routes
-- keep the slice limited to the minimal scalar handoff family needed to make
-  later value-home lookups authoritative; do not widen into the broader
-  join/call/return surface yet
+- execute this step through the ordered substeps below rather than treating all
+  frame/address consumption as one undifferentiated packet stream
+- keep target-specific decisions limited to x86 legality and spelling
+- do not widen this step into idea 60 value-home work, idea 59 instruction
+  selection, or unrelated control-flow work
+- delete or simplify x86-local layout/address helpers only when the prepared
+  consumer path makes the emitter-local reconstruction unnecessary
 
 Completion check:
 
-- the minimal scalar x86 handoff route consumes the required prepared
-  `BeforeInstruction` and `BeforeReturn` bundles instead of assuming ABI-home
-  placement at entry or return time
+- Step 3.1 through Step 3.3 are all complete
+- the covered x86 prologue/epilogue and load/store paths consult prepared
+  frame/address data instead of rebuilding slot layout or provenance locally
 
-### Step 3.2: Replace Value-Home Guessing With Prepared Lookups
+### Step 3.1: Frame Layout Consumer Migration
 
-Goal: move operand and storage sourcing onto shared value-home queries once the
-bounded prerequisite move execution exists.
+Goal: move prologue/epilogue and direct frame-size consumers onto prepared
+frame data.
 
 Primary targets:
 
-- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
-- nearby x86 prepared helper surfaces if extraction is needed
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
 
 Actions:
 
-- replace emitter-local register/stack-home reconstruction with direct
-  prepared-module lookups
-- keep any remaining target logic limited to legality and spelling rather than
-  storage discovery
-- prove that stack-backed, register-backed, and rematerializable cases read the
-  shared contract instead of local conventions
+- add or refine one shared frame-layout lookup/helper path in the x86 prepared
+  consumer
+- route covered prologue/epilogue emission through prepared frame size and
+  alignment facts instead of x86-local layout recomputation
+- keep this substep focused on frame-layout consumption, not memory-access
+  breadth
 
 Completion check:
 
-- x86 storage sourcing no longer depends on ad hoc regalloc-array inspection or
-  local slot-order assumptions
+- the covered x86 frame-layout paths consume prepared frame facts as the
+  authoritative source of stack size and alignment
 
-#### Step 3.2.1: Finish The Remaining Bounded Scalar Home-Proof Lanes
+### Step 3.2: Direct Frame And Symbol Access Consumption
 
-Goal: close the remaining minimal scalar proof gaps so the prepared-home
-consumer route is covered across the immediate-binary family before broader
-cleanup.
+Goal: move direct frame-slot, global-symbol, and string-constant access lanes
+onto prepared addressing lookups.
 
 Primary targets:
 
-- `tests/backend/backend_x86_handoff_boundary_scalar_smoke_test.cpp`
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- focused backend/x86 proof coverage that matches the changed route
 
 Actions:
 
-- finish the remaining bounded right-shift prepared-home lane coverage without
-  widening the route beyond the minimal scalar family
-- keep the proof work focused on authoritative prepared home consumption rather
-  than target-local fallback helpers
-- note whether any naturally produced stack-backed or rematerializable fixture
-  can replace the current mutated-home probes while staying bounded
+- add one shared prepared-address lookup/helper path in the x86 consumer
+- begin consuming canonical prepared addressing for direct frame-slot loads and
+  stores, plus symbol-backed accesses where the same contract applies
+- finish the remaining string-backed and residual direct-symbol consumer lanes
+  that were still open when idea 61 was deactivated
+- cover adjacent bounded local/global memory cases through prepared addressing
+  ownership rather than local slot-name or byte-offset reconstruction
 
 Completion check:
 
-- the bounded scalar smoke route covers the remaining immediate-binary
-  prepared-home gaps needed before broader Step 3.2 cleanup
+- the covered x86 direct frame and symbol-backed access paths consume prepared
+  addressing data without emitter-local slot analysis
 
-#### Step 3.2.2: Prove A Naturally Produced Or Rematerializable Home Path
+### Step 3.3: Pointer-Indirect And Residual Address Cleanup
 
-Goal: reduce dependence on mutated test-only prepared-home fixtures by proving
-at least one bounded scalar route from a naturally produced stack-backed or
-rematerializable home when the shared producer can supply it.
+Goal: finish the remaining prepared-address consumer paths without widening
+scope beyond frame/address consumption.
 
 Primary targets:
 
-- shared prepared producer surfaces if fixture support is missing
-- `tests/backend/backend_x86_handoff_boundary_scalar_smoke_test.cpp`
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- focused backend/x86 proof coverage that matches the changed route
 
 Actions:
 
-- confirm whether shared prepare already emits a naturally produced stack-backed
-  or rematerializable scalar home for a bounded x86 handoff fixture
-- if not, add only the minimal shared-producer support needed for one bounded
-  proof lane
-- keep the consumer contract shared and lookup-oriented rather than adding
-  x86-only fixture shortcuts
+- finish pointer-value-based addressing and residual base-plus-offset consumer
+  paths through prepared addressing lookups
+- remove or isolate any remaining x86-local local-slot root/suffix rebuilders
+  once prepared addressing covers the matched family
+- stop the step when the remaining x86 ownership is target legality rather
+  than semantic address recovery
 
 Completion check:
 
-- Step 3.2 has at least one bounded proof lane that reads a non-mutated shared
-  prepared home or a shared rematerializable home
+- the remaining covered pointer-indirect and residual address lanes consult
+  prepared frame/address data instead of local slot or provenance recovery,
+  and Step 3 can be treated as exhausted
 
-#### Step 3.2.3: Remove Residual Scalar Home-Reconstruction Seams
+## Step 4: Validate The Route
 
-Goal: finish the minimal scalar consumer cleanup so x86 storage sourcing reads
-prepared homes directly instead of reconstructing them from local conventions.
-
-Primary targets:
-
-- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
-- nearby x86 prepared helper surfaces if extraction is needed
+Goal: prove the prepared frame/address boundary without relying on one named
+testcase.
 
 Actions:
 
-- remove any remaining scalar-home reconstruction that still depends on local
-  register or slot-order assumptions
-- keep target logic limited to legality, spelling, and execution of already
-  prepared moves
-- prove the cleaned-up route still reads the shared prepared value-location
-  contract for register-backed, stack-backed, and rematerializable-capable
-  cases
+- require a fresh build for every accepted slice
+- choose the narrowest proving test that exercises the changed memory/address
+  family
+- broaden validation when shared prepare changes affect multiple backend
+  buckets or when several narrow-only packets have landed
+- reject slices whose main effect is expectation weakening or local matcher
+  growth instead of prepared-address consumption
 
 Completion check:
 
-- the minimal scalar x86 consumer no longer reconstructs storage that the
-  prepared value-location contract already publishes
-
-### Step 3.3: Consume Canonical Move Bundles For Join, Call, And Return Boundaries
-
-Goal: move x86 boundary movement onto shared prepared move bundles.
-
-Primary targets:
-
-- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
-- narrow backend proof surfaces under `tests/backend/`
-
-Actions:
-
-- consume grouped move bundles at the narrow join, call, and return boundaries
-  that still need x86-local movement decisions
-- keep target logic limited to executing the prepared move plan, not inferring
-  which ABI or join moves should exist
-- avoid widening into unrelated generic instruction-selection work
-
-Completion check:
-
-- x86 boundary movement reads prepared move bundles directly enough that join,
-  call, and return handling no longer depends on local ABI/home guesswork
-
-#### Step 3.3.1: Finish Compare-Driven Boundary Home Authority
-
-Goal: complete the compare-driven boundary lanes so entry and return handling
-consume authoritative prepared homes and bundles for non-register as well as
-register-backed sources.
-
-Primary targets:
-
-- `src/backend/mir/x86/codegen/prepared_param_zero_render.cpp`
-- compare-driven boundary proof surfaces under `tests/backend/`
-
-Actions:
-
-- finish the remaining compare-join entry and parameter-selected return lanes
-  that still need explicit stack-backed or rematerializable prepared-home proof
-- require missing compare-driven entry homes or return bundles to fail on the
-  shared prepared contract instead of reopening ABI or local-home fallback
-- keep all entry and return sourcing shared-home and shared-bundle driven
-  rather than adding x86-local carrier recovery
-
-Completion check:
-
-- compare-driven boundary lanes read authoritative prepared homes and
-  `BeforeReturn` bundles directly enough that the remaining compare-join route
-  no longer depends on ABI or local-home fallback
-
-#### Step 3.3.2: Confirm Short-Circuit And EdgeStoreSlot Boundary Coverage
-
-Goal: treat the short-circuit and adjacent EdgeStoreSlot-style boundary
-helpers as a review checkpoint so execution does not keep targeting an already
-covered consumer surface.
-
-Primary targets:
-
-- short-circuit or EdgeStoreSlot helper surfaces under
-  `src/backend/mir/x86/codegen/`
-- bounded short-circuit proof surfaces under `tests/backend/`
-
-Actions:
-
-- confirm whether the existing short-circuit and EdgeStoreSlot helper surfaces
-  already consume authoritative prepared entry targets, continuation labels,
-  and join carriers without local fallback
-- confirm the bounded short-circuit proof surface still rejects missing or
-  drifted prepared labels and carriers for both plain and EdgeStoreSlot routes
-- if a new uncovered short-circuit seam is found later, record it as a fresh
-  route correction instead of assuming this checkpoint still owns an executor
-  packet
-
-Completion check:
-
-- existing short-circuit and EdgeStoreSlot boundary routes are confirmed to
-  consume shared prepared ownership without reopening x86-local fallback logic,
-  so active execution advances to Step 3.3.3
-
-#### Step 3.3.3: Close Residual Call, Result, And Return Boundary Seams
-
-Goal: finish the bounded call/result/return lanes that still need explicit
-proof or cleanup before Step 3.3 can be treated as complete.
-
-Primary targets:
-
-- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
-- call/result boundary proof surfaces under `tests/backend/`
-
-Actions:
-
-- remove any remaining local call-argument, call-result, or return movement
-  decisions that duplicate prepared bundle ownership
-- tighten bounded proof for direct extern-call and multi-defined call/result
-  lanes so emitted homes and missing-bundle failures stay part of the shared
-  contract
-- keep the slice limited to residual Step 3.3 boundary cleanup rather than
-  widening into broader validation or instruction-selection work
-
-Completion check:
-
-- the bounded join, call, result, and return routes now read prepared move
-  bundles directly enough that Step 3.3 can hand off to Step 4 validation
-
-## Step 4: Validate The Prepared Value-Location Route
-
-Goal: prove the new contract holds across the shared prepare handoff and its
-bounded x86 consumer surfaces.
-
-Primary targets:
-
-- focused backend prepare/handoff tests covering prepared-module value-home and
-  move-bundle behavior
-- broader backend validation when shared prepare plus x86 consumer changes land
-
-Actions:
-
-- keep each packet on `build -> narrow backend proof`
-- add or tighten proof for value-home lookup and boundary move-bundle
-  consumption
-- escalate to broader backend coverage before treating the runbook as ready to
-  close
-
-Completion check:
-
-- the authoritative value-location handoff is covered by focused proof and any
-  broader validation required by landed consumer-facing changes
+- accepted slices have fresh proof logs and validation proportional to the
+  frame/addressing blast radius

@@ -1,12 +1,54 @@
 # Prepared Value-Location And Move Consumption For X86
 
-Status: Open
+Status: Closed
 Created: 2026-04-18
-Last-Updated: 2026-04-18
+Last-Updated: 2026-04-20
+Closed: 2026-04-20
+Disposition: Completed; prepared value-home and move-bundle lookups are now authoritative for the covered x86 consumer routes, and the remaining broader backend failures stay tracked as adjacent debt under existing follow-on ideas.
 Depends-On:
 - idea 58 shared CFG, join, and loop materialization
 Blocks:
 - idea 59 generic scalar instruction selection for x86
+
+## Why This Was Closed
+
+Idea 60 was about making prepared value-home and move-bundle facts the
+authoritative handoff into the x86 prepared emitter. That route is now
+complete for the intended scope: shared prepare publishes direct consumer
+lookups, the x86 prepared consumer uses those lookups for the bounded scalar,
+join, call, result, and return lanes covered by the runbook, and the latest
+focused proof keeps missing-bundle handling on the shared contract instead of
+reopening x86-local ABI or home guessing.
+
+## Validation At Closure
+
+Closure used the following validation:
+
+- `cmake --build --preset default`
+- `ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$'`
+- `ctest --test-dir build -j --output-on-failure -R '^backend_'`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result:
+
+- focused handoff proof passed: `backend_x86_handoff_boundary`
+- broader backend regression guard passed in non-decreasing mode
+- before reported `68` passed / `4` failed / `72` total
+- after reported `68` passed / `4` failed / `72` total
+- no new backend failures were introduced at closure
+- the remaining broader backend failures stayed limited to:
+  - `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`
+  - `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`
+  - `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`
+  - `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`
+
+## Follow-On Context
+
+- `ideas/open/57_x86_backend_c_testsuite_capability_families.md` remains the
+  follow-on route for the residual broader backend capability debt
+- `ideas/open/59_generic_scalar_instruction_selection_for_x86.md` and
+  `ideas/open/61_stack_frame_and_addressing_consumption.md` remain separate
+  follow-on ideas and should not be folded back into this closed route
 
 ## Intent
 
