@@ -996,6 +996,23 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
 }
 
 std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_supported(
+    const PreparedX86FunctionDispatchContext& context) {
+  if (context.function == nullptr || context.entry == nullptr) {
+    return std::nullopt;
+  }
+  return render_prepared_local_i32_arithmetic_guard_if_supported(
+      *context.function,
+      *context.entry,
+      context.stack_layout,
+      context.function_addressing,
+      context.prepared_names,
+      context.function_control_flow,
+      context.prepared_arch,
+      context.asm_prefix,
+      context.find_block);
+}
+
+std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
@@ -1328,6 +1345,23 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
   asm_text += ".L" + function.name + "_" + false_block->label + ":\n";
   asm_text += *rendered_false;
   return asm_text;
+}
+
+std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_supported(
+    const PreparedX86FunctionDispatchContext& context) {
+  if (context.function == nullptr || context.entry == nullptr) {
+    return std::nullopt;
+  }
+  return render_prepared_local_i16_arithmetic_guard_if_supported(
+      *context.function,
+      *context.entry,
+      context.stack_layout,
+      context.function_addressing,
+      context.prepared_names,
+      context.function_control_flow,
+      context.prepared_arch,
+      context.asm_prefix,
+      context.find_block);
 }
 
 std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_supported(

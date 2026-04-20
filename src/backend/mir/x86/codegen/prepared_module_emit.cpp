@@ -430,36 +430,33 @@ std::string emit_prepared_module(
       .emit_same_module_global_data = emit_same_module_global_data,
       .prepend_bounded_same_module_helpers = prepend_bounded_same_module_helpers,
   };
-  const auto render_local_slot_guard_chain_if_supported =
+  const auto render_local_structural_dispatch_if_supported =
       [&]() -> std::optional<std::string> {
+    if (const auto rendered_local_i32_guard =
+            c4c::backend::x86::render_prepared_local_i32_arithmetic_guard_if_supported(
+                function_dispatch_context);
+        rendered_local_i32_guard.has_value()) {
+      return rendered_local_i32_guard;
+    }
+    if (const auto rendered_countdown_entry =
+            c4c::backend::x86::render_prepared_countdown_entry_routes_if_supported(
+                function,
+                entry,
+                &module.names,
+                find_control_flow_function(),
+                prepared_arch,
+                asm_prefix);
+        rendered_countdown_entry.has_value()) {
+      return rendered_countdown_entry;
+    }
+    if (const auto rendered_local_i16_guard =
+            c4c::backend::x86::render_prepared_local_i16_arithmetic_guard_if_supported(
+                function_dispatch_context);
+        rendered_local_i16_guard.has_value()) {
+      return rendered_local_i16_guard;
+    }
     return c4c::backend::x86::render_prepared_local_slot_guard_chain_if_supported(
         function_dispatch_context);
-  };
-  const auto render_local_i32_arithmetic_guard_if_supported =
-      [&]() -> std::optional<std::string> {
-    return c4c::backend::x86::render_prepared_local_i32_arithmetic_guard_if_supported(
-        function,
-        entry,
-        &module.stack_layout,
-        find_addressing_function(),
-        &module.names,
-        find_control_flow_function(),
-        prepared_arch,
-        asm_prefix,
-        find_block);
-  };
-  const auto render_local_i16_arithmetic_guard_if_supported =
-      [&]() -> std::optional<std::string> {
-    return c4c::backend::x86::render_prepared_local_i16_arithmetic_guard_if_supported(
-        function,
-        entry,
-        &module.stack_layout,
-        find_addressing_function(),
-        &module.names,
-        find_control_flow_function(),
-        prepared_arch,
-        asm_prefix,
-        find_block);
   };
   const auto required_function_frame_size = [&]() -> std::size_t {
     const auto* function_addressing = find_addressing_function();
@@ -816,28 +813,10 @@ std::string emit_prepared_module(
         rendered_compare_driven_entry.has_value()) {
       return *rendered_compare_driven_entry;
     }
-    if (const auto rendered_local_i32_guard = render_local_i32_arithmetic_guard_if_supported();
-        rendered_local_i32_guard.has_value()) {
-      return *rendered_local_i32_guard;
-    }
-    if (const auto rendered_countdown_entry =
-            c4c::backend::x86::render_prepared_countdown_entry_routes_if_supported(
-                function,
-                entry,
-                &module.names,
-                find_control_flow_function(),
-                prepared_arch,
-                asm_prefix);
-        rendered_countdown_entry.has_value()) {
-      return *rendered_countdown_entry;
-    }
-    if (const auto rendered_local_i16_guard = render_local_i16_arithmetic_guard_if_supported();
-        rendered_local_i16_guard.has_value()) {
-      return *rendered_local_i16_guard;
-    }
-    if (const auto rendered_local_slot_guard_chain = render_local_slot_guard_chain_if_supported();
-        rendered_local_slot_guard_chain.has_value()) {
-      return *rendered_local_slot_guard_chain;
+    if (const auto rendered_local_structural_dispatch =
+            render_local_structural_dispatch_if_supported();
+        rendered_local_structural_dispatch.has_value()) {
+      return *rendered_local_structural_dispatch;
     }
     throw_multi_defined_contract_if_active();
     throw std::invalid_argument(

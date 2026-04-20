@@ -454,6 +454,9 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
     const PreparedX86FunctionDispatchContext& context);
 
 std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_supported(
+    const PreparedX86FunctionDispatchContext& context);
+
+std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_supported(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
@@ -463,6 +466,9 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
     c4c::TargetArch prepared_arch,
     std::string_view asm_prefix,
     const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block);
+
+std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_supported(
+    const PreparedX86FunctionDispatchContext& context);
 
 std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_supported(
     const c4c::backend::bir::Function& function,
