@@ -1000,40 +1000,20 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
   if (context.function == nullptr || context.entry == nullptr) {
     return std::nullopt;
   }
-  return render_prepared_local_i32_arithmetic_guard_if_supported(
-      *context.function,
-      *context.entry,
-      context.stack_layout,
-      context.function_addressing,
-      context.prepared_names,
-      context.function_control_flow,
-      context.prepared_arch,
-      context.asm_prefix,
-      context.find_block);
-}
-
-std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_supported(
-    const c4c::backend::bir::Function& function,
-    const c4c::backend::bir::Block& entry,
-    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
-    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
-    c4c::TargetArch prepared_arch,
-    std::string_view asm_prefix,
-    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block) {
+  const auto& function = *context.function;
+  const auto& entry = *context.entry;
   if (!function.params.empty() || function.blocks.size() != 3 ||
       entry.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
-      prepared_arch != c4c::TargetArch::X86_64 || entry.insts.empty()) {
+      context.prepared_arch != c4c::TargetArch::X86_64 || entry.insts.empty()) {
     return std::nullopt;
   }
 
   const auto layout =
       build_prepared_module_local_slot_layout(function,
-                                              stack_layout,
-                                              function_addressing,
-                                              prepared_names,
-                                              prepared_arch);
+                                              context.stack_layout,
+                                              context.function_addressing,
+                                              context.prepared_names,
+                                              context.prepared_arch);
   if (!layout.has_value()) {
     return std::nullopt;
   }
@@ -1113,21 +1093,21 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
     return "    mov eax, " + expr.operand + "\n";
   };
 
-  auto asm_text = std::string(asm_prefix);
+  auto asm_text = std::string(context.asm_prefix);
   if (layout->frame_size != 0) {
     asm_text += "    sub rsp, " + std::to_string(layout->frame_size) + "\n";
   }
   const c4c::BlockLabelId entry_label_id =
-      prepared_names == nullptr ? c4c::kInvalidBlockLabel
+      context.prepared_names == nullptr ? c4c::kInvalidBlockLabel
                                 : c4c::backend::prepare::resolve_prepared_block_label_id(
-                                      *prepared_names, entry.label)
+                                      *context.prepared_names, entry.label)
                                       .value_or(c4c::kInvalidBlockLabel);
 
   for (std::size_t index = 0; index + 1 < entry.insts.size(); ++index) {
     const auto& inst = entry.insts[index];
     if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
       const auto* prepared_access =
-          find_prepared_function_memory_access(function_addressing, entry_label_id, index);
+          find_prepared_function_memory_access(context.function_addressing, entry_label_id, index);
       if (store->byte_offset != 0 || store->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
           store->value.type != c4c::backend::bir::TypeKind::I32) {
         return std::nullopt;
@@ -1147,7 +1127,7 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
 
     if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst)) {
       const auto* prepared_access =
-          find_prepared_function_memory_access(function_addressing, entry_label_id, index);
+          find_prepared_function_memory_access(context.function_addressing, entry_label_id, index);
       if (load->byte_offset != 0 || load->result.type != c4c::backend::bir::TypeKind::I32) {
         return std::nullopt;
       }
@@ -1184,10 +1164,10 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
 
   const auto* prepared_branch_condition =
       find_required_prepared_guard_branch_condition(
-          function_control_flow, prepared_names, entry_label_id);
-  if (function_control_flow != nullptr && prepared_names != nullptr &&
+          context.function_control_flow, context.prepared_names, entry_label_id);
+  if (context.function_control_flow != nullptr && context.prepared_names != nullptr &&
       c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
-          *prepared_names, *function_control_flow, entry_label_id)
+          *context.prepared_names, *context.function_control_flow, entry_label_id)
           .has_value()) {
     throw std::invalid_argument(
         "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
@@ -1206,12 +1186,12 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
         static_cast<const c4c::backend::bir::Value*>(nullptr);
     for (const auto& [value_name, _] : named_i32_exprs) {
       const auto value_name_id =
-          c4c::backend::prepare::resolve_prepared_value_name_id(*prepared_names, value_name);
+          c4c::backend::prepare::resolve_prepared_value_name_id(*context.prepared_names, value_name);
       if (!value_name_id.has_value()) {
         continue;
       }
       const auto* candidate = c4c::backend::prepare::find_prepared_i32_immediate_branch_condition(
-          *prepared_names, *function_control_flow, entry_label_id, *value_name_id);
+          *context.prepared_names, *context.function_control_flow, entry_label_id, *value_name_id);
       if (candidate == nullptr) {
         continue;
       }
@@ -1250,8 +1230,8 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
     compare_opcode = *prepared_immediate_branch->predicate;
     const auto target_labels =
         c4c::backend::prepare::resolve_prepared_compare_branch_target_labels(
-            *prepared_names,
-            function_control_flow,
+            *context.prepared_names,
+            context.function_control_flow,
             entry_label_id,
             entry,
             *prepared_immediate_branch);
@@ -1260,9 +1240,9 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
           "x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff");
     }
     true_label = std::string(
-        c4c::backend::prepare::prepared_block_label(*prepared_names, target_labels->true_label));
+        c4c::backend::prepare::prepared_block_label(*context.prepared_names, target_labels->true_label));
     false_label = std::string(
-        c4c::backend::prepare::prepared_block_label(*prepared_names, target_labels->false_label));
+        c4c::backend::prepare::prepared_block_label(*context.prepared_names, target_labels->false_label));
   } else {
     const auto* compare = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.back());
     if (compare == nullptr ||
@@ -1303,8 +1283,8 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
     return std::nullopt;
   }
 
-  const auto* true_block = find_block(true_label);
-  const auto* false_block = find_block(false_label);
+  const auto* true_block = context.find_block(true_label);
+  const auto* false_block = context.find_block(false_label);
   if (true_block == nullptr || false_block == nullptr || true_block == &entry ||
       false_block == &entry ||
       true_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
