@@ -5,23 +5,26 @@ Source Idea Path: ideas/open/61_call_bundle_and_multi_function_prepared_module_c
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Audit Prepared-Module And Call-Bundle Boundaries
-Plan Review Counter: 0 / 10
+Plan Review Counter: 2 / 10
 # Current Packet
 
 ## Just Finished
 
-Lifecycle switch only. The prior idea-62 route is parked because `00040` now
-reaches semantic BIR and fails at the downstream prepared-module restriction
-owned by idea 61.
+Step 1 audit completed. `c_testsuite_x86_backend_src_00040_c` still fails at
+the prepared-module front door before prepared call-bundle handling matters,
+while `backend_x86_handoff_boundary` stays green. The first bounded repair seam
+is generic multi-function prepared-module traversal in
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` and
+`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`, not new x86-only
+`main + helper` matching and not immediate call-bundle contract growth.
 
 ## Suggested Next
 
-Start Step 1 by tracing `c_testsuite_x86_backend_src_00040_c` through
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp`, then compare that
-restriction with the prepared facts already exercised by
-`backend_x86_handoff_boundary_multi_defined_call_test` and
-`backend_x86_handoff_boundary_direct_extern_call_test` to choose the first
-bounded implementation seam.
+Implement the first Step 2 slice by replacing the current bounded
+multi-defined-module gate with generic per-function prepared traversal over the
+existing prepared module inventory, then prove it with
+`backend_x86_handoff_boundary` plus `c_testsuite_x86_backend_src_00040_c`
+before touching prepared call-bundle contract surfaces.
 
 ## Watchouts
 
@@ -29,12 +32,18 @@ bounded implementation seam.
   pre-prepared semantic lowering miss.
 - Do not add another x86-only `main + helper` acceptance lane to get `00040`
   through prepared emission.
-- Prefer target-independent prepared contract or helper growth when current
-  module inventory or call-bundle facts are too weak for generic consumption.
+- The existing `BeforeCall` / `AfterCall` boundary coverage already shows the
+  authoritative call-bundle contract is exercised separately, so the next
+  packet should treat multi-function traversal as the first root cause and only
+  grow shared prepared contract fields if traversal work proves the inventory
+  itself is too weak.
 
 ## Proof
 
-Lifecycle-only switch. No new executor proof has run under the idea-61 plan
-yet. Reuse the existing `test_before.log` / `test_after.log` pair only as
-historical context until the first idea-61 executor packet selects its own
-exact proof command.
+Selected the first idea-61 proof command and refreshed
+`/workspaces/c4c/test_before.log` with it:
+`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00040_c)$'`.
+Current baseline result: `backend_x86_handoff_boundary` passes and
+`c_testsuite_x86_backend_src_00040_c` fails with the single-function prepared
+module restriction. No new `test_after.log` was produced in this audit-only
+slice.
