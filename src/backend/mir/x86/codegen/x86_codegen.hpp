@@ -798,6 +798,12 @@ struct PreparedBoundedMultiDefinedCurrentI32Carrier {
   std::optional<std::string> stack_operand;
 };
 
+struct PreparedBoundedMultiDefinedNamedI32Source {
+  std::optional<std::string> register_name;
+  std::optional<std::string> stack_operand;
+  std::optional<std::int64_t> immediate_i32;
+};
+
 inline const c4c::backend::prepare::PreparedValueHome*
 find_prepared_bounded_multi_defined_named_value_home(
     const c4c::backend::prepare::PreparedBirModule& module,
@@ -873,6 +879,182 @@ inline bool finalize_prepared_bounded_multi_defined_call_result_if_supported(
   return true;
 }
 
+inline void note_prepared_bounded_multi_defined_name_once(std::vector<std::string>* names,
+                                                          std::string_view name) {
+  const auto it = std::find(names->begin(), names->end(), std::string(name));
+  if (it == names->end()) {
+    names->push_back(std::string(name));
+  }
+}
+
+inline std::optional<PreparedBoundedMultiDefinedNamedI32Source>
+select_prepared_bounded_multi_defined_named_i32_source_if_supported(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const std::optional<PreparedBoundedMultiDefinedCurrentI32Carrier>& current_i32,
+    std::string_view value_name) {
+  if (current_i32.has_value() && current_i32->value_name == value_name) {
+    return PreparedBoundedMultiDefinedNamedI32Source{
+        .register_name = current_i32->register_name,
+        .stack_operand = current_i32->stack_operand,
+        .immediate_i32 = std::nullopt,
+    };
+  }
+
+  const auto* home = find_prepared_bounded_multi_defined_named_value_home(
+      module, function_locations, value_name);
+  if (home == nullptr) {
+    return std::nullopt;
+  }
+  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+      home->register_name.has_value()) {
+    return PreparedBoundedMultiDefinedNamedI32Source{
+        .register_name = narrow_i32_register(*home->register_name),
+        .stack_operand = std::nullopt,
+        .immediate_i32 = std::nullopt,
+    };
+  }
+  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+      home->offset_bytes.has_value()) {
+    return PreparedBoundedMultiDefinedNamedI32Source{
+        .register_name = std::nullopt,
+        .stack_operand =
+            render_prepared_stack_memory_operand(*home->offset_bytes, "DWORD"),
+        .immediate_i32 = std::nullopt,
+    };
+  }
+  if (home->kind ==
+          c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
+      home->immediate_i32.has_value()) {
+    return PreparedBoundedMultiDefinedNamedI32Source{
+        .register_name = std::nullopt,
+        .stack_operand = std::nullopt,
+        .immediate_i32 = *home->immediate_i32,
+    };
+  }
+  return std::nullopt;
+}
+
+inline bool append_prepared_bounded_multi_defined_i32_move_into_register_if_supported(
+    std::string* body,
+    std::string_view destination_register,
+    const PreparedBoundedMultiDefinedNamedI32Source& source) {
+  if (source.immediate_i32.has_value()) {
+    *body += "    mov " + std::string(destination_register) + ", " +
+             std::to_string(static_cast<std::int32_t>(*source.immediate_i32)) + "\n";
+    return true;
+  }
+  if (source.register_name.has_value()) {
+    if (*source.register_name != destination_register) {
+      *body += "    mov " + std::string(destination_register) + ", " +
+               *source.register_name + "\n";
+    }
+    return true;
+  }
+  if (source.stack_operand.has_value()) {
+    *body += "    mov " + std::string(destination_register) + ", " +
+             *source.stack_operand + "\n";
+    return true;
+  }
+  return false;
+}
+
+inline bool append_prepared_bounded_multi_defined_i32_move_into_memory_if_supported(
+    std::string* body,
+    std::string_view destination_memory,
+    const PreparedBoundedMultiDefinedNamedI32Source& source) {
+  if (source.immediate_i32.has_value()) {
+    *body += "    mov " + std::string(destination_memory) + ", " +
+             std::to_string(static_cast<std::int32_t>(*source.immediate_i32)) + "\n";
+    return true;
+  }
+  if (source.register_name.has_value()) {
+    *body += "    mov " + std::string(destination_memory) + ", " +
+             *source.register_name + "\n";
+    return true;
+  }
+  if (source.stack_operand.has_value()) {
+    *body += "    mov eax, " + *source.stack_operand + "\n";
+    *body += "    mov " + std::string(destination_memory) + ", eax\n";
+    return true;
+  }
+  return false;
+}
+
+inline bool append_prepared_bounded_multi_defined_call_argument_if_supported(
+    const c4c::backend::bir::Value& arg,
+    c4c::backend::bir::TypeKind arg_type,
+    std::size_t arg_index,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const std::optional<PreparedBoundedMultiDefinedCurrentI32Carrier>& current_i32,
+    const std::function<bool(std::string_view)>& has_string_constant,
+    const std::function<bool(std::string_view)>& has_same_module_global,
+    const std::function<std::string(std::string_view)>& render_private_data_label,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name,
+    std::vector<std::string>* used_string_names,
+    std::vector<std::string>* used_same_module_global_names,
+    std::string* body) {
+  static constexpr const char* kArgRegs64[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+  static constexpr const char* kArgRegs32[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
+
+  if (arg_type == c4c::backend::bir::TypeKind::Ptr) {
+    if (arg.kind != c4c::backend::bir::Value::Kind::Named || arg.name.empty() ||
+        arg.name.front() != '@') {
+      return false;
+    }
+    const std::string_view symbol_name(arg.name.data() + 1, arg.name.size() - 1);
+    if (has_string_constant(symbol_name)) {
+      note_prepared_bounded_multi_defined_name_once(used_string_names, symbol_name);
+      *body += "    lea ";
+      *body += kArgRegs64[arg_index];
+      *body += ", [rip + ";
+      *body += render_private_data_label(symbol_name);
+      *body += "]\n";
+      return true;
+    }
+    if (!has_same_module_global(symbol_name)) {
+      return false;
+    }
+    note_prepared_bounded_multi_defined_name_once(used_same_module_global_names,
+                                                  symbol_name);
+    *body += "    lea ";
+    *body += kArgRegs64[arg_index];
+    *body += ", [rip + ";
+    *body += render_asm_symbol_name(symbol_name);
+    *body += "]\n";
+    return true;
+  }
+
+  if (arg_type != c4c::backend::bir::TypeKind::I32) {
+    return false;
+  }
+  if (arg.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    *body += "    mov ";
+    *body += kArgRegs32[arg_index];
+    *body += ", ";
+    *body += std::to_string(static_cast<std::int32_t>(arg.immediate));
+    *body += "\n";
+    return true;
+  }
+  if (arg.kind != c4c::backend::bir::Value::Kind::Named) {
+    return false;
+  }
+  const auto source = select_prepared_bounded_multi_defined_named_i32_source_if_supported(
+      module, function_locations, current_i32, arg.name);
+  if (!source.has_value()) {
+    return false;
+  }
+  const auto destination_register = select_prepared_i32_call_argument_abi_register_if_supported(
+      &function_locations, instruction_index, arg_index);
+  if (!destination_register.has_value()) {
+    throw std::invalid_argument(std::string(kPreparedCallBundleHandoffRequired));
+  }
+  return append_prepared_bounded_multi_defined_i32_move_into_register_if_supported(
+      body, *destination_register, *source);
+}
+
 inline std::optional<PreparedBoundedMultiDefinedCallLaneRender>
 render_prepared_bounded_multi_defined_call_lane_body_if_supported(
     const c4c::backend::prepare::PreparedBirModule& module,
@@ -885,106 +1067,10 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
     const std::function<bool(std::string_view)>& has_same_module_global,
     const std::function<std::string(std::string_view)>& render_private_data_label,
     const std::function<std::string(std::string_view)>& render_asm_symbol_name) {
-  static constexpr const char* kArgRegs64[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
-  static constexpr const char* kArgRegs32[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
-
   PreparedBoundedMultiDefinedCallLaneRender rendered{
       .body = "    sub rsp, " + std::to_string(local_layout.frame_size + 8) + "\n",
   };
-  struct NamedI32Source {
-    std::optional<std::string> register_name;
-    std::optional<std::string> stack_operand;
-    std::optional<std::int64_t> immediate_i32;
-  };
   std::optional<PreparedBoundedMultiDefinedCurrentI32Carrier> current_i32;
-  const auto note_once = [](std::vector<std::string>* names, std::string_view name) {
-    const auto it = std::find(names->begin(), names->end(), std::string(name));
-    if (it == names->end()) {
-      names->push_back(std::string(name));
-    }
-  };
-  const auto find_named_value_home =
-      [&](std::string_view value_name) -> const c4c::backend::prepare::PreparedValueHome* {
-    return find_prepared_bounded_multi_defined_named_value_home(module, function_locations, value_name);
-  };
-  const auto source_for_named_i32 = [&](std::string_view value_name) -> std::optional<NamedI32Source> {
-    if (current_i32.has_value() && current_i32->value_name == value_name) {
-      return NamedI32Source{
-          .register_name = current_i32->register_name,
-          .stack_operand = current_i32->stack_operand,
-          .immediate_i32 = std::nullopt,
-      };
-    }
-    const auto* home = find_named_value_home(value_name);
-    if (home == nullptr) {
-      return std::nullopt;
-    }
-    if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
-        home->register_name.has_value()) {
-      return NamedI32Source{
-          .register_name = narrow_i32_register(*home->register_name),
-          .stack_operand = std::nullopt,
-          .immediate_i32 = std::nullopt,
-      };
-    }
-    if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-        home->offset_bytes.has_value()) {
-      return NamedI32Source{
-          .register_name = std::nullopt,
-          .stack_operand =
-              render_prepared_stack_memory_operand(*home->offset_bytes, "DWORD"),
-          .immediate_i32 = std::nullopt,
-      };
-    }
-    if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
-        home->immediate_i32.has_value()) {
-      return NamedI32Source{
-          .register_name = std::nullopt,
-          .stack_operand = std::nullopt,
-          .immediate_i32 = *home->immediate_i32,
-      };
-    }
-    return std::nullopt;
-  };
-  const auto append_move_into_register =
-      [&](std::string* body,
-          std::string_view destination_register,
-          const NamedI32Source& source) -> bool {
-    if (source.immediate_i32.has_value()) {
-      *body += "    mov " + std::string(destination_register) + ", " +
-               std::to_string(static_cast<std::int32_t>(*source.immediate_i32)) + "\n";
-      return true;
-    }
-    if (source.register_name.has_value()) {
-      if (*source.register_name != destination_register) {
-        *body += "    mov " + std::string(destination_register) + ", " + *source.register_name + "\n";
-      }
-      return true;
-    }
-    if (source.stack_operand.has_value()) {
-      *body += "    mov " + std::string(destination_register) + ", " + *source.stack_operand + "\n";
-      return true;
-    }
-    return false;
-  };
-  const auto append_move_into_memory =
-      [&](std::string* body, std::string_view destination_memory, const NamedI32Source& source) -> bool {
-    if (source.immediate_i32.has_value()) {
-      *body += "    mov " + std::string(destination_memory) + ", " +
-               std::to_string(static_cast<std::int32_t>(*source.immediate_i32)) + "\n";
-      return true;
-    }
-    if (source.register_name.has_value()) {
-      *body += "    mov " + std::string(destination_memory) + ", " + *source.register_name + "\n";
-      return true;
-    }
-    if (source.stack_operand.has_value()) {
-      *body += "    mov eax, " + *source.stack_operand + "\n";
-      *body += "    mov " + std::string(destination_memory) + ", eax\n";
-      return true;
-    }
-    return false;
-  };
 
   for (const auto& inst : candidate.blocks.front().insts) {
     if (const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst)) {
@@ -1023,59 +1109,12 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
       const auto instruction_index =
           static_cast<std::size_t>(&inst - candidate.blocks.front().insts.data());
       for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
-        const auto& arg = call->args[arg_index];
-        if (call->arg_types[arg_index] == c4c::backend::bir::TypeKind::Ptr) {
-          if (arg.kind != c4c::backend::bir::Value::Kind::Named || arg.name.empty() ||
-              arg.name.front() != '@') {
-            return std::nullopt;
-          }
-          const std::string_view symbol_name(arg.name.data() + 1, arg.name.size() - 1);
-          if (has_string_constant(symbol_name)) {
-            note_once(&rendered.used_string_names, symbol_name);
-            rendered.body += "    lea ";
-            rendered.body += kArgRegs64[arg_index];
-            rendered.body += ", [rip + ";
-            rendered.body += render_private_data_label(symbol_name);
-            rendered.body += "]\n";
-            continue;
-          }
-          if (!has_same_module_global(symbol_name)) {
-            return std::nullopt;
-          }
-          note_once(&rendered.used_same_module_global_names, symbol_name);
-          rendered.body += "    lea ";
-          rendered.body += kArgRegs64[arg_index];
-          rendered.body += ", [rip + ";
-          rendered.body += render_asm_symbol_name(symbol_name);
-          rendered.body += "]\n";
-          continue;
-        }
-
-        if (call->arg_types[arg_index] != c4c::backend::bir::TypeKind::I32) {
-          return std::nullopt;
-        }
-        if (arg.kind == c4c::backend::bir::Value::Kind::Immediate) {
-          rendered.body += "    mov ";
-          rendered.body += kArgRegs32[arg_index];
-          rendered.body += ", ";
-          rendered.body += std::to_string(static_cast<std::int32_t>(arg.immediate));
-          rendered.body += "\n";
-          continue;
-        }
-        if (arg.kind != c4c::backend::bir::Value::Kind::Named) {
-          return std::nullopt;
-        }
-        const auto source = source_for_named_i32(arg.name);
-        if (!source.has_value()) {
-          return std::nullopt;
-        }
-        const auto destination_register =
-            select_prepared_i32_call_argument_abi_register_if_supported(
-                &function_locations, instruction_index, arg_index);
-        if (!destination_register.has_value()) {
-          throw std::invalid_argument(std::string(kPreparedCallBundleHandoffRequired));
-        }
-        if (!append_move_into_register(&rendered.body, *destination_register, *source)) {
+        if (!append_prepared_bounded_multi_defined_call_argument_if_supported(
+                call->args[arg_index], call->arg_types[arg_index], arg_index,
+                instruction_index, module, function_locations, current_i32,
+                has_string_constant, has_same_module_global, render_private_data_label,
+                render_asm_symbol_name, &rendered.used_string_names,
+                &rendered.used_same_module_global_names, &rendered.body)) {
           return std::nullopt;
         }
       }
@@ -1111,8 +1150,12 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
       if (store->value.kind != c4c::backend::bir::Value::Kind::Named) {
         return std::nullopt;
       }
-      const auto source = source_for_named_i32(store->value.name);
-      if (!source.has_value() || !append_move_into_memory(&rendered.body, *memory, *source)) {
+      const auto source =
+          select_prepared_bounded_multi_defined_named_i32_source_if_supported(
+              module, function_locations, current_i32, store->value.name);
+      if (!source.has_value() ||
+          !append_prepared_bounded_multi_defined_i32_move_into_memory_if_supported(
+              &rendered.body, *memory, *source)) {
         return std::nullopt;
       }
       current_i32 = std::nullopt;
