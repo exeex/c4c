@@ -1667,7 +1667,8 @@ void legalize_module(const c4c::TargetProfile& target_profile,
         names, function, &function_control_flow);
 
     if (control_flow != nullptr &&
-        (!function_control_flow.branch_conditions.empty() ||
+        (!function_control_flow.blocks.empty() ||
+         !function_control_flow.branch_conditions.empty() ||
          !function_control_flow.join_transfers.empty() ||
          !function_control_flow.parallel_copy_bundles.empty())) {
       control_flow->functions.push_back(std::move(function_control_flow));
