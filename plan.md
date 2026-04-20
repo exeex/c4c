@@ -287,9 +287,103 @@ Actions:
 
 Completion check:
 
+- Step 3.1 through Step 3.4 are complete
 - the covered scalar instruction families are emitted through ordinary
   instruction selection over prepared inputs, not through whole-function shape
   recognition
+
+### Step 3.1: Migrate Core Binary And Cast Families
+
+Goal: move the already-covered scalar binary and adjacent cast families onto
+named per-inst dispatch surfaces.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+
+Actions:
+
+- route the covered local scalar binary lanes through explicit per-inst helpers
+  instead of open-coded family-shaped rendering paths
+- keep any adjacent cast-family extraction limited to real per-op dispatch
+  reuse that shares the same prepared selector contracts
+- stop once the covered binary and cast route is expressed as instruction
+  family dispatch rather than inline matcher-shaped control flow
+
+Completion check:
+
+- the covered scalar binary and adjacent cast families lower through named
+  per-inst dispatch helpers over prepared inputs
+
+### Step 3.2: Consolidate Local And Same-Module Load/Store Families
+
+Goal: move the covered scalar load/store families onto shared per-op helpers
+without reopening unrelated memory ownership.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+
+Actions:
+
+- consolidate the covered scalar load/store renderers so local and same-module
+  memory families reuse shared operand-selection and emission helpers
+- keep the route bounded to scalar load/store legality and spelling, not broad
+  emitter cleanup or terminator migration
+- stop once the covered load/store families no longer depend on repeated
+  inline family-specific rendering branches
+
+Completion check:
+
+- the covered local and same-module scalar load/store families route through
+  shared per-op helpers instead of duplicated family-specific branches
+
+### Step 3.3: Isolate The Bounded Helper-Function Instruction Lane
+
+Goal: collapse the remaining bounded helper-function scalar instruction lane
+onto one explicit per-inst dispatch surface.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+
+Actions:
+
+- extract the covered helper-function scalar instruction lane into a named
+  dispatcher when that lane still open-codes already-covered family handling
+- keep this substep bounded to the helper-function lane and the scalar
+  families it already covers; do not widen into call-lane or terminator work
+- stop once helper-lane scalar instruction selection uses one local per-inst
+  dispatch surface instead of inlined family loops
+
+Completion check:
+
+- the bounded helper-function scalar lane is driven by a named per-inst
+  dispatcher over the already-covered families
+
+### Step 3.4: Audit Remaining Scalar Family Seams And Hand Off
+
+Goal: determine whether any real covered scalar instruction-family seam still
+remains before Step 4 call and terminator migration begins.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+
+Actions:
+
+- inspect the remaining prepared-x86 scalar route for any uncovered but
+  already-supported instruction family that still lacks ordinary per-op
+  dispatch
+- if one real family seam remains, keep the next packet bounded to that
+  family and land it without widening into call or terminator migration
+- otherwise declare Step 3 structurally exhausted and move the next packet to
+  Step 4 instead of forcing another helper-only refactor
+
+Completion check:
+
+- either one final real scalar instruction family is identified for a bounded
+  Step 3 packet or the runbook explicitly hands off the next work to Step 4
 
 ## Step 4: Migrate Covered Terminator And Call Families
 

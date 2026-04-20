@@ -3,14 +3,14 @@
 Status: Active
 Source Idea Path: ideas/open/59_generic_scalar_instruction_selection_for_x86.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Migrate Covered Scalar Instruction Families
-Plan Review Counter: 10 / 10
+Current Step ID: 3.4
+Current Step Title: Audit Remaining Scalar Family Seams And Hand Off
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 3 extracted the bounded same-module helper lane in
+Step 3.3 extracted the bounded same-module helper lane in
 `prepared_local_slot_render.cpp` into a named per-inst dispatcher,
 `render_supported_helper_inst`, so the helper-function loop now routes its
 covered scalar binary and same-module `i32` store families through one local
@@ -18,9 +18,9 @@ instruction-selection surface instead of open-coding those families inline.
 
 ## Suggested Next
 
-Reassess Step 3 for any remaining real scalar instruction-family seams in the
-prepared local-slot renderer; if the remaining scalar helper lanes are now
-structurally exhausted, move the next packet to Step 4 call or terminator
+Execute Step 3.4 by auditing `prepared_local_slot_render.cpp` for any real
+remaining covered scalar instruction-family seam; if no such seam remains,
+close out Step 3 and move the next packet to Step 4 call or terminator
 migration instead of forcing another helper-only refactor.
 
 ## Watchouts
