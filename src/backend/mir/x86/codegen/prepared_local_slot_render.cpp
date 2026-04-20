@@ -701,6 +701,58 @@ select_prepared_i32_eax_immediate_binary_if_supported(
   };
 }
 
+std::optional<std::string> render_prepared_i32_binary_inst_if_supported(
+    const c4c::backend::bir::BinaryInst& binary,
+    std::optional<std::string_view>* current_i32_name,
+    std::optional<std::string_view>* previous_i32_name,
+    std::optional<std::string_view>* current_i8_name,
+    std::optional<std::string_view>* current_ptr_name,
+    std::optional<MaterializedI32Compare>* current_materialized_compare) {
+  if (current_i32_name == nullptr || previous_i32_name == nullptr ||
+      current_i8_name == nullptr || current_ptr_name == nullptr ||
+      current_materialized_compare == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto selected_binary =
+      select_prepared_i32_eax_immediate_binary_if_supported(binary, *current_i32_name);
+  if (selected_binary.has_value()) {
+    std::string rendered_binary = "    mov ecx, eax\n";
+    rendered_binary += std::string("    ") +
+                       (binary.opcode == c4c::backend::bir::BinaryOpcode::Add ? "add" : "sub") +
+                       " eax, " + std::to_string(selected_binary->immediate) + "\n";
+    *current_materialized_compare = std::nullopt;
+    *previous_i32_name = *current_i32_name;
+    *current_i32_name = binary.result.name;
+    *current_i8_name = std::nullopt;
+    *current_ptr_name = std::nullopt;
+    return rendered_binary;
+  }
+
+  if ((binary.opcode != c4c::backend::bir::BinaryOpcode::Eq &&
+       binary.opcode != c4c::backend::bir::BinaryOpcode::Ne) ||
+      binary.operand_type != c4c::backend::bir::TypeKind::I32 ||
+      binary.result.type != c4c::backend::bir::TypeKind::I1) {
+    return std::nullopt;
+  }
+
+  const auto compare_setup =
+      select_prepared_materialized_i32_compare_setup_if_supported(binary, *current_i32_name);
+  if (!compare_setup.has_value()) {
+    return std::nullopt;
+  }
+  *current_materialized_compare = MaterializedI32Compare{
+      .i1_name = binary.result.name,
+      .opcode = binary.opcode,
+      .compare_setup = *compare_setup,
+  };
+  *current_i32_name = std::nullopt;
+  *previous_i32_name = std::nullopt;
+  *current_i8_name = std::nullopt;
+  *current_ptr_name = std::nullopt;
+  return std::string{};
+}
+
 std::optional<std::string> select_prepared_i32_call_argument_move_if_supported(
     const c4c::backend::bir::Value& arg,
     c4c::backend::bir::TypeKind arg_type,
@@ -1410,43 +1462,17 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
 
       const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&block.insts[index]);
       if (binary != nullptr) {
-        const auto selected_binary =
-            select_prepared_i32_eax_immediate_binary_if_supported(
-                *binary, current_i32_name);
-        if (selected_binary.has_value()) {
-          body += "    mov ecx, eax\n";
-          body += std::string("    ") +
-                  (binary->opcode == c4c::backend::bir::BinaryOpcode::Add ? "add" : "sub") +
-                  " eax, " + std::to_string(selected_binary->immediate) + "\n";
-          current_materialized_compare = std::nullopt;
-          previous_i32_name = current_i32_name;
-          current_i32_name = binary->result.name;
-          current_i8_name = std::nullopt;
-          current_ptr_name = std::nullopt;
+        const auto rendered_binary = render_prepared_i32_binary_inst_if_supported(
+            *binary,
+            &current_i32_name,
+            &previous_i32_name,
+            &current_i8_name,
+            &current_ptr_name,
+            &current_materialized_compare);
+        if (rendered_binary.has_value()) {
+          body += *rendered_binary;
           continue;
         }
-      }
-      if (binary != nullptr &&
-          (binary->opcode == c4c::backend::bir::BinaryOpcode::Eq ||
-           binary->opcode == c4c::backend::bir::BinaryOpcode::Ne) &&
-          binary->operand_type == c4c::backend::bir::TypeKind::I32 &&
-          binary->result.type == c4c::backend::bir::TypeKind::I1) {
-        const auto compare_setup =
-            select_prepared_materialized_i32_compare_setup_if_supported(
-                *binary, current_i32_name);
-        if (!compare_setup.has_value()) {
-          return std::nullopt;
-        }
-        current_materialized_compare = MaterializedI32Compare{
-            .i1_name = binary->result.name,
-            .opcode = binary->opcode,
-            .compare_setup = *compare_setup,
-        };
-        current_i32_name = std::nullopt;
-        previous_i32_name = std::nullopt;
-        current_i8_name = std::nullopt;
-        current_ptr_name = std::nullopt;
-        continue;
       }
 
       const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&block.insts[index]);
