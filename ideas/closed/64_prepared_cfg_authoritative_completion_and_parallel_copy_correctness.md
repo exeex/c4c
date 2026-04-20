@@ -1,11 +1,62 @@
 # Prepared CFG Authoritative Completion And Parallel-Copy Correctness
 
-Status: Open
+Status: Closed
 Created: 2026-04-20
 Last-Updated: 2026-04-20
+Closed: 2026-04-20
+Disposition: Completed; authoritative prepared control-flow publication now covers block-only functions and prepared join ownership, and cyclic phi-edge parallel-copy temp-save semantics survive into consumer-visible move resolution without reopening heuristic CFG recovery.
 Depends-On:
 - idea 62 prealloc CFG generalization and authoritative control-flow facts
 - idea 63 complete phi legalization and parallel-copy resolution
+
+## Why This Was Closed
+
+Idea 64 existed to finish the authoritative prepared CFG route on three
+specific gaps: block-only function publication, prepared join ownership, and
+end-to-end temp-save handling for cyclic phi-edge parallel copies. Those gaps
+are now closed on the idea's stated scope, and the route no longer depends on
+raw-BIR join rediscovery or plan-only cycle markers for the covered path.
+
+## What Landed Before Closure
+
+- `PreparedControlFlowFunction` publication now covers functions that have
+  authoritative block or edge metadata even when branch-condition and transfer
+  records are absent
+- join ownership is now sourced from prepared control-flow facts instead of
+  downstream raw-BIR CFG reconstruction
+- cyclic prepared parallel-copy bundles now carry
+  `SaveDestinationToTemp` through `PreparedMoveResolution` as an explicit
+  consumer-visible operation kind
+- backend liveness coverage proves the temp-save record survives from prepared
+  phi-edge planning into the move-resolution handoff
+
+## Validation At Closure
+
+Closure used the existing backend-scoped regression logs and the close-time
+guard:
+
+- `cmake --build --preset default`
+- `ctest --test-dir build -j --output-on-failure -R '^backend_'`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result:
+
+- regression guard passed
+- before and after both reported `70` passed / `4` failed / `74` total
+- the same four pre-existing backend route failures remained:
+  - `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`
+  - `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`
+  - `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`
+  - `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`
+
+## Follow-On Context
+
+- `ideas/open/57_x86_backend_c_testsuite_capability_families.md` remains the
+  correct umbrella route for the carried backend-route failures that still sit
+  outside this prepared-CFG completion scope
+- closing idea 64 does not claim broader x86 semantic-lowering completion
+  beyond the authoritative prepared CFG publication and parallel-copy
+  correctness route defined here
 
 ## Intent
 
