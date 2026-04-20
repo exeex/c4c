@@ -2738,6 +2738,34 @@ std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_i
 }
 
 std::optional<std::string> render_prepared_single_block_return_dispatch_if_supported(
+    const PreparedX86FunctionDispatchContext& context) {
+  if (context.module == nullptr || context.function == nullptr || context.entry == nullptr ||
+      context.bounded_same_module_helper_global_names == nullptr) {
+    return std::nullopt;
+  }
+  return render_prepared_single_block_return_dispatch_if_supported(
+      *context.module,
+      *context.function,
+      *context.entry,
+      context.stack_layout,
+      context.function_addressing,
+      context.prepared_names,
+      context.function_locations,
+      context.prepared_arch,
+      context.asm_prefix,
+      context.return_register,
+      *context.bounded_same_module_helper_global_names,
+      context.find_string_constant,
+      context.find_same_module_global,
+      context.render_private_data_label,
+      context.render_asm_symbol_name,
+      context.emit_string_constant_data,
+      context.emit_same_module_global_data,
+      context.prepend_bounded_same_module_helpers,
+      context.minimal_param_register);
+}
+
+std::optional<std::string> render_prepared_single_block_return_dispatch_if_supported(
     const c4c::backend::bir::Module& module,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
