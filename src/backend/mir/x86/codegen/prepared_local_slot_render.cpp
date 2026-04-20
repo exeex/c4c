@@ -1590,14 +1590,20 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
       });
 }
 
-std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported(
-    const c4c::backend::bir::Function& function,
-    const c4c::backend::bir::Block& entry,
-    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
-    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    c4c::TargetArch prepared_arch,
-    std::string_view asm_prefix) {
+namespace {
+
+std::optional<std::string> render_prepared_local_i16_i64_sub_return_from_context(
+    const PreparedX86FunctionDispatchContext& context) {
+  if (context.function == nullptr || context.entry == nullptr) {
+    return std::nullopt;
+  }
+  const auto& function = *context.function;
+  const auto& entry = *context.entry;
+  const auto* stack_layout = context.stack_layout;
+  const auto* function_addressing = context.function_addressing;
+  const auto* prepared_names = context.prepared_names;
+  const auto prepared_arch = context.prepared_arch;
+  const auto asm_prefix = context.asm_prefix;
   if (!function.params.empty() || function.blocks.size() != 1 ||
       prepared_arch != c4c::TargetArch::X86_64 ||
       entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
@@ -1728,30 +1734,48 @@ std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported
   return asm_text;
 }
 
-std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported(
-    const PreparedX86FunctionDispatchContext& context) {
-  if (context.function == nullptr || context.entry == nullptr) {
-    return std::nullopt;
-  }
-  return render_prepared_local_i16_i64_sub_return_if_supported(
-      *context.function,
-      *context.entry,
-      context.stack_layout,
-      context.function_addressing,
-      context.prepared_names,
-      context.prepared_arch,
-      context.asm_prefix);
-}
+}  // namespace
 
-std::optional<std::string> render_prepared_constant_folded_single_block_return_if_supported(
+std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported(
     const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     c4c::TargetArch prepared_arch,
-    std::string_view asm_prefix,
-    std::string_view return_register) {
+    std::string_view asm_prefix) {
+  return render_prepared_local_i16_i64_sub_return_from_context(
+      PreparedX86FunctionDispatchContext{
+          .function = &function,
+          .entry = &entry,
+          .stack_layout = stack_layout,
+          .function_addressing = function_addressing,
+          .prepared_names = prepared_names,
+          .prepared_arch = prepared_arch,
+          .asm_prefix = asm_prefix,
+      });
+}
+
+std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported(
+    const PreparedX86FunctionDispatchContext& context) {
+  return render_prepared_local_i16_i64_sub_return_from_context(context);
+}
+
+namespace {
+
+std::optional<std::string> render_prepared_constant_folded_single_block_return_from_context(
+    const PreparedX86FunctionDispatchContext& context) {
+  if (context.function == nullptr) {
+    return std::nullopt;
+  }
+  const auto& function = *context.function;
+  const auto* stack_layout = context.stack_layout;
+  const auto* function_addressing = context.function_addressing;
+  const auto* prepared_names = context.prepared_names;
+  const auto* function_locations = context.function_locations;
+  const auto prepared_arch = context.prepared_arch;
+  const auto asm_prefix = context.asm_prefix;
+  const auto return_register = context.return_register;
   if (!function.params.empty() || function.blocks.size() != 1 ||
       function.blocks.front().terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
       !function.blocks.front().terminator.value.has_value() ||
@@ -1991,20 +2015,33 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_i
          std::to_string(static_cast<std::int32_t>(*folded_return)) + "\n    ret\n";
 }
 
+}  // namespace
+
+std::optional<std::string> render_prepared_constant_folded_single_block_return_if_supported(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix,
+    std::string_view return_register) {
+  return render_prepared_constant_folded_single_block_return_from_context(
+      PreparedX86FunctionDispatchContext{
+          .function = &function,
+          .stack_layout = stack_layout,
+          .function_addressing = function_addressing,
+          .prepared_names = prepared_names,
+          .function_locations = function_locations,
+          .prepared_arch = prepared_arch,
+          .asm_prefix = asm_prefix,
+          .return_register = return_register,
+      });
+}
+
 std::optional<std::string> render_prepared_constant_folded_single_block_return_if_supported(
     const PreparedX86FunctionDispatchContext& context) {
-  if (context.function == nullptr) {
-    return std::nullopt;
-  }
-  return render_prepared_constant_folded_single_block_return_if_supported(
-      *context.function,
-      context.stack_layout,
-      context.function_addressing,
-      context.prepared_names,
-      context.function_locations,
-      context.prepared_arch,
-      context.asm_prefix,
-      context.return_register);
+  return render_prepared_constant_folded_single_block_return_from_context(context);
 }
 
 std::optional<std::string> render_prepared_param_derived_i32_value_if_supported(
@@ -2111,14 +2148,19 @@ std::optional<std::string> render_prepared_param_derived_i32_value_if_supported(
   return std::nullopt;
 }
 
-std::optional<std::string> render_prepared_minimal_immediate_or_param_return_if_supported(
-    const c4c::backend::bir::Function& function,
-    const c4c::backend::bir::Block& entry,
-    c4c::TargetArch prepared_arch,
-    std::string_view asm_prefix,
-    std::string_view return_register,
-    const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
-        minimal_param_register) {
+namespace {
+
+std::optional<std::string> render_prepared_minimal_immediate_or_param_return_from_context(
+    const PreparedX86FunctionDispatchContext& context) {
+  if (context.function == nullptr || context.entry == nullptr || !context.minimal_param_register) {
+    return std::nullopt;
+  }
+  const auto& function = *context.function;
+  const auto& entry = *context.entry;
+  const auto prepared_arch = context.prepared_arch;
+  const auto asm_prefix = context.asm_prefix;
+  const auto return_register = context.return_register;
+  const auto& minimal_param_register = context.minimal_param_register;
   if (function.blocks.size() != 1 || entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
       !entry.terminator.value.has_value()) {
     return std::nullopt;
@@ -2166,28 +2208,46 @@ std::optional<std::string> render_prepared_minimal_immediate_or_param_return_if_
   return std::string(asm_prefix) + render_prepared_return_body(*value_render);
 }
 
+}  // namespace
+
 std::optional<std::string> render_prepared_minimal_immediate_or_param_return_if_supported(
-    const PreparedX86FunctionDispatchContext& context) {
-  if (context.function == nullptr || context.entry == nullptr || !context.minimal_param_register) {
-    return std::nullopt;
-  }
-  return render_prepared_minimal_immediate_or_param_return_if_supported(
-      *context.function,
-      *context.entry,
-      context.prepared_arch,
-      context.asm_prefix,
-      context.return_register,
-      context.minimal_param_register);
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix,
+    std::string_view return_register,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
+        minimal_param_register) {
+  return render_prepared_minimal_immediate_or_param_return_from_context(
+      PreparedX86FunctionDispatchContext{
+          .function = &function,
+          .entry = &entry,
+          .prepared_arch = prepared_arch,
+          .asm_prefix = asm_prefix,
+          .return_register = return_register,
+          .minimal_param_register = minimal_param_register,
+      });
 }
 
-std::optional<std::string> render_prepared_minimal_local_slot_return_if_supported(
-    const c4c::backend::bir::Function& function,
-    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
-    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    c4c::TargetArch prepared_arch,
-    std::string_view asm_prefix) {
+std::optional<std::string> render_prepared_minimal_immediate_or_param_return_if_supported(
+    const PreparedX86FunctionDispatchContext& context) {
+  return render_prepared_minimal_immediate_or_param_return_from_context(context);
+}
+
+namespace {
+
+std::optional<std::string> render_prepared_minimal_local_slot_return_from_context(
+    const PreparedX86FunctionDispatchContext& context) {
+  if (context.function == nullptr) {
+    return std::nullopt;
+  }
+  const auto& function = *context.function;
+  const auto* stack_layout = context.stack_layout;
+  const auto* function_addressing = context.function_addressing;
+  const auto* prepared_names = context.prepared_names;
+  const auto* function_locations = context.function_locations;
+  const auto prepared_arch = context.prepared_arch;
+  const auto asm_prefix = context.asm_prefix;
   if (function.params.empty() == false || function.blocks.size() != 1 ||
       function.blocks.front().terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
       !function.blocks.front().terminator.value.has_value() ||
@@ -2297,19 +2357,31 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_if_supporte
   return asm_text;
 }
 
+}  // namespace
+
+std::optional<std::string> render_prepared_minimal_local_slot_return_if_supported(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix) {
+  return render_prepared_minimal_local_slot_return_from_context(
+      PreparedX86FunctionDispatchContext{
+          .function = &function,
+          .stack_layout = stack_layout,
+          .function_addressing = function_addressing,
+          .prepared_names = prepared_names,
+          .function_locations = function_locations,
+          .prepared_arch = prepared_arch,
+          .asm_prefix = asm_prefix,
+      });
+}
+
 std::optional<std::string> render_prepared_minimal_local_slot_return_if_supported(
     const PreparedX86FunctionDispatchContext& context) {
-  if (context.function == nullptr) {
-    return std::nullopt;
-  }
-  return render_prepared_minimal_local_slot_return_if_supported(
-      *context.function,
-      context.stack_layout,
-      context.function_addressing,
-      context.prepared_names,
-      context.function_locations,
-      context.prepared_arch,
-      context.asm_prefix);
+  return render_prepared_minimal_local_slot_return_from_context(context);
 }
 
 std::optional<std::string> render_prepared_trivial_defined_function_if_supported(
@@ -2346,26 +2418,34 @@ std::optional<std::string> render_prepared_trivial_defined_function_if_supported
          "\n    ret\n";
 }
 
-std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_if_supported(
-    const c4c::backend::bir::Module& module,
-    const c4c::backend::bir::Function& function,
-    const c4c::backend::bir::Block& entry,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    c4c::TargetArch prepared_arch,
-    std::string_view asm_prefix,
-    std::string_view return_register,
-    const std::unordered_set<std::string_view>& bounded_same_module_helper_global_names,
-    const std::function<const c4c::backend::bir::StringConstant*(std::string_view)>&
-        find_string_constant,
-    const std::function<const c4c::backend::bir::Global*(std::string_view)>& find_same_module_global,
-    const std::function<std::string(std::string_view)>& render_private_data_label,
-    const std::function<std::string(std::string_view)>& render_asm_symbol_name,
-    const std::function<std::string(const c4c::backend::bir::StringConstant&)>&
-        emit_string_constant_data,
-    const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
-        emit_same_module_global_data,
-    const std::function<std::string(std::string)>& prepend_bounded_same_module_helpers) {
+namespace {
+
+std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_from_context(
+    const PreparedX86FunctionDispatchContext& context) {
+  if (context.module == nullptr || context.function == nullptr || context.entry == nullptr ||
+      context.bounded_same_module_helper_global_names == nullptr || !context.find_string_constant ||
+      !context.find_same_module_global || !context.render_private_data_label ||
+      !context.render_asm_symbol_name || !context.emit_string_constant_data ||
+      !context.emit_same_module_global_data || !context.prepend_bounded_same_module_helpers) {
+    return std::nullopt;
+  }
+  const auto& module = *context.module;
+  const auto& function = *context.function;
+  const auto& entry = *context.entry;
+  const auto* prepared_names = context.prepared_names;
+  const auto* function_locations = context.function_locations;
+  const auto prepared_arch = context.prepared_arch;
+  const auto asm_prefix = context.asm_prefix;
+  const auto return_register = context.return_register;
+  const auto& bounded_same_module_helper_global_names =
+      *context.bounded_same_module_helper_global_names;
+  const auto& find_string_constant = context.find_string_constant;
+  const auto& find_same_module_global = context.find_same_module_global;
+  const auto& render_private_data_label = context.render_private_data_label;
+  const auto& render_asm_symbol_name = context.render_asm_symbol_name;
+  const auto& emit_string_constant_data = context.emit_string_constant_data;
+  const auto& emit_same_module_global_data = context.emit_same_module_global_data;
+  const auto& prepend_bounded_same_module_helpers = context.prepend_bounded_same_module_helpers;
   if (prepared_arch != c4c::TargetArch::X86_64 || !function.params.empty() ||
       !function.local_slots.empty() || function.blocks.size() != 1 || entry.label != "entry" ||
       entry.insts.empty() ||
@@ -2783,32 +2863,52 @@ std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_i
   return prepend_bounded_same_module_helpers(std::string(asm_prefix) + body + rendered_data);
 }
 
+}  // namespace
+
+std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_if_supported(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& entry,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    c4c::TargetArch prepared_arch,
+    std::string_view asm_prefix,
+    std::string_view return_register,
+    const std::unordered_set<std::string_view>& bounded_same_module_helper_global_names,
+    const std::function<const c4c::backend::bir::StringConstant*(std::string_view)>&
+        find_string_constant,
+    const std::function<const c4c::backend::bir::Global*(std::string_view)>& find_same_module_global,
+    const std::function<std::string(std::string_view)>& render_private_data_label,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name,
+    const std::function<std::string(const c4c::backend::bir::StringConstant&)>&
+        emit_string_constant_data,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
+        emit_same_module_global_data,
+    const std::function<std::string(std::string)>& prepend_bounded_same_module_helpers) {
+  return render_prepared_minimal_direct_extern_call_sequence_from_context(
+      PreparedX86FunctionDispatchContext{
+          .module = &module,
+          .function = &function,
+          .entry = &entry,
+          .prepared_names = prepared_names,
+          .function_locations = function_locations,
+          .prepared_arch = prepared_arch,
+          .asm_prefix = asm_prefix,
+          .return_register = return_register,
+          .bounded_same_module_helper_global_names = &bounded_same_module_helper_global_names,
+          .find_string_constant = find_string_constant,
+          .find_same_module_global = find_same_module_global,
+          .render_private_data_label = render_private_data_label,
+          .render_asm_symbol_name = render_asm_symbol_name,
+          .emit_string_constant_data = emit_string_constant_data,
+          .emit_same_module_global_data = emit_same_module_global_data,
+          .prepend_bounded_same_module_helpers = prepend_bounded_same_module_helpers,
+      });
+}
+
 std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_if_supported(
     const PreparedX86FunctionDispatchContext& context) {
-  if (context.module == nullptr || context.function == nullptr || context.entry == nullptr ||
-      context.bounded_same_module_helper_global_names == nullptr || !context.find_string_constant ||
-      !context.find_same_module_global || !context.render_private_data_label ||
-      !context.render_asm_symbol_name || !context.emit_string_constant_data ||
-      !context.emit_same_module_global_data || !context.prepend_bounded_same_module_helpers) {
-    return std::nullopt;
-  }
-  return render_prepared_minimal_direct_extern_call_sequence_if_supported(
-      *context.module,
-      *context.function,
-      *context.entry,
-      context.prepared_names,
-      context.function_locations,
-      context.prepared_arch,
-      context.asm_prefix,
-      context.return_register,
-      *context.bounded_same_module_helper_global_names,
-      context.find_string_constant,
-      context.find_same_module_global,
-      context.render_private_data_label,
-      context.render_asm_symbol_name,
-      context.emit_string_constant_data,
-      context.emit_same_module_global_data,
-      context.prepend_bounded_same_module_helpers);
+  return render_prepared_minimal_direct_extern_call_sequence_from_context(context);
 }
 
 std::optional<std::string> render_prepared_single_block_return_dispatch_if_supported(
