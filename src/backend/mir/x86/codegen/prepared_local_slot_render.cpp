@@ -130,6 +130,57 @@ struct PreparedI32ValueSelection {
   bool in_eax = false;
 };
 
+std::optional<std::string_view> prepared_scalar_memory_operand_size_name(
+    c4c::backend::bir::TypeKind type);
+std::optional<std::string> render_prepared_symbol_memory_operand_if_supported(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
+    const c4c::backend::prepare::PreparedAddress& address,
+    std::string_view size_name,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name);
+
+struct PreparedSameModuleScalarMemorySelection {
+  const c4c::backend::bir::Global* global = nullptr;
+  std::string memory_operand;
+};
+
+template <class ValidateGlobal>
+std::optional<PreparedSameModuleScalarMemorySelection>
+select_prepared_same_module_scalar_memory_for_inst_if_supported(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t inst_index,
+    c4c::backend::bir::TypeKind type,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name,
+    const std::function<const c4c::backend::bir::Global*(std::string_view)>& find_same_module_global,
+    ValidateGlobal&& validate_global) {
+  const auto size_name = prepared_scalar_memory_operand_size_name(type);
+  if (!size_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto* prepared_access =
+      find_prepared_symbol_memory_access(&prepared_names, function_addressing, block_label, inst_index);
+  if (prepared_access == nullptr) {
+    return std::nullopt;
+  }
+  auto memory_operand = render_prepared_symbol_memory_operand_if_supported(
+      prepared_names, prepared_access->address, *size_name, render_asm_symbol_name);
+  if (!memory_operand.has_value()) {
+    return std::nullopt;
+  }
+  const std::string_view resolved_global_name =
+      c4c::backend::prepare::prepared_link_name(
+          prepared_names, *prepared_access->address.symbol_name);
+  const auto* global = find_same_module_global(resolved_global_name);
+  if (global == nullptr || !validate_global(*global, prepared_access->address.byte_offset)) {
+    return std::nullopt;
+  }
+  return PreparedSameModuleScalarMemorySelection{
+      .global = global,
+      .memory_operand = std::move(*memory_operand),
+  };
+}
+
 template <class ResolveNamedOperand>
 std::optional<PreparedI32ValueSelection> select_prepared_i32_value_if_supported(
     const c4c::backend::bir::Value& value,
@@ -981,76 +1032,58 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
             load->result.kind != c4c::backend::bir::Value::Kind::Named) {
           return std::nullopt;
         }
-        const auto* prepared_access = find_prepared_symbol_memory_access(
-            prepared_names, function_addressing, block_label_id, inst_index);
-        if (prepared_access == nullptr) {
+        const auto selected_global_memory =
+            select_prepared_same_module_scalar_memory_for_inst_if_supported(
+                *prepared_names,
+                function_addressing,
+                block_label_id,
+                inst_index,
+                load->result.type,
+                render_asm_symbol_name,
+                find_same_module_global,
+                [&](const c4c::backend::bir::Global& global,
+                    std::int64_t byte_offset) {
+                  return same_module_global_supports_scalar_load(
+                      global, load->result.type, byte_offset);
+                });
+        if (!selected_global_memory.has_value()) {
           return std::nullopt;
         }
-        auto memory = render_prepared_scalar_memory_operand_for_inst_if_supported(
-            *layout,
-            prepared_names,
-            function_addressing,
-            block_label_id,
-            inst_index,
-            load->result.type,
-            &render_asm_symbol_name);
-        if (!memory.has_value()) {
-          return std::nullopt;
-        }
-        const std::string_view resolved_global_name =
-            c4c::backend::prepare::prepared_link_name(
-                *prepared_names, *prepared_access->address.symbol_name);
-        const auto* global = find_same_module_global(resolved_global_name);
-        const auto global_byte_offset = prepared_access->address.byte_offset;
-        if (global == nullptr ||
-            !same_module_global_supports_scalar_load(*global, load->result.type, global_byte_offset)) {
-          return std::nullopt;
-        }
-        same_module_global_names.insert(global->name);
+        same_module_global_names.insert(selected_global_memory->global->name);
         *current_materialized_compare = std::nullopt;
         *current_i8_name = std::nullopt;
         if (load->result.type == c4c::backend::bir::TypeKind::Ptr) {
           *current_i32_name = std::nullopt;
           *previous_i32_name = std::nullopt;
           *current_ptr_name = load->result.name;
-          return "    mov rax, " + *memory + "\n";
+          return "    mov rax, " + selected_global_memory->memory_operand + "\n";
         }
         *current_i32_name = load->result.name;
         *previous_i32_name = std::nullopt;
         *current_ptr_name = std::nullopt;
-        return "    mov eax, " + *memory + "\n";
+        return "    mov eax, " + selected_global_memory->memory_operand + "\n";
       }
 
       if (const auto* store = std::get_if<c4c::backend::bir::StoreGlobalInst>(&inst)) {
         if (store->address.has_value() || store->value.type != c4c::backend::bir::TypeKind::I32) {
           return std::nullopt;
         }
-        const auto* prepared_access =
-            find_prepared_symbol_memory_access(
-                prepared_names, function_addressing, block_label_id, inst_index);
-        if (prepared_access == nullptr) {
+        const auto selected_global_memory =
+            select_prepared_same_module_scalar_memory_for_inst_if_supported(
+                *prepared_names,
+                function_addressing,
+                block_label_id,
+                inst_index,
+                c4c::backend::bir::TypeKind::I32,
+                render_asm_symbol_name,
+                find_same_module_global,
+                [](const c4c::backend::bir::Global& global, std::int64_t) {
+                  return global.type == c4c::backend::bir::TypeKind::I32;
+                });
+        if (!selected_global_memory.has_value()) {
           return std::nullopt;
         }
-        auto memory = render_prepared_scalar_memory_operand_for_inst_if_supported(
-            *layout,
-            prepared_names,
-            function_addressing,
-            block_label_id,
-            inst_index,
-            c4c::backend::bir::TypeKind::I32,
-            &render_asm_symbol_name);
-        if (!memory.has_value()) {
-          return std::nullopt;
-        }
-        const std::string_view resolved_global_name =
-            c4c::backend::prepare::prepared_link_name(
-                *prepared_names, *prepared_access->address.symbol_name);
-        const auto global_byte_offset = prepared_access->address.byte_offset;
-        const auto* global = find_same_module_global(resolved_global_name);
-        if (global == nullptr || global->type != c4c::backend::bir::TypeKind::I32) {
-          return std::nullopt;
-        }
-        same_module_global_names.insert(global->name);
+        same_module_global_names.insert(selected_global_memory->global->name);
         *current_materialized_compare = std::nullopt;
         *current_i8_name = std::nullopt;
         *current_ptr_name = std::nullopt;
@@ -1067,13 +1100,14 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
         if (selected_store_value->immediate.has_value()) {
           *current_i32_name = std::nullopt;
           *previous_i32_name = std::nullopt;
-          return "    mov " + *memory + ", " +
+          return "    mov " + selected_global_memory->memory_operand + ", " +
                  std::to_string(*selected_store_value->immediate) + "\n";
         }
         if (selected_store_value->in_eax) {
-          return "    mov " + *memory + ", eax\n";
+          return "    mov " + selected_global_memory->memory_operand + ", eax\n";
         }
-        return "    mov " + *memory + ", " + *selected_store_value->operand + "\n";
+        return "    mov " + selected_global_memory->memory_operand + ", " +
+               *selected_store_value->operand + "\n";
       }
 
       const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
@@ -3537,24 +3571,22 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
           store->value.type != c4c::backend::bir::TypeKind::I32) {
         return std::nullopt;
       }
-      const auto* prepared_access = find_prepared_symbol_memory_access(
-          &module.names, candidate_function_addressing, entry_block_label_id, inst_index);
-      if (prepared_access == nullptr) {
+      const auto selected_global_memory =
+          select_prepared_same_module_scalar_memory_for_inst_if_supported(
+              module.names,
+              candidate_function_addressing,
+              entry_block_label_id,
+              inst_index,
+              c4c::backend::bir::TypeKind::I32,
+              render_asm_symbol_name,
+              find_same_module_global,
+              [](const c4c::backend::bir::Global& global, std::int64_t byte_offset) {
+                return global.type == c4c::backend::bir::TypeKind::I32 && byte_offset == 0;
+              });
+      if (!selected_global_memory.has_value()) {
         return std::nullopt;
       }
-      auto memory = render_prepared_symbol_memory_operand_if_supported(
-          module.names, prepared_access->address, "DWORD", render_asm_symbol_name);
-      if (!memory.has_value()) {
-        return std::nullopt;
-      }
-      const std::string_view resolved_global_name = c4c::backend::prepare::prepared_link_name(
-          module.names, *prepared_access->address.symbol_name);
-      const auto* global = find_same_module_global(resolved_global_name);
-      if (global == nullptr || global->type != c4c::backend::bir::TypeKind::I32 ||
-          prepared_access->address.byte_offset != 0) {
-        return std::nullopt;
-      }
-      used_same_module_globals.insert(global->name);
+      used_same_module_globals.insert(selected_global_memory->global->name);
 
       const auto selected_store_operand = render_prepared_i32_operand_if_supported(
           store->value,
@@ -3569,7 +3601,8 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
       if (!selected_store_operand.has_value()) {
         return std::nullopt;
       }
-      body += "    mov " + *memory + ", " + *selected_store_operand + "\n";
+      body += "    mov " + selected_global_memory->memory_operand + ", " +
+              *selected_store_operand + "\n";
       continue;
     }
 
