@@ -5,29 +5,29 @@ Source Idea Path: ideas/open/61_stack_frame_and_addressing_consumption.md
 Source Plan Path: plan.md
 Current Step ID: 3.3
 Current Step Title: Pointer-Indirect And Residual Address Cleanup
-Plan Review Counter: 4 / 10
+Plan Review Counter: 5 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed a Step 3.3 packet that closed the residual named-stack-object
-memory fallback in the x86 guard/helper families already consuming prepared
-memory accesses. Shared prepare now publishes canonical frame-slot accesses
-for local-memory instructions whose authoritative base comes from
-`address.base_name` plus `address.byte_offset`, and
-`render_prepared_local_slot_guard_chain_if_supported`,
-`render_prepared_local_i32_arithmetic_guard_if_supported`, and
-`render_prepared_local_i16_arithmetic_guard_if_supported` now require those
-prepared accesses instead of reopening
-`render_prepared_named_stack_object_memory_operand_if_supported`.
+Completed a Step 3.3 packet that removed the remaining raw stack-object-name
+address recovery from the bounded x86 pointer-valued store routes still using
+`render_prepared_named_stack_object_address_if_supported`. The
+guard-chain/local-helper pointer-store path and
+`render_prepared_minimal_local_slot_return_if_supported` now materialize those
+stack addresses through prepared stack objects keyed by canonical prepared
+value ids before emitting `lea`, instead of reopening stack slots by raw
+value-name string matching.
 
 ## Suggested Next
 
-Continue Step 3.3 by auditing the remaining pointer/address helpers that still
-recover stack-object addresses by name rather than from prepared addressing
-data, especially the pointer-valued store/constant-folded routes in
-`prepared_local_slot_render.cpp`. Keep raw symbol-pointer call-lane setup out
-of scope.
+Continue Step 3.3 by auditing the remaining helpers in
+`prepared_local_slot_render.cpp` that still call
+`find_prepared_named_stack_object_frame_offset` or
+`render_prepared_named_stack_object_address_if_supported`, and isolate which
+survivors are still legitimate prepared-frame consumers versus residual
+string-backed address reconstruction. Keep raw symbol-pointer call-lane setup
+out of scope.
 
 ## Watchouts
 
@@ -35,9 +35,10 @@ of scope.
   address consumers.
 - Keep frame size, slot identity, and address provenance in shared prepare,
   not x86-local slot-name or suffix reconstruction.
-- This packet only removed the residual named-stack-object memory fallback in
-  three bounded x86 helpers; pointer-valued address recovery by stack-object
-  name still remains for a later Step 3.3 packet.
+- This packet only replaced the two bounded pointer-valued store routes that
+  still reopened stack-object addresses by raw value name; other helper paths
+  may still legitimately consult prepared stack layout or may need a separate
+  Step 3.3 cleanup packet after audit.
 - The bounded multi-defined call-lane pointer-arg consumer near the raw
   `@name` checks remains out of scope unless lifecycle work later adds a
   separate prepared producer contract for `CallInst` pointer arguments.
@@ -55,14 +56,17 @@ of scope.
 
 Ran:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(x86_handoff_boundary|codegen_route_x86_64_(local_pointer_deref|nested_member_pointer_array|local_dynamic_member_array|local_dynamic_member_array_store|local_direct_dynamic_member_array_store|local_direct_dynamic_member_array_load|local_direct_dynamic_struct_array_call)_observe_semantic_bir)$' > test_after.log 2>&1`.
-Fresh before/after captures on that exact regex report the same two existing
-`main`-branch failures in
+The exact subset still reports the same two existing `main`-branch failures in
 `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`
 and
 `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`;
-`backend_x86_handoff_boundary` and the other covered pointer/address routes
-remain green after the producer/consumer changes in this packet.
-Supervisor regression guard:
+`backend_x86_handoff_boundary`,
+`backend_codegen_route_x86_64_local_pointer_deref_observe_semantic_bir`,
+`backend_codegen_route_x86_64_nested_member_pointer_array_observe_semantic_bir`,
+`backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir`,
+`backend_codegen_route_x86_64_local_dynamic_member_array_store_observe_semantic_bir`,
+and
+`backend_codegen_route_x86_64_local_direct_dynamic_struct_array_call_observe_semantic_bir`
+remain green after this packet. Supervisor regression guard:
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
-returned `PASS`, then `test_after.log` was rolled forward into `test_before.log`
-for the next slice.
+returned `PASS`. `test_after.log` is preserved as the current proof artifact.
