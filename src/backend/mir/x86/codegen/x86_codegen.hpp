@@ -1007,7 +1007,8 @@ std::optional<std::string> find_and_render_prepared_param_zero_branch_return_con
     const c4c::backend::bir::Param& param,
     std::string_view asm_prefix,
     std::string_view param_register_name,
-    const std::function<std::optional<std::string>(const c4c::backend::bir::Value&)>&
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Block&,
+                                                   const c4c::backend::bir::Value&)>&
         render_return);
 
 std::optional<std::string> render_prepared_minimal_compare_branch_entry_if_supported(
@@ -1019,7 +1020,8 @@ std::optional<std::string> render_prepared_minimal_compare_branch_entry_if_suppo
     std::string_view asm_prefix,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
         minimal_param_register,
-    const std::function<std::optional<std::string>(const c4c::backend::bir::Value&)>&
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Block&,
+                                                   const c4c::backend::bir::Value&)>&
         render_return);
 
 std::optional<std::string>
@@ -1061,7 +1063,8 @@ std::optional<std::string> render_prepared_compare_driven_entry_if_supported(
     std::string_view asm_prefix,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
         minimal_param_register,
-    const std::function<std::optional<std::string>(const c4c::backend::bir::Value&)>&
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Block&,
+                                                   const c4c::backend::bir::Value&)>&
         render_param_derived_return,
     const std::function<std::optional<std::string>(
         const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&,

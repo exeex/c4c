@@ -4,6 +4,7 @@
 #include "src/backend/mir/x86/codegen/x86_codegen.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -521,6 +522,48 @@ int check_minimal_compare_branch_requires_authoritative_prepared_branch_record(
   return 0;
 }
 
+int check_minimal_compare_branch_param_return_requires_authoritative_prepared_return_bundle(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* function_locations =
+      prepare::find_prepared_value_location_function(prepared, function_name);
+  if (function_locations == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the parameter-return value-location contract")
+                    .c_str());
+  }
+
+  auto& mutable_locations = prepared.value_locations.functions.front();
+  mutable_locations.move_bundles.erase(
+      std::remove_if(
+          mutable_locations.move_bundles.begin(),
+          mutable_locations.move_bundles.end(),
+          [](const prepare::PreparedMoveBundle& bundle) {
+            return bundle.phase == prepare::PreparedMovePhase::BeforeReturn;
+          }),
+      mutable_locations.move_bundles.end());
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted a parameter-leaf return after the authoritative prepared return bundle was removed")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the missing prepared return bundle with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_compare_branch_tests() {
@@ -641,6 +684,14 @@ int run_backend_x86_handoff_boundary_compare_branch_tests() {
               make_x86_param_eq_zero_branch_param_or_immediate_module(),
               "branch_zero_or_passthrough",
               "scalar-control-flow compare-against-zero branch lane with parameter leaf return rejects reopening raw branch recovery when the authoritative prepared branch record is missing");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_param_return_requires_authoritative_prepared_return_bundle(
+              make_x86_param_eq_zero_branch_param_or_immediate_module(),
+              "branch_zero_or_passthrough",
+              "scalar-control-flow compare-against-zero branch lane with parameter leaf return rejects reopening local return fallback when the authoritative prepared return bundle is missing");
       status != 0) {
     return status;
   }

@@ -533,7 +533,8 @@ std::optional<std::string> find_and_render_prepared_param_zero_branch_return_con
     const c4c::backend::bir::Param& param,
     std::string_view asm_prefix,
     std::string_view param_register_name,
-    const std::function<std::optional<std::string>(const c4c::backend::bir::Value&)>&
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Block&,
+                                                   const c4c::backend::bir::Value&)>&
         render_return) {
   const c4c::BlockLabelId entry_label_id =
       c4c::backend::prepare::resolve_prepared_block_label_id(prepared_names, entry.label)
@@ -558,8 +559,8 @@ std::optional<std::string> find_and_render_prepared_param_zero_branch_return_con
   const auto* false_block = prepared_branch_context->false_block;
   const auto& true_value = *true_block->terminator.value;
   const auto& false_value = *false_block->terminator.value;
-  const auto true_return = render_return(true_value);
-  const auto false_return = render_return(false_value);
+  const auto true_return = render_return(*true_block, true_value);
+  const auto false_return = render_return(*false_block, false_value);
   if (!true_return.has_value() || !false_return.has_value()) {
     return std::nullopt;
   }
@@ -584,7 +585,8 @@ std::optional<std::string> render_prepared_minimal_compare_branch_entry_if_suppo
     std::string_view asm_prefix,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
         minimal_param_register,
-    const std::function<std::optional<std::string>(const c4c::backend::bir::Value&)>&
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Block&,
+                                                   const c4c::backend::bir::Value&)>&
         render_return) {
   if (function.params.size() != 1 || prepared_arch != c4c::TargetArch::X86_64 ||
       entry.insts.size() != 1 ||
@@ -733,7 +735,8 @@ std::optional<std::string> render_prepared_compare_driven_entry_if_supported(
     std::string_view asm_prefix,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
         minimal_param_register,
-    const std::function<std::optional<std::string>(const c4c::backend::bir::Value&)>&
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Block&,
+                                                   const c4c::backend::bir::Value&)>&
         render_param_derived_return,
     const std::function<std::optional<std::string>(
         const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&,
