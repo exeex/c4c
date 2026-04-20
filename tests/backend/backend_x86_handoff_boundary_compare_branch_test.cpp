@@ -147,6 +147,26 @@ std::string expected_zero_branch_prefix(const char* function_name,
          "\n    " + false_branch_opcode + " .L" + function_name + "_" + false_label + "\n";
 }
 
+std::string expected_stack_home_zero_branch_prefix(const char* function_name,
+                                                   const char* false_label,
+                                                   const char* false_branch_opcode,
+                                                   std::size_t frame_size,
+                                                   std::size_t byte_offset) {
+  return asm_header(function_name) + "    sub rsp, " + std::to_string(frame_size) + "\n    mov eax, " +
+         c4c::backend::x86::render_prepared_stack_memory_operand(byte_offset, "DWORD") +
+         "\n    test eax, eax\n    add rsp, " + std::to_string(frame_size) + "\n    " +
+         false_branch_opcode + " .L" + function_name + "_" + false_label + "\n";
+}
+
+std::string expected_rematerialized_zero_branch_prefix(const char* function_name,
+                                                       const char* false_label,
+                                                       const char* false_branch_opcode,
+                                                       int immediate) {
+  return asm_header(function_name) + "    mov eax, " + std::to_string(immediate) +
+         "\n    test eax, eax\n    " + false_branch_opcode + " .L" + function_name + "_" +
+         false_label + "\n";
+}
+
 std::string expected_branch_prefix(const char* function_name, const char* false_label) {
   return expected_zero_branch_prefix(function_name, false_label, "jne");
 }
@@ -633,6 +653,153 @@ int check_minimal_compare_branch_param_return_requires_authoritative_prepared_re
   return 0;
 }
 
+prepare::PreparedValueHome* find_mutable_value_home(prepare::PreparedBirModule& prepared,
+                                                    const char* function_name,
+                                                    const char* value_name) {
+  const auto function_name_id = prepare::resolve_prepared_function_name_id(prepared.names, function_name);
+  if (!function_name_id.has_value()) {
+    return nullptr;
+  }
+  auto function_locations_it =
+      std::find_if(prepared.value_locations.functions.begin(),
+                   prepared.value_locations.functions.end(),
+                   [&](const prepare::PreparedValueLocationFunction& function_locations) {
+                     return function_locations.function_name == *function_name_id;
+                   });
+  if (function_locations_it == prepared.value_locations.functions.end()) {
+    return nullptr;
+  }
+  const auto value_name_id = prepare::resolve_prepared_value_name_id(prepared.names, value_name);
+  if (!value_name_id.has_value()) {
+    return nullptr;
+  }
+  for (auto& value_home : function_locations_it->value_homes) {
+    if (value_home.value_name == *value_name_id) {
+      return &value_home;
+    }
+  }
+  return nullptr;
+}
+
+int check_minimal_compare_branch_stack_home_consumes_prepared_entry_home(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* param_home = find_mutable_value_home(prepared, function_name, "p.x");
+  if (param_home == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the authoritative prepared parameter home")
+                    .c_str());
+  }
+
+  param_home->kind = prepare::PreparedValueHomeKind::StackSlot;
+  param_home->register_name.reset();
+  param_home->slot_id = 0;
+  param_home->offset_bytes = 0;
+  param_home->immediate_i32.reset();
+  prepared.stack_layout.frame_size_bytes = 4;
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following the authoritative prepared stack entry home")
+                    .c_str());
+  }
+
+  return 0;
+}
+
+int check_minimal_compare_branch_rematerialized_home_consumes_prepared_entry_home(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* param_home = find_mutable_value_home(prepared, function_name, "p.x");
+  if (param_home == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the authoritative prepared parameter home")
+                    .c_str());
+  }
+
+  param_home->kind = prepare::PreparedValueHomeKind::RematerializableImmediate;
+  param_home->register_name.reset();
+  param_home->slot_id.reset();
+  param_home->offset_bytes.reset();
+  param_home->immediate_i32 = 13;
+
+  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer stopped following the authoritative prepared rematerializable entry home")
+                    .c_str());
+  }
+
+  return 0;
+}
+
+int check_minimal_compare_branch_requires_authoritative_prepared_entry_home(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto function_name_id = prepare::resolve_prepared_function_name_id(prepared.names, function_name);
+  if (!function_name_id.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer resolves the compare-branch function name for value-home ownership")
+                    .c_str());
+  }
+  const auto value_name_id = prepare::resolve_prepared_value_name_id(prepared.names, "p.x");
+  if (!value_name_id.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer resolves the compare-branch parameter name for value-home ownership")
+                    .c_str());
+  }
+  auto function_locations_it =
+      std::find_if(prepared.value_locations.functions.begin(),
+                   prepared.value_locations.functions.end(),
+                   [&](const prepare::PreparedValueLocationFunction& function_locations) {
+                     return function_locations.function_name == *function_name_id;
+                   });
+  if (function_locations_it == prepared.value_locations.functions.end()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the compare-branch value-location contract")
+                    .c_str());
+  }
+
+  function_locations_it->value_homes.erase(
+      std::remove_if(function_locations_it->value_homes.begin(),
+                     function_locations_it->value_homes.end(),
+                     [&](const prepare::PreparedValueHome& value_home) {
+                       return value_home.value_name == *value_name_id;
+                     }),
+      function_locations_it->value_homes.end());
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly reopened ABI entry fallback after the authoritative prepared home was removed")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the missing prepared entry home with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_compare_branch_tests() {
@@ -671,6 +838,36 @@ int run_backend_x86_handoff_boundary_compare_branch_tests() {
               make_x86_param_eq_zero_branch_module(),
               "branch_on_zero",
               "scalar-control-flow compare-against-zero branch lane rejects reopening raw branch recovery when the authoritative prepared branch record is missing");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_stack_home_consumes_prepared_entry_home(
+              make_x86_param_eq_zero_branch_module(),
+              expected_stack_home_zero_branch_prefix("branch_on_zero", "is_nonzero", "jne", 4, 0) +
+                  "    mov " + minimal_i32_return_register() + ", 7\n    ret\n.Lbranch_on_zero_is_nonzero:\n    mov " +
+                  minimal_i32_return_register() + ", 11\n    ret\n",
+              "branch_on_zero",
+              "scalar-control-flow compare-against-zero branch lane with stack entry home");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_rematerialized_home_consumes_prepared_entry_home(
+              make_x86_param_eq_zero_branch_module(),
+              expected_rematerialized_zero_branch_prefix("branch_on_zero", "is_nonzero", "jne", 13) +
+                  "    mov " + minimal_i32_return_register() + ", 7\n    ret\n.Lbranch_on_zero_is_nonzero:\n    mov " +
+                  minimal_i32_return_register() + ", 11\n    ret\n",
+              "branch_on_zero",
+              "scalar-control-flow compare-against-zero branch lane with rematerializable entry home");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_minimal_compare_branch_requires_authoritative_prepared_entry_home(
+              make_x86_param_eq_zero_branch_module(),
+              "branch_on_zero",
+              "scalar-control-flow compare-against-zero branch lane rejects reopening ABI entry fallback when the authoritative prepared home is missing");
       status != 0) {
     return status;
   }

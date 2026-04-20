@@ -5,26 +5,25 @@ Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
 Source Plan Path: plan.md
 Current Step ID: 3.3
 Current Step Title: Consume Canonical Move Bundles For Join, Call, And Return Boundaries
-Plan Review Counter: 9 / 10
+Plan Review Counter: 10 / 10
 # Current Packet
 
 ## Just Finished
 
 Step 3.3 (`Consume Canonical Move Bundles For Join, Call, And Return
-Boundaries`) now makes the compare-driven param-zero entry setup follow the
-authoritative prepared parameter home instead of reopening the canonical ABI
-register by local convention. The bounded compare-join proof now mutates the
-parameter home to `r10d` and confirms the x86 prepared consumer uses that
-shared home for both the initial zero-test and the parameter-selected return
-arms while still honoring the authoritative prepared `BeforeReturn` bundle.
+Boundaries`) now makes compare-driven param-zero entry require authoritative
+prepared parameter homes instead of reopening ABI fallback when the home is
+missing, and it frame-wraps stack-slot entry loads using the prepared frame
+size. The bounded compare-branch proof now covers both stack-slot and
+rematerializable parameter-home entry lanes and rejects the route when the
+authoritative prepared entry home is removed.
 
 ## Suggested Next
 
-Keep Step 3.3 on boundary move-bundle consumption and audit the remaining
-compare-join and short-circuit helper paths for any stack-slot or
-rematerializable entry-source handling that still reopens ABI or local carrier
-assumptions instead of shared prepared homes and bundles, especially on the
-EdgeStoreSlot variants.
+Keep Step 3.3 on boundary move-bundle consumption and push the same
+authoritative entry-home checks into the remaining compare-join and
+short-circuit helper lanes, especially any `EdgeStoreSlot`-style routes that
+still need bounded proof for stack-backed or rematerializable entry sources.
 
 ## Watchouts
 
@@ -58,16 +57,14 @@ EdgeStoreSlot variants.
   stores), so future route changes should treat those emitted homes as part of
   the prepared handoff contract rather than as incidental register noise.
 - Compare-driven compare-join entry setup now follows authoritative prepared
-  register homes, but stack-slot and rematerializable param-home entry lanes
-  still need explicit bounded proof before treating the route as broadly
-  covered; keep any future refinement shared and bundle-driven instead of
-  growing x86-only entry fallback logic.
+  stack, and rematerializable homes in the bounded compare-branch lane, but
+  the adjacent compare-join and short-circuit families still need the same
+  explicit proof before treating those routes as broadly covered.
 
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' > test_after.log 2>&1`,
-which passed after the compare-driven entry helper started sourcing the initial
-zero-test from authoritative prepared parameter homes and the joined-branch
-boundary test tightened the `r10d` proof to cover both entry and return
-consumption. Accepted proof log rolled forward to `test_before.log`.
+which passed after the compare-driven entry helper rejected missing prepared
+entry homes, frame-wrapped stack-slot entry loads, and the compare-branch
+tests added bounded stack-slot and rematerializable entry-home coverage.

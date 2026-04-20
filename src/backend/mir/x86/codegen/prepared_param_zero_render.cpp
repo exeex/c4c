@@ -30,6 +30,7 @@ std::optional<std::string> find_prepared_param_zero_compare_setup(
     const c4c::backend::bir::Param& param,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
         minimal_param_register) {
+  (void)minimal_param_register;
   if (const auto* function_locations =
           c4c::backend::prepare::find_prepared_value_location_function(module, function.name);
       function_locations != nullptr) {
@@ -46,9 +47,20 @@ std::optional<std::string> find_prepared_param_zero_compare_setup(
       }
       if (param_home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
           param_home->offset_bytes.has_value()) {
+        const auto frame_size =
+            std::max(module.stack_layout.frame_size_bytes,
+                     *param_home->offset_bytes + sizeof(std::int32_t));
         const auto stack_operand = c4c::backend::x86::render_prepared_stack_memory_operand(
             *param_home->offset_bytes, "DWORD");
-        return "    mov eax, " + stack_operand + "\n    test eax, eax\n";
+        std::string rendered;
+        if (frame_size != 0) {
+          rendered += "    sub rsp, " + std::to_string(frame_size) + "\n";
+        }
+        rendered += "    mov eax, " + stack_operand + "\n    test eax, eax\n";
+        if (frame_size != 0) {
+          rendered += "    add rsp, " + std::to_string(frame_size) + "\n";
+        }
+        return rendered;
       }
       if (param_home->kind ==
               c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
@@ -59,13 +71,9 @@ std::optional<std::string> find_prepared_param_zero_compare_setup(
       }
       return std::nullopt;
     }
-  }
-
-  const auto param_register = minimal_param_register(param);
-  if (!param_register.has_value()) {
     return std::nullopt;
   }
-  return "    test " + *param_register + ", " + *param_register + "\n";
+  return std::nullopt;
 }
 
 std::optional<std::string> render_prepared_param_zero_branch_prefix(
@@ -642,8 +650,12 @@ std::optional<std::string> render_prepared_minimal_compare_branch_entry_if_suppo
   }
   const auto compare_setup =
       find_prepared_param_zero_compare_setup(module, function, param, minimal_param_register);
-  if (!compare_setup.has_value() || function_control_flow == nullptr) {
+  if (function_control_flow == nullptr) {
     return std::nullopt;
+  }
+  if (!compare_setup.has_value()) {
+    throw std::invalid_argument(
+        "x86 backend emitter requires authoritative prepared value-home data for compare-driven entry through the canonical prepared-module handoff");
   }
 
   return find_and_render_prepared_param_zero_branch_return_context_if_supported(
@@ -752,8 +764,12 @@ std::optional<std::string> render_prepared_materialized_compare_join_entry_if_su
   }
   const auto compare_setup =
       find_prepared_param_zero_compare_setup(module, function, param, minimal_param_register);
-  if (!compare_setup.has_value() || function_control_flow == nullptr) {
+  if (function_control_flow == nullptr) {
     return std::nullopt;
+  }
+  if (!compare_setup.has_value()) {
+    throw std::invalid_argument(
+        "x86 backend emitter requires authoritative prepared value-home data for compare-driven entry through the canonical prepared-module handoff");
   }
 
   return find_and_render_prepared_materialized_compare_join_function_if_supported(
