@@ -443,16 +443,6 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
               : load->result.type == c4c::backend::bir::TypeKind::I8 ? "BYTE"
                                                                      : "DWORD");
         }
-        if (!memory.has_value() && load->address.has_value()) {
-          memory = render_prepared_named_stack_object_memory_operand_if_supported(
-              stack_layout,
-              prepared_names,
-              function_name_id,
-              load->address,
-              load->result.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD"
-              : load->result.type == c4c::backend::bir::TypeKind::I8 ? "BYTE"
-                                                                     : "DWORD");
-        }
         if (!memory.has_value()) {
           return std::nullopt;
         }
@@ -580,16 +570,6 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
         memory = render_prepared_frame_slot_memory_operand_if_supported(
             *layout,
             prepared_access->address,
-            store->value.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD"
-            : store->value.type == c4c::backend::bir::TypeKind::I8 ? "BYTE"
-                                                                   : "DWORD");
-      }
-      if (!memory.has_value() && store->address.has_value()) {
-        memory = render_prepared_named_stack_object_memory_operand_if_supported(
-            stack_layout,
-            prepared_names,
-            function_name_id,
-            store->address,
             store->value.type == c4c::backend::bir::TypeKind::Ptr ? "QWORD"
             : store->value.type == c4c::backend::bir::TypeKind::I8 ? "BYTE"
                                                                    : "DWORD");
@@ -1151,11 +1131,6 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
   if (layout->frame_size != 0) {
     asm_text += "    sub rsp, " + std::to_string(layout->frame_size) + "\n";
   }
-  const c4c::FunctionNameId function_name_id =
-      prepared_names == nullptr ? c4c::kInvalidFunctionName
-                                : c4c::backend::prepare::resolve_prepared_function_name_id(
-                                      *prepared_names, function.name)
-                                      .value_or(c4c::kInvalidFunctionName);
   const c4c::BlockLabelId entry_label_id =
       prepared_names == nullptr ? c4c::kInvalidBlockLabel
                                 : c4c::backend::prepare::resolve_prepared_block_label_id(
@@ -1176,10 +1151,6 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
         memory = render_prepared_frame_slot_memory_operand_if_supported(
             *layout, prepared_access->address, "DWORD");
       }
-      if (!memory.has_value() && store->address.has_value()) {
-        memory = render_prepared_named_stack_object_memory_operand_if_supported(
-            stack_layout, prepared_names, function_name_id, store->address, "DWORD");
-      }
       if (!memory.has_value()) {
         return std::nullopt;
       }
@@ -1198,10 +1169,6 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
       if (prepared_access != nullptr) {
         memory = render_prepared_frame_slot_memory_operand_if_supported(
             *layout, prepared_access->address, "DWORD");
-      }
-      if (!memory.has_value() && load->address.has_value()) {
-        memory = render_prepared_named_stack_object_memory_operand_if_supported(
-            stack_layout, prepared_names, function_name_id, load->address, "DWORD");
       }
       if (!memory.has_value()) {
         return std::nullopt;
@@ -1503,11 +1470,6 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
                                 : c4c::backend::prepare::resolve_prepared_block_label_id(
                                       *prepared_names, entry.label)
                                       .value_or(c4c::kInvalidBlockLabel);
-  const c4c::FunctionNameId function_name_id =
-      prepared_names == nullptr ? c4c::kInvalidFunctionName
-                                : c4c::backend::prepare::resolve_prepared_function_name_id(
-                                      *prepared_names, function.name)
-                                      .value_or(c4c::kInvalidFunctionName);
   std::optional<std::string> short_memory;
   if (const auto* prepared_access =
           find_prepared_function_memory_access(function_addressing, entry_label_id, 0);
@@ -1516,10 +1478,6 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
         render_prepared_frame_slot_memory_operand_if_supported(*layout,
                                                                prepared_access->address,
                                                                "WORD");
-  }
-  if (!short_memory.has_value() && store_zero->address.has_value()) {
-    short_memory = render_prepared_named_stack_object_memory_operand_if_supported(
-        stack_layout, prepared_names, function_name_id, store_zero->address, "WORD");
   }
   if (!short_memory.has_value()) {
     return std::nullopt;

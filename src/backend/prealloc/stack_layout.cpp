@@ -37,6 +37,27 @@ using FrameSlotMap = std::unordered_map<SlotNameId, const PreparedFrameSlot*>;
   return frame_slots_by_name;
 }
 
+[[nodiscard]] const PreparedFrameSlot* find_direct_frame_slot(
+    PreparedNameTables& names,
+    std::string_view slot_name,
+    const std::optional<bir::MemoryAddress>& address,
+    const FrameSlotMap& frame_slots_by_name) {
+  if (address.has_value()) {
+    if (address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot ||
+        address->base_name.empty()) {
+      return nullptr;
+    }
+    const auto address_slot_it =
+        frame_slots_by_name.find(names.slot_names.find(address->base_name));
+    if (address_slot_it != frame_slots_by_name.end()) {
+      return address_slot_it->second;
+    }
+  }
+
+  const auto slot_it = frame_slots_by_name.find(names.slot_names.find(slot_name));
+  return slot_it == frame_slots_by_name.end() ? nullptr : slot_it->second;
+}
+
 [[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_frame_slot_access(
     PreparedNameTables& names,
     FunctionNameId function_name_id,
@@ -48,8 +69,9 @@ using FrameSlotMap = std::unordered_map<SlotNameId, const PreparedFrameSlot*>;
       inst.address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot) {
     return std::nullopt;
   }
-  const auto slot_it = frame_slots_by_name.find(names.slot_names.find(inst.slot_name));
-  if (slot_it == frame_slots_by_name.end()) {
+  const auto* frame_slot =
+      find_direct_frame_slot(names, inst.slot_name, inst.address, frame_slots_by_name);
+  if (frame_slot == nullptr) {
     return std::nullopt;
   }
 
@@ -58,6 +80,9 @@ using FrameSlotMap = std::unordered_map<SlotNameId, const PreparedFrameSlot*>;
                                                          ? 0
                                                          : stack_layout::fallback_type_size(
                                                                inst.result.type));
+  const auto byte_offset =
+      static_cast<std::int64_t>(inst.byte_offset) +
+      (inst.address.has_value() ? inst.address->byte_offset : 0);
   return PreparedMemoryAccess{
       .function_name = function_name_id,
       .block_label = block_label_id,
@@ -66,8 +91,8 @@ using FrameSlotMap = std::unordered_map<SlotNameId, const PreparedFrameSlot*>;
       .address =
           PreparedAddress{
               .base_kind = PreparedAddressBaseKind::FrameSlot,
-              .frame_slot_id = slot_it->second->slot_id,
-              .byte_offset = static_cast<std::int64_t>(inst.byte_offset),
+              .frame_slot_id = frame_slot->slot_id,
+              .byte_offset = byte_offset,
               .size_bytes = size_bytes,
               .align_bytes = stack_layout::normalize_alignment(
                   inst.result.type, inst.align_bytes, size_bytes),
@@ -87,8 +112,9 @@ using FrameSlotMap = std::unordered_map<SlotNameId, const PreparedFrameSlot*>;
       inst.address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot) {
     return std::nullopt;
   }
-  const auto slot_it = frame_slots_by_name.find(names.slot_names.find(inst.slot_name));
-  if (slot_it == frame_slots_by_name.end()) {
+  const auto* frame_slot =
+      find_direct_frame_slot(names, inst.slot_name, inst.address, frame_slots_by_name);
+  if (frame_slot == nullptr) {
     return std::nullopt;
   }
 
@@ -97,6 +123,9 @@ using FrameSlotMap = std::unordered_map<SlotNameId, const PreparedFrameSlot*>;
                                                         ? 0
                                                         : stack_layout::fallback_type_size(
                                                               inst.value.type));
+  const auto byte_offset =
+      static_cast<std::int64_t>(inst.byte_offset) +
+      (inst.address.has_value() ? inst.address->byte_offset : 0);
   return PreparedMemoryAccess{
       .function_name = function_name_id,
       .block_label = block_label_id,
@@ -105,8 +134,8 @@ using FrameSlotMap = std::unordered_map<SlotNameId, const PreparedFrameSlot*>;
       .address =
           PreparedAddress{
               .base_kind = PreparedAddressBaseKind::FrameSlot,
-              .frame_slot_id = slot_it->second->slot_id,
-              .byte_offset = static_cast<std::int64_t>(inst.byte_offset),
+              .frame_slot_id = frame_slot->slot_id,
+              .byte_offset = byte_offset,
               .size_bytes = size_bytes,
               .align_bytes = stack_layout::normalize_alignment(
                   inst.value.type, inst.align_bytes, size_bytes),
