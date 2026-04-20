@@ -461,6 +461,10 @@ class BirFunctionLowerer {
       c4c::codegen::lir::LirCastKind kind);
   static std::optional<bir::BinaryOpcode> lower_scalar_binary_opcode(
       const c4c::codegen::lir::LirBinaryOpcodeRef& opcode);
+  static std::optional<std::pair<bir::Value, bir::Value>> lower_scalar_binop_operands(
+      const c4c::codegen::lir::LirBinOp& bin,
+      bir::TypeKind value_type,
+      const ValueMap& value_aliases);
   static std::optional<bir::Value> fold_i64_binary_immediates(bir::BinaryOpcode opcode,
                                                               std::int64_t lhs,
                                                               std::int64_t rhs);

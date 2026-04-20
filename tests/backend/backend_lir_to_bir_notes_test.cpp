@@ -941,8 +941,15 @@ LirModule make_admitted_float_scalar_binop_module() {
       .lhs = LirOperand("%t2"),
       .rhs = LirOperand("%rhs2"),
   });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%t4"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::FNeg,
+      .type_str = "float",
+      .lhs = LirOperand("%t3"),
+      .rhs = LirOperand(""),
+  });
   entry.terminator = LirRet{
-      .value_str = std::string("%t3"),
+      .value_str = std::string("%t4"),
       .type_str = "float",
   };
 

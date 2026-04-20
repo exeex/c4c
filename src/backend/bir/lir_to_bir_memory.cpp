@@ -305,15 +305,15 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       }
     }
 
-    const auto lhs = lower_value(bin->lhs, *value_type, value_aliases);
-    const auto rhs = lower_value(bin->rhs, *value_type, value_aliases);
-    if (!lhs.has_value() || !rhs.has_value()) {
+    const auto operands = lower_scalar_binop_operands(*bin, *value_type, value_aliases);
+    if (!operands.has_value()) {
       return fail_scalar_binop();
     }
+    const auto& [lhs, rhs] = *operands;
 
-    if (*value_type == bir::TypeKind::I64 && lhs->kind == bir::Value::Kind::Immediate &&
-        rhs->kind == bir::Value::Kind::Immediate) {
-      const auto folded = fold_i64_binary_immediates(*opcode, lhs->immediate, rhs->immediate);
+    if (*value_type == bir::TypeKind::I64 && lhs.kind == bir::Value::Kind::Immediate &&
+        rhs.kind == bir::Value::Kind::Immediate) {
+      const auto folded = fold_i64_binary_immediates(*opcode, lhs.immediate, rhs.immediate);
       if (folded.has_value()) {
         value_aliases[bin->result.str()] = *folded;
         return true;
@@ -324,8 +324,8 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         .opcode = *opcode,
         .result = bir::Value::named(*value_type, bin->result.str()),
         .operand_type = *value_type,
-        .lhs = *lhs,
-        .rhs = *rhs,
+        .lhs = lhs,
+        .rhs = rhs,
     });
     return true;
   }

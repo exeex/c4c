@@ -132,6 +132,7 @@ std::optional<bir::BinaryOpcode> BirFunctionLowerer::lower_scalar_binary_opcode(
       return bir::BinaryOpcode::Add;
     case LirBinaryOpcode::Sub:
     case LirBinaryOpcode::FSub:
+    case LirBinaryOpcode::FNeg:
       return bir::BinaryOpcode::Sub;
     case LirBinaryOpcode::Mul:
     case LirBinaryOpcode::FMul:
@@ -158,6 +159,38 @@ std::optional<bir::BinaryOpcode> BirFunctionLowerer::lower_scalar_binary_opcode(
       return bir::BinaryOpcode::LShr;
     case LirBinaryOpcode::AShr:
       return bir::BinaryOpcode::AShr;
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<std::pair<bir::Value, bir::Value>> BirFunctionLowerer::lower_scalar_binop_operands(
+    const c4c::codegen::lir::LirBinOp& bin,
+    bir::TypeKind value_type,
+    const ValueMap& value_aliases) {
+  const auto operand = lower_value(bin.lhs, value_type, value_aliases);
+  if (!operand.has_value()) {
+    return std::nullopt;
+  }
+
+  if (!bin.rhs.empty()) {
+    const auto rhs = lower_value(bin.rhs, value_type, value_aliases);
+    if (!rhs.has_value()) {
+      return std::nullopt;
+    }
+    return std::pair<bir::Value, bir::Value>{*operand, *rhs};
+  }
+
+  using c4c::codegen::lir::LirBinaryOpcode;
+  if (bin.opcode.typed().value_or(LirBinaryOpcode::FNeg) != LirBinaryOpcode::FNeg) {
+    return std::nullopt;
+  }
+
+  switch (value_type) {
+    case bir::TypeKind::F32:
+      return std::pair<bir::Value, bir::Value>{bir::Value::immediate_f32_bits(0u), *operand};
+    case bir::TypeKind::F64:
+      return std::pair<bir::Value, bir::Value>{bir::Value::immediate_f64_bits(0u), *operand};
     default:
       return std::nullopt;
   }
@@ -514,15 +547,15 @@ bool BirFunctionLowerer::resolve_select_chain_inst(const c4c::codegen::lir::LirI
       return false;
     }
 
-    const auto lhs = lower_value(bin->lhs, *value_type, value_aliases);
-    const auto rhs = lower_value(bin->rhs, *value_type, value_aliases);
-    if (!lhs.has_value() || !rhs.has_value()) {
+    const auto operands = lower_scalar_binop_operands(*bin, *value_type, value_aliases);
+    if (!operands.has_value()) {
       return false;
     }
+    const auto& [lhs, rhs] = *operands;
 
-    if (*value_type == bir::TypeKind::I64 && lhs->kind == bir::Value::Kind::Immediate &&
-        rhs->kind == bir::Value::Kind::Immediate) {
-      const auto folded = fold_i64_binary_immediates(*opcode, lhs->immediate, rhs->immediate);
+    if (*value_type == bir::TypeKind::I64 && lhs.kind == bir::Value::Kind::Immediate &&
+        rhs.kind == bir::Value::Kind::Immediate) {
+      const auto folded = fold_i64_binary_immediates(*opcode, lhs.immediate, rhs.immediate);
       if (folded.has_value()) {
         value_aliases[bin->result.str()] = *folded;
         return true;
@@ -536,8 +569,8 @@ bool BirFunctionLowerer::resolve_select_chain_inst(const c4c::codegen::lir::LirI
         .opcode = *opcode,
         .result = bir::Value::named(*value_type, bin->result.str()),
         .operand_type = *value_type,
-        .lhs = *lhs,
-        .rhs = *rhs,
+        .lhs = lhs,
+        .rhs = rhs,
     });
     value_aliases[bin->result.str()] = bir::Value::named(*value_type, bin->result.str());
     return true;
