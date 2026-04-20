@@ -5,31 +5,24 @@ Source Idea Path: ideas/open/61_stack_frame_and_addressing_consumption.md
 Source Plan Path: plan.md
 Current Step ID: 3.3.3
 Current Step Title: Pointer-Indirect Base-Plus-Offset Cleanup
-Plan Review Counter: 0 / 10
+Plan Review Counter: 1 / 10
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3.3.2 by auditing the remaining
-`PreparedValueHomeKind::StackSlot` consumers in
-`prepared_module_emit.cpp` and `prepared_local_slot_render.cpp`. The
-residual pointer-address helpers in `prepared_local_slot_render.cpp` now
-prefer canonical prepared frame-slot identity through
-`PreparedModuleLocalSlotLayout::frame_slot_offsets` before falling back to a
-recorded stack-home byte offset, while the remaining explicit stack-home
-sites stay bounded to scalar value-home loads/stores and wrapper-frame
-sizing.
+Completed Step 3.3.3 by tightening the residual pointer-indirect stack-address
+helper in `prepared_local_slot_render.cpp` so pointer-derived stack addresses
+now require canonical prepared frame-slot identity through
+`PreparedModuleLocalSlotLayout::frame_slot_offsets` instead of falling back to
+recorded `PreparedValueHome::offset_bytes`.
 
 ## Suggested Next
 
-Continue with Step 3.3.3 by auditing the remaining pointer-indirect and
-base-plus-offset consumers in `prepared_local_slot_render.cpp`, especially
-the compatibility fallback where pointer-value resolution still uses a
-recorded stack-home byte offset when no prepared frame-slot mapping is
-available. Remove or isolate any remaining residual address-recovery paths
-only when the surrounding lane can stay on prepared frame/address facts
-without widening into raw symbol pointer call-lane setup or idea 60
-move-bundle work.
+Audit whether any other Step 3.3 pointer-indirect or base-plus-offset lanes in
+`prepared_local_slot_render.cpp` still recover address meaning locally. If no
+such lane remains, treat Step 3.3 as exhausted and let the supervisor decide
+between broader Step 4 validation and lifecycle closure work rather than
+widening into raw symbol pointer call-lane setup or idea 60 move-bundle work.
 
 ## Watchouts
 
@@ -38,14 +31,14 @@ move-bundle work.
 - Keep frame size, slot identity, and address provenance in shared prepare,
   not x86-local slot-name/object-name or suffix reconstruction.
 - The remaining explicit `PreparedValueHomeKind::StackSlot` sites in
-  `prepared_module_emit.cpp` and `prepared_local_slot_render.cpp` are the
-  bounded scalar value-home consumers from the Step 3.3.2 audit boundary; do
-  not churn them unless a site starts reconstructing provenance again.
-- `prepared_local_slot_render.cpp` still carries a compatibility fallback to
-  `PreparedValueHome::offset_bytes` when a stack-home `slot_id` cannot be
-  mapped through `PreparedModuleLocalSlotLayout::frame_slot_offsets`; treat
-  that fallback as the first residual Step 3.3.3 target rather than evidence
-  that Step 3.3.2 stayed open.
+  `prepared_module_emit.cpp` and `prepared_local_slot_render.cpp` stay bounded
+  to scalar value-home loads/stores and wrapper-frame sizing from the Step
+  3.3.2 audit boundary; do not churn them unless a site starts reconstructing
+  provenance again.
+- The raw `PreparedValueHome::offset_bytes` fallback for pointer-derived stack
+  addresses is now intentionally closed off in `prepared_local_slot_render.cpp`;
+  any remaining failures in this family should be fixed by extending prepared
+  frame/address facts, not by restoring local offset recovery.
 - The bounded multi-defined call-lane pointer-arg consumer near the raw
   `@name` checks remains out of scope unless lifecycle work later adds a
   separate prepared producer contract for `CallInst` pointer arguments.

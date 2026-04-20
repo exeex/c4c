@@ -191,19 +191,15 @@ std::optional<std::size_t> find_prepared_value_home_frame_offset(
   const auto* home =
       c4c::backend::prepare::find_prepared_value_home(*prepared_names, *function_locations, value_name);
   if (home == nullptr || home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
-      (!home->slot_id.has_value() && !home->offset_bytes.has_value())) {
+      !home->slot_id.has_value()) {
     return std::nullopt;
   }
-  if (home->slot_id.has_value()) {
-    const auto frame_slot_it = local_layout.frame_slot_offsets.find(*home->slot_id);
-    if (frame_slot_it != local_layout.frame_slot_offsets.end()) {
-      return frame_slot_it->second;
-    }
-  }
-  if (!home->offset_bytes.has_value()) {
+  // Pointer-derived stack addresses must come from canonical prepared frame-slot identity.
+  const auto frame_slot_it = local_layout.frame_slot_offsets.find(*home->slot_id);
+  if (frame_slot_it == local_layout.frame_slot_offsets.end()) {
     return std::nullopt;
   }
-  return *home->offset_bytes;
+  return frame_slot_it->second;
 }
 
 const c4c::backend::prepare::PreparedBranchCondition*
