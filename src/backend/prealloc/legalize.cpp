@@ -1023,44 +1023,14 @@ const bir::BinaryInst* find_trailing_branch_compare(const bir::Block& block) {
   return compare;
 }
 
-std::optional<std::string> find_linear_join_predecessor(
-    const std::unordered_map<std::string, const bir::Block*>& blocks_by_label,
-    std::string_view start_label,
-    std::string_view join_label) {
-  std::unordered_set<std::string_view> visited;
-  auto current_it = blocks_by_label.find(std::string(start_label));
-  if (current_it == blocks_by_label.end()) {
-    return std::nullopt;
-  }
-
-  const auto* current = current_it->second;
-  while (current != nullptr && visited.insert(current->label).second) {
-    if (current->terminator.kind != bir::TerminatorKind::Branch) {
-      return std::nullopt;
-    }
-    if (current->terminator.target_label == join_label) {
-      return current->label;
-    }
-    current_it = blocks_by_label.find(current->terminator.target_label);
-    if (current_it == blocks_by_label.end()) {
-      return std::nullopt;
-    }
-    current = current_it->second;
-  }
-
-  return std::nullopt;
-}
-
 std::optional<std::size_t> find_join_transfer_edge_index_by_predecessor(
-    const PreparedNameTables& names,
     const PreparedJoinTransfer& transfer,
-    std::string_view predecessor_label) {
-  const BlockLabelId predecessor_label_id = names.block_labels.find(predecessor_label);
-  if (predecessor_label_id == kInvalidBlockLabel) {
+    BlockLabelId predecessor_label) {
+  if (predecessor_label == kInvalidBlockLabel) {
     return std::nullopt;
   }
   for (std::size_t index = 0; index < transfer.edge_transfers.size(); ++index) {
-    if (transfer.edge_transfers[index].predecessor_label == predecessor_label_id) {
+    if (transfer.edge_transfers[index].predecessor_label == predecessor_label) {
       return index;
     }
   }
@@ -1239,17 +1209,10 @@ void build_parallel_copy_bundles(const PreparedNameTables& names,
 }
 
 void annotate_branch_owned_join_transfers(
-    PreparedNameTables& names,
-    const bir::Function& function,
-    const std::vector<PreparedBranchCondition>& branch_conditions,
+    const PreparedControlFlowFunction& function_control_flow,
     std::vector<PreparedJoinTransfer>* join_transfers) {
-  if (join_transfers == nullptr || branch_conditions.empty()) {
+  if (join_transfers == nullptr || function_control_flow.branch_conditions.empty()) {
     return;
-  }
-
-  std::unordered_map<std::string, const bir::Block*> blocks_by_label;
-  for (const auto& block : function.blocks) {
-    blocks_by_label.emplace(block.label, &block);
   }
 
   for (auto& transfer : *join_transfers) {
@@ -1268,24 +1231,20 @@ void annotate_branch_owned_join_transfers(
 
     std::optional<CandidateMapping> candidate;
     bool ambiguous = false;
-    for (const auto& branch_condition : branch_conditions) {
-      const auto true_incoming_label = find_linear_join_predecessor(
-          blocks_by_label,
-          prepared_block_label(names, branch_condition.true_label),
-          prepared_block_label(names, transfer.join_block_label));
-      const auto false_incoming_label = find_linear_join_predecessor(
-          blocks_by_label,
-          prepared_block_label(names, branch_condition.false_label),
-          prepared_block_label(names, transfer.join_block_label));
+    for (const auto& branch_condition : function_control_flow.branch_conditions) {
+      const auto true_incoming_label = find_prepared_linear_join_predecessor(
+          function_control_flow, branch_condition.true_label, transfer.join_block_label);
+      const auto false_incoming_label = find_prepared_linear_join_predecessor(
+          function_control_flow, branch_condition.false_label, transfer.join_block_label);
       if (!true_incoming_label.has_value() || !false_incoming_label.has_value() ||
           *true_incoming_label == *false_incoming_label) {
         continue;
       }
 
       const auto true_transfer_index =
-          find_join_transfer_edge_index_by_predecessor(names, transfer, *true_incoming_label);
+          find_join_transfer_edge_index_by_predecessor(transfer, *true_incoming_label);
       const auto false_transfer_index =
-          find_join_transfer_edge_index_by_predecessor(names, transfer, *false_incoming_label);
+          find_join_transfer_edge_index_by_predecessor(transfer, *false_incoming_label);
       if (!true_transfer_index.has_value() || !false_transfer_index.has_value() ||
           *true_transfer_index == *false_transfer_index) {
         continue;
@@ -1300,8 +1259,8 @@ void annotate_branch_owned_join_transfers(
           .source_branch_block_label = branch_condition.block_label,
           .true_transfer_index = *true_transfer_index,
           .false_transfer_index = *false_transfer_index,
-          .true_incoming_label = names.block_labels.intern(*true_incoming_label),
-          .false_incoming_label = names.block_labels.intern(*false_incoming_label),
+          .true_incoming_label = *true_incoming_label,
+          .false_incoming_label = *false_incoming_label,
       };
     }
 
@@ -1401,24 +1360,21 @@ void publish_short_circuit_continuation_branch_conditions(
 void collect_select_materialized_join_transfers(
     PreparedNameTables& names,
     const bir::Function& function,
-    const std::vector<PreparedBranchCondition>& branch_conditions,
+    const PreparedControlFlowFunction& function_control_flow,
     std::vector<PreparedJoinTransfer>* join_transfers) {
   if (join_transfers == nullptr) {
     return;
   }
 
-  std::unordered_map<std::string, const bir::Block*> blocks_by_label;
-  for (const auto& block : function.blocks) {
-    blocks_by_label.emplace(block.label, &block);
-  }
-
-  std::unordered_set<std::string_view> existing_join_blocks;
+  std::unordered_set<BlockLabelId> existing_join_blocks;
   for (const auto& transfer : *join_transfers) {
-    existing_join_blocks.insert(prepared_block_label(names, transfer.join_block_label));
+    existing_join_blocks.insert(transfer.join_block_label);
   }
 
   for (const auto& block : function.blocks) {
-    if (block.insts.empty() || existing_join_blocks.find(block.label) != existing_join_blocks.end()) {
+    const auto join_block_label = resolve_prepared_block_label_id(names, block.label);
+    if (block.insts.empty() || !join_block_label.has_value() ||
+        existing_join_blocks.find(*join_block_label) != existing_join_blocks.end()) {
       continue;
     }
 
@@ -1427,7 +1383,7 @@ void collect_select_materialized_join_transfers(
       continue;
     }
 
-    for (const auto& branch_condition : branch_conditions) {
+    for (const auto& branch_condition : function_control_flow.branch_conditions) {
       if (!branch_condition.predicate.has_value() || !branch_condition.compare_type.has_value() ||
           !branch_condition.lhs.has_value() || !branch_condition.rhs.has_value() ||
           *branch_condition.predicate != select->predicate ||
@@ -1437,18 +1393,18 @@ void collect_select_materialized_join_transfers(
       }
 
       const auto true_incoming_label =
-          find_linear_join_predecessor(
-              blocks_by_label, prepared_block_label(names, branch_condition.true_label), block.label);
+          find_prepared_linear_join_predecessor(
+              function_control_flow, branch_condition.true_label, *join_block_label);
       const auto false_incoming_label =
-          find_linear_join_predecessor(
-              blocks_by_label, prepared_block_label(names, branch_condition.false_label), block.label);
+          find_prepared_linear_join_predecessor(
+              function_control_flow, branch_condition.false_label, *join_block_label);
       if (!true_incoming_label.has_value() || !false_incoming_label.has_value()) {
         continue;
       }
 
       join_transfers->push_back(PreparedJoinTransfer{
           .function_name = names.function_names.intern(function.name),
-          .join_block_label = names.block_labels.intern(block.label),
+          .join_block_label = *join_block_label,
           .result = select->result,
           .kind = PreparedJoinTransferKind::PhiEdge,
           .carrier_kind = PreparedJoinTransferCarrierKind::SelectMaterialization,
@@ -1456,26 +1412,26 @@ void collect_select_materialized_join_transfers(
           .incomings =
               {
                   bir::PhiIncoming{
-                      .label = *true_incoming_label,
+                      .label = std::string(prepared_block_label(names, *true_incoming_label)),
                       .value = select->true_value,
                   },
                   bir::PhiIncoming{
-                      .label = *false_incoming_label,
+                      .label = std::string(prepared_block_label(names, *false_incoming_label)),
                       .value = select->false_value,
                   },
               },
           .edge_transfers =
               {
                   PreparedEdgeValueTransfer{
-                      .predecessor_label = names.block_labels.intern(*true_incoming_label),
-                      .successor_label = names.block_labels.intern(block.label),
+                      .predecessor_label = *true_incoming_label,
+                      .successor_label = *join_block_label,
                       .incoming_value = select->true_value,
                       .destination_value = select->result,
                       .storage_name = std::nullopt,
                   },
                   PreparedEdgeValueTransfer{
-                      .predecessor_label = names.block_labels.intern(*false_incoming_label),
-                      .successor_label = names.block_labels.intern(block.label),
+                      .predecessor_label = *false_incoming_label,
+                      .successor_label = *join_block_label,
                       .incoming_value = select->false_value,
                       .destination_value = select->result,
                       .storage_name = std::nullopt,
@@ -1484,10 +1440,10 @@ void collect_select_materialized_join_transfers(
           .source_branch_block_label = branch_condition.block_label,
           .source_true_transfer_index = 0,
           .source_false_transfer_index = 1,
-          .source_true_incoming_label = names.block_labels.intern(*true_incoming_label),
-          .source_false_incoming_label = names.block_labels.intern(*false_incoming_label),
+          .source_true_incoming_label = *true_incoming_label,
+          .source_false_incoming_label = *false_incoming_label,
       });
-      existing_join_blocks.insert(prepared_block_label(names, join_transfers->back().join_block_label));
+      existing_join_blocks.insert(join_transfers->back().join_block_label);
       break;
     }
   }
@@ -1655,13 +1611,10 @@ void legalize_module(const c4c::TargetProfile& target_profile,
     collect_select_materialized_join_transfers(
         names,
         function,
-        function_control_flow.branch_conditions,
+        function_control_flow,
         &function_control_flow.join_transfers);
-    annotate_branch_owned_join_transfers(
-        names,
-        function,
-        function_control_flow.branch_conditions,
-        &function_control_flow.join_transfers);
+    annotate_branch_owned_join_transfers(function_control_flow,
+                                         &function_control_flow.join_transfers);
     build_parallel_copy_bundles(names, &function_control_flow);
     publish_short_circuit_continuation_branch_conditions(
         names, function, &function_control_flow);

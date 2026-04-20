@@ -98,6 +98,28 @@ set_tests_properties(backend_prepare_block_only_control_flow PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_executable(backend_prepare_authoritative_join_ownership_test
+    "${BACKEND_TEST_ROOT}/backend_prepare_authoritative_join_ownership_test.cpp"
+)
+target_include_directories(backend_prepare_authoritative_join_ownership_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_prepare_authoritative_join_ownership_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_prepare_authoritative_join_ownership_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_prepare_authoritative_join_ownership
+  COMMAND $<TARGET_FILE:backend_prepare_authoritative_join_ownership_test>
+)
+set_tests_properties(backend_prepare_authoritative_join_ownership PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
 add_executable(backend_lir_to_bir_notes_test
     "${BACKEND_TEST_ROOT}/backend_lir_to_bir_notes_test.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir.cpp"

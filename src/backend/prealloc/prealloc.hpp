@@ -980,6 +980,44 @@ struct PreparedControlFlow {
   return nullptr;
 }
 
+[[nodiscard]] inline std::optional<BlockLabelId> find_prepared_linear_join_predecessor(
+    const PreparedControlFlowFunction& function_cf,
+    BlockLabelId start_label,
+    BlockLabelId join_label) {
+  if (start_label == kInvalidBlockLabel || join_label == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+
+  std::unordered_set<BlockLabelId> visited;
+  BlockLabelId current_label = start_label;
+  while (current_label != kInvalidBlockLabel && visited.insert(current_label).second) {
+    const auto* current = find_prepared_control_flow_block(function_cf, current_label);
+    if (current == nullptr || current->terminator_kind != bir::TerminatorKind::Branch ||
+        current->branch_target_label == kInvalidBlockLabel) {
+      return std::nullopt;
+    }
+    if (current->branch_target_label == join_label) {
+      return current->block_label;
+    }
+    current_label = current->branch_target_label;
+  }
+
+  return std::nullopt;
+}
+
+[[nodiscard]] inline std::optional<BlockLabelId> find_prepared_linear_join_predecessor(
+    const PreparedNameTables& names,
+    const PreparedControlFlowFunction& function_cf,
+    std::string_view start_label,
+    std::string_view join_label) {
+  const auto start_label_id = resolve_prepared_block_label_id(names, start_label);
+  const auto join_label_id = resolve_prepared_block_label_id(names, join_label);
+  if (!start_label_id.has_value() || !join_label_id.has_value()) {
+    return std::nullopt;
+  }
+  return find_prepared_linear_join_predecessor(function_cf, *start_label_id, *join_label_id);
+}
+
 [[nodiscard]] inline std::optional<PreparedBranchTargetLabels>
 find_prepared_control_flow_branch_target_labels(
     const PreparedControlFlowFunction& function_cf,

@@ -314,11 +314,33 @@ int check_two_way_branch_join_control_flow_contract(const prepare::PreparedBirMo
       join_transfer.incomings.size() != 2 || join_transfer.storage_name.has_value()) {
     return fail("expected joined branch metadata to publish a select-materialized join contract");
   }
+  if (!join_transfer.source_branch_block_label.has_value() ||
+      !join_transfer.source_true_transfer_index.has_value() ||
+      !join_transfer.source_false_transfer_index.has_value() ||
+      !join_transfer.source_true_incoming_label.has_value() ||
+      !join_transfer.source_false_incoming_label.has_value() ||
+      prepare::prepared_block_label(prepared.names, *join_transfer.source_branch_block_label) !=
+          "entry" ||
+      prepare::prepared_block_label(prepared.names, *join_transfer.source_true_incoming_label) !=
+          "is_zero" ||
+      prepare::prepared_block_label(prepared.names, *join_transfer.source_false_incoming_label) !=
+          "is_nonzero") {
+    return fail("expected joined branch metadata to publish authoritative branch-owned join mapping");
+  }
   if (join_transfer.incomings[0].label != "is_zero" ||
       !is_named_i32(join_transfer.incomings[0].value, "zero.adjusted") ||
       join_transfer.incomings[1].label != "is_nonzero" ||
       !is_named_i32(join_transfer.incomings[1].value, "nonzero.adjusted")) {
     return fail("expected joined branch metadata to preserve the predecessor-to-join incoming mapping");
+  }
+  const auto authoritative_true_lane = prepare::find_prepared_linear_join_predecessor(
+      *control_flow, branch_condition.true_label, join_transfer.join_block_label);
+  const auto authoritative_false_lane = prepare::find_prepared_linear_join_predecessor(
+      *control_flow, branch_condition.false_label, join_transfer.join_block_label);
+  if (!authoritative_true_lane.has_value() || !authoritative_false_lane.has_value() ||
+      *authoritative_true_lane != *join_transfer.source_true_incoming_label ||
+      *authoritative_false_lane != *join_transfer.source_false_incoming_label) {
+    return fail("expected prepared control-flow blocks to reproduce the authoritative joined-branch incoming ownership");
   }
 
   return 0;
@@ -405,6 +427,15 @@ int check_short_circuit_or_control_flow_contract(const prepare::PreparedBirModul
       prepare::prepared_block_label(prepared.names, *join_transfer.source_false_incoming_label) !=
           "logic.rhs.end.9") {
     return fail("expected the short-circuit join metadata to map compare truth to the authoritative join incomings");
+  }
+  const auto authoritative_true_lane = prepare::find_prepared_linear_join_predecessor(
+      *control_flow, entry_condition->true_label, join_transfer.join_block_label);
+  const auto authoritative_false_lane = prepare::find_prepared_linear_join_predecessor(
+      *control_flow, entry_condition->false_label, join_transfer.join_block_label);
+  if (!authoritative_true_lane.has_value() || !authoritative_false_lane.has_value() ||
+      *authoritative_true_lane != *join_transfer.source_true_incoming_label ||
+      *authoritative_false_lane != *join_transfer.source_false_incoming_label) {
+    return fail("expected prepared control-flow blocks to reproduce short-circuit authoritative join ownership");
   }
   bool saw_rhs_incoming = false;
   bool saw_short_circuit_incoming = false;
