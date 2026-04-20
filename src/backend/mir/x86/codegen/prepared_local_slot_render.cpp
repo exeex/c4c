@@ -223,6 +223,101 @@ struct PreparedI32ComparedImmediateBranchPlan {
   PreparedI32ImmediateBranchPlan branch_plan;
 };
 
+struct NamedLocalI32Expr {
+  enum class Kind { LocalLoad, Add, Sub };
+  Kind kind = Kind::LocalLoad;
+  std::string operand;
+  c4c::backend::bir::Value lhs;
+  c4c::backend::bir::Value rhs;
+};
+
+struct PreparedLocalI32GuardExpressionSurface {
+  std::string setup_asm;
+  std::unordered_map<std::string_view, NamedLocalI32Expr> named_i32_exprs;
+  std::vector<std::string_view> candidate_compare_value_names;
+};
+
+std::optional<std::string> render_prepared_frame_slot_memory_operand_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedAddress& address,
+    std::string_view size_name);
+
+std::optional<PreparedLocalI32GuardExpressionSurface>
+select_prepared_local_i32_guard_expression_surface_if_supported(
+    const PreparedX86FunctionDispatchContext& context,
+    const PreparedModuleLocalSlotLayout& layout,
+    c4c::BlockLabelId entry_label_id) {
+  if (context.entry == nullptr) {
+    return std::nullopt;
+  }
+
+  PreparedLocalI32GuardExpressionSurface selection;
+  const auto& entry = *context.entry;
+  for (std::size_t index = 0; index + 1 < entry.insts.size(); ++index) {
+    const auto& inst = entry.insts[index];
+    if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
+      const auto* prepared_access =
+          find_prepared_function_memory_access(context.function_addressing, entry_label_id, index);
+      if (store->byte_offset != 0 || store->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+          store->value.type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      std::optional<std::string> memory;
+      if (prepared_access != nullptr) {
+        memory = render_prepared_frame_slot_memory_operand_if_supported(
+            layout, prepared_access->address, "DWORD");
+      }
+      if (!memory.has_value()) {
+        return std::nullopt;
+      }
+      selection.setup_asm += "    mov " + *memory + ", " +
+                             std::to_string(static_cast<std::int32_t>(store->value.immediate)) +
+                             "\n";
+      continue;
+    }
+
+    if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst)) {
+      const auto* prepared_access =
+          find_prepared_function_memory_access(context.function_addressing, entry_label_id, index);
+      if (load->byte_offset != 0 || load->result.type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      std::optional<std::string> memory;
+      if (prepared_access != nullptr) {
+        memory = render_prepared_frame_slot_memory_operand_if_supported(
+            layout, prepared_access->address, "DWORD");
+      }
+      if (!memory.has_value()) {
+        return std::nullopt;
+      }
+      selection.named_i32_exprs[load->result.name] = NamedLocalI32Expr{
+          .kind = NamedLocalI32Expr::Kind::LocalLoad,
+          .operand = *memory,
+      };
+      selection.candidate_compare_value_names.push_back(load->result.name);
+      continue;
+    }
+
+    const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
+    if (binary == nullptr || binary->operand_type != c4c::backend::bir::TypeKind::I32 ||
+        binary->result.type != c4c::backend::bir::TypeKind::I32 ||
+        (binary->opcode != c4c::backend::bir::BinaryOpcode::Add &&
+         binary->opcode != c4c::backend::bir::BinaryOpcode::Sub)) {
+      return std::nullopt;
+    }
+    selection.named_i32_exprs[binary->result.name] = NamedLocalI32Expr{
+        .kind = binary->opcode == c4c::backend::bir::BinaryOpcode::Add
+                    ? NamedLocalI32Expr::Kind::Add
+                    : NamedLocalI32Expr::Kind::Sub,
+        .lhs = binary->lhs,
+        .rhs = binary->rhs,
+    };
+    selection.candidate_compare_value_names.push_back(binary->result.name);
+  }
+
+  return selection;
+}
+
 std::optional<PreparedI32ComparedImmediateBranchPlan>
 select_raw_i32_immediate_branch_plan_if_supported(const c4c::backend::bir::Block& entry) {
   const auto* compare = entry.insts.empty()
@@ -1395,13 +1490,6 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
     return std::nullopt;
   }
 
-  struct NamedLocalI32Expr {
-    enum class Kind { LocalLoad, Add, Sub };
-    Kind kind = Kind::LocalLoad;
-    std::string operand;
-    c4c::backend::bir::Value lhs;
-    c4c::backend::bir::Value rhs;
-  };
   std::unordered_map<std::string_view, NamedLocalI32Expr> named_i32_exprs;
   std::vector<std::string_view> candidate_compare_value_names;
   const auto render_guard_return = [&](std::int32_t returned_imm) -> std::string {
@@ -1480,67 +1568,16 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
                                 : c4c::backend::prepare::resolve_prepared_block_label_id(
                                       *context.prepared_names, entry.label)
                                       .value_or(c4c::kInvalidBlockLabel);
-
-  for (std::size_t index = 0; index + 1 < entry.insts.size(); ++index) {
-    const auto& inst = entry.insts[index];
-    if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
-      const auto* prepared_access =
-          find_prepared_function_memory_access(context.function_addressing, entry_label_id, index);
-      if (store->byte_offset != 0 || store->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
-          store->value.type != c4c::backend::bir::TypeKind::I32) {
-        return std::nullopt;
-      }
-      std::optional<std::string> memory;
-      if (prepared_access != nullptr) {
-        memory = render_prepared_frame_slot_memory_operand_if_supported(
-            *layout, prepared_access->address, "DWORD");
-      }
-      if (!memory.has_value()) {
-        return std::nullopt;
-      }
-      asm_text += "    mov " + *memory + ", " +
-                  std::to_string(static_cast<std::int32_t>(store->value.immediate)) + "\n";
-      continue;
-    }
-
-    if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst)) {
-      const auto* prepared_access =
-          find_prepared_function_memory_access(context.function_addressing, entry_label_id, index);
-      if (load->byte_offset != 0 || load->result.type != c4c::backend::bir::TypeKind::I32) {
-        return std::nullopt;
-      }
-      std::optional<std::string> memory;
-      if (prepared_access != nullptr) {
-        memory = render_prepared_frame_slot_memory_operand_if_supported(
-            *layout, prepared_access->address, "DWORD");
-      }
-      if (!memory.has_value()) {
-        return std::nullopt;
-      }
-      named_i32_exprs[load->result.name] = NamedLocalI32Expr{
-          .kind = NamedLocalI32Expr::Kind::LocalLoad,
-          .operand = *memory,
-      };
-      candidate_compare_value_names.push_back(load->result.name);
-      continue;
-    }
-
-    const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
-    if (binary == nullptr || binary->operand_type != c4c::backend::bir::TypeKind::I32 ||
-        binary->result.type != c4c::backend::bir::TypeKind::I32 ||
-        (binary->opcode != c4c::backend::bir::BinaryOpcode::Add &&
-         binary->opcode != c4c::backend::bir::BinaryOpcode::Sub)) {
-      return std::nullopt;
-    }
-    named_i32_exprs[binary->result.name] = NamedLocalI32Expr{
-        .kind = binary->opcode == c4c::backend::bir::BinaryOpcode::Add
-                    ? NamedLocalI32Expr::Kind::Add
-                    : NamedLocalI32Expr::Kind::Sub,
-        .lhs = binary->lhs,
-        .rhs = binary->rhs,
-    };
-    candidate_compare_value_names.push_back(binary->result.name);
+  const auto guard_expression_surface =
+      select_prepared_local_i32_guard_expression_surface_if_supported(
+          context, *layout, entry_label_id);
+  if (!guard_expression_surface.has_value()) {
+    return std::nullopt;
   }
+  named_i32_exprs = std::move(guard_expression_surface->named_i32_exprs);
+  candidate_compare_value_names =
+      std::move(guard_expression_surface->candidate_compare_value_names);
+  asm_text += guard_expression_surface->setup_asm;
 
   const auto* prepared_branch_condition =
       find_required_prepared_guard_branch_condition(
