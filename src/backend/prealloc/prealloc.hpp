@@ -591,6 +591,7 @@ struct PreparedValueHome {
   std::optional<std::string> register_name;
   std::optional<PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> offset_bytes;
+  std::optional<std::int64_t> immediate_i32;
 };
 
 struct PreparedMoveBundle {

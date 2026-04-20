@@ -119,6 +119,7 @@ bir::Module make_x86_immediate_xor_param_module();
 bir::Module make_x86_param_shl_immediate_module();
 bir::Module make_x86_param_lshr_immediate_module();
 bir::Module make_x86_param_ashr_immediate_module();
+bir::Module make_x86_named_immediate_add_module();
 
 std::string asm_header(const char* function_name) {
   return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
@@ -240,6 +241,27 @@ int check_id_i32_prepared_value_location_contract() {
       narrow_abi_register(*before_return->moves.front().destination_register_name) !=
           minimal_i32_return_register()) {
     return fail("minimal i32 parameter passthrough route: prepared value-location contract lost the return move bundle");
+  }
+
+  return 0;
+}
+
+int check_named_immediate_prepared_value_location_contract() {
+  const auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(make_x86_named_immediate_add_module(),
+                                                        x86_target_profile());
+  const auto* function_locations =
+      prepare::find_prepared_value_location_function(prepared, "const_add");
+  if (function_locations == nullptr) {
+    return fail("minimal named immediate-add route: missing prepared value-location function");
+  }
+
+  const auto* sum_home =
+      prepare::find_prepared_value_home(prepared.names, *function_locations, "sum");
+  if (sum_home == nullptr ||
+      sum_home->kind != prepare::PreparedValueHomeKind::RematerializableImmediate ||
+      sum_home->immediate_i32 != std::optional<std::int64_t>{42}) {
+    return fail("minimal named immediate-add route: prepared value-location contract lost the rematerializable immediate home");
   }
 
   return 0;
@@ -1084,6 +1106,32 @@ bir::Module make_x86_param_ashr_immediate_module() {
   return module;
 }
 
+bir::Module make_x86_named_immediate_add_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "const_add";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "sum"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(40),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "sum"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 int check_route_outputs(const bir::Module& module,
                         const std::string& expected_asm,
                         const std::string& expected_bir_fragment,
@@ -1154,6 +1202,9 @@ int run_backend_x86_handoff_boundary_scalar_smoke_tests() {
   if (const auto status = check_id_i32_prepared_value_location_contract(); status != 0) {
     return status;
   }
+  if (const auto status = check_named_immediate_prepared_value_location_contract(); status != 0) {
+    return status;
+  }
   if (const auto status =
           check_id_i32_stack_home_passthrough_consumes_prepared_value_location_contract();
       status != 0) {
@@ -1209,6 +1260,15 @@ int run_backend_x86_handoff_boundary_scalar_smoke_tests() {
                               expected_minimal_constant_return_asm("main", 7),
                               "bir.func @main() -> i32 {",
                               "minimal immediate return route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_route_outputs(make_x86_named_immediate_add_module(),
+                              expected_minimal_constant_return_asm("const_add", 42),
+                              "bir.func @const_add() -> i32 {",
+                              "minimal named immediate-add route");
       status != 0) {
     return status;
   }

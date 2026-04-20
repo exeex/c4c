@@ -483,20 +483,14 @@ std::string emit_prepared_module(
   };
   const auto render_minimal_scalar_move_bundle_return_if_supported =
       [&]() -> std::optional<std::string> {
-    if (prepared_arch != c4c::TargetArch::X86_64 || function.params.size() != 1 ||
-        function.blocks.size() != 1 || entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+    if (prepared_arch != c4c::TargetArch::X86_64 || function.blocks.size() != 1 ||
+        entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
         !entry.terminator.value.has_value()) {
       return std::nullopt;
     }
 
     const auto* function_locations = find_value_location_function();
     if (function_locations == nullptr) {
-      return std::nullopt;
-    }
-
-    const auto& param = function.params.front();
-    if (param.type != c4c::backend::bir::TypeKind::I32 || param.is_varargs || param.is_sret ||
-        param.is_byval) {
       return std::nullopt;
     }
 
@@ -553,11 +547,6 @@ std::string emit_prepared_module(
       rendered += "    ret\n";
       return rendered;
     };
-    const auto source_param_home = find_named_source_home(param.name);
-    if (!source_param_home.has_value()) {
-      return std::nullopt;
-    }
-
     const auto narrow_destination_register =
         [&](const c4c::backend::prepare::PreparedMoveResolution& move) -> std::optional<std::string> {
       if (move.destination_storage_kind != c4c::backend::prepare::PreparedMoveStorageKind::Register) {
@@ -596,6 +585,29 @@ std::string emit_prepared_module(
     const auto& returned = *entry.terminator.value;
     if (returned.type != c4c::backend::bir::TypeKind::I32 ||
         returned.kind != c4c::backend::bir::Value::Kind::Named) {
+      return std::nullopt;
+    }
+    if (function.params.empty() && entry.insts.size() <= 1) {
+      const auto* returned_home =
+          c4c::backend::prepare::find_prepared_value_home(module.names, *function_locations, returned.name);
+      if (returned_home != nullptr &&
+          returned_home->kind == c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
+          returned_home->immediate_i32.has_value()) {
+        return asm_prefix + "    mov " + *return_register + ", " +
+               std::to_string(static_cast<std::int32_t>(*returned_home->immediate_i32)) + "\n    ret\n";
+      }
+    }
+    if (function.params.size() != 1) {
+      return std::nullopt;
+    }
+
+    const auto& param = function.params.front();
+    if (param.type != c4c::backend::bir::TypeKind::I32 || param.is_varargs || param.is_sret ||
+        param.is_byval) {
+      return std::nullopt;
+    }
+    const auto source_param_home = find_named_source_home(param.name);
+    if (!source_param_home.has_value()) {
       return std::nullopt;
     }
 

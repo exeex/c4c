@@ -389,7 +389,7 @@ template <typename CanEvict>
 }
 
 [[nodiscard]] PreparedValueHome classify_prepared_value_home(
-    const PreparedNameTables& names,
+    PreparedNameTables& names,
     const c4c::TargetProfile& target_profile,
     const c4c::backend::bir::Function* function,
     const PreparedRegallocValue& value) {
@@ -401,6 +401,7 @@ template <typename CanEvict>
       .register_name = std::nullopt,
       .slot_id = std::nullopt,
       .offset_bytes = std::nullopt,
+      .immediate_i32 = std::nullopt,
   };
   if (function != nullptr && value.value_kind == PreparedValueKind::Parameter) {
     const std::string_view value_name = prepared_value_name(names, value.value_name);
@@ -417,6 +418,78 @@ template <typename CanEvict>
         home.register_name = *register_name;
       }
       return home;
+    }
+  }
+  if (function != nullptr && value.type == bir::TypeKind::I32) {
+    std::unordered_map<std::string_view, const bir::BinaryInst*> named_binaries;
+    std::unordered_map<std::string_view, const bir::LoadGlobalInst*> named_global_loads;
+    for (const auto& block : function->blocks) {
+      for (const auto& inst : block.insts) {
+        if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+            binary != nullptr &&
+            binary->result.kind == bir::Value::Kind::Named && !binary->result.name.empty()) {
+          named_binaries.emplace(binary->result.name, binary);
+        } else if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst);
+                   load_global != nullptr &&
+                   load_global->result.kind == bir::Value::Kind::Named &&
+                   !load_global->result.name.empty()) {
+          named_global_loads.emplace(load_global->result.name, load_global);
+        }
+      }
+    }
+    const bir::Value named_value =
+        bir::Value::named(value.type, std::string(prepared_value_name(names, value.value_name)));
+    if (const auto computed_value =
+            classify_computed_value(names, named_value, *function, named_binaries, named_global_loads);
+        computed_value.has_value() &&
+        computed_value->base.kind == PreparedComputedBaseKind::ImmediateI32) {
+      auto current_value = static_cast<std::int32_t>(computed_value->base.immediate);
+      bool supported = true;
+      for (const auto& operation : computed_value->operations) {
+        const auto immediate = static_cast<std::int32_t>(operation.immediate);
+        switch (operation.opcode) {
+          case bir::BinaryOpcode::Add:
+            current_value = static_cast<std::int32_t>(current_value + immediate);
+            break;
+          case bir::BinaryOpcode::Mul:
+            current_value = static_cast<std::int32_t>(current_value * immediate);
+            break;
+          case bir::BinaryOpcode::And:
+            current_value = static_cast<std::int32_t>(current_value & immediate);
+            break;
+          case bir::BinaryOpcode::Or:
+            current_value = static_cast<std::int32_t>(current_value | immediate);
+            break;
+          case bir::BinaryOpcode::Xor:
+            current_value = static_cast<std::int32_t>(current_value ^ immediate);
+            break;
+          case bir::BinaryOpcode::Sub:
+            current_value = static_cast<std::int32_t>(current_value - immediate);
+            break;
+          case bir::BinaryOpcode::Shl:
+            current_value =
+                static_cast<std::int32_t>(static_cast<std::uint32_t>(current_value) << immediate);
+            break;
+          case bir::BinaryOpcode::LShr:
+            current_value = static_cast<std::int32_t>(
+                static_cast<std::uint32_t>(current_value) >> immediate);
+            break;
+          case bir::BinaryOpcode::AShr:
+            current_value = static_cast<std::int32_t>(current_value >> immediate);
+            break;
+          default:
+            supported = false;
+            break;
+        }
+        if (!supported) {
+          break;
+        }
+      }
+      if (supported) {
+        home.kind = PreparedValueHomeKind::RematerializableImmediate;
+        home.immediate_i32 = current_value;
+        return home;
+      }
     }
   }
   if (value.assigned_register.has_value()) {
@@ -472,7 +545,7 @@ void append_prepared_move_bundle(PreparedValueLocationFunction& function_locatio
 }
 
 [[nodiscard]] PreparedValueLocationFunction build_prepared_value_location_function(
-    const PreparedNameTables& names,
+    PreparedNameTables& names,
     const c4c::TargetProfile& target_profile,
     const c4c::backend::bir::Function* function,
     const PreparedRegallocFunction& regalloc_function) {
