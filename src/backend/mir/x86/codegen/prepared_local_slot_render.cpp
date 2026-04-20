@@ -246,6 +246,31 @@ select_prepared_i32_eax_immediate_binary_if_supported(
   };
 }
 
+std::optional<std::string> select_prepared_i32_call_argument_move_if_supported(
+    const c4c::backend::bir::Value& arg,
+    c4c::backend::bir::TypeKind arg_type,
+    std::string_view abi_register,
+    const std::optional<std::string_view>& current_i32_name) {
+  if (arg_type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  const auto selected_arg = select_prepared_i32_value_if_supported(
+      arg,
+      current_i32_name,
+      [](std::string_view) -> std::optional<std::string> { return std::nullopt; });
+  if (!selected_arg.has_value() || selected_arg->operand.has_value()) {
+    return std::nullopt;
+  }
+  if (selected_arg->immediate.has_value()) {
+    return "    mov " + std::string(abi_register) + ", " +
+           std::to_string(*selected_arg->immediate) + "\n";
+  }
+  if (!selected_arg->in_eax) {
+    return std::nullopt;
+  }
+  return "    mov " + std::string(abi_register) + ", eax\n";
+}
+
 bool prepared_frame_memory_accesses_match(
     const c4c::backend::prepare::PreparedMemoryAccess* lhs,
     const c4c::backend::prepare::PreparedMemoryAccess* rhs) {
@@ -843,25 +868,13 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
         }
         std::string rendered_call;
         for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
-          if (call->arg_types[arg_index] != c4c::backend::bir::TypeKind::I32) {
-            return std::nullopt;
-          }
           const auto& arg = call->args[arg_index];
-          if (arg.kind == c4c::backend::bir::Value::Kind::Immediate) {
-            rendered_call += "    mov ";
-            rendered_call += kArgRegs32[arg_index];
-            rendered_call += ", ";
-            rendered_call += std::to_string(static_cast<std::int32_t>(arg.immediate));
-            rendered_call += "\n";
-            continue;
-          }
-          if (arg.kind != c4c::backend::bir::Value::Kind::Named ||
-              !current_i32_name.has_value() || arg.name != *current_i32_name) {
+          const auto selected_arg_move = select_prepared_i32_call_argument_move_if_supported(
+              arg, call->arg_types[arg_index], kArgRegs32[arg_index], current_i32_name);
+          if (!selected_arg_move.has_value()) {
             return std::nullopt;
           }
-          rendered_call += "    mov ";
-          rendered_call += kArgRegs32[arg_index];
-          rendered_call += ", eax\n";
+          rendered_call += *selected_arg_move;
         }
         rendered_call += "    xor eax, eax\n";
         rendered_call += "    call ";
