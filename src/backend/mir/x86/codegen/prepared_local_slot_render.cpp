@@ -1871,7 +1871,7 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_i
           }
           return static_cast<std::size_t>(value_it->second.value);
         }
-        return find_prepared_named_stack_object_frame_offset(
+        return find_prepared_value_stack_object_frame_offset(
             stack_layout, prepared_names, *function_name_id, value.name);
       };
 
