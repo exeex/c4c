@@ -5,48 +5,51 @@ Source Idea Path: ideas/open/58_semantic_lir_to_bir_gap_closure_for_x86_backend.
 Source Plan Path: plan.md
 Current Step ID: 2.2
 Current Step Title: Repair The Selected Semantic/BIR Seam
-Plan Review Counter: 0 / 10
+Plan Review Counter: 1 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 2.2 repaired the bootstrap scalar-floating-global seam in semantic
-`lir_to_bir`. Scalar `float`/`double` globals now lower through the minimal
-global path into admitted `F32`/`F64` BIR initializers from the LLVM-style FP
-initializer text that our frontend emits, and `backend_lir_to_bir_notes` now
-proves that admitted floating-global lane directly. Under the packet proof,
-`00119` and `00123` no longer fail with the old bootstrap-global diagnostic and
-instead advance into a downstream x86 emitter restriction on the return shape.
+Step 2.2 repaired the bootstrap scalar-`i16` global seam in semantic
+`lir_to_bir`. The minimal scalar-global lane now admits both zero and nonzero
+`i16` initializers instead of rejecting them outside the old
+integer/pointer-only switch. `backend_lir_to_bir_notes` now proves that
+admitted `i16` global lane directly, and under the packet proof `00128` no
+longer fails with the old bootstrap-global diagnostic and instead advances into
+the downstream x86 emitter return-shape restriction.
 
 ## Suggested Next
 
-Treat scalar floating globals as repaired for idea 58 and rehome `00119` and
-`00123` to the downstream x86 emitter route they now expose. Keep the next
-idea-58 packet on remaining semantic/BIR failures that still stop before the
-prepared-module handoff instead of pulling these two cases back upstream.
+Treat the `gep`/`store` local-memory residue as downstream idea-62 ownership:
+`00143`, `00176`, `00181`, `00182`, `00195`, and `00209` all now report
+function-local `gep` or `store` semantic failures rather than an undifferentiated
+idea-58 umbrella. Keep the next idea-58 packet on the remaining bootstrap-global
+cases (`00208`, `00216`, `00204`, and any nearby same-family survivors) instead
+of pulling either those local-memory routes or `00128`'s downstream emitter
+route back upstream.
 
 ## Watchouts
 
-- The scalar-global fix is semantic/BIR-only; it does not widen the downstream
-  x86 same-module data or return-shape emitter support.
-- `00119` and `00123` now fail in the same downstream x86 emitter family, so
-  they should move with that route rather than being treated as remaining
-  bootstrap-global work.
-- The notes coverage proves both admitted `float` and `double` scalar-global
+- The `i16` scalar-global fix is semantic/BIR-only; it does not claim broader
+  aggregate-global admission or downstream x86 support for unrelated bootstrap
+  cases.
+- The remaining function-side semantic failures are now specific local-memory
+  routes, so they should move with idea 62 rather than being treated as still
+  owned by idea 58.
+- The notes coverage proves both zero and nonzero admitted `i16` scalar-global
   initializers through the minimal global lane, which is the durable protection
   against regressing back to the old bootstrap-global failure.
-- Keep this runbook on upstream semantic/BIR gaps; do not add emitter-side
-  shortcuts for floating globals under idea 58.
+- Keep this runbook on upstream semantic/BIR gaps; do not add emitter-side or
+  testcase-shaped shortcuts for the remaining bootstrap-global residue.
 
 ## Proof
 
 Ran the packet proof command and preserved `/workspaces/c4c/test_after.log`:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|c_testsuite_x86_backend_src_00119_c|c_testsuite_x86_backend_src_00123_c)$' | tee test_after.log`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|c_testsuite_x86_backend_src_00128_c)$' | tee test_after.log`.
 Current result: `backend_lir_to_bir_notes` passes with the new admitted scalar
-floating-global lane covered. `00119` and `00123` no longer fail with the old
-bootstrap-global diagnostic from `test_before.log`; the after-log shows both
-cases now fail downstream with the x86 emitter's unsupported return-shape
-restriction instead. The delegated proof therefore remains nonzero overall
-because these cases have advanced into the next downstream route, not because
-scalar floating globals are still unadmitted. `test_after.log` is the canonical
-proof artifact for this packet.
+`i16` global lane covered. `00128` no longer fails with the old bootstrap-global
+diagnostic from `test_before.log`; the after-log now shows the x86 emitter's
+downstream return-shape restriction instead, so the proof remains nonzero overall
+because `00128` advanced out of idea 58 rather than because scalar `i16` globals
+are still unadmitted. `test_after.log` is the canonical proof artifact for this
+packet.

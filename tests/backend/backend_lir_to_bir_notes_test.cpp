@@ -53,6 +53,7 @@ bool contains_note(const std::vector<BirLoweringNote>& notes,
 }
 
 LirModule make_admitted_scalar_float_globals_module();
+LirModule make_admitted_scalar_i16_globals_module();
 
 int expect_failure_notes(std::string_view case_name,
                          const LirModule& module,
@@ -130,6 +131,39 @@ int expect_admitted_scalar_float_globals() {
       *double_global->initializer !=
           c4c::backend::bir::Value::immediate_f64_bits(0x4059000000000000ULL)) {
     return fail("scalar double globals should lower into an admitted F64 BIR initializer lane");
+  }
+
+  return 0;
+}
+
+int expect_admitted_scalar_i16_globals() {
+  auto result = try_lower_to_bir_with_options(make_admitted_scalar_i16_globals_module(),
+                                              BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("expected semantic BIR lowering to admit scalar i16 globals");
+  }
+
+  const auto find_global = [&](std::string_view name) -> const c4c::backend::bir::Global* {
+    for (const auto& global : result.module->globals) {
+      if (global.name == name) {
+        return &global;
+      }
+    }
+    return nullptr;
+  };
+
+  const auto* zero_global = find_global("gzero");
+  if (zero_global == nullptr || zero_global->type != TypeKind::I16 ||
+      !zero_global->initializer.has_value() ||
+      *zero_global->initializer != c4c::backend::bir::Value::immediate_i16(0)) {
+    return fail("scalar i16 zeroinitializers should lower into an admitted I16 BIR initializer lane");
+  }
+
+  const auto* value_global = find_global("gvalue");
+  if (value_global == nullptr || value_global->type != TypeKind::I16 ||
+      !value_global->initializer.has_value() ||
+      *value_global->initializer != c4c::backend::bir::Value::immediate_i16(17)) {
+    return fail("scalar i16 nonzero globals should lower into an admitted I16 BIR initializer lane");
   }
 
   return 0;
@@ -868,6 +902,42 @@ LirModule make_admitted_scalar_float_globals_module() {
   return module;
 }
 
+LirModule make_admitted_scalar_i16_globals_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirGlobal zero_global;
+  zero_global.name = "gzero";
+  zero_global.qualifier = "global ";
+  zero_global.llvm_type = "i16";
+  zero_global.init_text = "zeroinitializer";
+  zero_global.align_bytes = 2;
+  module.globals.push_back(std::move(zero_global));
+
+  LirGlobal value_global;
+  value_global.name = "gvalue";
+  value_global.qualifier = "global ";
+  value_global.llvm_type = "i16";
+  value_global.init_text = "i16 17";
+  value_global.align_bytes = 2;
+  module.globals.push_back(std::move(value_global));
+
+  LirFunction function;
+  function.name = "admitted_scalar_i16_globals";
+  function.signature_text = "define i32 @admitted_scalar_i16_globals()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = "0",
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_bad_local_memory_umbrella_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -1564,6 +1634,11 @@ int main() {
   if (const int scalar_float_globals_status = expect_admitted_scalar_float_globals();
       scalar_float_globals_status != 0) {
     return scalar_float_globals_status;
+  }
+
+  if (const int scalar_i16_globals_status = expect_admitted_scalar_i16_globals();
+      scalar_i16_globals_status != 0) {
+    return scalar_i16_globals_status;
   }
 
   if (const int local_memory_umbrella_status = expect_failure_notes(
