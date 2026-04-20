@@ -2921,25 +2921,6 @@ std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_f
             return std::nullopt;
         }
       };
-  const auto narrow_i32_register = [](std::string_view wide_register) -> std::optional<std::string> {
-    if (wide_register == "rax") return std::string("eax");
-    if (wide_register == "rbx") return std::string("ebx");
-    if (wide_register == "rcx") return std::string("ecx");
-    if (wide_register == "rdx") return std::string("edx");
-    if (wide_register == "rdi") return std::string("edi");
-    if (wide_register == "rsi") return std::string("esi");
-    if (wide_register == "rbp") return std::string("ebp");
-    if (wide_register == "rsp") return std::string("esp");
-    if (wide_register == "r8") return std::string("r8d");
-    if (wide_register == "r9") return std::string("r9d");
-    if (wide_register == "r10") return std::string("r10d");
-    if (wide_register == "r11") return std::string("r11d");
-    if (wide_register == "r12") return std::string("r12d");
-    if (wide_register == "r13") return std::string("r13d");
-    if (wide_register == "r14") return std::string("r14d");
-    if (wide_register == "r15") return std::string("r15d");
-    return std::string(wide_register);
-  };
   const auto find_named_value_home =
       [&](std::string_view value_name) -> const c4c::backend::prepare::PreparedValueHome* {
     if (prepared_names == nullptr || function_locations == nullptr) {
@@ -3046,14 +3027,6 @@ std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_f
     saw_call = true;
     const auto instruction_index =
         static_cast<std::size_t>(&inst - entry.insts.data());
-    const auto* before_call_bundle =
-        function_locations == nullptr
-            ? nullptr
-            : c4c::backend::prepare::find_prepared_move_bundle(
-                  *function_locations,
-                  c4c::backend::prepare::PreparedMovePhase::BeforeCall,
-                  0,
-                  instruction_index);
 
     for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
       const auto& arg = call->args[arg_index];
@@ -3103,24 +3076,11 @@ std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_f
       } else {
         return std::nullopt;
       }
-      std::optional<std::string> destination_register;
-      if (before_call_bundle != nullptr) {
-        for (const auto& move : before_call_bundle->moves) {
-          if (move.destination_kind !=
-                  c4c::backend::prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
-              move.destination_storage_kind !=
-                  c4c::backend::prepare::PreparedMoveStorageKind::Register ||
-              move.destination_abi_index != std::optional<std::size_t>{arg_index} ||
-              !move.destination_register_name.has_value()) {
-            continue;
-          }
-          destination_register = narrow_i32_register(*move.destination_register_name);
-          break;
-        }
-      }
+      const auto destination_register =
+          select_prepared_i32_call_argument_abi_register_if_supported(
+              function_locations, instruction_index, arg_index);
       if (!destination_register.has_value()) {
-        throw std::invalid_argument(
-            "x86 backend emitter requires the authoritative prepared call-bundle handoff through the canonical prepared-module handoff");
+        throw std::invalid_argument(std::string(kPreparedCallBundleHandoffRequired));
       }
       if (!append_move_into_register(&body, *destination_register, source)) {
         return std::nullopt;
@@ -3133,48 +3093,14 @@ std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_f
     body += "\n";
     if (call->result.has_value() && call->result->type == c4c::backend::bir::TypeKind::I32 &&
         call->result->kind == c4c::backend::bir::Value::Kind::Named) {
-      const auto* after_call_bundle =
-          function_locations == nullptr
-              ? nullptr
-              : c4c::backend::prepare::find_prepared_move_bundle(
-                    *function_locations,
-                    c4c::backend::prepare::PreparedMovePhase::AfterCall,
-                    0,
-                    instruction_index);
       const auto* result_home = find_named_value_home(call->result->name);
-      const auto* after_call_move =
-          [&]() -> const c4c::backend::prepare::PreparedMoveResolution* {
-        if (after_call_bundle == nullptr) {
-          return nullptr;
-        }
-        if (result_home != nullptr) {
-          for (const auto& move : after_call_bundle->moves) {
-            if (move.destination_kind ==
-                    c4c::backend::prepare::PreparedMoveDestinationKind::CallResultAbi &&
-                move.to_value_id == result_home->value_id) {
-              return &move;
-            }
-          }
-        }
-        for (const auto& move : after_call_bundle->moves) {
-          if (move.destination_kind ==
-              c4c::backend::prepare::PreparedMoveDestinationKind::CallResultAbi) {
-            return &move;
-          }
-        }
-        return nullptr;
-      }();
-      if (after_call_move == nullptr || !after_call_move->destination_register_name.has_value()) {
-        throw std::invalid_argument(
-            "x86 backend emitter requires the authoritative prepared call-bundle handoff through the canonical prepared-module handoff");
+      const auto call_result_selection = select_prepared_i32_call_result_abi_if_supported(
+          function_locations, instruction_index, result_home);
+      if (!call_result_selection.has_value()) {
+        throw std::invalid_argument(std::string(kPreparedCallBundleHandoffRequired));
       }
-      const auto abi_result_register =
-          narrow_i32_register(*after_call_move->destination_register_name);
-      if (!abi_result_register.has_value()) {
-        return std::nullopt;
-      }
-      if (after_call_move != nullptr) {
-        if (after_call_move->destination_storage_kind !=
+      if (call_result_selection->move != nullptr) {
+        if (call_result_selection->move->destination_storage_kind !=
             c4c::backend::prepare::PreparedMoveStorageKind::Register) {
           return std::nullopt;
         }
@@ -3187,8 +3113,9 @@ std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_f
           if (!home_register.has_value()) {
             return std::nullopt;
           }
-          if (*home_register != *abi_result_register) {
-            body += "    mov " + *home_register + ", " + *abi_result_register + "\n";
+          if (*home_register != call_result_selection->abi_register) {
+            body += "    mov " + *home_register + ", " + call_result_selection->abi_register +
+                    "\n";
           }
           current_i32 = CurrentI32Carrier{
               .value_name = call->result->name,
@@ -3200,7 +3127,7 @@ std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_f
                    result_home->offset_bytes.has_value()) {
           const auto stack_operand =
               render_prepared_stack_memory_operand(*result_home->offset_bytes, "DWORD");
-          body += "    mov " + stack_operand + ", " + *abi_result_register + "\n";
+          body += "    mov " + stack_operand + ", " + call_result_selection->abi_register + "\n";
           current_i32 = CurrentI32Carrier{
               .value_name = call->result->name,
               .register_name = std::nullopt,
@@ -3212,7 +3139,7 @@ std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_f
       } else {
         current_i32 = CurrentI32Carrier{
             .value_name = call->result->name,
-            .register_name = *abi_result_register,
+            .register_name = call_result_selection->abi_register,
             .stack_operand = std::nullopt,
         };
       }

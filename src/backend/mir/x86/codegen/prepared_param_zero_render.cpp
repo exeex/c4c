@@ -4,26 +4,6 @@ namespace c4c::backend::x86 {
 
 namespace {
 
-std::optional<std::string> narrow_i32_register(std::string_view wide_register) {
-  if (wide_register == "rax") return std::string("eax");
-  if (wide_register == "rbx") return std::string("ebx");
-  if (wide_register == "rcx") return std::string("ecx");
-  if (wide_register == "rdx") return std::string("edx");
-  if (wide_register == "rdi") return std::string("edi");
-  if (wide_register == "rsi") return std::string("esi");
-  if (wide_register == "rbp") return std::string("ebp");
-  if (wide_register == "rsp") return std::string("esp");
-  if (wide_register == "r8") return std::string("r8d");
-  if (wide_register == "r9") return std::string("r9d");
-  if (wide_register == "r10") return std::string("r10d");
-  if (wide_register == "r11") return std::string("r11d");
-  if (wide_register == "r12") return std::string("r12d");
-  if (wide_register == "r13") return std::string("r13d");
-  if (wide_register == "r14") return std::string("r14d");
-  if (wide_register == "r15") return std::string("r15d");
-  return std::string(wide_register);
-}
-
 std::optional<std::string> find_prepared_param_zero_compare_setup(
     const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::bir::Function& function,

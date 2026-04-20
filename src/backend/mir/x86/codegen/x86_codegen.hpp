@@ -172,6 +172,11 @@ struct PreparedI32NamedImmediateCompareSelection {
   std::int64_t immediate = 0;
 };
 
+struct PreparedI32CallResultAbiSelection {
+  const c4c::backend::prepare::PreparedMoveResolution* move = nullptr;
+  std::string abi_register;
+};
+
 struct ShortCircuitEntryCompareContext {
   const c4c::backend::prepare::PreparedBranchCondition* branch_condition = nullptr;
   std::string compare_setup;
@@ -198,6 +203,99 @@ struct DirectBranchTargets {
   const c4c::backend::bir::Block* true_block = nullptr;
   const c4c::backend::bir::Block* false_block = nullptr;
 };
+
+inline constexpr std::string_view kPreparedCallBundleHandoffRequired =
+    "x86 backend emitter requires the authoritative prepared call-bundle handoff through the canonical prepared-module handoff";
+
+inline std::optional<std::string> narrow_i32_register(std::string_view wide_register) {
+  if (wide_register == "rax") return std::string("eax");
+  if (wide_register == "rbx") return std::string("ebx");
+  if (wide_register == "rcx") return std::string("ecx");
+  if (wide_register == "rdx") return std::string("edx");
+  if (wide_register == "rdi") return std::string("edi");
+  if (wide_register == "rsi") return std::string("esi");
+  if (wide_register == "rbp") return std::string("ebp");
+  if (wide_register == "rsp") return std::string("esp");
+  if (wide_register == "r8") return std::string("r8d");
+  if (wide_register == "r9") return std::string("r9d");
+  if (wide_register == "r10") return std::string("r10d");
+  if (wide_register == "r11") return std::string("r11d");
+  if (wide_register == "r12") return std::string("r12d");
+  if (wide_register == "r13") return std::string("r13d");
+  if (wide_register == "r14") return std::string("r14d");
+  if (wide_register == "r15") return std::string("r15d");
+  return std::string(wide_register);
+}
+
+inline std::optional<std::string> select_prepared_i32_call_argument_abi_register_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t instruction_index,
+    std::size_t arg_index) {
+  if (function_locations == nullptr) {
+    return std::nullopt;
+  }
+  const auto* before_call_bundle = c4c::backend::prepare::find_prepared_move_bundle(
+      *function_locations, c4c::backend::prepare::PreparedMovePhase::BeforeCall, 0,
+      instruction_index);
+  if (before_call_bundle == nullptr) {
+    return std::nullopt;
+  }
+  for (const auto& move : before_call_bundle->moves) {
+    if (move.destination_kind != c4c::backend::prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+        move.destination_storage_kind != c4c::backend::prepare::PreparedMoveStorageKind::Register ||
+        move.destination_abi_index != std::optional<std::size_t>{arg_index} ||
+        !move.destination_register_name.has_value()) {
+      continue;
+    }
+    return narrow_i32_register(*move.destination_register_name);
+  }
+  return std::nullopt;
+}
+
+inline std::optional<PreparedI32CallResultAbiSelection>
+select_prepared_i32_call_result_abi_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedValueHome* result_home) {
+  if (function_locations == nullptr) {
+    return std::nullopt;
+  }
+  const auto* after_call_bundle = c4c::backend::prepare::find_prepared_move_bundle(
+      *function_locations, c4c::backend::prepare::PreparedMovePhase::AfterCall, 0,
+      instruction_index);
+  if (after_call_bundle == nullptr) {
+    return std::nullopt;
+  }
+  const auto* after_call_move = [&]() -> const c4c::backend::prepare::PreparedMoveResolution* {
+    if (result_home != nullptr) {
+      for (const auto& move : after_call_bundle->moves) {
+        if (move.destination_kind ==
+                c4c::backend::prepare::PreparedMoveDestinationKind::CallResultAbi &&
+            move.to_value_id == result_home->value_id) {
+          return &move;
+        }
+      }
+    }
+    for (const auto& move : after_call_bundle->moves) {
+      if (move.destination_kind ==
+          c4c::backend::prepare::PreparedMoveDestinationKind::CallResultAbi) {
+        return &move;
+      }
+    }
+    return nullptr;
+  }();
+  if (after_call_move == nullptr || !after_call_move->destination_register_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto abi_register = narrow_i32_register(*after_call_move->destination_register_name);
+  if (!abi_register.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedI32CallResultAbiSelection{
+      .move = after_call_move,
+      .abi_register = std::move(*abi_register),
+  };
+}
 
 // Active intrinsic inventory carried by the translated x86 intrinsics owner.
 enum class IntrinsicOp : std::uint16_t {
@@ -572,25 +670,6 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
       names->push_back(std::string(name));
     }
   };
-  const auto narrow_i32_register = [](std::string_view wide_register) -> std::optional<std::string> {
-    if (wide_register == "rax") return std::string("eax");
-    if (wide_register == "rbx") return std::string("ebx");
-    if (wide_register == "rcx") return std::string("ecx");
-    if (wide_register == "rdx") return std::string("edx");
-    if (wide_register == "rdi") return std::string("edi");
-    if (wide_register == "rsi") return std::string("esi");
-    if (wide_register == "rbp") return std::string("ebp");
-    if (wide_register == "rsp") return std::string("esp");
-    if (wide_register == "r8") return std::string("r8d");
-    if (wide_register == "r9") return std::string("r9d");
-    if (wide_register == "r10") return std::string("r10d");
-    if (wide_register == "r11") return std::string("r11d");
-    if (wide_register == "r12") return std::string("r12d");
-    if (wide_register == "r13") return std::string("r13d");
-    if (wide_register == "r14") return std::string("r14d");
-    if (wide_register == "r15") return std::string("r15d");
-    return std::string(wide_register);
-  };
   const auto find_named_value_home =
       [&](std::string_view value_name) -> const c4c::backend::prepare::PreparedValueHome* {
     return c4c::backend::prepare::find_prepared_value_home(module.names, function_locations, value_name);
@@ -710,9 +789,6 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
 
       const auto instruction_index =
           static_cast<std::size_t>(&inst - candidate.blocks.front().insts.data());
-      const auto* before_call_bundle = c4c::backend::prepare::find_prepared_move_bundle(
-          function_locations, c4c::backend::prepare::PreparedMovePhase::BeforeCall, 0,
-          instruction_index);
       for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
         const auto& arg = call->args[arg_index];
         if (call->arg_types[arg_index] == c4c::backend::bir::TypeKind::Ptr) {
@@ -760,22 +836,11 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
         if (!source.has_value()) {
           return std::nullopt;
         }
-        std::optional<std::string> destination_register;
-        if (before_call_bundle != nullptr) {
-          for (const auto& move : before_call_bundle->moves) {
-            if (move.destination_kind != c4c::backend::prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
-                move.destination_storage_kind != c4c::backend::prepare::PreparedMoveStorageKind::Register ||
-                move.destination_abi_index != std::optional<std::size_t>{arg_index} ||
-                !move.destination_register_name.has_value()) {
-              continue;
-            }
-            destination_register = narrow_i32_register(*move.destination_register_name);
-            break;
-          }
-        }
+        const auto destination_register =
+            select_prepared_i32_call_argument_abi_register_if_supported(
+                &function_locations, instruction_index, arg_index);
         if (!destination_register.has_value()) {
-          throw std::invalid_argument(
-              "x86 backend emitter requires the authoritative prepared call-bundle handoff through the canonical prepared-module handoff");
+          throw std::invalid_argument(std::string(kPreparedCallBundleHandoffRequired));
         }
         if (!append_move_into_register(&rendered.body, *destination_register, *source)) {
           return std::nullopt;
@@ -788,42 +853,14 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
       rendered.body += "\n";
       if (call->result.has_value() && call->result->type == c4c::backend::bir::TypeKind::I32 &&
           call->result->kind == c4c::backend::bir::Value::Kind::Named) {
-        const auto* after_call_bundle = c4c::backend::prepare::find_prepared_move_bundle(
-            function_locations, c4c::backend::prepare::PreparedMovePhase::AfterCall, 0,
-            instruction_index);
         const auto* result_home = find_named_value_home(call->result->name);
-        const auto* after_call_move = [&]() -> const c4c::backend::prepare::PreparedMoveResolution* {
-          if (after_call_bundle == nullptr) {
-            return nullptr;
-          }
-          if (result_home != nullptr) {
-            for (const auto& move : after_call_bundle->moves) {
-              if (move.destination_kind ==
-                      c4c::backend::prepare::PreparedMoveDestinationKind::CallResultAbi &&
-                  move.to_value_id == result_home->value_id) {
-                return &move;
-              }
-            }
-          }
-          for (const auto& move : after_call_bundle->moves) {
-            if (move.destination_kind ==
-                c4c::backend::prepare::PreparedMoveDestinationKind::CallResultAbi) {
-              return &move;
-            }
-          }
-          return nullptr;
-        }();
-        if (after_call_move == nullptr || !after_call_move->destination_register_name.has_value()) {
-          throw std::invalid_argument(
-              "x86 backend emitter requires the authoritative prepared call-bundle handoff through the canonical prepared-module handoff");
+        const auto call_result_selection = select_prepared_i32_call_result_abi_if_supported(
+            &function_locations, instruction_index, result_home);
+        if (!call_result_selection.has_value()) {
+          throw std::invalid_argument(std::string(kPreparedCallBundleHandoffRequired));
         }
-        const auto abi_result_register =
-            narrow_i32_register(*after_call_move->destination_register_name);
-        if (!abi_result_register.has_value()) {
-          return std::nullopt;
-        }
-        if (after_call_move != nullptr) {
-          if (after_call_move->destination_storage_kind !=
+        if (call_result_selection->move != nullptr) {
+          if (call_result_selection->move->destination_storage_kind !=
               c4c::backend::prepare::PreparedMoveStorageKind::Register) {
             return std::nullopt;
           }
@@ -836,8 +873,9 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
             if (!home_register.has_value()) {
               return std::nullopt;
             }
-            if (*home_register != *abi_result_register) {
-              rendered.body += "    mov " + *home_register + ", " + *abi_result_register + "\n";
+            if (*home_register != call_result_selection->abi_register) {
+              rendered.body +=
+                  "    mov " + *home_register + ", " + call_result_selection->abi_register + "\n";
             }
             current_i32 = CurrentI32Carrier{
                 .value_name = call->result->name,
@@ -848,7 +886,8 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
                      result_home->offset_bytes.has_value()) {
             const auto stack_operand =
                 render_prepared_stack_memory_operand(*result_home->offset_bytes, "DWORD");
-            rendered.body += "    mov " + stack_operand + ", " + *abi_result_register + "\n";
+            rendered.body +=
+                "    mov " + stack_operand + ", " + call_result_selection->abi_register + "\n";
             current_i32 = CurrentI32Carrier{
                 .value_name = call->result->name,
                 .register_name = std::nullopt,
@@ -860,7 +899,7 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
         } else {
           current_i32 = CurrentI32Carrier{
               .value_name = call->result->name,
-              .register_name = *abi_result_register,
+              .register_name = call_result_selection->abi_register,
               .stack_operand = std::nullopt,
           };
         }
