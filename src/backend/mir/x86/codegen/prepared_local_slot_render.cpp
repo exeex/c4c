@@ -1156,27 +1156,24 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
         *current_materialized_compare = std::nullopt;
         *current_i8_name = std::nullopt;
         *current_ptr_name = std::nullopt;
-        const auto selected_store_value = select_prepared_i32_value_if_supported(
-            store->value,
-            *current_i32_name,
-            [&](std::string_view value_name) -> std::optional<std::string> {
-              return select_prepared_previous_i32_operand_if_supported(
-                  value_name, *previous_i32_name);
-            });
-        if (!selected_store_value.has_value()) {
-          return std::nullopt;
-        }
-        if (selected_store_value->immediate.has_value()) {
+        if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate) {
           *current_i32_name = std::nullopt;
           *previous_i32_name = std::nullopt;
-          return "    mov " + selected_global_memory->memory_operand + ", " +
-                 std::to_string(*selected_store_value->immediate) + "\n";
         }
-        if (selected_store_value->in_eax) {
-          return "    mov " + selected_global_memory->memory_operand + ", eax\n";
-        }
-        return "    mov " + selected_global_memory->memory_operand + ", " +
-               *selected_store_value->operand + "\n";
+        return render_prepared_i32_store_to_memory_if_supported(
+            store->value,
+            *current_i32_name,
+            selected_global_memory->memory_operand,
+            [&](const c4c::backend::bir::Value& value,
+                const std::optional<std::string_view>& current_name) -> std::optional<std::string> {
+              return render_prepared_i32_operand_if_supported(
+                  value,
+                  current_name,
+                  [&](std::string_view value_name) -> std::optional<std::string> {
+                    return select_prepared_previous_i32_operand_if_supported(
+                        value_name, *previous_i32_name);
+                  });
+            });
       }
 
       const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
