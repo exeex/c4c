@@ -5,27 +5,26 @@ Source Idea Path: ideas/open/59_generic_scalar_instruction_selection_for_x86.md
 Source Plan Path: plan.md
 Current Step ID: 4
 Current Step Title: Migrate Covered Terminator And Call Families
-Plan Review Counter: 9 / 10
+Plan Review Counter: 10 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 4 moved one real per-call seam out of the covered same-module
-helper-call lane in `prepared_local_slot_render.cpp`: the helper-call route
-now uses `finalize_prepared_same_module_helper_call_state` to perform the
-post-call result-carrier and state reset handoff instead of open-coding that
-state transition inline inside
-`render_prepared_bounded_same_module_helper_call_if_supported`.
+Step 4 audited the covered same-module helper-call lane in
+`prepared_local_slot_render.cpp` after the recent selector/state extractions
+and judged it structurally exhausted: the remaining `xor eax` / `call`
+spelling in `render_prepared_bounded_same_module_helper_call_if_supported`
+and the thin block-loop wrapper in
+`render_prepared_block_same_module_helper_call_inst_if_supported` are route
+glue, not another real per-call dispatch seam worth extracting.
 
 ## Suggested Next
 
-Keep Step 4 in the same-module helper-call family for one short audit packet:
-check whether any real covered per-call seam still remains near call spelling
-or the block-loop handoff in
-`render_prepared_block_same_module_helper_call_inst_if_supported`; if the
-rest is only wrapper glue, mark this helper-call lane structurally exhausted
-and hand the next packet to the next non-cosmetic covered call or terminator
-family.
+Move the next Step 4 packet to the bounded multi-defined call lane in
+`prepared_local_slot_render.cpp`, starting with a short audit of whether
+`render_prepared_bounded_multi_defined_call_lane_body_if_supported` still
+owns one real covered per-call or per-terminator seam that should become
+explicit helper selection instead of staying inline inside that body matcher.
 
 ## Watchouts
 
@@ -36,16 +35,14 @@ family.
   reopening upstream ownership from ideas 58, 60, or 61.
 - Prefer one coherent instruction-family migration per packet over broad
   emitter rewrites.
-- The same-module helper-call lane now has explicit selector-style argument
-  moves and an explicit post-call state/result helper; the next packet should
-  confirm there is still a real per-call seam before extracting anything
-  else from that route.
-- Do not widen the same-module helper-call lane into variadic, indirect-call,
-  generic non-helper call families, or fallback-family rewrites in this
-  packet stream.
-- The direct extern-call family is already structurally exhausted for Step 4;
-  stay on the same-module helper-call lane until it is either exhausted or
-  yields one more real seam.
+- The same-module helper-call lane is now structurally exhausted for Step 4:
+  its remaining call spelling and block-loop handoff are wrapper glue, not
+  the next selector target.
+- Do not reopen the same-module helper-call lane with more thin extractions
+  unless a later packet finds a genuinely new legality or dispatch seam.
+- The next packet should stay on covered call/terminator migration by moving
+  to the bounded multi-defined call lane, not back into the exhausted direct
+  extern or same-module helper-call families.
 - Step 4 should keep moving the active route toward prepared per-call or
   per-terminator selection, not back into Step 3 scalar family cleanup or
   into broad single-block fallback rewrites.
@@ -61,7 +58,7 @@ family.
 Ran the proof command `cmake --build --preset default && ctest --test-dir
 build -j --output-on-failure -R '^backend_' 2>&1 | tee
 /workspaces/c4c/test_after.log`. The build completed successfully after this
-Step 4 same-module helper-call state-finalization extraction. The final
+Step 4 same-module helper-call exhaustion audit and handoff. The final
 `^backend_` subset in `test_after.log` preserved the accepted
 `test_before.log` failure set exactly, with no new failures:
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`,
