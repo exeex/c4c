@@ -170,6 +170,13 @@ std::string expected_branch_prefix(const char* function_name, const char* false_
   return expected_zero_branch_prefix(function_name, false_label, "jne");
 }
 
+std::string expected_branch_prefix_with_source(const char* function_name,
+                                               const char* false_label,
+                                               const char* source_register) {
+  return asm_header(function_name) + "    test " + std::string(source_register) + ", " +
+         std::string(source_register) + "\n    jne .L" + function_name + "_" + false_label + "\n";
+}
+
 std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_asm(
     const char* function_name,
     const char* false_label,
@@ -222,7 +229,7 @@ std::string expected_minimal_param_eq_zero_branch_joined_add_or_sub_then_xor_wit
     int true_immediate,
     int false_immediate,
     int joined_immediate) {
-  return expected_branch_prefix(function_name, false_label) + "    mov " +
+  return expected_branch_prefix_with_source(function_name, false_label, source_register) + "    mov " +
          minimal_i32_return_register() + ", " + source_register + "\n    add " +
          minimal_i32_return_register() + ", " + std::to_string(true_immediate) +
          "\n    xor " + minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +

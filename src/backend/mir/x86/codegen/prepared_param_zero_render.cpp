@@ -4,34 +4,80 @@ namespace c4c::backend::x86 {
 
 namespace {
 
-PreparedParamZeroCompareShape to_prepared_param_zero_compare_shape(
-    c4c::backend::prepare::PreparedParamZeroBranchCondition::CompareShape compare_shape) {
-  switch (compare_shape) {
-    case c4c::backend::prepare::PreparedParamZeroBranchCondition::CompareShape::SelfTest:
-      return PreparedParamZeroCompareShape::SelfTest;
+std::optional<std::string> narrow_i32_register(std::string_view wide_register) {
+  if (wide_register == "rax") return std::string("eax");
+  if (wide_register == "rbx") return std::string("ebx");
+  if (wide_register == "rcx") return std::string("ecx");
+  if (wide_register == "rdx") return std::string("edx");
+  if (wide_register == "rdi") return std::string("edi");
+  if (wide_register == "rsi") return std::string("esi");
+  if (wide_register == "rbp") return std::string("ebp");
+  if (wide_register == "rsp") return std::string("esp");
+  if (wide_register == "r8") return std::string("r8d");
+  if (wide_register == "r9") return std::string("r9d");
+  if (wide_register == "r10") return std::string("r10d");
+  if (wide_register == "r11") return std::string("r11d");
+  if (wide_register == "r12") return std::string("r12d");
+  if (wide_register == "r13") return std::string("r13d");
+  if (wide_register == "r14") return std::string("r14d");
+  if (wide_register == "r15") return std::string("r15d");
+  return std::string(wide_register);
+}
+
+std::optional<std::string> find_prepared_param_zero_compare_setup(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Param& param,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
+        minimal_param_register) {
+  if (const auto* function_locations =
+          c4c::backend::prepare::find_prepared_value_location_function(module, function.name);
+      function_locations != nullptr) {
+    if (const auto* param_home =
+            c4c::backend::prepare::find_prepared_value_home(module.names, *function_locations, param.name);
+        param_home != nullptr) {
+      if (param_home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+          param_home->register_name.has_value()) {
+        const auto narrowed_register = narrow_i32_register(*param_home->register_name);
+        if (!narrowed_register.has_value()) {
+          return std::nullopt;
+        }
+        return "    test " + *narrowed_register + ", " + *narrowed_register + "\n";
+      }
+      if (param_home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+          param_home->offset_bytes.has_value()) {
+        const auto stack_operand = c4c::backend::x86::render_prepared_stack_memory_operand(
+            *param_home->offset_bytes, "DWORD");
+        return "    mov eax, " + stack_operand + "\n    test eax, eax\n";
+      }
+      if (param_home->kind ==
+              c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
+          param_home->immediate_i32.has_value()) {
+        return "    mov eax, " +
+               std::to_string(static_cast<std::int32_t>(*param_home->immediate_i32)) +
+               "\n    test eax, eax\n";
+      }
+      return std::nullopt;
+    }
   }
-  throw std::invalid_argument("unsupported prepared param-zero compare shape");
+
+  const auto param_register = minimal_param_register(param);
+  if (!param_register.has_value()) {
+    return std::nullopt;
+  }
+  return "    test " + *param_register + ", " + *param_register + "\n";
 }
 
 std::optional<std::string> render_prepared_param_zero_branch_prefix(
-    PreparedParamZeroCompareShape compare_shape,
     std::string_view function_name,
     std::string_view false_label,
     const char* false_branch_opcode,
-    std::string_view param_register_name) {
-  if (false_branch_opcode == nullptr || false_label.empty()) {
+    std::string_view compare_setup) {
+  if (false_branch_opcode == nullptr || false_label.empty() || compare_setup.empty()) {
     return std::nullopt;
   }
 
-  std::string rendered_compare;
-  switch (compare_shape) {
-    case PreparedParamZeroCompareShape::SelfTest:
-      rendered_compare = "    test " + std::string(param_register_name) + ", " +
-                         std::string(param_register_name) + "\n";
-      break;
-  }
-
-  return rendered_compare + "    " + std::string(false_branch_opcode) + " .L" +
+  return std::string(compare_setup) + "    " + std::string(false_branch_opcode) + " .L" +
          std::string(function_name) + "_" + std::string(false_label) + "\n";
 }
 
@@ -502,19 +548,15 @@ std::optional<CompareDrivenBranchRenderPlan> build_compare_driven_direct_entry_r
 std::optional<std::string> render_prepared_param_zero_branch_function(
     std::string_view asm_prefix,
     std::string_view function_name,
-    PreparedParamZeroCompareShape compare_shape,
     std::string_view false_label,
     const char* false_branch_opcode,
-    std::string_view param_register_name,
+    std::string_view compare_setup,
     std::string_view true_body,
     std::string_view false_body,
     std::string_view trailing_data) {
   const auto rendered_branch_prefix =
-      render_prepared_param_zero_branch_prefix(compare_shape,
-                                               function_name,
-                                               false_label,
-                                               false_branch_opcode,
-                                               param_register_name);
+      render_prepared_param_zero_branch_prefix(
+          function_name, false_label, false_branch_opcode, compare_setup);
   if (!rendered_branch_prefix.has_value()) {
     return std::nullopt;
   }
@@ -532,7 +574,7 @@ std::optional<std::string> find_and_render_prepared_param_zero_branch_return_con
     const c4c::backend::bir::Block& entry,
     const c4c::backend::bir::Param& param,
     std::string_view asm_prefix,
-    std::string_view param_register_name,
+    std::string_view compare_setup,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Block&,
                                                    const c4c::backend::bir::Value&)>&
         render_return) {
@@ -568,16 +610,15 @@ std::optional<std::string> find_and_render_prepared_param_zero_branch_return_con
   return render_prepared_param_zero_branch_function(
       asm_prefix,
       function.name,
-      to_prepared_param_zero_compare_shape(prepared_branch.compare_shape),
       prepared_branch.false_label,
       prepared_branch.false_branch_opcode,
-      param_register_name,
+      compare_setup,
       *true_return,
       *false_return);
 }
 
 std::optional<std::string> render_prepared_minimal_compare_branch_entry_if_supported(
-    const c4c::backend::prepare::PreparedNameTables& prepared_names,
+    const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
@@ -599,19 +640,20 @@ std::optional<std::string> render_prepared_minimal_compare_branch_entry_if_suppo
       param.is_byval) {
     return std::nullopt;
   }
-  const auto param_register = minimal_param_register(param);
-  if (!param_register.has_value() || function_control_flow == nullptr) {
+  const auto compare_setup =
+      find_prepared_param_zero_compare_setup(module, function, param, minimal_param_register);
+  if (!compare_setup.has_value() || function_control_flow == nullptr) {
     return std::nullopt;
   }
 
   return find_and_render_prepared_param_zero_branch_return_context_if_supported(
-      prepared_names,
+      module.names,
       *function_control_flow,
       function,
       entry,
       param,
       asm_prefix,
-      *param_register,
+      *compare_setup,
       render_return);
 }
 
@@ -623,7 +665,7 @@ find_and_render_prepared_materialized_compare_join_function_if_supported(
     const c4c::backend::bir::Block& entry,
     const c4c::backend::bir::Param& param,
     std::string_view asm_prefix,
-    std::string_view param_register_name,
+    std::string_view compare_setup,
     const std::function<std::optional<std::string>(
         const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&,
         const c4c::backend::bir::Param&)>& render_return,
@@ -675,12 +717,10 @@ find_and_render_prepared_materialized_compare_join_function_if_supported(
   return render_prepared_param_zero_branch_function(
       asm_prefix,
       function.name,
-      to_prepared_param_zero_compare_shape(
-          resolved_render_contract->branch_plan.compare_shape),
       c4c::backend::prepare::prepared_block_label(
           module.names, resolved_render_contract->branch_plan.target_labels.false_label),
       resolved_render_contract->branch_plan.false_branch_opcode,
-      param_register_name,
+      compare_setup,
       *true_return,
       *false_return,
       rendered_same_module_globals);
@@ -710,8 +750,9 @@ std::optional<std::string> render_prepared_materialized_compare_join_entry_if_su
       param.is_byval) {
     return std::nullopt;
   }
-  const auto param_register = minimal_param_register(param);
-  if (!param_register.has_value() || function_control_flow == nullptr) {
+  const auto compare_setup =
+      find_prepared_param_zero_compare_setup(module, function, param, minimal_param_register);
+  if (!compare_setup.has_value() || function_control_flow == nullptr) {
     return std::nullopt;
   }
 
@@ -722,7 +763,7 @@ std::optional<std::string> render_prepared_materialized_compare_join_entry_if_su
       entry,
       param,
       asm_prefix,
-      *param_register,
+      *compare_setup,
       render_return,
       emit_same_module_global_data);
 }
@@ -747,7 +788,7 @@ std::optional<std::string> render_prepared_compare_driven_entry_if_supported(
   if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
       !entry.terminator.value.has_value()) {
     if (const auto rendered_branch = render_prepared_minimal_compare_branch_entry_if_supported(
-            module.names,
+            module,
             function_control_flow,
             function,
             entry,

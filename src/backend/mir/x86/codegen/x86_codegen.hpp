@@ -1009,10 +1009,9 @@ PreparedModuleMultiDefinedDispatchState build_prepared_module_multi_defined_disp
 std::optional<std::string> render_prepared_param_zero_branch_function(
     std::string_view asm_prefix,
     std::string_view function_name,
-    PreparedParamZeroCompareShape compare_shape,
     std::string_view false_label,
     const char* false_branch_opcode,
-    std::string_view param_register_name,
+    std::string_view compare_setup,
     std::string_view true_body,
     std::string_view false_body,
     std::string_view trailing_data = {});
@@ -1024,13 +1023,13 @@ std::optional<std::string> find_and_render_prepared_param_zero_branch_return_con
     const c4c::backend::bir::Block& entry,
     const c4c::backend::bir::Param& param,
     std::string_view asm_prefix,
-    std::string_view param_register_name,
+    std::string_view compare_setup,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Block&,
                                                    const c4c::backend::bir::Value&)>&
         render_return);
 
 std::optional<std::string> render_prepared_minimal_compare_branch_entry_if_supported(
-    const c4c::backend::prepare::PreparedNameTables& prepared_names,
+    const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& entry,
@@ -1050,7 +1049,7 @@ find_and_render_prepared_materialized_compare_join_function_if_supported(
     const c4c::backend::bir::Block& entry,
     const c4c::backend::bir::Param& param,
     std::string_view asm_prefix,
-    std::string_view param_register_name,
+    std::string_view compare_setup,
     const std::function<std::optional<std::string>(
         const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&,
         const c4c::backend::bir::Param&)>& render_return,
