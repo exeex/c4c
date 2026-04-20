@@ -5,34 +5,31 @@ Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
 Source Plan Path: plan.md
 Current Step ID: 3.3
 Current Step Title: Consume Canonical Move Bundles For Join, Call, And Return Boundaries
-Plan Review Counter: 0 / 10
+Plan Review Counter: 1 / 10
 # Current Packet
 
 ## Just Finished
 
 Step 3.3 (`Consume Canonical Move Bundles For Join, Call, And Return
-Boundaries`) now threads `PreparedBirModule` / prepared value-location context
-through the bounded multi-defined dispatch surfaces
-(`prepared_module_emit.cpp`, `x86_codegen.hpp`, and
-`prepared_local_slot_render.cpp`) so the same-module call-lane renderer can
-consume shared `BeforeCall` / `AfterCall` bundles instead of reconstructing i32
-call argument/result ABI movement locally. The bounded route now drives named
-call arguments from prepared `BeforeCall` metadata, applies `AfterCall`
-result-home moves when shared prepare publishes them, and the focused
-multi-defined call test now includes a prepared-contract drift lane that
-mutates the shared call bundles / value home to prove the x86 consumer follows
-that authoritative handoff. Focused `backend_x86_handoff_boundary` proof
-passed and produced `test_after.log`.
+Boundaries`) now threads prepared name/value-location context into
+`render_prepared_minimal_direct_extern_call_sequence_if_supported(...)` so the
+bounded direct extern-call handoff reads shared `BeforeCall` / `AfterCall`
+bundles and canonical value-home lookups instead of defaulting argument/result
+ABI placement locally. The x86 consumer now sources named i32 call arguments
+from prepared homes or the current prepared call-result carrier, executes
+shared `BeforeCall` destination-register moves when present, and applies
+shared `AfterCall` result-home moves before the next consumer reads the value.
+Focused `backend_x86_handoff_boundary` proof passed after adding a dedicated
+direct extern-call contract-drift test that mutates the shared call bundle and
+value-home metadata to prove the x86 route follows the prepared handoff.
 
 ## Suggested Next
 
-Advance Step 3.3 into the next bounded call boundary that still reconstructs
-ABI movement locally, most likely
-`render_prepared_minimal_direct_extern_call_sequence_if_supported(...)` in
-`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`, and move its
-named call-argument / call-result handling onto shared prepared
-`BeforeCall` / `AfterCall` bundles without widening into unrelated generic call
-lowering.
+Keep Step 3.3 on boundary consumption and audit the remaining supported-path
+join or return helpers for any surviving ABI/home fallback that still bypasses
+shared prepared move bundles. Start with the next bounded helper that still
+defaults a boundary move when prepared metadata is absent, and add a focused
+contract-drift proof instead of widening into generic call lowering.
 
 ## Watchouts
 
@@ -56,20 +53,22 @@ lowering.
   `phi_...` move reasons, while call/result/return bundles come from
   destination-kind classification in shared prepare; keep any later phase
   refinement shared instead of pushing it into x86.
-- The bounded multi-defined call-lane route now depends on prepared
-  value-location context being threaded through the dispatch state; keep any
-  follow-up call-boundary work on that shared handoff path instead of cloning
-  new route-local ABI helpers.
+- The bounded direct extern-call route now depends on prepared
+  value-location context being threaded through the single-block dispatch
+  path; keep any follow-up boundary work on that shared handoff instead of
+  reintroducing default ABI register assumptions in local helpers.
 - The new contract-drift proof in
-  `backend_x86_handoff_boundary_multi_defined_call_test.cpp` intentionally
-  mutates prepared `BeforeCall` / `AfterCall` metadata for one bounded lane; if
-  later refactors change bundle indexing, update the proof to keep validating
-  shared call-boundary ownership rather than deleting the drift coverage.
+  `backend_x86_handoff_boundary_direct_extern_call_test.cpp` intentionally
+  mutates prepared `BeforeCall` / `AfterCall` metadata plus the first call
+  result home; if later refactors change bundle indexing, update the proof to
+  keep validating shared direct-call boundary ownership rather than deleting
+  the drift coverage.
 
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary$' > test_after.log 2>&1`,
-which passed after the Step 3.3 bounded multi-defined call-lane consumer was
-rewired onto shared prepared call bundles and the focused contract-drift proof
-was added. `test_after.log` is the canonical proof artifact for this packet.
+which passed after the Step 3.3 bounded direct extern-call consumer was
+rewired onto shared prepared call bundles / value-home lookups and the focused
+contract-drift proof was added. `test_after.log` is the canonical proof
+artifact for this packet.

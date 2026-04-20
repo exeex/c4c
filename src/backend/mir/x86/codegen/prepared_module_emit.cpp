@@ -775,7 +775,8 @@ std::string emit_prepared_module(
       }
       if (const auto rendered_single_block_return =
           c4c::backend::x86::render_prepared_single_block_return_dispatch_if_supported(
-              module.module, function, entry, &module.stack_layout, find_addressing_function(), &module.names,
+              module.module, function, entry, &module.stack_layout, find_addressing_function(),
+              &module.names, find_value_location_function(),
               prepared_arch, asm_prefix, *return_register,
               bounded_same_module_helper_global_names, find_string_constant, find_same_module_global,
               render_private_data_label, render_asm_symbol_name, emit_string_constant_data,

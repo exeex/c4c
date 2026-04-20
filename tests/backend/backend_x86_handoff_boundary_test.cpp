@@ -144,6 +144,7 @@ int check_route_rejection(const bir::Module& module,
 }  // namespace
 
 int run_backend_x86_handoff_boundary_compare_branch_tests();
+int run_backend_x86_handoff_boundary_direct_extern_call_tests();
 int run_backend_x86_handoff_boundary_joined_branch_tests();
 int run_backend_x86_handoff_boundary_local_i16_guard_tests();
 int run_backend_x86_handoff_boundary_local_i32_guard_tests();
@@ -165,6 +166,10 @@ int main() {
   // later Step 5 splits can keep shrinking the remaining loop and guard lanes
   // without re-threading earlier packets.
   if (const auto status = run_backend_x86_handoff_boundary_compare_branch_tests(); status != 0) {
+    return status;
+  }
+  if (const auto status = run_backend_x86_handoff_boundary_direct_extern_call_tests();
+      status != 0) {
     return status;
   }
   if (const auto status = run_backend_x86_handoff_boundary_joined_branch_tests(); status != 0) {
