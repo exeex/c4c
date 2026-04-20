@@ -174,10 +174,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       if (cast->operand.kind() == c4c::codegen::lir::LirOperandKind::Global) {
         const std::string global_name = cast->operand.str().substr(1);
         const auto global_it = global_types.find(global_name);
-        if (global_it == global_types.end()) {
-          return fail_scalar_cast();
-        }
-        if (global_it->second.supports_linear_addressing) {
+        if (global_it != global_types.end() && global_it->second.supports_linear_addressing) {
           global_address_ints[cast->result.str()] = GlobalAddress{
               .global_name = global_name,
               .value_type = global_it->second.value_type,
@@ -185,40 +182,36 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           };
           return true;
         }
-        if (!global_it->second.supports_direct_value ||
-            global_it->second.value_type != bir::TypeKind::Ptr) {
-          return fail_scalar_cast();
+        if (global_it != global_types.end() && global_it->second.supports_direct_value &&
+            global_it->second.value_type == bir::TypeKind::Ptr) {
+          global_object_address_ints[cast->result.str()] = GlobalAddress{
+              .global_name = global_name,
+              .value_type = bir::TypeKind::Ptr,
+              .byte_offset = 0,
+          };
+          return true;
         }
-        global_object_address_ints[cast->result.str()] = GlobalAddress{
-            .global_name = global_name,
-            .value_type = bir::TypeKind::Ptr,
-            .byte_offset = 0,
-        };
-        return true;
       }
 
-      if (cast->operand.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
-        return fail_scalar_cast();
-      }
+      if (cast->operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+        const auto global_object_it = global_object_pointer_slots.find(cast->operand.str());
+        if (global_object_it != global_object_pointer_slots.end()) {
+          global_object_address_ints[cast->result.str()] = global_object_it->second;
+          return true;
+        }
 
-      const auto global_object_it = global_object_pointer_slots.find(cast->operand.str());
-      if (global_object_it != global_object_pointer_slots.end()) {
-        global_object_address_ints[cast->result.str()] = global_object_it->second;
-        return true;
-      }
+        const auto global_ptr_it = global_pointer_slots.find(cast->operand.str());
+        if (global_ptr_it != global_pointer_slots.end()) {
+          global_address_ints[cast->result.str()] = global_ptr_it->second;
+          return true;
+        }
 
-      const auto global_ptr_it = global_pointer_slots.find(cast->operand.str());
-      if (global_ptr_it != global_pointer_slots.end()) {
-        global_address_ints[cast->result.str()] = global_ptr_it->second;
-        return true;
+        const auto pointer_addr = resolve_runtime_pointer_address(cast->operand.str());
+        if (pointer_addr.has_value()) {
+          pointer_address_ints[cast->result.str()] = *pointer_addr;
+          return true;
+        }
       }
-
-      const auto pointer_addr = resolve_runtime_pointer_address(cast->operand.str());
-      if (!pointer_addr.has_value()) {
-        return fail_scalar_cast();
-      }
-      pointer_address_ints[cast->result.str()] = *pointer_addr;
-      return true;
     }
 
     if (cast->kind == c4c::codegen::lir::LirCastKind::IntToPtr &&
@@ -237,16 +230,15 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       }
 
       const auto global_addr_it = global_address_ints.find(cast->operand.str());
-      if (global_addr_it == global_address_ints.end()) {
-        return fail_scalar_cast();
+      if (global_addr_it != global_address_ints.end()) {
+        global_pointer_slots[cast->result.str()] = global_addr_it->second;
+        return true;
       }
-      global_pointer_slots[cast->result.str()] = global_addr_it->second;
-      return true;
     }
 
     const auto opcode = lower_cast_opcode(cast->kind);
-    const auto from_type = lower_integer_type(cast->from_type.str());
-    const auto to_type = lower_integer_type(cast->to_type.str());
+    const auto from_type = lower_scalar_or_function_pointer_type(cast->from_type.str());
+    const auto to_type = lower_scalar_or_function_pointer_type(cast->to_type.str());
     if (!opcode.has_value() || !from_type.has_value() || !to_type.has_value()) {
       return fail_scalar_cast();
     }
@@ -254,6 +246,12 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     const auto operand = lower_value(cast->operand, *from_type, value_aliases);
     if (!operand.has_value()) {
       return fail_scalar_cast();
+    }
+
+    if (cast->kind == c4c::codegen::lir::LirCastKind::Bitcast &&
+        operand->type == *to_type) {
+      value_aliases[cast->result.str()] = *operand;
+      return true;
     }
 
     if (const auto folded = fold_integer_cast(cast->kind, *operand, *to_type);

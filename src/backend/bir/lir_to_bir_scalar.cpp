@@ -100,6 +100,24 @@ std::optional<bir::CastOpcode> BirFunctionLowerer::lower_cast_opcode(
       return bir::CastOpcode::ZExt;
     case c4c::codegen::lir::LirCastKind::Trunc:
       return bir::CastOpcode::Trunc;
+    case c4c::codegen::lir::LirCastKind::FPTrunc:
+      return bir::CastOpcode::FPTrunc;
+    case c4c::codegen::lir::LirCastKind::FPExt:
+      return bir::CastOpcode::FPExt;
+    case c4c::codegen::lir::LirCastKind::FPToSI:
+      return bir::CastOpcode::FPToSI;
+    case c4c::codegen::lir::LirCastKind::FPToUI:
+      return bir::CastOpcode::FPToUI;
+    case c4c::codegen::lir::LirCastKind::SIToFP:
+      return bir::CastOpcode::SIToFP;
+    case c4c::codegen::lir::LirCastKind::UIToFP:
+      return bir::CastOpcode::UIToFP;
+    case c4c::codegen::lir::LirCastKind::PtrToInt:
+      return bir::CastOpcode::PtrToInt;
+    case c4c::codegen::lir::LirCastKind::IntToPtr:
+      return bir::CastOpcode::IntToPtr;
+    case c4c::codegen::lir::LirCastKind::Bitcast:
+      return bir::CastOpcode::Bitcast;
     default:
       return std::nullopt;
   }

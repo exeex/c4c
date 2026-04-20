@@ -221,6 +221,15 @@ enum class CastOpcode : unsigned char {
   SExt,
   ZExt,
   Trunc,
+  FPTrunc,
+  FPExt,
+  FPToSI,
+  FPToUI,
+  SIToFP,
+  UIToFP,
+  PtrToInt,
+  IntToPtr,
+  Bitcast,
 };
 
 struct CastInst {

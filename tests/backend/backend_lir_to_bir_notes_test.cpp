@@ -369,6 +369,115 @@ LirModule make_bad_scalar_cast_module() {
   return module;
 }
 
+LirModule make_admitted_scalar_cast_lane_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "admitted_scalar_cast_lane";
+  function.signature_text = "define i32 @admitted_scalar_cast_lane()";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.slot.i"),
+      .type_str = "i32",
+      .count = LirOperand(""),
+      .align = 4,
+  });
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.slot.p"),
+      .type_str = "ptr",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "i32",
+      .val = LirOperand("5"),
+      .ptr = LirOperand("%lv.slot.i"),
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "ptr",
+      .val = LirOperand("null"),
+      .ptr = LirOperand("%lv.slot.p"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%t0"),
+      .type_str = "i32",
+      .ptr = LirOperand("%lv.slot.i"),
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%t1"),
+      .kind = LirCastKind::SIToFP,
+      .from_type = "i32",
+      .operand = LirOperand("%t0"),
+      .to_type = "float",
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%t2"),
+      .kind = LirCastKind::FPExt,
+      .from_type = "float",
+      .operand = LirOperand("%t1"),
+      .to_type = "double",
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%t3"),
+      .kind = LirCastKind::FPTrunc,
+      .from_type = "double",
+      .operand = LirOperand("%t2"),
+      .to_type = "float",
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%t4"),
+      .kind = LirCastKind::FPToSI,
+      .from_type = "float",
+      .operand = LirOperand("%t3"),
+      .to_type = "i32",
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%t5"),
+      .type_str = "ptr",
+      .ptr = LirOperand("%lv.slot.p"),
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%t6"),
+      .kind = LirCastKind::PtrToInt,
+      .from_type = "ptr",
+      .operand = LirOperand("%t5"),
+      .to_type = "i32",
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%t7"),
+      .kind = LirCastKind::IntToPtr,
+      .from_type = "i32",
+      .operand = LirOperand("%t6"),
+      .to_type = "ptr",
+  });
+  entry.insts.push_back(LirCastOp{
+      .result = LirOperand("%t8"),
+      .kind = LirCastKind::PtrToInt,
+      .from_type = "ptr",
+      .operand = LirOperand("%t7"),
+      .to_type = "i32",
+  });
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%t9"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::Add,
+      .type_str = "i32",
+      .lhs = LirOperand("%t4"),
+      .rhs = LirOperand("%t8"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::string("%t9"),
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_bad_alloca_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -1030,6 +1139,17 @@ int main() {
           "missing module note carrying the scalar-cast semantic family failure");
       scalar_cast_status != 0) {
     return scalar_cast_status;
+  }
+
+  if (const int admitted_scalar_cast_status = expect_success_without_function_note(
+          "admitted_scalar_cast_lane",
+          make_admitted_scalar_cast_lane_module(),
+          "failed in scalar-cast semantic family",
+          "latest function failure: semantic lir_to_bir function 'admitted_scalar_cast_lane' failed in scalar-cast semantic family",
+          "memory-path scalar casts that already have BIR opcodes should not keep reporting the scalar-cast semantic family",
+          "memory-path scalar casts that already have BIR opcodes should not keep the module on the scalar-cast semantic-family note");
+      admitted_scalar_cast_status != 0) {
+    return admitted_scalar_cast_status;
   }
 
   if (const int alloca_status = expect_failure_notes(

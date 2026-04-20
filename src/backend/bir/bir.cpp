@@ -157,6 +157,24 @@ std::string render_cast_opcode(CastOpcode opcode) {
       return "zext";
     case CastOpcode::Trunc:
       return "trunc";
+    case CastOpcode::FPTrunc:
+      return "fptrunc";
+    case CastOpcode::FPExt:
+      return "fpext";
+    case CastOpcode::FPToSI:
+      return "fptosi";
+    case CastOpcode::FPToUI:
+      return "fptoui";
+    case CastOpcode::SIToFP:
+      return "sitofp";
+    case CastOpcode::UIToFP:
+      return "uitofp";
+    case CastOpcode::PtrToInt:
+      return "ptrtoint";
+    case CastOpcode::IntToPtr:
+      return "inttoptr";
+    case CastOpcode::Bitcast:
+      return "bitcast";
   }
   return "<unknown>";
 }
