@@ -5,7 +5,7 @@ Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
 Source Plan Path: plan.md
 Current Step ID: 3.2
 Current Step Title: Replace Value-Home Guessing With Prepared Lookups
-Plan Review Counter: 8 / 10
+Plan Review Counter: 9 / 10
 # Current Packet
 
 ## Just Finished
@@ -13,9 +13,9 @@ Plan Review Counter: 8 / 10
 Step 3.2 (`Replace Value-Home Guessing With Prepared Lookups`) now covers one
 more bounded scalar immediate-binary shape inside
 `tests/backend/backend_x86_handoff_boundary_scalar_smoke_test.cpp`: the new
-`mask_low_bits` stack-home check mutates the prepared `p.x` home to
+`shift_left_three` stack-home check mutates the prepared `p.x` home to
 `PreparedValueHomeKind::StackSlot` so the minimal scalar x86 consumer proves it
-reads authoritative prepared stack-home data for the `and` lane instead of
+reads authoritative prepared stack-home data for the `shl` lane instead of
 falling back to register-only assumptions. Focused
 `backend_x86_handoff_boundary` proof passed for the added lane, and
 supervisor-side monotonic regression guard stayed flat against the matching
@@ -24,8 +24,8 @@ focused baseline.
 ## Suggested Next
 
 Continue Step 3.2 by extending the same prepared-home lookup route to the next
-bounded scalar case that still lacks direct prepared-home proof, preferably a
-small shift-immediate lane such as `shl`, `lshr`, or `ashr` so Step 3.2 keeps
+bounded scalar case that still lacks direct prepared-home proof, preferably one
+of the remaining right-shift lanes (`lshr` or `ashr`) so Step 3.2 keeps
 expanding the same authoritative prepared-home consumer path without widening
 into Step 3.3 boundary-move execution.
 
@@ -44,10 +44,10 @@ into Step 3.3 boundary-move execution.
   contract inside the scalar smoke tests; a later Step 3.2 slice should prefer
   a naturally produced stack-backed or rematerializable scalar fixture if one
   can stay bounded.
-- The `and` lane now has bounded stack-home coverage alongside `add`, `or`,
-  `xor`, and `mul`; the remaining obvious scalar-home gaps in this file are the
-  shift-immediate routes and any naturally produced non-mutated stack-home
-  fixture the shared producer can emit cleanly.
+- The `and` and `shl` lanes now have bounded stack-home coverage alongside
+  `add`, `or`, `xor`, and `mul`; the remaining obvious scalar-home gaps in this
+  file are the right-shift-immediate routes and any naturally produced
+  non-mutated stack-home fixture the shared producer can emit cleanly.
 - `PreparedValueHomeKind::RematerializableImmediate` is declared in shared
   prepare but still does not appear to be produced by current shared producer
   code, so a rematerializable follow-up should confirm producer support before
@@ -69,7 +69,7 @@ into Step 3.3 boundary-move execution.
 
 Ran `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R '^backend_x86_handoff_boundary' > test_after.log 2>&1`,
-which passed with the new Step 3.2 `mask_low_bits` stack-home prepared-home
+which passed with the new Step 3.2 `shift_left_three` stack-home prepared-home
 coverage. `test_after.log` is the canonical proof artifact for this packet.
 Supervisor-side monotonic regression guard
 (`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
