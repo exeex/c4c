@@ -5,7 +5,7 @@ Source Idea Path: ideas/open/60_prepared_value_location_consumption.md
 Source Plan Path: plan.md
 Current Step ID: 3.2
 Current Step Title: Replace Value-Home Guessing With Prepared Lookups
-Plan Review Counter: 6 / 10
+Plan Review Counter: 7 / 10
 # Current Packet
 
 ## Just Finished
@@ -67,7 +67,7 @@ boundary-move execution.
 
 Ran focused preflight `cmake --build --preset default && ctest --test-dir build
 -j --output-on-failure -R '^backend_x86_handoff_boundary'`, which passed with
-the new Step 3.2 commuted or-immediate prepared-home coverage. The delegated
+the new Step 3.2 `mul_three` stack-home prepared-home coverage. The delegated
 acceptance proof remains `ctest --test-dir build -j --output-on-failure -R
 '^backend_' > test_after.log 2>&1`, with `test_after.log` as the canonical
 proof artifact for this packet after the matching build succeeded. That subset
