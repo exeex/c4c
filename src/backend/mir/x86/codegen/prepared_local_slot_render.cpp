@@ -166,6 +166,45 @@ std::optional<PreparedI32ValueSelection> select_prepared_i32_value_if_supported(
   };
 }
 
+template <class ResolveNamedOperand>
+std::optional<std::string> render_prepared_i32_operand_if_supported(
+    const c4c::backend::bir::Value& value,
+    const std::optional<std::string_view>& current_i32_name,
+    ResolveNamedOperand&& resolve_named_operand) {
+  const auto selection = select_prepared_i32_value_if_supported(
+      value, current_i32_name, resolve_named_operand);
+  if (!selection.has_value()) {
+    return std::nullopt;
+  }
+  if (selection->immediate.has_value()) {
+    return std::to_string(*selection->immediate);
+  }
+  if (selection->in_eax) {
+    return std::string("eax");
+  }
+  if (!selection->operand.has_value()) {
+    return std::nullopt;
+  }
+  return *selection->operand;
+}
+
+template <class ResolveNamedOperand>
+std::optional<std::string> render_prepared_i32_move_to_register_if_supported(
+    const c4c::backend::bir::Value& value,
+    const std::optional<std::string_view>& current_i32_name,
+    std::string_view target_register,
+    ResolveNamedOperand&& resolve_named_operand) {
+  const auto operand = render_prepared_i32_operand_if_supported(
+      value, current_i32_name, resolve_named_operand);
+  if (!operand.has_value()) {
+    return std::nullopt;
+  }
+  if (*operand == target_register) {
+    return std::string{};
+  }
+  return "    mov " + std::string(target_register) + ", " + *operand + "\n";
+}
+
 std::optional<std::string> select_prepared_previous_i32_operand_if_supported(
     std::string_view value_name,
     const std::optional<std::string_view>& previous_i32_name) {
@@ -560,21 +599,11 @@ std::optional<std::string> select_prepared_i32_call_argument_move_if_supported(
   if (arg_type != c4c::backend::bir::TypeKind::I32) {
     return std::nullopt;
   }
-  const auto selected_arg = select_prepared_i32_value_if_supported(
+  return render_prepared_i32_move_to_register_if_supported(
       arg,
       current_i32_name,
+      abi_register,
       [](std::string_view) -> std::optional<std::string> { return std::nullopt; });
-  if (!selected_arg.has_value() || selected_arg->operand.has_value()) {
-    return std::nullopt;
-  }
-  if (selected_arg->immediate.has_value()) {
-    return "    mov " + std::string(abi_register) + ", " +
-           std::to_string(*selected_arg->immediate) + "\n";
-  }
-  if (!selected_arg->in_eax) {
-    return std::nullopt;
-  }
-  return "    mov " + std::string(abi_register) + ", eax\n";
 }
 
 bool prepared_frame_memory_accesses_match(
@@ -3373,9 +3402,10 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
     const auto render_value_to_eax =
         [&](const c4c::backend::bir::Value& value,
             const std::optional<std::string_view>& current_i32_name) -> std::optional<std::string> {
-          const auto selected_value = select_prepared_i32_value_if_supported(
+          return render_prepared_i32_move_to_register_if_supported(
               value,
               current_i32_name,
+              "eax",
               [&](std::string_view value_name) -> std::optional<std::string> {
                 const auto param_it = param_registers.find(value_name);
                 if (param_it == param_registers.end()) {
@@ -3383,21 +3413,11 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
                 }
                 return param_it->second;
               });
-          if (!selected_value.has_value()) {
-            return std::nullopt;
-          }
-          if (selected_value->immediate.has_value()) {
-            return "    mov eax, " + std::to_string(*selected_value->immediate) + "\n";
-          }
-          if (selected_value->in_eax) {
-            return std::string{};
-          }
-          return "    mov eax, " + *selected_value->operand + "\n";
         };
     const auto render_i32_operand =
         [&](const c4c::backend::bir::Value& value,
             const std::optional<std::string_view>& current_i32_name) -> std::optional<std::string> {
-          const auto selected_value = select_prepared_i32_value_if_supported(
+          return render_prepared_i32_operand_if_supported(
               value,
               current_i32_name,
               [&](std::string_view value_name) -> std::optional<std::string> {
@@ -3407,16 +3427,6 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
                 }
                 return param_it->second;
               });
-          if (!selected_value.has_value()) {
-            return std::nullopt;
-          }
-          if (selected_value->immediate.has_value()) {
-            return std::to_string(*selected_value->immediate);
-          }
-          if (selected_value->in_eax) {
-            return std::string("eax");
-          }
-          return *selected_value->operand;
         };
     const auto apply_binary_in_eax =
         [&](const c4c::backend::bir::BinaryInst& binary,
@@ -3546,7 +3556,7 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
       }
       used_same_module_globals.insert(global->name);
 
-      const auto selected_store_value = select_prepared_i32_value_if_supported(
+      const auto selected_store_operand = render_prepared_i32_operand_if_supported(
           store->value,
           current_i32_name,
           [&](std::string_view value_name) -> std::optional<std::string> {
@@ -3556,28 +3566,18 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
             }
             return param_it->second;
           });
-      if (!selected_store_value.has_value()) {
+      if (!selected_store_operand.has_value()) {
         return std::nullopt;
       }
-      if (selected_store_value->immediate.has_value()) {
-        body += "    mov " + *memory + ", ";
-        body += std::to_string(*selected_store_value->immediate);
-        body += "\n";
-        continue;
-      }
-      body += "    mov " + *memory + ", ";
-      if (selected_store_value->in_eax) {
-        body += "eax\n";
-        continue;
-      }
-      body += *selected_store_value->operand;
-      body += "\n";
+      body += "    mov " + *memory + ", " + *selected_store_operand + "\n";
+      continue;
     }
 
     const auto& returned = *candidate.blocks.front().terminator.value;
-    const auto selected_return = select_prepared_i32_value_if_supported(
+    const auto render_return_to_register = render_prepared_i32_move_to_register_if_supported(
         returned,
         current_i32_name,
+        *candidate_return_register,
         [&](std::string_view value_name) -> std::optional<std::string> {
           const auto param_it = param_registers.find(value_name);
           if (param_it == param_registers.end()) {
@@ -3585,19 +3585,10 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
           }
           return param_it->second;
         });
-    if (!selected_return.has_value()) {
+    if (!render_return_to_register.has_value()) {
       return std::nullopt;
     }
-    if (selected_return->immediate.has_value()) {
-      body += "    mov " + *candidate_return_register + ", " +
-              std::to_string(*selected_return->immediate) + "\n";
-    } else if (selected_return->in_eax) {
-      if (*candidate_return_register != "eax") {
-        body += "    mov " + *candidate_return_register + ", eax\n";
-      }
-    } else {
-      body += "    mov " + *candidate_return_register + ", " + *selected_return->operand + "\n";
-    }
+    body += *render_return_to_register;
     body += "    ret\n";
     return BoundedSameModuleHelperRender{
         .asm_text = minimal_function_asm_prefix(candidate) + body,
