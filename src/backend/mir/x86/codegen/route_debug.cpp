@@ -109,6 +109,12 @@ struct SingleBlockI64ImmediateReturnHelperFacts {
   std::string_view immediate_source = "direct i64";
 };
 
+struct SingleBlockI64AshrReturnHelperFacts {
+  std::string_view param_operand_side = "unknown";
+  std::string_view shift_operand_side = "unknown";
+  std::string_view shift_source = "direct i64";
+};
+
 void append_indented_line(std::ostringstream& out,
                           std::size_t indent,
                           std::string_view text) {
@@ -307,6 +313,15 @@ std::string render_single_block_i64_immediate_return_helper_facts(
       << ", param operand side=" << facts.param_operand_side
       << ", immediate operand side=" << facts.immediate_operand_side
       << ", immediate source=" << facts.immediate_source;
+  return out.str();
+}
+
+std::string render_single_block_i64_ashr_return_helper_facts(
+    const SingleBlockI64AshrReturnHelperFacts& facts) {
+  std::ostringstream out;
+  out << "prepared i64 arithmetic-right-shift return-helper facts: param operand side="
+      << facts.param_operand_side << ", shift operand side=" << facts.shift_operand_side
+      << ", shift source=" << facts.shift_source;
   return out.str();
 }
 
@@ -708,7 +723,7 @@ std::optional<FunctionRouteAttempt> build_single_block_void_call_sequence_lane_a
   };
 }
 
-std::optional<std::string> build_single_block_i64_ashr_return_helper_lane_detail(
+std::optional<FunctionRouteAttempt> build_single_block_i64_ashr_return_helper_lane_attempt(
     const c4c::backend::bir::Function& function) {
   if (function.is_declaration || !function.local_slots.empty() || function.blocks.size() != 1 ||
       function.return_type != c4c::backend::bir::TypeKind::I64 || function.params.size() != 1 ||
@@ -737,9 +752,20 @@ std::optional<std::string> build_single_block_i64_ashr_return_helper_lane_detail
     return std::nullopt;
   }
 
-  return "x86 backend emitter only supports single-block i64 return helpers when they already "
-         "reduce to the current direct passthrough or local i16/i64-sub helper surfaces; this "
-         "helper still carries an i64 arithmetic-right-shift immediate return";
+  return FunctionRouteAttempt{
+      .lane_name = "single-block-i64-ashr-return-helper",
+      .matched = false,
+      .detail =
+          "x86 backend emitter only supports single-block i64 return helpers when they already "
+          "reduce to the current direct passthrough or local i16/i64-sub helper surfaces; this "
+          "helper still carries an i64 arithmetic-right-shift immediate return",
+      .facts = render_single_block_i64_ashr_return_helper_facts(
+          SingleBlockI64AshrReturnHelperFacts{
+              .param_operand_side = "lhs",
+              .shift_operand_side = "rhs",
+              .shift_source = "direct i64",
+          }),
+  };
 }
 
 std::optional<FunctionRouteAttempt> build_single_block_i64_immediate_return_helper_lane_attempt(
@@ -1879,14 +1905,10 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
         single_block_void_call_sequence_attempt.has_value()) {
       report.attempts.push_back(std::move(*single_block_void_call_sequence_attempt));
     }
-    if (const auto single_block_i64_ashr_return_helper_detail =
-            build_single_block_i64_ashr_return_helper_lane_detail(*function);
-        single_block_i64_ashr_return_helper_detail.has_value()) {
-      report.attempts.push_back(FunctionRouteAttempt{
-          .lane_name = "single-block-i64-ashr-return-helper",
-          .matched = false,
-          .detail = std::move(single_block_i64_ashr_return_helper_detail),
-      });
+    if (const auto single_block_i64_ashr_return_helper_attempt =
+            build_single_block_i64_ashr_return_helper_lane_attempt(*function);
+        single_block_i64_ashr_return_helper_attempt.has_value()) {
+      report.attempts.push_back(std::move(*single_block_i64_ashr_return_helper_attempt));
     }
     if (const auto single_block_i64_immediate_return_helper_attempt =
             build_single_block_i64_immediate_return_helper_lane_attempt(*function);
