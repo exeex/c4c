@@ -8,6 +8,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace {
@@ -250,6 +251,179 @@ bir::Module make_x86_multi_defined_direct_call_lane_module() {
   return module;
 }
 
+bir::Module make_x86_multi_defined_byval_helper_call_lane_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.string_constants.push_back(bir::StringConstant{
+      .name = ".str0",
+      .bytes = "%d %d\n",
+  });
+
+  bir::Function printf_decl;
+  printf_decl.name = "printf";
+  printf_decl.is_declaration = true;
+  printf_decl.return_type = bir::TypeKind::I32;
+  printf_decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "%p._anon_param_",
+  });
+
+  bir::Function show;
+  show.name = "show";
+  show.return_type = bir::TypeKind::Void;
+  show.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "%p.p",
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .is_byval = true,
+  });
+  show.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.param.p.p.0",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_byval_copy = true,
+  });
+  show.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.param.p.p.4",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_byval_copy = true,
+  });
+  show.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.param.p.0",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_byval_copy = true,
+  });
+  show.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.param.p.4",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_byval_copy = true,
+  });
+
+  bir::Block show_entry;
+  show_entry.label = "entry";
+  show_entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%lv.param.p.p.aggregate.param.copy.0"),
+      .slot_name = "%p.p",
+      .byte_offset = 0,
+      .align_bytes = 4,
+  });
+  show_entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.param.p.p.0",
+      .value = bir::Value::named(bir::TypeKind::I32, "%lv.param.p.p.aggregate.param.copy.0"),
+  });
+  show_entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%lv.param.p.p.aggregate.param.copy.4"),
+      .slot_name = "%p.p",
+      .byte_offset = 4,
+      .align_bytes = 4,
+  });
+  show_entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.param.p.p.4",
+      .value = bir::Value::named(bir::TypeKind::I32, "%lv.param.p.p.aggregate.param.copy.4"),
+  });
+  show_entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%lv.param.p.byval.copy.0"),
+      .slot_name = "%p.p",
+      .byte_offset = 0,
+      .align_bytes = 4,
+  });
+  show_entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.param.p.0",
+      .value = bir::Value::named(bir::TypeKind::I32, "%lv.param.p.byval.copy.0"),
+  });
+  show_entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%lv.param.p.byval.copy.4"),
+      .slot_name = "%p.p",
+      .byte_offset = 4,
+      .align_bytes = 4,
+  });
+  show_entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.param.p.4",
+      .value = bir::Value::named(bir::TypeKind::I32, "%lv.param.p.byval.copy.4"),
+  });
+  show_entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%t2"),
+      .slot_name = "%lv.param.p.0",
+      .align_bytes = 4,
+  });
+  show_entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%t4"),
+      .slot_name = "%lv.param.p.4",
+      .align_bytes = 4,
+  });
+  show_entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%t5"),
+      .callee = "printf",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "@.str0"),
+               bir::Value::named(bir::TypeKind::I32, "%t2"),
+               bir::Value::named(bir::TypeKind::I32, "%t4")},
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::I32, bir::TypeKind::I32},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .is_variadic = true,
+  });
+  show_entry.terminator = bir::ReturnTerminator{};
+  show.blocks.push_back(std::move(show_entry));
+
+  bir::Function main_function;
+  main_function.name = "main";
+  main_function.return_type = bir::TypeKind::I32;
+  main_function.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.p.0",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_address_taken = true,
+  });
+  main_function.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.p.4",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_address_taken = true,
+  });
+
+  bir::Block main_entry;
+  main_entry.label = "entry";
+  main_entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.p.0",
+      .value = bir::Value::immediate_i32(7),
+  });
+  main_entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.p.4",
+      .value = bir::Value::immediate_i32(9),
+  });
+  main_entry.insts.push_back(bir::CallInst{
+      .callee = "show",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "%lv.p")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 4,
+          .passed_on_stack = true,
+          .byval_copy = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  main_entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+  main_function.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(show));
+  module.functions.push_back(std::move(printf_decl));
+  module.functions.push_back(std::move(main_function));
+  return module;
+}
+
 int check_route_outputs(const bir::Module& module,
                         const std::string& expected_asm,
                         const std::string& expected_bir_fragment,
@@ -293,6 +467,58 @@ int check_route_outputs(const bir::Module& module,
   if (prepared_bir_text.find(expected_bir_fragment) == std::string::npos) {
     return fail((std::string(failure_context) +
                  ": test fixture no longer prepares the expected semantic BIR shape before routing into x86")
+                    .c_str());
+  }
+
+  return 0;
+}
+
+int check_route_contains_fragments(
+    const bir::Module& module,
+    std::initializer_list<std::string_view> asm_fragments,
+    std::string_view expected_bir_fragment,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  const auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto prepared_bir_text = bir::print(prepared.module);
+
+  std::string prepared_asm;
+  try {
+    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  } catch (const std::exception& ex) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer rejected the prepared handoff with exception: " +
+                 ex.what())
+                    .c_str());
+  }
+  for (const auto fragment : asm_fragments) {
+    if (prepared_asm.find(fragment) == std::string::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer did not emit the expected helper-lane asm fragment")
+                      .c_str());
+    }
+  }
+
+  const auto public_asm = c4c::backend::emit_target_bir_module(module, target_profile);
+  if (public_asm != prepared_asm) {
+    return fail((std::string(failure_context) +
+                 ": public x86 BIR entry no longer routes through the x86 prepared-module consumer")
+                    .c_str());
+  }
+
+  const auto generic_asm = c4c::backend::emit_module(
+      BackendModuleInput{module}, BackendOptions{.target_profile = x86_target_profile()});
+  if (generic_asm != public_asm) {
+    return fail((std::string(failure_context) +
+                 ": generic backend emit path no longer routes x86 BIR input through emit_target_bir_module")
+                    .c_str());
+  }
+
+  if (prepared_bir_text.find(expected_bir_fragment) == std::string::npos) {
+    return fail((std::string(failure_context) +
+                 ": test fixture no longer prepares the expected semantic BIR helper shape before routing into x86")
                     .c_str());
   }
 
@@ -570,6 +796,19 @@ int run_backend_x86_handoff_boundary_multi_defined_call_tests() {
     return status;
   }
   if (const auto status = check_route_requires_authoritative_prepared_before_call_bundle();
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_route_contains_fragments(
+              make_x86_multi_defined_byval_helper_call_lane_module(),
+              {"show:\n",
+               "    lea rdi, [rip + .L.str0]\n",
+               "    call printf\n",
+               "main:\n",
+               "    call show\n"},
+              "bir.func @show(ptr byval(size=8, align=4) %p.p) -> void {",
+              "bounded multi-defined-function byval helper direct-extern prepared-module route");
       status != 0) {
     return status;
   }

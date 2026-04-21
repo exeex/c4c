@@ -665,12 +665,14 @@ struct PreparedBoundedMultiDefinedCallLaneModuleRender {
 struct PreparedBoundedSameModuleHelperPrefixRender {
   std::string helper_prefix;
   std::unordered_set<std::string_view> helper_names;
+  std::unordered_set<std::string_view> helper_string_names;
   std::unordered_set<std::string_view> helper_global_names;
 };
 
 struct PreparedModuleMultiDefinedDispatchState {
   std::string helper_prefix;
   std::unordered_set<std::string_view> helper_names;
+  std::unordered_set<std::string_view> helper_string_names;
   std::unordered_set<std::string_view> helper_global_names;
   std::optional<std::string> rendered_module;
   bool has_bounded_same_module_helpers = false;
@@ -923,6 +925,29 @@ find_prepared_bounded_multi_defined_named_value_home(
   return c4c::backend::prepare::find_prepared_value_home(module.names, function_locations, value_name);
 }
 
+inline std::optional<std::size_t>
+find_prepared_bounded_multi_defined_named_frame_offset_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    std::string_view value_name) {
+  if (value_name.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* home = find_prepared_bounded_multi_defined_named_value_home(
+      module, function_locations, value_name);
+  if (home == nullptr || home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
+      !home->slot_id.has_value()) {
+    return std::nullopt;
+  }
+  const auto frame_slot_it = local_layout.frame_slot_offsets.find(*home->slot_id);
+  if (frame_slot_it == local_layout.frame_slot_offsets.end()) {
+    return std::nullopt;
+  }
+  return frame_slot_it->second;
+}
+
 inline bool finalize_prepared_bounded_multi_defined_call_result_if_supported(
     const c4c::backend::bir::CallInst& call,
     std::size_t instruction_index,
@@ -1115,6 +1140,7 @@ inline bool append_prepared_bounded_multi_defined_call_argument_if_supported(
     std::size_t instruction_index,
     const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const PreparedModuleLocalSlotLayout& local_layout,
     const std::optional<PreparedBoundedMultiDefinedCurrentI32Carrier>& current_i32,
     const std::function<bool(std::string_view)>& has_string_constant,
     const std::function<bool(std::string_view)>& has_same_module_global,
@@ -1127,30 +1153,67 @@ inline bool append_prepared_bounded_multi_defined_call_argument_if_supported(
   static constexpr const char* kArgRegs32[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
 
   if (arg_type == c4c::backend::bir::TypeKind::Ptr) {
-    if (arg.kind != c4c::backend::bir::Value::Kind::Named || arg.name.empty() ||
-        arg.name.front() != '@') {
+    if (arg.kind != c4c::backend::bir::Value::Kind::Named || arg.name.empty()) {
       return false;
     }
-    const std::string_view symbol_name(arg.name.data() + 1, arg.name.size() - 1);
-    if (has_string_constant(symbol_name)) {
-      note_prepared_bounded_multi_defined_name_once(used_string_names, symbol_name);
+    if (arg.name.front() == '@') {
+      const std::string_view symbol_name(arg.name.data() + 1, arg.name.size() - 1);
+      if (has_string_constant(symbol_name)) {
+        note_prepared_bounded_multi_defined_name_once(used_string_names, symbol_name);
+        *body += "    lea ";
+        *body += kArgRegs64[arg_index];
+        *body += ", [rip + ";
+        *body += render_private_data_label(symbol_name);
+        *body += "]\n";
+        return true;
+      }
+      if (!has_same_module_global(symbol_name)) {
+        return false;
+      }
+      note_prepared_bounded_multi_defined_name_once(used_same_module_global_names,
+                                                    symbol_name);
       *body += "    lea ";
       *body += kArgRegs64[arg_index];
       *body += ", [rip + ";
-      *body += render_private_data_label(symbol_name);
+      *body += render_asm_symbol_name(symbol_name);
       *body += "]\n";
       return true;
     }
-    if (!has_same_module_global(symbol_name)) {
+
+    const auto* home = find_prepared_bounded_multi_defined_named_value_home(
+        module, function_locations, arg.name);
+    if (home != nullptr &&
+        home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+        home->register_name.has_value()) {
+      if (*home->register_name != kArgRegs64[arg_index]) {
+        *body += "    mov ";
+        *body += kArgRegs64[arg_index];
+        *body += ", ";
+        *body += *home->register_name;
+        *body += "\n";
+      }
+      return true;
+    }
+    if (home != nullptr &&
+        home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+        home->offset_bytes.has_value()) {
+      *body += "    lea ";
+      *body += kArgRegs64[arg_index];
+      *body += ", ";
+      *body += render_prepared_stack_address_expr(*home->offset_bytes);
+      *body += "\n";
+      return true;
+    }
+    const auto frame_offset = find_prepared_bounded_multi_defined_named_frame_offset_if_supported(
+        local_layout, module, function_locations, arg.name);
+    if (!frame_offset.has_value()) {
       return false;
     }
-    note_prepared_bounded_multi_defined_name_once(used_same_module_global_names,
-                                                  symbol_name);
     *body += "    lea ";
     *body += kArgRegs64[arg_index];
-    *body += ", [rip + ";
-    *body += render_asm_symbol_name(symbol_name);
-    *body += "]\n";
+    *body += ", ";
+    *body += render_prepared_stack_address_expr(*frame_offset);
+    *body += "\n";
     return true;
   }
 
@@ -1238,7 +1301,7 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
       for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
         if (!append_prepared_bounded_multi_defined_call_argument_if_supported(
                 call->args[arg_index], call->arg_types[arg_index], arg_index,
-                instruction_index, module, function_locations, current_i32,
+                instruction_index, module, function_locations, local_layout, current_i32,
                 has_string_constant, has_same_module_global, render_private_data_label,
                 render_asm_symbol_name, &rendered.used_string_names,
                 &rendered.used_same_module_global_names, &rendered.body)) {
@@ -1321,6 +1384,7 @@ render_prepared_bounded_multi_defined_call_lane_module_if_supported(
     const c4c::backend::prepare::PreparedBirModule& module,
     const std::vector<const c4c::backend::bir::Function*>& defined_functions,
     c4c::TargetArch prepared_arch,
+    const std::unordered_set<std::string_view>& helper_names,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
         render_trivial_defined_function,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
@@ -1334,6 +1398,7 @@ render_prepared_bounded_multi_defined_call_lane_module_if_supported(
 
 std::optional<PreparedBoundedSameModuleHelperPrefixRender>
 render_prepared_bounded_same_module_helper_prefix_if_supported(
+    const c4c::backend::prepare::PreparedBirModule& module,
     const std::vector<const c4c::backend::bir::Function*>& defined_functions,
     const c4c::backend::bir::Function& entry_function,
     c4c::TargetArch prepared_arch,
@@ -1345,14 +1410,19 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
         minimal_function_asm_prefix,
     const std::function<const c4c::backend::bir::Global*(std::string_view)>&
         find_same_module_global,
+    const std::function<bool(const c4c::backend::bir::Global&,
+                             c4c::backend::bir::TypeKind,
+                             std::size_t)>& same_module_global_supports_scalar_load,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Param&, std::size_t)>&
         minimal_param_register_at,
+    const std::function<std::string(std::string_view)>& render_private_data_label,
     const std::function<std::string(std::string_view)>& render_asm_symbol_name);
 
 std::optional<std::string>
 render_prepared_bounded_multi_defined_call_lane_data_if_supported(
     const PreparedBoundedMultiDefinedCallLaneModuleRender& rendered_module,
     const c4c::backend::bir::Module& module,
+    const std::unordered_set<std::string_view>& helper_string_names,
     const std::unordered_set<std::string_view>& helper_global_names,
     const std::function<const c4c::backend::bir::StringConstant*(std::string_view)>&
         find_string_constant,
@@ -1365,6 +1435,8 @@ std::optional<std::string> render_prepared_bounded_multi_defined_call_lane_if_su
     const c4c::backend::prepare::PreparedBirModule& module,
     const std::vector<const c4c::backend::bir::Function*>& defined_functions,
     c4c::TargetArch prepared_arch,
+    const std::unordered_set<std::string_view>& helper_names,
+    const std::unordered_set<std::string_view>& helper_string_names,
     const std::unordered_set<std::string_view>& helper_global_names,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
         render_trivial_defined_function,
@@ -1396,11 +1468,14 @@ PreparedModuleMultiDefinedDispatchState build_prepared_module_multi_defined_disp
         minimal_function_asm_prefix,
     const std::function<const c4c::backend::bir::Global*(std::string_view)>&
         find_same_module_global,
+    const std::function<bool(const c4c::backend::bir::Global&,
+                             c4c::backend::bir::TypeKind,
+                             std::size_t)>& same_module_global_supports_scalar_load,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Param&, std::size_t)>&
         minimal_param_register_at,
+    const std::function<std::string(std::string_view)>& render_private_data_label,
     const std::function<bool(std::string_view)>& has_string_constant,
     const std::function<bool(std::string_view)>& has_same_module_global,
-    const std::function<std::string(std::string_view)>& render_private_data_label,
     const std::function<std::string(std::string_view)>& render_asm_symbol_name,
     const std::function<const c4c::backend::bir::StringConstant*(std::string_view)>&
         find_string_constant,

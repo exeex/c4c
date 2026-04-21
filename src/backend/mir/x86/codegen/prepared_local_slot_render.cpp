@@ -1668,6 +1668,21 @@ std::optional<std::string> render_prepared_block_return_terminator_if_supported(
   return body;
 }
 
+std::optional<std::string> render_prepared_void_block_return_terminator_if_supported(
+    const PreparedX86BlockDispatchContext& block_context,
+    std::string body,
+    std::string_view function_callee_saved_restore_asm) {
+  if (block_context.local_layout == nullptr) {
+    return std::nullopt;
+  }
+  if (block_context.local_layout->frame_size != 0) {
+    body += "    add rsp, " + std::to_string(block_context.local_layout->frame_size) + "\n";
+  }
+  body += function_callee_saved_restore_asm;
+  body += "    ret\n";
+  return body;
+}
+
 std::optional<std::string> render_prepared_cast_inst_if_supported(
     const c4c::backend::bir::CastInst& cast,
     std::optional<std::string_view>* current_i32_name,
@@ -2967,6 +2982,7 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
   const auto instruction_index =
       static_cast<std::size_t>(&inst - block_context.block->insts.data());
   std::string body;
+  static constexpr const char* kArgRegs64[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
   for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
     const auto& arg = call->args[arg_index];
     const auto arg_type = call->arg_types[arg_index];
@@ -2992,6 +3008,93 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
       }
       body += "    mov " + *destination_register + ", " + std::to_string(arg.immediate) + "\n";
       continue;
+    }
+    if (arg_type == c4c::backend::bir::TypeKind::Ptr) {
+      if (arg.kind != c4c::backend::bir::Value::Kind::Named) {
+        return std::nullopt;
+      }
+      if (!arg.name.empty() && arg.name.front() == '@') {
+        const std::string_view symbol_name(arg.name.data() + 1, arg.name.size() - 1);
+        if (function_context.find_string_constant != nullptr) {
+          if (const auto* string_constant = function_context.find_string_constant(symbol_name);
+              string_constant != nullptr) {
+            if (function_context.used_string_names != nullptr) {
+              function_context.used_string_names->insert(symbol_name);
+            }
+            body += "    lea ";
+            body += kArgRegs64[arg_index];
+            body += ", [rip + ";
+            body += function_context.render_private_data_label(symbol_name);
+            body += "]\n";
+            continue;
+          }
+        }
+        if (function_context.find_same_module_global != nullptr) {
+          if (const auto* global = function_context.find_same_module_global(symbol_name);
+              global != nullptr) {
+            if (function_context.used_same_module_global_names != nullptr) {
+              function_context.used_same_module_global_names->insert(global->name);
+            }
+            body += "    lea ";
+            body += kArgRegs64[arg_index];
+            body += ", [rip + ";
+            body += function_context.render_asm_symbol_name(global->name);
+            body += "]\n";
+            continue;
+          }
+        }
+        return std::nullopt;
+      }
+      if (current_ptr_name->has_value() && **current_ptr_name == arg.name) {
+        if (std::string_view(kArgRegs64[arg_index]) != "rax") {
+          body += "    mov ";
+          body += kArgRegs64[arg_index];
+          body += ", rax\n";
+        }
+        continue;
+      }
+      if (function_context.prepared_names != nullptr && function_context.function_locations != nullptr) {
+        const auto* home = c4c::backend::prepare::find_prepared_value_home(
+            *function_context.prepared_names, *function_context.function_locations, arg.name);
+        if (home != nullptr) {
+          if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+              home->register_name.has_value()) {
+            if (*home->register_name != kArgRegs64[arg_index]) {
+              body += "    mov ";
+              body += kArgRegs64[arg_index];
+              body += ", ";
+              body += *home->register_name;
+              body += "\n";
+            }
+            continue;
+          }
+          if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+              home->offset_bytes.has_value()) {
+            body += "    lea ";
+            body += kArgRegs64[arg_index];
+            body += ", ";
+            body += render_prepared_stack_address_expr(*home->offset_bytes);
+            body += "\n";
+            continue;
+          }
+        }
+      }
+      if (block_context.local_layout != nullptr) {
+        const auto frame_offset = find_prepared_value_home_frame_offset(
+            *block_context.local_layout,
+            function_context.prepared_names,
+            function_context.function_locations,
+            arg.name);
+        if (frame_offset.has_value()) {
+          body += "    lea ";
+          body += kArgRegs64[arg_index];
+          body += ", ";
+          body += render_prepared_stack_address_expr(*frame_offset);
+          body += "\n";
+          continue;
+        }
+      }
+      return std::nullopt;
     }
     if (arg_type != c4c::backend::bir::TypeKind::I32) {
       return std::nullopt;
@@ -3758,19 +3861,23 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
       body = render_block_reentry_label(block) + ":\n" + body;
     }
     if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Return) {
-      if (*compare_index != block.insts.size() || !block.terminator.value.has_value()) {
+      if (*compare_index != block.insts.size()) {
         if (needs_reentry_label) {
           rendered_blocks.erase(block.label);
         }
         return std::nullopt;
       }
-      const auto rendered_return = render_prepared_block_return_terminator_if_supported(
-          block_context,
-          std::move(body),
-          *block.terminator.value,
-          current_i32_name,
-          previous_i32_name,
-          function_callee_saved_restore_asm);
+      const auto rendered_return =
+          block.terminator.value.has_value()
+              ? render_prepared_block_return_terminator_if_supported(
+                    block_context,
+                    std::move(body),
+                    *block.terminator.value,
+                    current_i32_name,
+                    previous_i32_name,
+                    function_callee_saved_restore_asm)
+              : render_prepared_void_block_return_terminator_if_supported(
+                    block_context, std::move(body), function_callee_saved_restore_asm);
       if (!rendered_return.has_value()) {
         if (needs_reentry_label) {
           rendered_blocks.erase(block.label);
@@ -5669,6 +5776,7 @@ render_prepared_bounded_multi_defined_call_lane_module_if_supported(
     const c4c::backend::prepare::PreparedBirModule& module,
     const std::vector<const c4c::backend::bir::Function*>& defined_functions,
     c4c::TargetArch prepared_arch,
+    const std::unordered_set<std::string_view>& helper_names,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
         render_trivial_defined_function,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
@@ -5689,6 +5797,9 @@ render_prepared_bounded_multi_defined_call_lane_module_if_supported(
   bool saw_bounded_entry = false;
 
   for (const auto* candidate : defined_functions) {
+    if (helper_names.find(candidate->name) != helper_names.end()) {
+      continue;
+    }
     if (const auto rendered_trivial = render_trivial_defined_function(*candidate);
         rendered_trivial.has_value()) {
       rendered.rendered_functions += *rendered_trivial;
@@ -5768,8 +5879,12 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
         minimal_function_asm_prefix,
     const std::function<const c4c::backend::bir::Global*(std::string_view)>&
         find_same_module_global,
+    const std::function<bool(const c4c::backend::bir::Global&,
+                             c4c::backend::bir::TypeKind,
+                             std::size_t)>& same_module_global_supports_scalar_load,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Param&, std::size_t)>&
         minimal_param_register_at,
+    const std::function<std::string(std::string_view)>& render_private_data_label,
     const std::function<std::string(std::string_view)>& render_asm_symbol_name) {
   if (defined_functions.size() <= 1 || entry_function.name != "main") {
     return std::nullopt;
@@ -5777,7 +5892,280 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
 
   struct BoundedSameModuleHelperRender {
     std::string asm_text;
+    std::unordered_set<std::string_view> used_string_names;
     std::unordered_set<std::string_view> used_same_module_globals;
+  };
+
+  const auto render_generic_bounded_same_module_helper_function_if_supported =
+      [&](const c4c::backend::bir::Function& candidate)
+      -> std::optional<BoundedSameModuleHelperRender> {
+    if (prepared_arch != c4c::TargetArch::X86_64 || candidate.is_declaration ||
+        candidate.blocks.empty()) {
+      return std::nullopt;
+    }
+    const auto candidate_function_name_id =
+        c4c::backend::prepare::resolve_prepared_function_name_id(module.names, candidate.name)
+            .value_or(c4c::kInvalidFunctionName);
+    if (candidate_function_name_id == c4c::kInvalidFunctionName) {
+      return std::nullopt;
+    }
+    const auto* candidate_function_locations =
+        c4c::backend::prepare::find_prepared_value_location_function(module.value_locations,
+                                                                     candidate_function_name_id);
+    if (candidate_function_locations == nullptr) {
+      return std::nullopt;
+    }
+    const auto* candidate_function_control_flow =
+        c4c::backend::prepare::find_prepared_control_flow_function(module.control_flow,
+                                                                   candidate_function_name_id);
+    const auto* candidate_function_addressing =
+        c4c::backend::prepare::find_prepared_addressing(module, candidate_function_name_id);
+    const auto candidate_asm_prefix = minimal_function_asm_prefix(candidate);
+    std::string candidate_return_register;
+    if (candidate.return_type == c4c::backend::bir::TypeKind::I32) {
+      const auto selected_return_register = minimal_function_return_register(candidate);
+      if (!selected_return_register.has_value()) {
+        return std::nullopt;
+      }
+      candidate_return_register = *selected_return_register;
+    }
+    const auto find_block = [&](std::string_view label) -> const c4c::backend::bir::Block* {
+      for (const auto& block : candidate.blocks) {
+        if (block.label == label) {
+          return &block;
+        }
+      }
+      return nullptr;
+    };
+    static const std::unordered_set<std::string_view> kNoHelperNames;
+    std::unordered_set<std::string_view> used_string_names;
+    std::unordered_set<std::string_view> used_same_module_globals;
+    const PreparedX86FunctionDispatchContext function_dispatch_context{
+        .prepared_module = &module,
+        .module = &module.module,
+        .function = &candidate,
+        .entry = &candidate.blocks.front(),
+        .stack_layout = &module.stack_layout,
+        .function_addressing = candidate_function_addressing,
+        .prepared_names = &module.names,
+        .function_locations = candidate_function_locations,
+        .function_control_flow = candidate_function_control_flow,
+        .prepared_arch = prepared_arch,
+        .asm_prefix = candidate_asm_prefix,
+        .return_register = candidate_return_register,
+        .bounded_same_module_helper_names = &kNoHelperNames,
+        .bounded_same_module_helper_global_names = &kNoHelperNames,
+        .find_block = find_block,
+        .find_string_constant =
+            [&](std::string_view symbol_name) -> const c4c::backend::bir::StringConstant* {
+              for (const auto& string_constant : module.module.string_constants) {
+                if (string_constant.name == symbol_name) {
+                  return &string_constant;
+                }
+              }
+              return nullptr;
+            },
+        .find_same_module_global = find_same_module_global,
+        .same_module_global_supports_scalar_load = same_module_global_supports_scalar_load,
+        .render_private_data_label = render_private_data_label,
+        .render_asm_symbol_name = render_asm_symbol_name,
+        .emit_string_constant_data =
+            [](const c4c::backend::bir::StringConstant&) -> std::string { return {}; },
+        .emit_same_module_global_data =
+            [](const c4c::backend::bir::Global&) -> std::optional<std::string> {
+              return std::string{};
+            },
+        .prepend_bounded_same_module_helpers = [](std::string asm_text) { return asm_text; },
+        .minimal_param_register =
+            [&](const c4c::backend::bir::Param& param) -> std::optional<std::string> {
+              auto param_it = candidate.params.begin();
+              for (std::size_t arg_index = 0; param_it != candidate.params.end();
+                   ++param_it, ++arg_index) {
+                if (&*param_it == &param) {
+                  return minimal_param_register_at(param, arg_index);
+                }
+              }
+              return std::nullopt;
+            },
+        .used_string_names = &used_string_names,
+        .used_same_module_global_names = &used_same_module_globals,
+        .defer_module_data_emission = true,
+    };
+    const auto rendered_void_direct_extern_helper = [&]() -> std::optional<std::string> {
+      if (candidate.return_type != c4c::backend::bir::TypeKind::Void ||
+          candidate.blocks.size() != 1 || candidate.blocks.front().label != "entry" ||
+          candidate.blocks.front().terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+          candidate.blocks.front().terminator.value.has_value()) {
+        return std::nullopt;
+      }
+      const auto layout = build_prepared_module_local_slot_layout(
+          candidate,
+          &module.stack_layout,
+          candidate_function_addressing,
+          &module.names,
+          candidate_function_locations,
+          prepared_arch);
+      if (!layout.has_value()) {
+        return std::nullopt;
+      }
+      const auto block_context =
+          function_dispatch_context.make_block_context(candidate.blocks.front(), *layout);
+      std::string body;
+      if (layout->frame_size != 0) {
+        body += "    sub rsp, " + std::to_string(layout->frame_size) + "\n";
+      }
+      std::optional<std::string_view> current_i32_name;
+      std::optional<std::string_view> previous_i32_name;
+      std::optional<std::string_view> current_i8_name;
+      std::optional<std::string_view> current_ptr_name;
+      std::optional<MaterializedI32Compare> current_materialized_compare;
+      const auto render_helper_local_load_without_prepared_access =
+          [&](const c4c::backend::bir::Inst& inst) -> std::optional<std::string> {
+            const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
+            if (load == nullptr || load->address.has_value() ||
+                load->result.kind != c4c::backend::bir::Value::Kind::Named) {
+              return std::nullopt;
+            }
+            const auto size_name = prepared_scalar_memory_operand_size_name(load->result.type);
+            if (!size_name.has_value()) {
+              return std::nullopt;
+            }
+            std::optional<std::size_t> base_offset;
+            const auto slot_it = layout->offsets.find(load->slot_name);
+            if (slot_it != layout->offsets.end()) {
+              base_offset = slot_it->second;
+            } else {
+              base_offset = find_prepared_value_home_frame_offset(
+                  *layout, &module.names, candidate_function_locations, load->slot_name);
+            }
+            if (!base_offset.has_value()) {
+              return std::nullopt;
+            }
+            const auto rendered_load = render_prepared_scalar_load_from_memory_if_supported(
+                load->result.type,
+                render_prepared_stack_memory_operand(*base_offset + load->byte_offset, *size_name));
+            if (!rendered_load.has_value()) {
+              return std::nullopt;
+            }
+            std::string body = *rendered_load;
+            current_materialized_compare = std::nullopt;
+            if (load->result.type == c4c::backend::bir::TypeKind::Ptr) {
+              current_i32_name = std::nullopt;
+              previous_i32_name = std::nullopt;
+              current_i8_name = std::nullopt;
+              current_ptr_name = load->result.name;
+              return body;
+            }
+            current_ptr_name = std::nullopt;
+            if (load->result.type == c4c::backend::bir::TypeKind::I8) {
+              current_i32_name = std::nullopt;
+              previous_i32_name = std::nullopt;
+              current_i8_name = load->result.name;
+              return body;
+            }
+            if (load->result.type != c4c::backend::bir::TypeKind::I32) {
+              return std::nullopt;
+            }
+            if (current_i32_name.has_value()) {
+              body = "    mov ecx, eax\n" + body;
+              previous_i32_name = current_i32_name;
+            } else {
+              previous_i32_name = std::nullopt;
+            }
+            current_i32_name = load->result.name;
+            current_i8_name = std::nullopt;
+            return body;
+          };
+      for (std::size_t inst_index = 0; inst_index < candidate.blocks.front().insts.size(); ++inst_index) {
+        const auto& inst = candidate.blocks.front().insts[inst_index];
+        if (const auto rendered_load = render_prepared_scalar_load_inst_if_supported(
+                inst,
+                *layout,
+                &module.names,
+                candidate_function_locations,
+                candidate_function_addressing,
+                block_context.block_label_id,
+                inst_index,
+                render_asm_symbol_name,
+                find_same_module_global,
+                [&](const c4c::backend::bir::Global& global,
+                    c4c::backend::bir::TypeKind type,
+                    std::int64_t byte_offset) {
+                  return byte_offset >= 0 &&
+                         same_module_global_supports_scalar_load(
+                             global, type, static_cast<std::size_t>(byte_offset));
+                },
+                &used_same_module_globals,
+                &current_i32_name,
+                &previous_i32_name,
+                &current_i8_name,
+                &current_ptr_name,
+                &current_materialized_compare);
+            rendered_load.has_value()) {
+          body += *rendered_load;
+          continue;
+        }
+        if (const auto rendered_load_without_access =
+                render_helper_local_load_without_prepared_access(inst);
+            rendered_load_without_access.has_value()) {
+          body += *rendered_load_without_access;
+          continue;
+        }
+        if (const auto rendered_store = render_prepared_scalar_store_inst_if_supported(
+                inst,
+                *layout,
+                &candidate.blocks.front(),
+                &module.names,
+                candidate_function_locations,
+                candidate_function_addressing,
+                block_context.block_label_id,
+                inst_index,
+                render_asm_symbol_name,
+                find_same_module_global,
+                &used_same_module_globals,
+                &current_i32_name,
+                &previous_i32_name,
+                &current_i8_name,
+                &current_ptr_name,
+                &current_materialized_compare);
+            rendered_store.has_value()) {
+          body += *rendered_store;
+          continue;
+        }
+        if (const auto rendered_call = render_prepared_block_direct_extern_call_inst_if_supported(
+                block_context,
+                inst,
+                &current_i32_name,
+                &previous_i32_name,
+                &current_i8_name,
+                &current_ptr_name,
+                &current_materialized_compare);
+            rendered_call.has_value()) {
+          body += *rendered_call;
+          continue;
+        }
+        return std::nullopt;
+      }
+      const auto rendered_return = render_prepared_void_block_return_terminator_if_supported(
+          block_context, std::move(body), {});
+      if (!rendered_return.has_value()) {
+        return std::nullopt;
+      }
+      return candidate_asm_prefix + *rendered_return;
+    };
+    const auto rendered_void_helper = rendered_void_direct_extern_helper();
+    const auto rendered_asm =
+        rendered_void_helper.has_value()
+            ? rendered_void_helper
+            : render_prepared_local_slot_guard_chain_if_supported(function_dispatch_context);
+    if (!rendered_asm.has_value()) {
+      return std::nullopt;
+    }
+    return BoundedSameModuleHelperRender{
+        .asm_text = std::move(*rendered_asm),
+        .used_string_names = std::move(used_string_names),
+        .used_same_module_globals = std::move(used_same_module_globals),
+    };
   };
 
   const auto render_bounded_same_module_helper_function_if_supported =
@@ -5968,10 +6356,26 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
       rendered_helpers.helper_prefix += *rendered_trivial;
       continue;
     }
+    if (const auto rendered_generic =
+            render_generic_bounded_same_module_helper_function_if_supported(*candidate);
+        rendered_generic.has_value()) {
+      for (const auto string_name : rendered_generic->used_string_names) {
+        rendered_helpers.helper_string_names.insert(string_name);
+      }
+      for (const auto global_name : rendered_generic->used_same_module_globals) {
+        rendered_helpers.helper_global_names.insert(global_name);
+      }
+      rendered_helpers.helper_names.insert(candidate->name);
+      rendered_helpers.helper_prefix += rendered_generic->asm_text;
+      continue;
+    }
     const auto rendered_helper =
         render_bounded_same_module_helper_function_if_supported(*candidate);
     if (!rendered_helper.has_value()) {
       return std::nullopt;
+    }
+    for (const auto string_name : rendered_helper->used_string_names) {
+      rendered_helpers.helper_string_names.insert(string_name);
     }
     for (const auto global_name : rendered_helper->used_same_module_globals) {
       rendered_helpers.helper_global_names.insert(global_name);
@@ -5987,6 +6391,7 @@ std::optional<std::string>
 render_prepared_bounded_multi_defined_call_lane_data_if_supported(
     const PreparedBoundedMultiDefinedCallLaneModuleRender& rendered_module,
     const c4c::backend::bir::Module& module,
+    const std::unordered_set<std::string_view>& helper_string_names,
     const std::unordered_set<std::string_view>& helper_global_names,
     const std::function<const c4c::backend::bir::StringConstant*(std::string_view)>&
         find_string_constant,
@@ -5995,12 +6400,20 @@ render_prepared_bounded_multi_defined_call_lane_data_if_supported(
     const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
         emit_same_module_global_data) {
   std::string rendered_data;
+  std::unordered_set<std::string_view> emitted_string_names;
   std::unordered_set<std::string_view> used_same_module_globals(
       rendered_module.used_same_module_global_names.begin(),
       rendered_module.used_same_module_global_names.end());
+  for (const auto& string_name : helper_string_names) {
+    const auto* string_constant = find_string_constant(string_name);
+    if (string_constant == nullptr || !emitted_string_names.insert(string_name).second) {
+      continue;
+    }
+    rendered_data += emit_string_constant_data(*string_constant);
+  }
   for (const auto& string_name : rendered_module.used_string_names) {
     const auto* string_constant = find_string_constant(string_name);
-    if (string_constant == nullptr) {
+    if (string_constant == nullptr || !emitted_string_names.insert(string_name).second) {
       return std::nullopt;
     }
     rendered_data += emit_string_constant_data(*string_constant);
@@ -6023,6 +6436,8 @@ std::optional<std::string> render_prepared_bounded_multi_defined_call_lane_if_su
     const c4c::backend::prepare::PreparedBirModule& module,
     const std::vector<const c4c::backend::bir::Function*>& defined_functions,
     c4c::TargetArch prepared_arch,
+    const std::unordered_set<std::string_view>& helper_names,
+    const std::unordered_set<std::string_view>& helper_string_names,
     const std::unordered_set<std::string_view>& helper_global_names,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
         render_trivial_defined_function,
@@ -6041,7 +6456,7 @@ std::optional<std::string> render_prepared_bounded_multi_defined_call_lane_if_su
     const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
         emit_same_module_global_data) {
   const auto rendered_module = render_prepared_bounded_multi_defined_call_lane_module_if_supported(
-      module, defined_functions, prepared_arch, render_trivial_defined_function,
+      module, defined_functions, prepared_arch, helper_names, render_trivial_defined_function,
       minimal_function_return_register, minimal_function_asm_prefix, has_string_constant,
       has_same_module_global, render_private_data_label, render_asm_symbol_name);
   if (!rendered_module.has_value()) {
@@ -6049,7 +6464,7 @@ std::optional<std::string> render_prepared_bounded_multi_defined_call_lane_if_su
   }
 
   const auto rendered_data = render_prepared_bounded_multi_defined_call_lane_data_if_supported(
-      *rendered_module, module.module, helper_global_names, find_string_constant,
+      *rendered_module, module.module, helper_string_names, helper_global_names, find_string_constant,
       emit_string_constant_data,
       emit_same_module_global_data);
   if (!rendered_data.has_value()) {
@@ -6071,11 +6486,14 @@ PreparedModuleMultiDefinedDispatchState build_prepared_module_multi_defined_disp
         minimal_function_asm_prefix,
     const std::function<const c4c::backend::bir::Global*(std::string_view)>&
         find_same_module_global,
+    const std::function<bool(const c4c::backend::bir::Global&,
+                             c4c::backend::bir::TypeKind,
+                             std::size_t)>& same_module_global_supports_scalar_load,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Param&, std::size_t)>&
         minimal_param_register_at,
+    const std::function<std::string(std::string_view)>& render_private_data_label,
     const std::function<bool(std::string_view)>& has_string_constant,
     const std::function<bool(std::string_view)>& has_same_module_global,
-    const std::function<std::string(std::string_view)>& render_private_data_label,
     const std::function<std::string(std::string_view)>& render_asm_symbol_name,
     const std::function<const c4c::backend::bir::StringConstant*(std::string_view)>&
         find_string_constant,
@@ -6088,17 +6506,20 @@ PreparedModuleMultiDefinedDispatchState build_prepared_module_multi_defined_disp
     if (const auto helpers = render_prepared_bounded_same_module_helper_prefix_if_supported(
             module, defined_functions, *entry_function, prepared_arch,
             render_trivial_defined_function, minimal_function_return_register,
-            minimal_function_asm_prefix, find_same_module_global, minimal_param_register_at,
-            render_asm_symbol_name);
+            minimal_function_asm_prefix, find_same_module_global,
+            same_module_global_supports_scalar_load, minimal_param_register_at,
+            render_private_data_label, render_asm_symbol_name);
         helpers.has_value()) {
       state.helper_prefix = helpers->helper_prefix;
       state.helper_names = std::move(helpers->helper_names);
+      state.helper_string_names = std::move(helpers->helper_string_names);
       state.helper_global_names = std::move(helpers->helper_global_names);
       state.has_bounded_same_module_helpers = true;
     }
   }
   state.rendered_module = render_prepared_bounded_multi_defined_call_lane_if_supported(
-      module, defined_functions, prepared_arch, state.helper_global_names,
+      module, defined_functions, prepared_arch, state.helper_names, state.helper_string_names,
+      state.helper_global_names,
       render_trivial_defined_function, minimal_function_return_register, minimal_function_asm_prefix,
       has_string_constant, has_same_module_global, render_private_data_label, render_asm_symbol_name,
       find_string_constant, emit_string_constant_data, emit_same_module_global_data);

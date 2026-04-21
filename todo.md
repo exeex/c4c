@@ -5,41 +5,36 @@ Source Idea Path: ideas/open/61_call_bundle_and_multi_function_prepared_module_c
 Source Plan Path: plan.md
 Current Step ID: 2.1
 Current Step Title: Repair The Selected Prepared-Module Or Call-Bundle Seam
-Plan Review Counter: 0 / 10
+Plan Review Counter: 1 / 10
 # Current Packet
 
 ## Just Finished
 
-Plan Step 2.1 packet inspection narrowed the current idea-61 blocker inside
-`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`: the bounded
-same-module helper prefix must successfully render every non-entry helper, but
-its current inventory only accepts trivial helpers or one-block scalar helpers
-with `i32` params/returns, no local slots, and no call-heavy bodies. That
-means `c_testsuite_x86_backend_src_00204_c` still falls out of the bounded
-multi-defined lane before any honest prepared-module repair landed.
+Plan Step 2.1 now supports the bounded same-module helper / main-entry lane for
+the byval-helper direct-extern boundary route. `backend_x86_handoff_boundary`
+passes with the repaired bounded multi-defined helper-prefix and main-entry
+consumption path, while `c_testsuite_x86_backend_src_00204_c` still fails with
+the old fallback `minimal i32 return function` diagnostic.
 
 ## Suggested Next
 
-Take a follow-on idea-61 packet that designs and implements the next generic
-same-module helper inventory expansion in the bounded multi-defined lane,
-starting with dedicated multi-defined boundary coverage for aggregate-param /
-aggregate-return helper functions or call-heavy void helpers before using
-`00204.c` as the proving case again.
+Take a fresh idea-61 packet that inspects `00204`'s prepared module / route
+selection to identify why it still falls through to the old
+minimal-single-function rejection instead of entering the repaired bounded
+multi-defined same-module helper lane.
 
 ## Watchouts
 
-- Do not claim progress by teaching `render_defined_function` one named helper
-  shape after the bounded helper prefix already failed.
-- The blocking seam is inside the owned multi-defined helper/module files, but
-  it is broader than a one-off aggregate helper matcher and needs dedicated
-  boundary coverage first.
-- Keep `00204.c` in idea 61 until the bounded helper inventory genuinely
-  advances back into scalar-return or call-family downstream ownership.
+- The bounded same-module helper/main-entry seam is no longer the first rejector
+  for the owned route; the next packet should start from `00204` prepared-module
+  shape and route choice, not from the already-repaired byval boundary.
+- Keep the next packet generic to prepared-module route selection and avoid
+  reopening helper-name or testcase-shaped shortcuts.
 
 ## Proof
 
-Blocked packet proof rerun with
+Accepted slice proved with
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$'; } > test_after.log 2>&1`.
-Current proof still leaves `backend_x86_handoff_boundary` passing and
-`c_testsuite_x86_backend_src_00204_c` failing with the fallback
+Current proof leaves `backend_x86_handoff_boundary` passing, while
+`c_testsuite_x86_backend_src_00204_c` still fails with the old
 `minimal i32 return function` diagnostic. Log path: `test_after.log`.

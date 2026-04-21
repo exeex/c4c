@@ -312,13 +312,14 @@ std::string emit_prepared_module(
   const auto multi_defined_dispatch = c4c::backend::x86::build_prepared_module_multi_defined_dispatch_state(
       module, defined_functions, entry_function_ptr, prepared_arch,
       render_trivial_defined_function_if_supported, minimal_function_return_register,
-      minimal_function_asm_prefix, find_same_module_global, minimal_param_register_at,
-      [&](std::string_view symbol_name) { return find_string_constant(symbol_name) != nullptr; },
-      [&](std::string_view symbol_name) { return find_same_module_global(symbol_name) != nullptr; },
+      minimal_function_asm_prefix, find_same_module_global,
+      same_module_global_supports_scalar_load, minimal_param_register_at,
       [&](std::string_view symbol_name) {
         const std::string prefixed_name = "@" + std::string(symbol_name);
         return render_private_data_label(prefixed_name);
       },
+      [&](std::string_view symbol_name) { return find_string_constant(symbol_name) != nullptr; },
+      [&](std::string_view symbol_name) { return find_same_module_global(symbol_name) != nullptr; },
       [&](std::string_view symbol_name) { return render_asm_symbol_name(symbol_name); },
       [&](std::string_view symbol_name) { return find_string_constant(symbol_name); },
       emit_string_constant_data, emit_same_module_global_data);
@@ -341,6 +342,9 @@ std::string emit_prepared_module(
     }
   };
   if (multi_defined_dispatch.rendered_module.has_value()) {
+    if (!multi_defined_dispatch.helper_prefix.empty()) {
+      return multi_defined_dispatch.helper_prefix + *multi_defined_dispatch.rendered_module;
+    }
     return *multi_defined_dispatch.rendered_module;
   }
   const auto render_defined_function =
