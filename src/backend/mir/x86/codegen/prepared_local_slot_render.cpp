@@ -2917,6 +2917,7 @@ bool append_prepared_named_ptr_argument_move_into_register_if_supported(
     c4c::FunctionNameId function_name_id,
     std::string_view pointer_name,
     std::string_view destination_register,
+    std::size_t stack_byte_bias,
     const std::optional<std::string_view>& current_ptr_name,
     std::string* body);
 
@@ -2966,6 +2967,7 @@ select_prepared_bounded_same_module_helper_call_render_if_supported(
               function_name_id,
               arg.name,
               kArgRegs64[arg_index],
+              0,
               current_ptr_name,
               &rendered_arg_moves)) {
         return std::nullopt;
@@ -3080,6 +3082,7 @@ bool append_prepared_named_ptr_argument_move_into_register_if_supported(
     c4c::FunctionNameId function_name_id,
     std::string_view pointer_name,
     std::string_view destination_register,
+    std::size_t stack_byte_bias,
     const std::optional<std::string_view>& current_ptr_name,
     std::string* body) {
   if (block_context.function_context == nullptr || body == nullptr || pointer_name.empty()) {
@@ -3142,7 +3145,7 @@ bool append_prepared_named_ptr_argument_move_into_register_if_supported(
       *body += "    lea ";
       *body += destination_register;
       *body += ", ";
-      *body += render_prepared_stack_address_expr(*frame_offset);
+      *body += render_prepared_stack_address_expr(*frame_offset + stack_byte_bias);
       *body += "\n";
       return true;
     }
@@ -3169,7 +3172,7 @@ bool append_prepared_named_ptr_argument_move_into_register_if_supported(
     *body += "    lea ";
     *body += destination_register;
     *body += ", ";
-    *body += render_prepared_stack_address_expr(*home->offset_bytes);
+    *body += render_prepared_stack_address_expr(*home->offset_bytes + stack_byte_bias);
     *body += "\n";
     return true;
   }
@@ -3275,6 +3278,7 @@ std::optional<std::string> render_prepared_block_same_module_call_inst_if_suppor
               function_name_id,
               arg.name,
               *destination_register,
+              0,
               *current_ptr_name,
               &body)) {
         return std::nullopt;
@@ -3382,6 +3386,7 @@ std::optional<std::string> render_prepared_block_same_module_call_inst_if_suppor
               function_name_id,
               arg.name,
               *scratch_register,
+              stack_arg_bytes,
               *current_ptr_name,
               &body)) {
         return std::nullopt;
@@ -3520,10 +3525,17 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
     if (!destination_stack_offset.has_value()) {
       continue;
     }
-    if (call->arg_types[arg_index] != c4c::backend::bir::TypeKind::F128) {
+    const auto arg_type = call->arg_types[arg_index];
+    const auto arg_size =
+        arg_type == c4c::backend::bir::TypeKind::F128 ? std::size_t{16}
+        : arg_type == c4c::backend::bir::TypeKind::Ptr ||
+                arg_type == c4c::backend::bir::TypeKind::I64
+            ? std::size_t{8}
+            : std::size_t{0};
+    if (arg_size == 0) {
       return std::nullopt;
     }
-    stack_arg_bytes = std::max(stack_arg_bytes, *destination_stack_offset + 16);
+    stack_arg_bytes = std::max(stack_arg_bytes, *destination_stack_offset + arg_size);
   }
   if (stack_arg_bytes % 16 != 0) {
     stack_arg_bytes += 8;
@@ -3754,22 +3766,51 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
     }
     const auto& arg = call->args[arg_index];
     const auto arg_type = call->arg_types[arg_index];
-    if (arg_type != c4c::backend::bir::TypeKind::F128 ||
-        arg.kind != c4c::backend::bir::Value::Kind::Named) {
+    if (arg_type == c4c::backend::bir::TypeKind::F128 &&
+        arg.kind == c4c::backend::bir::Value::Kind::Named) {
+      const auto rendered_arg = render_prepared_named_f128_copy_into_memory_if_supported(
+          arg.name,
+          render_prepared_stack_memory_operand(*destination_stack_offset, "TBYTE"),
+          stack_arg_bytes,
+          block_context.local_layout,
+          function_context.function,
+          function_context.prepared_names,
+          function_context.function_locations);
+      if (!rendered_arg.has_value()) {
+        return std::nullopt;
+      }
+      body += *rendered_arg;
+      continue;
+    }
+    const auto scratch_register =
+        choose_prepared_pointer_scratch_register_if_supported(function_context.function_locations);
+    if (!scratch_register.has_value()) {
       return std::nullopt;
     }
-    const auto rendered_arg = render_prepared_named_f128_copy_into_memory_if_supported(
-        arg.name,
-        render_prepared_stack_memory_operand(*destination_stack_offset, "TBYTE"),
-        stack_arg_bytes,
-        block_context.local_layout,
-        function_context.function,
-        function_context.prepared_names,
-        function_context.function_locations);
-    if (!rendered_arg.has_value()) {
-      return std::nullopt;
+    const auto stack_memory_operand =
+        render_prepared_stack_memory_operand(*destination_stack_offset, "QWORD");
+    if (arg_type == c4c::backend::bir::TypeKind::Ptr) {
+      if (arg.kind != c4c::backend::bir::Value::Kind::Named ||
+          !append_prepared_named_ptr_argument_move_into_register_if_supported(
+              block_context,
+              function_name_id,
+              arg.name,
+              *scratch_register,
+              stack_arg_bytes,
+              *current_ptr_name,
+              &body)) {
+        return std::nullopt;
+      }
+      body += "    mov " + stack_memory_operand + ", " + *scratch_register + "\n";
+      continue;
     }
-    body += *rendered_arg;
+    if (arg_type == c4c::backend::bir::TypeKind::I64 &&
+        arg.kind == c4c::backend::bir::Value::Kind::Immediate) {
+      body += "    mov " + *scratch_register + ", " + std::to_string(arg.immediate) + "\n";
+      body += "    mov " + stack_memory_operand + ", " + *scratch_register + "\n";
+      continue;
+    }
+    return std::nullopt;
   }
 
   if (call->is_variadic) {
@@ -6468,6 +6509,7 @@ render_prepared_bounded_multi_defined_call_lane_module_if_supported(
   std::unordered_set<std::string> emitted_string_names;
   std::unordered_set<std::string> emitted_same_module_global_names;
   bool saw_bounded_entry = false;
+  bool saw_rendered_non_helper = false;
 
   for (const auto* candidate : defined_functions) {
     if (helper_names.find(candidate->name) != helper_names.end()) {
@@ -6476,6 +6518,7 @@ render_prepared_bounded_multi_defined_call_lane_module_if_supported(
     if (const auto rendered_trivial = render_trivial_defined_function(*candidate);
         rendered_trivial.has_value()) {
       rendered.rendered_functions += *rendered_trivial;
+      saw_rendered_non_helper = true;
       continue;
     }
 
@@ -6537,9 +6580,10 @@ render_prepared_bounded_multi_defined_call_lane_module_if_supported(
     rendered.rendered_functions +=
         minimal_function_asm_prefix(*candidate) + rendered_candidate->body;
     saw_bounded_entry = true;
+    saw_rendered_non_helper = true;
   }
 
-  if (!saw_bounded_entry) {
+  if (!saw_bounded_entry && !saw_rendered_non_helper) {
     return std::nullopt;
   }
 
