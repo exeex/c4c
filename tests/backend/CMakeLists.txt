@@ -325,7 +325,7 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DDUMP_FLAG=--dump-prepared-bir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|completed_phases: legalize stack_layout liveness regalloc|[stack_layout] stack layout prepared function 'stdarg'|[regalloc] regalloc seeded function 'stdarg'|bir.func @stdarg() -> void {|bir.call void myprintf(ptr @.str49|--- prepared-control-flow ---|prepared.func @stdarg|prepared.func @stdarg frame_size="
+          "-DREQUIRED_SNIPPETS=prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|completed_phases: legalize stack_layout liveness regalloc|[stack_layout] stack layout prepared function 'stdarg'|[regalloc] regalloc seeded function 'stdarg'|bir.func @stdarg() -> void {|bir.call void myprintf(ptr @.str49|--- prepared-control-flow ---|prepared.func @stdarg|prepared.func @stdarg frame_size=|access block=entry"
           "-DFORBIDDEN_SNIPPETS=x86 handoff summary|x86 handoff trace"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -373,7 +373,7 @@ add_test(
           -DDUMP_FLAG=--dump-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-block;entry"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|focus block: entry|module-level bounded multi-function lane: rejected|- module-level final rejection: bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support|function stdarg|- focused bir blocks: 1|- focused prepared blocks: 1|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|focused functions matched: 1|focused bir blocks matched: 1|focused prepared blocks matched: 1"
+          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|focus block: entry|module-level bounded multi-function lane: rejected|- module-level final rejection: bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support|function stdarg|- focused bir blocks: 1|  - entry|- focused prepared blocks: 1|  - entry|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|focused functions matched: 1|focused bir blocks matched: 1|focused prepared blocks matched: 1"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )

@@ -1083,6 +1083,10 @@ int main() {
       c4c::backend::x86::summarize_prepared_module_routes(missing_short_circuit_contract);
   const std::string missing_short_circuit_contract_trace =
       c4c::backend::x86::trace_prepared_module_routes(missing_short_circuit_contract);
+  const std::string focused_summary = c4c::backend::x86::summarize_prepared_module_routes(
+      prepared, "short_circuit_or_prepare_contract", "entry");
+  const std::string focused_trace = c4c::backend::x86::trace_prepared_module_routes(
+      prepared, "short_circuit_or_prepare_contract", "entry");
   const auto single_block_i64_ashr_return_helper_miss =
       legalize_single_block_i64_ashr_return_helper_miss_module();
   const std::string single_block_i64_ashr_return_helper_miss_summary =
@@ -1187,6 +1191,18 @@ int main() {
       !expect_contains(missing_short_circuit_contract_trace,
                        "next inspect: inspect the prepared control-flow handoff consumed in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "missing contract trace next inspect") ||
+      !expect_contains(focused_summary,
+                       "focus function: short_circuit_or_prepare_contract",
+                       "focused summary function header") ||
+      !expect_contains(focused_summary,
+                       "focus block: entry",
+                       "focused summary block header") ||
+      !expect_contains(focused_summary,
+                       "- focused bir blocks: 1\n  - entry\n- focused prepared blocks: 1\n  - entry",
+                       "focused summary block labels") ||
+      !expect_contains(focused_trace,
+                       "focused bir blocks: 1\n    - entry\n  focused prepared blocks: 1\n    - entry",
+                       "focused trace block labels") ||
       !expect_contains(single_block_i64_ashr_return_helper_miss_summary,
                        "- final rejection: single-block i64 arithmetic-right-shift return helper recognized the function, but the prepared return-helper shape is outside the current x86 support",
                        "single-block i64 ashr summary final rejection") ||

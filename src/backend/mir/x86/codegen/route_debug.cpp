@@ -1227,7 +1227,13 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
       out << "- join transfers: " << report.join_transfer_count << "\n";
       if (focus.block.has_value()) {
         out << "- focused bir blocks: " << focused_bir_blocks.size() << "\n";
+        for (const auto label : focused_bir_blocks) {
+          append_indented_line(out, 1, std::string("- ") + std::string(label));
+        }
         out << "- focused prepared blocks: " << focused_prepared_blocks.size() << "\n";
+        for (const auto label : focused_prepared_blocks) {
+          append_indented_line(out, 1, std::string("- ") + std::string(label));
+        }
       }
     } else {
       out << "\nfunction " << report.function_name << "\n";
