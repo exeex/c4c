@@ -1489,6 +1489,31 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     bool is_indirect_call = false;
     bool is_variadic_call = false;
     std::optional<std::string> sret_slot_name;
+    const auto lower_byval_call_arg_value =
+        [&](const c4c::codegen::lir::LirOperand& operand,
+            const AggregateTypeLayout& aggregate_layout) -> std::optional<bir::Value> {
+      if (operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+        const auto aggregate_alias_it = aggregate_value_aliases.find(operand.str());
+        if (aggregate_alias_it == aggregate_value_aliases.end() ||
+            local_aggregate_slots.find(aggregate_alias_it->second) ==
+                local_aggregate_slots.end()) {
+          return std::nullopt;
+        }
+        return bir::Value::named(bir::TypeKind::Ptr, aggregate_alias_it->second);
+      }
+
+      if (operand.kind() != c4c::codegen::lir::LirOperandKind::Global) {
+        return std::nullopt;
+      }
+
+      const std::string global_name = operand.str().substr(1);
+      const auto global_it = global_types.find(global_name);
+      if (global_it == global_types.end() || !global_it->second.supports_linear_addressing ||
+          global_it->second.storage_size_bytes < aggregate_layout.size_bytes) {
+        return std::nullopt;
+      }
+      return bir::Value::named(bir::TypeKind::Ptr, "@" + global_name);
+    };
 
     const auto try_lower_direct_memcpy_call =
         [&](std::string_view symbol_name,
@@ -1754,16 +1779,15 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
             if (!aggregate_layout.has_value()) {
               return fail_call_family(call_family);
             }
-            const std::string operand_text(parsed_call->typed_call.args[index].operand);
-            const auto aggregate_alias_it = aggregate_value_aliases.find(operand_text);
-            if (aggregate_alias_it == aggregate_value_aliases.end() ||
-                local_aggregate_slots.find(aggregate_alias_it->second) ==
-                    local_aggregate_slots.end()) {
+            const auto arg = lower_byval_call_arg_value(
+                c4c::codegen::lir::LirOperand(
+                    std::string(parsed_call->typed_call.args[index].operand)),
+                *aggregate_layout);
+            if (!arg.has_value()) {
               return fail_call_family(call_family);
             }
             lowered_arg_types.push_back(bir::TypeKind::Ptr);
-            lowered_args.push_back(
-                bir::Value::named(bir::TypeKind::Ptr, aggregate_alias_it->second));
+            lowered_args.push_back(*arg);
             lowered_arg_abi.push_back(bir::CallArgAbiInfo{
                 .type = bir::TypeKind::Ptr,
                 .size_bytes = aggregate_layout->size_bytes,
@@ -1833,14 +1857,14 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           if (!aggregate_layout.has_value()) {
             return fail_call_family(call_family);
           }
-          const std::string operand_text(parsed_call->args[index].operand);
-          const auto aggregate_alias_it = aggregate_value_aliases.find(operand_text);
-          if (aggregate_alias_it == aggregate_value_aliases.end() ||
-              local_aggregate_slots.find(aggregate_alias_it->second) == local_aggregate_slots.end()) {
+          const auto arg = lower_byval_call_arg_value(
+              c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand)),
+              *aggregate_layout);
+          if (!arg.has_value()) {
             return fail_call_family(call_family);
           }
           lowered_arg_types.push_back(bir::TypeKind::Ptr);
-          lowered_args.push_back(bir::Value::named(bir::TypeKind::Ptr, aggregate_alias_it->second));
+          lowered_args.push_back(*arg);
           lowered_arg_abi.push_back(bir::CallArgAbiInfo{
               .type = bir::TypeKind::Ptr,
               .size_bytes = aggregate_layout->size_bytes,

@@ -31,9 +31,9 @@ and the case is not better explained by a narrower already-open leaf.
 
 ## Current Known Failed Cases It Owns
 
-Named cases already identified in this family:
-
-- `c_testsuite_x86_backend_src_00204_c`
+No current named cases are recorded after the first direct-call repair moved
+`c_testsuite_x86_backend_src_00204_c` downstream into idea 66's
+load-local-memory ownership.
 
 As additional backend cases are confirmed to fail for the same underlying
 semantic call-family reason, they should be routed here instead of being mixed
@@ -42,11 +42,12 @@ idea-62 stack/addressing leaf.
 
 ## Latest Durable Note
 
-As of 2026-04-21, `c_testsuite_x86_backend_src_00204_c` has graduated out of
-idea 62's stack/addressing ownership. The case now lowers past the old
-aggregate local/member seam and fails later in function `arg` with
-`latest function failure: semantic lir_to_bir function 'arg' failed in
-semantic call family 'direct-call semantic family'`.
+As of 2026-04-21, the first direct-call byval-global repair advanced
+`c_testsuite_x86_backend_src_00204_c` out of idea 65. The case no longer
+fails in function `arg` under `direct-call semantic family`; it now fails
+later in function `match` with `latest function failure: semantic
+lir_to_bir function 'match' failed in load local-memory semantic family`, so
+follow-on work routes under idea 66 instead of remaining in this leaf.
 
 ## Scope Notes
 

@@ -379,28 +379,59 @@ BirFunctionLowerer::parse_direct_global_typed_call(const c4c::codegen::lir::LirC
     ++fixed_param_count;
   }
 
-  if (!saw_varargs) {
+  if (saw_varargs) {
+    const auto args = c4c::codegen::lir::parse_lir_typed_call_args(call.args_str);
+    if (!args.has_value() || args->size() < fixed_param_count) {
+      return std::nullopt;
+    }
+
+    ParsedDirectGlobalTypedCall parsed;
+    parsed.symbol_name = *symbol_name;
+    parsed.is_variadic = true;
+    parsed.typed_call.owned_param_types.reserve(args->size());
+    parsed.typed_call.param_types.reserve(args->size());
+    parsed.typed_call.args.reserve(args->size());
+    for (std::size_t index = 0; index < args->size(); ++index) {
+      parsed.typed_call.owned_param_types.push_back(
+          std::string(c4c::codegen::lir::trim_lir_arg_text((*args)[index].type)));
+      parsed.typed_call.param_types.push_back(parsed.typed_call.owned_param_types.back());
+      parsed.typed_call.args.push_back((*args)[index]);
+    }
+    return parsed;
+  }
+
+  const auto fixed_args = c4c::codegen::lir::parse_lir_typed_call_args(call.args_str);
+  if (!fixed_args.has_value() || param_types->size() != fixed_args->size()) {
     return std::nullopt;
   }
 
-  const auto args = c4c::codegen::lir::parse_lir_typed_call_args(call.args_str);
-  if (!args.has_value() || args->size() < fixed_param_count) {
+  ParsedDirectGlobalTypedCall fixed_parsed;
+  fixed_parsed.symbol_name = *symbol_name;
+  fixed_parsed.typed_call.owned_param_types.reserve(param_types->size());
+  fixed_parsed.typed_call.param_types.reserve(param_types->size());
+  fixed_parsed.typed_call.args = *fixed_args;
+  for (std::size_t index = 0; index < param_types->size(); ++index) {
+    const auto expected_type = c4c::codegen::lir::trim_lir_arg_text((*param_types)[index]);
+    const auto arg_type = c4c::codegen::lir::trim_lir_arg_text((*fixed_args)[index].type);
+    if (expected_type == arg_type) {
+      fixed_parsed.typed_call.owned_param_types.push_back(std::string(expected_type));
+      fixed_parsed.typed_call.param_types.push_back(
+          fixed_parsed.typed_call.owned_param_types.back());
+      continue;
+    }
+    if (expected_type == "ptr") {
+      const auto byval_type = parse_byval_pointee_type(arg_type);
+      if (byval_type.has_value()) {
+        fixed_parsed.typed_call.owned_param_types.push_back(*byval_type);
+        fixed_parsed.typed_call.param_types.push_back(
+            fixed_parsed.typed_call.owned_param_types.back());
+        continue;
+      }
+    }
     return std::nullopt;
   }
 
-  ParsedDirectGlobalTypedCall parsed;
-  parsed.symbol_name = *symbol_name;
-  parsed.is_variadic = true;
-  parsed.typed_call.owned_param_types.reserve(args->size());
-  parsed.typed_call.param_types.reserve(args->size());
-  parsed.typed_call.args.reserve(args->size());
-  for (std::size_t index = 0; index < args->size(); ++index) {
-    parsed.typed_call.owned_param_types.push_back(
-        std::string(c4c::codegen::lir::trim_lir_arg_text((*args)[index].type)));
-    parsed.typed_call.param_types.push_back(parsed.typed_call.owned_param_types.back());
-    parsed.typed_call.args.push_back((*args)[index]);
-  }
-  return parsed;
+  return fixed_parsed;
 }
 
 std::optional<std::vector<BirFunctionLowerer::ParsedFunctionSignatureParam>>
