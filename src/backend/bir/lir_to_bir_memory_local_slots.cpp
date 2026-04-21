@@ -813,7 +813,7 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
 
   const auto append_leaf_view_to_scalar_slot = [&](const LocalMemcpyLeafView& source_view,
                                                     const LocalMemcpyScalarSlot& target_slot) -> bool {
-    if (requested_size != target_slot.size_bytes) {
+    if (requested_size > target_slot.size_bytes) {
       return false;
     }
 
@@ -853,7 +853,7 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
 
   const auto append_scalar_slot_to_leaf_view = [&](const LocalMemcpyScalarSlot& source_slot,
                                                     const LocalMemcpyLeafView& target_view) -> bool {
-    if (requested_size != source_slot.size_bytes) {
+    if (requested_size > source_slot.size_bytes) {
       return false;
     }
 
@@ -927,26 +927,42 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
   };
   const auto append_pointer_value_to_scalar_slot = [&](std::string_view source_pointer,
                                                         const LocalMemcpyScalarSlot& target_slot) -> bool {
-    if (requested_size != target_slot.size_bytes) {
+    if (requested_size > target_slot.size_bytes) {
       return false;
     }
-
-    lowered_insts->push_back(bir::LoadLocalInst{
-        .result = bir::Value::named(target_slot.type, target_slot.slot_name + ".memcpy.copy.0"),
-        .slot_name = target_slot.slot_name,
-        .address =
-            bir::MemoryAddress{
-                .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
-                .base_value = bir::Value::named(bir::TypeKind::Ptr, std::string(source_pointer)),
-                .byte_offset = 0,
-                .size_bytes = target_slot.size_bytes,
-                .align_bytes = std::min(target_slot.align_bytes, target_slot.size_bytes),
-            },
-    });
-    lowered_insts->push_back(bir::StoreLocalInst{
-        .slot_name = target_slot.slot_name,
-        .value = bir::Value::named(target_slot.type, target_slot.slot_name + ".memcpy.copy.0"),
-    });
+    std::size_t copied_bytes = 0;
+    while (copied_bytes < requested_size) {
+      const std::size_t remaining_bytes = requested_size - copied_bytes;
+      const std::size_t chunk_size = remaining_bytes >= 4 ? 4 : 1;
+      const auto chunk_type = chunk_size == 4 ? bir::TypeKind::I32 : bir::TypeKind::I8;
+      const std::string copy_name =
+          target_slot.slot_name + ".memcpy.copy." + std::to_string(copied_bytes);
+      lowered_insts->push_back(bir::LoadLocalInst{
+          .result = bir::Value::named(chunk_type, copy_name),
+          .slot_name = target_slot.slot_name,
+          .address =
+              bir::MemoryAddress{
+                  .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                  .base_value = bir::Value::named(bir::TypeKind::Ptr, std::string(source_pointer)),
+                  .byte_offset = static_cast<std::int64_t>(copied_bytes),
+                  .size_bytes = chunk_size,
+                  .align_bytes = std::min(target_slot.align_bytes, chunk_size),
+              },
+      });
+      lowered_insts->push_back(bir::StoreLocalInst{
+          .slot_name = target_slot.slot_name,
+          .value = bir::Value::named(chunk_type, copy_name),
+          .address =
+              bir::MemoryAddress{
+                  .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                  .base_name = target_slot.slot_name,
+                  .byte_offset = static_cast<std::int64_t>(copied_bytes),
+                  .size_bytes = chunk_size,
+                  .align_bytes = std::min(target_slot.align_bytes, chunk_size),
+              },
+      });
+      copied_bytes += chunk_size;
+    }
     return true;
   };
 

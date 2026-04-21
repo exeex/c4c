@@ -1612,6 +1612,121 @@ LirModule make_local_aggregate_raw_float_tail_memcpy_module() {
   return module;
 }
 
+LirModule make_local_scalar_double_decimal_zero_store_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "local_scalar_double_decimal_zero_store";
+  function.signature_text = "define void @local_scalar_double_decimal_zero_store()";
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.scratch"),
+      .type_str = "double",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "double",
+      .val = LirOperand("0.0"),
+      .ptr = LirOperand("%lv.scratch"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_local_scalar_double_partial_float_memcpy_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "local_scalar_double_partial_float_memcpy";
+  function.signature_text = "define void @local_scalar_double_partial_float_memcpy(ptr %p.src)";
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.scratch"),
+      .type_str = "double",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "double",
+      .val = LirOperand("0.0"),
+      .ptr = LirOperand("%lv.scratch"),
+  });
+  entry.insts.push_back(c4c::codegen::lir::LirMemcpyOp{
+      .dst = LirOperand("%lv.scratch"),
+      .src = LirOperand("%p.src"),
+      .size = LirOperand("4"),
+      .is_volatile = false,
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%t0"),
+      .type_str = "double",
+      .ptr = LirOperand("%lv.scratch"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_local_scalar_i64_partial_i8_memcpy_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "local_scalar_i64_partial_i8_memcpy";
+  function.signature_text = "define void @local_scalar_i64_partial_i8_memcpy(ptr %p.src)";
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.scratch"),
+      .type_str = "i64",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "i64",
+      .val = LirOperand("0"),
+      .ptr = LirOperand("%lv.scratch"),
+  });
+  entry.insts.push_back(c4c::codegen::lir::LirMemcpyOp{
+      .dst = LirOperand("%lv.scratch"),
+      .src = LirOperand("%p.src"),
+      .size = LirOperand("7"),
+      .is_volatile = false,
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%t0"),
+      .type_str = "i64",
+      .ptr = LirOperand("%lv.scratch"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_dynamic_indexed_gep_local_member_array_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -2261,6 +2376,42 @@ int main() {
           "unexpected local aggregate raw float-tail memcpy module failure note");
       local_aggregate_raw_float_tail_memcpy_status != 0) {
     return local_aggregate_raw_float_tail_memcpy_status;
+  }
+
+  if (const int local_scalar_double_decimal_zero_store_status = expect_success_without_function_note(
+          "local_scalar_double_decimal_zero_store",
+          make_local_scalar_double_decimal_zero_store_module(),
+          "latest function failure: semantic lir_to_bir function "
+          "'local_scalar_double_decimal_zero_store' failed in store local-memory semantic family",
+          "failed in store local-memory semantic family",
+          "unexpected local scalar double decimal-zero store function failure note",
+          "unexpected local scalar double decimal-zero store module failure note");
+      local_scalar_double_decimal_zero_store_status != 0) {
+    return local_scalar_double_decimal_zero_store_status;
+  }
+
+  if (const int local_scalar_double_partial_float_memcpy_status = expect_success_without_function_note(
+          "local_scalar_double_partial_float_memcpy",
+          make_local_scalar_double_partial_float_memcpy_module(),
+          "latest function failure: semantic lir_to_bir function "
+          "'local_scalar_double_partial_float_memcpy' failed in scalar/local-memory semantic family",
+          "failed in scalar/local-memory semantic family",
+          "unexpected local scalar double partial-float memcpy function failure note",
+          "unexpected local scalar double partial-float memcpy module failure note");
+      local_scalar_double_partial_float_memcpy_status != 0) {
+    return local_scalar_double_partial_float_memcpy_status;
+  }
+
+  if (const int local_scalar_i64_partial_i8_memcpy_status = expect_success_without_function_note(
+          "local_scalar_i64_partial_i8_memcpy",
+          make_local_scalar_i64_partial_i8_memcpy_module(),
+          "latest function failure: semantic lir_to_bir function "
+          "'local_scalar_i64_partial_i8_memcpy' failed in scalar/local-memory semantic family",
+          "failed in scalar/local-memory semantic family",
+          "unexpected local scalar i64 partial-i8 memcpy function failure note",
+          "unexpected local scalar i64 partial-i8 memcpy module failure note");
+      local_scalar_i64_partial_i8_memcpy_status != 0) {
+    return local_scalar_i64_partial_i8_memcpy_status;
   }
 
   if (const int dynamic_gep_lane_status = expect_success_without_function_note(

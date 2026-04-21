@@ -1,6 +1,9 @@
 #include "lir_to_bir.hpp"
 
+#include <cerrno>
 #include <charconv>
+#include <cstdlib>
+#include <cstring>
 
 namespace c4c::backend {
 
@@ -318,8 +321,36 @@ std::optional<bir::Value> BirFunctionLowerer::lower_value(
     }
     return bir::Value::immediate_f64_bits(bits);
   };
+  const auto try_parse_fp_literal = [&](bir::TypeKind float_type) -> std::optional<bir::Value> {
+    if (const auto bits = try_parse_fp_bits(float_type); bits.has_value()) {
+      return bits;
+    }
+
+    const std::string text = operand.str();
+    char* end = nullptr;
+    errno = 0;
+    if (float_type == bir::TypeKind::F32) {
+      const float parsed = std::strtof(text.c_str(), &end);
+      if (errno == ERANGE || end != text.c_str() + text.size()) {
+        return std::nullopt;
+      }
+
+      std::uint32_t bits = 0;
+      std::memcpy(&bits, &parsed, sizeof(bits));
+      return bir::Value::immediate_f32_bits(bits);
+    }
+
+    const double parsed = std::strtod(text.c_str(), &end);
+    if (errno == ERANGE || end != text.c_str() + text.size()) {
+      return std::nullopt;
+    }
+
+    std::uint64_t bits = 0;
+    std::memcpy(&bits, &parsed, sizeof(bits));
+    return bir::Value::immediate_f64_bits(bits);
+  };
   if (expected_type == bir::TypeKind::F32 || expected_type == bir::TypeKind::F64) {
-    return try_parse_fp_bits(expected_type);
+    return try_parse_fp_literal(expected_type);
   }
 
   if (operand.kind() != c4c::codegen::lir::LirOperandKind::Immediate &&
