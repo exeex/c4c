@@ -1478,14 +1478,20 @@ int main() {
                        "- final rejection: single-block same-module scalar call-wrapper family recognized the function, but the prepared helper-family shape is outside the current x86 support",
                        "single-block same-module scalar call-wrapper summary final rejection") ||
       !expect_contains(single_block_same_module_scalar_call_wrapper_miss_summary,
+                       "- final facts: prepared helper-family facts: local-slot reloads=2, scalar same-module helper calls=2, width-adjusting casts=2, same-module sink wrappers=2",
+                       "single-block same-module scalar call-wrapper summary final facts") ||
+      !expect_contains(single_block_same_module_scalar_call_wrapper_miss_summary,
                        "- next inspect: inspect the current x86 same-module scalar helper-family support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "single-block same-module scalar call-wrapper summary next inspect") ||
       !expect_contains(single_block_same_module_scalar_call_wrapper_miss_trace,
                        "try lane single-block-same-module-scalar-call-wrapper",
                        "single-block same-module scalar call-wrapper trace lane") ||
       !expect_contains(single_block_same_module_scalar_call_wrapper_miss_trace,
-                       "final detail: x86 backend emitter only supports single-block same-module scalar call-wrapper families when they already reduce to the current local-slot or established scalar helper surfaces; this wrapper still chains local-slot reloads, scalar same-module helper calls, width-adjusting casts, same-module sink wrappers",
+                       "final detail: x86 backend emitter only supports single-block same-module scalar call-wrapper families when they already reduce to the current local-slot or established scalar helper surfaces; this wrapper family still carries 2 local-slot reloads, 2 scalar same-module helper calls, 2 width-adjusting casts, and 2 same-module sink wrappers",
                        "single-block same-module scalar call-wrapper trace detail") ||
+      !expect_contains(single_block_same_module_scalar_call_wrapper_miss_trace,
+                       "final facts: prepared helper-family facts: local-slot reloads=2, scalar same-module helper calls=2, width-adjusting casts=2, same-module sink wrappers=2",
+                       "single-block same-module scalar call-wrapper trace final facts") ||
       !expect_contains(single_block_same_module_scalar_call_wrapper_miss_trace,
                        "next inspect: inspect the current x86 same-module scalar helper-family support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "single-block same-module scalar call-wrapper trace next inspect") ||

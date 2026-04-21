@@ -856,7 +856,7 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DDUMP_FLAG=--dump-mir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff summary|function opi|- final rejection: single-block same-module scalar call-wrapper family recognized the function, but the prepared helper-family shape is outside the current x86 support|- next inspect: inspect the current x86 same-module scalar helper-family support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
+          "-DREQUIRED_SNIPPETS=x86 handoff summary|function opi|- final rejection: single-block same-module scalar call-wrapper family recognized the function, but the prepared helper-family shape is outside the current x86 support|- final facts: prepared helper-family facts: local-slot reloads=|scalar same-module helper calls=|width-adjusting casts=|same-module sink wrappers=|- next inspect: inspect the current x86 same-module scalar helper-family support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_dump_mir_00204_opi_rejection PROPERTIES
@@ -870,7 +870,7 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DDUMP_FLAG=--trace-mir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|function opi|try lane single-block-same-module-scalar-call-wrapper|detail: x86 backend emitter only supports single-block same-module scalar call-wrapper families when they already reduce to the current local-slot or established scalar helper surfaces; this wrapper still chains local-slot reloads, scalar same-module helper calls, width-adjusting casts, same-module sink wrappers|final: rejected: single-block same-module scalar call-wrapper family recognized the function, but the prepared helper-family shape is outside the current x86 support|next inspect: inspect the current x86 same-module scalar helper-family support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
+          "-DREQUIRED_SNIPPETS=x86 handoff trace|function opi|try lane single-block-same-module-scalar-call-wrapper|detail: x86 backend emitter only supports single-block same-module scalar call-wrapper families when they already reduce to the current local-slot or established scalar helper surfaces; this wrapper family still carries|final: rejected: single-block same-module scalar call-wrapper family recognized the function, but the prepared helper-family shape is outside the current x86 support|final facts: prepared helper-family facts: local-slot reloads=|scalar same-module helper calls=|width-adjusting casts=|same-module sink wrappers=|next inspect: inspect the current x86 same-module scalar helper-family support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_trace_mir_00204_opi_rejection PROPERTIES

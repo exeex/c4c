@@ -65,6 +65,13 @@ struct SingleBlockVoidCallSequenceFacts {
   std::size_t other_call_effect_count = 0;
 };
 
+struct SingleBlockSameModuleScalarCallWrapperFacts {
+  std::size_t local_slot_reload_count = 0;
+  std::size_t scalar_same_module_helper_call_count = 0;
+  std::size_t width_adjusting_cast_count = 0;
+  std::size_t same_module_sink_wrapper_count = 0;
+};
+
 void append_indented_line(std::ostringstream& out,
                           std::size_t indent,
                           std::string_view text) {
@@ -145,6 +152,42 @@ std::string summarize_single_block_void_call_sequence_facts(
     labels.push_back(counted_label(facts.other_call_effect_count,
                                    "other call side effect",
                                    "other call side effects"));
+  }
+  return join_fact_labels(labels);
+}
+
+std::string render_single_block_same_module_scalar_call_wrapper_facts(
+    const SingleBlockSameModuleScalarCallWrapperFacts& facts) {
+  std::ostringstream out;
+  out << "prepared helper-family facts: local-slot reloads=" << facts.local_slot_reload_count
+      << ", scalar same-module helper calls=" << facts.scalar_same_module_helper_call_count
+      << ", width-adjusting casts=" << facts.width_adjusting_cast_count
+      << ", same-module sink wrappers=" << facts.same_module_sink_wrapper_count;
+  return out.str();
+}
+
+std::string summarize_single_block_same_module_scalar_call_wrapper_facts(
+    const SingleBlockSameModuleScalarCallWrapperFacts& facts) {
+  std::vector<std::string> labels;
+  if (facts.local_slot_reload_count != 0) {
+    labels.push_back(counted_label(facts.local_slot_reload_count,
+                                   "local-slot reload",
+                                   "local-slot reloads"));
+  }
+  if (facts.scalar_same_module_helper_call_count != 0) {
+    labels.push_back(counted_label(facts.scalar_same_module_helper_call_count,
+                                   "scalar same-module helper call",
+                                   "scalar same-module helper calls"));
+  }
+  if (facts.width_adjusting_cast_count != 0) {
+    labels.push_back(counted_label(facts.width_adjusting_cast_count,
+                                   "width-adjusting cast",
+                                   "width-adjusting casts"));
+  }
+  if (facts.same_module_sink_wrapper_count != 0) {
+    labels.push_back(counted_label(facts.same_module_sink_wrapper_count,
+                                   "same-module sink wrapper",
+                                   "same-module sink wrappers"));
   }
   return join_fact_labels(labels);
 }
@@ -838,7 +881,7 @@ std::optional<std::string> build_single_block_aggregate_forwarding_wrapper_lane_
          "same-module aggregate call wrappers";
 }
 
-std::optional<std::string> build_single_block_same_module_scalar_call_wrapper_lane_detail(
+std::optional<FunctionRouteAttempt> build_single_block_same_module_scalar_call_wrapper_lane_attempt(
     const std::vector<const c4c::backend::bir::Function*>& defined_functions,
     const c4c::backend::bir::Function& function) {
   if (function.is_declaration || function.is_variadic ||
@@ -884,9 +927,31 @@ std::optional<std::string> build_single_block_same_module_scalar_call_wrapper_la
   const auto is_integer_scalar = [](c4c::backend::bir::TypeKind type) {
     return type == c4c::backend::bir::TypeKind::I32 || type == c4c::backend::bir::TypeKind::I64;
   };
+  const auto is_width_adjusting_integer_cast = [&](const c4c::backend::bir::CastInst& cast) {
+    return (cast.opcode == c4c::backend::bir::CastOpcode::SExt ||
+            cast.opcode == c4c::backend::bir::CastOpcode::ZExt) &&
+           is_integer_scalar(cast.operand.type) && is_integer_scalar(cast.result.type) &&
+           cast.operand.type != cast.result.type;
+  };
+  const auto feeds_local_slot_reload =
+      [&](const c4c::backend::bir::Value& value, std::size_t before_index) -> bool {
+    if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+      return false;
+    }
+    if (before_index == 0) {
+      return false;
+    }
+    const auto* load =
+        std::get_if<c4c::backend::bir::LoadLocalInst>(&entry.insts[before_index - 1]);
+    return load != nullptr && load->result.kind == c4c::backend::bir::Value::Kind::Named &&
+           load->result.name == value.name && load->result.type == value.type &&
+           load->address.has_value() &&
+           load->address->base_kind == c4c::backend::bir::MemoryAddress::BaseKind::LocalSlot &&
+           is_integer_scalar(load->result.type);
+  };
 
   std::size_t wrapper_pair_count = 0;
-  bool saw_width_adjusting_cast = false;
+  SingleBlockSameModuleScalarCallWrapperFacts facts;
   std::optional<std::string_view> sink_name;
 
   for (std::size_t inst_index = 0; inst_index < entry.insts.size(); ++inst_index) {
@@ -906,17 +971,34 @@ std::optional<std::string> build_single_block_same_module_scalar_call_wrapper_la
     std::size_t sink_index = inst_index + 1;
     std::string_view forwarded_name = helper_call->result->name;
     auto forwarded_type = helper_call->result->type;
+    bool pair_has_local_slot_reload = false;
+
+    if (helper_call->args.size() == 1 && helper_call->arg_types.size() == 1) {
+      const auto& helper_arg = helper_call->args.front();
+      if (feeds_local_slot_reload(helper_arg, inst_index)) {
+        pair_has_local_slot_reload = true;
+      } else if (inst_index != 0) {
+        const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&entry.insts[inst_index - 1]);
+        if (cast != nullptr && is_width_adjusting_integer_cast(*cast) &&
+            cast->result.kind == c4c::backend::bir::Value::Kind::Named &&
+            cast->result.name == helper_arg.name && cast->result.type == helper_arg.type &&
+            is_named_value(helper_arg, cast->result.name, cast->result.type)) {
+          ++facts.width_adjusting_cast_count;
+          if (feeds_local_slot_reload(cast->operand, inst_index - 1)) {
+            pair_has_local_slot_reload = true;
+          }
+        }
+      }
+    }
 
     if (sink_index < entry.insts.size()) {
       if (const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&entry.insts[sink_index]);
-          cast != nullptr &&
-          (cast->opcode == c4c::backend::bir::CastOpcode::SExt ||
-           cast->opcode == c4c::backend::bir::CastOpcode::ZExt) &&
+          cast != nullptr && is_width_adjusting_integer_cast(*cast) &&
           is_named_value(cast->operand, helper_call->result->name, helper_call->result->type) &&
           helper_call->result->type == c4c::backend::bir::TypeKind::I32 &&
           cast->result.kind == c4c::backend::bir::Value::Kind::Named &&
           cast->result.type == c4c::backend::bir::TypeKind::I64) {
-        saw_width_adjusting_cast = true;
+        ++facts.width_adjusting_cast_count;
         forwarded_name = cast->result.name;
         forwarded_type = cast->result.type;
         ++sink_index;
@@ -949,6 +1031,11 @@ std::optional<std::string> build_single_block_same_module_scalar_call_wrapper_la
     }
 
     ++wrapper_pair_count;
+    if (pair_has_local_slot_reload) {
+      ++facts.local_slot_reload_count;
+    }
+    ++facts.scalar_same_module_helper_call_count;
+    ++facts.same_module_sink_wrapper_count;
     inst_index = sink_index;
   }
 
@@ -959,14 +1046,14 @@ std::optional<std::string> build_single_block_same_module_scalar_call_wrapper_la
   std::string detail =
       "x86 backend emitter only supports single-block same-module scalar call-wrapper families "
       "when they already reduce to the current local-slot or established scalar helper surfaces; "
-      "this wrapper still chains local-slot reloads, scalar same-module helper calls";
-  if (saw_width_adjusting_cast) {
-    detail += ", width-adjusting casts,";
-  } else {
-    detail += ", and";
-  }
-  detail += " same-module sink wrappers";
-  return detail;
+      "this wrapper family still carries " +
+      summarize_single_block_same_module_scalar_call_wrapper_facts(facts);
+  return FunctionRouteAttempt{
+      .lane_name = "single-block-same-module-scalar-call-wrapper",
+      .matched = false,
+      .detail = std::move(detail),
+      .facts = render_single_block_same_module_scalar_call_wrapper_facts(facts),
+  };
 }
 
 std::string_view prepared_function_name_or_none(
@@ -1581,15 +1668,11 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           .detail = std::move(single_block_aggregate_forwarding_wrapper_detail),
       });
     }
-    if (const auto single_block_same_module_scalar_call_wrapper_detail =
-            build_single_block_same_module_scalar_call_wrapper_lane_detail(defined_functions,
-                                                                           *function);
-        single_block_same_module_scalar_call_wrapper_detail.has_value()) {
-      report.attempts.push_back(FunctionRouteAttempt{
-          .lane_name = "single-block-same-module-scalar-call-wrapper",
-          .matched = false,
-          .detail = std::move(single_block_same_module_scalar_call_wrapper_detail),
-      });
+    if (const auto single_block_same_module_scalar_call_wrapper_attempt =
+            build_single_block_same_module_scalar_call_wrapper_lane_attempt(defined_functions,
+                                                                            *function);
+        single_block_same_module_scalar_call_wrapper_attempt.has_value()) {
+      report.attempts.push_back(std::move(*single_block_same_module_scalar_call_wrapper_attempt));
     }
 
     const auto matched_it = std::find_if(report.attempts.begin(),
