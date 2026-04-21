@@ -225,6 +225,83 @@ prepare::PreparedBirModule legalize_missing_short_circuit_contract_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule legalize_single_block_void_call_sequence_miss_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.string_constants.push_back(bir::StringConstant{
+      .name = ".str0",
+      .bytes = "extern\n",
+  });
+  module.string_constants.push_back(bir::StringConstant{
+      .name = ".str1",
+      .bytes = "helper\n",
+  });
+
+  bir::Function printf_decl;
+  printf_decl.name = "printf";
+  printf_decl.is_declaration = true;
+  printf_decl.return_type = bir::TypeKind::I32;
+  printf_decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "%p.format",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Function helper;
+  helper.name = "same_module_variadic_helper";
+  helper.return_type = bir::TypeKind::Void;
+  helper.is_variadic = true;
+  helper.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "%p.format",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  helper.blocks.push_back(bir::Block{
+      .label = "entry",
+      .terminator = bir::ReturnTerminator{},
+  });
+
+  bir::Function function;
+  function.name = "single_block_void_call_sequence_miss";
+  function.return_type = bir::TypeKind::Void;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "%f0"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::immediate_f32_bits(0),
+      .rhs = bir::Value::immediate_f32_bits(0),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%t0"),
+      .callee = "printf",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "@.str0")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .is_variadic = true,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "same_module_variadic_helper",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "@.str1")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+      .is_variadic = true,
+  });
+  entry.terminator = bir::ReturnTerminator{};
+
+  function.blocks = {std::move(entry)};
+  module.functions.push_back(std::move(printf_decl));
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(function));
+  return prepare_module(std::move(module));
+}
+
 prepare::PreparedBirModule legalize_single_block_i64_ashr_return_helper_miss_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1129,6 +1206,14 @@ int main() {
     missing_value_summary = c4c::backend::x86::summarize_prepared_module_routes(
         prepared, "short_circuit_or_prepare_contract");
   }
+  const auto single_block_void_call_sequence_miss =
+      legalize_single_block_void_call_sequence_miss_module();
+  const std::string single_block_void_call_sequence_miss_summary =
+      c4c::backend::x86::summarize_prepared_module_routes(
+          single_block_void_call_sequence_miss);
+  const std::string single_block_void_call_sequence_miss_trace =
+      c4c::backend::x86::trace_prepared_module_routes(
+          single_block_void_call_sequence_miss);
   const auto single_block_i64_ashr_return_helper_miss =
       legalize_single_block_i64_ashr_return_helper_miss_module();
   const std::string single_block_i64_ashr_return_helper_miss_summary =
@@ -1263,6 +1348,27 @@ int main() {
       !expect_contains(missing_value_summary,
                        "focused prepared values matched: 0\nfocused prepared move bundles matched: 0\nno prepared value in the focused function matched the requested MIR value focus",
                        "missing value summary result") ||
+      !expect_contains(single_block_void_call_sequence_miss_summary,
+                       "- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support",
+                       "single-block void call-sequence summary final rejection") ||
+      !expect_contains(single_block_void_call_sequence_miss_summary,
+                       "- final facts: prepared call-wrapper facts: same-module calls=1, direct variadic extern calls=1, direct fixed-arity extern calls=0, indirect calls=0, other call side effects=0",
+                       "single-block void call-sequence summary final facts") ||
+      !expect_contains(single_block_void_call_sequence_miss_summary,
+                       "- next inspect: inspect the current x86 single-block call-sequence support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
+                       "single-block void call-sequence summary next inspect") ||
+      !expect_contains(single_block_void_call_sequence_miss_trace,
+                       "try lane single-block-void-call-sequence",
+                       "single-block void call-sequence trace lane") ||
+      !expect_contains(single_block_void_call_sequence_miss_trace,
+                       "final detail: x86 backend emitter only supports trivial single-block void helpers through the canonical prepared-module handoff; this prepared call-wrapper still carries 1 same-module call and 1 direct variadic extern call",
+                       "single-block void call-sequence trace detail") ||
+      !expect_contains(single_block_void_call_sequence_miss_trace,
+                       "final facts: prepared call-wrapper facts: same-module calls=1, direct variadic extern calls=1, direct fixed-arity extern calls=0, indirect calls=0, other call side effects=0",
+                       "single-block void call-sequence trace final facts") ||
+      !expect_contains(single_block_void_call_sequence_miss_trace,
+                       "next inspect: inspect the current x86 single-block call-sequence support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
+                       "single-block void call-sequence trace next inspect") ||
       !expect_contains(single_block_i64_ashr_return_helper_miss_summary,
                        "- final rejection: single-block i64 arithmetic-right-shift return helper recognized the function, but the prepared return-helper shape is outside the current x86 support",
                        "single-block i64 ashr summary final rejection") ||

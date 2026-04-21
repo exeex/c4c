@@ -501,7 +501,7 @@ add_test(
           -DDUMP_FLAG=--dump-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|function stdarg|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|focused functions matched: 1"
+          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|function stdarg|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|- final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -517,7 +517,7 @@ add_test(
           -DDUMP_FLAG=--trace-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: stdarg|function stdarg|try lane single-block-void-call-sequence|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|focused functions matched: 1"
+          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: stdarg|function stdarg|try lane single-block-void-call-sequence|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -533,7 +533,7 @@ add_test(
           -DDUMP_FLAG=--dump-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-block;entry"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|focus block: entry|module-level bounded multi-function lane: rejected|- module-level final rejection: bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support|function stdarg|- focused bir blocks: 1|  - entry|- focused prepared blocks: 1|  - entry|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|focused functions matched: 1|focused bir blocks matched: 1|focused prepared blocks matched: 1"
+          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|focus block: entry|module-level bounded multi-function lane: rejected|- module-level final rejection: bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support|function stdarg|- focused bir blocks: 1|  - entry|- focused prepared blocks: 1|  - entry|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|- final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1|focused bir blocks matched: 1|focused prepared blocks matched: 1"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -549,7 +549,7 @@ add_test(
           -DDUMP_FLAG=--trace-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-block;entry"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: stdarg|focus block: entry|function stdarg|focused bir blocks: 1|focused prepared blocks: 1|focused bir blocks matched: 1|focused prepared blocks matched: 1|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|focused functions matched: 1"
+          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: stdarg|focus block: entry|function stdarg|focused bir blocks: 1|focused prepared blocks: 1|focused bir blocks matched: 1|focused prepared blocks matched: 1|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -565,7 +565,7 @@ add_test(
           -DDUMP_FLAG=--dump-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-block;missing.block"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|focus block: missing.block|module-level bounded multi-function lane: rejected|- module-level final rejection: bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support|function stdarg|- focused bir blocks: 0|- focused prepared blocks: 0|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|focused functions matched: 1|focused bir blocks matched: 0|focused prepared blocks matched: 0|no block in the focused function matched the requested MIR block focus"
+          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|focus block: missing.block|module-level bounded multi-function lane: rejected|- module-level final rejection: bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support|function stdarg|- focused bir blocks: 0|- focused prepared blocks: 0|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|- final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1|focused bir blocks matched: 0|focused prepared blocks matched: 0|no block in the focused function matched the requested MIR block focus"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -581,7 +581,7 @@ add_test(
           -DDUMP_FLAG=--trace-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-block;missing.block"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: stdarg|focus block: missing.block|function stdarg|focused bir blocks: 0|focused prepared blocks: 0|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|focused functions matched: 1|focused bir blocks matched: 0|focused prepared blocks matched: 0|no block in the focused function matched the requested MIR block focus"
+          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: stdarg|focus block: missing.block|function stdarg|focused bir blocks: 0|focused prepared blocks: 0|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1|focused bir blocks matched: 0|focused prepared blocks matched: 0|no block in the focused function matched the requested MIR block focus"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -597,7 +597,7 @@ add_test(
           -DDUMP_FLAG=--dump-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-value;t1"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|focus value: %t1|function stdarg|- focused prepared values: 1|- focused prepared move bundles: 1|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|focused functions matched: 1|focused prepared values matched: 1|focused prepared move bundles matched: 1"
+          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|focus value: %t1|function stdarg|- focused prepared values: 1|- focused prepared move bundles: 1|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|- final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1|focused prepared values matched: 1|focused prepared move bundles matched: 1"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123|no prepared value in the focused function matched the requested MIR value focus"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -613,7 +613,7 @@ add_test(
           -DDUMP_FLAG=--dump-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-value;missing"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|focus value: %missing|function stdarg|- focused prepared values: 0|- focused prepared move bundles: 0|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|focused functions matched: 1|focused prepared values matched: 0|focused prepared move bundles matched: 0|no prepared value in the focused function matched the requested MIR value focus"
+          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|focus value: %missing|function stdarg|- focused prepared values: 0|- focused prepared move bundles: 0|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|- final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1|focused prepared values matched: 0|focused prepared move bundles matched: 0|no prepared value in the focused function matched the requested MIR value focus"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -629,7 +629,7 @@ add_test(
           -DDUMP_FLAG=--trace-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-value;t1"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: stdarg|focus value: %t1|function stdarg|focused prepared values: 1|focused prepared move bundles: 1|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|focused functions matched: 1|focused prepared values matched: 1|focused prepared move bundles matched: 1"
+          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: stdarg|focus value: %t1|function stdarg|focused prepared values: 1|focused prepared move bundles: 1|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1|focused prepared values matched: 1|focused prepared move bundles matched: 1"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123|no prepared value in the focused function matched the requested MIR value focus"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -645,7 +645,7 @@ add_test(
           -DDUMP_FLAG=--trace-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-value;missing"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: stdarg|focus value: %missing|function stdarg|focused prepared values: 0|focused prepared move bundles: 0|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|focused functions matched: 1|focused prepared values matched: 0|focused prepared move bundles matched: 0|no prepared value in the focused function matched the requested MIR value focus"
+          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: stdarg|focus value: %missing|function stdarg|focused prepared values: 0|focused prepared move bundles: 0|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1|focused prepared values matched: 0|focused prepared move bundles matched: 0|no prepared value in the focused function matched the requested MIR value focus"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )

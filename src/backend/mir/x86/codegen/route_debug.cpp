@@ -18,6 +18,7 @@ struct FunctionRouteAttempt {
   std::string lane_name;
   bool matched = false;
   std::optional<std::string> detail;
+  std::optional<std::string> facts;
 };
 
 struct FunctionRouteReport {
@@ -40,6 +41,7 @@ struct FinalRejectionReport {
   FinalRejectionKind kind = FinalRejectionKind::OrdinaryRouteMiss;
   const FunctionRouteAttempt* attempt = nullptr;
   std::string summary;
+  std::optional<std::string> facts;
   std::string next_surface;
 };
 
@@ -54,6 +56,14 @@ struct RouteDebugFocus {
 };
 
 constexpr std::string_view kMirFocusValueEnv = "C4C_MIR_FOCUS_VALUE";
+
+struct SingleBlockVoidCallSequenceFacts {
+  std::size_t same_module_call_count = 0;
+  std::size_t direct_variadic_extern_call_count = 0;
+  std::size_t direct_fixed_arity_extern_call_count = 0;
+  std::size_t indirect_call_count = 0;
+  std::size_t other_call_effect_count = 0;
+};
 
 void append_indented_line(std::ostringstream& out,
                           std::size_t indent,
@@ -70,6 +80,73 @@ std::string_view route_result_text(bool matched) {
 
 bool string_contains(std::string_view haystack, std::string_view needle) {
   return haystack.find(needle) != std::string_view::npos;
+}
+
+std::string counted_label(std::size_t count,
+                          std::string_view singular,
+                          std::string_view plural) {
+  return std::to_string(count) + " " + std::string(count == 1 ? singular : plural);
+}
+
+std::string join_fact_labels(const std::vector<std::string>& labels) {
+  if (labels.empty()) {
+    return {};
+  }
+  if (labels.size() == 1) {
+    return labels.front();
+  }
+  if (labels.size() == 2) {
+    return labels.front() + " and " + labels.back();
+  }
+
+  std::ostringstream out;
+  for (std::size_t index = 0; index < labels.size(); ++index) {
+    if (index != 0) {
+      out << (index + 1 == labels.size() ? ", and " : ", ");
+    }
+    out << labels[index];
+  }
+  return out.str();
+}
+
+std::string render_single_block_void_call_sequence_facts(
+    const SingleBlockVoidCallSequenceFacts& facts) {
+  std::ostringstream out;
+  out << "prepared call-wrapper facts: same-module calls=" << facts.same_module_call_count
+      << ", direct variadic extern calls=" << facts.direct_variadic_extern_call_count
+      << ", direct fixed-arity extern calls=" << facts.direct_fixed_arity_extern_call_count
+      << ", indirect calls=" << facts.indirect_call_count
+      << ", other call side effects=" << facts.other_call_effect_count;
+  return out.str();
+}
+
+std::string summarize_single_block_void_call_sequence_facts(
+    const SingleBlockVoidCallSequenceFacts& facts) {
+  std::vector<std::string> labels;
+  if (facts.same_module_call_count != 0) {
+    labels.push_back(counted_label(facts.same_module_call_count,
+                                   "same-module call",
+                                   "same-module calls"));
+  }
+  if (facts.direct_variadic_extern_call_count != 0) {
+    labels.push_back(counted_label(facts.direct_variadic_extern_call_count,
+                                   "direct variadic extern call",
+                                   "direct variadic extern calls"));
+  }
+  if (facts.direct_fixed_arity_extern_call_count != 0) {
+    labels.push_back(counted_label(facts.direct_fixed_arity_extern_call_count,
+                                   "direct fixed-arity extern call",
+                                   "direct fixed-arity extern calls"));
+  }
+  if (facts.indirect_call_count != 0) {
+    labels.push_back(counted_label(facts.indirect_call_count, "indirect call", "indirect calls"));
+  }
+  if (facts.other_call_effect_count != 0) {
+    labels.push_back(counted_label(facts.other_call_effect_count,
+                                   "other call side effect",
+                                   "other call side effects"));
+  }
+  return join_fact_labels(labels);
 }
 
 std::optional<std::string_view> current_route_debug_focus_value() {
@@ -274,6 +351,7 @@ FinalRejectionReport build_final_rejection_report(const FunctionRouteReport& rep
         .kind = kind,
         .attempt = &*it,
         .summary = std::move(summary),
+        .facts = it->facts,
         .next_surface = next_surface_hint(&*it, kind),
     };
   }
@@ -282,6 +360,7 @@ FinalRejectionReport build_final_rejection_report(const FunctionRouteReport& rep
       .kind = FinalRejectionKind::OrdinaryRouteMiss,
       .attempt = nullptr,
       .summary = "current x86 lanes did not recognize this prepared function shape",
+      .facts = std::nullopt,
       .next_surface =
           "inspect src/backend/mir/x86/codegen/prepared_module_emit.cpp for the next top-level lane",
   };
@@ -330,7 +409,8 @@ std::optional<std::string> build_bounded_variadic_helper_lane_detail(
   return detail;
 }
 
-std::optional<std::string> build_single_block_void_call_sequence_lane_detail(
+std::optional<FunctionRouteAttempt> build_single_block_void_call_sequence_lane_attempt(
+    const std::vector<const c4c::backend::bir::Function*>& defined_functions,
     const c4c::backend::bir::Function& function) {
   if (function.is_declaration || function.blocks.size() != 1 ||
       function.return_type != c4c::backend::bir::TypeKind::Void) {
@@ -343,10 +423,17 @@ std::optional<std::string> build_single_block_void_call_sequence_lane_detail(
     return std::nullopt;
   }
 
-  bool saw_same_module_call = false;
-  bool saw_direct_variadic_extern_call = false;
-  bool saw_indirect_call = false;
-  bool saw_other_call_effect = false;
+  const auto find_defined_function = [&](std::string_view callee_name)
+      -> const c4c::backend::bir::Function* {
+    for (const auto* candidate : defined_functions) {
+      if (candidate != nullptr && candidate->name == callee_name) {
+        return candidate;
+      }
+    }
+    return nullptr;
+  };
+
+  SingleBlockVoidCallSequenceFacts facts;
 
   for (const auto& inst : entry.insts) {
     const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
@@ -354,41 +441,47 @@ std::optional<std::string> build_single_block_void_call_sequence_lane_detail(
       continue;
     }
     if (call->is_indirect || call->callee_value.has_value()) {
-      saw_indirect_call = true;
+      ++facts.indirect_call_count;
+      continue;
+    }
+    if (call->callee.empty()) {
+      ++facts.other_call_effect_count;
+      continue;
+    }
+    if (call->callee.rfind("llvm.", 0) == 0) {
+      ++facts.other_call_effect_count;
+      continue;
+    }
+    if (const auto* callee = find_defined_function(call->callee);
+        callee != nullptr && !callee->is_declaration) {
+      ++facts.same_module_call_count;
       continue;
     }
     if (call->is_variadic) {
-      saw_direct_variadic_extern_call = true;
+      ++facts.direct_variadic_extern_call_count;
       continue;
     }
-    if (!call->callee.empty() && call->callee.rfind("llvm.", 0) != 0) {
-      saw_same_module_call = true;
-      continue;
-    }
-    saw_other_call_effect = true;
+    ++facts.direct_fixed_arity_extern_call_count;
   }
 
-  if (!saw_same_module_call && !saw_direct_variadic_extern_call && !saw_indirect_call &&
-      !saw_other_call_effect) {
+  if (facts.same_module_call_count == 0 &&
+      facts.direct_variadic_extern_call_count == 0 &&
+      facts.direct_fixed_arity_extern_call_count == 0 &&
+      facts.indirect_call_count == 0 &&
+      facts.other_call_effect_count == 0) {
     return std::nullopt;
   }
 
   std::string detail =
       "x86 backend emitter only supports trivial single-block void helpers through the canonical "
-      "prepared-module handoff";
-  if (saw_same_module_call && saw_direct_variadic_extern_call) {
-    detail += "; this helper still carries same-module call wrappers and direct variadic extern "
-              "calls";
-  } else if (saw_same_module_call) {
-    detail += "; this helper still carries same-module call wrappers";
-  } else if (saw_direct_variadic_extern_call) {
-    detail += "; this helper still carries direct variadic extern calls";
-  } else if (saw_indirect_call) {
-    detail += "; this helper still carries indirect calls";
-  } else {
-    detail += "; this helper still carries call side effects";
-  }
-  return detail;
+      "prepared-module handoff; this prepared call-wrapper still carries " +
+      summarize_single_block_void_call_sequence_facts(facts);
+  return FunctionRouteAttempt{
+      .lane_name = "single-block-void-call-sequence",
+      .matched = false,
+      .detail = std::move(detail),
+      .facts = render_single_block_void_call_sequence_facts(facts),
+  };
 }
 
 std::optional<std::string> build_single_block_i64_ashr_return_helper_lane_detail(
@@ -1437,14 +1530,10 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           .detail = std::move(bounded_variadic_helper_detail),
       });
     }
-    if (const auto single_block_void_call_sequence_detail =
-            build_single_block_void_call_sequence_lane_detail(*function);
-        single_block_void_call_sequence_detail.has_value()) {
-      report.attempts.push_back(FunctionRouteAttempt{
-          .lane_name = "single-block-void-call-sequence",
-          .matched = false,
-          .detail = std::move(single_block_void_call_sequence_detail),
-      });
+    if (const auto single_block_void_call_sequence_attempt =
+            build_single_block_void_call_sequence_lane_attempt(defined_functions, *function);
+        single_block_void_call_sequence_attempt.has_value()) {
+      report.attempts.push_back(std::move(*single_block_void_call_sequence_attempt));
     }
     if (const auto single_block_i64_ashr_return_helper_detail =
             build_single_block_i64_ashr_return_helper_lane_detail(*function);
@@ -1517,6 +1606,9 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
       if (matched_it == report.attempts.end()) {
         const auto rejection = build_final_rejection_report(report);
         out << "- final rejection: " << rejection.summary << "\n";
+        if (rejection.facts.has_value()) {
+          out << "- final facts: " << *rejection.facts << "\n";
+        }
         out << "- next inspect: " << rejection.next_surface << "\n";
       }
     } else {
@@ -1532,6 +1624,9 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
         out << "  final: rejected: " << rejection.summary << "\n";
         if (rejection.attempt != nullptr && rejection.attempt->detail.has_value()) {
           out << "  final detail: " << *rejection.attempt->detail << "\n";
+        }
+        if (rejection.facts.has_value()) {
+          out << "  final facts: " << *rejection.facts << "\n";
         }
         out << "  next inspect: " << rejection.next_surface << "\n";
       } else {
