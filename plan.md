@@ -109,34 +109,70 @@ Completion check:
 - the next executor packet is narrowed to one still-owned idea-60 scalar seam
   with named proof targets and a clear ownership boundary
 
-## Step 2.1: Repair The Selected Scalar Prepared/Emitter Seam
+## Step 2.1: Repair Compare-Result Bool/Cast Materialization
 
-Goal: implement the smallest durable scalar-emitter repair that advances the
-selected idea-60 case beyond the current minimal scalar restriction.
+Goal: repair the compare-result bool/cast local-slot seam that still drops
+`00204.c` out at `match` before the old call-boundary target.
 
 Primary targets:
 
-- shared prepared value-home, move-bundle, branch-condition, or control-flow
-  contracts for the chosen seam
-- x86 scalar emission helpers that should consume those contracts generically
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- shared prepared value-home or branch-condition facts only if the current
+  compare-result materialization cannot be expressed from existing ownership
+- `tests/backend/backend_x86_handoff_boundary_short_circuit_test.cpp`
+- `tests/c/external/c-testsuite/src/00204.c`
 
 Actions:
 
-- repair the selected scalar seam at the layer that owns the missing meaning
-- prefer contract-first fixes when x86 is missing a shared prepared fact
-- keep the repair generic across nearby same-family scalar routes
-- confirm the targeted cases now move past the old idea-60 failure family or
-  graduate cleanly into a later leaf
+- implement one generic repair for compare-result bool materialization through
+  the prepared local-slot path
+- keep the packet scoped to compare-result `CastInst` / bool consumption and
+  do not bundle float, HFA, pointer, or call-boundary work into the same slice
+- prefer contract-first repair if the missing fact belongs in shared prepared
+  ownership rather than x86-local pattern growth
+- confirm `match` and nearby same-family routes move past the old bool/cast
+  dropout without adding testcase-shaped recognition
 
 Completion check:
 
-- the targeted owned cases no longer fail for the selected idea-60 scalar seam
-  and instead reach the next downstream route
+- the targeted bool/cast family no longer fails for the current compare-result
+  local-slot seam, and any remaining `00204.c` failure is clearly a different
+  downstream family
 
-## Step 2.2: Prove Family Shrinkage And Record Rehoming
+## Step 2.2: Repair Float/HFA Local-Slot Consumption
 
-Goal: show the accepted slice shrinks the real idea-60 family and preserves
-explicit routing for any graduated cases.
+Goal: repair the float/HFA local-slot consumption seam that still drops
+`00204.c` out at `fa_hfa11` once the bool/cast route is no longer blocking.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- shared prepared value-home or move-bundle facts only if float/HFA local-slot
+  rendering lacks a target-independent ownership fact
+- `tests/backend/backend_x86_handoff_boundary_short_circuit_test.cpp`
+- `tests/c/external/c-testsuite/src/00204.c`
+
+Actions:
+
+- implement one generic repair for float/HFA local-slot load or consumption
+  through the prepared renderer
+- keep the packet scoped to float/HFA local-slot ownership and do not reopen
+  compare-result bool/cast or later call-family work in the same slice
+- prove the repair on the nearest backend coverage plus the owned c-testsuite
+  route without relying on one named helper only
+- confirm `fa_hfa11` and nearby same-family routes move past the old float/HFA
+  dropout without expanding into unrelated scalar families
+
+Completion check:
+
+- the targeted float/HFA family no longer fails for the current local-slot
+  seam, and `00204.c` either reaches the next downstream leaf or exposes one
+  new clearly isolated idea-60 seam
+
+## Step 2.3: Prove Family Shrinkage And Record Rehoming
+
+Goal: show the accepted Step 2 packet shrinks the real idea-60 family and
+preserves explicit routing for any graduated cases.
 
 Actions:
 
@@ -154,7 +190,7 @@ Completion check:
 
 ## Step 3: Continue The Loop Until Idea 60 Is Exhausted
 
-Goal: keep repeating the Step 1 -> 2.2 loop until the remaining failures no
+Goal: keep repeating the Step 1 -> 2.3 loop until the remaining failures no
 longer belong to idea 60.
 
 Actions:
