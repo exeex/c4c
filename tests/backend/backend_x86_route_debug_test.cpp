@@ -1613,6 +1613,9 @@ int main() {
                        "- final rejection: single-block floating aggregate sret copyout helper recognized the function, but the prepared return-helper shape is outside the current x86 support",
                        "single-block floating aggregate sret copyout helper summary final rejection") ||
       !expect_contains(single_block_floating_aggregate_sret_copyout_helper_miss_summary,
+                       "- final facts: prepared floating-aggregate return-helper facts: same-module global loads=1, scratch slot stores=1, scratch slot reloads=1, sret floating stores=1",
+                       "single-block floating aggregate sret copyout helper summary final facts") ||
+      !expect_contains(single_block_floating_aggregate_sret_copyout_helper_miss_summary,
                        "- next inspect: inspect the current x86 floating aggregate return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "single-block floating aggregate sret copyout helper summary next inspect") ||
       !expect_contains(single_block_floating_aggregate_sret_copyout_helper_miss_trace,
@@ -1621,6 +1624,9 @@ int main() {
       !expect_contains(single_block_floating_aggregate_sret_copyout_helper_miss_trace,
                        "final detail: x86 backend emitter only supports single-block floating aggregate sret copyout helpers when those same-module aggregate returns already reduce to the current return-helper surfaces; this helper still copies floating aggregate lanes from same-module globals through scratch slots into an sret destination",
                        "single-block floating aggregate sret copyout helper trace detail") ||
+      !expect_contains(single_block_floating_aggregate_sret_copyout_helper_miss_trace,
+                       "final facts: prepared floating-aggregate return-helper facts: same-module global loads=1, scratch slot stores=1, scratch slot reloads=1, sret floating stores=1",
+                       "single-block floating aggregate sret copyout helper trace final facts") ||
       !expect_contains(single_block_floating_aggregate_sret_copyout_helper_miss_trace,
                        "next inspect: inspect the current x86 floating aggregate return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "single-block floating aggregate sret copyout helper trace next inspect") ||

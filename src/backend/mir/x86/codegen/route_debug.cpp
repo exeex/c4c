@@ -88,6 +88,13 @@ struct SingleBlockFloatingAggregateCallHelperFacts {
   std::size_t floating_variadic_arg_count = 0;
 };
 
+struct SingleBlockFloatingAggregateSretCopyoutHelperFacts {
+  std::size_t same_module_global_load_count = 0;
+  std::size_t scratch_slot_store_count = 0;
+  std::size_t scratch_slot_reload_count = 0;
+  std::size_t sret_floating_store_count = 0;
+};
+
 struct SingleBlockSameModuleScalarCallWrapperFacts {
   std::size_t local_slot_reload_count = 0;
   std::size_t scalar_same_module_helper_call_count = 0;
@@ -262,6 +269,17 @@ std::string render_single_block_floating_aggregate_call_helper_facts(
       << ", floating widening casts=" << facts.floating_widening_cast_count
       << ", direct variadic extern calls=" << facts.direct_variadic_extern_call_count
       << ", floating variadic call args=" << facts.floating_variadic_arg_count;
+  return out.str();
+}
+
+std::string render_single_block_floating_aggregate_sret_copyout_helper_facts(
+    const SingleBlockFloatingAggregateSretCopyoutHelperFacts& facts) {
+  std::ostringstream out;
+  out << "prepared floating-aggregate return-helper facts: same-module global loads="
+      << facts.same_module_global_load_count
+      << ", scratch slot stores=" << facts.scratch_slot_store_count
+      << ", scratch slot reloads=" << facts.scratch_slot_reload_count
+      << ", sret floating stores=" << facts.sret_floating_store_count;
   return out.str();
 }
 
@@ -905,7 +923,7 @@ std::optional<FunctionRouteAttempt> build_single_block_floating_aggregate_call_h
   };
 }
 
-std::optional<std::string> build_single_block_floating_aggregate_sret_copyout_helper_lane_detail(
+std::optional<FunctionRouteAttempt> build_single_block_floating_aggregate_sret_copyout_helper_lane_attempt(
     const c4c::backend::bir::Function& function) {
   if (function.is_declaration || function.is_variadic ||
       function.return_type != c4c::backend::bir::TypeKind::Void || function.blocks.size() != 1 ||
@@ -925,8 +943,18 @@ std::optional<std::string> build_single_block_floating_aggregate_sret_copyout_he
            type == c4c::backend::bir::TypeKind::F128;
   };
 
-  bool saw_global_floating_load = false;
-  bool saw_sret_copyout = false;
+  const auto is_lowering_scratch_slot = [&](std::string_view slot_name) {
+    const auto slot_it = std::find_if(function.local_slots.begin(),
+                                      function.local_slots.end(),
+                                      [&](const c4c::backend::bir::LocalSlot& slot) {
+                                        return slot.name == slot_name;
+                                      });
+    return slot_it != function.local_slots.end() &&
+           slot_it->storage_kind == c4c::backend::bir::LocalSlotStorageKind::LoweringScratch;
+  };
+
+  const std::string_view sret_param_name = function.params.front().name;
+  SingleBlockFloatingAggregateSretCopyoutHelperFacts facts;
   bool saw_call = false;
   for (const auto& inst : entry.insts) {
     if (std::holds_alternative<c4c::backend::bir::CallInst>(inst)) {
@@ -937,25 +965,44 @@ std::optional<std::string> build_single_block_floating_aggregate_sret_copyout_he
       if (load->address.has_value() &&
           load->address->base_kind == c4c::backend::bir::MemoryAddress::BaseKind::GlobalSymbol &&
           is_floating_lane(load->result.type)) {
-        saw_global_floating_load = true;
+        ++facts.same_module_global_load_count;
+      }
+      if (!load->address.has_value() && is_floating_lane(load->result.type) &&
+          is_lowering_scratch_slot(load->slot_name)) {
+        ++facts.scratch_slot_reload_count;
       }
       continue;
     }
     if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
-        store != nullptr && store->address.has_value() &&
-        is_floating_lane(store->value.type)) {
-      saw_sret_copyout = true;
+        store != nullptr && is_floating_lane(store->value.type)) {
+      if (!store->address.has_value() && is_lowering_scratch_slot(store->slot_name)) {
+        ++facts.scratch_slot_store_count;
+      }
+      if (store->address.has_value() &&
+          store->address->base_kind == c4c::backend::bir::MemoryAddress::BaseKind::PointerValue &&
+          (store->address->base_name == sret_param_name ||
+           (store->address->base_value.kind == c4c::backend::bir::Value::Kind::Named &&
+            store->address->base_value.name == sret_param_name))) {
+        ++facts.sret_floating_store_count;
+      }
     }
   }
 
-  if (saw_call || !saw_global_floating_load || !saw_sret_copyout) {
+  if (saw_call || facts.same_module_global_load_count == 0 || facts.sret_floating_store_count == 0) {
     return std::nullopt;
   }
 
-  return "x86 backend emitter only supports single-block floating aggregate sret copyout helpers "
-         "when those same-module aggregate returns already reduce to the current return-helper "
-         "surfaces; this helper still copies floating aggregate lanes from same-module globals "
-         "through scratch slots into an sret destination";
+  std::string detail =
+      "x86 backend emitter only supports single-block floating aggregate sret copyout helpers "
+      "when those same-module aggregate returns already reduce to the current return-helper "
+      "surfaces; this helper still copies floating aggregate lanes from same-module globals "
+      "through scratch slots into an sret destination";
+  return FunctionRouteAttempt{
+      .lane_name = "single-block-floating-aggregate-sret-copyout-helper",
+      .matched = false,
+      .detail = std::move(detail),
+      .facts = render_single_block_floating_aggregate_sret_copyout_helper_facts(facts),
+  };
 }
 
 std::optional<FunctionRouteAttempt> build_single_block_aggregate_forwarding_wrapper_lane_attempt(
@@ -1807,14 +1854,10 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           .detail = std::move(single_block_i64_immediate_return_helper_detail),
       });
     }
-    if (const auto single_block_floating_aggregate_sret_copyout_helper_detail =
-            build_single_block_floating_aggregate_sret_copyout_helper_lane_detail(*function);
-        single_block_floating_aggregate_sret_copyout_helper_detail.has_value()) {
-      report.attempts.push_back(FunctionRouteAttempt{
-          .lane_name = "single-block-floating-aggregate-sret-copyout-helper",
-          .matched = false,
-          .detail = std::move(single_block_floating_aggregate_sret_copyout_helper_detail),
-      });
+    if (const auto single_block_floating_aggregate_sret_copyout_helper_attempt =
+            build_single_block_floating_aggregate_sret_copyout_helper_lane_attempt(*function);
+        single_block_floating_aggregate_sret_copyout_helper_attempt.has_value()) {
+      report.attempts.push_back(std::move(*single_block_floating_aggregate_sret_copyout_helper_attempt));
     }
     if (const auto single_block_floating_aggregate_call_helper_attempt =
             build_single_block_floating_aggregate_call_helper_lane_attempt(*function);
