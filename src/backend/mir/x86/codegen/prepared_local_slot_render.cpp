@@ -3175,7 +3175,7 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
   }
   const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
   if (call == nullptr || call->is_indirect || call->callee.empty() || call->callee_value.has_value() ||
-      call->args.size() != call->arg_types.size() || call->args.size() > 6) {
+      call->args.size() != call->arg_types.size()) {
     return std::nullopt;
   }
   if (call->result.has_value() &&
@@ -3248,6 +3248,14 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
       continue;
     }
     if (arg_type == c4c::backend::bir::TypeKind::Ptr) {
+      const auto destination_register = select_prepared_call_argument_abi_register_if_supported(
+          function_context.function_locations,
+          block_context.block_index,
+          instruction_index,
+          arg_index);
+      if (!destination_register.has_value()) {
+        throw std::invalid_argument(std::string(kPreparedCallBundleHandoffRequired));
+      }
       if (arg.kind != c4c::backend::bir::Value::Kind::Named) {
         return std::nullopt;
       }
@@ -3260,7 +3268,7 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
               function_context.used_string_names->insert(symbol_name);
             }
             body += "    lea ";
-            body += kArgRegs64[arg_index];
+            body += *destination_register;
             body += ", [rip + ";
             body += function_context.render_private_data_label(symbol_name);
             body += "]\n";
@@ -3274,7 +3282,7 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
               function_context.used_same_module_global_names->insert(global->name);
             }
             body += "    lea ";
-            body += kArgRegs64[arg_index];
+            body += *destination_register;
             body += ", [rip + ";
             body += function_context.render_asm_symbol_name(global->name);
             body += "]\n";
@@ -3284,9 +3292,9 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
         return std::nullopt;
       }
       if (current_ptr_name->has_value() && **current_ptr_name == arg.name) {
-        if (std::string_view(kArgRegs64[arg_index]) != "rax") {
+        if (*destination_register != "rax") {
           body += "    mov ";
-          body += kArgRegs64[arg_index];
+          body += *destination_register;
           body += ", rax\n";
         }
         continue;
@@ -3297,9 +3305,9 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
         if (home != nullptr) {
           if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
               home->register_name.has_value()) {
-            if (*home->register_name != kArgRegs64[arg_index]) {
+            if (*home->register_name != *destination_register) {
               body += "    mov ";
-              body += kArgRegs64[arg_index];
+              body += *destination_register;
               body += ", ";
               body += *home->register_name;
               body += "\n";
@@ -3309,7 +3317,7 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
           if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
               home->offset_bytes.has_value()) {
             body += "    lea ";
-            body += kArgRegs64[arg_index];
+            body += *destination_register;
             body += ", ";
             body += render_prepared_stack_address_expr(*home->offset_bytes);
             body += "\n";
@@ -3325,7 +3333,7 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
             arg.name);
         if (frame_offset.has_value()) {
           body += "    lea ";
-          body += kArgRegs64[arg_index];
+          body += *destination_register;
           body += ", ";
           body += render_prepared_stack_address_expr(*frame_offset);
           body += "\n";

@@ -552,6 +552,141 @@ bir::Module make_x86_multi_defined_f128_helper_call_lane_module() {
   return module;
 }
 
+bir::Module make_x86_multi_defined_mixed_f128_helper_call_lane_module() {
+  bir::Module module = make_x86_multi_defined_direct_call_lane_module();
+  module.string_constants.push_back(bir::StringConstant{
+      .name = ".str1",
+      .bytes = "%s %.1f %.1f %s %.1Lf %.1Lf\n",
+  });
+
+  bir::Function show;
+  show.name = "show";
+  show.return_type = bir::TypeKind::Void;
+  show.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "%p.0",
+  });
+  show.params.push_back(bir::Param{
+      .type = bir::TypeKind::F32,
+      .name = "%x.0",
+  });
+  show.params.push_back(bir::Param{
+      .type = bir::TypeKind::F32,
+      .name = "%x.1",
+  });
+  show.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "%p.1",
+  });
+  show.params.push_back(bir::Param{
+      .type = bir::TypeKind::F128,
+      .name = "%y.0",
+  });
+  show.params.push_back(bir::Param{
+      .type = bir::TypeKind::F128,
+      .name = "%y.1",
+  });
+  show.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.param.x.0",
+      .type = bir::TypeKind::F32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  show.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.param.x.4",
+      .type = bir::TypeKind::F32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  show.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.param.y.0",
+      .type = bir::TypeKind::F128,
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+  show.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.param.y.16",
+      .type = bir::TypeKind::F128,
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+
+  bir::Block show_entry;
+  show_entry.label = "entry";
+  show_entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.param.x.0",
+      .value = bir::Value::named(bir::TypeKind::F32, "%x.0"),
+  });
+  show_entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.param.x.4",
+      .value = bir::Value::named(bir::TypeKind::F32, "%x.1"),
+  });
+  show_entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::F32, "%field0"),
+      .slot_name = "%lv.param.x.0",
+      .align_bytes = 4,
+  });
+  show_entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::FPExt,
+      .result = bir::Value::named(bir::TypeKind::F64, "%wide0"),
+      .operand = bir::Value::named(bir::TypeKind::F32, "%field0"),
+  });
+  show_entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::F32, "%field1"),
+      .slot_name = "%lv.param.x.4",
+      .align_bytes = 4,
+  });
+  show_entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::FPExt,
+      .result = bir::Value::named(bir::TypeKind::F64, "%wide1"),
+      .operand = bir::Value::named(bir::TypeKind::F32, "%field1"),
+  });
+  show_entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.param.y.0",
+      .value = bir::Value::named(bir::TypeKind::F128, "%y.0"),
+  });
+  show_entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.param.y.16",
+      .value = bir::Value::named(bir::TypeKind::F128, "%y.1"),
+  });
+  show_entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::F128, "%long0"),
+      .slot_name = "%lv.param.y.0",
+      .align_bytes = 16,
+  });
+  show_entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::F128, "%long1"),
+      .slot_name = "%lv.param.y.16",
+      .align_bytes = 16,
+  });
+  show_entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%call"),
+      .callee = "printf",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "@.str1"),
+               bir::Value::named(bir::TypeKind::Ptr, "%p.0"),
+               bir::Value::named(bir::TypeKind::F64, "%wide0"),
+               bir::Value::named(bir::TypeKind::F64, "%wide1"),
+               bir::Value::named(bir::TypeKind::Ptr, "%p.1"),
+               bir::Value::named(bir::TypeKind::F128, "%long0"),
+               bir::Value::named(bir::TypeKind::F128, "%long1")},
+      .arg_types = {bir::TypeKind::Ptr,
+                    bir::TypeKind::Ptr,
+                    bir::TypeKind::F64,
+                    bir::TypeKind::F64,
+                    bir::TypeKind::Ptr,
+                    bir::TypeKind::F128,
+                    bir::TypeKind::F128},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .is_variadic = true,
+  });
+  show_entry.terminator = bir::ReturnTerminator{};
+  show.blocks.push_back(std::move(show_entry));
+
+  module.functions.insert(module.functions.begin() + 2, std::move(show));
+  return module;
+}
+
 int check_route_outputs(const bir::Module& module,
                         const std::string& expected_asm,
                         const std::string& expected_bir_fragment,
@@ -969,6 +1104,22 @@ int run_backend_x86_handoff_boundary_multi_defined_call_tests() {
                "    call actual_function\n"},
               "bir.func @show(f128 %x.0) -> void {",
               "bounded multi-defined-function f128 helper local-materialization direct-extern prepared-module route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_route_contains_fragments(
+              make_x86_multi_defined_mixed_f128_helper_call_lane_module(),
+              {"show:\n",
+               "    mov eax, 2\n",
+               "    sub rsp, 32\n",
+               "    fstpt TBYTE PTR [rsp + 16]\n",
+               "    call printf\n",
+               "    add rsp, 32\n",
+               "main:\n",
+               "    call actual_function\n"},
+              "bir.func @show(ptr %p.0, float %x.0, float %x.1, ptr %p.1, f128 %y.0, f128 %y.1) -> void {",
+              "bounded multi-defined-function mixed helper direct-extern prepared-module route beyond six total args");
       status != 0) {
     return status;
   }
