@@ -395,12 +395,29 @@ class BirFunctionLowerer {
   };
 
   struct PhiLoweringPlan {
+    enum class Kind : unsigned char {
+      ScalarValue,
+      AggregateValue,
+    };
+
+    Kind kind = Kind::ScalarValue;
     std::string result_name;
     bir::TypeKind type = bir::TypeKind::Void;
+    std::string type_text;
+    std::size_t aggregate_align_bytes = 0;
     std::vector<std::pair<std::string, c4c::codegen::lir::LirOperand>> incomings;
   };
 
   using PhiBlockPlanMap = std::unordered_map<std::string, std::vector<PhiLoweringPlan>>;
+
+  struct PendingAggregatePhiCopy {
+    c4c::codegen::lir::LirOperand source;
+    std::string target_slot_name;
+    std::string temp_prefix;
+  };
+
+  using PendingAggregatePhiCopyMap =
+      std::unordered_map<std::string, std::vector<PendingAggregatePhiCopy>>;
 
   struct AggregateParamInfo {
     std::string type_text;
@@ -544,6 +561,9 @@ class BirFunctionLowerer {
       const BlockLookup& blocks,
       const std::string& start_label);
   std::optional<PhiBlockPlanMap> collect_phi_lowering_plans() const;
+  bool initialize_aggregate_phi_state();
+  bool apply_pending_aggregate_phi_copies(std::string_view predecessor_label,
+                                          std::vector<bir::Inst>* lowered_insts);
 
   // Local/global memory helpers.
   static std::optional<std::vector<std::string>> collect_local_scalar_array_slots(
@@ -1030,6 +1050,7 @@ class BirFunctionLowerer {
   bir::Function lowered_function_;
   std::optional<LoweredReturnInfo> return_info_;
   PhiBlockPlanMap phi_plans_;
+  PendingAggregatePhiCopyMap pending_aggregate_phi_copies_;
   AggregateParamMap aggregate_params_;
   ValueMap value_aliases_;
   CompareMap compare_exprs_;

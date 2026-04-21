@@ -127,17 +127,28 @@ std::optional<BirFunctionLowerer::PhiBlockPlanMap> BirFunctionLowerer::collect_p
         return std::nullopt;
       }
 
-      const auto phi_type = lower_integer_type(phi->type_str.str());
-      if (!phi_type.has_value()) {
-        return std::nullopt;
-      }
-
       PhiLoweringPlan plan{
           .result_name = phi->result.str(),
-          .type = *phi_type,
+          .type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(phi->type_str.str())),
       };
+      if (const auto phi_type = lower_integer_type(plan.type_text); phi_type.has_value()) {
+        plan.kind = PhiLoweringPlan::Kind::ScalarValue;
+        plan.type = *phi_type;
+      } else if (const auto aggregate_layout =
+                     lower_byval_aggregate_layout(plan.type_text, type_decls_);
+                 aggregate_layout.has_value()) {
+        plan.kind = PhiLoweringPlan::Kind::AggregateValue;
+        plan.aggregate_align_bytes = aggregate_layout->align_bytes;
+      } else {
+        return std::nullopt;
+      }
       for (const auto& [value, label] : phi->incoming) {
-        plan.incomings.push_back({label, c4c::codegen::lir::LirOperand(value)});
+        const c4c::codegen::lir::LirOperand incoming(value);
+        if (plan.kind == PhiLoweringPlan::Kind::AggregateValue &&
+            incoming.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+          return std::nullopt;
+        }
+        plan.incomings.push_back({label, incoming});
       }
       if (plan.incomings.empty()) {
         return std::nullopt;

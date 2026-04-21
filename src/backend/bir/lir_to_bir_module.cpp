@@ -399,6 +399,11 @@ bool BirFunctionLowerer::lower_block_phi_insts(const c4c::codegen::lir::LirBlock
   }
 
   for (const auto& phi_plan : phi_it->second) {
+    if (phi_plan.kind == PhiLoweringPlan::Kind::AggregateValue) {
+      aggregate_value_aliases_[phi_plan.result_name] = phi_plan.result_name;
+      continue;
+    }
+
     std::vector<bir::PhiIncoming> incomings;
     incomings.reserve(phi_plan.incomings.size());
     for (const auto& [label, operand] : phi_plan.incomings) {
@@ -418,6 +423,67 @@ bool BirFunctionLowerer::lower_block_phi_insts(const c4c::codegen::lir::LirBlock
     });
   }
 
+  return true;
+}
+
+bool BirFunctionLowerer::initialize_aggregate_phi_state() {
+  pending_aggregate_phi_copies_.clear();
+
+  for (const auto& [_, block_plans] : phi_plans_) {
+    for (const auto& phi_plan : block_plans) {
+      if (phi_plan.kind != PhiLoweringPlan::Kind::AggregateValue) {
+        continue;
+      }
+
+      if (!declare_local_aggregate_slots(
+              phi_plan.type_text, phi_plan.result_name, phi_plan.aggregate_align_bytes)) {
+        note_function_lowering_family_failure("scalar-control-flow semantic family");
+        return false;
+      }
+
+      for (const auto& [label, operand] : phi_plan.incomings) {
+        pending_aggregate_phi_copies_[label].push_back(PendingAggregatePhiCopy{
+            .source = operand,
+            .target_slot_name = phi_plan.result_name,
+            .temp_prefix = phi_plan.result_name + ".phi.copy." + label,
+        });
+      }
+    }
+  }
+
+  return true;
+}
+
+bool BirFunctionLowerer::apply_pending_aggregate_phi_copies(std::string_view predecessor_label,
+                                                            std::vector<bir::Inst>* lowered_insts) {
+  const auto copies_it = pending_aggregate_phi_copies_.find(std::string(predecessor_label));
+  if (copies_it == pending_aggregate_phi_copies_.end()) {
+    return true;
+  }
+
+  for (const auto& copy : copies_it->second) {
+    const auto source_alias_it = aggregate_value_aliases_.find(copy.source.str());
+    const std::string_view source_slot_name =
+        source_alias_it != aggregate_value_aliases_.end()
+            ? std::string_view(source_alias_it->second)
+            : std::string_view(copy.source.str());
+    const auto source_aggregate_it = local_aggregate_slots_.find(std::string(source_slot_name));
+    const auto target_aggregate_it = local_aggregate_slots_.find(copy.target_slot_name);
+    if (source_aggregate_it == local_aggregate_slots_.end() ||
+        target_aggregate_it == local_aggregate_slots_.end()) {
+      note_function_lowering_family_failure("scalar-control-flow semantic family");
+      return false;
+    }
+    if (!append_local_aggregate_copy_from_slots(source_aggregate_it->second,
+                                                target_aggregate_it->second,
+                                                copy.temp_prefix,
+                                                lowered_insts)) {
+      note_function_lowering_family_failure("scalar-control-flow semantic family");
+      return false;
+    }
+  }
+
+  pending_aggregate_phi_copies_.erase(copies_it);
   return true;
 }
 
@@ -611,6 +677,7 @@ bool BirFunctionLowerer::lower_block(const c4c::codegen::lir::LirBlock& block,
 
   if (!lower_block_phi_insts(block, &lowered_block) ||
       !lower_block_insts(block, &lowered_block) ||
+      !apply_pending_aggregate_phi_copies(block.label, &lowered_block.insts) ||
       !lower_block_terminator(block, &lowered_block, &trailing_blocks)) {
     return false;
   }
@@ -667,6 +734,9 @@ std::optional<bir::Function> BirFunctionLowerer::lower() {
   phi_plans_ = std::move(*phi_plans);
   aggregate_params_ = collect_aggregate_params();
   seed_pointer_param_addresses();
+  if (!initialize_aggregate_phi_state()) {
+    return std::nullopt;
+  }
 
   if (!materialize_aggregate_param_aliases(&hoisted_alloca_scratch_)) {
     note_function_lowering_family_failure("local-memory semantic family");

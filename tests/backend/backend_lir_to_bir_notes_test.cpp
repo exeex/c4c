@@ -1020,6 +1020,96 @@ LirModule make_return_global_pointer_symbol_module() {
   return module;
 }
 
+LirModule make_admitted_aggregate_phi_join_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.type_decls.push_back("%struct.Pair = type { i32, i32 }");
+
+  LirGlobal left_global;
+  left_global.name = "left_pair";
+  left_global.qualifier = "global ";
+  left_global.llvm_type = "%struct.Pair";
+  left_global.init_text = "%struct.Pair { i32 11, i32 22 }";
+  left_global.align_bytes = 4;
+  module.globals.push_back(std::move(left_global));
+
+  LirGlobal right_global;
+  right_global.name = "right_pair";
+  right_global.qualifier = "global ";
+  right_global.llvm_type = "%struct.Pair";
+  right_global.init_text = "%struct.Pair { i32 33, i32 44 }";
+  right_global.align_bytes = 4;
+  module.globals.push_back(std::move(right_global));
+
+  LirFunction function;
+  function.name = "admitted_aggregate_phi_join";
+  function.signature_text = "define i32 @admitted_aggregate_phi_join(i1 %p.pick_left)";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirCondBr{
+      .cond_name = "%p.pick_left",
+      .true_label = "left",
+      .false_label = "right",
+  };
+
+  LirBlock left;
+  left.label = "left";
+  left.insts.push_back(LirLoadOp{
+      .result = LirOperand("%left.value"),
+      .type_str = "%struct.Pair",
+      .ptr = LirOperand("@left_pair"),
+  });
+  left.terminator = LirBr{
+      .target_label = "join",
+  };
+
+  LirBlock right;
+  right.label = "right";
+  right.insts.push_back(LirLoadOp{
+      .result = LirOperand("%right.value"),
+      .type_str = "%struct.Pair",
+      .ptr = LirOperand("@right_pair"),
+  });
+  right.terminator = LirBr{
+      .target_label = "join",
+  };
+
+  LirBlock join;
+  join.label = "join";
+  join.insts.push_back(LirPhiOp{
+      .result = LirOperand("%merged"),
+      .type_str = "%struct.Pair",
+      .incoming = {
+          {"%left.value", "left"},
+          {"%right.value", "right"},
+      },
+  });
+  join.insts.push_back(LirGepOp{
+      .result = LirOperand("%merged.second.ptr"),
+      .element_type = "%struct.Pair",
+      .ptr = LirOperand("%merged"),
+      .indices = {LirOperand("i32 0"), LirOperand("i32 1")},
+  });
+  join.insts.push_back(LirLoadOp{
+      .result = LirOperand("%merged.second"),
+      .type_str = "i32",
+      .ptr = LirOperand("%merged.second.ptr"),
+  });
+  join.terminator = LirRet{
+      .value_str = "%merged.second",
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(left));
+  function.blocks.push_back(std::move(right));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_admitted_scalar_float_globals_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -1907,6 +1997,17 @@ int main() {
           "unexpected global pointer-symbol return scalar-control-flow module failure note");
       global_pointer_return_status != 0) {
     return global_pointer_return_status;
+  }
+
+  if (const int aggregate_phi_join_status = expect_success_without_function_note(
+          "admitted_aggregate_phi_join",
+          make_admitted_aggregate_phi_join_module(),
+          "latest function failure: semantic lir_to_bir function 'admitted_aggregate_phi_join' failed in scalar-control-flow semantic family",
+          "failed in scalar-control-flow semantic family",
+          "aggregate phi joins should not keep reporting the scalar-control-flow semantic family",
+          "aggregate phi joins should not keep the module on the scalar-control-flow semantic-family note");
+      aggregate_phi_join_status != 0) {
+    return aggregate_phi_join_status;
   }
 
   if (const int scalar_float_globals_status = expect_admitted_scalar_float_globals();
