@@ -239,7 +239,7 @@ void print_usage(const char *argv0) {
       << "  --dump-prepared-bir        Print prepared backend BIR plus metadata\n"
       << "  --dump-mir                 Print concise backend MIR-route summary\n"
       << "  --trace-mir                Print backend MIR-route trace\n"
-      << "  --mir-focus-function <fn>  Limit MIR dump/trace output to one function\n"
+      << "  --mir-focus-function <fn>  Limit backend dump/trace output to one function\n"
       << "  --mir-focus-block <label>  Limit MIR dump/trace block reporting to one block inside the focused function\n"
       << "\n"
       << "Parser debug:\n"
@@ -502,8 +502,9 @@ int main(int argc, char **argv) {
       std::cerr << "--backend-bir-stage cannot be combined with --dump-bir, --dump-prepared-bir, --dump-mir, or --trace-mir\n";
       return 2;
     }
-    if (mir_focus_function.has_value() && !(dump_mir || trace_mir)) {
-      std::cerr << "--mir-focus-function requires --dump-mir or --trace-mir\n";
+    if (mir_focus_function.has_value() &&
+        !(dump_bir || dump_prepared_bir || dump_mir || trace_mir)) {
+      std::cerr << "--mir-focus-function requires --dump-bir, --dump-prepared-bir, --dump-mir, or --trace-mir\n";
       return 2;
     }
     if (mir_focus_block.has_value() && !(dump_mir || trace_mir)) {
@@ -646,7 +647,10 @@ int main(int argc, char **argv) {
           });
       std::cout << c4c::backend::dump_module(
           c4c::backend::BackendModuleInput{lir_mod},
-          c4c::backend::BackendOptions{.target_profile = target_profile},
+          c4c::backend::BackendOptions{
+              .target_profile = target_profile,
+              .route_debug_focus_function = mir_focus_function,
+          },
           c4c::backend::BackendDumpStage::SemanticBir);
       return 0;
     }

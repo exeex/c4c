@@ -334,6 +334,38 @@ set_tests_properties(backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff
 )
 
 add_test(
+  NAME backend_cli_dump_bir_focus_function_filters_00204
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-bir
+          "-DEXTRA_ARGS=--mir-focus-function;stdarg"
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=focus function: stdarg|focused functions matched: 1|bir.func @stdarg() -> void {|%t1 = bir.call i32 printf(ptr @.str48)|bir.call void myprintf(ptr @.str49"
+          "-DFORBIDDEN_SNIPPETS=bir.func @myprintf|bir.func @remove(ptr %p.__filename)"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_bir_focus_function_filters_00204 PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_dump_prepared_bir_focus_function_filters_00204
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-prepared-bir
+          "-DEXTRA_ARGS=--mir-focus-function;stdarg"
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=focus function: stdarg|focused functions matched: 1|prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|[stack_layout] stack layout prepared function 'stdarg'|[regalloc] regalloc seeded function 'stdarg'|bir.func @stdarg() -> void {|prepared.func @stdarg|access block=entry"
+          "-DFORBIDDEN_SNIPPETS=prepared.func @myprintf|stack layout prepared function 'fa_s1'|regalloc seeded function 'myprintf'"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_prepared_bir_focus_function_filters_00204 PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
   NAME backend_cli_dump_mir_focus_function_filters_00204
   COMMAND "${CMAKE_COMMAND}"
           -DCOMPILER=$<TARGET_FILE:c4cll>
