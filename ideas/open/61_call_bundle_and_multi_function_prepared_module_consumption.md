@@ -2,7 +2,7 @@
 
 Status: Open
 Created: 2026-04-20
-Last-Updated: 2026-04-20
+Last-Updated: 2026-04-21
 Parent Idea: [57_x86_backend_c_testsuite_capability_families.md](/workspaces/c4c/ideas/open/57_x86_backend_c_testsuite_capability_families.md)
 
 ## Intent
@@ -64,12 +64,14 @@ Prepared call-bundle failures:
 
 ## Latest Durable Note
 
-As of 2026-04-21, executor inspection showed that
-`c_testsuite_x86_backend_src_00204_c` currently belongs to this idea even
-though the visible failure still surfaces the fallback
-`minimal i32 return function` diagnostic. The real blocker is earlier in the
-bounded multi-defined prepared-module lane, which rejects the same-module
-aggregate helper family before the x86 scalar-return route begins.
+As of 2026-04-21, the latest accepted prepared short-circuit handoff repair
+advanced `c_testsuite_x86_backend_src_00204_c` out of this idea and back into
+idea 60. The old authoritative prepared-module handoff rejection is gone for
+that route; `00204.c` now reaches the downstream scalar restriction instead of
+stopping in prepared-module or call-bundle consumption. Keep this idea focused
+on cases that still fail for multi-function prepared-module traversal or
+authoritative call-bundle ownership, and only reopen `00204.c` here if it
+regresses to one of those failure families.
 
 ## Scope Notes
 

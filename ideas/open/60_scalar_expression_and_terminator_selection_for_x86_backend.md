@@ -65,15 +65,17 @@ diagnostic families.
 
 ## Latest Durable Note
 
-As of 2026-04-21, follow-up executor inspection showed that
-`c_testsuite_x86_backend_src_00204_c` does not currently reach an idea-60
-scalar-return seam. The visible
-`error: x86 backend emitter only supports a minimal i32 return function
-through the canonical prepared-module handoff` message is a fallback symptom
-after the bounded multi-defined helper/module lane rejects same-module helpers
-with aggregate params/returns first, so current ownership returns to
-`ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md`
-until that upstream prepared-module route advances back into scalar emission.
+As of 2026-04-21, the latest accepted idea-61 prepared short-circuit handoff
+repair advanced `c_testsuite_x86_backend_src_00204_c` back into this idea.
+The old authoritative prepared-module handoff rejection is gone, and the
+remaining full-`00204` blocker is again the downstream scalar restriction:
+`error: x86 backend emitter only supports a minimal single-block i32 return
+terminator, a bounded equality-against-immediate guard family with immediate
+return leaves including fixed-offset same-module global i32 loads and
+pointer-backed same-module global roots, or one bounded compare-against-zero
+branch family through the canonical prepared-module handoff`.
+Current ownership therefore returns to idea 60 until that scalar-emitter route
+advances into a later leaf.
 
 ## Scope Notes
 
