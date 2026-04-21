@@ -1,216 +1,215 @@
-# Scalar Expression And Terminator Selection For X86 Backend
+# Backend Trace And Error Contract For X86 Handoff
 
 Status: Active
-Source Idea: ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md
-Activated from: ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md
+Source Idea: ideas/open/67_backend_trace_and_error_contract_for_x86_handoff.md
+Activated from: ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md
 
 ## Purpose
 
-Resume the x86 scalar/prepared-emitter leaf now that
-`c_testsuite_x86_backend_src_00204_c` has advanced out of idea-61
-prepared-module ownership and again stops at the downstream scalar-emitter
-restriction through the canonical prepared-module handoff.
+Make backend debugging for prepared x86 handoff cases readable enough that
+large failures such as `tests/c/external/c-testsuite/src/00204.c` can be
+diagnosed from stable CLI output instead of local instrumentation or matcher
+probing.
 
 ## Goal
 
-Repair one prepared scalar expression or terminator consumption seam at a time
-so owned cases move past the current x86 emitter restriction without adding
-named-case matcher growth.
+Turn `--dump-bir -> --dump-prepared-bir -> --dump-mir/--trace-mir` into one
+coherent debug ladder with actionable rejection diagnostics at the x86 route
+boundary.
 
 ## Core Rule
 
-Do not claim scalar-emitter progress through testcase-shaped x86 fast paths or
-expression-specific matchers when the missing ownership is still a generic
-prepared value-home, move-bundle, branch-condition, or terminator-consumption
-seam.
+Do not claim progress by adding testcase-shaped logging or one-off debug
+prints. Improve the stable backend debug surface and contract diagnostics that
+generalize across prepared-handoff cases.
 
 ## Read First
 
-- `ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md`
+- `ideas/open/67_backend_trace_and_error_contract_for_x86_handoff.md`
 - `ideas/open/57_x86_backend_c_testsuite_capability_families.md`
-- `ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md`
-- `src/backend/targets/x86_64/emitter.cpp`
-- `src/backend/targets/x86_64/emitter_expr.cpp`
-- `src/backend/targets/x86_64/emitter_stmt.cpp`
-- `src/backend/prep/prealloc.hpp`
+- `src/apps/c4cll.cpp`
+- `src/backend/bir/`
+- `src/backend/prep/`
+- `src/backend/mir/x86/`
 - `tests/backend/backend_codegen_route_test.cpp`
 - `tests/backend/backend_x86_handoff_boundary_short_circuit_test.cpp`
 - `tests/c/external/c-testsuite/src/00204.c`
 
 ## Scope
 
-- backend failures that now stop with the x86 scalar-emitter diagnostics owned
-  by idea 60, including the current minimal-return / guard-family restriction
-  through the canonical prepared-module handoff
-- shared prepared value-home, move-bundle, branch-condition, and control-flow
-  contracts when the missing meaning is upstream of x86-specific rendering
-- durable rehoming of cases that advance out of scalar emission into later
-  prepared-module, call-family, or runtime leaves once scalar selection
-  succeeds
+- CLI-visible backend debug surfaces for semantic BIR, prepared BIR, and x86
+  handoff tracing
+- backend-owned route and contract diagnostics for meaningful x86 rejection
+  sites
+- debug output changes that help a developer decide whether to inspect
+  semantic BIR, prepared BIR, or x86 route consumption next
 
 ## Non-Goals
 
-- reopening semantic-lowering, short-circuit handoff, or prepared-module
-  ownership that earlier ideas now handle
-- adding x86-only matcher lanes for one named return, compare, or branch shape
-- call-family ownership that still belongs in idea 65
-- prepared-module multi-function or call-bundle work that still belongs in
-  idea 61
+- repairing one specific x86 capability family as the completion signal
+- testcase-specific debug prints or named-case trace lanes
+- reopening unrelated frontend, HIR, or semantic-lowering ownership
+- expanding matcher coverage as a substitute for better backend diagnostics
 
 ## Working Model
 
-- keep one prepared scalar seam per packet
-- use the nearest backend route coverage plus the nearest c-testsuite case to
-  prove the seam without collapsing the packet into one testcase
-- extend shared prepared contracts first when x86 lacks a generic fact it
-  should consume
-- route cases back out as soon as the next real blocker belongs in another
-  downstream idea
+- treat `00204.c` and its nearest reductions as observability proof cases, not
+  as the design boundary
+- tighten the existing CLI flags before inventing parallel debug entry points
+- distinguish ordinary route misses from unsupported shapes, missing prepared
+  contracts, and impossible backend invariants
+- keep output readable enough that large cases stay inspectable without local
+  code edits
 
 ## Execution Rules
 
-- prefer one scalar expression or terminator seam per packet
+- prefer one observability seam per packet: debug-ladder coherence, prepared
+  delta summary, route diagnostics, or focus controls
+- keep proof on the nearest backend tests plus one motivating x86 handoff case
 - update `todo.md`, not this file, for routine packet progress
-- use `build -> narrow proof` for every accepted code slice
-- keep proof on owned failures plus the nearest backend coverage that protects
-  prepared value-home, move-bundle, branch-condition, or scalar terminator
-  consumption
-- when a targeted case graduates into ideas 61 or 65, record that in
-  `todo.md` and keep this runbook focused on still-owned scalar-emitter work
-- reject emitter-side named-case growth that only moves one arithmetic or
-  branch spelling forward
+- reject changes whose main effect is emitting more text without improving
+  route meaning or next-step guidance
 
-## Step 1: Refresh Idea-60 Ownership And Confirm The Next Scalar Seam
+## Step 1: Baseline The Current Debug Ladder Against `00204.c`
 
-Goal: confirm the returned idea-60 ownership for
-`c_testsuite_x86_backend_src_00204_c` and identify the exact prepared scalar
-return or terminator seam that now blocks x86 emission.
+Goal: confirm what the current flags already explain well and isolate the
+highest-value information gaps that still block backend debugging on large
+cases.
 
 Primary targets:
 
-- `c_testsuite_x86_backend_src_00204_c`
-- representative backend route coverage nearest the current scalar-emitter seam
-- shared prepared contract and x86 emitter files near the current failure
-
-Actions:
-
-- rerun or inspect the narrow subset that now graduates `00204.c` out of idea
-  61
-- confirm that `00204.c` no longer fails in prepared-module consumption and
-  now stops in an idea-60-owned scalar-emitter restriction
-- identify the exact prepared return, value-home, move-bundle,
-  branch-condition, or terminator fact that x86 fails to consume for the
-  current route
-- choose the nearest protective backend coverage that can prove that seam
-  without relying only on the named c-testsuite case
-
-Completion check:
-
-- the next executor packet is narrowed to one still-owned idea-60 scalar seam
-  with named proof targets and a clear ownership boundary
-
-## Step 2.1: Repair The `match` Structural-Dispatch Topology
-
-Goal: repair the bounded structural-dispatch seam around `match` now that the
-standalone compare-result bool/cast fragment is confirmed to already be owned
-by existing x86 consumer logic.
-
-Primary targets:
-
-- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
-- `src/backend/mir/x86/codegen/prepared_function_emitter.cpp`
-- shared prepared value-home, branch-condition, or control-flow facts only if
-  the enclosing `match` topology cannot be expressed from existing ownership
-- `tests/backend/backend_x86_handoff_boundary_short_circuit_test.cpp`
 - `tests/c/external/c-testsuite/src/00204.c`
+- the nearest reduced backend route coverage
+- current outputs from `--dump-bir`, `--dump-prepared-bir`, `--dump-mir`, and
+  `--trace-mir`
 
 Actions:
 
-- reduce `match` to the smallest owned structural-dispatch reproducer that
-  still fails while preserving the enclosing topology that matters: the
-  earlier loop, the short-circuit/phi guard, the second compare-driven branch,
-  and the downstream parameter-address store leaf
-- repair one generic bounded local-slot / compare-driven dispatch seam for
-  that topology instead of reopening the already-owned standalone
-  `%t27/%t28/%t29/%t30` bool/cast chain
-- prefer contract-first repair if the missing fact belongs in shared prepared
-  control-flow or value-home ownership rather than x86-local matcher growth
-- confirm `match` and the nearest same-family route move past the old
-  top-level minimal-return/guard rejection without adding a named `match`
-  recognizer
+- run the current debug ladder on `00204.c` or the nearest reduction that
+  preserves the same observability problem
+- record which questions are already answered at each stage and which still
+  require local instrumentation or code reading
+- isolate the next packet to one concrete observability gap, such as
+  prepared-delta readability, final rejection clarity, or focus/filtering for
+  large cases
 
 Completion check:
 
-- the targeted `match`-topology family no longer fails for the current bounded
-  structural-dispatch seam, and any remaining `00204.c` failure is clearly a
-  different downstream family
+- the next executor packet names one concrete debug-surface gap with a proof
+  case and a clear stage boundary
 
-## Step 2.2: Repair Float/HFA Local-Slot Consumption
+## Step 2.1: Make `--dump-prepared-bir` Explain What Changed
 
-Goal: repair the float/HFA local-slot consumption seam that still drops
-`00204.c` out at `fa_hfa11` once the `match` topology route is no longer
-blocking.
+Goal: expose the meaningful BIR-to-prepared deltas before verbose backend
+detail so a developer can see what prepare contributed to x86 consumption.
 
 Primary targets:
 
-- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
-- shared prepared value-home or move-bundle facts only if float/HFA local-slot
-  rendering lacks a target-independent ownership fact
-- `tests/backend/backend_x86_handoff_boundary_short_circuit_test.cpp`
-- `tests/c/external/c-testsuite/src/00204.c`
+- `src/backend/prep/`
+- `src/apps/c4cll.cpp`
+- backend tests that lock the prepared dump contract
 
 Actions:
 
-- implement one generic repair for float/HFA local-slot load or consumption
-  through the prepared renderer
-- keep the packet scoped to float/HFA local-slot ownership and do not reopen
-  the `match` topology route or later call-family work in the same slice
-- prove the repair on the nearest backend coverage plus the owned c-testsuite
-  route without relying on one named helper only
-- confirm `fa_hfa11` and nearby same-family routes move past the old float/HFA
-  dropout without expanding into unrelated scalar families
+- add or refine concise summary output for prepared-stage deltas such as phi
+  removal, branch-condition legalizations, join-transfer rewrites, stack-slot
+  introduction, and value-home or move-bundle formation when those facts
+  exist
+- keep verbose object or allocator detail available without making it the
+  default first signal
+- prove the new summary against the nearest backend dump coverage and the
+  motivating large-case route
 
 Completion check:
 
-- the targeted float/HFA family no longer fails for the current local-slot
-  seam, and `00204.c` either reaches the next downstream leaf or exposes one
-  new clearly isolated idea-60 seam
+- `--dump-prepared-bir` shows the key prepare-stage facts a developer needs
+  before reading the full prepared IR body
 
-## Step 2.3: Prove Family Shrinkage And Record Rehoming
+## Step 2.2: Make X86 Rejection Diagnostics Plain And Actionable
 
-Goal: show the accepted Step 2 packet shrinks the real idea-60 family and
-preserves explicit routing for any graduated cases.
+Goal: ensure the final meaningful x86 rejection identifies the missing or
+  unsupported contract in plain language and points to the next inspection
+  surface.
+
+Primary targets:
+
+- `src/backend/mir/x86/`
+- backend route/trace helpers and diagnostics
+- tests covering x86 handoff summaries and traces
 
 Actions:
 
-- require a fresh build for each accepted code slice
-- prove the repaired seam on the targeted owned cases plus the nearest backend
-  coverage that protects the changed scalar prepared/emitter path
-- record in `todo.md` when advanced cases now belong in ideas 61 or 65
-- only return to Step 1 after the current seam is proven and any graduated
-  routing is explicit
+- replace opaque final meaningful `std::nullopt` exits at the owned x86 route
+  boundary with backend-owned diagnostics that distinguish route miss,
+  unsupported shape, missing prepared fact, and impossible invariant
+- make `--dump-mir` and `--trace-mir` name the rejected route, the blocking
+  prepared concept, and the next thing to inspect
+- keep ordinary cheap probe failures lightweight where no durable debugging
+  information is lost
 
 Completion check:
 
-- accepted slices show real shrinkage of the idea-60 scalar-emitter family and
-  preserve clear routing for any graduated downstream cases
+- a developer can run one stable x86 trace command and understand why the
+  route failed plus what to inspect next
 
-## Step 3: Continue The Loop Until Idea 60 Is Exhausted
+## Step 2.3: Add Focus Controls For Large Cases
 
-Goal: keep repeating the Step 1 -> 2.3 loop until the remaining failures no
-longer belong to idea 60.
+Goal: keep backend trace output usable on `00204.c`-scale cases without ad hoc
+local logging.
+
+Primary targets:
+
+- CLI/debug option plumbing in `src/apps/c4cll.cpp`
+- backend trace sinks under `src/backend/mir/x86/`
+- tests that lock focused trace behavior
 
 Actions:
 
-- keep idea 60 active only while cases still fail for scalar expression or
-  terminator consumption reasons that are not better explained by another open
-  leaf
-- use `todo.md` to preserve which cases graduated downstream after each packet
-- call lifecycle review again when the next step becomes oversized or when the
-  remaining family is exhausted
+- add stable focus filtering by function, block, value, or equivalent narrow
+  backend concept where that filtering materially reduces search space
+- ensure filtered output still preserves the final meaningful rejection and
+  enough surrounding context to interpret it
+- prove the focused route on a large case and the nearest reduced coverage
 
 Completion check:
 
-- the next active packet is queued under Step 1 for a still-owned idea-60
-  scalar seam, or lifecycle state is ready to hand off or close because idea
-  60 no longer owns the remaining failures
+- large-case tracing can be narrowed without code edits and still preserves the
+  decisive route information
+
+## Step 2.4: Prove The Debug Ladder Is Coherent
+
+Goal: show the accepted Step 2 packets behave like one deliberate backend
+debug workflow instead of unrelated dumps.
+
+Actions:
+
+- verify a developer can answer, in order: what semantic lowering produced,
+  what prepare changed, which x86 route rejected, what class of failure it
+  was, and what to inspect next
+- refresh backend tests and the motivating route proof so the CLI contract is
+  stable
+- record in `todo.md` any remaining observability gaps that belong to a later
+  packet inside idea 67
+
+Completion check:
+
+- the current debug surfaces behave as one coherent ladder on the motivating
+  case and nearby backend coverage
+
+## Step 3: Continue Until Backend Handoff Debugging Stops Requiring Local Instrumentation
+
+Goal: keep repeating Step 1 -> 2.4 until x86 handoff debugging no longer
+depends on ad hoc local logging or matcher poking just to learn where a route
+died.
+
+Actions:
+
+- keep idea 67 active while meaningful x86 route failures still require local
+  instrumentation to explain
+- call lifecycle review again if the next observability gap becomes oversized
+  or a separate initiative emerges
+
+Completion check:
+
+- backend handoff debugging is readable, actionable, and stable enough that
+  `00204.c`-scale failures can be diagnosed from the supported CLI surface
