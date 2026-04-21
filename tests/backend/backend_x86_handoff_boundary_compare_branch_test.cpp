@@ -950,7 +950,7 @@ int check_compare_join_rematerialized_home_consumes_prepared_entry_and_return_ho
 int check_multi_param_compare_driven_shape_rejection(const bir::Module& module,
                                                      const char* failure_context) {
   constexpr std::string_view kExpectedMessage =
-      "only supports multi-block compare-driven entry routes through the canonical prepared-module handoff when the function exposes exactly one non-variadic i32 parameter";
+      "only supports a minimal single-block i32 return terminator, a bounded equality-against-immediate guard family with immediate return leaves including fixed-offset same-module global i32 loads and pointer-backed same-module global roots, or one bounded compare-against-zero branch family through the canonical prepared-module handoff";
   c4c::TargetProfile target_profile;
   const auto prepared = prepare::prepare_semantic_bir_module_with_options(
       module, target_profile_from_module_triple(module.target_triple, target_profile));
@@ -1272,7 +1272,7 @@ int run_backend_x86_handoff_boundary_compare_branch_tests() {
   if (const auto status =
           check_multi_param_compare_driven_shape_rejection(
               make_x86_multi_param_compare_driven_boundary_module(),
-              "scalar-control-flow compare-driven join lane rejects multi-parameter shapes with a final actionable shape message");
+              "scalar-control-flow compare-driven join lane routes multi-parameter shapes into the downstream generic scalar-family rejection instead of the old single-i32 compare-entry gate");
       status != 0) {
     return status;
   }

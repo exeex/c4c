@@ -5,6 +5,13 @@
 
 namespace c4c::backend::x86 {
 
+namespace {
+
+constexpr std::string_view kScalarPreparedControlFlowShapeError =
+    "x86 backend emitter only supports a minimal single-block i32 return terminator, a bounded equality-against-immediate guard family with immediate return leaves including fixed-offset same-module global i32 loads and pointer-backed same-module global roots, or one bounded compare-against-zero branch family through the canonical prepared-module handoff";
+
+}  // namespace
+
 std::string emit_prepared_module(
     const c4c::backend::prepare::PreparedBirModule& module) {
   constexpr std::string_view kCompareDrivenEntryParamShapeError =
@@ -850,12 +857,11 @@ std::string emit_prepared_module(
           !function_control_flow->join_transfers.empty()) {
         if (function.params.size() > 1) {
           throw_multi_defined_contract_if_active();
-          throw std::invalid_argument(std::string(kCompareDrivenEntryParamShapeError));
+          throw std::invalid_argument(std::string(kScalarPreparedControlFlowShapeError));
         }
       }
       throw_multi_defined_contract_if_active();
-      throw std::invalid_argument(
-          "x86 backend emitter only supports a minimal single-block i32 return terminator, a bounded equality-against-immediate guard family with immediate return leaves including fixed-offset same-module global i32 loads and pointer-backed same-module global roots, or one bounded compare-against-zero branch family through the canonical prepared-module handoff");
+      throw std::invalid_argument(std::string(kScalarPreparedControlFlowShapeError));
     }
 
     const auto& returned = *entry.terminator.value;
