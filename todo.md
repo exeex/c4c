@@ -3,55 +3,55 @@
 Status: Active
 Source Idea Path: ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Refresh Idea-60 Ownership And Confirm The Next Scalar Seam
+Current Step ID: 2.1
+Current Step Title: Repair The Selected Scalar Prepared/Emitter Seam
 Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 1 rechecked the clean `c_testsuite_x86_backend_src_00204_c` route and
-corrected the stale blocker note in this file. The failing `match` function
-does enter `render_prepared_local_slot_guard_chain_if_supported`, but the
-first real x86 matcher miss is now `logic.end.8` instruction `0`, where
-`render_prepared_cast_inst_if_supported` rejects the cast on the clean route.
-That disproves the earlier param-bearing single-join countdown-reservation
-theory and keeps ownership in idea 60 without code changes.
+Route review rejected the current Step 2.1 packet as acceptance-ready. Per
+`review/reviewA.md`, the dirty work in
+`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` no longer reads as
+the bounded `i64` local-slot seam recorded here; it has expanded into pointer
+arithmetic, `i8` compare/select handling, float / `f128` local-slot support,
+and extra stderr diagnostics. Keep Step 2.1 active, but treat the earlier
+`stdarg` `store_local` writeup as superseded by this route reset until the code
+is narrowed or the runbook is deliberately rewritten.
 
 ## Suggested Next
 
-Build the next Step 2.1 packet around the clean-route cast seam in
-`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`. The target
-should be a generic repair for the `logic.end.8` cast path inside
-`render_prepared_local_slot_guard_chain_if_supported`, not another dispatcher
-or countdown-shape relaxation in `prepared_module_emit.cpp`.
+Supervisor should not accept or commit the current dirty code as the completed
+Step 2.1 packet. Choose one of these route-repair actions before more
+execution:
+
+- narrow `prepared_local_slot_render.cpp` back to the claimed generic local
+  `i64` load/store seam and then resume proof against the next miss at
+  `stdarg` entry instruction `129`; or
+- if the broader renderer expansion is intentional, request a fresh lifecycle
+  rewrite that explicitly widens the active packet and its proof surface before
+  more implementation work lands.
 
 ## Watchouts
 
-- Do not revive the rejected dispatcher relaxation in
-  `prepared_module_emit.cpp`. Clean-route probing showed `match` has `3`
-  branch conditions and `1` join transfer, so the stale single-join countdown
-  theory was the wrong route diagnosis.
-- The clean `logic.end.8` blocker is still a cast seam inside the local-slot
-  renderer. `render_prepared_cast_inst_if_supported` currently requires the
-  `SExt I8->I32` operand to match the live same-block `current_i8_name`
-  carrier, so any repair must stay generic and avoid testcase-shaped fast
-  paths.
-- Keep the packet in idea 60. The route remains inside x86 structural dispatch
-  after the authoritative prepared handoff and does not push ownership back to
-  idea 61.
+- `plan.md` still requires one scalar seam per packet. Do not treat the
+  current multi-family renderer expansion as implicitly authorized just because
+  it stays inside idea 60.
+- Do not bless the stale Step 2.1 narrative as an accepted packet while the
+  dirty diff still includes pointer / bool / float / `f128` work and permanent
+  diagnostics outside the claimed `i64` local-slot seam.
+- If code is narrowed, preserve only the generic local-slot behavior that is
+  actually needed for the `i64` seam and drop investigation-only stderr
+  scaffolding.
+- If route widening is proposed, require explicit proof expectations for the
+  broader family instead of silently continuing from the old `stdarg`
+  instruction-129 call miss note.
 
 ## Proof
 
-Ran the delegated proof command `cmake --build --preset default && ctest
---test-dir build -j --output-on-failure -R
-'^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$'`.
-`backend_x86_handoff_boundary` passed and
-`c_testsuite_x86_backend_src_00204_c` still failed with the same idea-60
-scalar restriction on the clean tree. Supporting investigation used temporary
-local-slot diagnostics during a direct `./build/c4cll --codegen asm --target
-x86_64-unknown-linux-gnu tests/c/external/c-testsuite/src/00204.c -o
-/tmp/00204_match_probe.s` probe, which identified the first clean-route miss as
-`match` block `logic.end.8` instruction `0` (`kind=cast`). The temporary probe
-was reverted before the canonical proof rerun. Canonical proof log:
-`test_after.log`.
+No new proof was accepted during this lifecycle repair. The controlling review
+artifact is `review/reviewA.md`, which marks the current dirty Step 2.1 slice
+as oversized and not acceptance-ready without either code narrowing or a
+deliberate plan/todo rewrite for the widened route. Preserve existing proof
+logs as execution artifacts; do not treat them as sufficient acceptance proof
+for the current dirty diff.
