@@ -301,7 +301,7 @@ std::optional<std::string> build_bounded_variadic_helper_lane_detail(
 
 std::optional<std::string> build_single_block_void_call_sequence_lane_detail(
     const c4c::backend::bir::Function& function) {
-  if (function.is_declaration || !function.local_slots.empty() || function.blocks.size() != 1 ||
+  if (function.is_declaration || function.blocks.size() != 1 ||
       function.return_type != c4c::backend::bir::TypeKind::Void) {
     return std::nullopt;
   }
@@ -404,11 +404,12 @@ std::optional<std::string> build_single_block_i64_immediate_return_helper_lane_d
 
   const auto& entry = function.blocks.front();
   if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
-      !entry.terminator.value.has_value() || entry.insts.size() != 1) {
+      !entry.terminator.value.has_value() ||
+      (entry.insts.size() != 1 && entry.insts.size() != 3)) {
     return std::nullopt;
   }
 
-  const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.front());
+  const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.back());
   if (binary == nullptr || binary->operand_type != c4c::backend::bir::TypeKind::I64 ||
       binary->opcode == c4c::backend::bir::BinaryOpcode::AShr ||
       binary->result.kind != c4c::backend::bir::Value::Kind::Named ||
@@ -417,6 +418,36 @@ std::optional<std::string> build_single_block_i64_immediate_return_helper_lane_d
       entry.terminator.value->name != binary->result.name) {
     return std::nullopt;
   }
+
+  const auto is_i64_extended_i32_immediate = [&](const c4c::backend::bir::Value& value) {
+    if (value.kind != c4c::backend::bir::Value::Kind::Named ||
+        value.type != c4c::backend::bir::TypeKind::I64 || entry.insts.size() != 3) {
+      return false;
+    }
+
+    const auto* seed = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts[0]);
+    const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&entry.insts[1]);
+    if (seed == nullptr || cast == nullptr ||
+        (cast->opcode != c4c::backend::bir::CastOpcode::SExt &&
+         cast->opcode != c4c::backend::bir::CastOpcode::ZExt) ||
+        cast->result.kind != c4c::backend::bir::Value::Kind::Named ||
+        cast->result.type != c4c::backend::bir::TypeKind::I64 ||
+        cast->result.name != value.name || cast->operand.kind != c4c::backend::bir::Value::Kind::Named ||
+        cast->operand.type != c4c::backend::bir::TypeKind::I32 ||
+        seed->opcode != c4c::backend::bir::BinaryOpcode::Sub ||
+        seed->operand_type != c4c::backend::bir::TypeKind::I32 ||
+        seed->result.kind != c4c::backend::bir::Value::Kind::Named ||
+        seed->result.type != c4c::backend::bir::TypeKind::I32 ||
+        seed->result.name != cast->operand.name ||
+        seed->lhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+        seed->lhs.type != c4c::backend::bir::TypeKind::I32 || seed->lhs.immediate != 0 ||
+        seed->rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+        seed->rhs.type != c4c::backend::bir::TypeKind::I32) {
+      return false;
+    }
+
+    return true;
+  };
 
   const auto lhs_is_param = binary->lhs.kind == c4c::backend::bir::Value::Kind::Named &&
                             binary->lhs.type == c4c::backend::bir::TypeKind::I64 &&
@@ -428,7 +459,9 @@ std::optional<std::string> build_single_block_i64_immediate_return_helper_lane_d
                                 binary->lhs.type == c4c::backend::bir::TypeKind::I64;
   const auto rhs_is_immediate = binary->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
                                 binary->rhs.type == c4c::backend::bir::TypeKind::I64;
-  if (!((lhs_is_param && rhs_is_immediate) || (lhs_is_immediate && rhs_is_param))) {
+  const auto lhs_is_immediate_like = lhs_is_immediate || is_i64_extended_i32_immediate(binary->lhs);
+  const auto rhs_is_immediate_like = rhs_is_immediate || is_i64_extended_i32_immediate(binary->rhs);
+  if (!((lhs_is_param && rhs_is_immediate_like) || (lhs_is_immediate_like && rhs_is_param))) {
     return std::nullopt;
   }
 
