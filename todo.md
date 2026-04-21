@@ -5,7 +5,7 @@ Source Idea Path: ideas/open/60_scalar_expression_and_terminator_selection_for_x
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Refresh Idea-60 Ownership And Confirm The Next Scalar Seam
-Plan Review Counter: 1 / 4
+Plan Review Counter: 2 / 4
 # Current Packet
 
 ## Just Finished
