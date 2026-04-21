@@ -1697,7 +1697,7 @@ int main() {
                        "- final facts: prepared compare-driven-entry facts: params=2, non-variadic i32 params=1, non-i32 or varargs params=1, function variadic=no",
                        "multi-param compare-driven summary final facts") ||
       !expect_contains(multi_param_compare_driven_miss_trace,
-                       "final detail: x86 backend emitter only supports multi-block compare-driven entry routes through the canonical prepared-module handoff when the function exposes exactly one non-variadic i32 parameter",
+                       "final detail: x86 backend emitter only supports a minimal single-block i32 return terminator, a bounded equality-against-immediate guard family with immediate return leaves including fixed-offset same-module global i32 loads and pointer-backed same-module global roots, or one bounded compare-against-zero branch family through the canonical prepared-module handoff",
                        "multi-param compare-driven trace detail") ||
       !expect_contains(multi_param_compare_driven_miss_trace,
                        "final facts: prepared compare-driven-entry facts: params=2, non-variadic i32 params=1, non-i32 or varargs params=1, function variadic=no",
