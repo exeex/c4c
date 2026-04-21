@@ -126,20 +126,41 @@ Known parser-debug negative testcase:
 
 ### Quick selection
 
-- Backend route / semantic BIR investigation:
-  - use `--codegen asm --target <triple> <file> -o <out>`
-  - inspect `<out>` to see whether the backend emitted native asm, semantic
-    BIR text, or LLVM-ish fallback text
+- Semantic backend route facts:
+  - use `--dump-bir`
+- Prepared backend facts plus control-flow / home / addressing metadata:
+  - use `--dump-prepared-bir`
+- Concise x86 MIR-route status:
+  - use `--dump-mir`
+- Verbose x86 MIR-route trace:
+  - use `--trace-mir`
 - Backend route comparison against LLVM path:
   - compare `--codegen asm` and `--codegen llvm` on the same testcase
 
 ### Command recipes
 
-Backend route / BIR observation:
+Semantic BIR observation:
 
 ```bash
-./build/c4cll --codegen asm --target <triple> <file> -o <out>
-cat <out>
+./build/c4cll --dump-bir --target <triple> <file>
+```
+
+Prepared BIR observation:
+
+```bash
+./build/c4cll --dump-prepared-bir --target <triple> <file>
+```
+
+Concise MIR-route summary:
+
+```bash
+./build/c4cll --dump-mir --target <triple> <file>
+```
+
+Verbose MIR-route trace:
+
+```bash
+./build/c4cll --trace-mir --target <triple> <file>
 ```
 
 Backend route versus LLVM route:
@@ -151,26 +172,25 @@ Backend route versus LLVM route:
 
 ### Investigation workflow
 
-1. First ask whether the question is about lowering route or final machine asm.
-2. Use `--codegen asm --target <triple> ... -o <out>` to observe the backend
-   route surface.
-3. If `<out>` starts with `bir.func`, semantic BIR lowering succeeded and the
-   current route printed BIR text.
-4. If `<out>` looks like LLVM IR such as `define ...`, the route fell back to
-   LIR/LLVM-style text instead of staying on the semantic BIR lane.
-5. If `--codegen asm` errors out saying backend-native assembly is required,
-   the chosen route did not produce native asm and did not return printable BIR
-   text for that path.
+1. First ask which backend layer you are trying to observe.
+2. Use `--dump-bir` for semantic BIR only.
+3. Use `--dump-prepared-bir` when you need prepared control-flow, value-home,
+   move-bundle, stack-layout, or addressing metadata.
+4. Use `--dump-mir` when you want a short answer about which top-level x86
+   route lanes matched or failed.
+5. Use `--trace-mir` when you need the same information as a lane-by-lane
+   trace, including backend rejection detail when a lane throws or declines.
 6. Use `--codegen llvm` only as the comparison surface, not as proof that the
    backend route is healthy.
 
 ### Practical heuristics
 
-- If the question is "did this testcase reach BIR yet?":
-  - prefer `--codegen asm --target <triple> <file> -o <out>`
-- If the question is "did this route stay on backend lowering or bounce back to
-  LLVM-ish text?":
-  - inspect whether the output starts with `bir.func` or LLVM-like `define`
+- If the question is "did this testcase reach semantic BIR yet?":
+  - prefer `--dump-bir`
+- If the question is "what prepared facts exist for this route?":
+  - prefer `--dump-prepared-bir`
+- If the question is "which x86 lane is this function trying and failing?":
+  - start with `--dump-mir`, then escalate to `--trace-mir`
 - If the question is target-specific:
   - rerun the same testcase with the exact target triple you care about
 - If the question is route drift:
@@ -178,19 +198,39 @@ Backend route versus LLVM route:
 
 ### Constraints
 
-- There is currently no dedicated `--dump-bir` flag.
-- Backend BIR observation currently piggybacks on `--codegen asm`.
-- This route may print native asm, semantic BIR text, or LLVM-ish fallback
-  text depending on how far the backend pipeline got for the chosen testcase
-  and target.
+- `--dump-bir`, `--dump-prepared-bir`, `--dump-mir`, and `--trace-mir` are
+  mutually exclusive inspection modes.
+- `--backend-bir-stage` is for `--codegen asm` only. Do not combine it with
+  `--dump-bir`, `--dump-prepared-bir`, `--dump-mir`, or `--trace-mir`.
+- Current `--dump-mir` / `--trace-mir` are a backend MIR-route shell for x86
+  prepared handoff, not yet a full printed target-local MIR node graph.
+- Use `--codegen asm` when you want final backend-native asm output, not when
+  you want structured intermediate debug text.
 
 ### Examples for current repo
 
-Minimal BIR route check:
+Minimal semantic BIR route check:
 
 ```bash
-./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/branch_if_eq.c -o /tmp/branch_if_eq.txt
-cat /tmp/branch_if_eq.txt
+./build/c4cll --dump-bir --target x86_64-unknown-linux-gnu tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c
+```
+
+Prepared route check:
+
+```bash
+./build/c4cll --dump-prepared-bir --target x86_64-unknown-linux-gnu tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c
+```
+
+Concise MIR-route check:
+
+```bash
+./build/c4cll --dump-mir --target x86_64-unknown-linux-gnu tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c
+```
+
+Verbose MIR trace on the same testcase:
+
+```bash
+./build/c4cll --trace-mir --target x86_64-unknown-linux-gnu tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c
 ```
 
 Backend route compare on the same testcase:

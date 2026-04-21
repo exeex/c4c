@@ -49,6 +49,13 @@ struct BackendOptions {
   bool emit_semantic_bir = false;
 };
 
+enum class BackendDumpStage {
+  SemanticBir,
+  PreparedBir,
+  MirSummary,
+  MirTrace,
+};
+
 struct BackendAssembleResult {
   std::string staged_text;
   std::string output_path;
@@ -76,5 +83,9 @@ BackendAssembleResult assemble_target_lir_module(
 
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options);
+
+std::string dump_module(const BackendModuleInput& input,
+                        const BackendOptions& options,
+                        BackendDumpStage stage);
 
 }  // namespace c4c::backend

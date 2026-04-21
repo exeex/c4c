@@ -2,6 +2,7 @@
 
 #include "bir/bir_printer.hpp"
 #include "mir/x86/codegen/x86_codegen.hpp"
+#include "prealloc/prepared_printer.hpp"
 
 #include "../codegen/lir/lir_printer.hpp"
 
@@ -62,6 +63,20 @@ std::string make_x86_lir_handoff_failure_message(
     const c4c::backend::BirLoweringResult& lowering) {
   std::string message =
       "x86 backend emit path requires semantic lir_to_bir lowering before the canonical prepared-module handoff";
+  for (auto it = lowering.notes.rbegin(); it != lowering.notes.rend(); ++it) {
+    if (it->phase == "module" || it->phase == "function") {
+      message += ": ";
+      message += it->message;
+      break;
+    }
+  }
+  return message;
+}
+
+std::string make_backend_dump_failure_message(
+    const c4c::backend::BirLoweringResult& lowering) {
+  std::string message =
+      "backend BIR dump requires semantic lir_to_bir lowering before the prepared handoff";
   for (auto it = lowering.notes.rbegin(); it != lowering.notes.rend(); ++it) {
     if (it->phase == "module" || it->phase == "function") {
       message += ": ";
@@ -172,6 +187,51 @@ std::string emit_module(const BackendModuleInput& input,
     throw std::invalid_argument(make_x86_lir_handoff_failure_message(lowering));
   }
   return emit_bootstrap_lir_module(lir_module, target_profile);
+}
+
+std::string dump_module(const BackendModuleInput& input,
+                        const BackendOptions& options,
+                        BackendDumpStage stage) {
+  if (input.holds_bir_module()) {
+    if (stage == BackendDumpStage::SemanticBir) {
+      return c4c::backend::bir::print(input.bir_module());
+    }
+    c4c::TargetProfile target_profile_storage;
+    const auto prepared = prepare_semantic_bir_pipeline(
+        input.bir_module(),
+        profile_or_default(options.target_profile,
+                           target_profile_storage,
+                           input.bir_module().target_triple));
+    if (stage == BackendDumpStage::MirSummary) {
+      return c4c::backend::x86::summarize_prepared_module_routes(prepared);
+    }
+    if (stage == BackendDumpStage::MirTrace) {
+      return c4c::backend::x86::trace_prepared_module_routes(prepared);
+    }
+    return c4c::backend::prepare::print(prepared);
+  }
+
+  const auto& lir_module = input.lir_module();
+  const auto target_profile = resolve_public_lir_target_profile(lir_module, options.target_profile);
+
+  c4c::backend::BirLoweringOptions lowering_options{};
+  lowering_options.preserve_dynamic_alloca = true;
+  auto lowering = c4c::backend::try_lower_to_bir_with_options(lir_module, lowering_options);
+  if (!lowering.module.has_value()) {
+    throw std::invalid_argument(make_backend_dump_failure_message(lowering));
+  }
+
+  if (stage == BackendDumpStage::SemanticBir) {
+    return c4c::backend::bir::print(*lowering.module);
+  }
+  const auto prepared = prepare_semantic_bir_pipeline(*lowering.module, target_profile);
+  if (stage == BackendDumpStage::MirSummary) {
+    return c4c::backend::x86::summarize_prepared_module_routes(prepared);
+  }
+  if (stage == BackendDumpStage::MirTrace) {
+    return c4c::backend::x86::trace_prepared_module_routes(prepared);
+  }
+  return c4c::backend::prepare::print(prepared);
 }
 
 }  // namespace c4c::backend

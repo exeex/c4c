@@ -202,6 +202,107 @@ set_tests_properties(backend_prepare_stack_layout PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_executable(backend_prepared_printer_test
+    "${BACKEND_TEST_ROOT}/backend_prepared_printer_test.cpp"
+)
+target_include_directories(backend_prepared_printer_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_prepared_printer_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_prepared_printer_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_prepared_printer
+  COMMAND $<TARGET_FILE:backend_prepared_printer_test>
+)
+set_tests_properties(backend_prepared_printer PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
+add_executable(backend_x86_route_debug_test
+    "${BACKEND_TEST_ROOT}/backend_x86_route_debug_test.cpp"
+)
+target_include_directories(backend_x86_route_debug_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_x86_route_debug_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_x86_route_debug_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_x86_route_debug
+  COMMAND $<TARGET_FILE:backend_x86_route_debug_test>
+)
+set_tests_properties(backend_x86_route_debug PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
+add_test(
+  NAME backend_cli_dump_bir_is_semantic
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-bir
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c
+          "-DREQUIRED_SNIPPETS=bir.func @bump(ptr %p.slot, i32 %p.delta) -> i32 {|bir.func @run() -> i32 {|bir.phi i32"
+          "-DFORBIDDEN_SNIPPETS=prepared.module|--- prepared-bir ---"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_bir_is_semantic PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_dump_prepared_bir_is_prepared
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-prepared-bir
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c
+          "-DREQUIRED_SNIPPETS=prepared.module target=x86_64-unknown-linux-gnu|--- prepared-bir ---|prepared-control-flow"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_prepared_bir_is_prepared PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_dump_mir_is_nonfatal_trace_shell
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-mir
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c
+          "-DREQUIRED_SNIPPETS=x86 handoff summary|function run|- top-level lane:"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_mir_is_nonfatal_trace_shell PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_trace_mir_reports_lane_detail
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--trace-mir
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c
+          "-DREQUIRED_SNIPPETS=x86 handoff trace|function run|try lane local-slot-guard-chain|detail: x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_trace_mir_reports_lane_detail PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
 add_executable(backend_x86_handoff_boundary_test
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_test.cpp"
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_compare_branch_test.cpp"

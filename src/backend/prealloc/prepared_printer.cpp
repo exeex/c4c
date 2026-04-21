@@ -1,0 +1,404 @@
+#include "prepared_printer.hpp"
+
+#include "../bir/bir.hpp"
+#include "../bir/bir_printer.hpp"
+
+#include <iomanip>
+#include <sstream>
+
+namespace c4c::backend::prepare {
+
+namespace {
+
+std::string render_value(const c4c::backend::bir::Value& value) {
+  if (value.kind == c4c::backend::bir::Value::Kind::Named) {
+    return value.name;
+  }
+  if (value.type == c4c::backend::bir::TypeKind::F32 ||
+      value.type == c4c::backend::bir::TypeKind::F64) {
+    std::ostringstream out;
+    out << "0x" << std::hex << std::uppercase << std::setfill('0');
+    if (value.type == c4c::backend::bir::TypeKind::F32) {
+      out << std::setw(8) << static_cast<std::uint32_t>(value.immediate_bits);
+    } else {
+      out << std::setw(16) << value.immediate_bits;
+    }
+    return out.str();
+  }
+  return std::to_string(value.immediate);
+}
+
+std::string_view maybe_function_name(const PreparedNameTables& names, FunctionNameId id) {
+  if (id == kInvalidFunctionName) {
+    return "<none>";
+  }
+  return prepared_function_name(names, id);
+}
+
+std::string_view maybe_block_label(const PreparedNameTables& names, BlockLabelId id) {
+  if (id == kInvalidBlockLabel) {
+    return "<none>";
+  }
+  return prepared_block_label(names, id);
+}
+
+std::string_view maybe_value_name(const PreparedNameTables& names, ValueNameId id) {
+  if (id == kInvalidValueName) {
+    return "<none>";
+  }
+  return prepared_value_name(names, id);
+}
+
+std::string_view maybe_slot_name(const PreparedNameTables& names, std::optional<SlotNameId> id) {
+  if (!id.has_value()) {
+    return "<none>";
+  }
+  return prepared_slot_name(names, *id);
+}
+
+std::string_view maybe_link_name(const PreparedNameTables& names, std::optional<LinkNameId> id) {
+  if (!id.has_value()) {
+    return "<none>";
+  }
+  return prepared_link_name(names, *id);
+}
+
+const PreparedFrameSlot* find_frame_slot(const PreparedBirModule& module,
+                                         PreparedFrameSlotId slot_id) {
+  for (const auto& slot : module.stack_layout.frame_slots) {
+    if (slot.slot_id == slot_id) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+std::string terminator_kind_name(c4c::backend::bir::TerminatorKind kind) {
+  switch (kind) {
+    case c4c::backend::bir::TerminatorKind::Return:
+      return "return";
+    case c4c::backend::bir::TerminatorKind::Branch:
+      return "branch";
+    case c4c::backend::bir::TerminatorKind::CondBranch:
+      return "cond_branch";
+  }
+  return "unknown";
+}
+
+std::string move_destination_kind_name(PreparedMoveDestinationKind kind) {
+  switch (kind) {
+    case PreparedMoveDestinationKind::Value:
+      return "value";
+    case PreparedMoveDestinationKind::CallArgumentAbi:
+      return "call_argument_abi";
+    case PreparedMoveDestinationKind::CallResultAbi:
+      return "call_result_abi";
+    case PreparedMoveDestinationKind::FunctionReturnAbi:
+      return "function_return_abi";
+  }
+  return "unknown";
+}
+
+std::string move_storage_kind_name(PreparedMoveStorageKind kind) {
+  switch (kind) {
+    case PreparedMoveStorageKind::None:
+      return "none";
+    case PreparedMoveStorageKind::Register:
+      return "register";
+    case PreparedMoveStorageKind::StackSlot:
+      return "stack_slot";
+  }
+  return "unknown";
+}
+
+std::string move_resolution_op_kind_name(PreparedMoveResolutionOpKind kind) {
+  switch (kind) {
+    case PreparedMoveResolutionOpKind::Move:
+      return "move";
+    case PreparedMoveResolutionOpKind::SaveDestinationToTemp:
+      return "save_destination_to_temp";
+  }
+  return "unknown";
+}
+
+void append_prepared_control_flow(std::ostringstream& out, const PreparedBirModule& module) {
+  out << "--- prepared-control-flow ---\n";
+  for (const auto& function_cf : module.control_flow.functions) {
+    out << "prepared.func @" << maybe_function_name(module.names, function_cf.function_name) << "\n";
+
+    for (const auto& block : function_cf.blocks) {
+      out << "  block " << maybe_block_label(module.names, block.block_label)
+          << " terminator=" << terminator_kind_name(block.terminator_kind);
+      if (block.branch_target_label != kInvalidBlockLabel) {
+        out << " target=" << maybe_block_label(module.names, block.branch_target_label);
+      }
+      if (block.true_label != kInvalidBlockLabel || block.false_label != kInvalidBlockLabel) {
+        out << " true=" << maybe_block_label(module.names, block.true_label)
+            << " false=" << maybe_block_label(module.names, block.false_label);
+      }
+      out << "\n";
+    }
+
+    for (const auto& condition : function_cf.branch_conditions) {
+      out << "  branch_condition " << maybe_block_label(module.names, condition.block_label)
+          << " kind=" << prepared_branch_condition_kind_name(condition.kind)
+          << " condition=" << render_value(condition.condition_value);
+      if (condition.predicate.has_value()) {
+        out << " compare=" << c4c::backend::bir::render_binary_opcode(*condition.predicate)
+            << " " << c4c::backend::bir::render_type(*condition.compare_type)
+            << " " << render_value(*condition.lhs)
+            << ", " << render_value(*condition.rhs);
+      }
+      out << " can_fuse_with_branch=" << (condition.can_fuse_with_branch ? "yes" : "no")
+          << " true=" << maybe_block_label(module.names, condition.true_label)
+          << " false=" << maybe_block_label(module.names, condition.false_label)
+          << "\n";
+    }
+
+    for (const auto& transfer : function_cf.join_transfers) {
+      out << "  join_transfer " << maybe_block_label(module.names, transfer.join_block_label)
+          << " result=" << render_value(transfer.result)
+          << " kind=" << prepared_join_transfer_kind_name(transfer.kind)
+          << " carrier="
+          << prepared_join_transfer_carrier_kind_name(
+                 effective_prepared_join_transfer_carrier_kind(transfer));
+      if (transfer.storage_name.has_value()) {
+        out << " storage=" << prepared_slot_name(module.names, *transfer.storage_name);
+      }
+      if (transfer.source_branch_block_label.has_value()) {
+        out << " source_branch="
+            << maybe_block_label(module.names, *transfer.source_branch_block_label);
+      }
+      if (transfer.source_true_incoming_label.has_value() ||
+          transfer.source_false_incoming_label.has_value()) {
+        out << " source_incomings=("
+            << maybe_block_label(module.names,
+                                 transfer.source_true_incoming_label.value_or(kInvalidBlockLabel))
+            << ", "
+            << maybe_block_label(module.names,
+                                 transfer.source_false_incoming_label.value_or(kInvalidBlockLabel))
+            << ")";
+      }
+      out << "\n";
+      for (const auto& incoming : transfer.incomings) {
+        out << "    incoming [" << incoming.label << "] -> " << render_value(incoming.value)
+            << "\n";
+      }
+      for (const auto& edge : transfer.edge_transfers) {
+        out << "    edge_transfer "
+            << maybe_block_label(module.names, edge.predecessor_label)
+            << " -> " << maybe_block_label(module.names, edge.successor_label)
+            << " incoming=" << render_value(edge.incoming_value)
+            << " destination=" << render_value(edge.destination_value);
+        if (edge.storage_name.has_value()) {
+          out << " storage=" << prepared_slot_name(module.names, *edge.storage_name);
+        }
+        out << "\n";
+      }
+    }
+
+    for (const auto& bundle : function_cf.parallel_copy_bundles) {
+      out << "  parallel_copy "
+          << maybe_block_label(module.names, bundle.predecessor_label)
+          << " -> " << maybe_block_label(module.names, bundle.successor_label)
+          << " has_cycle=" << (bundle.has_cycle ? "yes" : "no") << "\n";
+      for (std::size_t move_index = 0; move_index < bundle.moves.size(); ++move_index) {
+        const auto& move = bundle.moves[move_index];
+        out << "    move[" << move_index << "] "
+            << render_value(move.source_value) << " -> " << render_value(move.destination_value)
+            << " carrier="
+            << prepared_join_transfer_carrier_kind_name(move.carrier_kind);
+        if (move.storage_name.has_value()) {
+          out << " storage=" << prepared_slot_name(module.names, *move.storage_name);
+        }
+        out << "\n";
+      }
+      for (std::size_t step_index = 0; step_index < bundle.steps.size(); ++step_index) {
+        const auto& step = bundle.steps[step_index];
+        out << "    step[" << step_index << "] "
+            << prepared_parallel_copy_step_kind_name(step.kind)
+            << " move_index=" << step.move_index
+            << " uses_cycle_temp_source="
+            << (step.uses_cycle_temp_source ? "yes" : "no") << "\n";
+      }
+    }
+  }
+}
+
+void append_value_locations(std::ostringstream& out, const PreparedBirModule& module) {
+  out << "--- prepared-value-locations ---\n";
+  for (const auto& function_locations : module.value_locations.functions) {
+    out << "prepared.func @" << maybe_function_name(module.names, function_locations.function_name)
+        << "\n";
+    for (const auto& home : function_locations.value_homes) {
+      out << "  home " << maybe_value_name(module.names, home.value_name)
+          << " value_id=" << home.value_id
+          << " kind=" << prepared_value_home_kind_name(home.kind);
+      if (home.register_name.has_value()) {
+        out << " reg=" << *home.register_name;
+      }
+      if (home.slot_id.has_value()) {
+        out << " slot_id=" << *home.slot_id;
+      }
+      if (home.offset_bytes.has_value()) {
+        out << " offset=" << *home.offset_bytes;
+      }
+      if (home.immediate_i32.has_value()) {
+        out << " imm_i32=" << *home.immediate_i32;
+      }
+      out << "\n";
+    }
+
+    for (const auto& bundle : function_locations.move_bundles) {
+      out << "  move_bundle phase=" << prepared_move_phase_name(bundle.phase)
+          << " block_index=" << bundle.block_index
+          << " instruction_index=" << bundle.instruction_index << "\n";
+      for (const auto& move : bundle.moves) {
+        out << "    move from_value_id=" << move.from_value_id
+            << " to_value_id=" << move.to_value_id
+            << " destination_kind=" << move_destination_kind_name(move.destination_kind)
+            << " destination_storage=" << move_storage_kind_name(move.destination_storage_kind)
+            << " op_kind=" << move_resolution_op_kind_name(move.op_kind)
+            << " uses_cycle_temp_source=" << (move.uses_cycle_temp_source ? "yes" : "no");
+        if (move.destination_abi_index.has_value()) {
+          out << " abi_index=" << *move.destination_abi_index;
+        }
+        if (move.destination_register_name.has_value()) {
+          out << " reg=" << *move.destination_register_name;
+        }
+        if (move.destination_stack_offset_bytes.has_value()) {
+          out << " stack_offset=" << *move.destination_stack_offset_bytes;
+        }
+        if (!move.reason.empty()) {
+          out << " reason=" << move.reason;
+        }
+        out << "\n";
+      }
+      for (const auto& abi : bundle.abi_bindings) {
+        out << "    abi_binding destination_kind="
+            << move_destination_kind_name(abi.destination_kind)
+            << " destination_storage="
+            << move_storage_kind_name(abi.destination_storage_kind);
+        if (abi.destination_abi_index.has_value()) {
+          out << " abi_index=" << *abi.destination_abi_index;
+        }
+        if (abi.destination_register_name.has_value()) {
+          out << " reg=" << *abi.destination_register_name;
+        }
+        if (abi.destination_stack_offset_bytes.has_value()) {
+          out << " stack_offset=" << *abi.destination_stack_offset_bytes;
+        }
+        out << "\n";
+      }
+    }
+  }
+}
+
+void append_stack_layout(std::ostringstream& out, const PreparedBirModule& module) {
+  out << "--- prepared-stack-layout ---\n";
+  out << "frame_size=" << module.stack_layout.frame_size_bytes
+      << " frame_alignment=" << module.stack_layout.frame_alignment_bytes << "\n";
+  for (const auto& object : module.stack_layout.objects) {
+    out << "object #" << object.object_id
+        << " func=" << maybe_function_name(module.names, object.function_name)
+        << " name=" << prepared_stack_object_name(module.names, object)
+        << " source_kind=" << object.source_kind
+        << " type=" << c4c::backend::bir::render_type(object.type)
+        << " size=" << object.size_bytes
+        << " align=" << object.align_bytes
+        << " address_exposed=" << (object.address_exposed ? "yes" : "no")
+        << " requires_home_slot=" << (object.requires_home_slot ? "yes" : "no")
+        << " permanent_home_slot=" << (object.permanent_home_slot ? "yes" : "no")
+        << "\n";
+  }
+  for (const auto& slot : module.stack_layout.frame_slots) {
+    out << "slot #" << slot.slot_id
+        << " object_id=" << slot.object_id
+        << " func=" << maybe_function_name(module.names, slot.function_name)
+        << " offset=" << slot.offset_bytes
+        << " size=" << slot.size_bytes
+        << " align=" << slot.align_bytes
+        << " fixed_location=" << (slot.fixed_location ? "yes" : "no")
+        << "\n";
+  }
+}
+
+void append_addressing(std::ostringstream& out, const PreparedBirModule& module) {
+  out << "--- prepared-addressing ---\n";
+  for (const auto& function_addressing : module.addressing.functions) {
+    out << "prepared.func @" << maybe_function_name(module.names, function_addressing.function_name)
+        << " frame_size=" << function_addressing.frame_size_bytes
+        << " frame_alignment=" << function_addressing.frame_alignment_bytes << "\n";
+    for (const auto& access : function_addressing.accesses) {
+      out << "  access block=" << maybe_block_label(module.names, access.block_label)
+          << " inst_index=" << access.inst_index
+          << " base=" << prepared_address_base_kind_name(access.address.base_kind);
+      if (access.result_value_name.has_value()) {
+        out << " result=" << prepared_value_name(module.names, *access.result_value_name);
+      }
+      if (access.stored_value_name.has_value()) {
+        out << " stored=" << prepared_value_name(module.names, *access.stored_value_name);
+      }
+      if (access.address.frame_slot_id.has_value()) {
+        out << " frame_slot=#" << *access.address.frame_slot_id;
+      }
+      if (access.address.symbol_name.has_value()) {
+        out << " symbol=" << prepared_link_name(module.names, *access.address.symbol_name);
+      }
+      if (access.address.pointer_value_name.has_value()) {
+        out << " pointer=" << prepared_value_name(module.names, *access.address.pointer_value_name);
+      }
+      out << " offset=" << access.address.byte_offset
+          << " size=" << access.address.size_bytes
+          << " align=" << access.address.align_bytes
+          << " base_plus_offset="
+          << (access.address.can_use_base_plus_offset ? "yes" : "no")
+          << "\n";
+    }
+  }
+}
+
+}  // namespace
+
+std::string print(const PreparedBirModule& module) {
+  std::ostringstream out;
+  out << "prepared.module target=" << module.target_profile.triple
+      << " route=" << prepare_route_name(module.route) << "\n";
+
+  if (!module.completed_phases.empty()) {
+    out << "completed_phases:";
+    for (const auto& phase : module.completed_phases) {
+      out << " " << phase;
+    }
+    out << "\n";
+  }
+
+  if (!module.invariants.empty()) {
+    out << "invariants:\n";
+    for (const auto& invariant : module.invariants) {
+      out << "  - " << prepared_bir_invariant_name(invariant) << "\n";
+    }
+  }
+
+  if (!module.notes.empty()) {
+    out << "notes:\n";
+    for (const auto& note : module.notes) {
+      out << "  - [" << note.phase << "] " << note.message << "\n";
+    }
+  }
+
+  out << "--- prepared-bir ---\n";
+  out << c4c::backend::bir::print(module.module);
+  if (!module.module.functions.empty() || !module.module.globals.empty() ||
+      !module.module.string_constants.empty()) {
+    out << "\n";
+  }
+
+  append_prepared_control_flow(out, module);
+  append_value_locations(out, module);
+  append_stack_layout(out, module);
+  append_addressing(out, module);
+  return out.str();
+}
+
+}  // namespace c4c::backend::prepare

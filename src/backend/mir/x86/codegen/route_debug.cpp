@@ -1,0 +1,486 @@
+#include "x86_codegen.hpp"
+
+#include <algorithm>
+#include <exception>
+#include <sstream>
+
+namespace c4c::backend::x86 {
+
+namespace {
+
+enum class RouteDebugVerbosity {
+  Summary,
+  Trace,
+};
+
+struct FunctionRouteAttempt {
+  std::string lane_name;
+  bool matched = false;
+  std::optional<std::string> detail;
+};
+
+struct FunctionRouteReport {
+  std::string function_name;
+  std::size_t bir_block_count = 0;
+  std::size_t prepared_block_count = 0;
+  std::size_t branch_condition_count = 0;
+  std::size_t join_transfer_count = 0;
+  std::vector<FunctionRouteAttempt> attempts;
+};
+
+void append_indented_line(std::ostringstream& out,
+                          std::size_t indent,
+                          std::string_view text) {
+  for (std::size_t i = 0; i < indent; ++i) {
+    out << "  ";
+  }
+  out << text << "\n";
+}
+
+std::string_view route_result_text(bool matched) {
+  return matched ? "matched" : "rejected";
+}
+
+std::string_view prepared_function_name_or_none(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    c4c::FunctionNameId function_name_id) {
+  if (function_name_id == c4c::kInvalidFunctionName) {
+    return "<none>";
+  }
+  return c4c::backend::prepare::prepared_function_name(names, function_name_id);
+}
+
+const c4c::backend::prepare::PreparedControlFlowFunction* find_control_flow_function(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    c4c::FunctionNameId function_name_id) {
+  if (function_name_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  return c4c::backend::prepare::find_prepared_control_flow_function(
+      module.control_flow, function_name_id);
+}
+
+const c4c::backend::prepare::PreparedAddressingFunction* find_addressing_function(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    c4c::FunctionNameId function_name_id) {
+  if (function_name_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  return c4c::backend::prepare::find_prepared_addressing(module, function_name_id);
+}
+
+const c4c::backend::prepare::PreparedValueLocationFunction* find_value_location_function(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    c4c::FunctionNameId function_name_id) {
+  if (function_name_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  return c4c::backend::prepare::find_prepared_value_location_function(
+      module.value_locations, function_name_id);
+}
+
+std::string resolve_target_triple(const c4c::backend::prepare::PreparedBirModule& module) {
+  return module.module.target_triple.empty() ? c4c::default_host_target_triple()
+                                             : module.module.target_triple;
+}
+
+std::optional<c4c::TargetArch> resolve_prepared_arch(
+    const c4c::backend::prepare::PreparedBirModule& module) {
+  const auto target_profile = module.target_profile.arch != c4c::TargetArch::Unknown
+                                  ? module.target_profile
+                                  : c4c::target_profile_from_triple(resolve_target_triple(module));
+  if (target_profile.arch != c4c::TargetArch::X86_64 &&
+      target_profile.arch != c4c::TargetArch::I686) {
+    return std::nullopt;
+  }
+  return target_profile.arch;
+}
+
+std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& module,
+                                RouteDebugVerbosity verbosity) {
+  std::ostringstream out;
+
+  const auto prepared_arch = resolve_prepared_arch(module);
+  if (!prepared_arch.has_value()) {
+    out << "x86 handoff debug is only available for x86 targets\n";
+    return out.str();
+  }
+
+  std::vector<const c4c::backend::bir::Function*> defined_functions;
+  const c4c::backend::bir::Function* entry_function = nullptr;
+  for (const auto& function : module.module.functions) {
+    if (function.is_declaration) {
+      continue;
+    }
+    defined_functions.push_back(&function);
+    if (function.name == "main") {
+      entry_function = &function;
+    } else if (entry_function == nullptr) {
+      entry_function = &function;
+    }
+  }
+
+  const auto target_triple = resolve_target_triple(module);
+  out << (verbosity == RouteDebugVerbosity::Summary ? "x86 handoff summary\n"
+                                                    : "x86 handoff trace\n");
+  out << "target: " << target_triple << "\n";
+  out << "defined functions: " << defined_functions.size() << "\n";
+  out << "entry function: " << (entry_function == nullptr ? "<none>" : entry_function->name)
+      << "\n";
+
+  if (defined_functions.empty()) {
+    return out.str();
+  }
+
+  const auto narrow_register = [](const std::optional<std::string>& wide_register)
+      -> std::optional<std::string> {
+    if (!wide_register.has_value()) {
+      return std::nullopt;
+    }
+    return narrow_i32_register(*wide_register);
+  };
+  const auto render_asm_symbol_name = [&](std::string_view logical_name) -> std::string {
+    if (target_triple.find("apple-darwin") != std::string::npos) {
+      return "_" + std::string(logical_name);
+    }
+    return std::string(logical_name);
+  };
+  const auto render_private_data_label = [&](std::string_view pool_name) -> std::string {
+    std::string label(pool_name);
+    if (!label.empty() && label.front() == '@') {
+      label.erase(label.begin());
+    }
+    while (!label.empty() && label.front() == '.') {
+      label.erase(label.begin());
+    }
+    if (target_triple.find("apple-darwin") != std::string::npos) {
+      return "L" + label;
+    }
+    return ".L." + label;
+  };
+  const auto find_string_constant =
+      [&](std::string_view name) -> const c4c::backend::bir::StringConstant* {
+    for (const auto& string_constant : module.module.string_constants) {
+      if (string_constant.name == name) {
+        return &string_constant;
+      }
+    }
+    return nullptr;
+  };
+  const auto find_same_module_global =
+      [&](std::string_view name) -> const c4c::backend::bir::Global* {
+    for (const auto& global : module.module.globals) {
+      if (global.name == name) {
+        if (global.is_extern || global.is_thread_local) {
+          return nullptr;
+        }
+        return &global;
+      }
+    }
+    return nullptr;
+  };
+  const auto same_module_global_scalar_size =
+      [&](c4c::backend::bir::TypeKind type) -> std::optional<std::size_t> {
+    switch (type) {
+      case c4c::backend::bir::TypeKind::I8:
+        return 1;
+      case c4c::backend::bir::TypeKind::I32:
+        return 4;
+      case c4c::backend::bir::TypeKind::Ptr:
+        return 8;
+      default:
+        return std::nullopt;
+    }
+  };
+  const auto same_module_global_supports_scalar_load =
+      [&](const c4c::backend::bir::Global& global,
+          c4c::backend::bir::TypeKind type,
+          std::size_t byte_offset) -> bool {
+    if (!same_module_global_scalar_size(type).has_value()) {
+      return false;
+    }
+    if (global.initializer_symbol_name.has_value()) {
+      return type == c4c::backend::bir::TypeKind::Ptr && byte_offset == 0;
+    }
+    if (global.initializer.has_value()) {
+      const auto init_size = same_module_global_scalar_size(global.initializer->type);
+      return global.initializer->kind == c4c::backend::bir::Value::Kind::Immediate &&
+             init_size.has_value() && global.initializer->type == type && byte_offset == 0;
+    }
+    std::size_t current_offset = 0;
+    for (const auto& element : global.initializer_elements) {
+      const auto element_size = same_module_global_scalar_size(element.type);
+      if (!element_size.has_value()) {
+        return false;
+      }
+      if (current_offset == byte_offset && element.type == type) {
+        return true;
+      }
+      current_offset += *element_size;
+    }
+    return false;
+  };
+  const auto emit_string_constant_data =
+      [](const c4c::backend::bir::StringConstant&) -> std::string { return {}; };
+  const auto emit_same_module_global_data =
+      [](const c4c::backend::bir::Global&) -> std::optional<std::string> {
+    return std::string{};
+  };
+  const auto minimal_function_return_register =
+      [&](const c4c::backend::bir::Function& candidate) -> std::optional<std::string> {
+    if (!candidate.return_abi.has_value()) {
+      return std::nullopt;
+    }
+    return narrow_register(c4c::backend::prepare::call_result_destination_register_name(
+        module.target_profile.arch != c4c::TargetArch::Unknown
+            ? module.target_profile
+            : c4c::target_profile_from_triple(target_triple),
+        *candidate.return_abi));
+  };
+  const auto minimal_function_asm_prefix =
+      [&](const c4c::backend::bir::Function& candidate) -> std::string {
+    return ".intel_syntax noprefix\n.text\n.globl " + candidate.name + "\n.type " +
+           candidate.name + ", @function\n" + candidate.name + ":\n";
+  };
+  const auto minimal_param_register_at =
+      [&](const c4c::backend::bir::Param& param,
+          std::size_t arg_index) -> std::optional<std::string> {
+    if (param.is_varargs || param.is_sret || param.is_byval || !param.abi.has_value()) {
+      return std::nullopt;
+    }
+    return narrow_register(c4c::backend::prepare::call_arg_destination_register_name(
+        module.target_profile.arch != c4c::TargetArch::Unknown
+            ? module.target_profile
+            : c4c::target_profile_from_triple(target_triple),
+        *param.abi, arg_index));
+  };
+  const auto render_trivial_defined_function_if_supported =
+      [&](const c4c::backend::bir::Function& candidate) -> std::optional<std::string> {
+    return c4c::backend::x86::render_prepared_trivial_defined_function_if_supported(
+        candidate, *prepared_arch, minimal_function_return_register, minimal_function_asm_prefix);
+  };
+
+  std::optional<std::string> multi_defined_dispatch_detail;
+  auto multi_defined_dispatch =
+      c4c::backend::x86::PreparedModuleMultiDefinedDispatchState{};
+  try {
+    multi_defined_dispatch =
+        c4c::backend::x86::build_prepared_module_multi_defined_dispatch_state(
+            module, defined_functions, entry_function, *prepared_arch,
+            render_trivial_defined_function_if_supported, minimal_function_return_register,
+            minimal_function_asm_prefix, find_same_module_global,
+            same_module_global_supports_scalar_load, minimal_param_register_at,
+            [&](std::string_view symbol_name) {
+              return render_private_data_label("@" + std::string(symbol_name));
+            },
+            [&](std::string_view symbol_name) {
+              return find_string_constant(symbol_name) != nullptr;
+            },
+            [&](std::string_view symbol_name) {
+              return find_same_module_global(symbol_name) != nullptr;
+            },
+            render_asm_symbol_name, find_string_constant, emit_string_constant_data,
+            emit_same_module_global_data);
+  } catch (const std::exception& ex) {
+    multi_defined_dispatch_detail = ex.what();
+  } catch (...) {
+    multi_defined_dispatch_detail = "unknown backend exception";
+  }
+
+  if (verbosity == RouteDebugVerbosity::Summary) {
+    out << "module-level bounded multi-function lane: "
+        << (multi_defined_dispatch.rendered_module.has_value() ? "matched" : "rejected")
+        << "\n";
+  } else {
+    out << "module-level bounded multi-function lane\n";
+    out << "  result: "
+        << (multi_defined_dispatch.rendered_module.has_value() ? "matched" : "rejected")
+        << "\n";
+    if (multi_defined_dispatch_detail.has_value()) {
+      out << "  detail: " << *multi_defined_dispatch_detail << "\n";
+    }
+  }
+
+  const std::unordered_set<std::string_view> kNoHelperNames;
+  for (const auto* function : defined_functions) {
+    const auto function_name_id =
+        c4c::backend::prepare::resolve_prepared_function_name_id(module.names, function->name)
+            .value_or(c4c::kInvalidFunctionName);
+    const auto* function_control_flow = find_control_flow_function(module, function_name_id);
+    const auto* function_addressing = find_addressing_function(module, function_name_id);
+    const auto* function_locations = find_value_location_function(module, function_name_id);
+
+    const auto find_block = [&](std::string_view label) -> const c4c::backend::bir::Block* {
+      for (const auto& block : function->blocks) {
+        if (block.label == label) {
+          return &block;
+        }
+      }
+      return nullptr;
+    };
+    const auto minimal_param_register =
+        [&](const c4c::backend::bir::Param& param) -> std::optional<std::string> {
+      for (std::size_t arg_index = 0; arg_index < function->params.size(); ++arg_index) {
+        if (&function->params[arg_index] != &param) {
+          continue;
+        }
+        return minimal_param_register_at(param, arg_index);
+      }
+      return std::nullopt;
+    };
+
+    FunctionRouteReport report{
+        .function_name = function->name,
+        .bir_block_count = function->blocks.size(),
+        .prepared_block_count = function_control_flow == nullptr ? 0 : function_control_flow->blocks.size(),
+        .branch_condition_count =
+            function_control_flow == nullptr ? 0 : function_control_flow->branch_conditions.size(),
+        .join_transfer_count =
+            function_control_flow == nullptr ? 0 : function_control_flow->join_transfers.size(),
+    };
+
+    if (verbosity == RouteDebugVerbosity::Summary) {
+      out << "\nfunction " << report.function_name << "\n";
+      out << "- bir blocks: " << report.bir_block_count << "\n";
+      out << "- prepared blocks: " << report.prepared_block_count << "\n";
+      out << "- branch conditions: " << report.branch_condition_count << "\n";
+      out << "- join transfers: " << report.join_transfer_count << "\n";
+    } else {
+      out << "\nfunction " << report.function_name << "\n";
+      out << "  facts: bir_blocks=" << report.bir_block_count
+          << ", prepared_blocks=" << report.prepared_block_count
+          << ", branch_conditions=" << report.branch_condition_count
+          << ", join_transfers=" << report.join_transfer_count << "\n";
+    }
+
+    if (function->blocks.empty()) {
+      if (verbosity == RouteDebugVerbosity::Summary) {
+        out << "- final: empty function body\n";
+      } else {
+        out << "  final: empty function body\n";
+      }
+      continue;
+    }
+
+    const auto asm_prefix = minimal_function_asm_prefix(*function);
+    const auto return_register =
+        function->return_type == c4c::backend::bir::TypeKind::Void
+            ? std::optional<std::string>{}
+            : minimal_function_return_register(*function);
+    std::unordered_set<std::string_view> used_string_names;
+    std::unordered_set<std::string_view> used_same_module_global_names;
+    const PreparedX86FunctionDispatchContext context{
+        .prepared_module = &module,
+        .module = &module.module,
+        .function = function,
+        .entry = &function->blocks.front(),
+        .stack_layout = &module.stack_layout,
+        .function_addressing = function_addressing,
+        .prepared_names = &module.names,
+        .function_locations = function_locations,
+        .function_control_flow = function_control_flow,
+        .prepared_arch = *prepared_arch,
+        .asm_prefix = asm_prefix,
+        .return_register = return_register.value_or(std::string{}),
+        .bounded_same_module_helper_names =
+            multi_defined_dispatch.has_bounded_same_module_helpers
+                ? &multi_defined_dispatch.helper_names
+                : &kNoHelperNames,
+        .bounded_same_module_helper_global_names =
+            multi_defined_dispatch.has_bounded_same_module_helpers
+                ? &multi_defined_dispatch.helper_global_names
+                : &kNoHelperNames,
+        .find_block = find_block,
+        .find_string_constant = find_string_constant,
+        .find_same_module_global = find_same_module_global,
+        .same_module_global_supports_scalar_load = same_module_global_supports_scalar_load,
+        .render_private_data_label = render_private_data_label,
+        .render_asm_symbol_name = render_asm_symbol_name,
+        .emit_string_constant_data = emit_string_constant_data,
+        .emit_same_module_global_data = emit_same_module_global_data,
+        .prepend_bounded_same_module_helpers = [](std::string asm_text) { return asm_text; },
+        .minimal_param_register = minimal_param_register,
+        .used_string_names = &used_string_names,
+        .used_same_module_global_names = &used_same_module_global_names,
+        .defer_module_data_emission = true,
+    };
+
+    const auto try_lane = [&](std::string lane_name,
+                              const std::function<std::optional<std::string>()>& try_render) {
+      bool matched = false;
+      std::optional<std::string> detail;
+      try {
+        matched = try_render().has_value();
+      } catch (const std::exception& ex) {
+        detail = ex.what();
+      } catch (...) {
+        detail = "unknown backend exception";
+      }
+      report.attempts.push_back(FunctionRouteAttempt{
+          .lane_name = std::move(lane_name),
+          .matched = matched,
+          .detail = std::move(detail),
+      });
+    };
+
+    try_lane("trivial-defined-function", [&]() {
+      return render_trivial_defined_function_if_supported(*function);
+    });
+    try_lane("local-i32-arithmetic-guard", [&]() {
+      return render_prepared_local_i32_arithmetic_guard_if_supported(context);
+    });
+    try_lane("countdown-entry-routes", [&]() {
+      return render_prepared_countdown_entry_routes_if_supported(context);
+    });
+    try_lane("local-i16-arithmetic-guard", [&]() {
+      return render_prepared_local_i16_arithmetic_guard_if_supported(context);
+    });
+    try_lane("local-slot-guard-chain", [&]() {
+      return render_prepared_local_slot_guard_chain_if_supported(context);
+    });
+    try_lane("single-block-return-dispatch", [&]() {
+      return render_prepared_single_block_return_dispatch_if_supported(context);
+    });
+
+    const auto matched_it = std::find_if(report.attempts.begin(),
+                                         report.attempts.end(),
+                                         [](const FunctionRouteAttempt& attempt) {
+                                           return attempt.matched;
+                                         });
+
+    if (verbosity == RouteDebugVerbosity::Summary) {
+      out << "- top-level lane: "
+          << (matched_it == report.attempts.end() ? "no current lane matched"
+                                                  : matched_it->lane_name)
+          << "\n";
+    } else {
+      for (const auto& attempt : report.attempts) {
+        out << "  try lane " << attempt.lane_name << "\n";
+        out << "    result: " << route_result_text(attempt.matched) << "\n";
+        if (attempt.detail.has_value()) {
+          out << "    detail: " << *attempt.detail << "\n";
+        }
+      }
+      out << "  final: "
+          << (matched_it == report.attempts.end() ? "no current top-level x86 lane matched"
+                                                  : "matched " + matched_it->lane_name)
+          << "\n";
+    }
+  }
+
+  return out.str();
+}
+
+}  // namespace
+
+std::string summarize_prepared_module_routes(
+    const c4c::backend::prepare::PreparedBirModule& module) {
+  return render_route_report(module, RouteDebugVerbosity::Summary);
+}
+
+std::string trace_prepared_module_routes(
+    const c4c::backend::prepare::PreparedBirModule& module) {
+  return render_route_report(module, RouteDebugVerbosity::Trace);
+}
+
+}  // namespace c4c::backend::x86

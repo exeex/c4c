@@ -14,6 +14,8 @@
 
 #include "arena.hpp"
 #include "ast.hpp"
+#include "backend.hpp"
+#include "hir_to_lir.hpp"
 #include "llvm_codegen.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
@@ -233,6 +235,10 @@ void print_usage(const char *argv0) {
       << "  --dump-canonical           Print semantic canonical-type information\n"
       << "  --dump-hir                 Print full HIR plus compile-time stats\n"
       << "  --dump-hir-summary         Print compact HIR summary\n"
+      << "  --dump-bir                 Print semantic backend BIR\n"
+      << "  --dump-prepared-bir        Print prepared backend BIR plus metadata\n"
+      << "  --dump-mir                 Print concise backend MIR-route summary\n"
+      << "  --trace-mir                Print backend MIR-route trace\n"
       << "\n"
       << "Parser debug:\n"
       << "  --parser-debug             Enable general parser debug output\n"
@@ -242,9 +248,9 @@ void print_usage(const char *argv0) {
       << "Code generation:\n"
       << "  --codegen llvm|asm|compare Select codegen backend path\n"
       << "  --backend-bir-stage prepared|semantic\n"
-      << "                            For --codegen asm, choose prepared BIR\n"
-      << "                            output (default) or semantic BIR before\n"
-      << "                            prepare for bounded observation\n"
+      << "                            For --codegen asm only, choose prepared\n"
+      << "                            backend lowering (default) or semantic\n"
+      << "                            BIR before prepare for bounded observation\n"
       << "\n"
       << "Preprocessor configuration:\n"
       << "  -D macro[=val]             Define macro\n"
@@ -264,6 +270,8 @@ void print_usage(const char *argv0) {
       << "  " << argv0 << " --parser-debug --parse-only test.cpp\n"
       << "  " << argv0 << " --parser-debug --parser-debug-tentative --parse-only test.cpp\n"
       << "  " << argv0 << " --dump-hir test.cpp\n"
+      << "  " << argv0 << " --dump-bir test.c\n"
+      << "  " << argv0 << " --codegen asm --backend-bir-stage semantic test.c\n"
       << "\n"
       << "Notes:\n"
       << "  Only one frontend inspection mode may be selected at a time.\n";
@@ -305,6 +313,10 @@ int main(int argc, char **argv) {
     bool        dump_hir_summary = false;
     bool        dump_hir = false;
     bool        dump_canonical = false;
+    bool        dump_bir = false;
+    bool        dump_prepared_bir = false;
+    bool        dump_mir = false;
+    bool        trace_mir = false;
     bool        parser_debug = false;
     bool        parser_debug_tentative = false;
     bool        parser_debug_injected = false;
@@ -345,6 +357,14 @@ int main(int argc, char **argv) {
         dump_hir_summary = true;
       } else if (arg == "--dump-canonical") {
         dump_canonical = true;
+      } else if (arg == "--dump-bir") {
+        dump_bir = true;
+      } else if (arg == "--dump-prepared-bir") {
+        dump_prepared_bir = true;
+      } else if (arg == "--dump-mir" || arg == "--dump-x86-summary") {
+        dump_mir = true;
+      } else if (arg == "--trace-mir" || arg == "--trace-x86-handoff") {
+        trace_mir = true;
       } else if (arg == "--parser-debug") {
         parser_debug = true;
       } else if (arg == "--parser-debug-tentative") {
@@ -463,11 +483,16 @@ int main(int argc, char **argv) {
     {
       int mode_count = (pp_only ? 1 : 0) + (lex_only ? 1 : 0) + (parse_only ? 1 : 0) +
                        (dump_hir ? 1 : 0) + (dump_hir_summary ? 1 : 0) +
-                       (dump_canonical ? 1 : 0);
+                       (dump_canonical ? 1 : 0) + (dump_bir ? 1 : 0) +
+                       (dump_prepared_bir ? 1 : 0) + (dump_mir ? 1 : 0) + (trace_mir ? 1 : 0);
       if (mode_count > 1) {
-        std::cerr << "cannot combine --pp-only, --lex-only, --parse-only, --dump-hir, --dump-hir-summary, --dump-canonical\n";
+        std::cerr << "cannot combine --pp-only, --lex-only, --parse-only, --dump-hir, --dump-hir-summary, --dump-canonical, --dump-bir, --dump-prepared-bir, --dump-mir, --trace-mir\n";
         return 2;
       }
+    }
+    if ((dump_bir || dump_prepared_bir || dump_mir || trace_mir) && emit_semantic_bir) {
+      std::cerr << "--backend-bir-stage cannot be combined with --dump-bir, --dump-prepared-bir, --dump-mir, or --trace-mir\n";
+      return 2;
     }
 
     // Determine source profile from input file extension.
@@ -590,6 +615,36 @@ int main(int argc, char **argv) {
       } else {
         std::cout << c4c::hir::format_summary(*sema_result.hir_module) << "\n";
       }
+      return 0;
+    }
+
+    if (dump_bir) {
+      auto lir_mod = c4c::codegen::lir::lower(
+          *sema_result.hir_module,
+          c4c::codegen::lir::LowerOptions{
+              .preserve_semantic_va_ops = true,
+          });
+      std::cout << c4c::backend::dump_module(
+          c4c::backend::BackendModuleInput{lir_mod},
+          c4c::backend::BackendOptions{.target_profile = target_profile},
+          c4c::backend::BackendDumpStage::SemanticBir);
+      return 0;
+    }
+
+    if (dump_prepared_bir || dump_mir || trace_mir) {
+      auto lir_mod = c4c::codegen::lir::lower(
+          *sema_result.hir_module,
+          c4c::codegen::lir::LowerOptions{
+              .preserve_semantic_va_ops = false,
+          });
+      const auto stage =
+          dump_prepared_bir ? c4c::backend::BackendDumpStage::PreparedBir
+          : dump_mir       ? c4c::backend::BackendDumpStage::MirSummary
+                           : c4c::backend::BackendDumpStage::MirTrace;
+      std::cout << c4c::backend::dump_module(
+          c4c::backend::BackendModuleInput{lir_mod},
+          c4c::backend::BackendOptions{.target_profile = target_profile},
+          stage);
       return 0;
     }
 
