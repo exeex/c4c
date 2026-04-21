@@ -44,7 +44,6 @@ Minimal single-block terminator / branch restriction examples:
 - `c_testsuite_x86_backend_src_00082_c`
 - `c_testsuite_x86_backend_src_00101_c`
 - `c_testsuite_x86_backend_src_00102_c`
-- `c_testsuite_x86_backend_src_00204_c`
 
 Direct-immediate-only scalar return restriction examples:
 
@@ -66,15 +65,15 @@ diagnostic families.
 
 ## Latest Durable Note
 
-As of 2026-04-21, `c_testsuite_x86_backend_src_00204_c` has graduated into
-this idea from
-`ideas/closed/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md`
-after the surviving semantic stack/local-memory scratch-copy seam was
-repaired. The case now stops later with
+As of 2026-04-21, follow-up executor inspection showed that
+`c_testsuite_x86_backend_src_00204_c` does not currently reach an idea-60
+scalar-return seam. The visible
 `error: x86 backend emitter only supports a minimal i32 return function
-through the canonical prepared-module handoff`, so the next honest packet
-should inspect the prepared scalar return/terminator facts that x86 still
-fails to consume for that route.
+through the canonical prepared-module handoff` message is a fallback symptom
+after the bounded multi-defined helper/module lane rejects same-module helpers
+with aggregate params/returns first, so current ownership returns to
+`ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md`
+until that upstream prepared-module route advances back into scalar emission.
 
 ## Scope Notes
 

@@ -62,6 +62,15 @@ Prepared call-bundle failures:
 - `c_testsuite_x86_backend_src_00165_c`
 - `c_testsuite_x86_backend_src_00177_c`
 
+## Latest Durable Note
+
+As of 2026-04-21, executor inspection showed that
+`c_testsuite_x86_backend_src_00204_c` currently belongs to this idea even
+though the visible failure still surfaces the fallback
+`minimal i32 return function` diagnostic. The real blocker is earlier in the
+bounded multi-defined prepared-module lane, which rejects the same-module
+aggregate helper family before the x86 scalar-return route begins.
+
 ## Scope Notes
 
 Expected repair themes include:

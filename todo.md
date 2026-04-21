@@ -1,36 +1,41 @@
 # Execution State
 
 Status: Active
-Source Idea Path: ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md
+Source Idea Path: ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Refresh Idea-60 Ownership And Confirm The Next Scalar Seam
+Current Step Title: Refresh Idea-61 Ownership And Confirm The Next Prepared-Module Seam
 Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Lifecycle switch complete: closed idea 62 after
-`c_testsuite_x86_backend_src_00204_c` advanced out of semantic
-stack/addressing ownership and activated idea 60 as the new runbook.
+Lifecycle switch complete: retired the idea-60 runbook for
+`c_testsuite_x86_backend_src_00204_c` after executor inspection confirmed the
+current blocker is upstream in idea 61's bounded multi-defined helper/module
+lane, not a scalar-return seam.
 
 ## Suggested Next
 
-Inspect the current prepared-module / x86 emitter restriction for
-`c_testsuite_x86_backend_src_00204_c`, identify the exact scalar return or
-terminator seam that x86 still fails to consume, and choose the nearest
-backend route coverage that protects that seam.
+Inspect the bounded same-module helper/module lane for
+`c_testsuite_x86_backend_src_00204_c`, identify the exact prepared
+module-traversal or call/result-handoff fact that rejects the aggregate helper
+family, and choose the nearest multi-defined handoff coverage that protects
+that seam.
 
 ## Watchouts
 
-- Do not reopen idea-62 ownership unless the case falls back into semantic
-  stack/addressing or scalar/local-memory failure before prepared-x86 handoff.
-- Reject x86-only matcher growth for one named return or expression spelling;
-  prefer shared prepared-contract consumption.
-- Keep the idea-62 scalar scratch-copy note repros and adjacent variadic route
-  coverage stable while idea 60 picks up `00204.c`.
+- Do not teach `render_defined_function` one aggregate helper shape just to
+  bypass the upstream multi-defined lane.
+- Keep `00204.c` out of idea 60 until the multi-defined route genuinely
+  advances back into scalar return/terminator ownership.
+- Prefer shared prepared module and call-bundle consumption over new bounded
+  x86 entry-topology fast paths.
 
 ## Proof
 
-Idea-62 close gate passed with the existing narrow before/after subset using
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`.
+Lifecycle switch based on the existing narrow executor proof:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$'; }`.
+Current evidence in `test_after.log` still leaves `backend_x86_handoff_boundary`
+passing and `c_testsuite_x86_backend_src_00204_c` failing at the same
+prepared-module boundary.
