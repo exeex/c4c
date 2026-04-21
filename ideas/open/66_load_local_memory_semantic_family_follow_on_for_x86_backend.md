@@ -30,9 +30,12 @@ and the case is not better explained by an already-open narrower leaf.
 
 ## Current Known Failed Cases It Owns
 
-Named cases already identified in this family:
+No named cases currently remain in this family.
 
-- `c_testsuite_x86_backend_src_00204_c`
+`c_testsuite_x86_backend_src_00204_c` advanced out of this leaf on 2026-04-21
+after commit `736d15d6` preserved loaded opaque pointer provenance and moved
+the case downstream into function `myprintf` / `scalar-control-flow semantic
+family`, which belongs back under idea 58 unless a narrower leaf is activated.
 
 As additional backend cases are confirmed to fail for the same underlying
 local-memory load reason, they should be routed here instead of being mixed
@@ -42,9 +45,13 @@ back into idea 65's semantic call-family lane or the broader idea-58 bucket.
 
 As of 2026-04-21, the direct-call byval-global repair under idea 65 advanced
 `c_testsuite_x86_backend_src_00204_c` out of function `arg` and the
-`direct-call semantic family`. The case now fails later in function `match`
-with `latest function failure: semantic lir_to_bir function 'match' failed in
-load local-memory semantic family`.
+`direct-call semantic family`, and commit `736d15d6` then advanced the case
+through function `match` so it no longer fails in `load local-memory semantic
+family`. The current known case now fails later in function `myprintf` with
+`latest function failure: semantic lir_to_bir function 'myprintf' failed in
+scalar-control-flow semantic family`, so idea 66 is currently parked without a
+named owned case until another backend failure is confirmed to stop on a real
+load-local-memory seam.
 
 ## Scope Notes
 

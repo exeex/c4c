@@ -38,6 +38,7 @@ Representative named failures already observed in this cluster:
 - `c_testsuite_x86_backend_src_00051_c`
 - `c_testsuite_x86_backend_src_00089_c`
 - `c_testsuite_x86_backend_src_00095_c`
+- `c_testsuite_x86_backend_src_00204_c`
 - `c_testsuite_x86_backend_src_00207_c`
 - `c_testsuite_x86_backend_src_00217_c`
 
@@ -50,10 +51,11 @@ stack/addressing leaf in idea 62.
 The current lifecycle checkpoint after the bootstrap-global lowering repair is:
 
 - `c_testsuite_x86_backend_src_00204_c` now lowers `%p.b` and `%p.c` as byval
-  aggregate pointers in `fa3`, then blocks on byval local/member-addressing
-  access to `%p.c`'s `x86_fp80` fields on the way into variadic `printf`, so
-  its next owned route is idea 62's stack/addressing family rather than idea
-  58's bootstrap-global semantic-lowering lane.
+  aggregate pointers in `fa3`, clears the later idea-65 direct-call and
+  idea-66 load-local-memory leaves, and now fails in function `myprintf` with
+  `scalar-control-flow semantic family`, so its current owned route is back in
+  idea 58's broader semantic-lowering lane unless a narrower scalar-control-flow
+  leaf is opened.
 - `c_testsuite_x86_backend_src_00040_c` now fails in `chk` in the `gep
   local-memory semantic family` and is better described by idea 62's
   stack/addressing ownership.
