@@ -36,6 +36,34 @@ bool has_suffix(std::string_view value, std::string_view suffix) {
   return value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
+class ScopedEnvVar {
+ public:
+  ScopedEnvVar(const char* name, std::optional<std::string_view> value)
+      : name_(name),
+        had_previous_(std::getenv(name) != nullptr),
+        previous_value_(had_previous_ ? std::optional<std::string>(std::getenv(name))
+                                      : std::nullopt) {
+    if (value.has_value()) {
+      setenv(name_, std::string(*value).c_str(), 1);
+    } else {
+      unsetenv(name_);
+    }
+  }
+
+  ~ScopedEnvVar() {
+    if (had_previous_) {
+      setenv(name_, previous_value_->c_str(), 1);
+    } else {
+      unsetenv(name_);
+    }
+  }
+
+ private:
+  const char* name_;
+  bool had_previous_ = false;
+  std::optional<std::string> previous_value_;
+};
+
 std::string normalize_debug_value_selector(std::string value_name) {
   if (value_name.empty() || value_name.front() == '%' || value_name.front() == '@') {
     return value_name;
@@ -248,7 +276,7 @@ void print_usage(const char *argv0) {
       << "  --trace-mir                Print backend MIR-route trace\n"
       << "  --mir-focus-function <fn>  Limit backend dump/trace output to one function\n"
       << "  --mir-focus-block <label>  Limit focused backend dump/trace output to one block inside the focused function\n"
-      << "  --mir-focus-value <name>   Limit focused backend dump output to one value inside the focused function\n"
+      << "  --mir-focus-value <name>   Limit focused backend dump/trace output to one value inside the focused function\n"
       << "\n"
       << "Parser debug:\n"
       << "  --parser-debug             Enable general parser debug output\n"
@@ -527,8 +555,8 @@ int main(int argc, char **argv) {
       std::cerr << "--mir-focus-block requires --mir-focus-function\n";
       return 2;
     }
-    if (mir_focus_value.has_value() && !(dump_bir || dump_prepared_bir)) {
-      std::cerr << "--mir-focus-value requires --dump-bir or --dump-prepared-bir\n";
+    if (mir_focus_value.has_value() && !(dump_bir || dump_prepared_bir || dump_mir || trace_mir)) {
+      std::cerr << "--mir-focus-value requires --dump-bir, --dump-prepared-bir, --dump-mir, or --trace-mir\n";
       return 2;
     }
     if (mir_focus_value.has_value() && !mir_focus_function.has_value()) {
@@ -687,6 +715,10 @@ int main(int argc, char **argv) {
           dump_prepared_bir ? c4c::backend::BackendDumpStage::PreparedBir
           : dump_mir       ? c4c::backend::BackendDumpStage::MirSummary
                            : c4c::backend::BackendDumpStage::MirTrace;
+      const ScopedEnvVar mir_focus_value_env(
+          "C4C_MIR_FOCUS_VALUE",
+          (dump_mir || trace_mir) ? std::optional<std::string_view>(*mir_focus_value)
+                                  : std::nullopt);
       std::cout << c4c::backend::dump_module(
           c4c::backend::BackendModuleInput{lir_mod},
           c4c::backend::BackendOptions{

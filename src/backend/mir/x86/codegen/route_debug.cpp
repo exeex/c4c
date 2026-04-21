@@ -1,6 +1,7 @@
 #include "x86_codegen.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <exception>
 #include <sstream>
 
@@ -52,6 +53,8 @@ struct RouteDebugFocus {
   std::optional<std::string_view> block;
 };
 
+constexpr std::string_view kMirFocusValueEnv = "C4C_MIR_FOCUS_VALUE";
+
 void append_indented_line(std::ostringstream& out,
                           std::size_t indent,
                           std::string_view text) {
@@ -67,6 +70,29 @@ std::string_view route_result_text(bool matched) {
 
 bool string_contains(std::string_view haystack, std::string_view needle) {
   return haystack.find(needle) != std::string_view::npos;
+}
+
+std::optional<std::string_view> current_route_debug_focus_value() {
+  const char* value = std::getenv(kMirFocusValueEnv.data());
+  if (value == nullptr || *value == '\0') {
+    return std::nullopt;
+  }
+  return std::string_view(value);
+}
+
+std::unordered_set<c4c::backend::prepare::PreparedValueId> collect_function_prepared_value_ids(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    c4c::ValueNameId focus_value_id) {
+  std::unordered_set<c4c::backend::prepare::PreparedValueId> value_ids;
+  if (function_locations == nullptr) {
+    return value_ids;
+  }
+  for (const auto& home : function_locations->value_homes) {
+    if (home.value_name == focus_value_id) {
+      value_ids.insert(home.value_id);
+    }
+  }
+  return value_ids;
 }
 
 constexpr std::string_view kCompareDrivenEntryParamShapeError =
@@ -968,11 +994,15 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
   out << "defined functions: " << defined_functions.size() << "\n";
   out << "entry function: " << (entry_function == nullptr ? "<none>" : entry_function->name)
       << "\n";
+  const auto focus_value = current_route_debug_focus_value();
   if (focus.function.has_value()) {
     out << "focus function: " << *focus.function << "\n";
   }
   if (focus.block.has_value()) {
     out << "focus block: " << *focus.block << "\n";
+  }
+  if (focus_value.has_value()) {
+    out << "focus value: " << *focus_value << "\n";
   }
 
   if (defined_functions.empty()) {
@@ -1167,6 +1197,8 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
   std::size_t focused_function_count = 0;
   std::size_t focused_bir_block_count = 0;
   std::size_t focused_prepared_block_count = 0;
+  std::size_t focused_prepared_value_count = 0;
+  std::size_t focused_prepared_move_bundle_count = 0;
   for (const auto* function : defined_functions) {
     if (focus.function.has_value() && function->name != *focus.function) {
       continue;
@@ -1214,9 +1246,45 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
         focus.block.has_value()
             ? collect_focused_prepared_block_labels(module.names, function_control_flow, focus.block)
             : std::vector<std::string_view>{};
+    const auto focus_value_id =
+        focus_value.has_value()
+            ? c4c::backend::prepare::resolve_prepared_value_name_id(module.names, *focus_value)
+            : std::nullopt;
+    const auto focused_prepared_value_ids =
+        focus_value_id.has_value()
+            ? collect_function_prepared_value_ids(function_locations, *focus_value_id)
+            : std::unordered_set<c4c::backend::prepare::PreparedValueId>{};
+    const auto focused_prepared_values =
+        function_locations == nullptr || !focus_value_id.has_value()
+            ? std::size_t{0}
+            : static_cast<std::size_t>(std::count_if(
+                  function_locations->value_homes.begin(),
+                  function_locations->value_homes.end(),
+                  [&](const c4c::backend::prepare::PreparedValueHome& home) {
+                    return home.value_name == *focus_value_id;
+                  }));
+    const auto focused_prepared_move_bundles =
+        function_locations == nullptr || focused_prepared_value_ids.empty()
+            ? std::size_t{0}
+            : static_cast<std::size_t>(std::count_if(
+                  function_locations->move_bundles.begin(),
+                  function_locations->move_bundles.end(),
+                  [&](const c4c::backend::prepare::PreparedMoveBundle& bundle) {
+                    return std::any_of(
+                        bundle.moves.begin(),
+                        bundle.moves.end(),
+                        [&](const c4c::backend::prepare::PreparedMoveResolution& move) {
+                          return focused_prepared_value_ids.count(move.from_value_id) != 0 ||
+                                 focused_prepared_value_ids.count(move.to_value_id) != 0;
+                        });
+                  }));
     if (focus.block.has_value()) {
       focused_bir_block_count += focused_bir_blocks.size();
       focused_prepared_block_count += focused_prepared_blocks.size();
+    }
+    if (focus_value.has_value()) {
+      focused_prepared_value_count += focused_prepared_values;
+      focused_prepared_move_bundle_count += focused_prepared_move_bundles;
     }
 
     if (verbosity == RouteDebugVerbosity::Summary) {
@@ -1225,6 +1293,10 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
       out << "- prepared blocks: " << report.prepared_block_count << "\n";
       out << "- branch conditions: " << report.branch_condition_count << "\n";
       out << "- join transfers: " << report.join_transfer_count << "\n";
+      if (focus_value.has_value()) {
+        out << "- focused prepared values: " << focused_prepared_values << "\n";
+        out << "- focused prepared move bundles: " << focused_prepared_move_bundles << "\n";
+      }
       if (focus.block.has_value()) {
         out << "- focused bir blocks: " << focused_bir_blocks.size() << "\n";
         for (const auto label : focused_bir_blocks) {
@@ -1241,6 +1313,10 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           << ", prepared_blocks=" << report.prepared_block_count
           << ", branch_conditions=" << report.branch_condition_count
           << ", join_transfers=" << report.join_transfer_count << "\n";
+      if (focus_value.has_value()) {
+        out << "  focused prepared values: " << focused_prepared_values << "\n";
+        out << "  focused prepared move bundles: " << focused_prepared_move_bundles << "\n";
+      }
       if (focus.block.has_value()) {
         out << "  focused bir blocks: " << focused_bir_blocks.size() << "\n";
         for (const auto label : focused_bir_blocks) {
@@ -1477,6 +1553,13 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
         focused_bir_block_count == 0 &&
         focused_prepared_block_count == 0) {
       out << "no block in the focused function matched the requested MIR block focus\n";
+    }
+  }
+  if (focus_value.has_value()) {
+    out << "focused prepared values matched: " << focused_prepared_value_count << "\n";
+    out << "focused prepared move bundles matched: " << focused_prepared_move_bundle_count << "\n";
+    if (focused_function_count != 0 && focused_prepared_value_count == 0) {
+      out << "no prepared value in the focused function matched the requested MIR value focus\n";
     }
   }
 

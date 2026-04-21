@@ -5,46 +5,46 @@ Source Idea Path: ideas/open/67_backend_trace_and_error_contract_for_x86_handoff
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Continue Until Backend Handoff Debugging Stops Requiring Local Instrumentation
-Plan Review Counter: 1 / 6
+Plan Review Counter: 2 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 3 now extends the focused large-case dump contract from blocks down to one
-value: `--mir-focus-value` exists for `--dump-bir` and `--dump-prepared-bir`,
-normalizes plain names like `t1` to the backend `%t1` spelling, and refuses to
-run without `--mir-focus-function`. The semantic and prepared dump paths now
-keep the focused `stdarg` function but trim its output to value-owned lines
-only, while the focus header reports explicit semantic/prepared matched-count
-totals so a large `00204.c` investigation can isolate one value without local
-instrumentation. `tests/backend/CMakeLists.txt` adds matching and missing
-`00204.c` CLI coverage for semantic and prepared value focus so the new seam is
-proved on the real `stdarg` handoff lane.
+Step 3 now extends the focused value seam into MIR summary and trace: `c4cll`
+accepts `--mir-focus-value` with `--dump-mir` and `--trace-mir`, mirrors that
+focus into the x86 route-debug renderer, and preserves the decisive `stdarg`
+rejection guidance on `00204.c` while reporting focused prepared-value and
+move-bundle match counts for the requested value. `tests/backend/CMakeLists.txt`
+now adds matching and missing `00204.c` CLI coverage for MIR summary/trace
+value focus, and `tests/backend/backend_x86_route_debug_test.cpp` locks the
+route-debug renderer’s focused-value headers and missing-value note.
 
 ## Suggested Next
 
-If idea 67 still needs another packet, keep it on the next real observability
-gap near backend handoff, such as whether MIR summary/trace needs an analogous
-value seam or whether the remaining large-case rejection text still forces
-source edits for local inspection. Do not spend more packets polishing the dump
-header without a concrete inspection failure.
+If idea 67 still needs another packet, stay on the remaining backend handoff
+observability gap rather than polishing this seam further: either expose the
+same narrow focus deeper in the prepared handoff detail when a rejection still
+needs local probes, or move to the next missing rejection contract that still
+blocks `00204.c`-scale debugging.
 
 ## Watchouts
 
-- `--mir-focus-value` is intentionally dump-only for now and still requires
-  `--mir-focus-function`; do not silently broaden it into module-level or MIR
-  summary/trace matching without a separate packet.
-- The prepared value filter keeps function-level notes and frame metadata even
-  when no value-owned prepared records match; preserve that route context unless
-  a later packet proves it blocks inspection.
-- The current matching contract is value-owned line filtering, not SSA
-  dependency slicing; do not overfit follow-up work into ad hoc producer or
-  consumer expansion around one testcase name.
+- The MIR value seam is currently a CLI-to-route-debug bridge via
+  `C4C_MIR_FOCUS_VALUE`; if a later packet needs non-CLI callers to use the
+  same focus directly, that should become an explicit backend API-plumbing
+  packet instead of hidden widening here.
+- MIR summary/trace value focus is intentionally context-preserving: it reports
+  focused prepared-value metadata but does not suppress the final function-level
+  rejection text. Do not trade away that rejection context for narrower output
+  without a concrete debugging failure.
+- The new MIR counts are prepared-handoff counts, not SSA dependency slicing;
+  avoid growing this into testcase-shaped producer/consumer expansion around
+  one named value.
 
 ## Proof
 
 Ran the delegated acceptance subset and spot checks:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_cli_(dump_bir_(focus_function_filters_00204|focus_block_(entry|missing)_00204|focus_value_(t1|missing)_00204)|dump_prepared_bir_(focus_function_filters_00204|focus_block_(entry|missing)_00204|focus_value_(t1|missing)_00204)))$' && build/c4cll --target x86_64-unknown-linux-gnu --dump-bir --mir-focus-function stdarg --mir-focus-value t1 tests/c/external/c-testsuite/src/00204.c && build/c4cll --target x86_64-unknown-linux-gnu --dump-prepared-bir --mir-focus-function stdarg --mir-focus-value t1 tests/c/external/c-testsuite/src/00204.c) > test_after.log 2>&1`
-and it passed. The proof locks matching and missing value focus on semantic and
-prepared dumps and spot-checks the real `00204.c` `stdarg` `t1` value through
-both dump stages. Proof log path: `test_after.log`.
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_cli_(dump_mir|trace_mir)_focus_(function_filters_00204|block_(entry|missing)_00204|value_(t1|missing)_00204))$' && build/c4cll --target x86_64-unknown-linux-gnu --dump-mir --mir-focus-function stdarg --mir-focus-value t1 tests/c/external/c-testsuite/src/00204.c && build/c4cll --target x86_64-unknown-linux-gnu --trace-mir --mir-focus-function stdarg --mir-focus-value t1 tests/c/external/c-testsuite/src/00204.c) > test_after.log 2>&1`
+and it passed. I also ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_x86_route_debug$'`
+to verify the owned route-debug unit coverage after adding focused-value
+expectations. Proof log path: `test_after.log`.

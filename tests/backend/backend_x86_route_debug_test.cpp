@@ -10,6 +10,33 @@ namespace prepare = c4c::backend::prepare;
 
 namespace {
 
+class ScopedEnvVar {
+ public:
+  ScopedEnvVar(const char* name, const char* value)
+      : name_(name),
+        had_previous_(std::getenv(name) != nullptr),
+        previous_value_(had_previous_ ? std::string(std::getenv(name)) : std::string()) {
+    if (value != nullptr) {
+      setenv(name_, value, 1);
+    } else {
+      unsetenv(name_);
+    }
+  }
+
+  ~ScopedEnvVar() {
+    if (had_previous_) {
+      setenv(name_, previous_value_.c_str(), 1);
+    } else {
+      unsetenv(name_);
+    }
+  }
+
+ private:
+  const char* name_;
+  bool had_previous_ = false;
+  std::string previous_value_;
+};
+
 c4c::TargetProfile x86_target_profile() {
   return c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 }
@@ -1087,6 +1114,21 @@ int main() {
       prepared, "short_circuit_or_prepare_contract", "entry");
   const std::string focused_trace = c4c::backend::x86::trace_prepared_module_routes(
       prepared, "short_circuit_or_prepare_contract", "entry");
+  std::string focused_value_summary;
+  std::string focused_value_trace;
+  {
+    const ScopedEnvVar focused_value_env("C4C_MIR_FOCUS_VALUE", "%t3");
+    focused_value_summary = c4c::backend::x86::summarize_prepared_module_routes(
+        prepared, "short_circuit_or_prepare_contract");
+    focused_value_trace = c4c::backend::x86::trace_prepared_module_routes(
+        prepared, "short_circuit_or_prepare_contract");
+  }
+  std::string missing_value_summary;
+  {
+    const ScopedEnvVar missing_value_env("C4C_MIR_FOCUS_VALUE", "%missing");
+    missing_value_summary = c4c::backend::x86::summarize_prepared_module_routes(
+        prepared, "short_circuit_or_prepare_contract");
+  }
   const auto single_block_i64_ashr_return_helper_miss =
       legalize_single_block_i64_ashr_return_helper_miss_module();
   const std::string single_block_i64_ashr_return_helper_miss_summary =
@@ -1203,6 +1245,24 @@ int main() {
       !expect_contains(focused_trace,
                        "focused bir blocks: 1\n    - entry\n  focused prepared blocks: 1\n    - entry",
                        "focused trace block labels") ||
+      !expect_contains(focused_value_summary,
+                       "focus value: %t3",
+                       "focused value summary header") ||
+      !expect_contains(focused_value_summary,
+                       "- focused prepared values: 1\n- focused prepared move bundles: 1",
+                       "focused value summary counts") ||
+      !expect_contains(focused_value_trace,
+                       "focus value: %t3",
+                       "focused value trace header") ||
+      !expect_contains(focused_value_trace,
+                       "focused prepared values: 1\n  focused prepared move bundles: 1",
+                       "focused value trace counts") ||
+      !expect_contains(missing_value_summary,
+                       "focus value: %missing",
+                       "missing value summary header") ||
+      !expect_contains(missing_value_summary,
+                       "focused prepared values matched: 0\nfocused prepared move bundles matched: 0\nno prepared value in the focused function matched the requested MIR value focus",
+                       "missing value summary result") ||
       !expect_contains(single_block_i64_ashr_return_helper_miss_summary,
                        "- final rejection: single-block i64 arithmetic-right-shift return helper recognized the function, but the prepared return-helper shape is outside the current x86 support",
                        "single-block i64 ashr summary final rejection") ||
