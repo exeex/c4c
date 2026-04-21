@@ -47,6 +47,9 @@ state, and creates the final commit. It does not own lifecycle rewrites or imple
 - decide whether `c4c-reviewer` is needed and whether delegated `c4c-executor`
   or `c4c-reviewer` packets should explicitly use `c4c-clang-tools` to save
   token on C++ exploration
+- let executors choose `c4cll-debug-flags` on their own when a packet needs
+  `c4cll` stage-level observation; do not require a supervisor `Tooling` line
+  for normal flag-driven compiler debugging
 - flush completed ready slices before delegating new work
 - watch `todo.md` execution metadata so oversized steps can trigger plan review
   from stable state instead of chat-only judgment
@@ -181,6 +184,9 @@ Choose the next specialist with these rules:
 - when a packet will inspect large or cross-linked C++ code:
   decide whether to add a `Tooling` line telling the subagent to use
   `c4c-clang-tools` first for AST-backed queries
+- do not micromanage normal `c4cll` debug-flag choice from the supervisor;
+  executor packets may use `c4cll-debug-flags` at executor discretion unless
+  the packet needs a very specific mandated command
 - call `c4c-reviewer` only for real route risk:
   repeated lifecycle repairs, multiple direction-changing plan commits, packet boundary drift, or explicit drift suspicion
 - do not call `c4c-reviewer` only because commit count is high
