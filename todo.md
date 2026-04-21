@@ -5,35 +5,41 @@ Source Idea Path: ideas/open/60_scalar_expression_and_terminator_selection_for_x
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Refresh Idea-60 Ownership And Confirm The Next Scalar Seam
-Plan Review Counter: 0 / 4
+Plan Review Counter: 1 / 4
 # Current Packet
 
 ## Just Finished
 
-Lifecycle switch complete: the latest accepted idea-61 packet advanced
-`c_testsuite_x86_backend_src_00204_c` past the old authoritative prepared
-short-circuit handoff rejection, so the active runbook now returns to idea 60
-because the remaining blocker is the downstream scalar-emitter restriction.
+Step 1 narrowed the current `c_testsuite_x86_backend_src_00204_c` blocker to
+the `match` helper's multi-block pointer-backed short-circuit loop/return
+route. Reproducing that helper alone in a standalone probe still triggers the
+same idea-60 scalar restriction, so this packet finished the seam-identification
+work but did not land a code repair.
 
 ## Suggested Next
 
-Inspect the current full-`00204` scalar restriction, identify the exact
-prepared return / branch-condition / terminator seam that x86 still fails to
-consume, and choose the nearest backend route coverage that protects that seam
-without reopening idea-61 ownership.
+Build a focused backend packet around the `match`-style pointer-backed
+short-circuit loop/return route, add or identify the nearest protective x86
+handoff coverage for that terminator family, and inspect whether the missing
+prepared fact is existing branch/return metadata that x86 is not consuming or
+a real prepared control-flow contract gap.
 
 ## Watchouts
 
-- Do not reopen idea-61 ownership unless the route falls back into
-  prepared-module or call-bundle consumption failure before scalar emission.
-- Reject x86-only matcher growth for one named compare, branch, or return
-  spelling; prefer generic prepared value/terminator consumption.
-- Keep the new short-circuit boundary coverage stable while idea 60 inspects
-  the downstream scalar restriction it now exposes.
+- Do not "fix" `match` by adding one more emitter-local loop or branch matcher;
+  the route includes pointer-backed loads, short-circuit control flow, and
+  multi-block integer returns.
+- Keep idea-61 ownership closed unless the reduced probe falls back into
+  prepared-module or call-bundle rejection before x86 scalar emission.
+- If the reduced route cannot be expressed from current prepared branch/return
+  ownership, the next packet may need a contract-first extension instead of an
+  emitter-only patch.
 
 ## Proof
 
-Lifecycle switch only. Reused the latest accepted executor proof already
-recorded in `test_after.log`, which shows the old authoritative prepared
-short-circuit handoff rejection is gone and `00204.c` now fails at the
-downstream idea-60 scalar restriction.
+Ran the delegated proof command `cmake --build --preset default && ctest
+--test-dir build -j --output-on-failure -R
+'^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$'`.
+`backend_x86_handoff_boundary` passed and
+`c_testsuite_x86_backend_src_00204_c` still failed with the idea-60 scalar
+restriction. Canonical proof log: `test_after.log`.
