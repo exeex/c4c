@@ -82,6 +82,7 @@ std::string lane_next_surface(std::string_view lane_name) {
       lane_name == "bounded-same-module-variadic-helper" ||
       lane_name == "single-block-aggregate-forwarding-wrapper" ||
       lane_name == "single-block-same-module-scalar-call-wrapper" ||
+      lane_name == "single-block-floating-aggregate-sret-copyout-helper" ||
       lane_name == "single-block-floating-aggregate-call-helper" ||
       lane_name == "single-block-i64-immediate-return-helper" ||
       lane_name == "single-block-i64-ashr-return-helper" ||
@@ -126,6 +127,9 @@ std::string next_surface_hint(const FunctionRouteAttempt* attempt,
     }
     if (attempt->lane_name == "single-block-same-module-scalar-call-wrapper") {
       return "inspect the current x86 same-module scalar helper-family support in " + lane_surface;
+    }
+    if (attempt->lane_name == "single-block-floating-aggregate-sret-copyout-helper") {
+      return "inspect the current x86 floating aggregate return-helper support in " + lane_surface;
     }
     if (attempt->lane_name == "single-block-floating-aggregate-call-helper") {
       return "inspect the current x86 floating aggregate helper support in " + lane_surface;
@@ -201,6 +205,10 @@ FinalRejectionReport build_final_rejection_report(const FunctionRouteReport& rep
           summary =
               "single-block same-module scalar call-wrapper family recognized the function, but "
               "the prepared helper-family shape is outside the current x86 support";
+        } else if (it->lane_name == "single-block-floating-aggregate-sret-copyout-helper") {
+          summary = "single-block floating aggregate sret copyout helper recognized the "
+                    "function, but the prepared return-helper shape is outside the current x86 "
+                    "support";
         } else if (it->lane_name == "single-block-floating-aggregate-call-helper") {
           summary =
               "single-block floating aggregate call helper recognized the function, but the "
@@ -474,12 +482,14 @@ std::optional<std::string> build_single_block_floating_aggregate_call_helper_lan
   bool saw_floating_aggregate_param = false;
   bool saw_floating_aggregate_call_arg = false;
   bool saw_pointer_aggregate_param = false;
+  std::unordered_set<std::string_view> pointer_param_names;
 
   for (const auto& param : function.params) {
-    if (param.type != c4c::backend::bir::TypeKind::Ptr || param.size_bytes == 0) {
+    if (param.type != c4c::backend::bir::TypeKind::Ptr) {
       continue;
     }
     saw_pointer_aggregate_param = true;
+    pointer_param_names.insert(param.name);
     if (param.abi.has_value() &&
         (param.abi->primary_class == c4c::backend::bir::AbiValueClass::Sse ||
          param.abi->secondary_class == c4c::backend::bir::AbiValueClass::Sse ||
@@ -490,6 +500,15 @@ std::optional<std::string> build_single_block_floating_aggregate_call_helper_lan
   }
 
   for (const auto& inst : entry.insts) {
+    if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
+        load != nullptr && load->address.has_value() &&
+        load->address->base_kind == c4c::backend::bir::MemoryAddress::BaseKind::PointerValue &&
+        pointer_param_names.find(load->address->base_name) != pointer_param_names.end() &&
+        (load->result.type == c4c::backend::bir::TypeKind::F32 ||
+         load->result.type == c4c::backend::bir::TypeKind::F64 ||
+         load->result.type == c4c::backend::bir::TypeKind::F128)) {
+      saw_floating_aggregate_param = true;
+    }
     const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
     if (call == nullptr || call->is_indirect || call->callee_value.has_value()) {
       continue;
@@ -519,6 +538,59 @@ std::optional<std::string> build_single_block_floating_aggregate_call_helper_lan
          "aggregate arguments already reduce to the current local-slot or scalar helper surfaces; "
          "this helper still forwards floating aggregate lanes through byval/pointer wrappers into "
          "a direct variadic extern call";
+}
+
+std::optional<std::string> build_single_block_floating_aggregate_sret_copyout_helper_lane_detail(
+    const c4c::backend::bir::Function& function) {
+  if (function.is_declaration || function.is_variadic ||
+      function.return_type != c4c::backend::bir::TypeKind::Void || function.blocks.size() != 1 ||
+      function.params.size() != 1 || function.params.front().type != c4c::backend::bir::TypeKind::Ptr) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      entry.terminator.value.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto is_floating_lane = [](c4c::backend::bir::TypeKind type) {
+    return type == c4c::backend::bir::TypeKind::F32 ||
+           type == c4c::backend::bir::TypeKind::F64 ||
+           type == c4c::backend::bir::TypeKind::F128;
+  };
+
+  bool saw_global_floating_load = false;
+  bool saw_sret_copyout = false;
+  bool saw_call = false;
+  for (const auto& inst : entry.insts) {
+    if (std::holds_alternative<c4c::backend::bir::CallInst>(inst)) {
+      saw_call = true;
+      continue;
+    }
+    if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst); load != nullptr) {
+      if (load->address.has_value() &&
+          load->address->base_kind == c4c::backend::bir::MemoryAddress::BaseKind::GlobalSymbol &&
+          is_floating_lane(load->result.type)) {
+        saw_global_floating_load = true;
+      }
+      continue;
+    }
+    if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
+        store != nullptr && store->address.has_value() &&
+        is_floating_lane(store->value.type)) {
+      saw_sret_copyout = true;
+    }
+  }
+
+  if (saw_call || !saw_global_floating_load || !saw_sret_copyout) {
+    return std::nullopt;
+  }
+
+  return "x86 backend emitter only supports single-block floating aggregate sret copyout helpers "
+         "when those same-module aggregate returns already reduce to the current return-helper "
+         "surfaces; this helper still copies floating aggregate lanes from same-module globals "
+         "through scratch slots into an sret destination";
 }
 
 std::optional<std::string> build_single_block_aggregate_forwarding_wrapper_lane_detail(
@@ -1200,6 +1272,15 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           .lane_name = "single-block-i64-immediate-return-helper",
           .matched = false,
           .detail = std::move(single_block_i64_immediate_return_helper_detail),
+      });
+    }
+    if (const auto single_block_floating_aggregate_sret_copyout_helper_detail =
+            build_single_block_floating_aggregate_sret_copyout_helper_lane_detail(*function);
+        single_block_floating_aggregate_sret_copyout_helper_detail.has_value()) {
+      report.attempts.push_back(FunctionRouteAttempt{
+          .lane_name = "single-block-floating-aggregate-sret-copyout-helper",
+          .matched = false,
+          .detail = std::move(single_block_floating_aggregate_sret_copyout_helper_detail),
       });
     }
     if (const auto single_block_floating_aggregate_call_helper_detail =
