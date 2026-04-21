@@ -828,7 +828,7 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DDUMP_FLAG=--dump-mir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff summary|function arg|- final rejection: single-block aggregate-forwarding wrapper recognized the function, but the prepared same-module aggregate-call shape is outside the current x86 support|- next inspect: inspect the current x86 same-module aggregate-call support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
+          "-DREQUIRED_SNIPPETS=x86 handoff summary|function arg|- final rejection: single-block aggregate-forwarding wrapper recognized the function, but the prepared same-module aggregate-call shape is outside the current x86 support|- final facts: prepared aggregate-wrapper facts: direct extern calls=|same-module aggregate call wrappers=|forwarded aggregate arguments=|- next inspect: inspect the current x86 same-module aggregate-call support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_dump_mir_00204_arg_rejection PROPERTIES
@@ -842,7 +842,7 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DDUMP_FLAG=--trace-mir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|function arg|try lane single-block-aggregate-forwarding-wrapper|detail: x86 backend emitter only supports single-block aggregate-forwarding wrappers when their direct extern preamble and same-module aggregate calls already reduce to the current helper surfaces; this wrapper still mixes a direct extern preamble with same-module aggregate call wrappers|final: rejected: single-block aggregate-forwarding wrapper recognized the function, but the prepared same-module aggregate-call shape is outside the current x86 support|next inspect: inspect the current x86 same-module aggregate-call support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
+          "-DREQUIRED_SNIPPETS=x86 handoff trace|function arg|try lane single-block-aggregate-forwarding-wrapper|detail: x86 backend emitter only supports single-block aggregate-forwarding wrappers when their direct extern preamble and same-module aggregate calls already reduce to the current helper surfaces; this wrapper family still carries |final: rejected: single-block aggregate-forwarding wrapper recognized the function, but the prepared same-module aggregate-call shape is outside the current x86 support|final facts: prepared aggregate-wrapper facts: direct extern calls=|same-module aggregate call wrappers=|forwarded aggregate arguments=|next inspect: inspect the current x86 same-module aggregate-call support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_trace_mir_00204_arg_rejection PROPERTIES

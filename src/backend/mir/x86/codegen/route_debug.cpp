@@ -65,6 +65,12 @@ struct SingleBlockVoidCallSequenceFacts {
   std::size_t other_call_effect_count = 0;
 };
 
+struct SingleBlockAggregateForwardingWrapperFacts {
+  std::size_t direct_extern_call_count = 0;
+  std::size_t same_module_aggregate_call_wrapper_count = 0;
+  std::size_t forwarded_aggregate_arg_count = 0;
+};
+
 struct SingleBlockSameModuleScalarCallWrapperFacts {
   std::size_t local_slot_reload_count = 0;
   std::size_t scalar_same_module_helper_call_count = 0;
@@ -152,6 +158,38 @@ std::string summarize_single_block_void_call_sequence_facts(
     labels.push_back(counted_label(facts.other_call_effect_count,
                                    "other call side effect",
                                    "other call side effects"));
+  }
+  return join_fact_labels(labels);
+}
+
+std::string render_single_block_aggregate_forwarding_wrapper_facts(
+    const SingleBlockAggregateForwardingWrapperFacts& facts) {
+  std::ostringstream out;
+  out << "prepared aggregate-wrapper facts: direct extern calls="
+      << facts.direct_extern_call_count
+      << ", same-module aggregate call wrappers="
+      << facts.same_module_aggregate_call_wrapper_count
+      << ", forwarded aggregate arguments=" << facts.forwarded_aggregate_arg_count;
+  return out.str();
+}
+
+std::string summarize_single_block_aggregate_forwarding_wrapper_facts(
+    const SingleBlockAggregateForwardingWrapperFacts& facts) {
+  std::vector<std::string> labels;
+  if (facts.direct_extern_call_count != 0) {
+    labels.push_back(counted_label(facts.direct_extern_call_count,
+                                   "direct extern call",
+                                   "direct extern calls"));
+  }
+  if (facts.same_module_aggregate_call_wrapper_count != 0) {
+    labels.push_back(counted_label(facts.same_module_aggregate_call_wrapper_count,
+                                   "same-module aggregate call wrapper",
+                                   "same-module aggregate call wrappers"));
+  }
+  if (facts.forwarded_aggregate_arg_count != 0) {
+    labels.push_back(counted_label(facts.forwarded_aggregate_arg_count,
+                                   "forwarded aggregate argument",
+                                   "forwarded aggregate arguments"));
   }
   return join_fact_labels(labels);
 }
@@ -793,7 +831,7 @@ std::optional<std::string> build_single_block_floating_aggregate_sret_copyout_he
          "through scratch slots into an sret destination";
 }
 
-std::optional<std::string> build_single_block_aggregate_forwarding_wrapper_lane_detail(
+std::optional<FunctionRouteAttempt> build_single_block_aggregate_forwarding_wrapper_lane_attempt(
     const std::vector<const c4c::backend::bir::Function*>& defined_functions,
     const c4c::backend::bir::Function& function) {
   if (function.is_declaration || function.is_variadic ||
@@ -818,8 +856,7 @@ std::optional<std::string> build_single_block_aggregate_forwarding_wrapper_lane_
     return nullptr;
   };
 
-  bool saw_same_module_byval_call = false;
-  bool saw_direct_extern_call = false;
+  SingleBlockAggregateForwardingWrapperFacts facts;
 
   for (const auto& inst : entry.insts) {
     const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
@@ -836,7 +873,7 @@ std::optional<std::string> build_single_block_aggregate_forwarding_wrapper_lane_
       if (call->callee.rfind("llvm.", 0) == 0) {
         return std::nullopt;
       }
-      saw_direct_extern_call = true;
+      ++facts.direct_extern_call_count;
       continue;
     }
 
@@ -846,7 +883,7 @@ std::optional<std::string> build_single_block_aggregate_forwarding_wrapper_lane_
       return std::nullopt;
     }
 
-    bool call_forwards_aggregate = false;
+    std::size_t forwarded_aggregate_args = 0;
     for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
       const auto& param = callee->params[arg_index];
       const auto call_arg_abi =
@@ -859,26 +896,33 @@ std::optional<std::string> build_single_block_aggregate_forwarding_wrapper_lane_
       if (param.type == c4c::backend::bir::TypeKind::Ptr &&
           call->arg_types[arg_index] == c4c::backend::bir::TypeKind::Ptr &&
           (param.size_bytes > 0 || call_site_carries_aggregate_abi)) {
-        call_forwards_aggregate = true;
-        break;
+        ++forwarded_aggregate_args;
       }
     }
 
-    if (!call_forwards_aggregate) {
+    if (forwarded_aggregate_args == 0) {
       return std::nullopt;
     }
 
-    saw_same_module_byval_call = true;
+    ++facts.same_module_aggregate_call_wrapper_count;
+    facts.forwarded_aggregate_arg_count += forwarded_aggregate_args;
   }
 
-  if (!saw_same_module_byval_call || !saw_direct_extern_call) {
+  if (facts.same_module_aggregate_call_wrapper_count == 0 || facts.direct_extern_call_count == 0) {
     return std::nullopt;
   }
 
-  return "x86 backend emitter only supports single-block aggregate-forwarding wrappers when "
-         "their direct extern preamble and same-module aggregate calls already reduce to the "
-         "current helper surfaces; this wrapper still mixes a direct extern preamble with "
-         "same-module aggregate call wrappers";
+  std::string detail =
+      "x86 backend emitter only supports single-block aggregate-forwarding wrappers when their "
+      "direct extern preamble and same-module aggregate calls already reduce to the current "
+      "helper surfaces; this wrapper family still carries " +
+      summarize_single_block_aggregate_forwarding_wrapper_facts(facts);
+  return FunctionRouteAttempt{
+      .lane_name = "single-block-aggregate-forwarding-wrapper",
+      .matched = false,
+      .detail = std::move(detail),
+      .facts = render_single_block_aggregate_forwarding_wrapper_facts(facts),
+  };
 }
 
 std::optional<FunctionRouteAttempt> build_single_block_same_module_scalar_call_wrapper_lane_attempt(
@@ -1658,15 +1702,11 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           .detail = std::move(single_block_floating_aggregate_call_helper_detail),
       });
     }
-    if (const auto single_block_aggregate_forwarding_wrapper_detail =
-            build_single_block_aggregate_forwarding_wrapper_lane_detail(defined_functions,
-                                                                        *function);
-        single_block_aggregate_forwarding_wrapper_detail.has_value()) {
-      report.attempts.push_back(FunctionRouteAttempt{
-          .lane_name = "single-block-aggregate-forwarding-wrapper",
-          .matched = false,
-          .detail = std::move(single_block_aggregate_forwarding_wrapper_detail),
-      });
+    if (const auto single_block_aggregate_forwarding_wrapper_attempt =
+            build_single_block_aggregate_forwarding_wrapper_lane_attempt(defined_functions,
+                                                                         *function);
+        single_block_aggregate_forwarding_wrapper_attempt.has_value()) {
+      report.attempts.push_back(std::move(*single_block_aggregate_forwarding_wrapper_attempt));
     }
     if (const auto single_block_same_module_scalar_call_wrapper_attempt =
             build_single_block_same_module_scalar_call_wrapper_lane_attempt(defined_functions,

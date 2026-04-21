@@ -5,23 +5,23 @@ Source Idea Path: ideas/open/67_backend_trace_and_error_contract_for_x86_handoff
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Continue Until Backend Handoff Debugging Stops Requiring Local Instrumentation
-Plan Review Counter: 4 / 6
+Plan Review Counter: 5 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 3 now upgrades the focused `opi` x86 final rejection so `00204.c`
-debugging does not need local instrumentation for the same-module scalar
-call-wrapper family: the route-debug renderer now reports stable prepared
-helper-family facts in both summary and trace, and the scalar-wrapper trace
-detail is derived from those structured counts instead of a fixed prose list.
-For focused `--dump-mir` and `--trace-mir`, `opi` now surfaces
-`prepared helper-family facts: local-slot reloads=0, scalar same-module helper
-calls=36, width-adjusting casts=36, same-module sink wrappers=36`.
+Step 3 now upgrades the focused `arg` x86 final rejection so `00204.c`
+debugging does not stop at a plain unsupported-shape rejection for the
+single-block aggregate-forwarding wrapper family: the route-debug renderer now
+reports stable structured aggregate-wrapper facts in both summary and trace,
+and the aggregate-wrapper trace detail is derived from those counts instead of
+the old generic prose. For focused `--dump-mir` and `--trace-mir`, `arg` now
+surfaces `prepared aggregate-wrapper facts: direct extern calls=1,
+same-module aggregate call wrappers=33, forwarded aggregate arguments=50`.
 `tests/backend/CMakeLists.txt` now requires those stable fact labels on the
 focused `00204.c` CLI lane, and
 `tests/backend/backend_x86_route_debug_test.cpp` locks the exact summary/trace
-final-facts wording on the synthetic scalar-wrapper miss.
+final-facts wording on the synthetic aggregate-forwarding wrapper miss.
 
 ## Suggested Next
 
@@ -33,23 +33,25 @@ still forces local instrumentation.
 
 ## Watchouts
 
-- The new scalar helper-family facts are counted from the prepared wrapper
-  chain, not from source-level syntax. In focused `00204.c`, prepared lowering
-  folds the scalar family to `local-slot reloads=0` even though the synthetic
-  unit test still exercises the reload bucket explicitly.
+- The new aggregate-wrapper facts count wrapper-family structure from the
+  prepared same-module calls, not from source declarations. In focused
+  `00204.c`, `forwarded aggregate arguments=50` is larger than the
+  `same-module aggregate call wrappers=33` count because multi-aggregate helper
+  calls like `fa1`/`fa2`/`fa4` each contribute multiple forwarded aggregate
+  parameters.
 - The summary contract is intentionally two-part: keep the existing rejection
   classification line, then add `final facts` as a stable structured line.
   Avoid pushing every count back into the rejection sentence.
 - The focused CLI tests for `00204.c` only require stable fact labels, not the
-  exact `36` counts. Preserve that flexibility unless the supervisor
+  exact `33` / `50` counts. Preserve that flexibility unless the supervisor
   explicitly wants a stricter golden contract.
 
 ## Proof
 
 Ran the delegated proof command and it passed:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_route_debug|backend_cli_dump_mir_00204_opi_rejection|backend_cli_trace_mir_00204_opi_rejection)$' && build/c4cll --target x86_64-unknown-linux-gnu --dump-mir --mir-focus-function opi tests/c/external/c-testsuite/src/00204.c && build/c4cll --target x86_64-unknown-linux-gnu --trace-mir --mir-focus-function opi tests/c/external/c-testsuite/src/00204.c) > test_after.log 2>&1`
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_route_debug|backend_cli_dump_mir_00204_arg_rejection|backend_cli_trace_mir_00204_arg_rejection)$' && build/c4cll --target x86_64-unknown-linux-gnu --dump-mir --mir-focus-function arg tests/c/external/c-testsuite/src/00204.c && build/c4cll --target x86_64-unknown-linux-gnu --trace-mir --mir-focus-function arg tests/c/external/c-testsuite/src/00204.c) > test_after.log 2>&1`
 The resulting focused contract is:
-`- final facts: prepared helper-family facts: local-slot reloads=0, scalar same-module helper calls=36, width-adjusting casts=36, same-module sink wrappers=36`
-and the matching trace detail says the prepared wrapper family still carries 36
-scalar same-module helper calls, 36 width-adjusting casts, and 36 same-module
-sink wrappers. Proof log path: `test_after.log`.
+`- final facts: prepared aggregate-wrapper facts: direct extern calls=1, same-module aggregate call wrappers=33, forwarded aggregate arguments=50`
+and the matching trace detail says the prepared wrapper family still carries 1
+direct extern call, 33 same-module aggregate call wrappers, and 50 forwarded
+aggregate arguments. Proof log path: `test_after.log`.

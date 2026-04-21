@@ -1463,14 +1463,20 @@ int main() {
                        "- final rejection: single-block aggregate-forwarding wrapper recognized the function, but the prepared same-module aggregate-call shape is outside the current x86 support",
                        "single-block aggregate forwarding wrapper summary final rejection") ||
       !expect_contains(single_block_aggregate_forwarding_wrapper_miss_summary,
+                       "- final facts: prepared aggregate-wrapper facts: direct extern calls=1, same-module aggregate call wrappers=2, forwarded aggregate arguments=2",
+                       "single-block aggregate forwarding wrapper summary final facts") ||
+      !expect_contains(single_block_aggregate_forwarding_wrapper_miss_summary,
                        "- next inspect: inspect the current x86 same-module aggregate-call support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "single-block aggregate forwarding wrapper summary next inspect") ||
       !expect_contains(single_block_aggregate_forwarding_wrapper_miss_trace,
                        "try lane single-block-aggregate-forwarding-wrapper",
                        "single-block aggregate forwarding wrapper trace lane") ||
       !expect_contains(single_block_aggregate_forwarding_wrapper_miss_trace,
-                       "final detail: x86 backend emitter only supports single-block aggregate-forwarding wrappers when their direct extern preamble and same-module aggregate calls already reduce to the current helper surfaces; this wrapper still mixes a direct extern preamble with same-module aggregate call wrappers",
+                       "final detail: x86 backend emitter only supports single-block aggregate-forwarding wrappers when their direct extern preamble and same-module aggregate calls already reduce to the current helper surfaces; this wrapper family still carries 1 direct extern call, 2 same-module aggregate call wrappers, and 2 forwarded aggregate arguments",
                        "single-block aggregate forwarding wrapper trace detail") ||
+      !expect_contains(single_block_aggregate_forwarding_wrapper_miss_trace,
+                       "final facts: prepared aggregate-wrapper facts: direct extern calls=1, same-module aggregate call wrappers=2, forwarded aggregate arguments=2",
+                       "single-block aggregate forwarding wrapper trace final facts") ||
       !expect_contains(single_block_aggregate_forwarding_wrapper_miss_trace,
                        "next inspect: inspect the current x86 same-module aggregate-call support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "single-block aggregate forwarding wrapper trace next inspect") ||
