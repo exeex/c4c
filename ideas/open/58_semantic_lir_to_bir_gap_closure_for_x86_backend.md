@@ -2,7 +2,7 @@
 
 Status: Open
 Created: 2026-04-20
-Last-Updated: 2026-04-20
+Last-Updated: 2026-04-21
 Parent Idea: [57_x86_backend_c_testsuite_capability_families.md](/workspaces/c4c/ideas/open/57_x86_backend_c_testsuite_capability_families.md)
 
 ## Intent
@@ -38,7 +38,6 @@ Representative named failures already observed in this cluster:
 - `c_testsuite_x86_backend_src_00051_c`
 - `c_testsuite_x86_backend_src_00089_c`
 - `c_testsuite_x86_backend_src_00095_c`
-- `c_testsuite_x86_backend_src_00204_c`
 - `c_testsuite_x86_backend_src_00207_c`
 - `c_testsuite_x86_backend_src_00217_c`
 
@@ -48,14 +47,13 @@ stack/addressing leaf in idea 62.
 
 ## Routing Checkpoint
 
-The current lifecycle checkpoint after the bootstrap-global lowering repair is:
+The current lifecycle checkpoint after the aggregate-phi repair is:
 
-- `c_testsuite_x86_backend_src_00204_c` now lowers `%p.b` and `%p.c` as byval
-  aggregate pointers in `fa3`, clears the later idea-65 direct-call and
-  idea-66 load-local-memory leaves, and now fails in function `myprintf` with
-  `scalar-control-flow semantic family`, so its current owned route is back in
-  idea 58's broader semantic-lowering lane unless a narrower scalar-control-flow
-  leaf is opened.
+- commit `5a81abdb` repaired aggregate-typed phi joins and advanced
+  `c_testsuite_x86_backend_src_00204_c` out of `myprintf` /
+  `scalar-control-flow semantic family`; the case now fails later in
+  `myprintf` with `gep local-memory semantic family` and belongs back in the
+  reopened idea-62 stack/addressing leaf instead of idea 58.
 - `c_testsuite_x86_backend_src_00040_c` now fails in `chk` in the `gep
   local-memory semantic family` and is better described by idea 62's
   stack/addressing ownership.

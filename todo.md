@@ -1,42 +1,38 @@
 # Execution State
 
 Status: Active
-Source Idea Path: ideas/open/58_semantic_lir_to_bir_gap_closure_for_x86_backend.md
+Source Idea Path: ideas/open/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md
 Source Plan Path: plan.md
-Current Step ID: 2.1
-Current Step Title: Repair The Selected Semantic Seam
+Current Step ID: 1
+Current Step Title: Refresh Reopened Idea-62 Ownership And Confirm The Next Addressing Seam
 Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 2.1 repaired aggregate-typed phi joins in semantic `lir_to_bir`
-so `c_testsuite_x86_backend_src_00204_c` no longer stops in function
-`myprintf` / `scalar-control-flow semantic family`; the owned case now
-fails later in `myprintf` under `gep local-memory semantic family`.
+Lifecycle switch completed: commit `5a81abdb` advanced
+`c_testsuite_x86_backend_src_00204_c` out of `myprintf` /
+`scalar-control-flow semantic family` and reopened idea 62 because the case
+now fails later in `myprintf` under `gep local-memory semantic family`.
 
 ## Suggested Next
 
-Call lifecycle review before another executor packet: the new
-`myprintf` / `gep local-memory semantic family` blocker matches the old
-stack/addressing leaf recorded in `ideas/closed/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md`,
-but there is no active open source idea for that family anymore.
+Audit `c_testsuite_x86_backend_src_00204_c` at function `myprintf` and the
+nearest stack/member-addressing route coverage to isolate the next still-owned
+idea-62 addressing seam.
 
 ## Watchouts
 
-- Do not keep idea 58 owning `00204.c` if the durable next seam is really the
-  reopened stack/member/addressing family rather than broad semantic
-  scalar-control-flow ownership.
-- Do not silently reactivate closed idea 62 only in `todo.md`; the next route
-  needs plan-owner lifecycle state because the matching source note is
-  currently archived.
-- The repair was general aggregate-phi lowering, not a testcase-local shortcut;
-  preserve that route and avoid named-case matcher growth for `myprintf`.
+- Do not pull `00204.c` back into idea 58 unless the case again fails in a
+  real upstream scalar-control-flow seam.
+- Rehome the case immediately if the next blocker is better described by ideas
+  59, 60, 61, 65, or 66 than by stack/member/addressing ownership.
+- Do not drift into prepared-x86 ideas while the case still fails upstream in
+  semantic `lir_to_bir` local-memory/addressing lowering.
 
 ## Proof
 
-Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|c_testsuite_x86_backend_src_00204_c)$'`.
-`backend_lir_to_bir_notes` passed, and `c_testsuite_x86_backend_src_00204_c`
-now fails later with `latest function failure: semantic lir_to_bir function
-'myprintf' failed in gep local-memory semantic family`.
-Proof log: `test_after.log`.
+Lifecycle switch only. The latest accepted execution proof remains in
+`test_before.log` and shows `c_testsuite_x86_backend_src_00204_c` now fails
+later with `latest function failure: semantic lir_to_bir function 'myprintf'
+failed in gep local-memory semantic family`.
