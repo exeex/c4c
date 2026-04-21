@@ -239,6 +239,7 @@ void print_usage(const char *argv0) {
       << "  --dump-prepared-bir        Print prepared backend BIR plus metadata\n"
       << "  --dump-mir                 Print concise backend MIR-route summary\n"
       << "  --trace-mir                Print backend MIR-route trace\n"
+      << "  --mir-focus-function <fn>  Limit MIR dump/trace output to one function\n"
       << "\n"
       << "Parser debug:\n"
       << "  --parser-debug             Enable general parser debug output\n"
@@ -317,6 +318,7 @@ int main(int argc, char **argv) {
     bool        dump_prepared_bir = false;
     bool        dump_mir = false;
     bool        trace_mir = false;
+    std::optional<std::string> mir_focus_function;
     bool        parser_debug = false;
     bool        parser_debug_tentative = false;
     bool        parser_debug_injected = false;
@@ -365,6 +367,8 @@ int main(int argc, char **argv) {
         dump_mir = true;
       } else if (arg == "--trace-mir" || arg == "--trace-x86-handoff") {
         trace_mir = true;
+      } else if (arg == "--mir-focus-function" && i + 1 < args.size()) {
+        mir_focus_function = args[++i];
       } else if (arg == "--parser-debug") {
         parser_debug = true;
       } else if (arg == "--parser-debug-tentative") {
@@ -492,6 +496,10 @@ int main(int argc, char **argv) {
     }
     if ((dump_bir || dump_prepared_bir || dump_mir || trace_mir) && emit_semantic_bir) {
       std::cerr << "--backend-bir-stage cannot be combined with --dump-bir, --dump-prepared-bir, --dump-mir, or --trace-mir\n";
+      return 2;
+    }
+    if (mir_focus_function.has_value() && !(dump_mir || trace_mir)) {
+      std::cerr << "--mir-focus-function requires --dump-mir or --trace-mir\n";
       return 2;
     }
 
@@ -643,7 +651,10 @@ int main(int argc, char **argv) {
                            : c4c::backend::BackendDumpStage::MirTrace;
       std::cout << c4c::backend::dump_module(
           c4c::backend::BackendModuleInput{lir_mod},
-          c4c::backend::BackendOptions{.target_profile = target_profile},
+          c4c::backend::BackendOptions{
+              .target_profile = target_profile,
+              .route_debug_focus_function = mir_focus_function,
+          },
           stage);
       return 0;
     }

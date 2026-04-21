@@ -3,58 +3,52 @@
 Status: Active
 Source Idea Path: ideas/open/67_backend_trace_and_error_contract_for_x86_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 2.2.3
-Current Step Title: Eliminate Remaining Generic Per-Function Misses In The Motivating Case
-Plan Review Counter: 6 / 6
+Current Step ID: 2.3
+Current Step Title: Add Focus Controls For Large Cases
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 2.2.3 progressed for the remaining ordinary per-function misses in
-`tests/c/external/c-testsuite/src/00204.c`.
-`src/backend/mir/x86/codegen/route_debug.cpp` now lets the existing
-single-block void call-sequence detector classify local-slot-backed wrappers,
-which restores the intended lane-specific final rejection for `stdarg`, and it
-now treats sign- or zero-extended i32 constant builders as immediate-like for
-the existing single-block i64 immediate return-helper detector. That converts
-the `addlm123`, `andlm1`, and `eorlm1` helper family from generic per-function
-misses into the established immediate-return rejection class without widening
-backend support or keying off testcase names. Acceptance proof now includes
-updated reduced route-debug fixture coverage in
-`tests/backend/backend_x86_route_debug_test.cpp` for the extended-immediate
-shape and new honest CLI coverage in `tests/backend/CMakeLists.txt` for the
-`00204.c` sign-extended i64 helper family, while the existing `stdarg` CLI
-tests now pass again against the live trace.
+Step 2.3 started with stable function-level focus controls for the x86 MIR
+debug ladder.
+`src/apps/c4cll.cpp` now accepts `--mir-focus-function <name>` for
+`--dump-mir` and `--trace-mir`, `src/backend/backend.{hpp,cpp}` threads that
+focus selection into backend dump options, and
+`src/backend/mir/x86/codegen/route_debug.cpp` keeps the module-level handoff
+summary while filtering per-function route output to the named function only.
+The focused report emits an explicit `focus function:` header plus a
+`focused functions matched:` footer so large cases stay readable without
+guesswork about whether filtering applied. Acceptance proof adds focused
+`00204.c` CLI coverage in `tests/backend/CMakeLists.txt` and extends the
+shared backend dump harness to pass list-shaped extra CLI arguments.
 
 ## Suggested Next
 
-Step 2.2.3 now appears exhausted on the motivating `00204.c` case: fresh
-`--dump-mir` and `--trace-mir` output no longer show any remaining ordinary
-per-function miss in the live trace. Advance to Step 2.3 and focus on stable
-trace filtering or other large-case focus controls that preserve the final
-meaningful rejection while reducing search space on `00204.c`-scale inputs.
+Continue Step 2.3 by adding a second narrowing seam inside the selected
+function, preferably block-label focus for `--trace-mir`, so `00204.c`-scale
+inspection can shrink noisy helper traces further without hiding the final
+rejection or module-level context.
 
 ## Watchouts
 
-- The widened void-helper detector is still diagnostic-only: it remains
-  restricted to single-block `void` helpers with observable call effects and
-  does not widen actual x86 helper support.
-- The widened i64 immediate detector is still shape-based rather than
-  testcase-based: it only treats a literal i64 immediate or an explicit
-  `sub i32 0, imm` plus `sext`/`zext` builder as the same immediate-like
-  contract before the final return operation.
-- Keep Step 2.2 proof anchored on `tests/c/external/c-testsuite/src/00204.c`;
-  reduced fixtures here remain route-debug contract coverage, not the only
-  acceptance signal.
-- Step 2.3 should preserve the current final-rejection contract while adding
-  focus controls; it should not reopen matcher coverage or weaken the stable
-  x86 rejection wording that now covers the motivating case.
+- The new focus control is diagnostic-only: it must not change lane ordering,
+  final-rejection selection, or backend support decisions.
+- Module-level handoff context still prints even when a function focus is set;
+  keep that intact for future Step 2.3 packets so filtering does not hide the
+  first decisive module-level rejection.
+- The shared backend dump harness now accepts `EXTRA_ARGS`; future CLI tests
+  should keep quoting list-valued `-D...` arguments in `tests/backend/CMakeLists.txt`
+  so CTest does not split them before `cmake -P` sees the list.
+- Keep Step 2.3 proof anchored on honest `00204.c` CLI output plus the nearest
+  backend CLI/route-debug subset; do not replace large-case proof with only
+  reduced fixtures.
 
 ## Proof
 
 Ran the delegated proof command exactly as assigned:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_route_debug|backend_cli_(dump_mir_00204_stdarg_rejection|trace_mir_00204_stdarg_rejection|dump_mir_00204_i64_immediate_rejection|trace_mir_00204_i64_immediate_rejection|dump_mir_00204_i64_sign_extended_immediate_rejection|trace_mir_00204_i64_sign_extended_immediate_rejection))$' && build/c4cll --target x86_64-unknown-linux-gnu --dump-mir tests/c/external/c-testsuite/src/00204.c && build/c4cll --target x86_64-unknown-linux-gnu --trace-mir tests/c/external/c-testsuite/src/00204.c) > test_after.log 2>&1`
-and it passed. Fresh live `--dump-mir` and `--trace-mir` output for
-`00204.c` now shows lane-specific final rejections for `stdarg`,
-`addlm123`, `andlm1`, and `eorlm1`, and the motivating trace no longer emits
-the generic ordinary per-function miss.
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_route_debug|backend_cli_(dump_mir_is_nonfatal_trace_shell|trace_mir_reports_lane_detail|dump_mir_00204_stdarg_rejection|trace_mir_00204_stdarg_rejection|dump_mir_00204_arg_rejection|trace_mir_00204_arg_rejection|dump_mir_00204_opi_rejection|trace_mir_00204_opi_rejection|dump_mir_focus_function_filters_00204|trace_mir_focus_function_filters_00204))$' && build/c4cll --target x86_64-unknown-linux-gnu --dump-mir --mir-focus-function stdarg tests/c/external/c-testsuite/src/00204.c && build/c4cll --target x86_64-unknown-linux-gnu --trace-mir --mir-focus-function stdarg tests/c/external/c-testsuite/src/00204.c) > test_after.log 2>&1`
+and it passed. Fresh focused live output for `00204.c` now keeps the
+module-level rejection context while restricting the per-function MIR report to
+`stdarg`, and it reports `focused functions matched: 1` in both summary and
+trace mode.

@@ -2769,9 +2769,11 @@ c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
 std::string emit_prepared_module(
     const c4c::backend::prepare::PreparedBirModule& module);
 std::string summarize_prepared_module_routes(
-    const c4c::backend::prepare::PreparedBirModule& module);
+    const c4c::backend::prepare::PreparedBirModule& module,
+    std::optional<std::string_view> focus_function = std::nullopt);
 std::string trace_prepared_module_routes(
-    const c4c::backend::prepare::PreparedBirModule& module);
+    const c4c::backend::prepare::PreparedBirModule& module,
+    std::optional<std::string_view> focus_function = std::nullopt);
 std::string emit_module(const c4c::backend::bir::Module& module);
 std::string emit_module(const c4c::codegen::lir::LirModule& module);
 assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,

@@ -5,6 +5,7 @@
 #include "prealloc/prealloc.hpp"
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <variant>
 
@@ -47,6 +48,7 @@ struct BackendModuleInput {
 struct BackendOptions {
   c4c::TargetProfile target_profile{};
   bool emit_semantic_bir = false;
+  std::optional<std::string> route_debug_focus_function;
 };
 
 enum class BackendDumpStage {

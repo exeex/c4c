@@ -304,6 +304,38 @@ set_tests_properties(backend_cli_trace_mir_reports_lane_detail PROPERTIES
 )
 
 add_test(
+  NAME backend_cli_dump_mir_focus_function_filters_00204
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-mir
+          "-DEXTRA_ARGS=--mir-focus-function;stdarg"
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|function stdarg|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|focused functions matched: 1"
+          "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_mir_focus_function_filters_00204 PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_trace_mir_focus_function_filters_00204
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--trace-mir
+          "-DEXTRA_ARGS=--mir-focus-function;stdarg"
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: stdarg|function stdarg|try lane single-block-void-call-sequence|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|focused functions matched: 1"
+          "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_trace_mir_focus_function_filters_00204 PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
   NAME backend_cli_dump_mir_00204_myprintf_rejection
   COMMAND "${CMAKE_COMMAND}"
           -DCOMPILER=$<TARGET_FILE:c4cll>

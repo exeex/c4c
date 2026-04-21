@@ -15,7 +15,7 @@ if(NOT DEFINED CASE_TIMEOUT_SEC OR "${CASE_TIMEOUT_SEC}" STREQUAL "")
 endif()
 
 execute_process(
-  COMMAND "${COMPILER}" "${DUMP_FLAG}" --target "${TARGET_TRIPLE}" "${SRC}"
+  COMMAND "${COMPILER}" "${DUMP_FLAG}" --target "${TARGET_TRIPLE}" ${EXTRA_ARGS} "${SRC}"
   TIMEOUT "${CASE_TIMEOUT_SEC}"
   RESULT_VARIABLE compiler_rc
   OUTPUT_VARIABLE compiler_out

@@ -901,7 +901,8 @@ std::optional<c4c::TargetArch> resolve_prepared_arch(
 }
 
 std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& module,
-                                RouteDebugVerbosity verbosity) {
+                                RouteDebugVerbosity verbosity,
+                                std::optional<std::string_view> focus_function) {
   std::ostringstream out;
 
   const auto prepared_arch = resolve_prepared_arch(module);
@@ -931,6 +932,9 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
   out << "defined functions: " << defined_functions.size() << "\n";
   out << "entry function: " << (entry_function == nullptr ? "<none>" : entry_function->name)
       << "\n";
+  if (focus_function.has_value()) {
+    out << "focus function: " << *focus_function << "\n";
+  }
 
   if (defined_functions.empty()) {
     return out.str();
@@ -1121,7 +1125,12 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
   }
 
   const std::unordered_set<std::string_view> kNoHelperNames;
+  std::size_t focused_function_count = 0;
   for (const auto* function : defined_functions) {
+    if (focus_function.has_value() && function->name != *focus_function) {
+      continue;
+    }
+    ++focused_function_count;
     const auto function_name_id =
         c4c::backend::prepare::resolve_prepared_function_name_id(module.names, function->name)
             .value_or(c4c::kInvalidFunctionName);
@@ -1383,19 +1392,28 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
     }
   }
 
+  if (focus_function.has_value()) {
+    out << "\nfocused functions matched: " << focused_function_count << "\n";
+    if (focused_function_count == 0) {
+      out << "no defined function matched the requested MIR focus\n";
+    }
+  }
+
   return out.str();
 }
 
 }  // namespace
 
 std::string summarize_prepared_module_routes(
-    const c4c::backend::prepare::PreparedBirModule& module) {
-  return render_route_report(module, RouteDebugVerbosity::Summary);
+    const c4c::backend::prepare::PreparedBirModule& module,
+    std::optional<std::string_view> focus_function) {
+  return render_route_report(module, RouteDebugVerbosity::Summary, focus_function);
 }
 
 std::string trace_prepared_module_routes(
-    const c4c::backend::prepare::PreparedBirModule& module) {
-  return render_route_report(module, RouteDebugVerbosity::Trace);
+    const c4c::backend::prepare::PreparedBirModule& module,
+    std::optional<std::string_view> focus_function) {
+  return render_route_report(module, RouteDebugVerbosity::Trace, focus_function);
 }
 
 }  // namespace c4c::backend::x86
