@@ -8,6 +8,82 @@ using lir_to_bir_detail::compute_aggregate_type_layout;
 using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::type_size_bytes;
 
+namespace {
+
+std::optional<std::string> parse_byval_pointee_type(std::string_view type_text) {
+  constexpr std::string_view kPrefix = "ptr byval(";
+
+  auto trimmed = c4c::codegen::lir::trim_lir_arg_text(type_text);
+  if (trimmed.size() <= kPrefix.size() || trimmed.substr(0, kPrefix.size()) != kPrefix) {
+    return std::nullopt;
+  }
+
+  const auto body = trimmed.substr(kPrefix.size());
+  int paren_depth = 1;
+  int bracket_depth = 0;
+  int brace_depth = 0;
+  int angle_depth = 0;
+  for (std::size_t index = 0; index < body.size(); ++index) {
+    switch (body[index]) {
+      case '(':
+        if (bracket_depth == 0 && brace_depth == 0 && angle_depth == 0) {
+          ++paren_depth;
+        }
+        break;
+      case ')':
+        if (bracket_depth == 0 && brace_depth == 0 && angle_depth == 0) {
+          --paren_depth;
+          if (paren_depth == 0) {
+            const auto pointee =
+                c4c::codegen::lir::trim_lir_arg_text(body.substr(0, index));
+            if (pointee.empty()) {
+              return std::nullopt;
+            }
+            return std::string(pointee);
+          }
+        }
+        break;
+      case '[':
+        ++bracket_depth;
+        break;
+      case ']':
+        if (bracket_depth > 0) {
+          --bracket_depth;
+        }
+        break;
+      case '{':
+        ++brace_depth;
+        break;
+      case '}':
+        if (brace_depth > 0) {
+          --brace_depth;
+        }
+        break;
+      case '<':
+        ++angle_depth;
+        break;
+      case '>':
+        if (angle_depth > 0) {
+          --angle_depth;
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  return std::nullopt;
+}
+
+std::string normalize_aggregate_param_type(std::string_view type_text) {
+  if (const auto byval_pointee = parse_byval_pointee_type(type_text); byval_pointee.has_value()) {
+    return *byval_pointee;
+  }
+  return std::string(c4c::codegen::lir::trim_lir_arg_text(type_text));
+}
+
+}  // namespace
+
 std::string BirFunctionLowerer::aggregate_param_slot_base(std::string_view param_name) {
   std::string sanitized(param_name);
   if (!sanitized.empty() && sanitized.front() == '%') {
@@ -69,10 +145,11 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
     if (parsed_param.is_varargs) {
       return {};
     }
-    if (lower_integer_type(parsed_param.type).has_value()) {
+    const auto normalized_type = normalize_aggregate_param_type(parsed_param.type);
+    if (lower_integer_type(normalized_type).has_value()) {
       continue;
     }
-    const auto layout = lower_byval_aggregate_layout(parsed_param.type, type_decls_);
+    const auto layout = lower_byval_aggregate_layout(normalized_type, type_decls_);
     if (!layout.has_value()) {
       return {};
     }
@@ -87,9 +164,7 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
     }
     aggregate_params.emplace(std::move(name),
                              AggregateParamInfo{
-                                 .type_text =
-                                     std::string(c4c::codegen::lir::trim_lir_arg_text(
-                                         parsed_param.type)),
+                                 .type_text = normalized_type,
                                  .layout = *layout,
                              });
   }

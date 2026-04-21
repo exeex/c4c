@@ -5,53 +5,50 @@ Source Idea Path: ideas/open/62_stack_addressing_and_dynamic_local_access_for_x8
 Source Plan Path: plan.md
 Current Step ID: 2.2
 Current Step Title: Repair The Selected Stack/Addressing Seam
-Plan Review Counter: 1 / 10
+Plan Review Counter: 2 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 1 narrowed the first idea-62 seam to mixed aggregate-parameter
-stack/member access. The semantic-BIR route still fails on
-`c_testsuite_x86_backend_src_00204_c`, but reduced repros showed the break is
-not generic `x86_fp80` byval handling: a standalone `struct hfa32` byval
-parameter lowers, while any actual field access on a direct `struct hfa14`
-parameter fails in `store local-memory semantic family` once a second
-aggregate parameter is present. Empty-body variants for the same mixed
-signatures lower cleanly, so the active repair target is mixed aggregate-param
-member access/materialization rather than generic variadic or prepared-module
-work.
+Step 2.2 repaired the mixed aggregate-parameter stack/member seam by
+normalizing `ptr byval(...)` aggregate-param metadata and by materializing
+direct aggregate loads from globals into local aggregate slots. Reduced
+semantic-BIR repros for both `fa3`-style and `fa4`-style mixed signatures now
+lower past the old idea-62 `store/load local-memory` failures, and
+`c_testsuite_x86_backend_src_00204_c` no longer stops in `fa3`. The case now
+fails later in `arg` under the downstream `direct-call semantic family`, so it
+has graduated out of idea 62's stack/addressing ownership.
 
 ## Suggested Next
 
-Repair the mixed aggregate-parameter seam by making field access on a direct
-`struct hfa14` parameter coexist with a second aggregate parameter without
-falling back out of semantic BIR. Add the nearest backend sentinel for that
-reduced shape, then prove it together with
-`backend_codegen_route_x86_64_byval_member_array_params_observe_semantic_bir`
-and `c_testsuite_x86_backend_src_00204_c`.
+Treat `c_testsuite_x86_backend_src_00204_c` as rehomed out of idea 62 and
+route the next packet to the downstream semantic-call owner for the new
+`arg`/`direct-call semantic family` failure. Keep idea 62 focused on any
+remaining stack/addressing cases that still stop before semantic-call
+lowering.
 
 ## Watchouts
 
-- Do not treat this as generic `x86_fp80` or variadic cleanup. The reduced
-  `struct hfa32` byval-only case already lowers to semantic BIR.
-- Keep the repair on mixed aggregate-parameter member access/materialization,
-  not on emitter-local call shaping.
-- Do not reopen idea-58 bootstrap-global ownership for
-  `c_testsuite_x86_backend_src_00204_c` unless it falls back into that
-  diagnostic family.
-- Rehome cases that reach prepared CFG, prepared-module, scalar-emitter, or
-  runtime-correctness ownership instead of leaving them mixed into idea 62.
+- Do not keep debugging `00204.c` under idea 62 now that it fails in the
+  downstream `direct-call semantic family`; that would blur stack/addressing
+  progress with semantic-call ownership.
+- The repaired seam covered both mixed aggregate-param metadata collection and
+  global aggregate-to-local materialization. Regressions here are most likely
+  to show up as `store/load local-memory semantic family` failures on direct
+  aggregate field access or direct aggregate call preparation.
+- The existing route sentinels still pass, so avoid weakening them or
+  backsliding into testcase-shaped call/emitter shortcuts.
 
 ## Proof
 
 Current family subset:
 `ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_x86_64_local_direct_dynamic_member_array_(store|load)_observe_semantic_bir|c_testsuite_x86_backend_src_00204_c)$'`
 
+Proof run:
+- `cmake --build --preset default`
+- `ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_x86_64_local_direct_dynamic_member_array_(store|load)_observe_semantic_bir|c_testsuite_x86_backend_src_00204_c)$'`
+- `test_after.log`
+
 Reduced-route audit:
-- a standalone `struct hfa32` byval parameter with member loads lowers under
-  `./build/c4cll --backend-bir-stage semantic --codegen asm --target x86_64-unknown-linux-gnu <tmp> -o <tmp>`
-- mixed-signature reductions such as `float f(struct hfa14 a, struct hfa23 b)
-  { return a.a; }` and `void f(struct hfa14 a, struct hfa32 c) { ... a.a ...
-  }` fail in `store local-memory semantic family`
-- empty-body variants for the same mixed signatures lower cleanly, isolating
-  the seam to actual field access on the direct aggregate parameter
+- `./build/c4cll --backend-bir-stage semantic --codegen asm --target x86_64-unknown-linux-gnu /tmp/repro_fa3_a.c -o /tmp/repro_fa3_a.out` now lowers `fa3`-style direct-field access with extra aggregate params through semantic BIR instead of failing in store local-memory lowering
+- `./build/c4cll --backend-bir-stage semantic --codegen asm --target x86_64-unknown-linux-gnu /tmp/repro_arg_fa3.c -o /tmp/repro_arg_fa3.out` now moves past local-memory lowering and fails later in the downstream `direct-call semantic family`

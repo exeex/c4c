@@ -1213,14 +1213,67 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     const auto value_type = lower_scalar_or_function_pointer_type(load->type_str.str());
     if (!value_type.has_value()) {
       const auto aggregate_layout = lower_byval_aggregate_layout(load->type_str.str(), type_decls);
-      if (!aggregate_layout.has_value() ||
-          load->ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      if (!aggregate_layout.has_value()) {
         return fail_load();
       }
-      if (local_aggregate_slots.find(load->ptr.str()) == local_aggregate_slots.end()) {
+      if (load->ptr.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+        if (local_aggregate_slots.find(load->ptr.str()) == local_aggregate_slots.end()) {
+          return fail_load();
+        }
+        aggregate_value_aliases[load->result.str()] = load->ptr.str();
+        return true;
+      }
+      if (load->ptr.kind() != c4c::codegen::lir::LirOperandKind::Global) {
         return fail_load();
       }
-      aggregate_value_aliases[load->result.str()] = load->ptr.str();
+
+      const std::string global_name = load->ptr.str().substr(1);
+      const auto global_it = global_types.find(global_name);
+      if (global_it == global_types.end() || !global_it->second.supports_linear_addressing ||
+          global_it->second.storage_size_bytes < aggregate_layout->size_bytes) {
+        return fail_load();
+      }
+
+      if (!declare_local_aggregate_slots(
+              load->type_str.str(), load->result.str(), aggregate_layout->align_bytes)) {
+        return fail_load();
+      }
+      const auto aggregate_it = local_aggregate_slots.find(load->result.str());
+      if (aggregate_it == local_aggregate_slots.end()) {
+        return fail_load();
+      }
+
+      const auto leaf_slots = collect_sorted_leaf_slots(aggregate_it->second);
+      for (const auto& [byte_offset, slot_name] : leaf_slots) {
+        const auto slot_type_it = local_slot_types.find(slot_name);
+        if (slot_type_it == local_slot_types.end()) {
+          return fail_load();
+        }
+        const auto slot_size = type_size_bytes(slot_type_it->second);
+        if (slot_size == 0) {
+          return fail_load();
+        }
+
+        const std::string temp_name =
+            load->result.str() + ".global.aggregate.load." + std::to_string(byte_offset);
+        lowered_insts->push_back(bir::LoadLocalInst{
+            .result = bir::Value::named(slot_type_it->second, temp_name),
+            .slot_name = slot_name,
+            .address =
+                bir::MemoryAddress{
+                    .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+                    .base_name = global_name,
+                    .byte_offset = static_cast<std::int64_t>(byte_offset),
+                    .size_bytes = slot_size,
+                    .align_bytes = std::max(slot_size, aggregate_layout->align_bytes),
+                },
+        });
+        lowered_insts->push_back(bir::StoreLocalInst{
+            .slot_name = slot_name,
+            .value = bir::Value::named(slot_type_it->second, temp_name),
+        });
+      }
+      aggregate_value_aliases[load->result.str()] = load->result.str();
       return true;
     }
 
