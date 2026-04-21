@@ -109,40 +109,47 @@ Completion check:
 - the next executor packet is narrowed to one still-owned idea-60 scalar seam
   with named proof targets and a clear ownership boundary
 
-## Step 2.1: Repair Compare-Result Bool/Cast Materialization
+## Step 2.1: Repair The `match` Structural-Dispatch Topology
 
-Goal: repair the compare-result bool/cast local-slot seam that still drops
-`00204.c` out at `match` before the old call-boundary target.
+Goal: repair the bounded structural-dispatch seam around `match` now that the
+standalone compare-result bool/cast fragment is confirmed to already be owned
+by existing x86 consumer logic.
 
 Primary targets:
 
 - `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
-- shared prepared value-home or branch-condition facts only if the current
-  compare-result materialization cannot be expressed from existing ownership
+- `src/backend/mir/x86/codegen/prepared_function_emitter.cpp`
+- shared prepared value-home, branch-condition, or control-flow facts only if
+  the enclosing `match` topology cannot be expressed from existing ownership
 - `tests/backend/backend_x86_handoff_boundary_short_circuit_test.cpp`
 - `tests/c/external/c-testsuite/src/00204.c`
 
 Actions:
 
-- implement one generic repair for compare-result bool materialization through
-  the prepared local-slot path
-- keep the packet scoped to compare-result `CastInst` / bool consumption and
-  do not bundle float, HFA, pointer, or call-boundary work into the same slice
+- reduce `match` to the smallest owned structural-dispatch reproducer that
+  still fails while preserving the enclosing topology that matters: the
+  earlier loop, the short-circuit/phi guard, the second compare-driven branch,
+  and the downstream parameter-address store leaf
+- repair one generic bounded local-slot / compare-driven dispatch seam for
+  that topology instead of reopening the already-owned standalone
+  `%t27/%t28/%t29/%t30` bool/cast chain
 - prefer contract-first repair if the missing fact belongs in shared prepared
-  ownership rather than x86-local pattern growth
-- confirm `match` and nearby same-family routes move past the old bool/cast
-  dropout without adding testcase-shaped recognition
+  control-flow or value-home ownership rather than x86-local matcher growth
+- confirm `match` and the nearest same-family route move past the old
+  top-level minimal-return/guard rejection without adding a named `match`
+  recognizer
 
 Completion check:
 
-- the targeted bool/cast family no longer fails for the current compare-result
-  local-slot seam, and any remaining `00204.c` failure is clearly a different
-  downstream family
+- the targeted `match`-topology family no longer fails for the current bounded
+  structural-dispatch seam, and any remaining `00204.c` failure is clearly a
+  different downstream family
 
 ## Step 2.2: Repair Float/HFA Local-Slot Consumption
 
 Goal: repair the float/HFA local-slot consumption seam that still drops
-`00204.c` out at `fa_hfa11` once the bool/cast route is no longer blocking.
+`00204.c` out at `fa_hfa11` once the `match` topology route is no longer
+blocking.
 
 Primary targets:
 
@@ -157,7 +164,7 @@ Actions:
 - implement one generic repair for float/HFA local-slot load or consumption
   through the prepared renderer
 - keep the packet scoped to float/HFA local-slot ownership and do not reopen
-  compare-result bool/cast or later call-family work in the same slice
+  the `match` topology route or later call-family work in the same slice
 - prove the repair on the nearest backend coverage plus the owned c-testsuite
   route without relying on one named helper only
 - confirm `fa_hfa11` and nearby same-family routes move past the old float/HFA
