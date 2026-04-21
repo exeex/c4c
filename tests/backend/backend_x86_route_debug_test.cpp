@@ -262,6 +262,71 @@ prepare::PreparedBirModule legalize_single_block_i64_immediate_return_helper_mis
   return prepare_module(std::move(module));
 }
 
+prepare::PreparedBirModule legalize_single_block_floating_aggregate_call_helper_miss_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.string_constants.push_back(bir::StringConstant{
+      .name = ".str0",
+      .bytes = "%f\n",
+  });
+
+  bir::Function printf_decl;
+  printf_decl.name = "printf";
+  printf_decl.is_declaration = true;
+  printf_decl.return_type = bir::TypeKind::I32;
+  printf_decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "%p.format",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Function function;
+  function.name = "single_block_floating_aggregate_call_helper_miss";
+  function.return_type = bir::TypeKind::Void;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "%p.agg",
+      .size_bytes = 16,
+      .align_bytes = 4,
+      .is_byval = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::F32, "agg.lane0"),
+      .slot_name = "%lv.param.agg.0",
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%p.agg",
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::FPExt,
+      .result = bir::Value::named(bir::TypeKind::F64, "agg.lane0.f64"),
+      .operand = bir::Value::named(bir::TypeKind::F32, "agg.lane0"),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%t0"),
+      .callee = "printf",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "@.str0"),
+               bir::Value::named(bir::TypeKind::F64, "agg.lane0.f64")},
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::F64},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .is_variadic = true,
+  });
+  entry.terminator = bir::ReturnTerminator{};
+
+  function.blocks = {std::move(entry)};
+  module.functions.push_back(std::move(printf_decl));
+  module.functions.push_back(std::move(function));
+  return prepare_module(std::move(module));
+}
+
 prepare::PreparedBirModule legalize_multi_param_compare_driven_miss_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -490,6 +555,14 @@ int main() {
   const std::string single_block_i64_immediate_return_helper_miss_trace =
       c4c::backend::x86::trace_prepared_module_routes(
           single_block_i64_immediate_return_helper_miss);
+  const auto single_block_floating_aggregate_call_helper_miss =
+      legalize_single_block_floating_aggregate_call_helper_miss_module();
+  const std::string single_block_floating_aggregate_call_helper_miss_summary =
+      c4c::backend::x86::summarize_prepared_module_routes(
+          single_block_floating_aggregate_call_helper_miss);
+  const std::string single_block_floating_aggregate_call_helper_miss_trace =
+      c4c::backend::x86::trace_prepared_module_routes(
+          single_block_floating_aggregate_call_helper_miss);
   const std::string multi_param_compare_driven_miss_summary =
       c4c::backend::x86::summarize_prepared_module_routes(multi_param_compare_driven_miss);
   const std::string multi_param_compare_driven_miss_trace =
@@ -560,6 +633,21 @@ int main() {
       !expect_contains(single_block_i64_immediate_return_helper_miss_trace,
                        "next inspect: inspect the current x86 single-block i64 return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "single-block i64 immediate trace next inspect") ||
+      !expect_contains(single_block_floating_aggregate_call_helper_miss_summary,
+                       "- final rejection: single-block floating aggregate call helper recognized the function, but the prepared aggregate-helper shape is outside the current x86 support",
+                       "single-block floating aggregate helper summary final rejection") ||
+      !expect_contains(single_block_floating_aggregate_call_helper_miss_summary,
+                       "- next inspect: inspect the current x86 floating aggregate helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
+                       "single-block floating aggregate helper summary next inspect") ||
+      !expect_contains(single_block_floating_aggregate_call_helper_miss_trace,
+                       "try lane single-block-floating-aggregate-call-helper",
+                       "single-block floating aggregate helper trace lane") ||
+      !expect_contains(single_block_floating_aggregate_call_helper_miss_trace,
+                       "final detail: x86 backend emitter only supports single-block floating aggregate helpers when those aggregate arguments already reduce to the current local-slot or scalar helper surfaces; this helper still forwards floating aggregate lanes through byval/pointer wrappers into a direct variadic extern call",
+                       "single-block floating aggregate helper trace detail") ||
+      !expect_contains(single_block_floating_aggregate_call_helper_miss_trace,
+                       "next inspect: inspect the current x86 floating aggregate helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
+                       "single-block floating aggregate helper trace next inspect") ||
       !expect_contains(multi_param_compare_driven_miss_summary,
                        "- final rejection: compare-driven-entry recognized the function, but the prepared shape is outside the current x86 support",
                        "multi-param compare-driven summary final rejection") ||

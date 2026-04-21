@@ -80,6 +80,7 @@ std::string lane_next_surface(std::string_view lane_name) {
       lane_name == "local-i16-arithmetic-guard" ||
       lane_name == "local-slot-guard-chain" ||
       lane_name == "bounded-same-module-variadic-helper" ||
+      lane_name == "single-block-floating-aggregate-call-helper" ||
       lane_name == "single-block-i64-immediate-return-helper" ||
       lane_name == "single-block-i64-ashr-return-helper" ||
       lane_name == "single-block-void-call-sequence" ||
@@ -117,6 +118,9 @@ std::string next_surface_hint(const FunctionRouteAttempt* attempt,
   if (kind == FinalRejectionKind::UnsupportedPreparedShape) {
     if (attempt->lane_name == "bounded-same-module-variadic-helper") {
       return "inspect the current x86 same-module helper shape support in " + lane_surface;
+    }
+    if (attempt->lane_name == "single-block-floating-aggregate-call-helper") {
+      return "inspect the current x86 floating aggregate helper support in " + lane_surface;
     }
     if (attempt->lane_name == "single-block-i64-immediate-return-helper") {
       return "inspect the current x86 single-block i64 return-helper support in " + lane_surface;
@@ -182,6 +186,10 @@ FinalRejectionReport build_final_rejection_report(const FunctionRouteReport& rep
         if (it->lane_name == "bounded-same-module-variadic-helper") {
           summary = "bounded same-module variadic helper lane recognized the function, but the "
                     "prepared helper shape is outside the current x86 support";
+        } else if (it->lane_name == "single-block-floating-aggregate-call-helper") {
+          summary =
+              "single-block floating aggregate call helper recognized the function, but the "
+              "prepared aggregate-helper shape is outside the current x86 support";
         } else if (it->lane_name == "single-block-i64-immediate-return-helper") {
           summary = "single-block i64 immediate return helper recognized the function, but the "
                     "prepared return-helper shape is outside the current x86 support";
@@ -432,6 +440,70 @@ std::optional<std::string> build_single_block_i64_immediate_return_helper_lane_d
          "reduce to the current direct passthrough or established scalar helper surfaces; this "
          "helper still carries an i64 " +
          std::string(operation) + " immediate return";
+}
+
+std::optional<std::string> build_single_block_floating_aggregate_call_helper_lane_detail(
+    const c4c::backend::bir::Function& function) {
+  if (function.is_declaration || function.return_type != c4c::backend::bir::TypeKind::Void ||
+      function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      entry.terminator.value.has_value()) {
+    return std::nullopt;
+  }
+
+  bool saw_direct_variadic_extern_call = false;
+  bool saw_floating_aggregate_param = false;
+  bool saw_floating_aggregate_call_arg = false;
+  bool saw_pointer_aggregate_param = false;
+
+  for (const auto& param : function.params) {
+    if (param.type != c4c::backend::bir::TypeKind::Ptr || param.size_bytes == 0) {
+      continue;
+    }
+    saw_pointer_aggregate_param = true;
+    if (param.abi.has_value() &&
+        (param.abi->primary_class == c4c::backend::bir::AbiValueClass::Sse ||
+         param.abi->secondary_class == c4c::backend::bir::AbiValueClass::Sse ||
+         param.abi->primary_class == c4c::backend::bir::AbiValueClass::X87 ||
+         param.abi->secondary_class == c4c::backend::bir::AbiValueClass::X87)) {
+      saw_floating_aggregate_param = true;
+    }
+  }
+
+  for (const auto& inst : entry.insts) {
+    const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+    if (call == nullptr || call->is_indirect || call->callee_value.has_value()) {
+      continue;
+    }
+    if (call->is_variadic && call->callee.rfind("llvm.", 0) != 0) {
+      saw_direct_variadic_extern_call = true;
+      for (const auto arg_type : call->arg_types) {
+        if (arg_type == c4c::backend::bir::TypeKind::F64 ||
+            arg_type == c4c::backend::bir::TypeKind::F128) {
+          saw_floating_aggregate_call_arg = true;
+        }
+      }
+    }
+  }
+
+  if (!saw_floating_aggregate_param && saw_pointer_aggregate_param &&
+      saw_floating_aggregate_call_arg) {
+    saw_floating_aggregate_param = true;
+  }
+
+  if (!saw_direct_variadic_extern_call || !saw_pointer_aggregate_param ||
+      !saw_floating_aggregate_param || !saw_floating_aggregate_call_arg) {
+    return std::nullopt;
+  }
+
+  return "x86 backend emitter only supports single-block floating aggregate helpers when those "
+         "aggregate arguments already reduce to the current local-slot or scalar helper surfaces; "
+         "this helper still forwards floating aggregate lanes through byval/pointer wrappers into "
+         "a direct variadic extern call";
 }
 
 std::string_view prepared_function_name_or_none(
@@ -894,6 +966,15 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           .lane_name = "single-block-i64-immediate-return-helper",
           .matched = false,
           .detail = std::move(single_block_i64_immediate_return_helper_detail),
+      });
+    }
+    if (const auto single_block_floating_aggregate_call_helper_detail =
+            build_single_block_floating_aggregate_call_helper_lane_detail(*function);
+        single_block_floating_aggregate_call_helper_detail.has_value()) {
+      report.attempts.push_back(FunctionRouteAttempt{
+          .lane_name = "single-block-floating-aggregate-call-helper",
+          .matched = false,
+          .detail = std::move(single_block_floating_aggregate_call_helper_detail),
       });
     }
 

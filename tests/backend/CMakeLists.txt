@@ -415,6 +415,34 @@ set_tests_properties(backend_cli_trace_mir_00204_i64_immediate_rejection PROPERT
   LABELS "backend;internal;cli"
 )
 
+add_test(
+  NAME backend_cli_dump_mir_00204_hfa_rejection
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-mir
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=x86 handoff summary|function fa_hfa11|function fa3|function fa4|- final rejection: single-block floating aggregate call helper recognized the function, but the prepared aggregate-helper shape is outside the current x86 support|- next inspect: inspect the current x86 floating aggregate helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_mir_00204_hfa_rejection PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_trace_mir_00204_hfa_rejection
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--trace-mir
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=x86 handoff trace|function fa_hfa11|function fa3|function fa4|try lane single-block-floating-aggregate-call-helper|detail: x86 backend emitter only supports single-block floating aggregate helpers when those aggregate arguments already reduce to the current local-slot or scalar helper surfaces; this helper still forwards floating aggregate lanes through byval/pointer wrappers into a direct variadic extern call|final: rejected: single-block floating aggregate call helper recognized the function, but the prepared aggregate-helper shape is outside the current x86 support|next inspect: inspect the current x86 floating aggregate helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_trace_mir_00204_hfa_rejection PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
 add_executable(backend_x86_handoff_boundary_test
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_test.cpp"
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_compare_branch_test.cpp"
