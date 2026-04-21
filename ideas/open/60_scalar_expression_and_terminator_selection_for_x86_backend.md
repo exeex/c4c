@@ -2,7 +2,7 @@
 
 Status: Open
 Created: 2026-04-20
-Last-Updated: 2026-04-20
+Last-Updated: 2026-04-21
 Parent Idea: [57_x86_backend_c_testsuite_capability_families.md](/workspaces/c4c/ideas/open/57_x86_backend_c_testsuite_capability_families.md)
 
 ## Intent
@@ -44,6 +44,7 @@ Minimal single-block terminator / branch restriction examples:
 - `c_testsuite_x86_backend_src_00082_c`
 - `c_testsuite_x86_backend_src_00101_c`
 - `c_testsuite_x86_backend_src_00102_c`
+- `c_testsuite_x86_backend_src_00204_c`
 
 Direct-immediate-only scalar return restriction examples:
 
@@ -62,6 +63,18 @@ Direct-immediate-only scalar return restriction examples:
 
 This idea also owns any other current backend failures with those same
 diagnostic families.
+
+## Latest Durable Note
+
+As of 2026-04-21, `c_testsuite_x86_backend_src_00204_c` has graduated into
+this idea from
+`ideas/closed/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md`
+after the surviving semantic stack/local-memory scratch-copy seam was
+repaired. The case now stops later with
+`error: x86 backend emitter only supports a minimal i32 return function
+through the canonical prepared-module handoff`, so the next honest packet
+should inspect the prepared scalar return/terminator facts that x86 still
+fails to consume for that route.
 
 ## Scope Notes
 

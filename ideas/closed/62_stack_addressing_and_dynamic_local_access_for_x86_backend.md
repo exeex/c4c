@@ -1,9 +1,25 @@
 # Stack Addressing And Dynamic Local Access For X86 Backend
 
-Status: Open
+Status: Closed
 Created: 2026-04-20
-Last-Updated: 2026-04-21
+Closed: 2026-04-21
 Parent Idea: [57_x86_backend_c_testsuite_capability_families.md](/workspaces/c4c/ideas/open/57_x86_backend_c_testsuite_capability_families.md)
+
+## Closure Summary
+
+Closed after the last named idea-62 case graduated out of semantic
+stack/addressing ownership:
+
+- `c_testsuite_x86_backend_src_00204_c` no longer fails in semantic
+  `lir_to_bir` / stack-addressing or scalar/local-memory ownership
+- the case now reaches the later x86 prepared/emitter restriction
+  `error: x86 backend emitter only supports a minimal i32 return function
+  through the canonical prepared-module handoff`
+- follow-on work for that case now belongs to
+  `ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md`
+
+No other named cases currently remain in this stack/member/array addressing
+leaf.
 
 ## Intent
 
@@ -18,13 +34,13 @@ reported the semantic `lir_to_bir` lowering diagnostic when the underlying
 missing capability was local/member/array access or other stack/addressing
 semantics needed for canonical prepared consumption.
 
-## Current Known Failed Cases It Owns
+## Current Known Failed Cases It Owned
 
-Representative named failures currently back in this family:
+The final named case in this family was:
 
 - `c_testsuite_x86_backend_src_00204_c`
 
-The earlier idea-62 close is now superseded: commit `5a81abdb` repaired
+The earlier idea-62 close was superseded until commit `5a81abdb` repaired
 aggregate-typed phi joins in semantic `lir_to_bir`, which advanced
 `c_testsuite_x86_backend_src_00204_c` out of `myprintf` /
 `scalar-control-flow semantic family` and exposed a later
@@ -33,12 +49,10 @@ this stack/addressing leaf.
 
 ## Latest Durable Note
 
-As of 2026-04-21, the local dynamic-member/array backend route neighborhood
-still passes, but `c_testsuite_x86_backend_src_00204_c` has re-entered this
-leaf with a later stack/member-addressing seam in function `myprintf` after
-the upstream aggregate-phi repair under idea 58. The leaf is reopened because
-the prior close assumption that no named stack/addressing cases remained is no
-longer true.
+As of 2026-04-21, the reopened `myprintf` stack/member-addressing seam for
+`c_testsuite_x86_backend_src_00204_c` has been repaired. The case now exits
+idea-62 ownership cleanly and fails later in the x86 scalar/prepared emitter
+route, so this leaf is closed again.
 
 ## Scope Notes
 

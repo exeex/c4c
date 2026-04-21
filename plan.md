@@ -1,167 +1,168 @@
-# Stack Addressing And Dynamic Local Access For X86 Backend
+# Scalar Expression And Terminator Selection For X86 Backend
 
 Status: Active
-Source Idea: ideas/open/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md
-Activated from: ideas/open/58_semantic_lir_to_bir_gap_closure_for_x86_backend.md
+Source Idea: ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md
+Activated from: ideas/closed/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md
 
 ## Purpose
 
-Resume the narrower stack/member/addressing runbook now that commit
-`5a81abdb` has cleared the upstream aggregate-phi blocker and moved
-`c_testsuite_x86_backend_src_00204_c` back into a later `gep local-memory`
-semantic seam in function `myprintf`.
+Resume the x86 scalar/prepared-emitter leaf now that
+`c_testsuite_x86_backend_src_00204_c` has advanced out of semantic
+stack/local-memory ownership and now stops at the minimal scalar-return
+emitter restriction through the canonical prepared-module handoff.
 
 ## Goal
 
-Repair one stack/addressing semantic seam at a time so owned cases either
-reach normal prepared-x86 consumption or graduate cleanly into a later
-prepared-x86 leaf.
+Repair one prepared scalar expression or terminator consumption seam at a time
+so owned cases move past the current x86 emitter restriction without adding
+named-case matcher growth.
 
 ## Core Rule
 
-Do not claim stack/addressing progress through testcase-shaped GEP shortcuts or
-x86-only bypasses when the missing ownership is still upstream semantic
-addressing canonicalization.
+Do not claim scalar-emitter progress through testcase-shaped x86 fast paths or
+expression-specific matchers when the missing ownership is still a generic
+prepared value-home, move-bundle, or terminator-consumption seam.
 
 ## Read First
 
-- `ideas/open/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md`
+- `ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md`
 - `ideas/open/57_x86_backend_c_testsuite_capability_families.md`
-- `ideas/open/58_semantic_lir_to_bir_gap_closure_for_x86_backend.md`
-- `src/backend/bir/lir_to_bir_memory.cpp`
-- `src/backend/bir/lir_to_bir_memory_local_slots.cpp`
-- `tests/backend/backend_lir_to_bir_notes_test.cpp`
+- `ideas/closed/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md`
+- `src/backend/targets/x86_64/emitter.cpp`
+- `src/backend/targets/x86_64/emitter_expr.cpp`
+- `src/backend/targets/x86_64/emitter_stmt.cpp`
+- `src/backend/prep/prealloc.hpp`
+- `tests/backend/backend_codegen_route_test.cpp`
 - `tests/c/external/c-testsuite/src/00204.c`
 
 ## Scope
 
-- backend failures that still stop in semantic `lir_to_bir` with
-  `gep local-memory semantic family` or another clearer stack/member/array
-  addressing seam
-- upstream local-memory and addressing work that makes canonical stack or
-  aggregate access reachable by prepared-x86 consumers
-- durable rehoming of cases that advance downstream into ideas 58, 59, 60, 61,
-  65, or 66
+- backend failures that now stop with the x86 scalar-emitter diagnostics owned
+  by idea 60, including the minimal scalar-return restriction through the
+  canonical prepared-module handoff
+- shared prepared value-home, move-bundle, and control-flow contracts when the
+  missing meaning is upstream of x86-specific rendering
+- durable rehoming of cases that advance into later prepared-module or
+  multi-function leaves once scalar emission succeeds
 
 ## Non-Goals
 
-- broad scalar-control-flow work that still belongs in idea 58
-- direct-call, indirect-call, or call-return ownership that still belongs in
-  idea 65
-- prepared CFG, prepared-module, or scalar-emitter work once semantic
-  addressing already succeeds
-- testcase-local matcher growth for one named GEP spelling
+- reopening semantic `lir_to_bir` stack/addressing ownership already closed in
+  idea 62
+- adding x86-only matcher lanes for one named return or expression spelling
+- call-family ownership that still belongs in idea 65
+- prepared-module multi-function or call-bundle work that still belongs in
+  idea 61
 
 ## Working Model
 
-- keep one addressing seam per packet
+- keep one prepared scalar seam per packet
 - use the nearest backend route coverage plus the nearest c-testsuite case to
-  confirm the seam is real without collapsing the packet into one testcase
-- route cases back out as soon as the next real blocker is upstream scalar
-  control-flow or downstream prepared-x86 ownership instead of addressing
+  prove the seam without collapsing the packet into one testcase
+- extend shared prepared contracts first when x86 lacks a generic fact it
+  should consume
+- route cases back out as soon as the next real blocker belongs in another
+  downstream idea
 
 ## Execution Rules
 
-- prefer one stack/addressing seam per packet
+- prefer one scalar expression or terminator seam per packet
 - update `todo.md`, not this file, for routine packet progress
 - use `build -> narrow proof` for every accepted code slice
 - keep proof on owned failures plus the nearest backend coverage that protects
-  the changed addressing path
-- when a targeted case graduates into ideas 58, 59, 60, 61, 65, or 66, record
-  that in `todo.md` and keep this runbook focused on still-owned
-  stack/addressing work
-- reject testcase-shaped GEP/addressing shortcuts that only make one named
-  failure advance
+  prepared value-home, move-bundle, or scalar terminator consumption
+- when a targeted case graduates into ideas 61 or 65, record that in
+  `todo.md` and keep this runbook focused on still-owned scalar-emitter work
+- reject emitter-side named-case growth that only moves one arithmetic or
+  return spelling forward
 
-## Step 1: Refresh Reopened Idea-62 Ownership And Confirm The Next Addressing Seam
+## Step 1: Refresh Idea-60 Ownership And Confirm The Next Scalar Seam
 
-Goal: confirm the reopened idea-62 ownership after commit `5a81abdb` and
-identify the concrete stack/member/addressing seam that now owns
-`c_testsuite_x86_backend_src_00204_c`.
+Goal: confirm the new idea-60 ownership for
+`c_testsuite_x86_backend_src_00204_c` and identify the exact prepared scalar
+return or terminator seam that now blocks x86 emission.
 
 Primary targets:
 
 - `c_testsuite_x86_backend_src_00204_c`
-- representative backend route coverage nearest the current GEP/addressing seam
-- shared semantic local-memory files near function `myprintf`
+- representative backend route coverage nearest the current scalar-emitter seam
+- shared prepared contract and x86 emitter files near the current failure
 
 Actions:
 
-- rerun or inspect the narrow reopened subset after commit `5a81abdb`
-- confirm that `00204.c` no longer fails in upstream scalar-control-flow
-  ownership and now stops later in an idea-62 seam
-- identify the exact `myprintf` addressing operation that triggers the
-  `gep local-memory semantic family` failure
+- rerun or inspect the narrow subset that now graduates `00204.c` out of idea
+  62
+- confirm that `00204.c` no longer fails in semantic lowering and now stops in
+  an idea-60-owned scalar-emitter restriction
+- identify the exact prepared return, value-home, move-bundle, or terminator
+  fact that x86 fails to consume for the current route
 - choose the nearest protective backend coverage that can prove that seam
   without relying only on the named c-testsuite case
 
 Completion check:
 
-- the next executor packet is narrowed to one still-owned idea-62 addressing
-  seam with named proof targets and a clear ownership boundary
+- the next executor packet is narrowed to one still-owned idea-60 scalar seam
+  with named proof targets and a clear ownership boundary
 
-## Step 2.1: Repair The Selected Addressing Seam
+## Step 2.1: Repair The Selected Scalar Prepared/Emitter Seam
 
-Goal: implement the smallest durable stack/addressing repair that advances the
-selected idea-62 case toward prepared-x86 consumption or into a later leaf.
+Goal: implement the smallest durable scalar-emitter repair that advances the
+selected idea-60 case beyond the current minimal scalar-return restriction.
 
 Primary targets:
 
-- shared semantic local-memory or addressing code for the chosen seam
-- target-independent contracts when the missing meaning is upstream rather than
-  x86-specific
+- shared prepared value-home, move-bundle, or control-flow contracts for the
+  chosen seam
+- x86 scalar emission helpers that should consume those contracts generically
 
 Actions:
 
-- repair the selected stack/member/addressing seam in the layer that owns the
-  missing meaning
-- avoid x86-only fallback paths that merely bypass the diagnostic
-- keep the repair general across nearby cases that share the same addressing
-  blocker
-- confirm the targeted cases now move past the old idea-62 failure family or
-  graduate cleanly into a downstream leaf
+- repair the selected scalar seam at the layer that owns the missing meaning
+- prefer contract-first fixes when x86 is missing a shared prepared fact
+- keep the repair generic across nearby same-family scalar routes
+- confirm the targeted cases now move past the old idea-60 failure family or
+  graduate cleanly into a later leaf
 
 Completion check:
 
-- the targeted owned cases no longer fail for the selected idea-62 seam and
-  instead reach the next downstream route
+- the targeted owned cases no longer fail for the selected idea-60 scalar seam
+  and instead reach the next downstream route
 
 ## Step 2.2: Prove Family Shrinkage And Record Rehoming
 
-Goal: show the accepted slice shrinks the real idea-62 family and preserves
+Goal: show the accepted slice shrinks the real idea-60 family and preserves
 explicit routing for any graduated cases.
 
 Actions:
 
 - require a fresh build for each accepted code slice
 - prove the repaired seam on the targeted owned cases plus the nearest backend
-  coverage that protects the changed addressing path
-- record in `todo.md` when advanced cases now belong in ideas 58, 59, 60, 61,
-  65, or 66
+  coverage that protects the changed scalar prepared/emitter path
+- record in `todo.md` when advanced cases now belong in ideas 61 or 65
 - only return to Step 1 after the current seam is proven and any graduated
   routing is explicit
 
 Completion check:
 
-- accepted slices show real shrinkage of the idea-62 stack/addressing family
-  and preserve clear routing for any graduated downstream cases
+- accepted slices show real shrinkage of the idea-60 scalar-emitter family and
+  preserve clear routing for any graduated downstream cases
 
-## Step 3: Continue The Loop Until Idea 62 Is Exhausted
+## Step 3: Continue The Loop Until Idea 60 Is Exhausted
 
 Goal: keep repeating the Step 1 -> 2.2 loop until the remaining failures no
-longer belong to idea 62.
+longer belong to idea 60.
 
 Actions:
 
-- keep idea 62 active only while cases still fail before prepared-x86 handoff
-  for stack/member/addressing reasons that are not better explained by another
-  open leaf
+- keep idea 60 active only while cases still fail for scalar expression or
+  terminator consumption reasons that are not better explained by another open
+  leaf
 - use `todo.md` to preserve which cases graduated downstream after each packet
 - call lifecycle review again when the next step becomes oversized or when the
   remaining family is exhausted
 
 Completion check:
 
-- the next active packet is queued under Step 1 for a still-owned idea-62
-  addressing seam, or lifecycle state is ready to hand off/close because idea
-  62 no longer owns the remaining failures
+- the next active packet is queued under Step 1 for a still-owned idea-60
+  scalar seam, or lifecycle state is ready to hand off or close because idea
+  60 no longer owns the remaining failures
