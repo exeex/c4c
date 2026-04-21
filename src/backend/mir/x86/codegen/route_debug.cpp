@@ -80,6 +80,7 @@ std::string lane_next_surface(std::string_view lane_name) {
       lane_name == "local-i16-arithmetic-guard" ||
       lane_name == "local-slot-guard-chain" ||
       lane_name == "bounded-same-module-variadic-helper" ||
+      lane_name == "single-block-void-call-sequence" ||
       lane_name == "single-block-return-dispatch" ||
       lane_name == "trivial-defined-function") {
     return "src/backend/mir/x86/codegen/prepared_local_slot_render.cpp";
@@ -114,6 +115,9 @@ std::string next_surface_hint(const FunctionRouteAttempt* attempt,
   if (kind == FinalRejectionKind::UnsupportedPreparedShape) {
     if (attempt->lane_name == "bounded-same-module-variadic-helper") {
       return "inspect the current x86 same-module helper shape support in " + lane_surface;
+    }
+    if (attempt->lane_name == "single-block-void-call-sequence") {
+      return "inspect the current x86 single-block call-sequence support in " + lane_surface;
     }
     return "inspect the current x86 shape support in " + lane_surface;
   }
@@ -170,6 +174,9 @@ FinalRejectionReport build_final_rejection_report(const FunctionRouteReport& rep
         if (it->lane_name == "bounded-same-module-variadic-helper") {
           summary = "bounded same-module variadic helper lane recognized the function, but the "
                     "prepared helper shape is outside the current x86 support";
+        } else if (it->lane_name == "single-block-void-call-sequence") {
+          summary = "single-block void call-sequence helper recognized the function, but the "
+                    "prepared call-wrapper shape is outside the current x86 support";
         } else {
           summary = it->lane_name +
                     " recognized the function, but the prepared shape is outside the current x86 "
@@ -242,6 +249,67 @@ std::optional<std::string> build_bounded_variadic_helper_lane_detail(
     detail += "; this helper still carries explicit variadic-runtime state";
   } else {
     detail += "; this helper remains a multi-block variadic body";
+  }
+  return detail;
+}
+
+std::optional<std::string> build_single_block_void_call_sequence_lane_detail(
+    const c4c::backend::bir::Function& function) {
+  if (function.is_declaration || !function.local_slots.empty() || function.blocks.size() != 1 ||
+      function.return_type != c4c::backend::bir::TypeKind::Void) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      entry.terminator.value.has_value() || entry.insts.empty()) {
+    return std::nullopt;
+  }
+
+  bool saw_same_module_call = false;
+  bool saw_direct_variadic_extern_call = false;
+  bool saw_indirect_call = false;
+  bool saw_other_call_effect = false;
+
+  for (const auto& inst : entry.insts) {
+    const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+    if (call == nullptr) {
+      continue;
+    }
+    if (call->is_indirect || call->callee_value.has_value()) {
+      saw_indirect_call = true;
+      continue;
+    }
+    if (call->is_variadic) {
+      saw_direct_variadic_extern_call = true;
+      continue;
+    }
+    if (!call->callee.empty() && call->callee.rfind("llvm.", 0) != 0) {
+      saw_same_module_call = true;
+      continue;
+    }
+    saw_other_call_effect = true;
+  }
+
+  if (!saw_same_module_call && !saw_direct_variadic_extern_call && !saw_indirect_call &&
+      !saw_other_call_effect) {
+    return std::nullopt;
+  }
+
+  std::string detail =
+      "x86 backend emitter only supports trivial single-block void helpers through the canonical "
+      "prepared-module handoff";
+  if (saw_same_module_call && saw_direct_variadic_extern_call) {
+    detail += "; this helper still carries same-module call wrappers and direct variadic extern "
+              "calls";
+  } else if (saw_same_module_call) {
+    detail += "; this helper still carries same-module call wrappers";
+  } else if (saw_direct_variadic_extern_call) {
+    detail += "; this helper still carries direct variadic extern calls";
+  } else if (saw_indirect_call) {
+    detail += "; this helper still carries indirect calls";
+  } else {
+    detail += "; this helper still carries call side effects";
   }
   return detail;
 }
@@ -679,6 +747,15 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           .lane_name = "bounded-same-module-variadic-helper",
           .matched = false,
           .detail = std::move(bounded_variadic_helper_detail),
+      });
+    }
+    if (const auto single_block_void_call_sequence_detail =
+            build_single_block_void_call_sequence_lane_detail(*function);
+        single_block_void_call_sequence_detail.has_value()) {
+      report.attempts.push_back(FunctionRouteAttempt{
+          .lane_name = "single-block-void-call-sequence",
+          .matched = false,
+          .detail = std::move(single_block_void_call_sequence_detail),
       });
     }
 

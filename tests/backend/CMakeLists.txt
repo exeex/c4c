@@ -331,6 +331,34 @@ set_tests_properties(backend_cli_trace_mir_00204_myprintf_rejection PROPERTIES
   LABELS "backend;internal;cli"
 )
 
+add_test(
+  NAME backend_cli_dump_mir_00204_stdarg_rejection
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-mir
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=x86 handoff summary|function stdarg|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|- next inspect: inspect the current x86 single-block call-sequence support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_mir_00204_stdarg_rejection PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_trace_mir_00204_stdarg_rejection
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--trace-mir
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=x86 handoff trace|function stdarg|try lane single-block-void-call-sequence|detail: x86 backend emitter only supports trivial single-block void helpers through the canonical prepared-module handoff; this helper still carries same-module call wrappers|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|next inspect: inspect the current x86 single-block call-sequence support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_trace_mir_00204_stdarg_rejection PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
 add_executable(backend_x86_handoff_boundary_test
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_test.cpp"
     "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_compare_branch_test.cpp"
