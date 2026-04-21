@@ -1561,6 +1561,57 @@ LirModule make_local_aggregate_raw_float_leaf_byte_slice_module() {
   return module;
 }
 
+LirModule make_local_aggregate_raw_float_tail_memcpy_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.type_decls.push_back("%struct.hfa14 = type { float, float, float, float }");
+
+  LirFunction function;
+  function.name = "local_aggregate_raw_float_tail_memcpy";
+  function.signature_text = "define void @local_aggregate_raw_float_tail_memcpy()";
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.dst"),
+      .type_str = "%struct.hfa14",
+      .count = LirOperand(""),
+      .align = 4,
+  });
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.src"),
+      .type_str = "[2 x float]",
+      .count = LirOperand(""),
+      .align = 4,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t0"),
+      .element_type = "i8",
+      .ptr = LirOperand("%lv.dst"),
+      .indices = {"i64 8"},
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%t1"),
+      .element_type = "[2 x float]",
+      .ptr = LirOperand("%lv.src"),
+      .indices = {"i64 0", "i64 0"},
+  });
+  entry.insts.push_back(c4c::codegen::lir::LirMemcpyOp{
+      .dst = LirOperand("%t0"),
+      .src = LirOperand("%t1"),
+      .size = LirOperand("8"),
+      .is_volatile = false,
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_dynamic_indexed_gep_local_member_array_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -2198,6 +2249,18 @@ int main() {
           "unexpected local aggregate raw float-leaf byte-slice gep module failure note");
       local_aggregate_raw_float_leaf_gep_status != 0) {
     return local_aggregate_raw_float_leaf_gep_status;
+  }
+
+  if (const int local_aggregate_raw_float_tail_memcpy_status = expect_success_without_function_note(
+          "local_aggregate_raw_float_tail_memcpy",
+          make_local_aggregate_raw_float_tail_memcpy_module(),
+          "latest function failure: semantic lir_to_bir function "
+          "'local_aggregate_raw_float_tail_memcpy' failed in scalar/local-memory semantic family",
+          "failed in scalar/local-memory semantic family",
+          "unexpected local aggregate raw float-tail memcpy function failure note",
+          "unexpected local aggregate raw float-tail memcpy module failure note");
+      local_aggregate_raw_float_tail_memcpy_status != 0) {
+    return local_aggregate_raw_float_tail_memcpy_status;
   }
 
   if (const int dynamic_gep_lane_status = expect_success_without_function_note(

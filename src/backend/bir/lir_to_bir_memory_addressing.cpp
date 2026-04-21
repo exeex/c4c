@@ -74,6 +74,32 @@ BirFunctionLowerer::find_repeated_aggregate_extent_at_offset(
         if (target_offset < field_begin || target_offset >= field_end) {
           continue;
         }
+        const auto field_layout =
+            compute_aggregate_type_layout(layout.fields[index].type_text, type_decls);
+        if (target_offset == field_begin &&
+            field_layout.kind != AggregateTypeLayout::Kind::Invalid &&
+            field_layout.size_bytes != 0 &&
+            c4c::codegen::lir::trim_lir_arg_text(layout.fields[index].type_text) ==
+                c4c::codegen::lir::trim_lir_arg_text(repeated_type_text)) {
+          std::size_t repeated_count = 0;
+          for (std::size_t repeated_index = index;
+               repeated_index < layout.fields.size();
+               ++repeated_index) {
+            if (c4c::codegen::lir::trim_lir_arg_text(layout.fields[repeated_index].type_text) !=
+                    c4c::codegen::lir::trim_lir_arg_text(repeated_type_text) ||
+                layout.fields[repeated_index].byte_offset !=
+                    field_begin + repeated_count * field_layout.size_bytes) {
+              break;
+            }
+            ++repeated_count;
+          }
+          if (repeated_count != 0) {
+            return AggregateArrayExtent{
+                .element_count = repeated_count,
+                .element_stride_bytes = field_layout.size_bytes,
+            };
+          }
+        }
         return find_repeated_aggregate_extent_at_offset(layout.fields[index].type_text,
                                                         target_offset - field_begin,
                                                         repeated_type_text,

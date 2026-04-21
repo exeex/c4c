@@ -5,34 +5,29 @@ Source Idea Path: ideas/open/62_stack_addressing_and_dynamic_local_access_for_x8
 Source Plan Path: plan.md
 Current Step ID: 2.1
 Current Step Title: Repair The Selected Addressing Seam
-Plan Review Counter: 0 / 10
+Plan Review Counter: 1 / 10
 # Current Packet
 
 ## Just Finished
 
-Attempted idea-62 Step 2.1 repair for the raw frontend-expanded AMD64
-`va_arg` lane by lowering raw `getelementptr i8, ptr %base, i64 %offset`
-into pointer-valued BIR adds and by admitting immediate local `memcpy` from a
-raw pointer SSA into local scalar/aggregate storage. This shrank the smallest
-raw-expanded repros: `va_arg(ap, int)` now advances past semantic `gep` into a
-later prepared compare-join blocker, and minimal aggregate `va_arg` repros no
-longer fail inside the variadic callee. Repaired destination-side raw
-byte-slice GEP support for local aggregate scratch allocas when the byte offset
-lands on a tracked scalar leaf, covering the original `s9` split-copy lane
-(`%t49` / `%t51 = getelementptr i8, ptr %t49, i64 8`) and the next `hfa13`
-float-leaf lane (`%t140` / `%t142 = getelementptr i8, ptr %t140, i64 8`).
-Added focused `backend_lir_to_bir_notes` success repros for both an `i8` leaf
-byte-slice and a non-`i8` float-leaf byte-slice. `c_testsuite_x86_backend_src_00204_c`
-now advances past `gep local-memory semantic family` and stops later in
-`myprintf` under `scalar/local-memory semantic family`, so this packet is
-complete but the overall slice remains uncommitted.
+Completed idea-62 Step 2.1 repair for the next raw frontend-expanded AMD64
+`va_arg` local scratch lane by teaching repeated-extent discovery to treat
+consecutive same-typed struct fields as a reusable local tail view. This makes
+destination-side raw byte-slice memcpy lowering cover the surviving `hfa14`
+register-lane tail copy (`memcpy %t174 -> %t175`, offset `+8`, size `8`) in
+addition to the earlier `s9` and `hfa13` byte-slice GEP lanes. Added a focused
+`backend_lir_to_bir_notes` success repro for the raw float-tail memcpy case.
+`c_testsuite_x86_backend_src_00204_c` now advances past the old `myprintf`
+scalar/local-memory blocker and fails later in function `stdarg` under the same
+semantic family, so this packet is complete and ready for supervisor review.
 
 ## Suggested Next
 
-Start a new narrow packet for the next `myprintf` blocker in
-`scalar/local-memory semantic family`, using the now-green byte-slice GEP lanes
-as fixed sentinels and isolating the first surviving scalar/local-memory shape
-after the `hfa13` split-copy handoff.
+Start a new narrow packet for the first surviving `stdarg`
+scalar/local-memory blocker in `c_testsuite_x86_backend_src_00204_c`, keeping
+the `s9`, `hfa13`, and new `hfa14` raw byte-slice/memcpy lanes as fixed
+sentinels while isolating the earliest local scratch or aggregate access shape
+that still fails after `myprintf` now lowers.
 
 ## Watchouts
 
@@ -40,11 +35,13 @@ after the `hfa13` split-copy handoff.
   `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir` or
   `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`
   while chasing the next scalar/local-memory blocker.
-- The destination-side local-aggregate raw byte-slice GEP lane is no longer
-  the live blocker. The next packet should not reopen it unless a new repro
-  says otherwise.
+- The destination-side local-aggregate raw byte-slice lane now includes a
+  multi-leaf float-tail memcpy path, not just single-leaf byte-slice GEPs. The
+  next packet should not reopen that neighborhood unless a new repro says
+  otherwise.
 - Do not claim idea-62 completion yet: `c_testsuite_x86_backend_src_00204_c`
-  now stops later in `myprintf` under `scalar/local-memory semantic family`.
+  still stops before prepared-x86 handoff, but the owned blocker has moved from
+  `myprintf` to `stdarg`.
 
 ## Proof
 
@@ -54,8 +51,9 @@ Ran `cmake --build --preset default && ctest --test-dir build -j
 with output in `test_after.log`. `backend_lir_to_bir_notes`,
 `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`, and
 `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`
-passed, including the focused `local_aggregate_raw_i8_gep_byte_slice` and
-`local_aggregate_raw_float_leaf_byte_slice` notes repros;
-`c_testsuite_x86_backend_src_00204_c` still failed with `latest function
-failure: semantic lir_to_bir function 'myprintf' failed in scalar/local-memory
+passed, including the focused `local_aggregate_raw_i8_gep_byte_slice`,
+`local_aggregate_raw_float_leaf_byte_slice`, and
+`local_aggregate_raw_float_tail_memcpy` notes repros;
+`c_testsuite_x86_backend_src_00204_c` still failed, but the latest function
+failure advanced from `myprintf` to `stdarg` under `scalar/local-memory
 semantic family`.
