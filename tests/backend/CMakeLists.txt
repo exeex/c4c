@@ -744,7 +744,7 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DDUMP_FLAG=--dump-mir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff summary|function lsll1|function lsrl1|function orrl0|- final rejection: single-block i64 immediate return helper recognized the function, but the prepared return-helper shape is outside the current x86 support|- next inspect: inspect the current x86 single-block i64 return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
+          "-DREQUIRED_SNIPPETS=x86 handoff summary|function lsll1|function lsrl1|function orrl0|- final rejection: single-block i64 immediate return helper recognized the function, but the prepared return-helper shape is outside the current x86 support|- final facts: prepared i64 immediate return-helper facts: opcode=|param operand side=|immediate operand side=|immediate source=|- next inspect: inspect the current x86 single-block i64 return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_dump_mir_00204_i64_immediate_rejection PROPERTIES
@@ -758,7 +758,7 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DDUMP_FLAG=--trace-mir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|function lsll1|function lsrl1|function orrl0|try lane single-block-i64-immediate-return-helper|detail: x86 backend emitter only supports single-block i64 return helpers when they already reduce to the current direct passthrough or established scalar helper surfaces; this helper still carries an i64 logical-left-shift immediate return|final: rejected: single-block i64 immediate return helper recognized the function, but the prepared return-helper shape is outside the current x86 support|next inspect: inspect the current x86 single-block i64 return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
+          "-DREQUIRED_SNIPPETS=x86 handoff trace|function lsll1|function lsrl1|function orrl0|try lane single-block-i64-immediate-return-helper|detail: x86 backend emitter only supports single-block i64 return helpers when they already reduce to the current direct passthrough or established scalar helper surfaces; this helper still carries an i64 logical-left-shift immediate return|final: rejected: single-block i64 immediate return helper recognized the function, but the prepared return-helper shape is outside the current x86 support|final facts: prepared i64 immediate return-helper facts: opcode=|param operand side=|immediate operand side=|immediate source=|next inspect: inspect the current x86 single-block i64 return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_trace_mir_00204_i64_immediate_rejection PROPERTIES
@@ -772,7 +772,7 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DDUMP_FLAG=--dump-mir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff summary|function addlm123|function andlm1|function eorlm1|- final rejection: single-block i64 immediate return helper recognized the function, but the prepared return-helper shape is outside the current x86 support|- next inspect: inspect the current x86 single-block i64 return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
+          "-DREQUIRED_SNIPPETS=x86 handoff summary|function addlm123|function andlm1|function eorlm1|- final rejection: single-block i64 immediate return helper recognized the function, but the prepared return-helper shape is outside the current x86 support|- final facts: prepared i64 immediate return-helper facts: opcode=|param operand side=|immediate operand side=|immediate source=|- next inspect: inspect the current x86 single-block i64 return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_dump_mir_00204_i64_sign_extended_immediate_rejection PROPERTIES
@@ -786,7 +786,7 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DDUMP_FLAG=--trace-mir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|function addlm123|function andlm1|function eorlm1|try lane single-block-i64-immediate-return-helper|detail: x86 backend emitter only supports single-block i64 return helpers when they already reduce to the current direct passthrough or established scalar helper surfaces; this helper still carries an i64 add immediate return|detail: x86 backend emitter only supports single-block i64 return helpers when they already reduce to the current direct passthrough or established scalar helper surfaces; this helper still carries an i64 and immediate return|detail: x86 backend emitter only supports single-block i64 return helpers when they already reduce to the current direct passthrough or established scalar helper surfaces; this helper still carries an i64 xor immediate return|final: rejected: single-block i64 immediate return helper recognized the function, but the prepared return-helper shape is outside the current x86 support|next inspect: inspect the current x86 single-block i64 return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
+          "-DREQUIRED_SNIPPETS=x86 handoff trace|function addlm123|function andlm1|function eorlm1|try lane single-block-i64-immediate-return-helper|detail: x86 backend emitter only supports single-block i64 return helpers when they already reduce to the current direct passthrough or established scalar helper surfaces; this helper still carries an i64 add immediate return|detail: x86 backend emitter only supports single-block i64 return helpers when they already reduce to the current direct passthrough or established scalar helper surfaces; this helper still carries an i64 and immediate return|detail: x86 backend emitter only supports single-block i64 return helpers when they already reduce to the current direct passthrough or established scalar helper surfaces; this helper still carries an i64 xor immediate return|final: rejected: single-block i64 immediate return helper recognized the function, but the prepared return-helper shape is outside the current x86 support|final facts: prepared i64 immediate return-helper facts: opcode=|param operand side=|immediate operand side=|immediate source=|next inspect: inspect the current x86 single-block i64 return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_trace_mir_00204_i64_sign_extended_immediate_rejection PROPERTIES

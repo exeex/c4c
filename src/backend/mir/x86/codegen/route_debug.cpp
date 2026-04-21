@@ -102,6 +102,13 @@ struct SingleBlockSameModuleScalarCallWrapperFacts {
   std::size_t same_module_sink_wrapper_count = 0;
 };
 
+struct SingleBlockI64ImmediateReturnHelperFacts {
+  std::string_view opcode = "binary";
+  std::string_view param_operand_side = "unknown";
+  std::string_view immediate_operand_side = "unknown";
+  std::string_view immediate_source = "direct i64";
+};
+
 void append_indented_line(std::ostringstream& out,
                           std::size_t indent,
                           std::string_view text) {
@@ -290,6 +297,16 @@ std::string render_single_block_same_module_scalar_call_wrapper_facts(
       << ", scalar same-module helper calls=" << facts.scalar_same_module_helper_call_count
       << ", width-adjusting casts=" << facts.width_adjusting_cast_count
       << ", same-module sink wrappers=" << facts.same_module_sink_wrapper_count;
+  return out.str();
+}
+
+std::string render_single_block_i64_immediate_return_helper_facts(
+    const SingleBlockI64ImmediateReturnHelperFacts& facts) {
+  std::ostringstream out;
+  out << "prepared i64 immediate return-helper facts: opcode=" << facts.opcode
+      << ", param operand side=" << facts.param_operand_side
+      << ", immediate operand side=" << facts.immediate_operand_side
+      << ", immediate source=" << facts.immediate_source;
   return out.str();
 }
 
@@ -725,7 +742,7 @@ std::optional<std::string> build_single_block_i64_ashr_return_helper_lane_detail
          "helper still carries an i64 arithmetic-right-shift immediate return";
 }
 
-std::optional<std::string> build_single_block_i64_immediate_return_helper_lane_detail(
+std::optional<FunctionRouteAttempt> build_single_block_i64_immediate_return_helper_lane_attempt(
     const c4c::backend::bir::Function& function) {
   if (function.is_declaration || !function.local_slots.empty() || function.blocks.size() != 1 ||
       function.return_type != c4c::backend::bir::TypeKind::I64 || function.params.size() != 1 ||
@@ -750,10 +767,11 @@ std::optional<std::string> build_single_block_i64_immediate_return_helper_lane_d
     return std::nullopt;
   }
 
-  const auto is_i64_extended_i32_immediate = [&](const c4c::backend::bir::Value& value) {
+  const auto describe_i64_extended_i32_immediate =
+      [&](const c4c::backend::bir::Value& value) -> std::optional<std::string_view> {
     if (value.kind != c4c::backend::bir::Value::Kind::Named ||
         value.type != c4c::backend::bir::TypeKind::I64 || entry.insts.size() != 3) {
-      return false;
+      return std::nullopt;
     }
 
     const auto* seed = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts[0]);
@@ -774,10 +792,13 @@ std::optional<std::string> build_single_block_i64_immediate_return_helper_lane_d
         seed->lhs.type != c4c::backend::bir::TypeKind::I32 || seed->lhs.immediate != 0 ||
         seed->rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
         seed->rhs.type != c4c::backend::bir::TypeKind::I32) {
-      return false;
+      return std::nullopt;
     }
 
-    return true;
+    if (cast->opcode == c4c::backend::bir::CastOpcode::SExt) {
+      return "sign-extended i32";
+    }
+    return "zero-extended i32";
   };
 
   const auto lhs_is_param = binary->lhs.kind == c4c::backend::bir::Value::Kind::Named &&
@@ -790,8 +811,10 @@ std::optional<std::string> build_single_block_i64_immediate_return_helper_lane_d
                                 binary->lhs.type == c4c::backend::bir::TypeKind::I64;
   const auto rhs_is_immediate = binary->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
                                 binary->rhs.type == c4c::backend::bir::TypeKind::I64;
-  const auto lhs_is_immediate_like = lhs_is_immediate || is_i64_extended_i32_immediate(binary->lhs);
-  const auto rhs_is_immediate_like = rhs_is_immediate || is_i64_extended_i32_immediate(binary->rhs);
+  const auto lhs_extended_immediate = describe_i64_extended_i32_immediate(binary->lhs);
+  const auto rhs_extended_immediate = describe_i64_extended_i32_immediate(binary->rhs);
+  const auto lhs_is_immediate_like = lhs_is_immediate || lhs_extended_immediate.has_value();
+  const auto rhs_is_immediate_like = rhs_is_immediate || rhs_extended_immediate.has_value();
   if (!((lhs_is_param && rhs_is_immediate_like) || (lhs_is_immediate_like && rhs_is_param))) {
     return std::nullopt;
   }
@@ -823,10 +846,30 @@ std::optional<std::string> build_single_block_i64_immediate_return_helper_lane_d
       return std::nullopt;
   }
 
-  return "x86 backend emitter only supports single-block i64 return helpers when they already "
-         "reduce to the current direct passthrough or established scalar helper surfaces; this "
-         "helper still carries an i64 " +
-         std::string(operation) + " immediate return";
+  const auto param_operand_side = lhs_is_param ? "lhs" : "rhs";
+  const auto immediate_operand_side = lhs_is_immediate_like ? "lhs" : "rhs";
+  const auto immediate_source =
+      lhs_is_immediate ? "direct i64"
+      : rhs_is_immediate ? "direct i64"
+                         : (lhs_extended_immediate.has_value() ? *lhs_extended_immediate
+                                                               : *rhs_extended_immediate);
+
+  return FunctionRouteAttempt{
+      .lane_name = "single-block-i64-immediate-return-helper",
+      .matched = false,
+      .detail =
+          "x86 backend emitter only supports single-block i64 return helpers when they already "
+          "reduce to the current direct passthrough or established scalar helper surfaces; this "
+          "helper still carries an i64 " +
+          std::string(operation) + " immediate return",
+      .facts = render_single_block_i64_immediate_return_helper_facts(
+          SingleBlockI64ImmediateReturnHelperFacts{
+              .opcode = operation,
+              .param_operand_side = param_operand_side,
+              .immediate_operand_side = immediate_operand_side,
+              .immediate_source = immediate_source,
+          }),
+  };
 }
 
 std::optional<FunctionRouteAttempt> build_single_block_floating_aggregate_call_helper_lane_attempt(
@@ -1845,14 +1888,10 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           .detail = std::move(single_block_i64_ashr_return_helper_detail),
       });
     }
-    if (const auto single_block_i64_immediate_return_helper_detail =
-            build_single_block_i64_immediate_return_helper_lane_detail(*function);
-        single_block_i64_immediate_return_helper_detail.has_value()) {
-      report.attempts.push_back(FunctionRouteAttempt{
-          .lane_name = "single-block-i64-immediate-return-helper",
-          .matched = false,
-          .detail = std::move(single_block_i64_immediate_return_helper_detail),
-      });
+    if (const auto single_block_i64_immediate_return_helper_attempt =
+            build_single_block_i64_immediate_return_helper_lane_attempt(*function);
+        single_block_i64_immediate_return_helper_attempt.has_value()) {
+      report.attempts.push_back(std::move(*single_block_i64_immediate_return_helper_attempt));
     }
     if (const auto single_block_floating_aggregate_sret_copyout_helper_attempt =
             build_single_block_floating_aggregate_sret_copyout_helper_lane_attempt(*function);

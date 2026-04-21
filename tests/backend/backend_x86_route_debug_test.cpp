@@ -1541,6 +1541,9 @@ int main() {
                        "- final rejection: single-block i64 immediate return helper recognized the function, but the prepared return-helper shape is outside the current x86 support",
                        "single-block i64 immediate summary final rejection") ||
       !expect_contains(single_block_i64_immediate_return_helper_miss_summary,
+                       "- final facts: prepared i64 immediate return-helper facts: opcode=logical-right-shift, param operand side=lhs, immediate operand side=rhs, immediate source=direct i64",
+                       "single-block i64 immediate summary final facts") ||
+      !expect_contains(single_block_i64_immediate_return_helper_miss_summary,
                        "- next inspect: inspect the current x86 single-block i64 return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "single-block i64 immediate summary next inspect") ||
       !expect_contains(single_block_i64_immediate_return_helper_miss_trace,
@@ -1550,11 +1553,17 @@ int main() {
                        "final detail: x86 backend emitter only supports single-block i64 return helpers when they already reduce to the current direct passthrough or established scalar helper surfaces; this helper still carries an i64 logical-right-shift immediate return",
                        "single-block i64 immediate trace detail") ||
       !expect_contains(single_block_i64_immediate_return_helper_miss_trace,
+                       "final facts: prepared i64 immediate return-helper facts: opcode=logical-right-shift, param operand side=lhs, immediate operand side=rhs, immediate source=direct i64",
+                       "single-block i64 immediate trace final facts") ||
+      !expect_contains(single_block_i64_immediate_return_helper_miss_trace,
                        "next inspect: inspect the current x86 single-block i64 return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "single-block i64 immediate trace next inspect") ||
       !expect_contains(single_block_i64_extended_immediate_return_helper_miss_summary,
                        "- final rejection: single-block i64 immediate return helper recognized the function, but the prepared return-helper shape is outside the current x86 support",
                        "single-block i64 extended immediate summary final rejection") ||
+      !expect_contains(single_block_i64_extended_immediate_return_helper_miss_summary,
+                       "- final facts: prepared i64 immediate return-helper facts: opcode=add, param operand side=lhs, immediate operand side=rhs, immediate source=sign-extended i32",
+                       "single-block i64 extended immediate summary final facts") ||
       !expect_contains(single_block_i64_extended_immediate_return_helper_miss_summary,
                        "- next inspect: inspect the current x86 single-block i64 return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "single-block i64 extended immediate summary next inspect") ||
@@ -1564,6 +1573,9 @@ int main() {
       !expect_contains(single_block_i64_extended_immediate_return_helper_miss_trace,
                        "final detail: x86 backend emitter only supports single-block i64 return helpers when they already reduce to the current direct passthrough or established scalar helper surfaces; this helper still carries an i64 add immediate return",
                        "single-block i64 extended immediate trace detail") ||
+      !expect_contains(single_block_i64_extended_immediate_return_helper_miss_trace,
+                       "final facts: prepared i64 immediate return-helper facts: opcode=add, param operand side=lhs, immediate operand side=rhs, immediate source=sign-extended i32",
+                       "single-block i64 extended immediate trace final facts") ||
       !expect_contains(single_block_i64_extended_immediate_return_helper_miss_trace,
                        "next inspect: inspect the current x86 single-block i64 return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "single-block i64 extended immediate trace next inspect") ||
