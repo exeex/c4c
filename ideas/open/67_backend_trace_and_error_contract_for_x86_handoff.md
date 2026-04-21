@@ -55,6 +55,22 @@ This means the idea no longer starts from zero. It should now focus on making
 that surface sufficient for large-case debugging instead of inventing a second
 parallel debug path.
 
+## Latest Durable Note
+
+As of 2026-04-21, Step 3.4 concluded that idea 67 no longer has an owned next
+packet under the current supported CLI surface. The bounded `00204.c` stdarg
+trace proof was refreshed to match the current truthful contract, and a fresh
+scan did not identify another meaningful `00204.c` rejection family that still
+requires local instrumentation or matcher probing just to understand the x86
+handoff failure.
+
+Idea 67 is therefore parked without an active runbook while the separate
+backend blocker `backend_prepare_liveness` keeps the broader close review red.
+Do not reactivate this idea for more packets unless a new supported-CLI scan
+shows that `00204.c` or a nearby prepared-handoff case has regressed back to
+an opaque final rejection or again needs local instrumentation to identify the
+meaningful failing family.
+
 ## Problem Statement
 
 The backend currently lacks two things that the frontend effectively already
