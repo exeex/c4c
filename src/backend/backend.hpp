@@ -49,6 +49,7 @@ struct BackendOptions {
   c4c::TargetProfile target_profile{};
   bool emit_semantic_bir = false;
   std::optional<std::string> route_debug_focus_function;
+  std::optional<std::string> route_debug_focus_block;
 };
 
 enum class BackendDumpStage {

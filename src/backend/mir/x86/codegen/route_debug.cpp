@@ -47,6 +47,11 @@ struct ModuleLaneRejectionReport {
   std::string next_surface;
 };
 
+struct RouteDebugFocus {
+  std::optional<std::string_view> function;
+  std::optional<std::string_view> block;
+};
+
 void append_indented_line(std::ostringstream& out,
                           std::size_t indent,
                           std::string_view text) {
@@ -900,9 +905,40 @@ std::optional<c4c::TargetArch> resolve_prepared_arch(
   return target_profile.arch;
 }
 
+std::vector<std::string_view> collect_focused_bir_block_labels(
+    const c4c::backend::bir::Function& function,
+    std::optional<std::string_view> focus_block) {
+  std::vector<std::string_view> labels;
+  for (const auto& block : function.blocks) {
+    if (focus_block.has_value() && block.label != *focus_block) {
+      continue;
+    }
+    labels.push_back(block.label);
+  }
+  return labels;
+}
+
+std::vector<std::string_view> collect_focused_prepared_block_labels(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
+    std::optional<std::string_view> focus_block) {
+  std::vector<std::string_view> labels;
+  if (function_control_flow == nullptr) {
+    return labels;
+  }
+  for (const auto& block : function_control_flow->blocks) {
+    const auto label = c4c::backend::prepare::prepared_block_label(names, block.block_label);
+    if (focus_block.has_value() && label != *focus_block) {
+      continue;
+    }
+    labels.push_back(label);
+  }
+  return labels;
+}
+
 std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& module,
                                 RouteDebugVerbosity verbosity,
-                                std::optional<std::string_view> focus_function) {
+                                RouteDebugFocus focus) {
   std::ostringstream out;
 
   const auto prepared_arch = resolve_prepared_arch(module);
@@ -932,8 +968,11 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
   out << "defined functions: " << defined_functions.size() << "\n";
   out << "entry function: " << (entry_function == nullptr ? "<none>" : entry_function->name)
       << "\n";
-  if (focus_function.has_value()) {
-    out << "focus function: " << *focus_function << "\n";
+  if (focus.function.has_value()) {
+    out << "focus function: " << *focus.function << "\n";
+  }
+  if (focus.block.has_value()) {
+    out << "focus block: " << *focus.block << "\n";
   }
 
   if (defined_functions.empty()) {
@@ -1126,8 +1165,10 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
 
   const std::unordered_set<std::string_view> kNoHelperNames;
   std::size_t focused_function_count = 0;
+  std::size_t focused_bir_block_count = 0;
+  std::size_t focused_prepared_block_count = 0;
   for (const auto* function : defined_functions) {
-    if (focus_function.has_value() && function->name != *focus_function) {
+    if (focus.function.has_value() && function->name != *focus.function) {
       continue;
     }
     ++focused_function_count;
@@ -1179,6 +1220,22 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           << ", prepared_blocks=" << report.prepared_block_count
           << ", branch_conditions=" << report.branch_condition_count
           << ", join_transfers=" << report.join_transfer_count << "\n";
+      if (focus.block.has_value()) {
+        const auto focused_bir_blocks =
+            collect_focused_bir_block_labels(*function, focus.block);
+        const auto focused_prepared_blocks = collect_focused_prepared_block_labels(
+            module.names, function_control_flow, focus.block);
+        focused_bir_block_count += focused_bir_blocks.size();
+        focused_prepared_block_count += focused_prepared_blocks.size();
+        out << "  focused bir blocks: " << focused_bir_blocks.size() << "\n";
+        for (const auto label : focused_bir_blocks) {
+          append_indented_line(out, 2, std::string("- ") + std::string(label));
+        }
+        out << "  focused prepared blocks: " << focused_prepared_blocks.size() << "\n";
+        for (const auto label : focused_prepared_blocks) {
+          append_indented_line(out, 2, std::string("- ") + std::string(label));
+        }
+      }
     }
 
     if (function->blocks.empty()) {
@@ -1392,10 +1449,19 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
     }
   }
 
-  if (focus_function.has_value()) {
+  if (focus.function.has_value()) {
     out << "\nfocused functions matched: " << focused_function_count << "\n";
     if (focused_function_count == 0) {
       out << "no defined function matched the requested MIR focus\n";
+    }
+  }
+  if (focus.block.has_value()) {
+    out << "focused bir blocks matched: " << focused_bir_block_count << "\n";
+    out << "focused prepared blocks matched: " << focused_prepared_block_count << "\n";
+    if (focused_function_count != 0 &&
+        focused_bir_block_count == 0 &&
+        focused_prepared_block_count == 0) {
+      out << "no block in the focused function matched the requested MIR block focus\n";
     }
   }
 
@@ -1406,14 +1472,26 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
 
 std::string summarize_prepared_module_routes(
     const c4c::backend::prepare::PreparedBirModule& module,
-    std::optional<std::string_view> focus_function) {
-  return render_route_report(module, RouteDebugVerbosity::Summary, focus_function);
+    std::optional<std::string_view> focus_function,
+    std::optional<std::string_view> focus_block) {
+  return render_route_report(module,
+                             RouteDebugVerbosity::Summary,
+                             RouteDebugFocus{
+                                 .function = focus_function,
+                                 .block = focus_block,
+                             });
 }
 
 std::string trace_prepared_module_routes(
     const c4c::backend::prepare::PreparedBirModule& module,
-    std::optional<std::string_view> focus_function) {
-  return render_route_report(module, RouteDebugVerbosity::Trace, focus_function);
+    std::optional<std::string_view> focus_function,
+    std::optional<std::string_view> focus_block) {
+  return render_route_report(module,
+                             RouteDebugVerbosity::Trace,
+                             RouteDebugFocus{
+                                 .function = focus_function,
+                                 .block = focus_block,
+                             });
 }
 
 }  // namespace c4c::backend::x86

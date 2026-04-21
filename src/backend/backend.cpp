@@ -204,11 +204,15 @@ std::string dump_module(const BackendModuleInput& input,
                            input.bir_module().target_triple));
     if (stage == BackendDumpStage::MirSummary) {
       return c4c::backend::x86::summarize_prepared_module_routes(
-          prepared, options.route_debug_focus_function);
+          prepared,
+          options.route_debug_focus_function,
+          options.route_debug_focus_block);
     }
     if (stage == BackendDumpStage::MirTrace) {
       return c4c::backend::x86::trace_prepared_module_routes(
-          prepared, options.route_debug_focus_function);
+          prepared,
+          options.route_debug_focus_function,
+          options.route_debug_focus_block);
     }
     return c4c::backend::prepare::print(prepared);
   }
@@ -229,11 +233,15 @@ std::string dump_module(const BackendModuleInput& input,
   const auto prepared = prepare_semantic_bir_pipeline(*lowering.module, target_profile);
   if (stage == BackendDumpStage::MirSummary) {
     return c4c::backend::x86::summarize_prepared_module_routes(
-        prepared, options.route_debug_focus_function);
+        prepared,
+        options.route_debug_focus_function,
+        options.route_debug_focus_block);
   }
   if (stage == BackendDumpStage::MirTrace) {
     return c4c::backend::x86::trace_prepared_module_routes(
-        prepared, options.route_debug_focus_function);
+        prepared,
+        options.route_debug_focus_function,
+        options.route_debug_focus_block);
   }
   return c4c::backend::prepare::print(prepared);
 }

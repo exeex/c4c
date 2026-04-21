@@ -240,6 +240,7 @@ void print_usage(const char *argv0) {
       << "  --dump-mir                 Print concise backend MIR-route summary\n"
       << "  --trace-mir                Print backend MIR-route trace\n"
       << "  --mir-focus-function <fn>  Limit MIR dump/trace output to one function\n"
+      << "  --mir-focus-block <label>  Limit --trace-mir block listings to one block inside the focused function\n"
       << "\n"
       << "Parser debug:\n"
       << "  --parser-debug             Enable general parser debug output\n"
@@ -319,6 +320,7 @@ int main(int argc, char **argv) {
     bool        dump_mir = false;
     bool        trace_mir = false;
     std::optional<std::string> mir_focus_function;
+    std::optional<std::string> mir_focus_block;
     bool        parser_debug = false;
     bool        parser_debug_tentative = false;
     bool        parser_debug_injected = false;
@@ -369,6 +371,8 @@ int main(int argc, char **argv) {
         trace_mir = true;
       } else if (arg == "--mir-focus-function" && i + 1 < args.size()) {
         mir_focus_function = args[++i];
+      } else if (arg == "--mir-focus-block" && i + 1 < args.size()) {
+        mir_focus_block = args[++i];
       } else if (arg == "--parser-debug") {
         parser_debug = true;
       } else if (arg == "--parser-debug-tentative") {
@@ -500,6 +504,14 @@ int main(int argc, char **argv) {
     }
     if (mir_focus_function.has_value() && !(dump_mir || trace_mir)) {
       std::cerr << "--mir-focus-function requires --dump-mir or --trace-mir\n";
+      return 2;
+    }
+    if (mir_focus_block.has_value() && !trace_mir) {
+      std::cerr << "--mir-focus-block requires --trace-mir\n";
+      return 2;
+    }
+    if (mir_focus_block.has_value() && !mir_focus_function.has_value()) {
+      std::cerr << "--mir-focus-block requires --mir-focus-function\n";
       return 2;
     }
 
@@ -654,6 +666,7 @@ int main(int argc, char **argv) {
           c4c::backend::BackendOptions{
               .target_profile = target_profile,
               .route_debug_focus_function = mir_focus_function,
+              .route_debug_focus_block = mir_focus_block,
           },
           stage);
       return 0;
