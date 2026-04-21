@@ -65,6 +65,14 @@ struct SingleBlockVoidCallSequenceFacts {
   std::size_t other_call_effect_count = 0;
 };
 
+struct BoundedSameModuleVariadicHelperFacts {
+  std::size_t explicit_variadic_runtime_call_count = 0;
+  std::size_t same_module_helper_call_count = 0;
+  std::size_t direct_extern_call_count = 0;
+  std::size_t indirect_call_count = 0;
+  std::size_t other_call_effect_count = 0;
+};
+
 struct SingleBlockAggregateForwardingWrapperFacts {
   std::size_t direct_extern_call_count = 0;
   std::size_t same_module_aggregate_call_wrapper_count = 0;
@@ -150,6 +158,47 @@ std::string summarize_single_block_void_call_sequence_facts(
     labels.push_back(counted_label(facts.direct_fixed_arity_extern_call_count,
                                    "direct fixed-arity extern call",
                                    "direct fixed-arity extern calls"));
+  }
+  if (facts.indirect_call_count != 0) {
+    labels.push_back(counted_label(facts.indirect_call_count, "indirect call", "indirect calls"));
+  }
+  if (facts.other_call_effect_count != 0) {
+    labels.push_back(counted_label(facts.other_call_effect_count,
+                                   "other call side effect",
+                                   "other call side effects"));
+  }
+  return join_fact_labels(labels);
+}
+
+std::string render_bounded_same_module_variadic_helper_facts(
+    const BoundedSameModuleVariadicHelperFacts& facts) {
+  std::ostringstream out;
+  out << "prepared variadic-helper facts: explicit variadic runtime calls="
+      << facts.explicit_variadic_runtime_call_count
+      << ", same-module helper calls=" << facts.same_module_helper_call_count
+      << ", direct extern calls=" << facts.direct_extern_call_count
+      << ", indirect calls=" << facts.indirect_call_count
+      << ", other call side effects=" << facts.other_call_effect_count;
+  return out.str();
+}
+
+std::string summarize_bounded_same_module_variadic_helper_facts(
+    const BoundedSameModuleVariadicHelperFacts& facts) {
+  std::vector<std::string> labels;
+  if (facts.explicit_variadic_runtime_call_count != 0) {
+    labels.push_back(counted_label(facts.explicit_variadic_runtime_call_count,
+                                   "explicit variadic runtime call",
+                                   "explicit variadic runtime calls"));
+  }
+  if (facts.same_module_helper_call_count != 0) {
+    labels.push_back(counted_label(facts.same_module_helper_call_count,
+                                   "same-module helper call",
+                                   "same-module helper calls"));
+  }
+  if (facts.direct_extern_call_count != 0) {
+    labels.push_back(counted_label(facts.direct_extern_call_count,
+                                   "direct extern call",
+                                   "direct extern calls"));
   }
   if (facts.indirect_call_count != 0) {
     labels.push_back(counted_label(facts.indirect_call_count, "indirect call", "indirect calls"));
@@ -447,47 +496,84 @@ FinalRejectionReport build_final_rejection_report(const FunctionRouteReport& rep
   };
 }
 
-std::optional<std::string> build_bounded_variadic_helper_lane_detail(
+std::optional<FunctionRouteAttempt> build_bounded_variadic_helper_lane_attempt(
     const std::vector<const c4c::backend::bir::Function*>& defined_functions,
     const c4c::backend::bir::Function* entry_function,
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow) {
-  const auto carries_explicit_variadic_runtime = [&]() {
-    for (const auto& block : function.blocks) {
-      for (const auto& inst : block.insts) {
-        const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
-        if (call == nullptr) {
-          continue;
-        }
-        if (string_contains(call->callee, "llvm.va_start.") ||
-            string_contains(call->callee, "llvm.va_end.") ||
-            string_contains(call->callee, "llvm.va_arg.")) {
-          return true;
-        }
+  const auto find_defined_function = [&](std::string_view callee_name)
+      -> const c4c::backend::bir::Function* {
+    for (const auto* candidate : defined_functions) {
+      if (candidate != nullptr && candidate->name == callee_name) {
+        return candidate;
       }
     }
-    return false;
+    return nullptr;
   };
 
   if (defined_functions.size() <= 1 || entry_function == nullptr || entry_function->name != "main" ||
       &function == entry_function || !function.is_variadic ||
-      function.return_type != c4c::backend::bir::TypeKind::Void ||
-      (!carries_explicit_variadic_runtime() && function.blocks.size() <= 1)) {
+      function.return_type != c4c::backend::bir::TypeKind::Void) {
     return std::nullopt;
   }
   if (function_control_flow != nullptr && !function_control_flow->join_transfers.empty()) {
     return std::nullopt;
   }
 
+  BoundedSameModuleVariadicHelperFacts facts;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+      if (call == nullptr) {
+        continue;
+      }
+      if (string_contains(call->callee, "llvm.va_start.") ||
+          string_contains(call->callee, "llvm.va_end.") ||
+          string_contains(call->callee, "llvm.va_arg.")) {
+        ++facts.explicit_variadic_runtime_call_count;
+        continue;
+      }
+      if (call->is_indirect || call->callee_value.has_value()) {
+        ++facts.indirect_call_count;
+        continue;
+      }
+      if (call->callee.empty()) {
+        ++facts.other_call_effect_count;
+        continue;
+      }
+      if (call->callee.rfind("llvm.", 0) == 0) {
+        ++facts.other_call_effect_count;
+        continue;
+      }
+      if (const auto* callee = find_defined_function(call->callee);
+          callee != nullptr && !callee->is_declaration) {
+        ++facts.same_module_helper_call_count;
+        continue;
+      }
+      ++facts.direct_extern_call_count;
+    }
+  }
+
+  const bool carries_explicit_variadic_runtime = facts.explicit_variadic_runtime_call_count != 0;
+  if (!carries_explicit_variadic_runtime && function.blocks.size() <= 1) {
+    return std::nullopt;
+  }
+
   std::string detail =
       "x86 backend emitter only supports non-entry bounded same-module variadic helpers when "
       "they already reduce to the current direct-extern or local-slot-guard helper surfaces";
-  if (carries_explicit_variadic_runtime()) {
+  if (carries_explicit_variadic_runtime) {
     detail += "; this helper still carries explicit variadic-runtime state";
   } else {
-    detail += "; this helper remains a multi-block variadic body";
+    detail += "; this helper remains a multi-block variadic body carrying " +
+              summarize_bounded_same_module_variadic_helper_facts(facts);
   }
-  return detail;
+  return FunctionRouteAttempt{
+      .lane_name = "bounded-same-module-variadic-helper",
+      .matched = false,
+      .detail = std::move(detail),
+      .facts = render_bounded_same_module_variadic_helper_facts(facts),
+  };
 }
 
 std::optional<FunctionRouteAttempt> build_single_block_void_call_sequence_lane_attempt(
@@ -1652,14 +1738,10 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
       }
       return std::nullopt;
     });
-    if (const auto bounded_variadic_helper_detail = build_bounded_variadic_helper_lane_detail(
+    if (const auto bounded_variadic_helper_attempt = build_bounded_variadic_helper_lane_attempt(
             defined_functions, entry_function, *function, function_control_flow);
-        bounded_variadic_helper_detail.has_value()) {
-      report.attempts.push_back(FunctionRouteAttempt{
-          .lane_name = "bounded-same-module-variadic-helper",
-          .matched = false,
-          .detail = std::move(bounded_variadic_helper_detail),
-      });
+        bounded_variadic_helper_attempt.has_value()) {
+      report.attempts.push_back(std::move(*bounded_variadic_helper_attempt));
     }
     if (const auto single_block_void_call_sequence_attempt =
             build_single_block_void_call_sequence_lane_attempt(defined_functions, *function);
