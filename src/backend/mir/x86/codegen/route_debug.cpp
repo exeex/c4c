@@ -80,6 +80,7 @@ std::string lane_next_surface(std::string_view lane_name) {
       lane_name == "local-i16-arithmetic-guard" ||
       lane_name == "local-slot-guard-chain" ||
       lane_name == "bounded-same-module-variadic-helper" ||
+      lane_name == "single-block-aggregate-forwarding-wrapper" ||
       lane_name == "single-block-floating-aggregate-call-helper" ||
       lane_name == "single-block-i64-immediate-return-helper" ||
       lane_name == "single-block-i64-ashr-return-helper" ||
@@ -118,6 +119,9 @@ std::string next_surface_hint(const FunctionRouteAttempt* attempt,
   if (kind == FinalRejectionKind::UnsupportedPreparedShape) {
     if (attempt->lane_name == "bounded-same-module-variadic-helper") {
       return "inspect the current x86 same-module helper shape support in " + lane_surface;
+    }
+    if (attempt->lane_name == "single-block-aggregate-forwarding-wrapper") {
+      return "inspect the current x86 same-module aggregate-call support in " + lane_surface;
     }
     if (attempt->lane_name == "single-block-floating-aggregate-call-helper") {
       return "inspect the current x86 floating aggregate helper support in " + lane_surface;
@@ -186,6 +190,9 @@ FinalRejectionReport build_final_rejection_report(const FunctionRouteReport& rep
         if (it->lane_name == "bounded-same-module-variadic-helper") {
           summary = "bounded same-module variadic helper lane recognized the function, but the "
                     "prepared helper shape is outside the current x86 support";
+        } else if (it->lane_name == "single-block-aggregate-forwarding-wrapper") {
+          summary = "single-block aggregate-forwarding wrapper recognized the function, but the "
+                    "prepared same-module aggregate-call shape is outside the current x86 support";
         } else if (it->lane_name == "single-block-floating-aggregate-call-helper") {
           summary =
               "single-block floating aggregate call helper recognized the function, but the "
@@ -504,6 +511,94 @@ std::optional<std::string> build_single_block_floating_aggregate_call_helper_lan
          "aggregate arguments already reduce to the current local-slot or scalar helper surfaces; "
          "this helper still forwards floating aggregate lanes through byval/pointer wrappers into "
          "a direct variadic extern call";
+}
+
+std::optional<std::string> build_single_block_aggregate_forwarding_wrapper_lane_detail(
+    const std::vector<const c4c::backend::bir::Function*>& defined_functions,
+    const c4c::backend::bir::Function& function) {
+  if (function.is_declaration || function.is_variadic ||
+      function.return_type != c4c::backend::bir::TypeKind::Void || !function.params.empty() ||
+      function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      entry.terminator.value.has_value() || entry.insts.empty()) {
+    return std::nullopt;
+  }
+
+  auto find_defined_function = [&](std::string_view callee_name)
+      -> const c4c::backend::bir::Function* {
+    for (const auto* candidate : defined_functions) {
+      if (candidate != nullptr && candidate->name == callee_name) {
+        return candidate;
+      }
+    }
+    return nullptr;
+  };
+
+  bool saw_same_module_byval_call = false;
+  bool saw_direct_extern_call = false;
+
+  for (const auto& inst : entry.insts) {
+    const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+    if (call == nullptr) {
+      continue;
+    }
+    if (call->is_indirect || call->callee.empty() || call->callee_value.has_value() ||
+        call->args.size() != call->arg_types.size()) {
+      return std::nullopt;
+    }
+
+    const auto* callee = find_defined_function(call->callee);
+    if (callee == nullptr || callee->is_declaration) {
+      if (call->callee.rfind("llvm.", 0) == 0) {
+        return std::nullopt;
+      }
+      saw_direct_extern_call = true;
+      continue;
+    }
+
+    if (callee->is_variadic ||
+        callee->return_type != c4c::backend::bir::TypeKind::Void ||
+        callee->params.size() != call->args.size()) {
+      return std::nullopt;
+    }
+
+    bool call_forwards_aggregate = false;
+    for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
+      const auto& param = callee->params[arg_index];
+      const auto call_arg_abi =
+          arg_index < call->arg_abi.size() ? std::optional{call->arg_abi[arg_index]} : std::nullopt;
+      const bool call_site_carries_aggregate_abi =
+          call_arg_abi.has_value() &&
+          (call_arg_abi->byval_copy || call_arg_abi->primary_class == c4c::backend::bir::AbiValueClass::Memory ||
+           call_arg_abi->secondary_class == c4c::backend::bir::AbiValueClass::Memory ||
+           call_arg_abi->size_bytes > sizeof(void*));
+      if (param.type == c4c::backend::bir::TypeKind::Ptr &&
+          call->arg_types[arg_index] == c4c::backend::bir::TypeKind::Ptr &&
+          (param.size_bytes > 0 || call_site_carries_aggregate_abi)) {
+        call_forwards_aggregate = true;
+        break;
+      }
+    }
+
+    if (!call_forwards_aggregate) {
+      return std::nullopt;
+    }
+
+    saw_same_module_byval_call = true;
+  }
+
+  if (!saw_same_module_byval_call || !saw_direct_extern_call) {
+    return std::nullopt;
+  }
+
+  return "x86 backend emitter only supports single-block aggregate-forwarding wrappers when "
+         "their direct extern preamble and same-module aggregate calls already reduce to the "
+         "current helper surfaces; this wrapper still mixes a direct extern preamble with "
+         "same-module aggregate call wrappers";
 }
 
 std::string_view prepared_function_name_or_none(
@@ -975,6 +1070,16 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           .lane_name = "single-block-floating-aggregate-call-helper",
           .matched = false,
           .detail = std::move(single_block_floating_aggregate_call_helper_detail),
+      });
+    }
+    if (const auto single_block_aggregate_forwarding_wrapper_detail =
+            build_single_block_aggregate_forwarding_wrapper_lane_detail(defined_functions,
+                                                                        *function);
+        single_block_aggregate_forwarding_wrapper_detail.has_value()) {
+      report.attempts.push_back(FunctionRouteAttempt{
+          .lane_name = "single-block-aggregate-forwarding-wrapper",
+          .matched = false,
+          .detail = std::move(single_block_aggregate_forwarding_wrapper_detail),
       });
     }
 
