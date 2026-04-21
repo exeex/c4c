@@ -14,6 +14,29 @@ c4c::TargetProfile x86_target_profile() {
   return c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
 }
 
+prepare::PreparedBirModule prepare_module(bir::Module module) {
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = x86_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
+prepare::PreparedControlFlowFunction* find_control_flow_function(prepare::PreparedBirModule& prepared,
+                                                                 const char* function_name) {
+  for (auto& function : prepared.control_flow.functions) {
+    if (prepare::prepared_function_name(prepared.names, function.function_name) == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
 prepare::PreparedBirModule legalize_short_circuit_or_guard_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -146,16 +169,33 @@ prepare::PreparedBirModule legalize_short_circuit_or_guard_module() {
   };
   module.functions.push_back(std::move(function));
 
-  prepare::PreparedBirModule prepared;
-  prepared.module = std::move(module);
-  prepared.target_profile = x86_target_profile();
+  return prepare_module(std::move(module));
+}
 
-  prepare::PrepareOptions options;
-  options.run_stack_layout = true;
-  options.run_liveness = true;
-  options.run_regalloc = true;
-  prepare::BirPreAlloc planner(std::move(prepared), options);
-  return planner.run();
+prepare::PreparedBirModule legalize_plain_route_miss_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "plain_route_miss";
+  function.return_type = bir::TypeKind::F32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_f32_bits(0)};
+
+  function.blocks = {std::move(entry)};
+  module.functions.push_back(std::move(function));
+  return prepare_module(std::move(module));
+}
+
+prepare::PreparedBirModule legalize_missing_short_circuit_contract_module() {
+  auto prepared = legalize_short_circuit_or_guard_module();
+  auto* control_flow = find_control_flow_function(prepared, "short_circuit_or_prepare_contract");
+  if (control_flow != nullptr) {
+    control_flow->branch_conditions.clear();
+  }
+  return prepared;
 }
 
 bool expect_contains(const std::string& text,
@@ -173,15 +213,45 @@ bool expect_contains(const std::string& text,
 
 int main() {
   const auto prepared = legalize_short_circuit_or_guard_module();
+  const auto plain_miss = legalize_plain_route_miss_module();
+  const auto missing_short_circuit_contract = legalize_missing_short_circuit_contract_module();
   const std::string summary = c4c::backend::x86::summarize_prepared_module_routes(prepared);
   const std::string trace = c4c::backend::x86::trace_prepared_module_routes(prepared);
+  const std::string plain_miss_summary =
+      c4c::backend::x86::summarize_prepared_module_routes(plain_miss);
+  const std::string plain_miss_trace = c4c::backend::x86::trace_prepared_module_routes(plain_miss);
+  const std::string missing_short_circuit_contract_summary =
+      c4c::backend::x86::summarize_prepared_module_routes(missing_short_circuit_contract);
+  const std::string missing_short_circuit_contract_trace =
+      c4c::backend::x86::trace_prepared_module_routes(missing_short_circuit_contract);
 
   if (!expect_contains(summary, "x86 handoff summary", "summary header") ||
       !expect_contains(summary, "function short_circuit_or_prepare_contract", "function name") ||
       !expect_contains(summary, "- top-level lane:", "summary lane line") ||
       !expect_contains(trace, "x86 handoff trace", "trace header") ||
       !expect_contains(trace, "try lane local-slot-guard-chain", "trace lane") ||
-      !expect_contains(trace, "result: ", "trace result")) {
+      !expect_contains(trace, "result: ", "trace result") ||
+      !expect_contains(plain_miss_summary,
+                       "- final rejection: current x86 lanes did not recognize this prepared function shape",
+                       "plain miss summary final rejection") ||
+      !expect_contains(plain_miss_summary,
+                       "- next inspect: inspect src/backend/mir/x86/codegen/prepared_module_emit.cpp for the next top-level lane",
+                       "plain miss summary next inspect") ||
+      !expect_contains(plain_miss_trace,
+                       "final: rejected: current x86 lanes did not recognize this prepared function shape",
+                       "plain miss trace final rejection") ||
+      !expect_contains(plain_miss_trace,
+                       "next inspect: inspect src/backend/mir/x86/codegen/prepared_module_emit.cpp for the next top-level lane",
+                       "plain miss trace next inspect") ||
+      !expect_contains(missing_short_circuit_contract_summary,
+                       "- final rejection: local-slot-guard-chain is missing prepared handoff data required by the current x86 route",
+                       "missing contract summary final rejection") ||
+      !expect_contains(missing_short_circuit_contract_trace,
+                       "final detail: x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff",
+                       "missing contract trace detail") ||
+      !expect_contains(missing_short_circuit_contract_trace,
+                       "next inspect: inspect the prepared control-flow handoff consumed in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
+                       "missing contract trace next inspect")) {
     return EXIT_FAILURE;
   }
 

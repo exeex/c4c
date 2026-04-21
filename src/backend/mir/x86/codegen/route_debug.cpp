@@ -28,6 +28,20 @@ struct FunctionRouteReport {
   std::vector<FunctionRouteAttempt> attempts;
 };
 
+enum class FinalRejectionKind {
+  OrdinaryRouteMiss,
+  UnsupportedPreparedShape,
+  MissingPreparedContract,
+  BackendException,
+};
+
+struct FinalRejectionReport {
+  FinalRejectionKind kind = FinalRejectionKind::OrdinaryRouteMiss;
+  const FunctionRouteAttempt* attempt = nullptr;
+  std::string summary;
+  std::string next_surface;
+};
+
 void append_indented_line(std::ostringstream& out,
                           std::size_t indent,
                           std::string_view text) {
@@ -39,6 +53,112 @@ void append_indented_line(std::ostringstream& out,
 
 std::string_view route_result_text(bool matched) {
   return matched ? "matched" : "rejected";
+}
+
+bool string_contains(std::string_view haystack, std::string_view needle) {
+  return haystack.find(needle) != std::string_view::npos;
+}
+
+std::string lane_next_surface(std::string_view lane_name) {
+  if (lane_name == "countdown-entry-routes") {
+    return "src/backend/mir/x86/codegen/prepared_countdown_render.cpp";
+  }
+  if (lane_name == "local-i32-arithmetic-guard" ||
+      lane_name == "local-i16-arithmetic-guard" ||
+      lane_name == "local-slot-guard-chain" ||
+      lane_name == "single-block-return-dispatch" ||
+      lane_name == "trivial-defined-function") {
+    return "src/backend/mir/x86/codegen/prepared_local_slot_render.cpp";
+  }
+  return "src/backend/mir/x86/codegen/prepared_module_emit.cpp";
+}
+
+std::string next_surface_hint(const FunctionRouteAttempt* attempt,
+                              FinalRejectionKind kind) {
+  if (attempt == nullptr) {
+    return "inspect src/backend/mir/x86/codegen/prepared_module_emit.cpp for the next top-level lane";
+  }
+
+  const auto lane_surface = lane_next_surface(attempt->lane_name);
+  if (kind == FinalRejectionKind::MissingPreparedContract && attempt->detail.has_value()) {
+    const auto detail = std::string_view(*attempt->detail);
+    if (string_contains(detail, "value-home") ||
+        string_contains(detail, "return-bundle") ||
+        string_contains(detail, "call-bundle") ||
+        string_contains(detail, "ABI metadata")) {
+      return "inspect the prepared value-location handoff consumed in " + lane_surface;
+    }
+    if (string_contains(detail, "short-circuit") ||
+        string_contains(detail, "guard-chain") ||
+        string_contains(detail, "compare-join") ||
+        string_contains(detail, "loop-countdown")) {
+      return "inspect the prepared control-flow handoff consumed in " + lane_surface;
+    }
+    return "inspect the prepared-module handoff contract consumed in " + lane_surface;
+  }
+
+  if (kind == FinalRejectionKind::UnsupportedPreparedShape) {
+    return "inspect the current x86 shape support in " + lane_surface;
+  }
+
+  if (kind == FinalRejectionKind::BackendException) {
+    return "inspect the backend exception path in " + lane_surface;
+  }
+
+  return "inspect src/backend/mir/x86/codegen/prepared_module_emit.cpp for the next top-level lane";
+}
+
+FinalRejectionKind classify_rejection_kind(std::string_view detail) {
+  if (string_contains(detail, "only supports") || string_contains(detail, "unsupported")) {
+    return FinalRejectionKind::UnsupportedPreparedShape;
+  }
+  if (string_contains(detail, "requires") ||
+      string_contains(detail, "authoritative") ||
+      string_contains(detail, "metadata") ||
+      string_contains(detail, "handoff")) {
+    return FinalRejectionKind::MissingPreparedContract;
+  }
+  return FinalRejectionKind::BackendException;
+}
+
+FinalRejectionReport build_final_rejection_report(const FunctionRouteReport& report) {
+  for (auto it = report.attempts.rbegin(); it != report.attempts.rend(); ++it) {
+    if (!it->detail.has_value()) {
+      continue;
+    }
+
+    const auto kind = classify_rejection_kind(*it->detail);
+    std::string summary;
+    switch (kind) {
+      case FinalRejectionKind::UnsupportedPreparedShape:
+        summary = it->lane_name +
+                  " recognized the function, but the prepared shape is outside the current x86 support";
+        break;
+      case FinalRejectionKind::MissingPreparedContract:
+        summary = it->lane_name +
+                  " is missing prepared handoff data required by the current x86 route";
+        break;
+      case FinalRejectionKind::BackendException:
+        summary = it->lane_name + " rejected the function with a backend exception";
+        break;
+      case FinalRejectionKind::OrdinaryRouteMiss:
+        break;
+    }
+    return FinalRejectionReport{
+        .kind = kind,
+        .attempt = &*it,
+        .summary = std::move(summary),
+        .next_surface = next_surface_hint(&*it, kind),
+    };
+  }
+
+  return FinalRejectionReport{
+      .kind = FinalRejectionKind::OrdinaryRouteMiss,
+      .attempt = nullptr,
+      .summary = "current x86 lanes did not recognize this prepared function shape",
+      .next_surface =
+          "inspect src/backend/mir/x86/codegen/prepared_module_emit.cpp for the next top-level lane",
+  };
 }
 
 std::string_view prepared_function_name_or_none(
@@ -453,6 +573,11 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           << (matched_it == report.attempts.end() ? "no current lane matched"
                                                   : matched_it->lane_name)
           << "\n";
+      if (matched_it == report.attempts.end()) {
+        const auto rejection = build_final_rejection_report(report);
+        out << "- final rejection: " << rejection.summary << "\n";
+        out << "- next inspect: " << rejection.next_surface << "\n";
+      }
     } else {
       for (const auto& attempt : report.attempts) {
         out << "  try lane " << attempt.lane_name << "\n";
@@ -461,10 +586,16 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           out << "    detail: " << *attempt.detail << "\n";
         }
       }
-      out << "  final: "
-          << (matched_it == report.attempts.end() ? "no current top-level x86 lane matched"
-                                                  : "matched " + matched_it->lane_name)
-          << "\n";
+      if (matched_it == report.attempts.end()) {
+        const auto rejection = build_final_rejection_report(report);
+        out << "  final: rejected: " << rejection.summary << "\n";
+        if (rejection.attempt != nullptr && rejection.attempt->detail.has_value()) {
+          out << "  final detail: " << *rejection.attempt->detail << "\n";
+        }
+        out << "  next inspect: " << rejection.next_surface << "\n";
+      } else {
+        out << "  final: matched " << matched_it->lane_name << "\n";
+      }
     }
   }
 
