@@ -269,11 +269,56 @@ inline std::optional<std::string> select_prepared_call_argument_abi_register_if_
   return std::nullopt;
 }
 
+inline std::optional<std::size_t> select_prepared_call_argument_abi_stack_offset_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::size_t arg_index) {
+  if (function_locations == nullptr) {
+    return std::nullopt;
+  }
+  const auto* before_call_bundle = c4c::backend::prepare::find_prepared_move_bundle(
+      *function_locations, c4c::backend::prepare::PreparedMovePhase::BeforeCall, block_index,
+      instruction_index);
+  if (before_call_bundle == nullptr) {
+    return std::nullopt;
+  }
+  for (const auto& move : before_call_bundle->moves) {
+    if (move.destination_kind != c4c::backend::prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+        move.destination_storage_kind != c4c::backend::prepare::PreparedMoveStorageKind::StackSlot ||
+        move.destination_abi_index != std::optional<std::size_t>{arg_index} ||
+        !move.destination_stack_offset_bytes.has_value()) {
+      continue;
+    }
+    return move.destination_stack_offset_bytes;
+  }
+  for (const auto& binding : before_call_bundle->abi_bindings) {
+    if (binding.destination_kind !=
+            c4c::backend::prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+        binding.destination_storage_kind !=
+            c4c::backend::prepare::PreparedMoveStorageKind::StackSlot ||
+        binding.destination_abi_index != std::optional<std::size_t>{arg_index} ||
+        !binding.destination_stack_offset_bytes.has_value()) {
+      continue;
+    }
+    return binding.destination_stack_offset_bytes;
+  }
+  return std::nullopt;
+}
+
 inline std::optional<std::string> select_prepared_call_argument_abi_register_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::size_t instruction_index,
     std::size_t arg_index) {
   return select_prepared_call_argument_abi_register_if_supported(
+      function_locations, 0, instruction_index, arg_index);
+}
+
+inline std::optional<std::size_t> select_prepared_call_argument_abi_stack_offset_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t instruction_index,
+    std::size_t arg_index) {
+  return select_prepared_call_argument_abi_stack_offset_if_supported(
       function_locations, 0, instruction_index, arg_index);
 }
 

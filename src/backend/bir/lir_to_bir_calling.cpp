@@ -162,7 +162,17 @@ std::optional<bir::CallArgAbiInfo> lower_call_arg_abi(
   switch (type) {
     case bir::TypeKind::F32:
     case bir::TypeKind::F64:
+      abi.primary_class = use_float_arg_registers(target_profile, type)
+                              ? bir::AbiValueClass::Sse
+                              : bir::AbiValueClass::Integer;
+      return abi;
     case bir::TypeKind::F128:
+      if (target_profile.arch == c4c::TargetArch::X86_64) {
+        abi.primary_class = bir::AbiValueClass::Memory;
+        abi.passed_in_register = false;
+        abi.passed_on_stack = true;
+        return abi;
+      }
       abi.primary_class = use_float_arg_registers(target_profile, type)
                               ? bir::AbiValueClass::Sse
                               : bir::AbiValueClass::Integer;

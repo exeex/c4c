@@ -117,6 +117,23 @@ struct ProgramPointLocation {
   return materialized;
 }
 
+[[nodiscard]] std::size_t align_up(std::size_t value, std::size_t alignment) {
+  if (alignment == 0) {
+    return value;
+  }
+  const std::size_t remainder = value % alignment;
+  return remainder == 0 ? value : value + (alignment - remainder);
+}
+
+[[nodiscard]] std::size_t call_stack_argument_size_bytes(const bir::CallArgAbiInfo& abi) {
+  return align_up(std::max<std::size_t>(abi.size_bytes, 8), 8);
+}
+
+[[nodiscard]] std::size_t call_stack_argument_alignment_bytes(const bir::CallArgAbiInfo& abi) {
+  const std::size_t abi_alignment = abi.align_bytes == 0 ? abi.size_bytes : abi.align_bytes;
+  return std::min<std::size_t>(std::max<std::size_t>(abi_alignment, 8), 16);
+}
+
 [[nodiscard]] std::size_t normalized_value_size(const PreparedRegallocValue& value) {
   return stack_layout::normalize_size(value.type, 0);
 }
@@ -205,6 +222,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                move.destination_storage_kind == assigned_storage_kind(destination) &&
                !move.destination_abi_index.has_value() &&
                !move.destination_register_name.has_value() &&
+               !move.destination_stack_offset_bytes.has_value() &&
                move.uses_cycle_temp_source == uses_cycle_temp_source &&
                move.op_kind == op_kind &&
                move.block_index == block_index &&
@@ -221,6 +239,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       .destination_storage_kind = assigned_storage_kind(destination),
       .destination_abi_index = std::nullopt,
       .destination_register_name = std::nullopt,
+      .destination_stack_offset_bytes = std::nullopt,
       .block_index = block_index,
       .instruction_index = instruction_index,
       .uses_cycle_temp_source = uses_cycle_temp_source,
@@ -237,6 +256,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                                    PreparedMoveStorageKind to_kind,
                                    std::optional<std::size_t> destination_abi_index,
                                    std::optional<std::string> destination_register_name,
+                                   std::optional<std::size_t> destination_stack_offset_bytes,
                                    std::size_t block_index,
                                    std::size_t instruction_index,
                                    bool uses_cycle_temp_source,
@@ -255,6 +275,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                move.destination_storage_kind == to_kind &&
                move.destination_abi_index == destination_abi_index &&
                move.destination_register_name == destination_register_name &&
+               move.destination_stack_offset_bytes == destination_stack_offset_bytes &&
                move.block_index == block_index &&
                move.instruction_index == instruction_index &&
                move.uses_cycle_temp_source == uses_cycle_temp_source &&
@@ -271,6 +292,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       .destination_storage_kind = to_kind,
       .destination_abi_index = destination_abi_index,
       .destination_register_name = std::move(destination_register_name),
+      .destination_stack_offset_bytes = destination_stack_offset_bytes,
       .block_index = block_index,
       .instruction_index = instruction_index,
       .uses_cycle_temp_source = uses_cycle_temp_source,
@@ -582,7 +604,9 @@ void append_prepared_abi_binding(PreparedValueLocationFunction& function_locatio
         return existing_binding.destination_kind == binding.destination_kind &&
                existing_binding.destination_storage_kind == binding.destination_storage_kind &&
                existing_binding.destination_abi_index == binding.destination_abi_index &&
-               existing_binding.destination_register_name == binding.destination_register_name;
+               existing_binding.destination_register_name == binding.destination_register_name &&
+               existing_binding.destination_stack_offset_bytes ==
+                   binding.destination_stack_offset_bytes;
       });
   if (duplicate != existing->abi_bindings.end()) {
     return;
@@ -592,6 +616,10 @@ void append_prepared_abi_binding(PreparedValueLocationFunction& function_locatio
 
 [[nodiscard]] PreparedMoveStorageKind call_arg_storage_kind(const bir::CallInst& call,
                                                             std::size_t arg_index);
+[[nodiscard]] std::optional<std::size_t> call_arg_destination_stack_offset_bytes(
+    const c4c::TargetProfile& target_profile,
+    const bir::CallInst& call,
+    std::size_t arg_index);
 [[nodiscard]] PreparedMoveStorageKind call_result_storage_kind(const bir::CallInst& call);
 
 void append_prepared_call_abi_bindings(const c4c::TargetProfile& target_profile,
@@ -614,6 +642,8 @@ void append_prepared_call_abi_bindings(const c4c::TargetProfile& target_profile,
             arg_index < call->arg_abi.size()
                 ? call_arg_destination_register_name(target_profile, call->arg_abi[arg_index], arg_index)
                 : std::nullopt;
+        const auto destination_stack_offset =
+            call_arg_destination_stack_offset_bytes(target_profile, *call, arg_index);
         append_prepared_abi_binding(function_locations,
                                     PreparedMovePhase::BeforeCall,
                                     block_index,
@@ -623,6 +653,7 @@ void append_prepared_call_abi_bindings(const c4c::TargetProfile& target_profile,
                                         .destination_storage_kind = destination_storage_kind,
                                         .destination_abi_index = arg_index,
                                         .destination_register_name = destination_register_name,
+                                        .destination_stack_offset_bytes = destination_stack_offset,
                                     });
       }
 
@@ -948,6 +979,31 @@ void append_consumer_move_resolution(const PreparedNameTables& names,
   return PreparedMoveStorageKind::None;
 }
 
+[[nodiscard]] std::optional<std::size_t> call_arg_destination_stack_offset_bytes(
+    const c4c::TargetProfile& target_profile,
+    const bir::CallInst& call,
+    std::size_t arg_index) {
+  if (target_profile.arch != c4c::TargetArch::X86_64 || arg_index >= call.arg_abi.size() ||
+      call_arg_storage_kind(call, arg_index) != PreparedMoveStorageKind::StackSlot) {
+    return std::nullopt;
+  }
+
+  std::size_t next_offset_bytes = 0;
+  for (std::size_t candidate_index = 0; candidate_index < call.arg_abi.size(); ++candidate_index) {
+    if (call_arg_storage_kind(call, candidate_index) != PreparedMoveStorageKind::StackSlot) {
+      continue;
+    }
+    const auto& abi = call.arg_abi[candidate_index];
+    next_offset_bytes =
+        align_up(next_offset_bytes, call_stack_argument_alignment_bytes(abi));
+    if (candidate_index == arg_index) {
+      return next_offset_bytes;
+    }
+    next_offset_bytes += call_stack_argument_size_bytes(abi);
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] PreparedMoveStorageKind call_result_storage_kind(const bir::CallInst& call) {
   if (!call.result.has_value() || !call.result_abi.has_value() || call.result->kind != bir::Value::Kind::Named) {
     return PreparedMoveStorageKind::None;
@@ -1007,6 +1063,8 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
                                                                                        call->arg_abi[arg_index],
                                                                                        arg_index)
                                                    : std::nullopt;
+        const auto destination_stack_offset =
+            call_arg_destination_stack_offset_bytes(target_profile, *call, arg_index);
         if (source_kind == PreparedMoveStorageKind::Register &&
             consumed_kind == PreparedMoveStorageKind::Register && source->assigned_register.has_value() &&
             destination_register_name == std::optional<std::string>{source->assigned_register->register_name}) {
@@ -1020,6 +1078,7 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
                                       consumed_kind,
                                       arg_index,
                                       destination_register_name,
+                                      destination_stack_offset,
                                       block_index,
                                       instruction_index,
                                       false,
@@ -1068,6 +1127,7 @@ void append_call_result_move_resolution(const PreparedNameTables& names,
                                     consumed_kind,
                                     std::nullopt,
                                     destination_register_name,
+                                    std::nullopt,
                                     block_index,
                                     instruction_index,
                                     false,
@@ -1118,6 +1178,7 @@ void append_return_move_resolution(const PreparedNameTables& names,
                                   consumed_kind,
                                   std::nullopt,
                                   destination_register_name,
+                                  std::nullopt,
                                   block_index,
                                   block.insts.size(),
                                   false,
