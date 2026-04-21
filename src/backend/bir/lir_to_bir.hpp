@@ -987,6 +987,7 @@ class BirFunctionLowerer {
       bir::TypeKind value_type,
       const TypeDeclMap& type_decls,
       const PointerAddressMap& pointer_value_addresses,
+      PointerAddressMap* loaded_pointer_value_addresses,
       std::vector<bir::Inst>* lowered_insts);
   bool ensure_local_scratch_slot(std::string_view slot_name,
                                  bir::TypeKind type,

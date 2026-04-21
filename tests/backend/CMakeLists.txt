@@ -836,6 +836,16 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_pointer_param_loaded_char_deref_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/pointer_param_loaded_char_deref.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/pointer_param_loaded_char_deref_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @load_first(ptr %p.s) -> i32 {|%t0 = bir.load_local ptr %t0.addr, addr %p.s|%t1 = bir.load_local i8 %t1.addr, addr %t0|%t2 = bir.sext i8 %t1 to i32|bir.ret i32 %t2|bir.func @main() -> i32 {|bir.store_local %lv.p, ptr %t0|%t1 = bir.call i32 load_first(ptr %lv.p)|%t2 = bir.sub i32 %t1, 104|bir.ret i32 %t2"
+  FORBIDDEN_SNIPPETS "latest function failure|failed in load local-memory semantic family|define i32 @load_first"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_pointer_return_fn_param_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/pointer_return_fn_param.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu

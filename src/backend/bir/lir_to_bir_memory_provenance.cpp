@@ -699,7 +699,13 @@ std::optional<bool> BirFunctionLowerer::try_lower_pointer_provenance_load(
     const PointerAddressMap& pointer_value_addresses,
     std::vector<bir::Inst>* lowered_insts) {
   if (const auto addressed_load = try_lower_addressed_pointer_load(
-          result_name, ptr_name, value_type, type_decls, pointer_value_addresses, lowered_insts);
+          result_name,
+          ptr_name,
+          value_type,
+          type_decls,
+          pointer_value_addresses,
+          &pointer_value_addresses_,
+          lowered_insts);
       addressed_load.has_value()) {
     return addressed_load;
   }
@@ -737,6 +743,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_load(
     bir::TypeKind value_type,
     const TypeDeclMap& type_decls,
     const PointerAddressMap& pointer_value_addresses,
+    PointerAddressMap* loaded_pointer_value_addresses,
     std::vector<bir::Inst>* lowered_insts) {
   const auto addressed_ptr_it = pointer_value_addresses.find(std::string(ptr_name));
   if (addressed_ptr_it == pointer_value_addresses.end()) {
@@ -774,6 +781,15 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_load(
               .align_bytes = slot_size,
           },
   });
+  if (value_type == bir::TypeKind::Ptr && loaded_pointer_value_addresses != nullptr) {
+    // The loaded value is itself a runtime pointer and must remain directly
+    // addressable for a follow-on `load` without forcing an intervening GEP.
+    (*loaded_pointer_value_addresses)[std::string(result_name)] = PointerAddress{
+        .base_value = bir::Value::named(bir::TypeKind::Ptr, std::string(result_name)),
+        .value_type = bir::TypeKind::Void,
+        .byte_offset = 0,
+    };
+  }
   return true;
 }
 
