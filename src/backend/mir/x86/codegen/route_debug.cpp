@@ -1207,6 +1207,17 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
         .join_transfer_count =
             function_control_flow == nullptr ? 0 : function_control_flow->join_transfers.size(),
     };
+    const auto focused_bir_blocks =
+        focus.block.has_value() ? collect_focused_bir_block_labels(*function, focus.block)
+                                : std::vector<std::string_view>{};
+    const auto focused_prepared_blocks =
+        focus.block.has_value()
+            ? collect_focused_prepared_block_labels(module.names, function_control_flow, focus.block)
+            : std::vector<std::string_view>{};
+    if (focus.block.has_value()) {
+      focused_bir_block_count += focused_bir_blocks.size();
+      focused_prepared_block_count += focused_prepared_blocks.size();
+    }
 
     if (verbosity == RouteDebugVerbosity::Summary) {
       out << "\nfunction " << report.function_name << "\n";
@@ -1214,6 +1225,10 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
       out << "- prepared blocks: " << report.prepared_block_count << "\n";
       out << "- branch conditions: " << report.branch_condition_count << "\n";
       out << "- join transfers: " << report.join_transfer_count << "\n";
+      if (focus.block.has_value()) {
+        out << "- focused bir blocks: " << focused_bir_blocks.size() << "\n";
+        out << "- focused prepared blocks: " << focused_prepared_blocks.size() << "\n";
+      }
     } else {
       out << "\nfunction " << report.function_name << "\n";
       out << "  facts: bir_blocks=" << report.bir_block_count
@@ -1221,12 +1236,6 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           << ", branch_conditions=" << report.branch_condition_count
           << ", join_transfers=" << report.join_transfer_count << "\n";
       if (focus.block.has_value()) {
-        const auto focused_bir_blocks =
-            collect_focused_bir_block_labels(*function, focus.block);
-        const auto focused_prepared_blocks = collect_focused_prepared_block_labels(
-            module.names, function_control_flow, focus.block);
-        focused_bir_block_count += focused_bir_blocks.size();
-        focused_prepared_block_count += focused_prepared_blocks.size();
         out << "  focused bir blocks: " << focused_bir_blocks.size() << "\n";
         for (const auto label : focused_bir_blocks) {
           append_indented_line(out, 2, std::string("- ") + std::string(label));

@@ -336,6 +336,22 @@ set_tests_properties(backend_cli_trace_mir_focus_function_filters_00204 PROPERTI
 )
 
 add_test(
+  NAME backend_cli_dump_mir_focus_block_entry_00204
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-mir
+          "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-block;entry"
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|focus block: entry|module-level bounded multi-function lane: rejected|- module-level final rejection: bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support|function stdarg|- focused bir blocks: 1|- focused prepared blocks: 1|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|focused functions matched: 1|focused bir blocks matched: 1|focused prepared blocks matched: 1"
+          "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_mir_focus_block_entry_00204 PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
   NAME backend_cli_trace_mir_focus_block_entry_00204
   COMMAND "${CMAKE_COMMAND}"
           -DCOMPILER=$<TARGET_FILE:c4cll>

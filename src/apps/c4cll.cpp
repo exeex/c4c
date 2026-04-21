@@ -240,7 +240,7 @@ void print_usage(const char *argv0) {
       << "  --dump-mir                 Print concise backend MIR-route summary\n"
       << "  --trace-mir                Print backend MIR-route trace\n"
       << "  --mir-focus-function <fn>  Limit MIR dump/trace output to one function\n"
-      << "  --mir-focus-block <label>  Limit --trace-mir block listings to one block inside the focused function\n"
+      << "  --mir-focus-block <label>  Limit MIR dump/trace block reporting to one block inside the focused function\n"
       << "\n"
       << "Parser debug:\n"
       << "  --parser-debug             Enable general parser debug output\n"
@@ -506,8 +506,8 @@ int main(int argc, char **argv) {
       std::cerr << "--mir-focus-function requires --dump-mir or --trace-mir\n";
       return 2;
     }
-    if (mir_focus_block.has_value() && !trace_mir) {
-      std::cerr << "--mir-focus-block requires --trace-mir\n";
+    if (mir_focus_block.has_value() && !(dump_mir || trace_mir)) {
+      std::cerr << "--mir-focus-block requires --dump-mir or --trace-mir\n";
       return 2;
     }
     if (mir_focus_block.has_value() && !mir_focus_function.has_value()) {
