@@ -366,6 +366,70 @@ set_tests_properties(backend_cli_dump_prepared_bir_focus_function_filters_00204 
 )
 
 add_test(
+  NAME backend_cli_dump_bir_focus_block_entry_00204
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-bir
+          "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-block;entry"
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=focus function: stdarg|focus block: entry|focused functions matched: 1|focused bir blocks matched: 1|bir.func @stdarg() -> void {|entry:|bir.call i32 printf(ptr @.str48)|bir.call void myprintf(ptr @.str49"
+          "-DFORBIDDEN_SNIPPETS=if.then:|if.end:|bir.func @myprintf|bir.func @addlm123"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_bir_focus_block_entry_00204 PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_dump_bir_focus_block_missing_00204
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-bir
+          "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-block;missing.block"
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=focus function: stdarg|focus block: missing.block|focused functions matched: 1|focused bir blocks matched: 0|bir.func @stdarg() -> void {"
+          "-DFORBIDDEN_SNIPPETS=entry:|if.then:|if.end:|bir.func @myprintf|bir.func @addlm123"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_bir_focus_block_missing_00204 PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_dump_prepared_bir_focus_block_entry_00204
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-prepared-bir
+          "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-block;entry"
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=focus function: stdarg|focus block: entry|focused functions matched: 1|focused bir blocks matched: 1|focused prepared blocks matched: 1|prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|prepared.func @stdarg|  block entry terminator=return|access block=entry"
+          "-DFORBIDDEN_SNIPPETS=prepared.func @myprintf|  block if.then|  block if.end|access block=if.then|access block=if.end"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_prepared_bir_focus_block_entry_00204 PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_dump_prepared_bir_focus_block_missing_00204
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-prepared-bir
+          "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-block;missing.block"
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=focus function: stdarg|focus block: missing.block|focused functions matched: 1|focused bir blocks matched: 0|focused prepared blocks matched: 0|prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|prepared.func @stdarg"
+          "-DFORBIDDEN_SNIPPETS=entry:|  block entry|access block=entry|prepared.func @myprintf"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_prepared_bir_focus_block_missing_00204 PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
   NAME backend_cli_dump_mir_focus_function_filters_00204
   COMMAND "${CMAKE_COMMAND}"
           -DCOMPILER=$<TARGET_FILE:c4cll>
