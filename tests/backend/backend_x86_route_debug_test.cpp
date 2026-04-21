@@ -1571,6 +1571,9 @@ int main() {
                        "- final rejection: single-block floating aggregate call helper recognized the function, but the prepared aggregate-helper shape is outside the current x86 support",
                        "single-block floating aggregate helper summary final rejection") ||
       !expect_contains(single_block_floating_aggregate_call_helper_miss_summary,
+                       "- final facts: prepared floating-aggregate helper facts: aggregate pointer params=1, byval aggregate params=1, floating lane loads=1, floating widening casts=1, direct variadic extern calls=1, floating variadic call args=1",
+                       "single-block floating aggregate helper summary final facts") ||
+      !expect_contains(single_block_floating_aggregate_call_helper_miss_summary,
                        "- next inspect: inspect the current x86 floating aggregate helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "single-block floating aggregate helper summary next inspect") ||
       !expect_contains(single_block_floating_aggregate_call_helper_miss_trace,
@@ -1580,11 +1583,17 @@ int main() {
                        "final detail: x86 backend emitter only supports single-block floating aggregate helpers when those aggregate arguments already reduce to the current local-slot or scalar helper surfaces; this helper still forwards floating aggregate lanes through byval/pointer wrappers into a direct variadic extern call",
                        "single-block floating aggregate helper trace detail") ||
       !expect_contains(single_block_floating_aggregate_call_helper_miss_trace,
+                       "final facts: prepared floating-aggregate helper facts: aggregate pointer params=1, byval aggregate params=1, floating lane loads=1, floating widening casts=1, direct variadic extern calls=1, floating variadic call args=1",
+                       "single-block floating aggregate helper trace final facts") ||
+      !expect_contains(single_block_floating_aggregate_call_helper_miss_trace,
                        "next inspect: inspect the current x86 floating aggregate helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "single-block floating aggregate helper trace next inspect") ||
       !expect_contains(single_block_floating_aggregate_pointer_wrapper_miss_summary,
                        "- final rejection: single-block floating aggregate call helper recognized the function, but the prepared aggregate-helper shape is outside the current x86 support",
                        "single-block floating aggregate pointer wrapper summary final rejection") ||
+      !expect_contains(single_block_floating_aggregate_pointer_wrapper_miss_summary,
+                       "- final facts: prepared floating-aggregate helper facts: aggregate pointer params=1, byval aggregate params=0, floating lane loads=4, floating widening casts=0, direct variadic extern calls=1, floating variadic call args=4",
+                       "single-block floating aggregate pointer wrapper summary final facts") ||
       !expect_contains(single_block_floating_aggregate_pointer_wrapper_miss_summary,
                        "- next inspect: inspect the current x86 floating aggregate helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "single-block floating aggregate pointer wrapper summary next inspect") ||
@@ -1594,6 +1603,9 @@ int main() {
       !expect_contains(single_block_floating_aggregate_pointer_wrapper_miss_trace,
                        "final detail: x86 backend emitter only supports single-block floating aggregate helpers when those aggregate arguments already reduce to the current local-slot or scalar helper surfaces; this helper still forwards floating aggregate lanes through byval/pointer wrappers into a direct variadic extern call",
                        "single-block floating aggregate pointer wrapper trace detail") ||
+      !expect_contains(single_block_floating_aggregate_pointer_wrapper_miss_trace,
+                       "final facts: prepared floating-aggregate helper facts: aggregate pointer params=1, byval aggregate params=0, floating lane loads=4, floating widening casts=0, direct variadic extern calls=1, floating variadic call args=4",
+                       "single-block floating aggregate pointer wrapper trace final facts") ||
       !expect_contains(single_block_floating_aggregate_pointer_wrapper_miss_trace,
                        "next inspect: inspect the current x86 floating aggregate helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "single-block floating aggregate pointer wrapper trace next inspect") ||

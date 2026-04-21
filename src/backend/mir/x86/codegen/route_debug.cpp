@@ -79,6 +79,15 @@ struct SingleBlockAggregateForwardingWrapperFacts {
   std::size_t forwarded_aggregate_arg_count = 0;
 };
 
+struct SingleBlockFloatingAggregateCallHelperFacts {
+  std::size_t aggregate_pointer_param_count = 0;
+  std::size_t byval_aggregate_param_count = 0;
+  std::size_t floating_lane_load_count = 0;
+  std::size_t floating_widening_cast_count = 0;
+  std::size_t direct_variadic_extern_call_count = 0;
+  std::size_t floating_variadic_arg_count = 0;
+};
+
 struct SingleBlockSameModuleScalarCallWrapperFacts {
   std::size_t local_slot_reload_count = 0;
   std::size_t scalar_same_module_helper_call_count = 0;
@@ -241,6 +250,19 @@ std::string summarize_single_block_aggregate_forwarding_wrapper_facts(
                                    "forwarded aggregate arguments"));
   }
   return join_fact_labels(labels);
+}
+
+std::string render_single_block_floating_aggregate_call_helper_facts(
+    const SingleBlockFloatingAggregateCallHelperFacts& facts) {
+  std::ostringstream out;
+  out << "prepared floating-aggregate helper facts: aggregate pointer params="
+      << facts.aggregate_pointer_param_count
+      << ", byval aggregate params=" << facts.byval_aggregate_param_count
+      << ", floating lane loads=" << facts.floating_lane_load_count
+      << ", floating widening casts=" << facts.floating_widening_cast_count
+      << ", direct variadic extern calls=" << facts.direct_variadic_extern_call_count
+      << ", floating variadic call args=" << facts.floating_variadic_arg_count;
+  return out.str();
 }
 
 std::string render_single_block_same_module_scalar_call_wrapper_facts(
@@ -789,7 +811,7 @@ std::optional<std::string> build_single_block_i64_immediate_return_helper_lane_d
          std::string(operation) + " immediate return";
 }
 
-std::optional<std::string> build_single_block_floating_aggregate_call_helper_lane_detail(
+std::optional<FunctionRouteAttempt> build_single_block_floating_aggregate_call_helper_lane_attempt(
     const c4c::backend::bir::Function& function) {
   if (function.is_declaration || function.return_type != c4c::backend::bir::TypeKind::Void ||
       function.blocks.size() != 1) {
@@ -802,18 +824,25 @@ std::optional<std::string> build_single_block_floating_aggregate_call_helper_lan
     return std::nullopt;
   }
 
-  bool saw_direct_variadic_extern_call = false;
+  const auto is_floating_lane = [](c4c::backend::bir::TypeKind type) {
+    return type == c4c::backend::bir::TypeKind::F32 ||
+           type == c4c::backend::bir::TypeKind::F64 ||
+           type == c4c::backend::bir::TypeKind::F128;
+  };
+
+  SingleBlockFloatingAggregateCallHelperFacts facts;
   bool saw_floating_aggregate_param = false;
-  bool saw_floating_aggregate_call_arg = false;
-  bool saw_pointer_aggregate_param = false;
   std::unordered_set<std::string_view> pointer_param_names;
 
   for (const auto& param : function.params) {
     if (param.type != c4c::backend::bir::TypeKind::Ptr) {
       continue;
     }
-    saw_pointer_aggregate_param = true;
+    ++facts.aggregate_pointer_param_count;
     pointer_param_names.insert(param.name);
+    if (param.is_byval) {
+      ++facts.byval_aggregate_param_count;
+    }
     if (param.abi.has_value() &&
         (param.abi->primary_class == c4c::backend::bir::AbiValueClass::Sse ||
          param.abi->secondary_class == c4c::backend::bir::AbiValueClass::Sse ||
@@ -826,42 +855,54 @@ std::optional<std::string> build_single_block_floating_aggregate_call_helper_lan
   for (const auto& inst : entry.insts) {
     if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
         load != nullptr && load->address.has_value() &&
-        load->address->base_kind == c4c::backend::bir::MemoryAddress::BaseKind::PointerValue &&
         pointer_param_names.find(load->address->base_name) != pointer_param_names.end() &&
-        (load->result.type == c4c::backend::bir::TypeKind::F32 ||
-         load->result.type == c4c::backend::bir::TypeKind::F64 ||
-         load->result.type == c4c::backend::bir::TypeKind::F128)) {
+        is_floating_lane(load->result.type)) {
+      ++facts.floating_lane_load_count;
       saw_floating_aggregate_param = true;
+    }
+    if (const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&inst);
+        cast != nullptr &&
+        cast->opcode == c4c::backend::bir::CastOpcode::FPExt &&
+        is_floating_lane(cast->operand.type) && is_floating_lane(cast->result.type) &&
+        cast->operand.type != cast->result.type) {
+      ++facts.floating_widening_cast_count;
     }
     const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
     if (call == nullptr || call->is_indirect || call->callee_value.has_value()) {
       continue;
     }
     if (call->is_variadic && call->callee.rfind("llvm.", 0) != 0) {
-      saw_direct_variadic_extern_call = true;
+      ++facts.direct_variadic_extern_call_count;
       for (const auto arg_type : call->arg_types) {
         if (arg_type == c4c::backend::bir::TypeKind::F64 ||
             arg_type == c4c::backend::bir::TypeKind::F128) {
-          saw_floating_aggregate_call_arg = true;
+          ++facts.floating_variadic_arg_count;
         }
       }
     }
   }
 
-  if (!saw_floating_aggregate_param && saw_pointer_aggregate_param &&
-      saw_floating_aggregate_call_arg) {
+  if (!saw_floating_aggregate_param && facts.aggregate_pointer_param_count != 0 &&
+      facts.floating_variadic_arg_count != 0) {
     saw_floating_aggregate_param = true;
   }
 
-  if (!saw_direct_variadic_extern_call || !saw_pointer_aggregate_param ||
-      !saw_floating_aggregate_param || !saw_floating_aggregate_call_arg) {
+  if (facts.direct_variadic_extern_call_count == 0 || facts.aggregate_pointer_param_count == 0 ||
+      !saw_floating_aggregate_param || facts.floating_variadic_arg_count == 0) {
     return std::nullopt;
   }
 
-  return "x86 backend emitter only supports single-block floating aggregate helpers when those "
-         "aggregate arguments already reduce to the current local-slot or scalar helper surfaces; "
-         "this helper still forwards floating aggregate lanes through byval/pointer wrappers into "
-         "a direct variadic extern call";
+  std::string detail =
+      "x86 backend emitter only supports single-block floating aggregate helpers when those "
+      "aggregate arguments already reduce to the current local-slot or scalar helper surfaces; "
+      "this helper still forwards floating aggregate lanes through byval/pointer wrappers into a "
+      "direct variadic extern call";
+  return FunctionRouteAttempt{
+      .lane_name = "single-block-floating-aggregate-call-helper",
+      .matched = false,
+      .detail = std::move(detail),
+      .facts = render_single_block_floating_aggregate_call_helper_facts(facts),
+  };
 }
 
 std::optional<std::string> build_single_block_floating_aggregate_sret_copyout_helper_lane_detail(
@@ -1775,14 +1816,10 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           .detail = std::move(single_block_floating_aggregate_sret_copyout_helper_detail),
       });
     }
-    if (const auto single_block_floating_aggregate_call_helper_detail =
-            build_single_block_floating_aggregate_call_helper_lane_detail(*function);
-        single_block_floating_aggregate_call_helper_detail.has_value()) {
-      report.attempts.push_back(FunctionRouteAttempt{
-          .lane_name = "single-block-floating-aggregate-call-helper",
-          .matched = false,
-          .detail = std::move(single_block_floating_aggregate_call_helper_detail),
-      });
+    if (const auto single_block_floating_aggregate_call_helper_attempt =
+            build_single_block_floating_aggregate_call_helper_lane_attempt(*function);
+        single_block_floating_aggregate_call_helper_attempt.has_value()) {
+      report.attempts.push_back(std::move(*single_block_floating_aggregate_call_helper_attempt));
     }
     if (const auto single_block_aggregate_forwarding_wrapper_attempt =
             build_single_block_aggregate_forwarding_wrapper_lane_attempt(defined_functions,
