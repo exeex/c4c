@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/67_backend_trace_and_error_contract_for_x86_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Continue Until Backend Handoff Debugging Stops Requiring Local Instrumentation
-Plan Review Counter: 6 / 6
+Current Step ID: 3.1
+Current Step Title: Isolate The Next Remaining Meaningful Rejection Family
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished

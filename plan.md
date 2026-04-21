@@ -274,20 +274,109 @@ Completion check:
 - the current debug surfaces behave as one coherent ladder on the motivating
   case and nearby backend coverage
 
-## Step 3: Continue Until Backend Handoff Debugging Stops Requiring Local Instrumentation
+## Step 3: Retire The Remaining Local-Instrumentation Gaps
 
-Goal: keep repeating Step 1 -> 2.4 until x86 handoff debugging no longer
-depends on ad hoc local logging or matcher poking just to learn where a route
-died.
+Goal: finish the remaining observability work in bounded packets so x86
+handoff debugging no longer depends on ad hoc local logging or matcher poking
+just to learn where a route died.
 
 Actions:
 
-- keep idea 67 active while meaningful x86 route failures still require local
-  instrumentation to explain
-- call lifecycle review again if the next observability gap becomes oversized
-  or a separate initiative emerges
+- keep idea 67 active only while a meaningful x86 route failure still requires
+  local instrumentation to explain
+- work one bounded `00204.c` rejection family at a time instead of treating
+  the remainder as one open-ended packet
+- call lifecycle review again if the remaining observability work stops fitting
+  the substeps below or a separate initiative emerges
 
 Completion check:
 
 - backend handoff debugging is readable, actionable, and stable enough that
   `00204.c`-scale failures can be diagnosed from the supported CLI surface
+
+### Step 3.1: Isolate The Next Remaining Meaningful Rejection Family
+
+Goal: choose one still-opaque `00204.c` rejection family whose final
+meaningful failure cannot yet be understood from the supported CLI surface.
+
+Primary targets:
+
+- the next focused `00204.c` helper, wrapper, or route family that still ends
+  at a generic unsupported or per-function miss
+- the nearest reduced route-debug or CLI fixture that can lock the same family
+
+Actions:
+
+- rerun the current focused `--dump-mir` / `--trace-mir` ladder on the next
+  candidate family named in `todo.md` or discovered from `00204.c`
+- confirm exactly which missing fact, unsupported shape, or route class still
+  requires code reading or local instrumentation to explain
+- record the bounded family and proof target in `todo.md` before code changes
+
+Completion check:
+
+- the next executor packet names one bounded rejection family and the stable
+  CLI symptom it must replace
+
+### Step 3.2: Surface A Stable Final-Rejection Contract For That Family
+
+Goal: give the chosen family the same backend-owned final-rejection treatment
+as the earlier Step 2.2 packets so its failure is readable without local
+instrumentation.
+
+Primary targets:
+
+- `src/backend/mir/x86/`
+- backend route/trace helpers for the chosen family
+- the nearest reduced route-debug coverage and focused `00204.c` CLI proof
+
+Actions:
+
+- add a lane-specific final rejection that names the blocking prepared concept
+  or unsupported shape in plain language
+- include stable structured final facts and next-inspect guidance when those
+  facts materially reduce search space
+- keep the packet diagnostic-only unless a real backend capability change is
+  required to expose the observability contract honestly
+
+Completion check:
+
+- the chosen family no longer collapses into a generic miss or opaque
+  unsupported summary when exercised through stable CLI and reduced tests
+
+### Step 3.3: Refresh Large-Case Proof For The Updated Family
+
+Goal: show the new family-specific contract works on the motivating large case
+instead of only in a reduced fixture.
+
+Actions:
+
+- rerun the focused `00204.c` proof with the supported CLI surface that now
+  carries the family-specific contract
+- verify the output explains why the family failed and what to inspect next
+  without temporary logging
+- capture any newly exposed remaining family in `todo.md` instead of widening
+  the same packet
+
+Completion check:
+
+- the updated `00204.c` lane is diagnosable from supported CLI output alone
+
+### Step 3.4: Decide Whether Idea 67 Still Needs Another Packet
+
+Goal: keep the runbook honest once one remaining family is surfaced.
+
+Actions:
+
+- if another meaningful `00204.c` rejection family still requires local
+  instrumentation, return the next packet to Step 3.1 with that family named
+- if backend handoff debugging no longer needs local instrumentation, hand the
+  plan back for closure or completion review instead of inventing more packets
+- if the next work item is not backend observability or error-contract work,
+  record a separate initiative under `ideas/open/` rather than stretching idea
+  67
+
+Completion check:
+
+- the active next packet is either another bounded Step 3.1 family or a
+  lifecycle close/switch decision
