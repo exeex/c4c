@@ -76,6 +76,12 @@ std::optional<std::string> call_arg_destination_register_name(
     const c4c::TargetProfile& target_profile,
     const bir::CallArgAbiInfo& abi,
     std::size_t arg_index) {
+  if (target_profile.arch == c4c::TargetArch::X86_64 &&
+      abi.type == bir::TypeKind::Ptr &&
+      abi.byval_copy &&
+      !abi.sret_pointer) {
+    return indexed_register_name(kX86GeneralAbiRegisters, arg_index);
+  }
   if (!abi.passed_in_register) {
     return std::nullopt;
   }

@@ -970,27 +970,152 @@ find_prepared_bounded_multi_defined_named_value_home(
   return c4c::backend::prepare::find_prepared_value_home(module.names, function_locations, value_name);
 }
 
-inline std::optional<std::size_t>
-find_prepared_bounded_multi_defined_named_frame_offset_if_supported(
+inline std::optional<std::size_t> find_prepared_authoritative_named_stack_offset_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
-    const c4c::backend::prepare::PreparedBirModule& module,
-    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
-    std::string_view value_name) {
-  if (value_name.empty()) {
+    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    c4c::FunctionNameId function_name,
+    std::string_view value_name,
+    std::unordered_set<std::string_view>* visited_names = nullptr) {
+  if (prepared_names == nullptr || value_name.empty()) {
     return std::nullopt;
   }
 
-  const auto* home = find_prepared_bounded_multi_defined_named_value_home(
-      module, function_locations, value_name);
-  if (home == nullptr || home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
-      !home->slot_id.has_value()) {
+  std::unordered_set<std::string_view> local_visited_names;
+  if (visited_names == nullptr) {
+    visited_names = &local_visited_names;
+  }
+  if (!visited_names->insert(value_name).second) {
     return std::nullopt;
   }
-  const auto frame_slot_it = local_layout.frame_slot_offsets.find(*home->slot_id);
-  if (frame_slot_it == local_layout.frame_slot_offsets.end()) {
+
+  if (const auto local_slot_it = local_layout.offsets.find(value_name);
+      local_slot_it != local_layout.offsets.end()) {
+    return local_slot_it->second;
+  }
+  if (!c4c::backend::prepare::parse_prepared_slot_slice_name(value_name).has_value()) {
+    std::optional<std::size_t> best_frame_offset;
+    std::optional<std::size_t> best_slice_offset;
+    for (const auto& [slot_name, slot_offset] : local_layout.offsets) {
+      const auto candidate_slice =
+          c4c::backend::prepare::parse_prepared_slot_slice_name(slot_name);
+      if (!candidate_slice.has_value() || candidate_slice->first != value_name ||
+          candidate_slice->second != 0) {
+        continue;
+      }
+      if (best_slice_offset.has_value() && candidate_slice->second >= *best_slice_offset) {
+        continue;
+      }
+      best_slice_offset = candidate_slice->second;
+      best_frame_offset = slot_offset;
+    }
+    if (best_frame_offset.has_value()) {
+      return best_frame_offset;
+    }
+  }
+
+  if (stack_layout != nullptr && function_name != c4c::kInvalidFunctionName) {
+    if (const auto stack_offset =
+            c4c::backend::prepare::find_prepared_stack_frame_offset_by_name(
+                *prepared_names, *stack_layout, function_name, value_name);
+        stack_offset.has_value()) {
+      return stack_offset;
+    }
+  }
+
+  if (const auto* home =
+          function_locations == nullptr
+              ? nullptr
+              : c4c::backend::prepare::find_prepared_value_home(
+                    *prepared_names, *function_locations, value_name);
+      home != nullptr &&
+      home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+      home->slot_id.has_value()) {
+    const auto frame_slot_it = local_layout.frame_slot_offsets.find(*home->slot_id);
+    if (frame_slot_it != local_layout.frame_slot_offsets.end()) {
+      return frame_slot_it->second;
+    }
+  }
+
+  if (function_addressing == nullptr) {
     return std::nullopt;
   }
-  return frame_slot_it->second;
+  const auto* prepared_access = c4c::backend::prepare::find_prepared_memory_access_by_result_name(
+      *prepared_names, *function_addressing, value_name);
+  if (prepared_access == nullptr) {
+    return std::nullopt;
+  }
+
+  switch (prepared_access->address.base_kind) {
+    case c4c::backend::prepare::PreparedAddressBaseKind::FrameSlot: {
+      if (!prepared_access->address.frame_slot_id.has_value()) {
+        return std::nullopt;
+      }
+      const auto frame_slot_it =
+          local_layout.frame_slot_offsets.find(*prepared_access->address.frame_slot_id);
+      if (frame_slot_it == local_layout.frame_slot_offsets.end()) {
+        return std::nullopt;
+      }
+      const auto signed_offset =
+          static_cast<std::int64_t>(frame_slot_it->second) + prepared_access->address.byte_offset;
+      if (signed_offset < 0) {
+        return std::nullopt;
+      }
+      return static_cast<std::size_t>(signed_offset);
+    }
+    case c4c::backend::prepare::PreparedAddressBaseKind::PointerValue: {
+      if (!prepared_access->address.pointer_value_name.has_value() ||
+          !prepared_access->address.can_use_base_plus_offset) {
+        return std::nullopt;
+      }
+      const auto pointer_name = c4c::backend::prepare::prepared_value_name(
+          *prepared_names, *prepared_access->address.pointer_value_name);
+      if (pointer_name.empty()) {
+        return std::nullopt;
+      }
+      const auto base_offset = find_prepared_authoritative_named_stack_offset_if_supported(
+          local_layout,
+          stack_layout,
+          function_addressing,
+          prepared_names,
+          function_locations,
+          function_name,
+          pointer_name,
+          visited_names);
+      if (!base_offset.has_value()) {
+        return std::nullopt;
+      }
+      const auto signed_offset =
+          static_cast<std::int64_t>(*base_offset) + prepared_access->address.byte_offset;
+      if (signed_offset < 0) {
+        return std::nullopt;
+      }
+      return static_cast<std::size_t>(signed_offset);
+    }
+    default:
+      return std::nullopt;
+  }
+}
+
+inline std::optional<std::size_t>
+find_prepared_bounded_multi_defined_named_frame_offset_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    c4c::FunctionNameId function_name,
+    std::string_view value_name) {
+  return find_prepared_authoritative_named_stack_offset_if_supported(
+      local_layout,
+      stack_layout,
+      function_addressing,
+      &module.names,
+      &function_locations,
+      function_name,
+      value_name);
 }
 
 inline bool finalize_prepared_bounded_multi_defined_call_result_if_supported(
@@ -1185,6 +1310,8 @@ inline bool append_prepared_bounded_multi_defined_call_argument_if_supported(
     std::size_t instruction_index,
     const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::FunctionNameId function_name,
     const PreparedModuleLocalSlotLayout& local_layout,
     const std::optional<PreparedBoundedMultiDefinedCurrentI32Carrier>& current_i32,
     const std::function<bool(std::string_view)>& has_string_constant,
@@ -1225,6 +1352,18 @@ inline bool append_prepared_bounded_multi_defined_call_argument_if_supported(
       return true;
     }
 
+    const auto frame_offset = find_prepared_bounded_multi_defined_named_frame_offset_if_supported(
+        local_layout, &module.stack_layout, function_addressing, module, function_locations,
+        function_name, arg.name);
+    if (frame_offset.has_value()) {
+      *body += "    lea ";
+      *body += kArgRegs64[arg_index];
+      *body += ", ";
+      *body += render_prepared_stack_address_expr(*frame_offset + 8);
+      *body += "\n";
+      return true;
+    }
+
     const auto* home = find_prepared_bounded_multi_defined_named_value_home(
         module, function_locations, arg.name);
     if (home != nullptr &&
@@ -1249,17 +1388,7 @@ inline bool append_prepared_bounded_multi_defined_call_argument_if_supported(
       *body += "\n";
       return true;
     }
-    const auto frame_offset = find_prepared_bounded_multi_defined_named_frame_offset_if_supported(
-        local_layout, module, function_locations, arg.name);
-    if (!frame_offset.has_value()) {
-      return false;
-    }
-    *body += "    lea ";
-    *body += kArgRegs64[arg_index];
-    *body += ", ";
-    *body += render_prepared_stack_address_expr(*frame_offset);
-    *body += "\n";
-    return true;
+    return false;
   }
 
   if (arg_type != c4c::backend::bir::TypeKind::I32) {
@@ -1294,6 +1423,8 @@ inline std::optional<PreparedBoundedMultiDefinedCallLaneRender>
 render_prepared_bounded_multi_defined_call_lane_body_if_supported(
     const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::FunctionNameId function_name,
     const c4c::backend::bir::Function& candidate,
     const std::vector<const c4c::backend::bir::Function*>& defined_functions,
     const PreparedModuleLocalSlotLayout& local_layout,
@@ -1306,6 +1437,7 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
       .body = "    sub rsp, " + std::to_string(local_layout.frame_size + 8) + "\n",
   };
   std::optional<PreparedBoundedMultiDefinedCurrentI32Carrier> current_i32;
+  std::optional<std::string_view> current_i8;
 
   for (const auto& inst : candidate.blocks.front().insts) {
     if (const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst)) {
@@ -1346,9 +1478,9 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
       for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
         if (!append_prepared_bounded_multi_defined_call_argument_if_supported(
                 call->args[arg_index], call->arg_types[arg_index], arg_index,
-                instruction_index, module, function_locations, local_layout, current_i32,
-                has_string_constant, has_same_module_global, render_private_data_label,
-                render_asm_symbol_name, &rendered.used_string_names,
+                instruction_index, module, function_locations, function_addressing, function_name,
+                local_layout, current_i32, has_string_constant, has_same_module_global,
+                render_private_data_label, render_asm_symbol_name, &rendered.used_string_names,
                 &rendered.used_same_module_global_names, &rendered.body)) {
           return std::nullopt;
         }
@@ -1362,58 +1494,114 @@ render_prepared_bounded_multi_defined_call_lane_body_if_supported(
               *call, instruction_index, module, function_locations, &rendered.body, &current_i32)) {
         return std::nullopt;
       }
+      current_i8 = std::nullopt;
       continue;
     }
 
     if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
-      if (store->byte_offset != 0 || store->address.has_value() ||
-          store->value.type != c4c::backend::bir::TypeKind::I32) {
+      if (store->byte_offset != 0 || store->address.has_value()) {
         return std::nullopt;
       }
-      const auto memory = render_prepared_local_slot_memory_operand_if_supported(
-          local_layout, store->slot_name, 8, "DWORD");
-      if (!memory.has_value()) {
-        return std::nullopt;
-      }
-      if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate) {
-        rendered.body += "    mov " + *memory + ", " +
-                         std::to_string(static_cast<std::int32_t>(store->value.immediate)) +
-                         "\n";
+
+      if (store->value.type == c4c::backend::bir::TypeKind::I32) {
+        const auto memory = render_prepared_local_slot_memory_operand_if_supported(
+            local_layout, store->slot_name, 8, "DWORD");
+        if (!memory.has_value()) {
+          return std::nullopt;
+        }
+        if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+          rendered.body += "    mov " + *memory + ", " +
+                           std::to_string(static_cast<std::int32_t>(store->value.immediate)) +
+                           "\n";
+          current_i32 = std::nullopt;
+          current_i8 = std::nullopt;
+          continue;
+        }
+        if (store->value.kind != c4c::backend::bir::Value::Kind::Named) {
+          return std::nullopt;
+        }
+        const auto source =
+            select_prepared_bounded_multi_defined_named_i32_source_if_supported(
+                module, function_locations, current_i32, store->value.name);
+        if (!source.has_value() ||
+            !append_prepared_bounded_multi_defined_i32_move_into_memory_if_supported(
+                &rendered.body, *memory, *source)) {
+          return std::nullopt;
+        }
         current_i32 = std::nullopt;
+        current_i8 = std::nullopt;
         continue;
       }
-      if (store->value.kind != c4c::backend::bir::Value::Kind::Named) {
-        return std::nullopt;
+
+      if (store->value.type == c4c::backend::bir::TypeKind::I8) {
+        const auto memory = render_prepared_local_slot_memory_operand_if_supported(
+            local_layout, store->slot_name, 8, "BYTE");
+        if (!memory.has_value()) {
+          return std::nullopt;
+        }
+        const auto rendered_store = render_prepared_i8_store_to_memory_if_supported(
+            store->value,
+            current_i8,
+            *memory,
+            [](const c4c::backend::bir::Value& value,
+               const std::optional<std::string_view>& current_name) -> std::optional<std::string> {
+              if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+                return std::to_string(static_cast<std::int8_t>(value.immediate));
+              }
+              if (value.kind != c4c::backend::bir::Value::Kind::Named ||
+                  !current_name.has_value() || *current_name != value.name) {
+                return std::nullopt;
+              }
+              return "al";
+            });
+        if (!rendered_store.has_value()) {
+          return std::nullopt;
+        }
+        rendered.body += *rendered_store;
+        current_i32 = std::nullopt;
+        current_i8 = store->value.kind == c4c::backend::bir::Value::Kind::Named
+                         ? std::optional<std::string_view>(store->value.name)
+                         : std::nullopt;
+        continue;
       }
-      const auto source =
-          select_prepared_bounded_multi_defined_named_i32_source_if_supported(
-              module, function_locations, current_i32, store->value.name);
-      if (!source.has_value() ||
-          !append_prepared_bounded_multi_defined_i32_move_into_memory_if_supported(
-              &rendered.body, *memory, *source)) {
-        return std::nullopt;
-      }
-      current_i32 = std::nullopt;
-      continue;
+
+      return std::nullopt;
     }
 
     const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
-    if (load == nullptr || load->byte_offset != 0 || load->address.has_value() ||
-        load->result.type != c4c::backend::bir::TypeKind::I32) {
+    if (load == nullptr || load->byte_offset != 0 || load->address.has_value()) {
       return std::nullopt;
     }
-    const auto memory =
-        render_prepared_local_slot_memory_operand_if_supported(local_layout, load->slot_name, 8,
-                                                               "DWORD");
-    if (!memory.has_value()) {
-      return std::nullopt;
+
+    if (load->result.type == c4c::backend::bir::TypeKind::I32) {
+      const auto memory = render_prepared_local_slot_memory_operand_if_supported(
+          local_layout, load->slot_name, 8, "DWORD");
+      if (!memory.has_value()) {
+        return std::nullopt;
+      }
+      rendered.body += "    mov eax, " + *memory + "\n";
+      current_i32 = PreparedBoundedMultiDefinedCurrentI32Carrier{
+          .value_name = load->result.name,
+          .register_name = std::string("eax"),
+          .stack_operand = std::nullopt,
+      };
+      current_i8 = std::nullopt;
+      continue;
     }
-    rendered.body += "    mov eax, " + *memory + "\n";
-    current_i32 = PreparedBoundedMultiDefinedCurrentI32Carrier{
-        .value_name = load->result.name,
-        .register_name = std::string("eax"),
-        .stack_operand = std::nullopt,
-    };
+
+    if (load->result.type == c4c::backend::bir::TypeKind::I8) {
+      const auto memory = render_prepared_local_slot_memory_operand_if_supported(
+          local_layout, load->slot_name, 8, "BYTE");
+      if (!memory.has_value()) {
+        return std::nullopt;
+      }
+      rendered.body += "    mov al, " + *memory + "\n";
+      current_i32 = std::nullopt;
+      current_i8 = load->result.name;
+      continue;
+    }
+
+    return std::nullopt;
   }
 
   const auto& returned = *candidate.blocks.front().terminator.value;

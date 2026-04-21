@@ -6,6 +6,7 @@
 #include "../../shared/text_id_table.hpp"
 #include "../../target_profile.hpp"
 
+#include <charconv>
 #include <cstdlib>
 #include <cstddef>
 #include <cstdint>
@@ -196,6 +197,103 @@ struct PreparedStackLayout {
   std::size_t frame_alignment_bytes = 0;
 };
 
+[[nodiscard]] inline const PreparedFrameSlot* find_prepared_frame_slot(
+    const PreparedStackLayout& stack_layout,
+    PreparedObjectId object_id) {
+  for (const auto& slot : stack_layout.frame_slots) {
+    if (slot.object_id == object_id) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline std::optional<std::pair<std::string_view, std::size_t>>
+parse_prepared_slot_slice_name(std::string_view slot_name) {
+  const auto dot = slot_name.rfind('.');
+  if (dot == std::string_view::npos || dot + 1 >= slot_name.size()) {
+    return std::nullopt;
+  }
+
+  std::size_t slice_offset = 0;
+  const auto suffix = slot_name.substr(dot + 1);
+  const auto* begin = suffix.data();
+  const auto* end = begin + suffix.size();
+  const auto [ptr, ec] = std::from_chars(begin, end, slice_offset);
+  if (ec != std::errc{} || ptr != end) {
+    return std::nullopt;
+  }
+  return std::pair<std::string_view, std::size_t>{slot_name.substr(0, dot), slice_offset};
+}
+
+[[nodiscard]] inline std::optional<std::size_t> find_prepared_stack_frame_offset_by_name(
+    const PreparedNameTables& names,
+    const PreparedStackLayout& stack_layout,
+    FunctionNameId function_name,
+    std::string_view requested_name) {
+  if (requested_name.empty() || function_name == kInvalidFunctionName) {
+    return std::nullopt;
+  }
+
+  for (const auto& object : stack_layout.objects) {
+    if (object.function_name != function_name ||
+        prepared_stack_object_name(names, object) != requested_name) {
+      continue;
+    }
+    const auto* frame_slot = find_prepared_frame_slot(stack_layout, object.object_id);
+    if (frame_slot != nullptr) {
+      return frame_slot->offset_bytes;
+    }
+  }
+
+  const auto requested_slice = parse_prepared_slot_slice_name(requested_name);
+  std::optional<std::size_t> best_slice_offset;
+  std::optional<std::size_t> best_frame_offset;
+  for (const auto& object : stack_layout.objects) {
+    if (object.function_name != function_name || !object.slot_name.has_value()) {
+      continue;
+    }
+    const auto slot_name = prepared_slot_name(names, *object.slot_name);
+    const auto candidate_slice = parse_prepared_slot_slice_name(slot_name);
+    if (!candidate_slice.has_value()) {
+      continue;
+    }
+
+    std::optional<std::size_t> resolved_offset;
+    if (requested_slice.has_value()) {
+      if (candidate_slice->first != requested_slice->first ||
+          requested_slice->second < candidate_slice->second ||
+          requested_slice->second >= candidate_slice->second + object.size_bytes) {
+        continue;
+      }
+      const auto* frame_slot = find_prepared_frame_slot(stack_layout, object.object_id);
+      if (frame_slot == nullptr) {
+        continue;
+      }
+      resolved_offset =
+          frame_slot->offset_bytes + (requested_slice->second - candidate_slice->second);
+    } else {
+      if (candidate_slice->first != requested_name || candidate_slice->second != 0) {
+        continue;
+      }
+      const auto* frame_slot = find_prepared_frame_slot(stack_layout, object.object_id);
+      if (frame_slot == nullptr) {
+        continue;
+      }
+      resolved_offset = frame_slot->offset_bytes;
+    }
+
+    if (!resolved_offset.has_value() ||
+        (best_slice_offset.has_value() && candidate_slice->second >= *best_slice_offset)) {
+      continue;
+    }
+    best_slice_offset = candidate_slice->second;
+    best_frame_offset = *resolved_offset;
+  }
+
+  return best_frame_offset;
+}
+
 enum class PreparedAddressBaseKind {
   None,
   FrameSlot,
@@ -273,6 +371,28 @@ struct PreparedAddressing {
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] inline const PreparedMemoryAccess* find_prepared_memory_access_by_result_name(
+    const PreparedNameTables& names,
+    const PreparedAddressingFunction& function_addressing,
+    std::string_view result_value_name) {
+  const ValueNameId value_name_id = names.value_names.find(result_value_name);
+  if (value_name_id == kInvalidValueName) {
+    return nullptr;
+  }
+
+  const PreparedMemoryAccess* matched = nullptr;
+  for (const auto& access : function_addressing.accesses) {
+    if (access.result_value_name != value_name_id) {
+      continue;
+    }
+    if (matched != nullptr) {
+      return nullptr;
+    }
+    matched = &access;
+  }
+  return matched;
 }
 
 namespace stack_layout {

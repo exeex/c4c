@@ -263,6 +263,66 @@ struct ResolvedFrameSlot {
     FunctionNameId function_name_id,
     BlockLabelId block_label_id,
     std::size_t inst_index,
+    const bir::LoadLocalInst& inst) {
+  const std::size_t size_bytes =
+      stack_layout::normalize_size(inst.result.type, inst.result.type == bir::TypeKind::Void
+                                                         ? 0
+                                                         : stack_layout::fallback_type_size(
+                                                               inst.result.type));
+  const std::size_t align_bytes = stack_layout::normalize_alignment(
+      inst.result.type,
+      inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes : inst.align_bytes,
+      size_bytes);
+  auto address = build_direct_symbol_backed_address(
+      names, inst.address, {}, static_cast<std::int64_t>(inst.byte_offset), size_bytes, align_bytes);
+  if (!address.has_value()) {
+    return std::nullopt;
+  }
+
+  return PreparedMemoryAccess{
+      .function_name = function_name_id,
+      .block_label = block_label_id,
+      .inst_index = inst_index,
+      .result_value_name = prepared_named_value_id(names, inst.result),
+      .address = std::move(*address),
+  };
+}
+
+[[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_symbol_backed_access(
+    PreparedNameTables& names,
+    FunctionNameId function_name_id,
+    BlockLabelId block_label_id,
+    std::size_t inst_index,
+    const bir::StoreLocalInst& inst) {
+  const std::size_t size_bytes =
+      stack_layout::normalize_size(inst.value.type, inst.value.type == bir::TypeKind::Void
+                                                        ? 0
+                                                        : stack_layout::fallback_type_size(
+                                                              inst.value.type));
+  const std::size_t align_bytes = stack_layout::normalize_alignment(
+      inst.value.type,
+      inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes : inst.align_bytes,
+      size_bytes);
+  auto address = build_direct_symbol_backed_address(
+      names, inst.address, {}, static_cast<std::int64_t>(inst.byte_offset), size_bytes, align_bytes);
+  if (!address.has_value()) {
+    return std::nullopt;
+  }
+
+  return PreparedMemoryAccess{
+      .function_name = function_name_id,
+      .block_label = block_label_id,
+      .inst_index = inst_index,
+      .stored_value_name = prepared_named_value_id(names, inst.value),
+      .address = std::move(*address),
+  };
+}
+
+[[nodiscard]] std::optional<PreparedMemoryAccess> build_direct_symbol_backed_access(
+    PreparedNameTables& names,
+    FunctionNameId function_name_id,
+    BlockLabelId block_label_id,
+    std::size_t inst_index,
     const bir::LoadGlobalInst& inst) {
   if (inst.address.has_value() &&
       inst.address->base_kind == bir::MemoryAddress::BaseKind::PointerValue) {
@@ -492,6 +552,12 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
           function_addressing.accesses.push_back(std::move(*access));
           continue;
         }
+        if (auto access = build_direct_symbol_backed_access(
+                names, function_name_id, block_label_id, inst_index, *load_local);
+            access.has_value()) {
+          function_addressing.accesses.push_back(std::move(*access));
+          continue;
+        }
         if (auto access = build_direct_frame_slot_access(
                 names, function_name_id, block_label_id, inst_index, *load_local, frame_slots_by_name);
             access.has_value()) {
@@ -503,6 +569,12 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
         if (auto access =
                 build_pointer_indirect_access(
                     names, function_name_id, block_label_id, inst_index, *store_local);
+            access.has_value()) {
+          function_addressing.accesses.push_back(std::move(*access));
+          continue;
+        }
+        if (auto access = build_direct_symbol_backed_access(
+                names, function_name_id, block_label_id, inst_index, *store_local);
             access.has_value()) {
           function_addressing.accesses.push_back(std::move(*access));
           continue;

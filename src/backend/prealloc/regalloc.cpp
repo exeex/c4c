@@ -1,4 +1,5 @@
 #include "prealloc.hpp"
+#include "../bir/lir_to_bir.hpp"
 #include "target_register_profile.hpp"
 #include "stack_layout/support.hpp"
 
@@ -614,9 +615,14 @@ void append_prepared_abi_binding(PreparedValueLocationFunction& function_locatio
   existing->abi_bindings.push_back(std::move(binding));
 }
 
-[[nodiscard]] PreparedMoveStorageKind call_arg_storage_kind(const bir::CallInst& call,
+[[nodiscard]] PreparedMoveStorageKind call_arg_storage_kind(const c4c::TargetProfile& target_profile,
+                                                            const bir::CallInst& call,
                                                             std::size_t arg_index);
 [[nodiscard]] std::optional<std::size_t> call_arg_destination_stack_offset_bytes(
+    const c4c::TargetProfile& target_profile,
+    const bir::CallInst& call,
+    std::size_t arg_index);
+[[nodiscard]] std::optional<bir::CallArgAbiInfo> resolve_call_arg_abi(
     const c4c::TargetProfile& target_profile,
     const bir::CallInst& call,
     std::size_t arg_index);
@@ -634,13 +640,15 @@ void append_prepared_call_abi_bindings(const c4c::TargetProfile& target_profile,
       }
 
       for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
-        const PreparedMoveStorageKind destination_storage_kind = call_arg_storage_kind(*call, arg_index);
+        const PreparedMoveStorageKind destination_storage_kind =
+            call_arg_storage_kind(target_profile, *call, arg_index);
         if (destination_storage_kind == PreparedMoveStorageKind::None) {
           continue;
         }
+        const auto arg_abi = resolve_call_arg_abi(target_profile, *call, arg_index);
         const auto destination_register_name =
-            arg_index < call->arg_abi.size()
-                ? call_arg_destination_register_name(target_profile, call->arg_abi[arg_index], arg_index)
+            arg_abi.has_value()
+                ? call_arg_destination_register_name(target_profile, *arg_abi, arg_index)
                 : std::nullopt;
         const auto destination_stack_offset =
             call_arg_destination_stack_offset_bytes(target_profile, *call, arg_index);
@@ -655,6 +663,26 @@ void append_prepared_call_abi_bindings(const c4c::TargetProfile& target_profile,
                                         .destination_register_name = destination_register_name,
                                         .destination_stack_offset_bytes = destination_stack_offset,
                                     });
+        if (destination_storage_kind == PreparedMoveStorageKind::StackSlot &&
+            arg_abi.has_value() &&
+            arg_abi->type == bir::TypeKind::Ptr &&
+            arg_abi->byval_copy &&
+            destination_register_name.has_value()) {
+          append_prepared_abi_binding(function_locations,
+                                      PreparedMovePhase::BeforeCall,
+                                      block_index,
+                                      instruction_index,
+                                      PreparedAbiBinding{
+                                          .destination_kind =
+                                              PreparedMoveDestinationKind::CallArgumentAbi,
+                                          .destination_storage_kind =
+                                              PreparedMoveStorageKind::Register,
+                                          .destination_abi_index = arg_index,
+                                          .destination_register_name =
+                                              destination_register_name,
+                                          .destination_stack_offset_bytes = std::nullopt,
+                                      });
+        }
       }
 
       const PreparedMoveStorageKind result_storage_kind = call_result_storage_kind(*call);
@@ -962,18 +990,33 @@ void append_consumer_move_resolution(const PreparedNameTables& names,
   }
 }
 
-[[nodiscard]] PreparedMoveStorageKind call_arg_storage_kind(const bir::CallInst& call,
+[[nodiscard]] std::optional<bir::CallArgAbiInfo> resolve_call_arg_abi(
+    const c4c::TargetProfile& target_profile,
+    const bir::CallInst& call,
+    std::size_t arg_index) {
+  if (arg_index < call.arg_abi.size()) {
+    return call.arg_abi[arg_index];
+  }
+  if (arg_index >= call.arg_types.size()) {
+    return std::nullopt;
+  }
+  return c4c::backend::lir_to_bir_detail::compute_call_arg_abi(
+      target_profile, call.arg_types[arg_index]);
+}
+
+[[nodiscard]] PreparedMoveStorageKind call_arg_storage_kind(const c4c::TargetProfile& target_profile,
+                                                            const bir::CallInst& call,
                                                             std::size_t arg_index) {
-  if (arg_index >= call.arg_abi.size()) {
+  const auto abi = resolve_call_arg_abi(target_profile, call, arg_index);
+  if (!abi.has_value()) {
     return PreparedMoveStorageKind::None;
   }
 
-  const auto& abi = call.arg_abi[arg_index];
-  if (abi.passed_in_register) {
+  if (call_arg_destination_register_name(target_profile, *abi, arg_index).has_value()) {
     return PreparedMoveStorageKind::Register;
   }
-  if (abi.passed_on_stack || abi.byval_copy || abi.sret_pointer ||
-      abi.primary_class == bir::AbiValueClass::Memory) {
+  if (abi->passed_on_stack || abi->byval_copy || abi->sret_pointer ||
+      abi->primary_class == bir::AbiValueClass::Memory || abi->type != bir::TypeKind::Void) {
     return PreparedMoveStorageKind::StackSlot;
   }
   return PreparedMoveStorageKind::None;
@@ -983,23 +1026,27 @@ void append_consumer_move_resolution(const PreparedNameTables& names,
     const c4c::TargetProfile& target_profile,
     const bir::CallInst& call,
     std::size_t arg_index) {
-  if (target_profile.arch != c4c::TargetArch::X86_64 || arg_index >= call.arg_abi.size() ||
-      call_arg_storage_kind(call, arg_index) != PreparedMoveStorageKind::StackSlot) {
+  if (target_profile.arch != c4c::TargetArch::X86_64 ||
+      call_arg_storage_kind(target_profile, call, arg_index) != PreparedMoveStorageKind::StackSlot) {
     return std::nullopt;
   }
 
   std::size_t next_offset_bytes = 0;
-  for (std::size_t candidate_index = 0; candidate_index < call.arg_abi.size(); ++candidate_index) {
-    if (call_arg_storage_kind(call, candidate_index) != PreparedMoveStorageKind::StackSlot) {
+  for (std::size_t candidate_index = 0; candidate_index < call.args.size(); ++candidate_index) {
+    if (call_arg_storage_kind(target_profile, call, candidate_index) !=
+        PreparedMoveStorageKind::StackSlot) {
       continue;
     }
-    const auto& abi = call.arg_abi[candidate_index];
+    const auto abi = resolve_call_arg_abi(target_profile, call, candidate_index);
+    if (!abi.has_value()) {
+      return std::nullopt;
+    }
     next_offset_bytes =
-        align_up(next_offset_bytes, call_stack_argument_alignment_bytes(abi));
+        align_up(next_offset_bytes, call_stack_argument_alignment_bytes(*abi));
     if (candidate_index == arg_index) {
       return next_offset_bytes;
     }
-    next_offset_bytes += call_stack_argument_size_bytes(abi);
+    next_offset_bytes += call_stack_argument_size_bytes(*abi);
   }
   return std::nullopt;
 }
@@ -1056,13 +1103,14 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
           continue;
         }
 
-        const PreparedMoveStorageKind consumed_kind = call_arg_storage_kind(*call, arg_index);
+        const PreparedMoveStorageKind consumed_kind =
+            call_arg_storage_kind(target_profile, *call, arg_index);
         const PreparedMoveStorageKind source_kind = assigned_storage_kind(*source);
-        const auto destination_register_name = arg_index < call->arg_abi.size()
-                                                   ? call_arg_destination_register_name(target_profile,
-                                                                                       call->arg_abi[arg_index],
-                                                                                       arg_index)
-                                                   : std::nullopt;
+        const auto arg_abi = resolve_call_arg_abi(target_profile, *call, arg_index);
+        const auto destination_register_name =
+            arg_abi.has_value()
+                ? call_arg_destination_register_name(target_profile, *arg_abi, arg_index)
+                : std::nullopt;
         const auto destination_stack_offset =
             call_arg_destination_stack_offset_bytes(target_profile, *call, arg_index);
         if (source_kind == PreparedMoveStorageKind::Register &&

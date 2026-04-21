@@ -258,6 +258,13 @@ std::string emit_prepared_module(
           *data += "    .long " +
                    std::to_string(static_cast<std::int32_t>(value.immediate)) + "\n";
           return true;
+        case c4c::backend::bir::TypeKind::F32:
+          *data += "    .long " +
+                   std::to_string(static_cast<std::uint32_t>(value.immediate_bits)) + "\n";
+          return true;
+        case c4c::backend::bir::TypeKind::F64:
+          *data += "    .quad " + std::to_string(value.immediate_bits) + "\n";
+          return true;
         case c4c::backend::bir::TypeKind::Ptr:
           if (value.immediate != 0 || value.immediate_bits != 0) {
             return false;
@@ -352,8 +359,7 @@ std::string emit_prepared_module(
           bool defer_module_data_emission,
           std::unordered_set<std::string_view>* used_string_names,
           std::unordered_set<std::string_view>* used_same_module_global_names) -> std::string {
-    if (function.is_declaration || function.return_type != c4c::backend::bir::TypeKind::I32 ||
-        function.blocks.empty()) {
+    if (function.is_declaration || function.blocks.empty()) {
       throw_multi_defined_contract_if_active();
       throw std::invalid_argument(
           "x86 backend emitter only supports a minimal i32 return function through the canonical prepared-module handoff");
@@ -363,11 +369,15 @@ std::string emit_prepared_module(
         c4c::backend::prepare::resolve_prepared_function_name_id(module.names, function.name)
             .value_or(c4c::kInvalidFunctionName);
     const auto asm_prefix = minimal_function_asm_prefix(function);
-    const auto return_register = minimal_function_return_register(function);
-    if (!return_register.has_value()) {
+    const auto return_register = function.return_type == c4c::backend::bir::TypeKind::Void
+                                     ? std::optional<std::string>{}
+                                     : minimal_function_return_register(function);
+    if (function.return_type != c4c::backend::bir::TypeKind::Void &&
+        !return_register.has_value()) {
       throw std::invalid_argument(
           "x86 backend emitter requires prepared return ABI metadata for the canonical prepared-module handoff");
     }
+    const std::string return_register_text = return_register.value_or(std::string{});
     const auto minimal_param_register =
         [&](const c4c::backend::bir::Param& param) -> std::optional<std::string> {
       auto param_it = function.params.begin();
@@ -430,7 +440,7 @@ std::string emit_prepared_module(
         .function_control_flow = find_control_flow_function(),
         .prepared_arch = prepared_arch,
         .asm_prefix = asm_prefix,
-        .return_register = *return_register,
+        .return_register = return_register_text,
         .bounded_same_module_helper_names =
             defer_module_data_emission ? &kNoHelperNames : &bounded_same_module_helper_names,
         .bounded_same_module_helper_global_names =

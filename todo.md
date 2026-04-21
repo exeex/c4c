@@ -5,52 +5,95 @@ Source Idea Path: ideas/open/61_call_bundle_and_multi_function_prepared_module_c
 Source Plan Path: plan.md
 Current Step ID: 2.1
 Current Step Title: Repair The Selected Prepared-Module Or Call-Bundle Seam
-Plan Review Counter: 4 / 10
+Plan Review Counter: 5 / 10
 # Current Packet
 
 ## Just Finished
 
-Plan Step 2.1 inspected `tests/c/external/c-testsuite/src/00204.c` with
-backend-route reductions and isolated the next remaining prepared-function
-rejector after the repaired `fa3` / `fa4` helper lane. A reduced prefix ending
-at line 40 still emits on the x86 asm route, but adding line 41 flips the same
-`minimal i32 return function` prepared-module failure. The first remaining
-suspect is `fa_s1(struct s1 a)`, and the failure persists when that function's
-body is reduced to `{}`, so the seam is prepared-function emission for by-value
-small-aggregate parameters rather than the inner `printf` helper call or any
-later `ret` / `stdarg` work.
+Plan Step 2.1 repaired the producer-side prepared call-bundle publication seam
+for the reduced same-module variadic stack-argument lane. In
+`src/backend/prealloc/regalloc.cpp`, the prepared call publisher now resolves
+missing variadic `call.arg_abi` entries from `call.arg_types`, uses those
+resolved ABI records when classifying call-argument storage and stack offsets,
+and publishes the matching `BeforeCall` ABI bindings/move resolution for the
+extra stack-passed arguments instead of silently dropping them.
+
+The same packet also extends the x86 prepared-module consumer and supporting
+prepared-address publication for the adjacent same-module helper/local-byval
+lane that now depends on those canonical handoff facts. The x86 helper-prefix
+path can consume the repaired publication and the related authoritative stack /
+symbol addressing instead of falling back to the old top-level minimal-return
+gate immediately.
+
+I added a focused boundary check in
+`tests/backend/backend_x86_handoff_boundary_multi_defined_call_test.cpp` for a
+same-module `arg -> myprintf` variadic call with one fixed format argument and
+four extra stack-passed pointer arguments lacking explicit `arg_abi`. That
+check now passes and confirms the canonical x86 handoff publication:
+`rdi`, `rsi`, `rdx`, `rcx`, `r8`, `r9`, then stack offsets `0`, `8`, `16`.
+
+The reduced reproducer `/tmp/probe_same_module_variadic_stack_ptr.c` no longer
+fails with `x86 backend emitter requires the authoritative prepared
+call-bundle handoff through the canonical prepared-module handoff`. It now
+stops later at the broader top-level x86 route gate:
+`x86 backend emitter only supports a minimal single-block i32 return
+terminator, a bounded equality-against-immediate guard family with immediate
+return leaves including fixed-offset same-module global i32 loads and
+pointer-backed same-module global roots, or one bounded compare-against-zero
+branch family through the canonical prepared-module handoff`.
+
+That means this owned producer seam is repaired. The next blocker is no longer
+prepared call-bundle publication.
 
 ## Suggested Next
 
-Take the next Step 2.1 packet on prepared-function emission for by-value
-aggregate parameter ingress, starting with the reduced `fa_s1(struct s1 a)`
-case and then checking whether the same seam covers the adjacent `fa_s*`
-family. Keep the packet out of `ret` / `myprintf` / `va_arg` until this
-earlier function-signature rejector is repaired.
+Take the next packet on the broader x86 prepared-module acceptance gate that now
+blocks both `/tmp/probe_same_module_variadic_stack_ptr.c` and
+`/tmp/00204_ret_only.c` after the repaired publication plus same-module helper
+/ local-byval acceptance closure. The next ownership is the remaining top-level
+x86 route selection beyond this packet's publication and helper-prefix seams,
+not another revisit of the old prepared call-bundle handoff gap.
 
 ## Watchouts
 
-- Do not reopen the repaired mixed `>6` helper direct-extern lane from the
-  `fa3` / `fa4` packet. The new rejector reproduces before `arg()`, `ret()`,
-  or `stdarg()` matter.
-- The key route evidence is source-order and body-insensitive: `head -n 40`
-  plus a trivial `main` emits on the x86 asm route, `head -n 41` fails with
-  the canonical prepared-module fallback, and an empty-body `fa_s1(struct s1
-  a) {}` still fails while the same reduced file emits through `--codegen
-  llvm`.
-- Treat the next seam as prepared-function signature/ingress handling for
-  small by-value aggregates, not as another helper-call register-placement
-  bug. Avoid speculative `printf`, `va_arg`, or return-path patching until
-  this earlier rejector is repaired.
+- The long-double helper-return family is still green:
+  `/tmp/probe_hfa31.c`, `/tmp/probe_hfa32.c`, `/tmp/probe_hfa34.c`, and
+  `/tmp/probe_hfa31_printf.c` remain the last confirmed reduced passes. Do not
+  reopen that route unless a new reducer proves a separate `f128` regression.
+- The focused publication proof is now
+  `check_route_publishes_helper_same_module_variadic_stack_arg_before_call_bundle()`
+  in `backend_x86_handoff_boundary_multi_defined_call_test.cpp`. Keep that test
+  green when the next packet widens x86 route acceptance.
+- `/tmp/probe_same_module_variadic_stack_ptr.c` is still the smallest reducer
+  for the repaired producer seam, but it no longer points at prepared
+  publication. It now points at the broader x86 same-module acceptance gate.
+- `/tmp/00204_ret_only.c` hits the same broader top-level x86 rejection as the
+  repaired stack-pointer reducer, so the next packet can stay on that common
+  frontier instead of revisiting call-bundle publication.
+- `backend_x86_handoff_boundary` passes with the new producer publication check,
+  so there is no supported-path regression inside the owned files from this
+  packet.
 
 ## Proof
 
 Ran the delegated proof command:
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$'; } > test_after.log 2>&1`.
-Current proof matches the final workspace state: `backend_x86_handoff_boundary`
-passes, while `c_testsuite_x86_backend_src_00204_c` still fails with the same
-`minimal i32 return function` diagnostic. The proving log remains
-`test_after.log`. Route observation for this inspection packet used
-`./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu ...` reductions
-plus one `--codegen llvm` comparison on the reduced `fa_s1` case to confirm the
-next rejector sits at `fa_s1`'s prepared aggregate-parameter seam.
+Current proof is mixed in the final workspace state: `backend_x86_handoff_boundary`
+passes, while `c_testsuite_x86_backend_src_00204_c` still fails. The failing
+top-level diagnostic is now:
+`x86 backend emitter only supports a minimal single-block i32 return
+terminator, a bounded equality-against-immediate guard family with immediate
+return leaves including fixed-offset same-module global i32 loads and
+pointer-backed same-module global roots, or one bounded compare-against-zero
+branch family through the canonical prepared-module handoff`.
+The canonical proof log remains `test_after.log`. Additional reducer proof for
+this packet:
+
+- `build/c4cll --codegen asm --target x86_64-unknown-linux-gnu /tmp/probe_same_module_variadic_stack_ptr.c`
+  now reaches the same broader top-level x86 route rejection instead of the old
+  authoritative prepared call-bundle handoff exception.
+- `build/c4cll --codegen asm --target x86_64-unknown-linux-gnu /tmp/00204_ret_only.c`
+  reaches that same broader top-level x86 route rejection.
+
+Together, those results show the owned producer seam is repaired and the next
+blocker sits later, outside this packet's owned files.
