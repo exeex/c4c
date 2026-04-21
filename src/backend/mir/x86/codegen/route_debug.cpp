@@ -79,6 +79,7 @@ std::string lane_next_surface(std::string_view lane_name) {
   if (lane_name == "local-i32-arithmetic-guard" ||
       lane_name == "local-i16-arithmetic-guard" ||
       lane_name == "local-slot-guard-chain" ||
+      lane_name == "bounded-same-module-variadic-helper" ||
       lane_name == "single-block-return-dispatch" ||
       lane_name == "trivial-defined-function") {
     return "src/backend/mir/x86/codegen/prepared_local_slot_render.cpp";
@@ -111,6 +112,9 @@ std::string next_surface_hint(const FunctionRouteAttempt* attempt,
   }
 
   if (kind == FinalRejectionKind::UnsupportedPreparedShape) {
+    if (attempt->lane_name == "bounded-same-module-variadic-helper") {
+      return "inspect the current x86 same-module helper shape support in " + lane_surface;
+    }
     return "inspect the current x86 shape support in " + lane_surface;
   }
 
@@ -163,8 +167,14 @@ FinalRejectionReport build_final_rejection_report(const FunctionRouteReport& rep
     std::string summary;
     switch (kind) {
       case FinalRejectionKind::UnsupportedPreparedShape:
-        summary = it->lane_name +
-                  " recognized the function, but the prepared shape is outside the current x86 support";
+        if (it->lane_name == "bounded-same-module-variadic-helper") {
+          summary = "bounded same-module variadic helper lane recognized the function, but the "
+                    "prepared helper shape is outside the current x86 support";
+        } else {
+          summary = it->lane_name +
+                    " recognized the function, but the prepared shape is outside the current x86 "
+                    "support";
+        }
         break;
       case FinalRejectionKind::MissingPreparedContract:
         summary = it->lane_name +
@@ -191,6 +201,49 @@ FinalRejectionReport build_final_rejection_report(const FunctionRouteReport& rep
       .next_surface =
           "inspect src/backend/mir/x86/codegen/prepared_module_emit.cpp for the next top-level lane",
   };
+}
+
+std::optional<std::string> build_bounded_variadic_helper_lane_detail(
+    const std::vector<const c4c::backend::bir::Function*>& defined_functions,
+    const c4c::backend::bir::Function* entry_function,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow) {
+  const auto carries_explicit_variadic_runtime = [&]() {
+    for (const auto& block : function.blocks) {
+      for (const auto& inst : block.insts) {
+        const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+        if (call == nullptr) {
+          continue;
+        }
+        if (string_contains(call->callee, "llvm.va_start.") ||
+            string_contains(call->callee, "llvm.va_end.") ||
+            string_contains(call->callee, "llvm.va_arg.")) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  if (defined_functions.size() <= 1 || entry_function == nullptr || entry_function->name != "main" ||
+      &function == entry_function || !function.is_variadic ||
+      function.return_type != c4c::backend::bir::TypeKind::Void ||
+      (!carries_explicit_variadic_runtime() && function.blocks.size() <= 1)) {
+    return std::nullopt;
+  }
+  if (function_control_flow != nullptr && !function_control_flow->join_transfers.empty()) {
+    return std::nullopt;
+  }
+
+  std::string detail =
+      "x86 backend emitter only supports non-entry bounded same-module variadic helpers when "
+      "they already reduce to the current direct-extern or local-slot-guard helper surfaces";
+  if (carries_explicit_variadic_runtime()) {
+    detail += "; this helper still carries explicit variadic-runtime state";
+  } else {
+    detail += "; this helper remains a multi-block variadic body";
+  }
+  return detail;
 }
 
 std::string_view prepared_function_name_or_none(
@@ -619,6 +672,15 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
       }
       return std::nullopt;
     });
+    if (const auto bounded_variadic_helper_detail = build_bounded_variadic_helper_lane_detail(
+            defined_functions, entry_function, *function, function_control_flow);
+        bounded_variadic_helper_detail.has_value()) {
+      report.attempts.push_back(FunctionRouteAttempt{
+          .lane_name = "bounded-same-module-variadic-helper",
+          .matched = false,
+          .detail = std::move(bounded_variadic_helper_detail),
+      });
+    }
 
     const auto matched_it = std::find_if(report.attempts.begin(),
                                          report.attempts.end(),
