@@ -80,6 +80,7 @@ std::string lane_next_surface(std::string_view lane_name) {
       lane_name == "local-i16-arithmetic-guard" ||
       lane_name == "local-slot-guard-chain" ||
       lane_name == "bounded-same-module-variadic-helper" ||
+      lane_name == "single-block-i64-ashr-return-helper" ||
       lane_name == "single-block-void-call-sequence" ||
       lane_name == "single-block-return-dispatch" ||
       lane_name == "trivial-defined-function") {
@@ -115,6 +116,9 @@ std::string next_surface_hint(const FunctionRouteAttempt* attempt,
   if (kind == FinalRejectionKind::UnsupportedPreparedShape) {
     if (attempt->lane_name == "bounded-same-module-variadic-helper") {
       return "inspect the current x86 same-module helper shape support in " + lane_surface;
+    }
+    if (attempt->lane_name == "single-block-i64-ashr-return-helper") {
+      return "inspect the current x86 single-block i64 return-helper support in " + lane_surface;
     }
     if (attempt->lane_name == "single-block-void-call-sequence") {
       return "inspect the current x86 single-block call-sequence support in " + lane_surface;
@@ -174,6 +178,10 @@ FinalRejectionReport build_final_rejection_report(const FunctionRouteReport& rep
         if (it->lane_name == "bounded-same-module-variadic-helper") {
           summary = "bounded same-module variadic helper lane recognized the function, but the "
                     "prepared helper shape is outside the current x86 support";
+        } else if (it->lane_name == "single-block-i64-ashr-return-helper") {
+          summary =
+              "single-block i64 arithmetic-right-shift return helper recognized the function, "
+              "but the prepared return-helper shape is outside the current x86 support";
         } else if (it->lane_name == "single-block-void-call-sequence") {
           summary = "single-block void call-sequence helper recognized the function, but the "
                     "prepared call-wrapper shape is outside the current x86 support";
@@ -312,6 +320,40 @@ std::optional<std::string> build_single_block_void_call_sequence_lane_detail(
     detail += "; this helper still carries call side effects";
   }
   return detail;
+}
+
+std::optional<std::string> build_single_block_i64_ashr_return_helper_lane_detail(
+    const c4c::backend::bir::Function& function) {
+  if (function.is_declaration || !function.local_slots.empty() || function.blocks.size() != 1 ||
+      function.return_type != c4c::backend::bir::TypeKind::I64 || function.params.size() != 1 ||
+      function.params.front().type != c4c::backend::bir::TypeKind::I64) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !entry.terminator.value.has_value() || entry.insts.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&entry.insts.front());
+  if (binary == nullptr || binary->opcode != c4c::backend::bir::BinaryOpcode::AShr ||
+      binary->operand_type != c4c::backend::bir::TypeKind::I64 ||
+      binary->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      binary->result.type != c4c::backend::bir::TypeKind::I64 ||
+      binary->lhs.kind != c4c::backend::bir::Value::Kind::Named ||
+      binary->lhs.type != c4c::backend::bir::TypeKind::I64 ||
+      binary->lhs.name != function.params.front().name ||
+      binary->rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+      binary->rhs.type != c4c::backend::bir::TypeKind::I64 ||
+      entry.terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
+      entry.terminator.value->name != binary->result.name) {
+    return std::nullopt;
+  }
+
+  return "x86 backend emitter only supports single-block i64 return helpers when they already "
+         "reduce to the current direct passthrough or local i16/i64-sub helper surfaces; this "
+         "helper still carries an i64 arithmetic-right-shift immediate return";
 }
 
 std::string_view prepared_function_name_or_none(
@@ -756,6 +798,15 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           .lane_name = "single-block-void-call-sequence",
           .matched = false,
           .detail = std::move(single_block_void_call_sequence_detail),
+      });
+    }
+    if (const auto single_block_i64_ashr_return_helper_detail =
+            build_single_block_i64_ashr_return_helper_lane_detail(*function);
+        single_block_i64_ashr_return_helper_detail.has_value()) {
+      report.attempts.push_back(FunctionRouteAttempt{
+          .lane_name = "single-block-i64-ashr-return-helper",
+          .matched = false,
+          .detail = std::move(single_block_i64_ashr_return_helper_detail),
       });
     }
 
