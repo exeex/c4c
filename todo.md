@@ -3,36 +3,59 @@
 Status: Active
 Source Idea Path: ideas/open/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Refresh Reopened Idea-62 Ownership And Confirm The Next Addressing Seam
+Current Step ID: 2.1
+Current Step Title: Repair The Selected Addressing Seam
 Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Lifecycle switch completed: commit `5a81abdb` advanced
-`c_testsuite_x86_backend_src_00204_c` out of `myprintf` /
-`scalar-control-flow semantic family` and reopened idea 62 because the case
-now fails later in `myprintf` under `gep local-memory semantic family`.
+Attempted idea-62 Step 2.1 repair for the raw frontend-expanded AMD64
+`va_arg` lane by lowering raw `getelementptr i8, ptr %base, i64 %offset`
+into pointer-valued BIR adds and by admitting immediate local `memcpy` from a
+raw pointer SSA into local scalar/aggregate storage. This shrank the smallest
+raw-expanded repros: `va_arg(ap, int)` now advances past semantic `gep` into a
+later prepared compare-join blocker, and minimal aggregate `va_arg` repros no
+longer fail inside the variadic callee. Repaired destination-side raw
+byte-slice GEP support for local aggregate scratch allocas when the byte offset
+lands on a tracked scalar leaf, covering the original `s9` split-copy lane
+(`%t49` / `%t51 = getelementptr i8, ptr %t49, i64 8`) and the next `hfa13`
+float-leaf lane (`%t140` / `%t142 = getelementptr i8, ptr %t140, i64 8`).
+Added focused `backend_lir_to_bir_notes` success repros for both an `i8` leaf
+byte-slice and a non-`i8` float-leaf byte-slice. `c_testsuite_x86_backend_src_00204_c`
+now advances past `gep local-memory semantic family` and stops later in
+`myprintf` under `scalar/local-memory semantic family`, so this packet is
+complete but the overall slice remains uncommitted.
 
 ## Suggested Next
 
-Audit `c_testsuite_x86_backend_src_00204_c` at function `myprintf` and the
-nearest stack/member-addressing route coverage to isolate the next still-owned
-idea-62 addressing seam.
+Start a new narrow packet for the next `myprintf` blocker in
+`scalar/local-memory semantic family`, using the now-green byte-slice GEP lanes
+as fixed sentinels and isolating the first surviving scalar/local-memory shape
+after the `hfa13` split-copy handoff.
 
 ## Watchouts
 
-- Do not pull `00204.c` back into idea 58 unless the case again fails in a
-  real upstream scalar-control-flow seam.
-- Rehome the case immediately if the next blocker is better described by ideas
-  59, 60, 61, 65, or 66 than by stack/member/addressing ownership.
-- Do not drift into prepared-x86 ideas while the case still fails upstream in
-  semantic `lir_to_bir` local-memory/addressing lowering.
+- Adjacent variadic backend routes still pass; do not regress
+  `backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir` or
+  `backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`
+  while chasing the next scalar/local-memory blocker.
+- The destination-side local-aggregate raw byte-slice GEP lane is no longer
+  the live blocker. The next packet should not reopen it unless a new repro
+  says otherwise.
+- Do not claim idea-62 completion yet: `c_testsuite_x86_backend_src_00204_c`
+  now stops later in `myprintf` under `scalar/local-memory semantic family`.
 
 ## Proof
 
-Lifecycle switch only. The latest accepted execution proof remains in
-`test_before.log` and shows `c_testsuite_x86_backend_src_00204_c` now fails
-later with `latest function failure: semantic lir_to_bir function 'myprintf'
-failed in gep local-memory semantic family`.
+Ran `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R
+'^(backend_lir_to_bir_notes|backend_codegen_route_x86_64_(variadic_pair_second|variadic_double_bytes)_observe_semantic_bir|c_testsuite_x86_backend_src_00204_c)$'`
+with output in `test_after.log`. `backend_lir_to_bir_notes`,
+`backend_codegen_route_x86_64_variadic_pair_second_observe_semantic_bir`, and
+`backend_codegen_route_x86_64_variadic_double_bytes_observe_semantic_bir`
+passed, including the focused `local_aggregate_raw_i8_gep_byte_slice` and
+`local_aggregate_raw_float_leaf_byte_slice` notes repros;
+`c_testsuite_x86_backend_src_00204_c` still failed with `latest function
+failure: semantic lir_to_bir function 'myprintf' failed in scalar/local-memory
+semantic family`.

@@ -50,6 +50,118 @@ struct LocalMemsetScalarSlot {
   std::size_t size_bytes = 0;
 };
 
+struct LocalAggregateRawByteSliceLeaf {
+  std::size_t byte_offset = 0;
+  std::string type_text;
+};
+
+std::optional<std::string> resolve_scalar_leaf_type_at_byte_offset(
+    std::string_view type_text,
+    std::size_t target_offset,
+    const BirFunctionLowerer::TypeDeclMap& type_decls) {
+  const auto layout = compute_aggregate_type_layout(type_text, type_decls);
+  if (layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
+      target_offset >= layout.size_bytes) {
+    return std::nullopt;
+  }
+
+  switch (layout.kind) {
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Scalar:
+      return target_offset == 0 ? std::optional<std::string>(c4c::backend::bir::render_type(layout.scalar_type))
+                                : std::nullopt;
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Array: {
+      const auto element_layout = compute_aggregate_type_layout(layout.element_type_text, type_decls);
+      if (element_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
+          element_layout.size_bytes == 0) {
+        return std::nullopt;
+      }
+      const auto element_index = target_offset / element_layout.size_bytes;
+      if (element_index >= layout.array_count) {
+        return std::nullopt;
+      }
+      const auto nested_offset = target_offset % element_layout.size_bytes;
+      return resolve_scalar_leaf_type_at_byte_offset(layout.element_type_text,
+                                                     nested_offset,
+                                                     type_decls);
+    }
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Struct:
+      for (std::size_t index = 0; index < layout.fields.size(); ++index) {
+        const auto field_begin = layout.fields[index].byte_offset;
+        const auto field_end =
+            index + 1 < layout.fields.size() ? layout.fields[index + 1].byte_offset
+                                             : layout.size_bytes;
+        if (target_offset < field_begin || target_offset >= field_end) {
+          continue;
+        }
+        return resolve_scalar_leaf_type_at_byte_offset(layout.fields[index].type_text,
+                                                       target_offset - field_begin,
+                                                       type_decls);
+      }
+      return std::nullopt;
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<LocalAggregateRawByteSliceLeaf> resolve_local_aggregate_raw_byte_slice_leaf(
+    std::string_view base_type_text,
+    const c4c::codegen::lir::LirGepOp& gep,
+    const BirFunctionLowerer::ValueMap& value_aliases,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const BirFunctionLowerer::LocalAggregateSlots& aggregate_slots) {
+  if (c4c::codegen::lir::trim_lir_arg_text(gep.element_type.str()) != "i8") {
+    return std::nullopt;
+  }
+
+  std::size_t raw_index_pos = 0;
+  if (gep.indices.size() == 2) {
+    const auto base_index = parse_typed_operand(gep.indices.front());
+    if (!base_index.has_value()) {
+      return std::nullopt;
+    }
+    const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
+    if (!base_imm.has_value() || *base_imm != 0) {
+      return std::nullopt;
+    }
+    raw_index_pos = 1;
+  } else if (gep.indices.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto parsed_index = parse_typed_operand(gep.indices[raw_index_pos]);
+  if (!parsed_index.has_value()) {
+    return std::nullopt;
+  }
+  const auto byte_index = resolve_index_operand(parsed_index->operand, value_aliases);
+  if (!byte_index.has_value() || *byte_index < 0) {
+    return std::nullopt;
+  }
+
+  const auto base_layout = compute_aggregate_type_layout(base_type_text, type_decls);
+  if ((base_layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Struct &&
+       base_layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Array) ||
+      static_cast<std::size_t>(*byte_index) >= base_layout.size_bytes) {
+    return std::nullopt;
+  }
+
+  const auto leaf_type =
+      resolve_scalar_leaf_type_at_byte_offset(base_type_text,
+                                              static_cast<std::size_t>(*byte_index),
+                                              type_decls);
+  if (!leaf_type.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto absolute_byte_offset =
+      aggregate_slots.base_byte_offset + static_cast<std::size_t>(*byte_index);
+  return aggregate_slots.leaf_slots.find(absolute_byte_offset) != aggregate_slots.leaf_slots.end()
+             ? std::optional<LocalAggregateRawByteSliceLeaf>(LocalAggregateRawByteSliceLeaf{
+                   .byte_offset = absolute_byte_offset,
+                   .type_text = *leaf_type,
+               })
+             : std::nullopt;
+}
+
 }  // namespace
 
 std::optional<std::vector<std::string>> BirFunctionLowerer::collect_local_scalar_array_slots(
@@ -778,6 +890,65 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
     }
     return covered_bytes == requested_size;
   };
+  const auto append_pointer_value_to_leaf_view = [&](std::string_view source_pointer,
+                                                     const LocalMemcpyLeafView& target_view) -> bool {
+    std::size_t covered_bytes = 0;
+    for (const auto& target_leaf : target_view.leaves) {
+      if (covered_bytes == requested_size) {
+        break;
+      }
+      const auto leaf_size = type_size_bytes(target_leaf.type);
+      if (leaf_size == 0 || target_leaf.byte_offset != covered_bytes ||
+          target_leaf.byte_offset + leaf_size > requested_size) {
+        return false;
+      }
+
+      const std::string copy_name =
+          target_leaf.slot_name + ".memcpy.copy." + std::to_string(target_leaf.byte_offset);
+      lowered_insts->push_back(bir::LoadLocalInst{
+          .result = bir::Value::named(target_leaf.type, copy_name),
+          .slot_name = target_leaf.slot_name,
+          .address =
+              bir::MemoryAddress{
+                  .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                  .base_value = bir::Value::named(bir::TypeKind::Ptr, std::string(source_pointer)),
+                  .byte_offset = static_cast<std::int64_t>(target_leaf.byte_offset),
+                  .size_bytes = leaf_size,
+                  .align_bytes = leaf_size,
+              },
+      });
+      lowered_insts->push_back(bir::StoreLocalInst{
+          .slot_name = target_leaf.slot_name,
+          .value = bir::Value::named(target_leaf.type, copy_name),
+      });
+      covered_bytes += leaf_size;
+    }
+    return covered_bytes == requested_size;
+  };
+  const auto append_pointer_value_to_scalar_slot = [&](std::string_view source_pointer,
+                                                        const LocalMemcpyScalarSlot& target_slot) -> bool {
+    if (requested_size != target_slot.size_bytes) {
+      return false;
+    }
+
+    lowered_insts->push_back(bir::LoadLocalInst{
+        .result = bir::Value::named(target_slot.type, target_slot.slot_name + ".memcpy.copy.0"),
+        .slot_name = target_slot.slot_name,
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                .base_value = bir::Value::named(bir::TypeKind::Ptr, std::string(source_pointer)),
+                .byte_offset = 0,
+                .size_bytes = target_slot.size_bytes,
+                .align_bytes = std::min(target_slot.align_bytes, target_slot.size_bytes),
+            },
+    });
+    lowered_insts->push_back(bir::StoreLocalInst{
+        .slot_name = target_slot.slot_name,
+        .value = bir::Value::named(target_slot.type, target_slot.slot_name + ".memcpy.copy.0"),
+    });
+    return true;
+  };
 
   const auto target_view = resolve_local_memcpy_leaf_view(dst_operand);
   if (target_view.has_value()) {
@@ -786,15 +957,23 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
       return true;
     }
     const auto source_scalar_slot = resolve_local_memcpy_scalar_slot(src_operand);
-    return source_scalar_slot.has_value() &&
-           append_scalar_slot_to_leaf_view(*source_scalar_slot, *target_view);
+    if (source_scalar_slot.has_value() &&
+        append_scalar_slot_to_leaf_view(*source_scalar_slot, *target_view)) {
+      return true;
+    }
+    return local_pointer_slots.find(std::string(src_operand)) == local_pointer_slots.end() &&
+           append_pointer_value_to_leaf_view(src_operand, *target_view);
   }
 
   if (const auto target_scalar_slot = resolve_local_memcpy_scalar_slot(dst_operand);
       target_scalar_slot.has_value()) {
     const auto source_view = resolve_local_memcpy_leaf_view(src_operand);
-    return source_view.has_value() &&
-           append_leaf_view_to_scalar_slot(*source_view, *target_scalar_slot);
+    if (source_view.has_value() &&
+        append_leaf_view_to_scalar_slot(*source_view, *target_scalar_slot)) {
+      return true;
+    }
+    return local_pointer_slots.find(std::string(src_operand)) == local_pointer_slots.end() &&
+           append_pointer_value_to_scalar_slot(src_operand, *target_scalar_slot);
   }
 
   return false;
@@ -806,6 +985,16 @@ std::optional<std::string> BirFunctionLowerer::resolve_local_aggregate_gep_slot(
     const ValueMap& value_aliases,
     const TypeDeclMap& type_decls,
     const LocalAggregateSlots& aggregate_slots) {
+  if (const auto raw_byte_slice_leaf = resolve_local_aggregate_raw_byte_slice_leaf(
+          base_type_text, gep, value_aliases, type_decls, aggregate_slots);
+      raw_byte_slice_leaf.has_value()) {
+    const auto slot_it = aggregate_slots.leaf_slots.find(raw_byte_slice_leaf->byte_offset);
+    if (slot_it == aggregate_slots.leaf_slots.end()) {
+      return std::nullopt;
+    }
+    return slot_it->second;
+  }
+
   std::string_view current_type = c4c::codegen::lir::trim_lir_arg_text(base_type_text);
   const auto gep_element_type = c4c::codegen::lir::trim_lir_arg_text(gep.element_type.str());
   std::size_t byte_offset = aggregate_slots.base_byte_offset;
@@ -1147,6 +1336,15 @@ std::optional<LocalAggregateGepTarget> BirFunctionLowerer::resolve_local_aggrega
     const ValueMap& value_aliases,
     const TypeDeclMap& type_decls,
     const LocalAggregateSlots& aggregate_slots) {
+  if (const auto raw_byte_slice_leaf = resolve_local_aggregate_raw_byte_slice_leaf(
+          base_type_text, gep, value_aliases, type_decls, aggregate_slots);
+      raw_byte_slice_leaf.has_value()) {
+    return LocalAggregateGepTarget{
+        .type_text = raw_byte_slice_leaf->type_text,
+        .byte_offset = static_cast<std::int64_t>(raw_byte_slice_leaf->byte_offset),
+    };
+  }
+
   std::string_view current_type = c4c::codegen::lir::trim_lir_arg_text(base_type_text);
   const auto gep_element_type = c4c::codegen::lir::trim_lir_arg_text(gep.element_type.str());
   std::size_t byte_offset = aggregate_slots.base_byte_offset;

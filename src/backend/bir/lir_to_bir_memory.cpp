@@ -990,6 +990,53 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
               }
             }
           }
+
+          std::size_t raw_index_pos = 0;
+          if (gep->indices.size() == 2) {
+            const auto base_index = parse_typed_operand(gep->indices.front());
+            if (!base_index.has_value()) {
+              return fail_gep();
+            }
+            const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
+            if (!base_imm.has_value() || *base_imm != 0) {
+              return fail_gep();
+            }
+            raw_index_pos = 1;
+          }
+          if (addressed_ptr_it == pointer_value_addresses.end() &&
+              (gep->indices.size() == 1 || gep->indices.size() == 2) &&
+              c4c::codegen::lir::trim_lir_arg_text(gep->element_type.str()) == "i8") {
+            const auto parsed_index = parse_typed_operand(gep->indices[raw_index_pos]);
+            if (!parsed_index.has_value()) {
+              return fail_gep();
+            }
+            auto raw_offset = lower_typed_index_value(*parsed_index, value_aliases);
+            if (!raw_offset.has_value()) {
+              return fail_gep();
+            }
+            if (raw_offset->kind == bir::Value::Kind::Immediate &&
+                raw_offset->type != bir::TypeKind::I64) {
+              raw_offset = bir::Value::immediate_i64(raw_offset->immediate);
+            }
+            if (raw_offset->kind == bir::Value::Kind::Named &&
+                raw_offset->type != bir::TypeKind::I64) {
+              return fail_gep();
+            }
+            if (raw_offset->kind == bir::Value::Kind::Immediate && raw_offset->immediate == 0) {
+              value_aliases[gep->result.str()] = *base_pointer;
+              return true;
+            }
+            lowered_insts->push_back(bir::BinaryInst{
+                .opcode = bir::BinaryOpcode::Add,
+                .result = bir::Value::named(bir::TypeKind::Ptr, gep->result.str()),
+                .operand_type = bir::TypeKind::Ptr,
+                .lhs = *base_pointer,
+                .rhs = *raw_offset,
+            });
+            value_aliases[gep->result.str()] = bir::Value::named(bir::TypeKind::Ptr,
+                                                                 gep->result.str());
+            return true;
+          }
         }
       }
       const auto handled_local_pointer_slot_base_gep = try_lower_local_pointer_slot_base_gep(
