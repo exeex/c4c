@@ -3,53 +3,55 @@
 Status: Active
 Source Idea Path: ideas/open/67_backend_trace_and_error_contract_for_x86_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 3.2
-Current Step Title: Surface A Stable Final-Rejection Contract For That Family
-Plan Review Counter: 2 / 6
+Current Step ID: 3.4
+Current Step Title: Decide Whether Idea 67 Still Needs Another Packet
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 3.2 now upgrades the remaining compare-driven `00204.c` `match` family
-from a plain final rejection plus detail string to a stable structured
-contract: the route-debug renderer now emits
-`prepared compare-driven-entry facts: params=..., non-variadic i32 params=...,
-non-i32 or varargs params=..., function variadic=...` in both summary and
-trace, the reduced multi-parameter compare-driven fixture locks the exact
-`params=2, non-variadic i32 params=1, non-i32 or varargs params=1, function
-variadic=no` surface, and the focused honest `00204.c` `match`
-`--dump-mir` / `--trace-mir` CLI tests now lock the real large-case contract
-with `params=2, non-variadic i32 params=0, non-i32 or varargs params=2,
-function variadic=no` alongside the existing next-inspect guidance.
+Step 3.4 lifecycle review found no currently known meaningful `00204.c` x86
+rejection family that still falls back to a plain final rejection, so idea 67
+does not need another new observability-family packet. Close review is
+rejected for now because the backend-scope close gate
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` is red on the
+current tree: `backend_cli_trace_mir_00204_stdarg_rejection` still expects the
+older stdarg final-detail snippet even though the current trace now matches
+`local-slot-guard-chain`, and `backend_prepare_liveness` also fails in the
+same guard run.
 
 ## Suggested Next
 
-The broad `00204.c` scan no longer shows a currently known meaningful x86
-rejection family that still falls back to a plain final rejection without
-structured facts. Route the next action to Step 3.4 lifecycle review so the
-plan can decide whether idea 67 is ready for closure/completion review instead
-of inventing another observability packet.
+Keep idea 67 active only for one bounded proof-repair packet: refresh or
+retire the stale `backend_cli_trace_mir_00204_stdarg_rejection` expectation so
+the source idea's owned `00204.c` CLI contract is green again, then rerun Step
+3.4 close review once the broader backend bucket is healthy. Do not invent
+another rejection-family packet unless a fresh supported-CLI scan shows a
+meaningful x86 family regressing back to the generic final-rejection surface.
 
 ## Watchouts
 
-- Keep the compare-driven facts shape-oriented and signature-oriented. The
-  stable key set is `params`, `non-variadic i32 params`, `non-i32 or varargs
-  params`, and `function variadic`; avoid backend-internal labels or block
-  names that would make the contract brittle.
-- The reduced route-debug fixture and the focused `00204.c` `match` proof
-  intentionally disagree on the exact counts because they cover different
-  signatures. Preserve the shared key set rather than forcing the real case to
-  mirror the reduced fixture.
-- The focused `match` CLI proof is enough to lock the real large-case contract;
-  do not widen this packet into compare-driven capability work under idea 67.
+- Do not reopen idea 67 for backend capability growth. The remaining owned
+  work is proof stability for the supported CLI contract, not new handoff
+  matcher support.
+- If the stdarg trace drift came from non-observability work elsewhere, keep
+  the fix limited to honest expectation/contract alignment or route a separate
+  initiative instead of stretching idea 67.
+- Closure remains rejected until a matching backend close gate passes; the
+  current broad backend guard also reports `backend_prepare_liveness` failing,
+  so do not claim closure readiness from the focused `00204.c` scan alone.
 
 ## Proof
 
-Ran the delegated proof command and it passed:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_x86_route_debug$' && build/c4cll --target x86_64-unknown-linux-gnu --dump-mir --mir-focus-function match tests/c/external/c-testsuite/src/00204.c && build/c4cll --target x86_64-unknown-linux-gnu --trace-mir --mir-focus-function match tests/c/external/c-testsuite/src/00204.c) > test_after.log 2>&1`
-The resulting focused contract is:
-`- final facts: prepared compare-driven-entry facts: params=2, non-variadic i32 params=0, non-i32 or varargs params=2, function variadic=no`
-and the matching trace now carries the same structured final-facts line for
-focused `match`. Supplemental CLI tests also passed:
-`ctest --test-dir build -j --output-on-failure -R '^(backend_cli_dump_mir_00204_match_rejection|backend_cli_trace_mir_00204_match_rejection)$'`
-Proof log path: `test_after.log`.
+Close-time regression guard was run at backend scope on the clean tree with:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+Closure is rejected because the guard is red with:
+`backend_cli_trace_mir_00204_stdarg_rejection`
+and
+`backend_prepare_liveness`
+failing. Focused reruns confirmed the stdarg trace failure is a stale owned
+`00204.c` expectation looking for `this helper still carries same-module call
+wrappers` while the current trace now ends that helper path at
+`matched local-slot-guard-chain`. Canonical logs: `test_before.log`
+contains the failed backend close-gate run; no `test_after.log` comparison was
+possible because the before run already failed.
