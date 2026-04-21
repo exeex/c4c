@@ -81,6 +81,7 @@ std::string lane_next_surface(std::string_view lane_name) {
       lane_name == "local-slot-guard-chain" ||
       lane_name == "bounded-same-module-variadic-helper" ||
       lane_name == "single-block-aggregate-forwarding-wrapper" ||
+      lane_name == "single-block-same-module-scalar-call-wrapper" ||
       lane_name == "single-block-floating-aggregate-call-helper" ||
       lane_name == "single-block-i64-immediate-return-helper" ||
       lane_name == "single-block-i64-ashr-return-helper" ||
@@ -122,6 +123,9 @@ std::string next_surface_hint(const FunctionRouteAttempt* attempt,
     }
     if (attempt->lane_name == "single-block-aggregate-forwarding-wrapper") {
       return "inspect the current x86 same-module aggregate-call support in " + lane_surface;
+    }
+    if (attempt->lane_name == "single-block-same-module-scalar-call-wrapper") {
+      return "inspect the current x86 same-module scalar helper-family support in " + lane_surface;
     }
     if (attempt->lane_name == "single-block-floating-aggregate-call-helper") {
       return "inspect the current x86 floating aggregate helper support in " + lane_surface;
@@ -193,6 +197,10 @@ FinalRejectionReport build_final_rejection_report(const FunctionRouteReport& rep
         } else if (it->lane_name == "single-block-aggregate-forwarding-wrapper") {
           summary = "single-block aggregate-forwarding wrapper recognized the function, but the "
                     "prepared same-module aggregate-call shape is outside the current x86 support";
+        } else if (it->lane_name == "single-block-same-module-scalar-call-wrapper") {
+          summary =
+              "single-block same-module scalar call-wrapper family recognized the function, but "
+              "the prepared helper-family shape is outside the current x86 support";
         } else if (it->lane_name == "single-block-floating-aggregate-call-helper") {
           summary =
               "single-block floating aggregate call helper recognized the function, but the "
@@ -599,6 +607,137 @@ std::optional<std::string> build_single_block_aggregate_forwarding_wrapper_lane_
          "their direct extern preamble and same-module aggregate calls already reduce to the "
          "current helper surfaces; this wrapper still mixes a direct extern preamble with "
          "same-module aggregate call wrappers";
+}
+
+std::optional<std::string> build_single_block_same_module_scalar_call_wrapper_lane_detail(
+    const std::vector<const c4c::backend::bir::Function*>& defined_functions,
+    const c4c::backend::bir::Function& function) {
+  if (function.is_declaration || function.is_variadic ||
+      function.return_type != c4c::backend::bir::TypeKind::Void || !function.params.empty() ||
+      function.blocks.size() != 1 || function.local_slots.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      entry.terminator.value.has_value() || entry.insts.empty()) {
+    return std::nullopt;
+  }
+
+  auto find_defined_function = [&](std::string_view callee_name)
+      -> const c4c::backend::bir::Function* {
+    for (const auto* candidate : defined_functions) {
+      if (candidate != nullptr && candidate->name == callee_name) {
+        return candidate;
+      }
+    }
+    return nullptr;
+  };
+  const auto is_direct_same_module_call =
+      [&](const c4c::backend::bir::CallInst& call) -> const c4c::backend::bir::Function* {
+    if (call.is_indirect || call.callee.empty() || call.callee_value.has_value() ||
+        call.callee.rfind("llvm.", 0) == 0) {
+      return nullptr;
+    }
+    const auto* callee = find_defined_function(call.callee);
+    if (callee == nullptr || callee->is_declaration) {
+      return nullptr;
+    }
+    return callee;
+  };
+  const auto is_named_value =
+      [](const c4c::backend::bir::Value& value,
+         std::string_view name,
+         c4c::backend::bir::TypeKind type) {
+        return value.kind == c4c::backend::bir::Value::Kind::Named && value.name == name &&
+               value.type == type;
+      };
+  const auto is_integer_scalar = [](c4c::backend::bir::TypeKind type) {
+    return type == c4c::backend::bir::TypeKind::I32 || type == c4c::backend::bir::TypeKind::I64;
+  };
+
+  std::size_t wrapper_pair_count = 0;
+  bool saw_width_adjusting_cast = false;
+  std::optional<std::string_view> sink_name;
+
+  for (std::size_t inst_index = 0; inst_index < entry.insts.size(); ++inst_index) {
+    const auto* helper_call = std::get_if<c4c::backend::bir::CallInst>(&entry.insts[inst_index]);
+    if (helper_call == nullptr) {
+      continue;
+    }
+
+    const auto* helper = is_direct_same_module_call(*helper_call);
+    if (helper == nullptr || helper->is_variadic || !is_integer_scalar(helper_call->return_type) ||
+        !helper_call->result.has_value() ||
+        helper_call->result->kind != c4c::backend::bir::Value::Kind::Named ||
+        helper_call->result->type != helper_call->return_type || helper_call->args.empty()) {
+      continue;
+    }
+
+    std::size_t sink_index = inst_index + 1;
+    std::string_view forwarded_name = helper_call->result->name;
+    auto forwarded_type = helper_call->result->type;
+
+    if (sink_index < entry.insts.size()) {
+      if (const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&entry.insts[sink_index]);
+          cast != nullptr &&
+          (cast->opcode == c4c::backend::bir::CastOpcode::SExt ||
+           cast->opcode == c4c::backend::bir::CastOpcode::ZExt) &&
+          is_named_value(cast->operand, helper_call->result->name, helper_call->result->type) &&
+          helper_call->result->type == c4c::backend::bir::TypeKind::I32 &&
+          cast->result.kind == c4c::backend::bir::Value::Kind::Named &&
+          cast->result.type == c4c::backend::bir::TypeKind::I64) {
+        saw_width_adjusting_cast = true;
+        forwarded_name = cast->result.name;
+        forwarded_type = cast->result.type;
+        ++sink_index;
+      }
+    }
+
+    if (sink_index >= entry.insts.size()) {
+      continue;
+    }
+
+    const auto* sink_call = std::get_if<c4c::backend::bir::CallInst>(&entry.insts[sink_index]);
+    if (sink_call == nullptr || sink_call->args.size() != 1 ||
+        sink_call->arg_types.size() != sink_call->args.size() ||
+        !is_named_value(sink_call->args.front(), forwarded_name, forwarded_type) ||
+        sink_call->arg_types.front() != forwarded_type) {
+      continue;
+    }
+
+    const auto* sink = is_direct_same_module_call(*sink_call);
+    if (sink == nullptr || sink->is_variadic ||
+        sink_call->return_type != c4c::backend::bir::TypeKind::Void || sink->params.size() != 1 ||
+        sink->params.front().type != forwarded_type) {
+      continue;
+    }
+
+    if (!sink_name.has_value()) {
+      sink_name = sink_call->callee;
+    } else if (*sink_name != sink_call->callee) {
+      return std::nullopt;
+    }
+
+    ++wrapper_pair_count;
+    inst_index = sink_index;
+  }
+
+  if (wrapper_pair_count < 2 || !sink_name.has_value()) {
+    return std::nullopt;
+  }
+
+  std::string detail =
+      "x86 backend emitter only supports single-block same-module scalar call-wrapper families "
+      "when they already reduce to the current local-slot or established scalar helper surfaces; "
+      "this wrapper still chains local-slot reloads, scalar same-module helper calls";
+  if (saw_width_adjusting_cast) {
+    detail += ", width-adjusting casts,";
+  } else {
+    detail += ", and";
+  }
+  detail += " same-module sink wrappers";
+  return detail;
 }
 
 std::string_view prepared_function_name_or_none(
@@ -1080,6 +1219,16 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           .lane_name = "single-block-aggregate-forwarding-wrapper",
           .matched = false,
           .detail = std::move(single_block_aggregate_forwarding_wrapper_detail),
+      });
+    }
+    if (const auto single_block_same_module_scalar_call_wrapper_detail =
+            build_single_block_same_module_scalar_call_wrapper_lane_detail(defined_functions,
+                                                                           *function);
+        single_block_same_module_scalar_call_wrapper_detail.has_value()) {
+      report.attempts.push_back(FunctionRouteAttempt{
+          .lane_name = "single-block-same-module-scalar-call-wrapper",
+          .matched = false,
+          .detail = std::move(single_block_same_module_scalar_call_wrapper_detail),
       });
     }
 

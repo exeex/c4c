@@ -469,6 +469,187 @@ prepare::PreparedBirModule legalize_single_block_aggregate_forwarding_wrapper_mi
   return prepare_module(std::move(module));
 }
 
+prepare::PreparedBirModule legalize_single_block_same_module_scalar_call_wrapper_miss_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.string_constants.push_back(bir::StringConstant{
+      .name = ".str0",
+      .bytes = "%lld\n",
+  });
+
+  bir::Function printf_decl;
+  printf_decl.name = "printf";
+  printf_decl.is_declaration = true;
+  printf_decl.return_type = bir::TypeKind::I32;
+  printf_decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "%p.format",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Function print_i64;
+  print_i64.name = "print_i64";
+  print_i64.return_type = bir::TypeKind::Void;
+  print_i64.params.push_back(bir::Param{
+      .type = bir::TypeKind::I64,
+      .name = "%p.value",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  bir::Block print_entry;
+  print_entry.label = "entry";
+  print_entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%t0"),
+      .callee = "printf",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "@.str0"),
+               bir::Value::named(bir::TypeKind::I64, "%p.value")},
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::I64},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .is_variadic = true,
+  });
+  print_entry.terminator = bir::ReturnTerminator{};
+  print_i64.blocks = {std::move(print_entry)};
+
+  bir::Function addip0;
+  addip0.name = "addip0";
+  addip0.return_type = bir::TypeKind::I32;
+  addip0.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "%p.x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  bir::Block addip0_entry;
+  addip0_entry.label = "entry";
+  addip0_entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%p.x"),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  addip0_entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "%t0"),
+  };
+  addip0.blocks = {std::move(addip0_entry)};
+
+  bir::Function sublp0;
+  sublp0.name = "sublp0";
+  sublp0.return_type = bir::TypeKind::I64;
+  sublp0.params.push_back(bir::Param{
+      .type = bir::TypeKind::I64,
+      .name = "%p.x",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  bir::Block sublp0_entry;
+  sublp0_entry.label = "entry";
+  sublp0_entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I64, "%t0"),
+      .operand_type = bir::TypeKind::I64,
+      .lhs = bir::Value::named(bir::TypeKind::I64, "%p.x"),
+      .rhs = bir::Value::immediate_i64(9),
+  });
+  sublp0_entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I64, "%t0"),
+  };
+  sublp0.blocks = {std::move(sublp0_entry)};
+
+  bir::Function function;
+  function.name = "single_block_same_module_scalar_call_wrapper_miss";
+  function.return_type = bir::TypeKind::Void;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.x",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .is_address_taken = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%lv.x.addr",
+      .value = bir::Value::immediate_i32(1000),
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%lv.x",
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%t1"),
+      .slot_name = "%lv.x.addr",
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%lv.x",
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%t2"),
+      .callee = "addip0",
+      .args = {bir::Value::named(bir::TypeKind::I32, "%t1")},
+      .arg_types = {bir::TypeKind::I32},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::ZExt,
+      .result = bir::Value::named(bir::TypeKind::I64, "%t3"),
+      .operand = bir::Value::named(bir::TypeKind::I32, "%t2"),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "print_i64",
+      .args = {bir::Value::named(bir::TypeKind::I64, "%t3")},
+      .arg_types = {bir::TypeKind::I64},
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%t4"),
+      .slot_name = "%lv.x.addr",
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%lv.x",
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = bir::Value::named(bir::TypeKind::I64, "%t5"),
+      .operand = bir::Value::named(bir::TypeKind::I32, "%t4"),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "%t6"),
+      .callee = "sublp0",
+      .args = {bir::Value::named(bir::TypeKind::I64, "%t5")},
+      .arg_types = {bir::TypeKind::I64},
+      .return_type_name = "i64",
+      .return_type = bir::TypeKind::I64,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "print_i64",
+      .args = {bir::Value::named(bir::TypeKind::I64, "%t6")},
+      .arg_types = {bir::TypeKind::I64},
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator = bir::ReturnTerminator{};
+
+  function.blocks = {std::move(entry)};
+  module.functions.push_back(std::move(printf_decl));
+  module.functions.push_back(std::move(print_i64));
+  module.functions.push_back(std::move(addip0));
+  module.functions.push_back(std::move(sublp0));
+  module.functions.push_back(std::move(function));
+  return prepare_module(std::move(module));
+}
+
 prepare::PreparedBirModule legalize_multi_param_compare_driven_miss_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -713,6 +894,14 @@ int main() {
   const std::string single_block_aggregate_forwarding_wrapper_miss_trace =
       c4c::backend::x86::trace_prepared_module_routes(
           single_block_aggregate_forwarding_wrapper_miss);
+  const auto single_block_same_module_scalar_call_wrapper_miss =
+      legalize_single_block_same_module_scalar_call_wrapper_miss_module();
+  const std::string single_block_same_module_scalar_call_wrapper_miss_summary =
+      c4c::backend::x86::summarize_prepared_module_routes(
+          single_block_same_module_scalar_call_wrapper_miss);
+  const std::string single_block_same_module_scalar_call_wrapper_miss_trace =
+      c4c::backend::x86::trace_prepared_module_routes(
+          single_block_same_module_scalar_call_wrapper_miss);
   const std::string multi_param_compare_driven_miss_summary =
       c4c::backend::x86::summarize_prepared_module_routes(multi_param_compare_driven_miss);
   const std::string multi_param_compare_driven_miss_trace =
@@ -813,6 +1002,21 @@ int main() {
       !expect_contains(single_block_aggregate_forwarding_wrapper_miss_trace,
                        "next inspect: inspect the current x86 same-module aggregate-call support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "single-block aggregate forwarding wrapper trace next inspect") ||
+      !expect_contains(single_block_same_module_scalar_call_wrapper_miss_summary,
+                       "- final rejection: single-block same-module scalar call-wrapper family recognized the function, but the prepared helper-family shape is outside the current x86 support",
+                       "single-block same-module scalar call-wrapper summary final rejection") ||
+      !expect_contains(single_block_same_module_scalar_call_wrapper_miss_summary,
+                       "- next inspect: inspect the current x86 same-module scalar helper-family support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
+                       "single-block same-module scalar call-wrapper summary next inspect") ||
+      !expect_contains(single_block_same_module_scalar_call_wrapper_miss_trace,
+                       "try lane single-block-same-module-scalar-call-wrapper",
+                       "single-block same-module scalar call-wrapper trace lane") ||
+      !expect_contains(single_block_same_module_scalar_call_wrapper_miss_trace,
+                       "final detail: x86 backend emitter only supports single-block same-module scalar call-wrapper families when they already reduce to the current local-slot or established scalar helper surfaces; this wrapper still chains local-slot reloads, scalar same-module helper calls, width-adjusting casts, same-module sink wrappers",
+                       "single-block same-module scalar call-wrapper trace detail") ||
+      !expect_contains(single_block_same_module_scalar_call_wrapper_miss_trace,
+                       "next inspect: inspect the current x86 same-module scalar helper-family support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
+                       "single-block same-module scalar call-wrapper trace next inspect") ||
       !expect_contains(multi_param_compare_driven_miss_summary,
                        "- final rejection: compare-driven-entry recognized the function, but the prepared shape is outside the current x86 support",
                        "multi-param compare-driven summary final rejection") ||
