@@ -1693,9 +1693,15 @@ int main() {
       !expect_contains(multi_param_compare_driven_miss_summary,
                        "- final rejection: compare-driven-entry recognized the function, but the prepared shape is outside the current x86 support",
                        "multi-param compare-driven summary final rejection") ||
+      !expect_contains(multi_param_compare_driven_miss_summary,
+                       "- final facts: prepared compare-driven-entry facts: params=2, non-variadic i32 params=1, non-i32 or varargs params=1, function variadic=no",
+                       "multi-param compare-driven summary final facts") ||
       !expect_contains(multi_param_compare_driven_miss_trace,
                        "final detail: x86 backend emitter only supports multi-block compare-driven entry routes through the canonical prepared-module handoff when the function exposes exactly one non-variadic i32 parameter",
                        "multi-param compare-driven trace detail") ||
+      !expect_contains(multi_param_compare_driven_miss_trace,
+                       "final facts: prepared compare-driven-entry facts: params=2, non-variadic i32 params=1, non-i32 or varargs params=1, function variadic=no",
+                       "multi-param compare-driven trace final facts") ||
       !expect_contains(multi_param_compare_driven_miss_trace,
                        "next inspect: inspect the current x86 shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
                        "multi-param compare-driven trace next inspect") ||

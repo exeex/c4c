@@ -864,6 +864,36 @@ set_tests_properties(backend_cli_dump_mir_00204_opi_rejection PROPERTIES
 )
 
 add_test(
+  NAME backend_cli_dump_mir_00204_match_rejection
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-mir
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DEXTRA_ARGS=--mir-focus-function;match"
+          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: match|function match|- final rejection: compare-driven-entry recognized the function, but the prepared shape is outside the current x86 support|- final facts: prepared compare-driven-entry facts: params=2, non-variadic i32 params=0, non-i32 or varargs params=2, function variadic=no|- next inspect: inspect the current x86 shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp|focused functions matched: 1"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_mir_00204_match_rejection PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_trace_mir_00204_match_rejection
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--trace-mir
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DEXTRA_ARGS=--mir-focus-function;match"
+          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: match|function match|try lane compare-driven-entry|detail: x86 backend emitter only supports multi-block compare-driven entry routes through the canonical prepared-module handoff when the function exposes exactly one non-variadic i32 parameter|final: rejected: compare-driven-entry recognized the function, but the prepared shape is outside the current x86 support|final facts: prepared compare-driven-entry facts: params=2, non-variadic i32 params=0, non-i32 or varargs params=2, function variadic=no|next inspect: inspect the current x86 shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp|focused functions matched: 1"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_trace_mir_00204_match_rejection PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
   NAME backend_cli_trace_mir_00204_opi_rejection
   COMMAND "${CMAKE_COMMAND}"
           -DCOMPILER=$<TARGET_FILE:c4cll>

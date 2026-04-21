@@ -115,6 +115,13 @@ struct SingleBlockI64AshrReturnHelperFacts {
   std::string_view shift_source = "direct i64";
 };
 
+struct CompareDrivenEntryFacts {
+  std::size_t total_param_count = 0;
+  std::size_t non_variadic_i32_param_count = 0;
+  std::size_t non_i32_or_varargs_param_count = 0;
+  bool function_is_variadic = false;
+};
+
 void append_indented_line(std::ostringstream& out,
                           std::size_t indent,
                           std::string_view text) {
@@ -322,6 +329,29 @@ std::string render_single_block_i64_ashr_return_helper_facts(
   out << "prepared i64 arithmetic-right-shift return-helper facts: param operand side="
       << facts.param_operand_side << ", shift operand side=" << facts.shift_operand_side
       << ", shift source=" << facts.shift_source;
+  return out.str();
+}
+
+CompareDrivenEntryFacts build_compare_driven_entry_facts(const c4c::backend::bir::Function& function) {
+  CompareDrivenEntryFacts facts;
+  facts.total_param_count = function.params.size();
+  facts.function_is_variadic = function.is_variadic;
+  for (const auto& param : function.params) {
+    if (!param.is_varargs && param.type == c4c::backend::bir::TypeKind::I32) {
+      ++facts.non_variadic_i32_param_count;
+    } else {
+      ++facts.non_i32_or_varargs_param_count;
+    }
+  }
+  return facts;
+}
+
+std::string render_compare_driven_entry_facts(const CompareDrivenEntryFacts& facts) {
+  std::ostringstream out;
+  out << "prepared compare-driven-entry facts: params=" << facts.total_param_count
+      << ", non-variadic i32 params=" << facts.non_variadic_i32_param_count
+      << ", non-i32 or varargs params=" << facts.non_i32_or_varargs_param_count
+      << ", function variadic=" << (facts.function_is_variadic ? "yes" : "no");
   return out.str();
 }
 
@@ -1849,9 +1879,12 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
     };
 
     const auto try_lane = [&](std::string lane_name,
-                              const std::function<std::optional<std::string>()>& try_render) {
+                              const std::function<std::optional<std::string>()>& try_render,
+                              const std::function<std::optional<std::string>()>& render_facts =
+                                  std::function<std::optional<std::string>()>{}) {
       bool matched = false;
       std::optional<std::string> detail;
+      std::optional<std::string> facts;
       try {
         matched = try_render().has_value();
       } catch (const std::exception& ex) {
@@ -1859,10 +1892,14 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
       } catch (...) {
         detail = "unknown backend exception";
       }
+      if (detail.has_value() && static_cast<bool>(render_facts)) {
+        facts = render_facts();
+      }
       report.attempts.push_back(FunctionRouteAttempt{
           .lane_name = std::move(lane_name),
           .matched = matched,
           .detail = std::move(detail),
+          .facts = std::move(facts),
       });
     };
 
@@ -1894,6 +1931,8 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
         throw std::invalid_argument(std::string(kCompareDrivenEntryParamShapeError));
       }
       return std::nullopt;
+    }, [&]() -> std::optional<std::string> {
+      return render_compare_driven_entry_facts(build_compare_driven_entry_facts(*function));
     });
     if (const auto bounded_variadic_helper_attempt = build_bounded_variadic_helper_lane_attempt(
             defined_functions, entry_function, *function, function_control_flow);
