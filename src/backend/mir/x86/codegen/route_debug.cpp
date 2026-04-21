@@ -42,6 +42,11 @@ struct FinalRejectionReport {
   std::string next_surface;
 };
 
+struct ModuleLaneRejectionReport {
+  std::string summary;
+  std::string next_surface;
+};
+
 void append_indented_line(std::ostringstream& out,
                           std::size_t indent,
                           std::string_view text) {
@@ -61,6 +66,8 @@ bool string_contains(std::string_view haystack, std::string_view needle) {
 
 constexpr std::string_view kCompareDrivenEntryParamShapeError =
     "x86 backend emitter only supports multi-block compare-driven entry routes through the canonical prepared-module handoff when the function exposes exactly one non-variadic i32 parameter";
+constexpr std::string_view kBoundedMultiFunctionLaneShapeError =
+    "x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls through the canonical prepared-module handoff";
 
 std::string lane_next_surface(std::string_view lane_name) {
   if (lane_name == "countdown-entry-routes") {
@@ -112,6 +119,25 @@ std::string next_surface_hint(const FunctionRouteAttempt* attempt,
   }
 
   return "inspect src/backend/mir/x86/codegen/prepared_module_emit.cpp for the next top-level lane";
+}
+
+ModuleLaneRejectionReport build_module_lane_rejection_report(
+    const std::optional<std::string>& detail) {
+  if (!detail.has_value()) {
+    return ModuleLaneRejectionReport{
+        .summary =
+            "bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support",
+        .next_surface =
+            "inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
+    };
+  }
+
+  return ModuleLaneRejectionReport{
+      .summary =
+          "bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support",
+      .next_surface =
+          "inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
+  };
 }
 
 FinalRejectionKind classify_rejection_kind(std::string_view detail) {
@@ -417,12 +443,27 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
     out << "module-level bounded multi-function lane: "
         << (multi_defined_dispatch.rendered_module.has_value() ? "matched" : "rejected")
         << "\n";
+    if (!multi_defined_dispatch.rendered_module.has_value()) {
+      const auto rejection = build_module_lane_rejection_report(multi_defined_dispatch_detail);
+      const auto detail =
+          multi_defined_dispatch_detail.value_or(std::string(kBoundedMultiFunctionLaneShapeError));
+      out << "- module-level final rejection: " << rejection.summary << "\n";
+      out << "- module-level final detail: " << detail << "\n";
+      out << "- module-level next inspect: " << rejection.next_surface << "\n";
+    }
   } else {
     out << "module-level bounded multi-function lane\n";
     out << "  result: "
         << (multi_defined_dispatch.rendered_module.has_value() ? "matched" : "rejected")
         << "\n";
-    if (multi_defined_dispatch_detail.has_value()) {
+    if (!multi_defined_dispatch.rendered_module.has_value()) {
+      const auto rejection = build_module_lane_rejection_report(multi_defined_dispatch_detail);
+      const auto detail =
+          multi_defined_dispatch_detail.value_or(std::string(kBoundedMultiFunctionLaneShapeError));
+      out << "  final: rejected: " << rejection.summary << "\n";
+      out << "  final detail: " << detail << "\n";
+      out << "  next inspect: " << rejection.next_surface << "\n";
+    } else if (multi_defined_dispatch_detail.has_value()) {
       out << "  detail: " << *multi_defined_dispatch_detail << "\n";
     }
   }

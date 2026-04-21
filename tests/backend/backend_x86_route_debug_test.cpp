@@ -291,6 +291,98 @@ prepare::PreparedBirModule legalize_multi_param_compare_driven_miss_module() {
   return prepare_module(std::move(module));
 }
 
+prepare::PreparedBirModule legalize_multi_defined_global_function_pointer_rejection_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.string_constants.push_back(bir::StringConstant{
+      .name = ".str0",
+      .bytes = "%d\n",
+  });
+  module.globals.push_back(bir::Global{
+      .name = "f",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .initializer_symbol_name = std::string("fred"),
+  });
+  module.globals.push_back(bir::Global{
+      .name = "printfptr",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .initializer_symbol_name = std::string("printf"),
+  });
+
+  bir::Function fred;
+  fred.name = "fred";
+  fred.return_type = bir::TypeKind::I32;
+  fred.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "%p0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  fred.blocks.push_back(bir::Block{
+      .label = "entry",
+      .terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(42)},
+  });
+
+  bir::Function printf_decl;
+  printf_decl.name = "printf";
+  printf_decl.is_declaration = true;
+  printf_decl.return_type = bir::TypeKind::I32;
+  printf_decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "%p._anon_param_",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Function main_function;
+  main_function.name = "main";
+  main_function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "%fred.ptr"),
+      .global_name = "f",
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%t1"),
+      .callee_value = bir::Value::named(bir::TypeKind::Ptr, "%fred.ptr"),
+      .args = {bir::Value::immediate_i32(24)},
+      .arg_types = {bir::TypeKind::I32},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .is_indirect = true,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "%printf.ptr"),
+      .global_name = "printfptr",
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%t2"),
+      .callee_value = bir::Value::named(bir::TypeKind::Ptr, "%printf.ptr"),
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "@.str0"),
+               bir::Value::named(bir::TypeKind::I32, "%t1")},
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::I32},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .is_indirect = true,
+      .is_variadic = true,
+  });
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  main_function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(fred));
+  module.functions.push_back(std::move(printf_decl));
+  module.functions.push_back(std::move(main_function));
+  return prepare_module(std::move(module));
+}
+
 bool expect_contains(const std::string& text,
                      const std::string& needle,
                      const char* description) {
@@ -322,6 +414,14 @@ int main() {
       c4c::backend::x86::summarize_prepared_module_routes(multi_param_compare_driven_miss);
   const std::string multi_param_compare_driven_miss_trace =
       c4c::backend::x86::trace_prepared_module_routes(multi_param_compare_driven_miss);
+  const auto multi_defined_global_function_pointer_rejection =
+      legalize_multi_defined_global_function_pointer_rejection_module();
+  const std::string multi_defined_global_function_pointer_rejection_summary =
+      c4c::backend::x86::summarize_prepared_module_routes(
+          multi_defined_global_function_pointer_rejection);
+  const std::string multi_defined_global_function_pointer_rejection_trace =
+      c4c::backend::x86::trace_prepared_module_routes(
+          multi_defined_global_function_pointer_rejection);
 
   if (!expect_contains(summary, "x86 handoff summary", "summary header") ||
       !expect_contains(summary, "function short_circuit_or_prepare_contract", "function name") ||
@@ -358,7 +458,25 @@ int main() {
                        "multi-param compare-driven trace detail") ||
       !expect_contains(multi_param_compare_driven_miss_trace,
                        "next inspect: inspect the current x86 shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
-                       "multi-param compare-driven trace next inspect")) {
+                       "multi-param compare-driven trace next inspect") ||
+      !expect_contains(multi_defined_global_function_pointer_rejection_summary,
+                       "- module-level final rejection: bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support",
+                       "module-level rejection summary final rejection") ||
+      !expect_contains(multi_defined_global_function_pointer_rejection_summary,
+                       "- module-level final detail: x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls through the canonical prepared-module handoff",
+                       "module-level rejection summary final detail") ||
+      !expect_contains(multi_defined_global_function_pointer_rejection_summary,
+                       "- module-level next inspect: inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
+                       "module-level rejection summary next inspect") ||
+      !expect_contains(multi_defined_global_function_pointer_rejection_trace,
+                       "final: rejected: bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support",
+                       "module-level rejection trace final rejection") ||
+      !expect_contains(multi_defined_global_function_pointer_rejection_trace,
+                       "final detail: x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls through the canonical prepared-module handoff",
+                       "module-level rejection trace final detail") ||
+      !expect_contains(multi_defined_global_function_pointer_rejection_trace,
+                       "next inspect: inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
+                       "module-level rejection trace next inspect")) {
     return EXIT_FAILURE;
   }
 

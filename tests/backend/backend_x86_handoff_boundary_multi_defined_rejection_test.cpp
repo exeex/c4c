@@ -30,6 +30,17 @@ int fail(const char* message) {
   return 1;
 }
 
+bool expect_contains(const std::string& text,
+                     std::string_view needle,
+                     const char* failure_context) {
+  if (text.find(needle) != std::string::npos) {
+    return true;
+  }
+  std::cerr << failure_context << ": missing expected text: " << needle << "\n";
+  std::cerr << "--- text ---\n" << text << "\n";
+  return false;
+}
+
 bir::Module make_x86_multi_defined_global_function_pointer_boundary_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -170,6 +181,49 @@ int check_route_rejection(const bir::Module& module,
   return 0;
 }
 
+int check_route_debug_surface(const bir::Module& module,
+                              std::string_view expected_message_fragment,
+                              const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  const auto prepared =
+      c4c::backend::prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+
+  const auto summary = c4c::backend::x86::summarize_prepared_module_routes(prepared);
+  if (!expect_contains(
+          summary,
+          "module-level bounded multi-function lane: rejected",
+          failure_context) ||
+      !expect_contains(
+          summary,
+          "- module-level final rejection: bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support",
+          failure_context) ||
+      !expect_contains(summary,
+                       expected_message_fragment,
+                       failure_context) ||
+      !expect_contains(
+          summary,
+          "- module-level next inspect: inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
+          failure_context)) {
+    return 1;
+  }
+
+  const auto trace = c4c::backend::x86::trace_prepared_module_routes(prepared);
+  if (!expect_contains(
+          trace,
+          "final: rejected: bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support",
+          failure_context) ||
+      !expect_contains(trace, expected_message_fragment, failure_context) ||
+      !expect_contains(
+          trace,
+          "next inspect: inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
+          failure_context)) {
+    return 1;
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_multi_defined_rejection_tests() {
@@ -180,6 +234,14 @@ int run_backend_x86_handoff_boundary_multi_defined_rejection_tests() {
           make_x86_multi_defined_global_function_pointer_boundary_module(),
           "one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls",
           "multi-defined global-function-pointer and indirect variadic-runtime boundary");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status = check_route_debug_surface(
+          make_x86_multi_defined_global_function_pointer_boundary_module(),
+          "one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls",
+          "multi-defined global-function-pointer and indirect variadic-runtime route-debug surface");
       status != 0) {
     return status;
   }
