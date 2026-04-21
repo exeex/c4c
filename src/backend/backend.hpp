@@ -50,6 +50,7 @@ struct BackendOptions {
   bool emit_semantic_bir = false;
   std::optional<std::string> route_debug_focus_function;
   std::optional<std::string> route_debug_focus_block;
+  std::optional<std::string> route_debug_focus_value;
 };
 
 enum class BackendDumpStage {

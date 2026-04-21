@@ -36,6 +36,13 @@ bool has_suffix(std::string_view value, std::string_view suffix) {
   return value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
+std::string normalize_debug_value_selector(std::string value_name) {
+  if (value_name.empty() || value_name.front() == '%' || value_name.front() == '@') {
+    return value_name;
+  }
+  return "%" + value_name;
+}
+
 bool write_text_file(const std::string& path, std::string_view text) {
   std::ofstream out(path, std::ios::binary);
   if (!out) return false;
@@ -241,6 +248,7 @@ void print_usage(const char *argv0) {
       << "  --trace-mir                Print backend MIR-route trace\n"
       << "  --mir-focus-function <fn>  Limit backend dump/trace output to one function\n"
       << "  --mir-focus-block <label>  Limit focused backend dump/trace output to one block inside the focused function\n"
+      << "  --mir-focus-value <name>   Limit focused backend dump output to one value inside the focused function\n"
       << "\n"
       << "Parser debug:\n"
       << "  --parser-debug             Enable general parser debug output\n"
@@ -321,6 +329,7 @@ int main(int argc, char **argv) {
     bool        trace_mir = false;
     std::optional<std::string> mir_focus_function;
     std::optional<std::string> mir_focus_block;
+    std::optional<std::string> mir_focus_value;
     bool        parser_debug = false;
     bool        parser_debug_tentative = false;
     bool        parser_debug_injected = false;
@@ -373,6 +382,8 @@ int main(int argc, char **argv) {
         mir_focus_function = args[++i];
       } else if (arg == "--mir-focus-block" && i + 1 < args.size()) {
         mir_focus_block = args[++i];
+      } else if (arg == "--mir-focus-value" && i + 1 < args.size()) {
+        mir_focus_value = normalize_debug_value_selector(args[++i]);
       } else if (arg == "--parser-debug") {
         parser_debug = true;
       } else if (arg == "--parser-debug-tentative") {
@@ -516,6 +527,14 @@ int main(int argc, char **argv) {
       std::cerr << "--mir-focus-block requires --mir-focus-function\n";
       return 2;
     }
+    if (mir_focus_value.has_value() && !(dump_bir || dump_prepared_bir)) {
+      std::cerr << "--mir-focus-value requires --dump-bir or --dump-prepared-bir\n";
+      return 2;
+    }
+    if (mir_focus_value.has_value() && !mir_focus_function.has_value()) {
+      std::cerr << "--mir-focus-value requires --mir-focus-function\n";
+      return 2;
+    }
 
     // Determine source profile from input file extension.
     auto source_profile = c4c::source_profile_from_extension(input);
@@ -652,6 +671,7 @@ int main(int argc, char **argv) {
               .target_profile = target_profile,
               .route_debug_focus_function = mir_focus_function,
               .route_debug_focus_block = mir_focus_block,
+              .route_debug_focus_value = mir_focus_value,
           },
           c4c::backend::BackendDumpStage::SemanticBir);
       return 0;
@@ -673,6 +693,7 @@ int main(int argc, char **argv) {
               .target_profile = target_profile,
               .route_debug_focus_function = mir_focus_function,
               .route_debug_focus_block = mir_focus_block,
+              .route_debug_focus_value = mir_focus_value,
           },
           stage);
       return 0;

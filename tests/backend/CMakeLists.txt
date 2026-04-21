@@ -430,6 +430,70 @@ set_tests_properties(backend_cli_dump_prepared_bir_focus_block_missing_00204 PRO
 )
 
 add_test(
+  NAME backend_cli_dump_bir_focus_value_t1_00204
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-bir
+          "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-value;t1"
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=focus function: stdarg|focus value: %t1|focused functions matched: 1|focused semantic value-owned lines matched: 1|bir.func @stdarg() -> void {|entry:|%t1 = bir.call i32 printf(ptr @.str48)|bir.ret"
+          "-DFORBIDDEN_SNIPPETS=bir.call void myprintf(ptr @.str49|%t3.global.aggregate.load.0|bir.func @myprintf"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_bir_focus_value_t1_00204 PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_dump_bir_focus_value_missing_00204
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-bir
+          "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-value;missing"
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=focus function: stdarg|focus value: %missing|focused functions matched: 1|focused semantic value-owned lines matched: 0|bir.func @stdarg() -> void {|}"
+          "-DFORBIDDEN_SNIPPETS=entry:|%t1 = bir.call i32 printf(ptr @.str48)|bir.call void myprintf(ptr @.str49|bir.func @myprintf"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_bir_focus_value_missing_00204 PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_dump_prepared_bir_focus_value_t1_00204
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-prepared-bir
+          "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-value;t1"
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=focus function: stdarg|focus value: %t1|focused functions matched: 1|focused semantic value-owned lines matched: 1|focused prepared value-owned lines matched: 3|prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|bir.func @stdarg() -> void {|entry:|%t1 = bir.call i32 printf(ptr @.str48)|prepared.func @stdarg|home %t1 value_id=|move_bundle phase=after_call block_index=0 instruction_index=0|move from_value_id="
+          "-DFORBIDDEN_SNIPPETS=bir.call void myprintf(ptr @.str49|home %t3.global.aggregate.load.0|access block=entry|prepared.func @myprintf"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_prepared_bir_focus_value_t1_00204 PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_dump_prepared_bir_focus_value_missing_00204
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-prepared-bir
+          "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-value;missing"
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=focus function: stdarg|focus value: %missing|focused functions matched: 1|focused semantic value-owned lines matched: 0|focused prepared value-owned lines matched: 0|prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|bir.func @stdarg() -> void {|prepared.func @stdarg"
+          "-DFORBIDDEN_SNIPPETS=entry:|%t1 = bir.call i32 printf(ptr @.str48)|home %t1 value_id=|move_bundle phase=after_call|access block=entry|prepared.func @myprintf"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_prepared_bir_focus_value_missing_00204 PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
   NAME backend_cli_dump_mir_focus_function_filters_00204
   COMMAND "${CMAKE_COMMAND}"
           -DCOMPILER=$<TARGET_FILE:c4cll>

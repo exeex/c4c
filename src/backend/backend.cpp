@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <optional>
 #include <sstream>
+#include <type_traits>
+#include <unordered_set>
 
 namespace c4c::backend {
 
@@ -101,6 +103,129 @@ c4c::backend::prepare::PreparedBirModule prepare_semantic_bir_pipeline(
   return c4c::backend::prepare::prepare_semantic_bir_module_with_options(module, target_profile);
 }
 
+bool named_value_matches(const c4c::backend::bir::Value& value,
+                         std::string_view focus_value) {
+  return value.kind == c4c::backend::bir::Value::Kind::Named && value.name == focus_value;
+}
+
+bool memory_address_mentions_value(
+    const std::optional<c4c::backend::bir::MemoryAddress>& address,
+    std::string_view focus_value) {
+  if (!address.has_value()) {
+    return false;
+  }
+  return address->base_name == focus_value || named_value_matches(address->base_value, focus_value);
+}
+
+bool bir_instruction_mentions_value(const c4c::backend::bir::Inst& inst,
+                                    std::string_view focus_value) {
+  return std::visit(
+      [&](const auto& lowered) {
+        using Inst = std::decay_t<decltype(lowered)>;
+        if constexpr (std::is_same_v<Inst, c4c::backend::bir::BinaryInst>) {
+          return named_value_matches(lowered.result, focus_value) ||
+                 named_value_matches(lowered.lhs, focus_value) ||
+                 named_value_matches(lowered.rhs, focus_value);
+        } else if constexpr (std::is_same_v<Inst, c4c::backend::bir::SelectInst>) {
+          return named_value_matches(lowered.result, focus_value) ||
+                 named_value_matches(lowered.lhs, focus_value) ||
+                 named_value_matches(lowered.rhs, focus_value) ||
+                 named_value_matches(lowered.true_value, focus_value) ||
+                 named_value_matches(lowered.false_value, focus_value);
+        } else if constexpr (std::is_same_v<Inst, c4c::backend::bir::CastInst>) {
+          return named_value_matches(lowered.result, focus_value) ||
+                 named_value_matches(lowered.operand, focus_value);
+        } else if constexpr (std::is_same_v<Inst, c4c::backend::bir::PhiInst>) {
+          if (named_value_matches(lowered.result, focus_value)) {
+            return true;
+          }
+          return std::any_of(
+              lowered.incomings.begin(),
+              lowered.incomings.end(),
+              [&](const c4c::backend::bir::PhiIncoming& incoming) {
+                return named_value_matches(incoming.value, focus_value);
+              });
+        } else if constexpr (std::is_same_v<Inst, c4c::backend::bir::CallInst>) {
+          if (lowered.result.has_value() && named_value_matches(*lowered.result, focus_value)) {
+            return true;
+          }
+          if (lowered.callee_value.has_value() &&
+              named_value_matches(*lowered.callee_value, focus_value)) {
+            return true;
+          }
+          return std::any_of(lowered.args.begin(),
+                             lowered.args.end(),
+                             [&](const c4c::backend::bir::Value& arg) {
+                               return named_value_matches(arg, focus_value);
+                             });
+        } else if constexpr (std::is_same_v<Inst, c4c::backend::bir::LoadLocalInst>) {
+          return named_value_matches(lowered.result, focus_value) ||
+                 lowered.slot_name == focus_value ||
+                 memory_address_mentions_value(lowered.address, focus_value);
+        } else if constexpr (std::is_same_v<Inst, c4c::backend::bir::LoadGlobalInst>) {
+          return named_value_matches(lowered.result, focus_value) ||
+                 lowered.global_name == focus_value ||
+                 memory_address_mentions_value(lowered.address, focus_value);
+        } else if constexpr (std::is_same_v<Inst, c4c::backend::bir::StoreGlobalInst>) {
+          return lowered.global_name == focus_value ||
+                 named_value_matches(lowered.value, focus_value) ||
+                 memory_address_mentions_value(lowered.address, focus_value);
+        } else if constexpr (std::is_same_v<Inst, c4c::backend::bir::StoreLocalInst>) {
+          return lowered.slot_name == focus_value ||
+                 named_value_matches(lowered.value, focus_value) ||
+                 memory_address_mentions_value(lowered.address, focus_value);
+        }
+        return false;
+      },
+      inst);
+}
+
+bool bir_terminator_mentions_value(const c4c::backend::bir::Terminator& terminator,
+                                   std::string_view focus_value) {
+  return (terminator.value.has_value() && named_value_matches(*terminator.value, focus_value)) ||
+         named_value_matches(terminator.condition, focus_value);
+}
+
+std::size_t count_matching_bir_value_lines(const c4c::backend::bir::Function& function,
+                                           std::string_view focus_value) {
+  std::size_t matched_lines = 0;
+  for (const auto& block : function.blocks) {
+    matched_lines += static_cast<std::size_t>(std::count_if(
+        block.insts.begin(),
+        block.insts.end(),
+        [&](const c4c::backend::bir::Inst& inst) {
+          return bir_instruction_mentions_value(inst, focus_value);
+        }));
+    if (bir_terminator_mentions_value(block.terminator, focus_value)) {
+      ++matched_lines;
+    }
+  }
+  return matched_lines;
+}
+
+c4c::backend::bir::Function filter_bir_function_to_value(
+    const c4c::backend::bir::Function& function,
+    std::string_view focus_value) {
+  c4c::backend::bir::Function filtered = function;
+  filtered.blocks.clear();
+  for (const auto& block : function.blocks) {
+    c4c::backend::bir::Block filtered_block = block;
+    filtered_block.insts.erase(
+        std::remove_if(filtered_block.insts.begin(),
+                       filtered_block.insts.end(),
+                       [&](const c4c::backend::bir::Inst& inst) {
+                         return !bir_instruction_mentions_value(inst, focus_value);
+                       }),
+        filtered_block.insts.end());
+    if (filtered_block.insts.empty() &&
+        !bir_terminator_mentions_value(block.terminator, focus_value)) {
+      continue;
+    }
+    filtered.blocks.push_back(std::move(filtered_block));
+  }
+  return filtered;
+}
+
 std::size_t count_matching_functions(const c4c::backend::bir::Module& module,
                                      std::string_view function_name) {
   return static_cast<std::size_t>(std::count_if(module.functions.begin(),
@@ -160,11 +285,19 @@ std::string make_focus_header(std::string_view function_name,
                               std::size_t matched_count,
                               std::optional<std::string_view> block_label = std::nullopt,
                               std::optional<std::size_t> matched_bir_blocks = std::nullopt,
-                              std::optional<std::size_t> matched_prepared_blocks = std::nullopt) {
+                              std::optional<std::size_t> matched_prepared_blocks = std::nullopt,
+                              std::optional<std::string_view> value_name = std::nullopt,
+                              std::optional<std::size_t> matched_semantic_value_lines =
+                                  std::nullopt,
+                              std::optional<std::size_t> matched_prepared_value_lines =
+                                  std::nullopt) {
   std::ostringstream out;
   out << "focus function: " << function_name << "\n";
   if (block_label.has_value()) {
     out << "focus block: " << *block_label << "\n";
+  }
+  if (value_name.has_value()) {
+    out << "focus value: " << *value_name << "\n";
   }
   out << "focused functions matched: " << matched_count << "\n";
   if (matched_bir_blocks.has_value()) {
@@ -172,6 +305,14 @@ std::string make_focus_header(std::string_view function_name,
   }
   if (matched_prepared_blocks.has_value()) {
     out << "focused prepared blocks matched: " << *matched_prepared_blocks << "\n";
+  }
+  if (matched_semantic_value_lines.has_value()) {
+    out << "focused semantic value-owned lines matched: "
+        << *matched_semantic_value_lines << "\n";
+  }
+  if (matched_prepared_value_lines.has_value()) {
+    out << "focused prepared value-owned lines matched: "
+        << *matched_prepared_value_lines << "\n";
   }
   return out.str();
 }
@@ -420,6 +561,351 @@ c4c::backend::prepare::PreparedBirModule filter_prepared_module_to_block(
   return filtered;
 }
 
+bool prepared_branch_condition_mentions_value(
+    const c4c::backend::prepare::PreparedBranchCondition& condition,
+    std::string_view focus_value) {
+  return named_value_matches(condition.condition_value, focus_value) ||
+         (condition.lhs.has_value() && named_value_matches(*condition.lhs, focus_value)) ||
+         (condition.rhs.has_value() && named_value_matches(*condition.rhs, focus_value));
+}
+
+bool prepared_join_transfer_mentions_value(
+    const c4c::backend::prepare::PreparedJoinTransfer& transfer,
+    std::string_view focus_value) {
+  if (named_value_matches(transfer.result, focus_value)) {
+    return true;
+  }
+  if (std::any_of(
+          transfer.incomings.begin(),
+          transfer.incomings.end(),
+          [&](const c4c::backend::bir::PhiIncoming& incoming) {
+            return named_value_matches(incoming.value, focus_value);
+          })) {
+    return true;
+  }
+  return std::any_of(
+      transfer.edge_transfers.begin(),
+      transfer.edge_transfers.end(),
+      [&](const auto& edge) {
+        return named_value_matches(edge.incoming_value, focus_value) ||
+               named_value_matches(edge.destination_value, focus_value);
+      });
+}
+
+bool prepared_parallel_copy_move_mentions_value(
+    const c4c::backend::prepare::PreparedParallelCopyMove& move,
+    std::string_view focus_value) {
+  return named_value_matches(move.source_value, focus_value) ||
+         named_value_matches(move.destination_value, focus_value);
+}
+
+bool prepared_access_mentions_value(
+    const c4c::backend::prepare::PreparedMemoryAccess& access,
+    c4c::ValueNameId focus_value_id) {
+  return access.result_value_name == focus_value_id ||
+         access.stored_value_name == focus_value_id ||
+         access.address.pointer_value_name == focus_value_id;
+}
+
+std::unordered_set<c4c::backend::prepare::PreparedValueId> collect_prepared_value_ids(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    c4c::ValueNameId focus_value_id) {
+  std::unordered_set<c4c::backend::prepare::PreparedValueId> value_ids;
+  for (const auto& function_locations : module.value_locations.functions) {
+    for (const auto& home : function_locations.value_homes) {
+      if (home.value_name == focus_value_id) {
+        value_ids.insert(home.value_id);
+      }
+    }
+  }
+  return value_ids;
+}
+
+std::size_t count_matching_prepared_value_lines(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    std::string_view focus_value) {
+  std::size_t matched_lines = 0;
+  for (const auto& function : module.module.functions) {
+    matched_lines += count_matching_bir_value_lines(function, focus_value);
+  }
+
+  const auto focus_value_id =
+      c4c::backend::prepare::resolve_prepared_value_name_id(module.names, focus_value);
+  if (!focus_value_id.has_value()) {
+    return matched_lines;
+  }
+  const auto focus_value_ids = collect_prepared_value_ids(module, *focus_value_id);
+
+  for (const auto& function_cf : module.control_flow.functions) {
+    matched_lines += static_cast<std::size_t>(std::count_if(
+        function_cf.branch_conditions.begin(),
+        function_cf.branch_conditions.end(),
+        [&](const c4c::backend::prepare::PreparedBranchCondition& condition) {
+          return prepared_branch_condition_mentions_value(condition, focus_value);
+        }));
+    matched_lines += static_cast<std::size_t>(std::count_if(
+        function_cf.join_transfers.begin(),
+        function_cf.join_transfers.end(),
+        [&](const c4c::backend::prepare::PreparedJoinTransfer& transfer) {
+          return prepared_join_transfer_mentions_value(transfer, focus_value);
+        }));
+    for (const auto& bundle : function_cf.parallel_copy_bundles) {
+      matched_lines += static_cast<std::size_t>(std::count_if(
+          bundle.moves.begin(),
+          bundle.moves.end(),
+          [&](const c4c::backend::prepare::PreparedParallelCopyMove& move) {
+            return prepared_parallel_copy_move_mentions_value(move, focus_value);
+          }));
+    }
+  }
+
+  std::unordered_set<c4c::backend::prepare::PreparedObjectId> matched_object_ids;
+  for (const auto& function_locations : module.value_locations.functions) {
+    matched_lines += static_cast<std::size_t>(std::count_if(
+        function_locations.value_homes.begin(),
+        function_locations.value_homes.end(),
+        [&](const c4c::backend::prepare::PreparedValueHome& home) {
+          return home.value_name == *focus_value_id;
+        }));
+    for (const auto& bundle : function_locations.move_bundles) {
+      matched_lines += static_cast<std::size_t>(std::count_if(
+          bundle.moves.begin(),
+          bundle.moves.end(),
+          [&](const c4c::backend::prepare::PreparedMoveResolution& move) {
+            return focus_value_ids.count(move.from_value_id) != 0 ||
+                   focus_value_ids.count(move.to_value_id) != 0;
+          }));
+    }
+  }
+
+  for (const auto& object : module.stack_layout.objects) {
+    const bool object_matches =
+        object.value_name == *focus_value_id ||
+        c4c::backend::prepare::prepared_stack_object_name(module.names, object) == focus_value;
+    if (!object_matches) {
+      continue;
+    }
+    ++matched_lines;
+    matched_object_ids.insert(object.object_id);
+  }
+  matched_lines += static_cast<std::size_t>(std::count_if(
+      module.stack_layout.frame_slots.begin(),
+      module.stack_layout.frame_slots.end(),
+      [&](const c4c::backend::prepare::PreparedFrameSlot& slot) {
+        return matched_object_ids.count(slot.object_id) != 0;
+      }));
+
+  for (const auto& function_addressing : module.addressing.functions) {
+    matched_lines += static_cast<std::size_t>(std::count_if(
+        function_addressing.accesses.begin(),
+        function_addressing.accesses.end(),
+        [&](const c4c::backend::prepare::PreparedMemoryAccess& access) {
+          return prepared_access_mentions_value(access, *focus_value_id);
+        }));
+  }
+
+  return matched_lines;
+}
+
+c4c::backend::prepare::PreparedBirModule filter_prepared_module_to_value(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    std::string_view focus_value) {
+  auto filtered = module;
+  for (auto& function : filtered.module.functions) {
+    function = filter_bir_function_to_value(function, focus_value);
+  }
+
+  const auto focus_value_id =
+      c4c::backend::prepare::resolve_prepared_value_name_id(filtered.names, focus_value);
+  if (!focus_value_id.has_value()) {
+    for (auto& function_cf : filtered.control_flow.functions) {
+      function_cf.blocks.clear();
+      function_cf.branch_conditions.clear();
+      function_cf.join_transfers.clear();
+      function_cf.parallel_copy_bundles.clear();
+    }
+    for (auto& function_locations : filtered.value_locations.functions) {
+      function_locations.value_homes.clear();
+      function_locations.move_bundles.clear();
+    }
+    filtered.stack_layout.objects.clear();
+    filtered.stack_layout.frame_slots.clear();
+    for (auto& function_addressing : filtered.addressing.functions) {
+      function_addressing.accesses.clear();
+    }
+    return filtered;
+  }
+
+  const auto focus_value_ids = collect_prepared_value_ids(filtered, *focus_value_id);
+  std::unordered_set<c4c::backend::prepare::PreparedObjectId> matched_object_ids;
+
+  for (auto& function_cf : filtered.control_flow.functions) {
+    std::unordered_set<c4c::BlockLabelId> keep_block_ids;
+    const auto function_name =
+        c4c::backend::prepare::prepared_function_name(filtered.names, function_cf.function_name);
+    if (const auto* filtered_function = find_function(filtered.module, function_name);
+        filtered_function != nullptr) {
+      for (const auto& block : filtered_function->blocks) {
+        const auto block_label_id =
+            c4c::backend::prepare::resolve_prepared_block_label_id(filtered.names, block.label);
+        if (block_label_id.has_value()) {
+          keep_block_ids.insert(*block_label_id);
+        }
+      }
+    }
+
+    function_cf.branch_conditions.erase(
+        std::remove_if(function_cf.branch_conditions.begin(),
+                       function_cf.branch_conditions.end(),
+                       [&](const c4c::backend::prepare::PreparedBranchCondition& condition) {
+                         if (!prepared_branch_condition_mentions_value(condition, focus_value)) {
+                           return true;
+                         }
+                         keep_block_ids.insert(condition.block_label);
+                         keep_block_ids.insert(condition.true_label);
+                         keep_block_ids.insert(condition.false_label);
+                         return false;
+                       }),
+        function_cf.branch_conditions.end());
+
+    function_cf.join_transfers.erase(
+        std::remove_if(function_cf.join_transfers.begin(),
+                       function_cf.join_transfers.end(),
+                       [&](const c4c::backend::prepare::PreparedJoinTransfer& transfer) {
+                         if (!prepared_join_transfer_mentions_value(transfer, focus_value)) {
+                           return true;
+                         }
+                         keep_block_ids.insert(transfer.join_block_label);
+                         if (transfer.source_branch_block_label.has_value()) {
+                           keep_block_ids.insert(*transfer.source_branch_block_label);
+                         }
+                         if (transfer.source_true_incoming_label.has_value()) {
+                           keep_block_ids.insert(*transfer.source_true_incoming_label);
+                         }
+                         if (transfer.source_false_incoming_label.has_value()) {
+                           keep_block_ids.insert(*transfer.source_false_incoming_label);
+                         }
+                         for (const auto& edge : transfer.edge_transfers) {
+                           keep_block_ids.insert(edge.predecessor_label);
+                           keep_block_ids.insert(edge.successor_label);
+                         }
+                         return false;
+                       }),
+        function_cf.join_transfers.end());
+
+    function_cf.parallel_copy_bundles.erase(
+        std::remove_if(
+            function_cf.parallel_copy_bundles.begin(),
+            function_cf.parallel_copy_bundles.end(),
+            [&](c4c::backend::prepare::PreparedParallelCopyBundle& bundle) {
+              std::vector<c4c::backend::prepare::PreparedParallelCopyMove> kept_moves;
+              kept_moves.reserve(bundle.moves.size());
+              std::vector<std::size_t> move_index_map(bundle.moves.size(),
+                                                      static_cast<std::size_t>(-1));
+              for (std::size_t move_index = 0; move_index < bundle.moves.size(); ++move_index) {
+                if (!prepared_parallel_copy_move_mentions_value(bundle.moves[move_index],
+                                                                focus_value)) {
+                  continue;
+                }
+                move_index_map[move_index] = kept_moves.size();
+                kept_moves.push_back(bundle.moves[move_index]);
+              }
+              if (kept_moves.empty()) {
+                return true;
+              }
+              keep_block_ids.insert(bundle.predecessor_label);
+              keep_block_ids.insert(bundle.successor_label);
+              bundle.moves = std::move(kept_moves);
+              bundle.steps.erase(
+                  std::remove_if(bundle.steps.begin(),
+                                 bundle.steps.end(),
+                                 [&](auto& step) {
+                                   if (step.move_index >= move_index_map.size() ||
+                                       move_index_map[step.move_index] ==
+                                           static_cast<std::size_t>(-1)) {
+                                     return true;
+                                   }
+                                   step.move_index = move_index_map[step.move_index];
+                                   return false;
+                                 }),
+                  bundle.steps.end());
+              return false;
+            }),
+        function_cf.parallel_copy_bundles.end());
+
+    function_cf.blocks.erase(
+        std::remove_if(function_cf.blocks.begin(),
+                       function_cf.blocks.end(),
+                       [&](const c4c::backend::prepare::PreparedControlFlowBlock& block) {
+                         return keep_block_ids.count(block.block_label) == 0;
+                       }),
+        function_cf.blocks.end());
+  }
+
+  for (auto& function_locations : filtered.value_locations.functions) {
+    function_locations.value_homes.erase(
+        std::remove_if(function_locations.value_homes.begin(),
+                       function_locations.value_homes.end(),
+                       [&](const c4c::backend::prepare::PreparedValueHome& home) {
+                         return home.value_name != *focus_value_id;
+                       }),
+        function_locations.value_homes.end());
+    function_locations.move_bundles.erase(
+        std::remove_if(
+            function_locations.move_bundles.begin(),
+            function_locations.move_bundles.end(),
+            [&](c4c::backend::prepare::PreparedMoveBundle& bundle) {
+              bundle.moves.erase(
+                  std::remove_if(
+                      bundle.moves.begin(),
+                      bundle.moves.end(),
+                      [&](const c4c::backend::prepare::PreparedMoveResolution& move) {
+                        return focus_value_ids.count(move.from_value_id) == 0 &&
+                               focus_value_ids.count(move.to_value_id) == 0;
+                      }),
+                  bundle.moves.end());
+              bundle.abi_bindings.clear();
+              return bundle.moves.empty();
+            }),
+        function_locations.move_bundles.end());
+  }
+
+  filtered.stack_layout.objects.erase(
+      std::remove_if(filtered.stack_layout.objects.begin(),
+                     filtered.stack_layout.objects.end(),
+                     [&](const c4c::backend::prepare::PreparedStackObject& object) {
+                       const bool keep_object =
+                           object.value_name == *focus_value_id ||
+                           c4c::backend::prepare::prepared_stack_object_name(filtered.names,
+                                                                            object) ==
+                               focus_value;
+                       if (keep_object) {
+                         matched_object_ids.insert(object.object_id);
+                       }
+                       return !keep_object;
+                     }),
+      filtered.stack_layout.objects.end());
+  filtered.stack_layout.frame_slots.erase(
+      std::remove_if(filtered.stack_layout.frame_slots.begin(),
+                     filtered.stack_layout.frame_slots.end(),
+                     [&](const c4c::backend::prepare::PreparedFrameSlot& slot) {
+                       return matched_object_ids.count(slot.object_id) == 0;
+                     }),
+      filtered.stack_layout.frame_slots.end());
+
+  for (auto& function_addressing : filtered.addressing.functions) {
+    function_addressing.accesses.erase(
+        std::remove_if(function_addressing.accesses.begin(),
+                       function_addressing.accesses.end(),
+                       [&](const c4c::backend::prepare::PreparedMemoryAccess& access) {
+                         return !prepared_access_mentions_value(access, *focus_value_id);
+                       }),
+        function_addressing.accesses.end());
+  }
+
+  return filtered;
+}
+
 }  // namespace
 
 BackendModuleInput::BackendModuleInput(const bir::Module& bir_module)
@@ -536,12 +1022,24 @@ std::string dump_module(const BackendModuleInput& input,
         filtered.functions.front() = filter_bir_function_to_block(filtered.functions.front(),
                                                                  *options.route_debug_focus_block);
       }
+      std::optional<std::size_t> matched_semantic_value_lines;
+      if (options.route_debug_focus_value.has_value() && !filtered.functions.empty()) {
+        matched_semantic_value_lines = count_matching_bir_value_lines(
+            filtered.functions.front(), *options.route_debug_focus_value);
+        filtered.functions.front() = filter_bir_function_to_value(
+            filtered.functions.front(), *options.route_debug_focus_value);
+      } else if (options.route_debug_focus_value.has_value()) {
+        matched_semantic_value_lines = 0;
+      }
       return make_focus_header(*options.route_debug_focus_function,
                                matched_functions,
                                options.route_debug_focus_block,
                                options.route_debug_focus_block.has_value()
                                    ? std::optional<std::size_t>(matched_bir_blocks)
-                                   : std::nullopt) +
+                                   : std::nullopt,
+                               std::nullopt,
+                               options.route_debug_focus_value,
+                               matched_semantic_value_lines) +
              c4c::backend::bir::print(filtered);
     }
     c4c::TargetProfile target_profile_storage;
@@ -578,6 +1076,19 @@ std::string dump_module(const BackendModuleInput& input,
     } else {
       prepared = filter_prepared_module_to_function(prepared, *options.route_debug_focus_function);
     }
+    std::optional<std::size_t> matched_semantic_value_lines;
+    std::optional<std::size_t> matched_prepared_value_lines;
+    if (options.route_debug_focus_value.has_value()) {
+      matched_prepared_value_lines =
+          count_matching_prepared_value_lines(prepared, *options.route_debug_focus_value);
+      if (!prepared.module.functions.empty()) {
+        matched_semantic_value_lines = count_matching_bir_value_lines(
+            prepared.module.functions.front(), *options.route_debug_focus_value);
+      } else {
+        matched_semantic_value_lines = 0;
+      }
+      prepared = filter_prepared_module_to_value(prepared, *options.route_debug_focus_value);
+    }
     return make_focus_header(
                *options.route_debug_focus_function,
                matched_functions,
@@ -587,7 +1098,10 @@ std::string dump_module(const BackendModuleInput& input,
                    : std::nullopt,
                options.route_debug_focus_block.has_value()
                    ? std::optional<std::size_t>(matched_prepared_blocks)
-                   : std::nullopt) +
+                   : std::nullopt,
+               options.route_debug_focus_value,
+               matched_semantic_value_lines,
+               matched_prepared_value_lines) +
            c4c::backend::prepare::print(prepared);
   }
 
@@ -624,12 +1138,24 @@ std::string dump_module(const BackendModuleInput& input,
       filtered.functions.front() = filter_bir_function_to_block(filtered.functions.front(),
                                                                *options.route_debug_focus_block);
     }
+    std::optional<std::size_t> matched_semantic_value_lines;
+    if (options.route_debug_focus_value.has_value() && !filtered.functions.empty()) {
+      matched_semantic_value_lines = count_matching_bir_value_lines(
+          filtered.functions.front(), *options.route_debug_focus_value);
+      filtered.functions.front() = filter_bir_function_to_value(filtered.functions.front(),
+                                                                *options.route_debug_focus_value);
+    } else if (options.route_debug_focus_value.has_value()) {
+      matched_semantic_value_lines = 0;
+    }
     return make_focus_header(*options.route_debug_focus_function,
                              matched_functions,
                              options.route_debug_focus_block,
                              options.route_debug_focus_block.has_value()
                                  ? std::optional<std::size_t>(matched_bir_blocks)
-                                 : std::nullopt) +
+                                 : std::nullopt,
+                             std::nullopt,
+                             options.route_debug_focus_value,
+                             matched_semantic_value_lines) +
            c4c::backend::bir::print(filtered);
   }
   auto prepared = prepare_semantic_bir_pipeline(*lowering.module, target_profile);
@@ -661,6 +1187,19 @@ std::string dump_module(const BackendModuleInput& input,
   } else {
     prepared = filter_prepared_module_to_function(prepared, *options.route_debug_focus_function);
   }
+  std::optional<std::size_t> matched_semantic_value_lines;
+  std::optional<std::size_t> matched_prepared_value_lines;
+  if (options.route_debug_focus_value.has_value()) {
+    matched_prepared_value_lines =
+        count_matching_prepared_value_lines(prepared, *options.route_debug_focus_value);
+    if (!prepared.module.functions.empty()) {
+      matched_semantic_value_lines = count_matching_bir_value_lines(
+          prepared.module.functions.front(), *options.route_debug_focus_value);
+    } else {
+      matched_semantic_value_lines = 0;
+    }
+    prepared = filter_prepared_module_to_value(prepared, *options.route_debug_focus_value);
+  }
   return make_focus_header(*options.route_debug_focus_function,
                            matched_functions,
                            options.route_debug_focus_block,
@@ -669,7 +1208,10 @@ std::string dump_module(const BackendModuleInput& input,
                                : std::nullopt,
                            options.route_debug_focus_block.has_value()
                                ? std::optional<std::size_t>(matched_prepared_blocks)
-                               : std::nullopt) +
+                               : std::nullopt,
+                           options.route_debug_focus_value,
+                           matched_semantic_value_lines,
+                           matched_prepared_value_lines) +
          c4c::backend::prepare::print(prepared);
 }
 
