@@ -2333,10 +2333,6 @@ select_prepared_block_branch_render_if_supported(
           .prepared_names = prepared_names,
       };
     }
-    if (has_authoritative_prepared_short_circuit_continuation(continuation)) {
-      throw std::invalid_argument(
-          "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
-    }
   }
 
   return PreparedBlockBranchRenderSelection{};
@@ -4789,8 +4785,7 @@ std::optional<std::string> render_prepared_local_i32_arithmetic_guard_if_support
       c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
           *context.prepared_names, *context.function_control_flow, entry_label_id)
           .has_value()) {
-    throw std::invalid_argument(
-        "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
+    return std::nullopt;
   }
 
   const auto compared_branch_plan =
@@ -4995,8 +4990,7 @@ std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_support
       c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
           *context.prepared_names, *context.function_control_flow, entry_label_id)
           .has_value()) {
-    throw std::invalid_argument(
-        "x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff");
+    return std::nullopt;
   }
 
   const auto branch_plan = select_prepared_or_raw_i32_immediate_branch_plan_if_supported(

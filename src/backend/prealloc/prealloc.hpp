@@ -1231,8 +1231,7 @@ find_prepared_compare_branch_target_labels(const PreparedNameTables& names,
   if (source_block.terminator.kind != bir::TerminatorKind::CondBranch ||
       !branch_condition.predicate.has_value() ||
       !branch_condition.compare_type.has_value() || !branch_condition.lhs.has_value() ||
-      !branch_condition.rhs.has_value() ||
-      *branch_condition.compare_type != bir::TypeKind::I32) {
+      !branch_condition.rhs.has_value()) {
     return std::nullopt;
   }
 

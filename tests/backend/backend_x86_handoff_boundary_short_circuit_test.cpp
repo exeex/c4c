@@ -190,6 +190,27 @@ std::string expected_minimal_local_i32_short_circuit_or_guard_asm(const char* fu
          "    ret\n";
 }
 
+std::string expected_minimal_local_i8_short_circuit_or_guard_asm(const char* function_name) {
+  return asm_header(function_name) + "    sub rsp, 16\n"
+         "    mov BYTE PTR [rsp], 1\n"
+         "    mov BYTE PTR [rsp], 3\n"
+         "    cmp BYTE PTR [rsp], 3\n"
+         "    je .L" + function_name + "_logic.rhs.7\n"
+         "    mov eax, 1\n"
+         "    add rsp, 16\n"
+         "    ret\n"
+         ".L" + function_name + "_logic.rhs.7:\n"
+         "    cmp BYTE PTR [rsp], 3\n"
+         "    je .L" + function_name + "_block_2\n"
+         "    mov eax, 1\n"
+         "    add rsp, 16\n"
+         "    ret\n"
+         ".L" + function_name + "_block_2:\n"
+         "    mov eax, 0\n"
+         "    add rsp, 16\n"
+         "    ret\n";
+}
+
 bir::Module make_x86_local_i32_short_circuit_or_guard_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -322,6 +343,138 @@ bir::Module make_x86_local_i32_short_circuit_or_guard_module() {
   return module;
 }
 
+bir::Module make_x86_local_i8_short_circuit_or_guard_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%lv.u.0",
+      .type = bir::TypeKind::I8,
+      .size_bytes = 1,
+      .align_bytes = 1,
+      .is_address_taken = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%t0.addr",
+      .value = bir::Value::immediate_i8(1),
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%lv.u.0",
+          .size_bytes = 1,
+          .align_bytes = 1,
+      },
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%t1.addr",
+      .value = bir::Value::immediate_i8(3),
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%lv.u.0",
+          .size_bytes = 1,
+          .align_bytes = 1,
+      },
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I8, "%t3"),
+      .slot_name = "%t3.addr",
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%lv.u.0",
+          .size_bytes = 1,
+          .align_bytes = 1,
+      },
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t4"),
+      .operand_type = bir::TypeKind::I8,
+      .lhs = bir::Value::named(bir::TypeKind::I8, "%t3"),
+      .rhs = bir::Value::immediate_i8(3),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "%t4"),
+      .true_label = "logic.skip.8",
+      .false_label = "logic.rhs.7",
+  };
+
+  bir::Block logic_rhs;
+  logic_rhs.label = "logic.rhs.7";
+  logic_rhs.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I8, "%t12"),
+      .slot_name = "%t12.addr",
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "%lv.u.0",
+          .size_bytes = 1,
+          .align_bytes = 1,
+      },
+  });
+  logic_rhs.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t13"),
+      .operand_type = bir::TypeKind::I8,
+      .lhs = bir::Value::named(bir::TypeKind::I8, "%t12"),
+      .rhs = bir::Value::immediate_i8(3),
+  });
+  logic_rhs.terminator = bir::BranchTerminator{.target_label = "logic.rhs.end.9"};
+
+  bir::Block logic_rhs_end;
+  logic_rhs_end.label = "logic.rhs.end.9";
+  logic_rhs_end.terminator = bir::BranchTerminator{.target_label = "logic.end.10"};
+
+  bir::Block logic_skip;
+  logic_skip.label = "logic.skip.8";
+  logic_skip.terminator = bir::BranchTerminator{.target_label = "logic.end.10"};
+
+  bir::Block logic_end;
+  logic_end.label = "logic.end.10";
+  logic_end.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t17"),
+      .compare_type = bir::TypeKind::I8,
+      .lhs = bir::Value::named(bir::TypeKind::I8, "%t3"),
+      .rhs = bir::Value::immediate_i8(3),
+      .true_value = bir::Value::immediate_i32(1),
+      .false_value = bir::Value::named(bir::TypeKind::I32, "%t13"),
+  });
+  logic_end.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t18"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%t17"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  logic_end.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "%t18"),
+      .true_label = "block_1",
+      .false_label = "block_2",
+  };
+
+  bir::Block block_1;
+  block_1.label = "block_1";
+  block_1.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(1)};
+
+  bir::Block block_2;
+  block_2.label = "block_2";
+  block_2.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(logic_rhs));
+  function.blocks.push_back(std::move(logic_rhs_end));
+  function.blocks.push_back(std::move(logic_skip));
+  function.blocks.push_back(std::move(logic_end));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 int check_route_outputs(const bir::Module& module,
                         const std::string& expected_asm,
                         const std::string& expected_bir_fragment,
@@ -375,6 +528,36 @@ int check_route_outputs(const bir::Module& module,
     return fail((std::string(failure_context) +
                  ": test fixture no longer prepares the expected semantic BIR shape before routing into x86")
                     .c_str());
+  }
+
+  return 0;
+}
+
+int check_local_i8_short_circuit_route_graduates_past_authoritative_handoff(
+    const bir::Module& module,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  const auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted the i8 short-circuit route")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    const std::string_view message(error.what());
+    if (message.find("authoritative prepared short-circuit handoff") != std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer still rejects the i8 short-circuit route at the old authoritative handoff seam")
+                      .c_str());
+    }
+    if (message.find("bounded compare-against-zero branch family") == std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer advanced past the old short-circuit seam but did not land on the expected downstream scalar restriction")
+                      .c_str());
+    }
   }
 
   return 0;
@@ -2507,6 +2690,13 @@ int run_backend_x86_handoff_boundary_short_circuit_tests() {
                               expected_minimal_local_i32_short_circuit_or_guard_asm("main"),
                               "select ne i32 %t3, 3, i32 1, %t13",
                               "minimal local-slot short-circuit or-guard route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_local_i8_short_circuit_route_graduates_past_authoritative_handoff(
+              make_x86_local_i8_short_circuit_or_guard_module(),
+              "minimal local-slot i8 short-circuit or-guard route");
       status != 0) {
     return status;
   }

@@ -232,6 +232,26 @@ inline std::optional<std::string> narrow_i32_register(std::string_view wide_regi
   return std::string(wide_register);
 }
 
+inline std::optional<std::string> narrow_i8_register(std::string_view wide_register) {
+  if (wide_register == "rax") return std::string("al");
+  if (wide_register == "rbx") return std::string("bl");
+  if (wide_register == "rcx") return std::string("cl");
+  if (wide_register == "rdx") return std::string("dl");
+  if (wide_register == "rdi") return std::string("dil");
+  if (wide_register == "rsi") return std::string("sil");
+  if (wide_register == "rbp") return std::string("bpl");
+  if (wide_register == "rsp") return std::string("spl");
+  if (wide_register == "r8") return std::string("r8b");
+  if (wide_register == "r9") return std::string("r9b");
+  if (wide_register == "r10") return std::string("r10b");
+  if (wide_register == "r11") return std::string("r11b");
+  if (wide_register == "r12") return std::string("r12b");
+  if (wide_register == "r13") return std::string("r13b");
+  if (wide_register == "r14") return std::string("r14b");
+  if (wide_register == "r15") return std::string("r15b");
+  return std::string(wide_register);
+}
+
 inline std::optional<std::string> select_prepared_call_argument_abi_register_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::size_t block_index,

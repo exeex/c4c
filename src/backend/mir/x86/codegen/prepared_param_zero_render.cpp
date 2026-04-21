@@ -119,6 +119,46 @@ std::optional<std::string> render_prepared_named_i32_immediate_compare_setup_if_
   return setup;
 }
 
+std::optional<std::string> render_prepared_named_i8_immediate_compare_setup_if_supported(
+    std::string_view compared_value_name,
+    std::int64_t compare_immediate,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  if (prepared_names == nullptr || function_locations == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* home = c4c::backend::prepare::find_prepared_value_home(
+      *prepared_names, *function_locations, compared_value_name);
+  if (home == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto immediate_i8 = static_cast<std::int32_t>(static_cast<std::int8_t>(compare_immediate));
+  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+      home->register_name.has_value()) {
+    const auto narrowed_register = narrow_i8_register(*home->register_name);
+    if (!narrowed_register.has_value()) {
+      return std::nullopt;
+    }
+    return "    cmp " + *narrowed_register + ", " + std::to_string(immediate_i8) + "\n";
+  }
+  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+      home->offset_bytes.has_value()) {
+    return "    cmp " +
+           render_prepared_stack_memory_operand(*home->offset_bytes, "BYTE") + ", " +
+           std::to_string(immediate_i8) + "\n";
+  }
+  if (home->kind ==
+          c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
+      home->immediate_i32.has_value()) {
+    return "    mov eax, " +
+           std::to_string(static_cast<std::int32_t>(*home->immediate_i32)) +
+           "\n    cmp al, " + std::to_string(immediate_i8) + "\n";
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_branch_compare(
@@ -184,6 +224,62 @@ std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_b
 
   if (!current_i32_name.has_value()) {
     // Fall through to authoritative prepared-home materialization.
+  }
+  if (compare.operand_type == c4c::backend::bir::TypeKind::I8) {
+    const auto select_i8_named_immediate_compare =
+        [&]() -> std::optional<std::pair<const c4c::backend::bir::Value*, std::int64_t>> {
+      if (compare.lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+          compare.lhs.type == c4c::backend::bir::TypeKind::I8 &&
+          compare.rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+          compare.rhs.type == c4c::backend::bir::TypeKind::I8) {
+        return std::pair<const c4c::backend::bir::Value*, std::int64_t>{&compare.lhs,
+                                                                         compare.rhs.immediate};
+      }
+      if (compare.rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+          compare.rhs.type == c4c::backend::bir::TypeKind::I8 &&
+          compare.lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+          compare.lhs.type == c4c::backend::bir::TypeKind::I8) {
+        return std::pair<const c4c::backend::bir::Value*, std::int64_t>{&compare.rhs,
+                                                                         compare.lhs.immediate};
+      }
+      return std::nullopt;
+    }();
+    if (!select_i8_named_immediate_compare.has_value()) {
+      return std::nullopt;
+    }
+    const bool current_is_lhs = select_i8_named_immediate_compare->first == &compare.lhs;
+    const auto compare_setup = render_prepared_named_i8_immediate_compare_setup_if_supported(
+        select_i8_named_immediate_compare->first->name,
+        select_i8_named_immediate_compare->second,
+        prepared_names,
+        function_locations);
+    if (!compare_setup.has_value()) {
+      return std::nullopt;
+    }
+    const auto branch_opcode_for_current_immediate =
+        [&](bool current_is_lhs) -> const char* {
+      switch (compare.opcode) {
+        case c4c::backend::bir::BinaryOpcode::Eq:
+          return "jne";
+        case c4c::backend::bir::BinaryOpcode::Ne:
+          return "je";
+        case c4c::backend::bir::BinaryOpcode::Sgt:
+          return current_is_lhs ? "jle" : "jge";
+        case c4c::backend::bir::BinaryOpcode::Sge:
+          return current_is_lhs ? "jl" : "jg";
+        case c4c::backend::bir::BinaryOpcode::Slt:
+          return current_is_lhs ? "jge" : "jle";
+        case c4c::backend::bir::BinaryOpcode::Sle:
+          return current_is_lhs ? "jg" : "jl";
+        default:
+          return nullptr;
+      }
+    };
+    const char* branch_opcode = branch_opcode_for_current_immediate(current_is_lhs);
+    if (branch_opcode == nullptr) {
+      return std::nullopt;
+    }
+    return std::pair<std::string, std::string>{*compare_setup, branch_opcode};
   }
   const auto selected_compare =
       select_prepared_i32_named_immediate_compare_if_supported(compare.lhs, compare.rhs);
@@ -927,12 +1023,8 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_short_circuit_entry_
       &prepared_names,
       function_locations);
   if (!compare_context.has_value()) {
-    const std::optional<std::string_view> authoritative_condition_name =
-        branch_condition->condition_value.kind == c4c::backend::bir::Value::Kind::Named
-            ? std::optional<std::string_view>(branch_condition->condition_value.name)
-            : std::nullopt;
     const auto* compare = find_trailing_guard_compare_if_supported(
-        source_block, compare_index, authoritative_condition_name);
+        source_block, compare_index, std::nullopt);
     if (compare == nullptr) {
       return std::nullopt;
     }
