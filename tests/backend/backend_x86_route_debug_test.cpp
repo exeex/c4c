@@ -198,6 +198,99 @@ prepare::PreparedBirModule legalize_missing_short_circuit_contract_module() {
   return prepared;
 }
 
+prepare::PreparedBirModule legalize_multi_param_compare_driven_miss_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "multi_param_compare_driven_miss";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "p.extra",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .true_label = "is_zero",
+      .false_label = "is_nonzero",
+  };
+
+  bir::Block is_zero;
+  is_zero.label = "is_zero";
+  is_zero.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "zero.adjusted"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(5),
+  });
+  is_zero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block is_nonzero;
+  is_nonzero.label = "is_nonzero";
+  is_nonzero.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "nonzero.adjusted"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  is_nonzero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block join;
+  join.label = "join";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "is_zero",
+              .value = bir::Value::named(bir::TypeKind::I32, "zero.adjusted"),
+          },
+          bir::PhiIncoming{
+              .label = "is_nonzero",
+              .value = bir::Value::named(bir::TypeKind::I32, "nonzero.adjusted"),
+          },
+      },
+  });
+  join.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Xor,
+      .result = bir::Value::named(bir::TypeKind::I32, "joined"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  join.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "joined"),
+  };
+
+  function.blocks = {
+      std::move(entry),
+      std::move(is_zero),
+      std::move(is_nonzero),
+      std::move(join),
+  };
+  module.functions.push_back(std::move(function));
+  return prepare_module(std::move(module));
+}
+
 bool expect_contains(const std::string& text,
                      const std::string& needle,
                      const char* description) {
@@ -215,6 +308,7 @@ int main() {
   const auto prepared = legalize_short_circuit_or_guard_module();
   const auto plain_miss = legalize_plain_route_miss_module();
   const auto missing_short_circuit_contract = legalize_missing_short_circuit_contract_module();
+  const auto multi_param_compare_driven_miss = legalize_multi_param_compare_driven_miss_module();
   const std::string summary = c4c::backend::x86::summarize_prepared_module_routes(prepared);
   const std::string trace = c4c::backend::x86::trace_prepared_module_routes(prepared);
   const std::string plain_miss_summary =
@@ -224,6 +318,10 @@ int main() {
       c4c::backend::x86::summarize_prepared_module_routes(missing_short_circuit_contract);
   const std::string missing_short_circuit_contract_trace =
       c4c::backend::x86::trace_prepared_module_routes(missing_short_circuit_contract);
+  const std::string multi_param_compare_driven_miss_summary =
+      c4c::backend::x86::summarize_prepared_module_routes(multi_param_compare_driven_miss);
+  const std::string multi_param_compare_driven_miss_trace =
+      c4c::backend::x86::trace_prepared_module_routes(multi_param_compare_driven_miss);
 
   if (!expect_contains(summary, "x86 handoff summary", "summary header") ||
       !expect_contains(summary, "function short_circuit_or_prepare_contract", "function name") ||
@@ -251,7 +349,16 @@ int main() {
                        "missing contract trace detail") ||
       !expect_contains(missing_short_circuit_contract_trace,
                        "next inspect: inspect the prepared control-flow handoff consumed in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
-                       "missing contract trace next inspect")) {
+                       "missing contract trace next inspect") ||
+      !expect_contains(multi_param_compare_driven_miss_summary,
+                       "- final rejection: compare-driven-entry recognized the function, but the prepared shape is outside the current x86 support",
+                       "multi-param compare-driven summary final rejection") ||
+      !expect_contains(multi_param_compare_driven_miss_trace,
+                       "final detail: x86 backend emitter only supports multi-block compare-driven entry routes through the canonical prepared-module handoff when the function exposes exactly one non-variadic i32 parameter",
+                       "multi-param compare-driven trace detail") ||
+      !expect_contains(multi_param_compare_driven_miss_trace,
+                       "next inspect: inspect the current x86 shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
+                       "multi-param compare-driven trace next inspect")) {
     return EXIT_FAILURE;
   }
 

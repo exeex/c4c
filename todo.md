@@ -5,47 +5,45 @@ Source Idea Path: ideas/open/67_backend_trace_and_error_contract_for_x86_handoff
 Source Plan Path: plan.md
 Current Step ID: 2.2
 Current Step Title: Make X86 Rejection Diagnostics Plain And Actionable
-Plan Review Counter: 1 / 6
+Plan Review Counter: 2 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 2.2 completed for the x86 route-debug surface and nearest regression
-coverage. `src/backend/mir/x86/codegen/route_debug.cpp` now reports one final
-plain-language rejection plus a next-inspection pointer when no top-level x86
-lane matches, and classifies missing prepared-contract detail when the lane
-already throws that distinction. `tests/backend/backend_x86_route_debug_test.cpp`
-now locks ordinary route miss versus missing prepared handoff behavior, and the
-separate `00204.c` `--dump-mir`/`--trace-mir` observations confirm `match`
-ends with a meaningful final x86 rejection instead of the old generic top-level
-lane miss.
+Step 2.2 completed for one bounded multi-block compare-driven lane. `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+now rejects multi-block prepared functions with branch/join metadata and more
+than one parameter with a stable shape-specific compare-driven message instead
+of falling through to the generic ordinary miss, and
+`src/backend/mir/x86/codegen/route_debug.cpp` mirrors that lane as
+`compare-driven-entry` so `--dump-mir` / `--trace-mir` surface the same final
+rejection for `tests/c/external/c-testsuite/src/00204.c` `function match`.
+Nearest coverage now locks both the route-debug wording and the public x86 BIR
+entry rejection for the same bounded multi-parameter compare-driven shape.
 
 ## Suggested Next
 
-Pick the next idea-67 packet that expands actionable x86 rejection detail past
-the current ordinary-miss fallback, most likely by teaching one more bounded
-lane to surface a contract-specific or shape-specific final detail for
-multi-block functions like `match`.
+Pick the next idea-67 packet that teaches another bounded multi-block x86 lane
+to report a durable final rejection before the ordinary miss, ideally one of
+the remaining single-parameter non-i32 or large variadic prepared shapes that
+still collapse to the generic fallback in `00204.c`.
 
 ## Watchouts
 
-- The current classifier can distinguish missing prepared-contract detail only
-  when a lane already throws that contract-specific exception; plain lane
-  `nullopt` fallthroughs still resolve to the generic ordinary-miss wording.
-- `00204.c` `match` now points developers at
-  `src/backend/mir/x86/codegen/prepared_module_emit.cpp` as the next top-level
-  surface, but it is still an ordinary route miss rather than a more specific
-  prepared-contract rejection.
-- The supervisor-selected backend subset remains red on
-  `backend_prepare_liveness` before this slice, and that failure stops the
-  exact delegated proof chain before the trailing `00204.c` commands unless
-  those observations are rerun separately.
+- This slice is intentionally limited to multi-parameter compare-driven
+  functions with prepared branch/join metadata; single-parameter non-i32
+  multi-block shapes still fall through to their existing downstream
+  restrictions or the generic miss.
+- `00204.c` `match` now lands on `compare-driven-entry` with a shape-specific
+  final rejection, but nearby large unsupported functions like `myprintf` still
+  end at the ordinary prepared-module miss.
+- The new route-debug probe is diagnostic only; it does not widen x86 support
+  for the rejected shape.
 
 ## Proof
 
 Ran the delegated proof command exactly as assigned:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_" && build/c4cll --target x86_64-unknown-linux-gnu --dump-mir tests/c/external/c-testsuite/src/00204.c && build/c4cll --target x86_64-unknown-linux-gnu --trace-mir tests/c/external/c-testsuite/src/00204.c`
-with output preserved in `test_after.log`. The exact chain still stops at the
-pre-existing `backend_prepare_liveness` failure, so the trailing `00204.c`
-commands were rerun separately to confirm the new x86 rejection output for
-`match`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_x86_(route_debug|handoff_boundary)$' && build/c4cll --target x86_64-unknown-linux-gnu --dump-mir tests/c/external/c-testsuite/src/00204.c && build/c4cll --target x86_64-unknown-linux-gnu --trace-mir tests/c/external/c-testsuite/src/00204.c > test_after.log 2>&1`
+and it passed. `test_after.log` preserves the final `--trace-mir` output, and
+the `--dump-mir` summary now shows `function match` ending with
+`compare-driven-entry recognized the function, but the prepared shape is
+outside the current x86 support`.

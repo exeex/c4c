@@ -7,6 +7,8 @@ namespace c4c::backend::x86 {
 
 std::string emit_prepared_module(
     const c4c::backend::prepare::PreparedBirModule& module) {
+  constexpr std::string_view kCompareDrivenEntryParamShapeError =
+      "x86 backend emitter only supports multi-block compare-driven entry routes through the canonical prepared-module handoff when the function exposes exactly one non-variadic i32 parameter";
   const auto resolved_target_profile = module.target_profile.arch != c4c::TargetArch::Unknown
                                            ? module.target_profile
                                            : c4c::target_profile_from_triple(
@@ -841,6 +843,15 @@ std::string emit_prepared_module(
               render_local_structural_dispatch_if_supported();
           rendered_local_structural_dispatch.has_value()) {
         return *rendered_local_structural_dispatch;
+      }
+      if (const auto* function_control_flow = find_control_flow_function();
+          function_control_flow != nullptr &&
+          function.blocks.size() > 1 && !function_control_flow->branch_conditions.empty() &&
+          !function_control_flow->join_transfers.empty()) {
+        if (function.params.size() > 1) {
+          throw_multi_defined_contract_if_active();
+          throw std::invalid_argument(std::string(kCompareDrivenEntryParamShapeError));
+        }
       }
       throw_multi_defined_contract_if_active();
       throw std::invalid_argument(

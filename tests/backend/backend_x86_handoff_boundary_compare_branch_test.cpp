@@ -425,6 +425,20 @@ bir::Module make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module() {
   return module;
 }
 
+bir::Module make_x86_multi_param_compare_driven_boundary_module() {
+  auto module = make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module();
+  if (module.functions.empty()) {
+    return module;
+  }
+  module.functions.front().params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "p.extra",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  return module;
+}
+
 bir::Module make_x86_param_ne_zero_branch_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -933,6 +947,57 @@ int check_compare_join_rematerialized_home_consumes_prepared_entry_and_return_ho
   return 0;
 }
 
+int check_multi_param_compare_driven_shape_rejection(const bir::Module& module,
+                                                     const char* failure_context) {
+  constexpr std::string_view kExpectedMessage =
+      "only supports multi-block compare-driven entry routes through the canonical prepared-module handoff when the function exposes exactly one non-variadic i32 parameter";
+  c4c::TargetProfile target_profile;
+  const auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      module, target_profile_from_module_triple(module.target_triple, target_profile));
+
+  try {
+    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted a multi-parameter compare-driven join shape")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find(kExpectedMessage) == std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the multi-parameter compare-driven join shape with the wrong message")
+                      .c_str());
+    }
+  }
+
+  try {
+    (void)c4c::backend::emit_target_bir_module(module, target_profile);
+    return fail((std::string(failure_context) +
+                 ": public x86 BIR entry unexpectedly accepted a multi-parameter compare-driven join shape")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find(kExpectedMessage) == std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": public x86 BIR entry rejected the multi-parameter compare-driven join shape with the wrong message")
+                      .c_str());
+    }
+  }
+
+  try {
+    (void)c4c::backend::emit_module(
+        BackendModuleInput{module}, BackendOptions{.target_profile = x86_target_profile()});
+    return fail((std::string(failure_context) +
+                 ": generic x86 backend emit path unexpectedly accepted a multi-parameter compare-driven join shape")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find(kExpectedMessage) == std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": generic x86 backend emit path rejected the multi-parameter compare-driven join shape with the wrong message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_minimal_compare_branch_requires_authoritative_prepared_entry_home(
     const bir::Module& module,
     const char* function_name,
@@ -1201,6 +1266,13 @@ int run_backend_x86_handoff_boundary_compare_branch_tests() {
               "branch_join_adjust_then_xor",
               "p.x",
               "scalar-control-flow compare-against-zero compare-join lane rejects reopening local return fallback when the authoritative prepared home is missing");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_multi_param_compare_driven_shape_rejection(
+              make_x86_multi_param_compare_driven_boundary_module(),
+              "scalar-control-flow compare-driven join lane rejects multi-parameter shapes with a final actionable shape message");
       status != 0) {
     return status;
   }

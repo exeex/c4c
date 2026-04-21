@@ -59,9 +59,15 @@ bool string_contains(std::string_view haystack, std::string_view needle) {
   return haystack.find(needle) != std::string_view::npos;
 }
 
+constexpr std::string_view kCompareDrivenEntryParamShapeError =
+    "x86 backend emitter only supports multi-block compare-driven entry routes through the canonical prepared-module handoff when the function exposes exactly one non-variadic i32 parameter";
+
 std::string lane_next_surface(std::string_view lane_name) {
   if (lane_name == "countdown-entry-routes") {
     return "src/backend/mir/x86/codegen/prepared_countdown_render.cpp";
+  }
+  if (lane_name == "compare-driven-entry") {
+    return "src/backend/mir/x86/codegen/prepared_module_emit.cpp";
   }
   if (lane_name == "local-i32-arithmetic-guard" ||
       lane_name == "local-i16-arithmetic-guard" ||
@@ -560,6 +566,17 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
     });
     try_lane("single-block-return-dispatch", [&]() {
       return render_prepared_single_block_return_dispatch_if_supported(context);
+    });
+    try_lane("compare-driven-entry", [&]() -> std::optional<std::string> {
+      if (function_control_flow == nullptr ||
+          function->blocks.size() <= 1 || function_control_flow->branch_conditions.empty() ||
+          function_control_flow->join_transfers.empty()) {
+        return std::nullopt;
+      }
+      if (function->params.size() > 1) {
+        throw std::invalid_argument(std::string(kCompareDrivenEntryParamShapeError));
+      }
+      return std::nullopt;
     });
 
     const auto matched_it = std::find_if(report.attempts.begin(),
