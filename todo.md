@@ -1,54 +1,34 @@
 # Execution State
 
 Status: Active
-Source Idea Path: ideas/open/62_stack_addressing_and_dynamic_local_access_for_x86_backend.md
+Source Idea Path: ideas/open/65_semantic_call_family_lowering_for_x86_backend.md
 Source Plan Path: plan.md
-Current Step ID: 2.2
-Current Step Title: Repair The Selected Stack/Addressing Seam
-Plan Review Counter: 2 / 10
+Current Step ID: 1
+Current Step Title: Audit The Active Semantic Call Family
+Plan Review Counter: 0 / 10
 # Current Packet
 
 ## Just Finished
 
-Step 2.2 repaired the mixed aggregate-parameter stack/member seam by
-normalizing `ptr byval(...)` aggregate-param metadata and by materializing
-direct aggregate loads from globals into local aggregate slots. Reduced
-semantic-BIR repros for both `fa3`-style and `fa4`-style mixed signatures now
-lower past the old idea-62 `store/load local-memory` failures, and
-`c_testsuite_x86_backend_src_00204_c` no longer stops in `fa3`. The case now
-fails later in `arg` under the downstream `direct-call semantic family`, so it
-has graduated out of idea 62's stack/addressing ownership.
+Lifecycle switch completed: idea 62 is closed, and the active runbook now
+targets idea 65's semantic call-family lowering ownership starting from Step 1
+audit.
 
 ## Suggested Next
 
-Treat `c_testsuite_x86_backend_src_00204_c` as rehomed out of idea 62 and
-route the next packet to the downstream semantic-call owner for the new
-`arg`/`direct-call semantic family` failure. Keep idea 62 focused on any
-remaining stack/addressing cases that still stop before semantic-call
-lowering.
+Audit `c_testsuite_x86_backend_src_00204_c` and the nearest direct-call route
+coverage to isolate the first idea-65 semantic call-family seam.
 
 ## Watchouts
 
-- Do not keep debugging `00204.c` under idea 62 now that it fails in the
-  downstream `direct-call semantic family`; that would blur stack/addressing
-  progress with semantic-call ownership.
-- The repaired seam covered both mixed aggregate-param metadata collection and
-  global aggregate-to-local materialization. Regressions here are most likely
-  to show up as `store/load local-memory semantic family` failures on direct
-  aggregate field access or direct aggregate call preparation.
-- The existing route sentinels still pass, so avoid weakening them or
-  backsliding into testcase-shaped call/emitter shortcuts.
+- Do not reopen the closed idea-62 stack/addressing lane unless a case again
+  fails before semantic call lowering begins.
+- Do not route semantic call-family failures into idea 61 until semantic
+  lowering itself succeeds and the case actually reaches prepared-module or
+  prepared call-bundle ownership.
+- Avoid call-shaped shortcuts that only make `00204.c` pass without repairing
+  the underlying direct-call lowering route.
 
 ## Proof
 
-Current family subset:
-`ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_x86_64_local_direct_dynamic_member_array_(store|load)_observe_semantic_bir|c_testsuite_x86_backend_src_00204_c)$'`
-
-Proof run:
-- `cmake --build --preset default`
-- `ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_x86_64_local_direct_dynamic_member_array_(store|load)_observe_semantic_bir|c_testsuite_x86_backend_src_00204_c)$'`
-- `test_after.log`
-
-Reduced-route audit:
-- `./build/c4cll --backend-bir-stage semantic --codegen asm --target x86_64-unknown-linux-gnu /tmp/repro_fa3_a.c -o /tmp/repro_fa3_a.out` now lowers `fa3`-style direct-field access with extra aggregate params through semantic BIR instead of failing in store local-memory lowering
-- `./build/c4cll --backend-bir-stage semantic --codegen asm --target x86_64-unknown-linux-gnu /tmp/repro_arg_fa3.c -o /tmp/repro_arg_fa3.out` now moves past local-memory lowering and fails later in the downstream `direct-call semantic family`
+Pending executor packet proof for idea 65 Step 1.
