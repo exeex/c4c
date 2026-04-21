@@ -304,6 +304,36 @@ set_tests_properties(backend_cli_trace_mir_reports_lane_detail PROPERTIES
 )
 
 add_test(
+  NAME backend_cli_dump_bir_00204_stdarg_semantic_handoff
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-bir
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=bir.func @stdarg() -> void {|%t1 = bir.call i32 printf(ptr @.str48)|bir.call void myprintf(ptr @.str49|bir.call i32 match(ptr %lv.s, ptr"
+          "-DFORBIDDEN_SNIPPETS=prepared.module|--- prepared-control-flow ---|x86 handoff summary|x86 handoff trace"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_bir_00204_stdarg_semantic_handoff PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-prepared-bir
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|completed_phases: legalize stack_layout liveness regalloc|[stack_layout] stack layout prepared function 'stdarg'|[regalloc] regalloc seeded function 'stdarg'|bir.func @stdarg() -> void {|bir.call void myprintf(ptr @.str49|--- prepared-control-flow ---|prepared.func @stdarg|prepared.func @stdarg frame_size="
+          "-DFORBIDDEN_SNIPPETS=x86 handoff summary|x86 handoff trace"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
   NAME backend_cli_dump_mir_focus_function_filters_00204
   COMMAND "${CMAKE_COMMAND}"
           -DCOMPILER=$<TARGET_FILE:c4cll>
