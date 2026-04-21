@@ -152,6 +152,84 @@ Completion check:
 - a developer can run one stable x86 trace command and understand why the
   route failed plus what to inspect next
 
+### Step 2.2.1: Establish The Final-Rejection Contract
+
+Goal: make the x86 handoff boundary surface one meaningful final rejection
+class instead of collapsing owned failures into generic per-function misses.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/route_debug.cpp`
+- `tests/backend/backend_x86_route_debug_test.cpp`
+- `tests/backend/backend_x86_handoff_boundary_*.cpp`
+
+Actions:
+
+- land the backend-owned final-rejection wording and next-inspect guidance for
+  meaningful compare-driven and module-level failures
+- keep ordinary speculative probe failures cheap when another lane may still
+  succeed
+- lock the final-rejection contract in route-debug and handoff-boundary tests
+
+Completion check:
+
+- module-level and compare-driven failures no longer terminate as generic
+  route misses, and the tests assert the plain-language contract
+
+### Step 2.2.2: Cover 00204 Wrapper And Helper Families
+
+Goal: convert the main `00204.c` helper and wrapper families from generic
+per-function misses into lane-specific final rejections with stable CLI proof.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/route_debug.cpp`
+- `tests/backend/CMakeLists.txt`
+- `tests/backend/backend_x86_route_debug_test.cpp`
+
+Actions:
+
+- add lane-specific final rejection diagnostics for the `myprintf`-class
+  variadic helper surface, the `stdarg`-class wrapper surface, and the
+  single-block i64 `ashr` return-helper surface
+- keep the diagnostics diagnostic-only unless a real backend capability change
+  is required by the source idea
+- prove the contract with honest `--dump-mir` and `--trace-mir` coverage on
+  `tests/c/external/c-testsuite/src/00204.c`
+
+Completion check:
+
+- the named helper and wrapper families in `00204.c` surface their own final
+  rejection class and next-inspect guidance from stable CLI tests
+
+### Step 2.2.3: Eliminate Remaining Generic Per-Function Misses In The Motivating Case
+
+Goal: finish the Step 2.2 route so remaining meaningful `00204.c` x86
+rejections stop ending at the ordinary per-function miss.
+
+Primary targets:
+
+- `src/backend/mir/x86/`
+- backend route/trace helpers covering the next unsupported family in
+  `00204.c`
+- CLI and route-debug tests that prove the same family from the real input
+
+Actions:
+
+- identify the next unsupported wrapper, helper, or route family in
+  `00204.c` whose final meaningful rejection still collapses into the generic
+  per-function miss
+- add a lane-specific final rejection with plain-language next-inspect
+  guidance for that family without widening matcher support as a shortcut
+- extend the nearest route-debug fixture and the honest CLI `00204.c` proof so
+  the family remains visible in both reduced and real-case coverage
+
+Completion check:
+
+- `00204.c` no longer hides any currently known meaningful x86 rejection
+  family behind the generic per-function miss, and each surfaced family points
+  to the next inspection seam
+
 ## Step 2.3: Add Focus Controls For Large Cases
 
 Goal: keep backend trace output usable on `00204.c`-scale cases without ad hoc

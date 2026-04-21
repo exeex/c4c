@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/67_backend_trace_and_error_contract_for_x86_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 2.2
-Current Step Title: Make X86 Rejection Diagnostics Plain And Actionable
-Plan Review Counter: 6 / 6
+Current Step ID: 2.2.3
+Current Step Title: Eliminate Remaining Generic Per-Function Misses In The Motivating Case
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
@@ -24,11 +24,10 @@ coverage for the shared family shape instead of a named-case shortcut.
 
 ## Suggested Next
 
-Pick the next idea-67 packet that gives another remaining unsupported wrapper
-or helper family in `00204.c` a lane-specific final rejection instead of the
-generic per-function miss, now that the module-level, `myprintf`-class,
-`stdarg`-class, and `asrl`-class rejection surfaces are all exposed through
-honest CLI coverage.
+Step 2.2 has now been split into explicit substeps. Continue at Step 2.2.3 by
+identifying the next remaining meaningful `00204.c` x86 rejection family that
+still collapses into the generic per-function miss, then add a lane-specific
+final rejection plus matching route-debug and honest CLI coverage.
 
 ## Watchouts
 
