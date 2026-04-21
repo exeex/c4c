@@ -230,6 +230,38 @@ prepare::PreparedBirModule legalize_single_block_i64_ashr_return_helper_miss_mod
   return prepare_module(std::move(module));
 }
 
+prepare::PreparedBirModule legalize_single_block_i64_immediate_return_helper_miss_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "single_block_i64_immediate_return_helper_miss";
+  function.return_type = bir::TypeKind::I64;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I64,
+      .name = "p.x",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::LShr,
+      .result = bir::Value::named(bir::TypeKind::I64, "shifted"),
+      .operand_type = bir::TypeKind::I64,
+      .lhs = bir::Value::named(bir::TypeKind::I64, "p.x"),
+      .rhs = bir::Value::immediate_i64(1),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I64, "shifted"),
+  };
+
+  function.blocks = {std::move(entry)};
+  module.functions.push_back(std::move(function));
+  return prepare_module(std::move(module));
+}
+
 prepare::PreparedBirModule legalize_multi_param_compare_driven_miss_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -450,6 +482,14 @@ int main() {
   const std::string single_block_i64_ashr_return_helper_miss_trace =
       c4c::backend::x86::trace_prepared_module_routes(
           single_block_i64_ashr_return_helper_miss);
+  const auto single_block_i64_immediate_return_helper_miss =
+      legalize_single_block_i64_immediate_return_helper_miss_module();
+  const std::string single_block_i64_immediate_return_helper_miss_summary =
+      c4c::backend::x86::summarize_prepared_module_routes(
+          single_block_i64_immediate_return_helper_miss);
+  const std::string single_block_i64_immediate_return_helper_miss_trace =
+      c4c::backend::x86::trace_prepared_module_routes(
+          single_block_i64_immediate_return_helper_miss);
   const std::string multi_param_compare_driven_miss_summary =
       c4c::backend::x86::summarize_prepared_module_routes(multi_param_compare_driven_miss);
   const std::string multi_param_compare_driven_miss_trace =
@@ -505,6 +545,21 @@ int main() {
       !expect_contains(single_block_i64_ashr_return_helper_miss_trace,
                        "next inspect: inspect the current x86 single-block i64 return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
                        "single-block i64 ashr trace next inspect") ||
+      !expect_contains(single_block_i64_immediate_return_helper_miss_summary,
+                       "- final rejection: single-block i64 immediate return helper recognized the function, but the prepared return-helper shape is outside the current x86 support",
+                       "single-block i64 immediate summary final rejection") ||
+      !expect_contains(single_block_i64_immediate_return_helper_miss_summary,
+                       "- next inspect: inspect the current x86 single-block i64 return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
+                       "single-block i64 immediate summary next inspect") ||
+      !expect_contains(single_block_i64_immediate_return_helper_miss_trace,
+                       "try lane single-block-i64-immediate-return-helper",
+                       "single-block i64 immediate trace lane") ||
+      !expect_contains(single_block_i64_immediate_return_helper_miss_trace,
+                       "final detail: x86 backend emitter only supports single-block i64 return helpers when they already reduce to the current direct passthrough or established scalar helper surfaces; this helper still carries an i64 logical-right-shift immediate return",
+                       "single-block i64 immediate trace detail") ||
+      !expect_contains(single_block_i64_immediate_return_helper_miss_trace,
+                       "next inspect: inspect the current x86 single-block i64 return-helper support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
+                       "single-block i64 immediate trace next inspect") ||
       !expect_contains(multi_param_compare_driven_miss_summary,
                        "- final rejection: compare-driven-entry recognized the function, but the prepared shape is outside the current x86 support",
                        "multi-param compare-driven summary final rejection") ||
