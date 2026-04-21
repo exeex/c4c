@@ -5,53 +5,38 @@ Source Idea Path: ideas/open/67_backend_trace_and_error_contract_for_x86_handoff
 Source Plan Path: plan.md
 Current Step ID: 3.4
 Current Step Title: Decide Whether Idea 67 Still Needs Another Packet
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 3.4 lifecycle review found no currently known meaningful `00204.c` x86
-rejection family that still falls back to a plain final rejection, so idea 67
-does not need another new observability-family packet. Close review is
-rejected for now because the backend-scope close gate
-`ctest --test-dir build -j --output-on-failure -R '^backend_'` is red on the
-current tree: `backend_cli_trace_mir_00204_stdarg_rejection` still expects the
-older stdarg final-detail snippet even though the current trace now matches
-`local-slot-guard-chain`, and `backend_prepare_liveness` also fails in the
-same guard run.
+Step 3.4 finished the bounded `00204.c` stdarg trace proof-repair packet for
+idea 67 by refreshing `backend_cli_trace_mir_00204_stdarg_rejection` to the
+current supported CLI contract. The trace still rejects `function stdarg`
+through `single-block-void-call-sequence`, but its detail now reports counted
+prepared call-wrapper facts (`35 same-module calls` and `1 direct variadic
+extern call`) instead of the older generic same-module-wrapper wording.
 
 ## Suggested Next
 
-Keep idea 67 active only for one bounded proof-repair packet: refresh or
-retire the stale `backend_cli_trace_mir_00204_stdarg_rejection` expectation so
-the source idea's owned `00204.c` CLI contract is green again, then rerun Step
-3.4 close review once the broader backend bucket is healthy. Do not invent
-another rejection-family packet unless a fresh supported-CLI scan shows a
-meaningful x86 family regressing back to the generic final-rejection surface.
+Rerun the Step 3.4 close review only after the separate backend blocker
+`backend_prepare_liveness` is repaired or otherwise cleared. Do not reopen idea
+67 for new observability-family work unless a fresh supported-CLI scan shows a
+real `00204.c` regression back to an opaque final rejection.
 
 ## Watchouts
 
-- Do not reopen idea 67 for backend capability growth. The remaining owned
-  work is proof stability for the supported CLI contract, not new handoff
-  matcher support.
-- If the stdarg trace drift came from non-observability work elsewhere, keep
-  the fix limited to honest expectation/contract alignment or route a separate
-  initiative instead of stretching idea 67.
-- Closure remains rejected until a matching backend close gate passes; the
-  current broad backend guard also reports `backend_prepare_liveness` failing,
-  so do not claim closure readiness from the focused `00204.c` scan alone.
+- Keep idea 67 scoped to observability-contract truthfulness. This packet only
+  refreshed the stale trace expectation; it did not change backend capability.
+- Closure is still blocked outside this packet because the broader backend
+  close gate remains red on `backend_prepare_liveness`.
+- If the stdarg trace wording drifts again, prefer matching the concrete
+  supported CLI contract over reintroducing vague helper-shape wording.
 
 ## Proof
 
-Close-time regression guard was run at backend scope on the clean tree with:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-Closure is rejected because the guard is red with:
-`backend_cli_trace_mir_00204_stdarg_rejection`
-and
-`backend_prepare_liveness`
-failing. Focused reruns confirmed the stdarg trace failure is a stale owned
-`00204.c` expectation looking for `this helper still carries same-module call
-wrappers` while the current trace now ends that helper path at
-`matched local-slot-guard-chain`. Canonical logs: `test_before.log`
-contains the failed backend close-gate run; no `test_after.log` comparison was
-possible because the before run already failed.
+Supervisor-selected proof passed:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_cli_dump_mir_00204_stdarg_rejection|backend_cli_trace_mir_00204_stdarg_rejection)$'`
+Both owned `00204.c` stdarg CLI tests are green. Canonical executor log:
+`test_after.log`. The earlier close-review baseline remains in `test_before.log`
+and still records the separate non-owned blocker `backend_prepare_liveness`.

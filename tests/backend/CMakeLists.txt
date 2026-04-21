@@ -702,7 +702,7 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DDUMP_FLAG=--trace-mir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|function stdarg|try lane single-block-void-call-sequence|detail: x86 backend emitter only supports trivial single-block void helpers through the canonical prepared-module handoff; this helper still carries same-module call wrappers|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|next inspect: inspect the current x86 single-block call-sequence support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
+          "-DREQUIRED_SNIPPETS=x86 handoff trace|function stdarg|try lane single-block-void-call-sequence|detail: x86 backend emitter only supports trivial single-block void helpers through the canonical prepared-module handoff; this prepared call-wrapper still carries 35 same-module calls and 1 direct variadic extern call|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|next inspect: inspect the current x86 single-block call-sequence support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_trace_mir_00204_stdarg_rejection PROPERTIES
