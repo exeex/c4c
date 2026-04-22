@@ -1,178 +1,166 @@
-# Post-Link Prepared Call-Lane Clobber Runtime Correctness
+# Extract X86 Codegen Subsystem To Markdown For Phoenix Rebuild
 
 Status: Active
-Source Idea: ideas/open/75_post_link_prepared_call_lane_clobber_runtime_correctness_for_x86_backend.md
-Activated from: ideas/open/76_prepared_byval_home_publication_and_layout_correctness_for_x86_backend.md
+Source Idea: ideas/open/78_extract_x86_codegen_subsystem_to_markdown_for_phoenix_rebuild.md
+Activated from: ideas/open/75_post_link_prepared_call_lane_clobber_runtime_correctness_for_x86_backend.md
 
 ## Purpose
 
-Repair the downstream x86 consumer seam now exposed by `00204.c`: prepared
-publishers are already truthful, but the final pre-call lowering still
-collapses distinct homes into overlapping stack writes before `fa4(...)`
-executes.
+Start the Phoenix rebuild by extracting the current x86 codegen subsystem into
+one compressed markdown artifact that captures the real ownership, dispatch,
+and contract surfaces without treating the live `.cpp` files as the design.
 
 ## Goal
 
-Reduce idea 75's owned call-lane/address-lowering failure surface by isolating
-one generic pre-call consumer clobber seam at a time and proving the result on
-the owned family.
+Produce `docs/backend/x86_codegen_subsystem.md` as the durable subsystem model
+for later review and redesign.
 
 ## Core Rule
 
-Treat this as a downstream prepared-to-x86 consumer runbook, not a return/HFA
-or upstream publisher chase. Reject fixes whose main value is making one call
-site pass without explaining how truthful prepared homes are lowered into final
-x86 addresses and copies generically.
+Do not redesign or implement during this runbook. Extract the current subsystem
+honestly, keep only important contracts with short fenced `cpp` blocks, and
+classify special cases instead of copying whole files into markdown.
 
 ## Read First
 
+- `ideas/open/78_extract_x86_codegen_subsystem_to_markdown_for_phoenix_rebuild.md`
 - `ideas/open/75_post_link_prepared_call_lane_clobber_runtime_correctness_for_x86_backend.md`
-- `ideas/open/76_prepared_byval_home_publication_and_layout_correctness_for_x86_backend.md`
-- `ideas/open/77_post_link_return_value_and_hfa_runtime_correctness_for_x86_backend.md`
-- `tests/c/external/c-testsuite/src/00204.c`
-- `src/backend/prealloc/prealloc.hpp`
-- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
 - `src/backend/mir/x86/codegen/x86_codegen.hpp`
-- `build/c_testsuite_x86_backend/src/00204.c.s`
+- `src/backend/mir/x86/codegen/mod.cpp`
+- `src/backend/mir/x86/codegen/calls.cpp`
+- `src/backend/mir/x86/codegen/returns.cpp`
+- `src/backend/mir/x86/codegen/memory.cpp`
+- `src/backend/mir/x86/codegen/prepared_countdown_render.cpp`
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- `src/backend/mir/x86/codegen/prepared_param_zero_render.cpp`
 
 ## Scope
 
-- x86 backend failures whose first bad fact is a downstream pre-call consumer
-  clobber after prepared publishers already emit truthful non-overlapping homes
-- lowering paths that turn `PreparedValueHome`,
-  `PreparedAddressingFunction`, and before-call move bundles into final x86
-  addresses and copy order
-- proof that distinguishes this consumer seam from upstream publication/layout
-  and later return-value / HFA runtime ownership
+- the full `src/backend/mir/x86/codegen/` subsystem and its current ownership
+  split
+- how `prepared*.cpp` duplicates, bypasses, or partially reimplements seams
+  that also exist in canonical x86 codegen files
+- which helpers and contracts are truly shared versus renderer-local growth
 
 ## Non-Goals
 
-- reopening idea 76 unless fresh proof shows the publishers themselves became
-  contradictory again
-- treating idea 77's return/HFA leaf as active before the first bad fact moves
-  past the current pre-call overlap
-- treating true `va_start` / `va_list` traversal work as part of this route
-- changing tests or expectations merely to hide a consumer-side overlap
+- implementation edits under `src/backend/mir/x86/codegen/`
+- drafting replacement interfaces
+- choosing the final new file layout
+- deleting legacy x86 codegen routes
 
 ## Working Model
 
-- start from the current `fa4(...)` corruption inside `arg()`, then trace where
-  truthful prepared offsets collapse into the emitted `[rsp + 352..364]` writes
-- treat the current overlap at `[rsp + 364]` as downstream of stack layout and
-  regalloc publication, not proof that those publishers are wrong
-- if the owned family still has only one confirmed probe, explicitly justify
-  why the consumer seam is generic before editing code
-- once the first bad fact moves into return/HFA runtime work, graduate the
-  route immediately
+- treat the current subsystem as executable evidence, not as the target design
+- extract by responsibility bucket and dependency direction, not by file order
+- prefer one subsystem artifact that points at representative surfaces over a
+  markdown dump of every helper
+- explicitly classify special-case logic as `core lowering`, `optional fast
+  path`, `legacy compatibility`, or `overfit to reject`
 
 ## Execution Rules
 
-- prefer `build -> focused runtime proof -> prepared-BIR/assembly inspection ->
-  targeted x86 lowering inspection -> broader backend spot check`
-- keep the proving set tied to the consumer seam, not just to one testcase
-- record in `todo.md` whenever the owned family grows, shrinks, or graduates
-- prefer shared x86 lowering fixes over callsite-shaped rewrites
+- prefer `boundary scan -> contract extraction -> responsibility map ->
+  special-case classification -> artifact review`
+- keep representative code blocks short and only for important APIs or
+  contracts
+- note where prepared routes should have reused existing `calls.cpp`,
+  `returns.cpp`, `memory.cpp`, or dispatcher seams
+- name accidental ownership overlap explicitly in the artifact
 
-## Step 1: Re-Establish The Downstream Consumer Ownership
+## Step 1: Establish Extraction Boundary And Artifact Shape
 
-Goal: restate exactly what idea 75 owns now that idea 76 proved the publishers
-are truthful.
+Goal: define what the subsystem extraction must cover and what the markdown
+artifact will contain.
 
 Primary targets:
 
-- `c_testsuite_x86_backend_src_00204_c`
-- `tests/c/external/c-testsuite/src/00204.c`
-- `build/c_testsuite_x86_backend/src/00204.c.s`
-- `ideas/open/76_prepared_byval_home_publication_and_layout_correctness_for_x86_backend.md`
-- `ideas/open/77_post_link_return_value_and_hfa_runtime_correctness_for_x86_backend.md`
+- `src/backend/mir/x86/codegen/`
+- `docs/backend/x86_codegen_subsystem.md`
 
 Actions:
 
-- confirm the first wrong fact still occurs in `arg()` before `Return values:`
-- record the truthful prepared offsets already published for the `fa4(...)`
-  setup and the final overlapping writes that replace them
-- restate why idea 76 and idea 77 do not own that first remaining bad fact
-- define the narrow proving set for the next packet in downstream-consumer
-  terms
+- enumerate the current x86 codegen files and group them by responsibility
+- define the artifact sections for entry points, shared contracts, ownership
+  buckets, dependency directions, prepared-route divergence, and special-case
+  classification
+- keep the extraction boundary at the x86 codegen subsystem rather than
+  expanding into unrelated backend layers
 
 Completion check:
 
-- `todo.md` names the active consumer seam, the representative proof command,
-  and why the route belongs to idea 75
+- the extraction target and markdown structure are concrete enough that the
+  next packet can fill the artifact without re-deciding scope
 
-## Step 2: Isolate The Exact Lowering / Call-Lane Consumer
+## Step 2: Extract Stable Entry Points And Shared Contracts
 
-Goal: trace the emitted `fa4(...)` overlap to one concrete x86 lowering seam
-that consumes already-truthful prepared homes.
+Goal: capture the subsystem's important entry points, dispatcher seams, and
+shared contracts from `x86_codegen.hpp` and adjacent canonical files.
 
 Primary targets:
 
-- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
 - `src/backend/mir/x86/codegen/x86_codegen.hpp`
-- any adjacent x86 addressing helper touched by those consumers
-- representative owned-family probes, including `00204.c`
+- `src/backend/mir/x86/codegen/mod.cpp`
+- `src/backend/mir/x86/codegen/emit.cpp`
+- `src/backend/mir/x86/codegen/calls.cpp`
+- `src/backend/mir/x86/codegen/returns.cpp`
+- `src/backend/mir/x86/codegen/memory.cpp`
 
 Actions:
 
-- trace how the `fa4(...)` byval copies and register ABI bindings are rendered
-  after prepared publication is complete
-- determine whether the root defect is address computation, frame-base choice,
-  copy order, lane staging, or another downstream consumer contract
-- if the family still has only one committed probe, isolate why the seam is
-  generic before editing code
+- extract the representative APIs and helper contracts that appear to define
+  canonical x86 codegen seams
+- record which files appear to own dispatch versus concrete lowering
+- keep only short fenced `cpp` blocks for the key contracts
 
 Completion check:
 
-- one concrete downstream consumer seam is isolated, and the next packet no
-  longer needs a generic search across publishers, x86 lowering, and later
-  runtime work at the same time
+- the artifact captures the stable subsystem surfaces another agent would need
+  before evaluating prepared-route duplication
 
-## Step 3: Repair The Consumer Generically
+## Step 3: Extract Prepared-Route Divergence And Responsibility Mixing
 
-Goal: lower the truthful prepared homes into non-overlapping final x86 copies
-for the owned mixed aggregate/HFA call family.
+Goal: capture how `prepared*.cpp` currently interacts with, duplicates, or
+bypasses the canonical x86 codegen seams.
 
 Primary targets:
 
-- the exact consumer surface isolated in Step 2
-- any shared helper or coverage needed to prove the seam
-- the owned proving set from Step 1
+- `src/backend/mir/x86/codegen/prepared_countdown_render.cpp`
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- `src/backend/mir/x86/codegen/prepared_param_zero_render.cpp`
 
 Actions:
 
-- implement the smallest generic downstream repair that preserves truthful
-  prepared-home ownership while removing the emitted overlap
-- preserve upstream publication/layout boundaries and later return/HFA
-  ownership unless newly observed facts prove the blocker moved
-- prove the owned family advances beyond the current pre-call overlap and does
-  not regress protected backend boundaries
+- extract the major prepared-route responsibilities and hidden dependencies
+- record where prepared helpers reimplement logic that should likely live in
+  canonical x86 codegen seams
+- classify representative special cases as core logic, optional fast path,
+  legacy compatibility, or overfit to reject
 
 Completion check:
 
-- the owned-family probes no longer fail at the current overlap seam, and any
-  remaining blocker is explicitly reclassified
+- the artifact makes the prepared-route divergence explicit enough for stage 2
+  review to critique the subsystem design instead of rediscovering it
 
-## Step 4: Reclassify The Remaining Runtime Route
+## Step 4: Validate Compression Quality And Handoff Readiness
 
-Goal: turn the packet result into durable lifecycle progress instead of another
-single-probe loop.
+Goal: finish a subsystem artifact that is compressed, reviewable, and ready to
+drive the next Phoenix stage.
 
 Primary targets:
 
-- refreshed owned-family proof output
-- refreshed broader backend proof
-- downstream boundaries for ideas 76 and 77
+- `docs/backend/x86_codegen_subsystem.md`
 
 Actions:
 
-- rerun the proving set and inspect the next remaining mismatch after the
-  consumer seam is repaired
-- compare the route before and after the packet
-- keep work in idea 75 only if the next bad fact is still this downstream
-  pre-call consumer clobber
-- otherwise record explicit graduation or de-scoping in `todo.md`
+- remove file-dump style detail that does not carry contract or ownership
+  meaning
+- ensure the artifact names the real ownership overlaps and false couplings
+- confirm the artifact still points to representative code and proof surfaces
 
 Completion check:
 
-- lifecycle state shows whether idea 75 still owns the active seam or whether
-  the route has moved to a different leaf
+- `docs/backend/x86_codegen_subsystem.md` exists, is compressed correctly, and
+  can serve as the stage-2 review target

@@ -49,6 +49,16 @@ into the overlapping `[rsp + 352..364]` writes seen in
 `build/c_testsuite_x86_backend/src/00204.c.s`. Idea 77 remains a later leaf
 only after the first bad fact moves past this pre-call consumer clobber.
 
+Also as of 2026-04-22, this leaf is no longer the right active runbook for the
+next move. The repeated collisions around `prepared*.cpp` exposed a subsystem
+ownership problem across the whole `src/backend/mir/x86/codegen/` directory:
+the prepared route keeps growing side-channel lowering logic instead of using
+the canonical x86 codegen seams already present in neighboring `.cpp` files.
+That structural problem now has its own four-stage Phoenix rebuild sequence in
+ideas 78 through 81. Keep idea 75 open as the durable symptom bucket for the
+call-lane/runtime failure family, but park active execution here until the
+rebuild sequence extracts and reviews the x86 codegen subsystem honestly.
+
 ## Scope Notes
 
 Expected repair themes include:
