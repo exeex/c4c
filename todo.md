@@ -5,25 +5,28 @@ Source Idea Path: ideas/open/72_post_link_aggregate_call_runtime_correctness_for
 Source Plan Path: plan.md
 Current Step ID: 2.1
 Current Step Title: Repair The Selected Aggregate-Call Runtime Seam
-Plan Review Counter: 3 / 4
+Plan Review Counter: 4 / 4
 # Current Packet
 
 ## Just Finished
 
-Plan step `2.1` repaired the selected small-aggregate return-helper seam:
-bounded same-module x86 return helpers now home `%ret.sret` into stack-slot
-pointer homes and refresh that home before pointer-based copyout writes, so
-`fr_s1`/`fr_s2` no longer dereference an uninitialized destination pointer
-slot after the long-double HFA seam was cleared. The focused proof still
-fails, but `00204.c` now executes beyond the `fr_s1` helper family and
-graduates into a later variadic-runtime crash inside `ret()`.
+Plan step `2.1` repaired the next aggregate-call runtime handoff after the
+`fr_s1` destination-pointer fix: bounded same-module x86 prepared calls now
+apply the missing 8-byte outgoing stack-alignment pad on both the general
+same-module defined-call lane and the helper-call fast path, so zero-stack
+calls such as `pcs -> ret`, `ret -> fr_s1`, and `ret()`'s variadic
+`printf("%.1f\\n", ...)` no longer enter callees with the wrong SysV x86-64
+stack parity. The focused proof still fails, but `00204.c` now executes past
+the glibc `__printf` crash in `ret()` and advances into a later runtime fault
+inside `stdarg()`.
 
 ## Suggested Next
 
-Take the next packet on the advanced post-`fr_s1` crash surface: inspect the
-`ret()` variadic `printf("%.1f\\n", ...)` call path after the aggregate-return
-helpers and repair the remaining x86-64 stack-alignment/accounting seam that
-still reaches `__printf` with `%rsp` misaligned for SSE register saveout.
+Take the next packet on the advanced post-`ret()` crash surface: inspect the
+`stdarg()` runtime path, especially the prepared variadic aggregate/home loads
+around the faulting `mov (%r10), %eax` fed from `[rsp + 0x2978]`, and repair
+the remaining x86-64 variadic-runtime pointer/accounting seam now exposed
+after the call-alignment handoff was corrected.
 
 ## Watchouts
 
@@ -51,10 +54,14 @@ still reaches `__printf` with `%rsp` misaligned for SSE register saveout.
   helper-prefix renderer: `TypeKind::Ptr` stack-slot homes must materialize the
   incoming register, and `%ret.sret` must participate in the pointer-home
   refresh path just like other pointer params.
-- The next failing surface is no longer `fr_s1`; the focused gdb probe now
-  advances into `ret()` and stops in glibc `__printf("%.1f\\n")`, where
-  `movaps %xmm0, 0x50(%rsp)` faults with `al=1`, indicating the caller still
-  reaches that variadic site with misaligned stack state.
+- The repaired handoff lives in `prepared_local_slot_render.cpp`: both the
+  bounded same-module helper-call fast path and the general same-module
+  defined-call path now emit the missing `sub rsp, 8` / `add rsp, 8` around
+  zero-stack outgoing calls when the prepared frame parity requires it.
+- The next failing surface is no longer `ret()`'s variadic `printf`; the
+  focused gdb probe now stops in `stdarg()` at `mov (%r10), %eax`, where
+  `%r10` comes from `[rsp + 0x2978]` and is invalid, indicating the next seam
+  is variadic aggregate/runtime home tracking rather than stack-call parity.
 
 ## Proof
 
@@ -63,14 +70,14 @@ Focused runtime probe for step-2.1 aggregate/helper runtime repair:
 `ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$' | tee test_after.log`
 Result: `backend_x86_handoff_boundary` PASS; `c_testsuite_x86_backend_src_00204_c`
 still fails with `[RUNTIME_NONZERO] ... exit=Segmentation fault`, but the
-live crash surface advanced beyond the `fr_s1`/`fr_s2` return-helper leaf into
-the later `ret()` variadic-runtime path.
+live crash surface advanced beyond the `ret()` variadic `printf` seam into the
+later `stdarg()` runtime path.
 
 Crash-surface confirmation for the repaired seam:
-`gdb -batch -ex 'run' -ex 'bt' -ex 'frame 5' -ex 'x/24i $pc-24' -ex 'info registers rsp rbp rdi rsi rdx rcx r8 r9 eax al' --args build/c_testsuite_x86_backend/src/00204.c.bin`
+`gdb -batch -ex 'run' -ex 'bt' -ex 'frame 0' -ex 'x/24i $rip-24' -ex 'info reg rsp rbp rip rdi rsi rdx rcx r8 r9 rax al' --args build/c_testsuite_x86_backend/src/00204.c.bin`
 and `build/c_testsuite_x86_backend/src/00204.c.s`
-Result: generated `fr_s1`/`fr_s2` now emit the missing `mov QWORD PTR [rsp],
-rdi` home store before helper copyout writes and no longer crash there; the
-new stop is in glibc `__printf` on the `ret()` path, where `movaps` faults
-while saving `%xmm0`, indicating a later variadic-call alignment/runtime seam.
-Proof log path is `test_after.log`.
+Result: `pcs` now emits the missing aligned same-module call shims before
+`ret` and `stdarg`, and `ret` now emits the same alignment shim before helper
+and variadic `printf` calls. The previous glibc `__printf("%.1f\\n")` `movaps`
+fault is gone; the new stop is in `stdarg()` at `mov (%r10), %eax`, after
+loading `%r10` from `[rsp + 0x2978]`. Proof log path is `test_after.log`.

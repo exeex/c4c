@@ -4321,10 +4321,19 @@ std::optional<std::string> render_prepared_bounded_same_module_helper_call_if_su
   }
 
   std::string rendered_call = selected_call->rendered_arg_moves;
+  const bool needs_call_alignment_pad =
+      block_context.local_layout != nullptr &&
+      (block_context.local_layout->frame_size % 16) == 0;
+  if (needs_call_alignment_pad) {
+    rendered_call += "    sub rsp, 8\n";
+  }
   rendered_call += "    xor eax, eax\n";
   rendered_call += "    call ";
   rendered_call += selected_call->rendered_callee;
   rendered_call += "\n";
+  if (needs_call_alignment_pad) {
+    rendered_call += "    add rsp, 8\n";
+  }
 
   finalize_prepared_same_module_helper_call_state(
       *selected_call->call,
@@ -4584,6 +4593,9 @@ std::optional<std::string> render_prepared_block_same_module_call_inst_if_suppor
   if (stack_arg_bytes % 16 != 0) {
     stack_arg_bytes += 8;
   }
+  const bool needs_call_alignment_pad =
+      block_context.local_layout != nullptr &&
+      ((block_context.local_layout->frame_size + stack_arg_bytes) % 16) == 0;
 
   std::string body;
   const auto preserved_param_registers =
@@ -4869,13 +4881,22 @@ std::optional<std::string> render_prepared_block_same_module_call_inst_if_suppor
   }
 
   if (call->is_variadic) {
+    if (needs_call_alignment_pad) {
+      body += "    sub rsp, 8\n";
+    }
     body += "    mov eax, " + std::to_string(float_register_args) + "\n";
   } else {
+    if (needs_call_alignment_pad) {
+      body += "    sub rsp, 8\n";
+    }
     body += "    xor eax, eax\n";
   }
   body += "    call ";
   body += function_context.render_asm_symbol_name(call->callee);
   body += "\n";
+  if (needs_call_alignment_pad) {
+    body += "    add rsp, 8\n";
+  }
   if (stack_arg_bytes != 0) {
     body += "    add rsp, " + std::to_string(stack_arg_bytes) + "\n";
   }
@@ -5062,7 +5083,7 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
     stack_arg_bytes += 8;
   }
   const bool needs_call_alignment_pad =
-      block_context.local_layout != nullptr && block_context.local_layout->frame_size != 0 &&
+      block_context.local_layout != nullptr &&
       ((block_context.local_layout->frame_size + stack_arg_bytes) % 16) == 0;
   for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
     const auto& arg = call->args[arg_index];
