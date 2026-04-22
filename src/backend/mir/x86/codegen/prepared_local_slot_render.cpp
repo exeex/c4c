@@ -622,6 +622,416 @@ std::optional<std::string> render_prepared_named_f128_copy_into_memory_if_suppor
          "\n";
 }
 
+std::optional<std::size_t> resolve_prepared_local_slot_base_offset_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::string_view slot_name) {
+  if (const auto slot_it = local_layout.offsets.find(slot_name); slot_it != local_layout.offsets.end()) {
+    return slot_it->second;
+  }
+  return find_prepared_value_home_frame_offset(
+      local_layout, prepared_names, function_locations, slot_name);
+}
+
+std::optional<PreparedScalarMemoryAccessRender>
+render_prepared_local_slot_memory_operand_from_handoff_if_supported(
+    const PreparedX86BlockDispatchContext& block_context,
+    std::size_t inst_index,
+    c4c::backend::bir::TypeKind type,
+    std::string_view slot_name,
+    std::size_t byte_offset,
+    bool use_prepared_access,
+    const std::optional<std::string_view>& current_ptr_name,
+    std::unordered_set<std::string_view>* used_same_module_globals) {
+  if (block_context.function_context == nullptr || block_context.local_layout == nullptr) {
+    return std::nullopt;
+  }
+  const auto& function_context = *block_context.function_context;
+  if (use_prepared_access) {
+    const auto memory = render_prepared_scalar_memory_operand_for_inst_if_supported(
+        *block_context.local_layout,
+        function_context.prepared_names,
+        function_context.function_locations,
+        function_context.function_addressing,
+        block_context.block_label_id,
+        inst_index,
+        type,
+        &function_context.render_asm_symbol_name,
+        current_ptr_name);
+    if (!memory.has_value()) {
+      return std::nullopt;
+    }
+    if (type != c4c::backend::bir::TypeKind::F128 &&
+        used_same_module_globals != nullptr &&
+        function_context.prepared_names != nullptr) {
+      if (const auto* symbol_access = find_prepared_symbol_memory_access(
+              function_context.prepared_names,
+              function_context.function_addressing,
+              block_context.block_label_id,
+              inst_index);
+          symbol_access != nullptr) {
+        const auto symbol_name = c4c::backend::prepare::prepared_link_name(
+            *function_context.prepared_names, *symbol_access->address.symbol_name);
+        if (!symbol_name.empty()) {
+          if (const auto* global = function_context.find_same_module_global(symbol_name);
+              global != nullptr) {
+            used_same_module_globals->insert(global->name);
+          }
+        }
+      }
+    }
+    return memory;
+  }
+
+  const auto size_name = prepared_scalar_memory_operand_size_name(type);
+  if (!size_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto base_offset = resolve_prepared_local_slot_base_offset_if_supported(
+      *block_context.local_layout,
+      function_context.prepared_names,
+      function_context.function_locations,
+      slot_name);
+  if (!base_offset.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedScalarMemoryAccessRender{
+      .setup_asm = {},
+      .memory_operand =
+          render_prepared_stack_memory_operand(*base_offset + byte_offset, *size_name),
+  };
+}
+
+std::optional<std::string> render_prepared_float_load_or_cast_inst_if_supported(
+    const PreparedX86BlockDispatchContext& block_context,
+    const c4c::backend::bir::Inst& inst,
+    std::size_t inst_index,
+    std::unordered_set<std::string_view>* used_same_module_globals,
+    std::optional<std::string_view>* current_i32_name,
+    std::optional<std::string_view>* previous_i32_name,
+    std::optional<std::string_view>* current_i8_name,
+    std::optional<std::string_view>* current_ptr_name,
+    std::optional<PreparedCurrentFloatCarrier>* current_f32_value,
+    std::optional<PreparedCurrentFloatCarrier>* current_f64_value,
+    std::optional<MaterializedI32Compare>* current_materialized_compare) {
+  if (block_context.function_context == nullptr || block_context.local_layout == nullptr ||
+      current_i32_name == nullptr || previous_i32_name == nullptr ||
+      current_i8_name == nullptr || current_ptr_name == nullptr ||
+      current_f32_value == nullptr || current_f64_value == nullptr ||
+      current_materialized_compare == nullptr) {
+    return std::nullopt;
+  }
+  const auto& function_context = *block_context.function_context;
+  const auto emit_float_load =
+      [&](c4c::backend::bir::TypeKind type,
+          std::string_view result_name,
+          std::string_view memory_operand,
+          std::string setup_asm = {}) -> std::optional<std::string> {
+    const auto* home = find_prepared_named_value_home_if_supported(
+        function_context.prepared_names, function_context.function_locations, result_name);
+    std::string destination_register;
+    if (home != nullptr && home->kind ==
+                               c4c::backend::prepare::PreparedValueHomeKind::Register &&
+        home->register_name.has_value()) {
+      destination_register = *home->register_name;
+    } else {
+      const auto scratch_register = choose_prepared_float_scratch_register_if_supported(
+          function_context.function_locations);
+      if (!scratch_register.has_value()) {
+        return std::nullopt;
+      }
+      destination_register = *scratch_register;
+    }
+    const auto move_mnemonic =
+        type == c4c::backend::bir::TypeKind::F32 ? "movss" : "movsd";
+    std::string rendered = std::move(setup_asm);
+    rendered += "    " + std::string(move_mnemonic) + " " + destination_register + ", " +
+                std::string(memory_operand) + "\n";
+    if (!append_prepared_float_home_sync_if_supported(
+            &rendered,
+            type,
+            destination_register,
+            result_name,
+            block_context.local_layout,
+            function_context.prepared_names,
+            function_context.function_locations)) {
+      return std::nullopt;
+    }
+    *current_materialized_compare = std::nullopt;
+    *current_i32_name = std::nullopt;
+    *previous_i32_name = std::nullopt;
+    *current_i8_name = std::nullopt;
+    *current_ptr_name = std::nullopt;
+    if (type == c4c::backend::bir::TypeKind::F32) {
+      *current_f32_value = PreparedCurrentFloatCarrier{
+          .value_name = result_name,
+          .register_name = destination_register,
+      };
+      *current_f64_value = std::nullopt;
+    } else {
+      *current_f32_value = std::nullopt;
+      *current_f64_value = PreparedCurrentFloatCarrier{
+          .value_name = result_name,
+          .register_name = destination_register,
+      };
+    }
+    return rendered;
+  };
+
+  if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst)) {
+    if (load->result.kind != c4c::backend::bir::Value::Kind::Named ||
+        (load->result.type != c4c::backend::bir::TypeKind::F32 &&
+         load->result.type != c4c::backend::bir::TypeKind::F64)) {
+      return std::nullopt;
+    }
+    const auto memory = render_prepared_local_slot_memory_operand_from_handoff_if_supported(
+        block_context,
+        inst_index,
+        load->result.type,
+        load->slot_name,
+        load->byte_offset,
+        load->address.has_value(),
+        *current_ptr_name,
+        used_same_module_globals);
+    if (!memory.has_value()) {
+      return std::nullopt;
+    }
+    return emit_float_load(
+        load->result.type, load->result.name, memory->memory_operand, memory->setup_asm);
+  }
+
+  const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&inst);
+  if (cast == nullptr || cast->opcode != c4c::backend::bir::CastOpcode::FPExt ||
+      cast->operand.type != c4c::backend::bir::TypeKind::F32 ||
+      cast->result.type != c4c::backend::bir::TypeKind::F64 ||
+      cast->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      cast->operand.kind != c4c::backend::bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto* result_home = find_prepared_named_value_home_if_supported(
+      function_context.prepared_names, function_context.function_locations, cast->result.name);
+  std::string destination_register;
+  if (result_home != nullptr &&
+      result_home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+      result_home->register_name.has_value()) {
+    destination_register = *result_home->register_name;
+  } else {
+    const auto scratch_register = choose_prepared_float_scratch_register_if_supported(
+        function_context.function_locations);
+    if (!scratch_register.has_value()) {
+      return std::nullopt;
+    }
+    destination_register = *scratch_register;
+  }
+  const auto rendered_operand = render_prepared_named_float_source_into_register_if_supported(
+      c4c::backend::bir::TypeKind::F32,
+      cast->operand.name,
+      destination_register,
+      block_context.local_layout,
+      function_context.prepared_names,
+      function_context.function_locations);
+  if (!rendered_operand.has_value()) {
+    return std::nullopt;
+  }
+  std::string rendered = *rendered_operand;
+  rendered += "    cvtss2sd " + destination_register + ", " + destination_register + "\n";
+  if (!append_prepared_float_home_sync_if_supported(
+          &rendered,
+          c4c::backend::bir::TypeKind::F64,
+          destination_register,
+          cast->result.name,
+          block_context.local_layout,
+          function_context.prepared_names,
+          function_context.function_locations)) {
+    return std::nullopt;
+  }
+  *current_materialized_compare = std::nullopt;
+  *current_i32_name = std::nullopt;
+  *previous_i32_name = std::nullopt;
+  *current_i8_name = std::nullopt;
+  *current_ptr_name = std::nullopt;
+  *current_f32_value = std::nullopt;
+  *current_f64_value = PreparedCurrentFloatCarrier{
+      .value_name = cast->result.name,
+      .register_name = destination_register,
+  };
+  return rendered;
+}
+
+std::optional<std::string> render_prepared_float_store_inst_if_supported(
+    const PreparedX86BlockDispatchContext& block_context,
+    const c4c::backend::bir::Inst& inst,
+    std::size_t inst_index,
+    std::unordered_set<std::string_view>* used_same_module_globals,
+    std::optional<std::string_view>* current_i32_name,
+    std::optional<std::string_view>* previous_i32_name,
+    std::optional<std::string_view>* current_i8_name,
+    std::optional<std::string_view>* current_ptr_name,
+    std::optional<PreparedCurrentFloatCarrier>* current_f32_value,
+    std::optional<PreparedCurrentFloatCarrier>* current_f64_value,
+    std::optional<MaterializedI32Compare>* current_materialized_compare) {
+  if (block_context.function_context == nullptr || current_i32_name == nullptr ||
+      previous_i32_name == nullptr || current_i8_name == nullptr ||
+      current_ptr_name == nullptr || current_f32_value == nullptr ||
+      current_f64_value == nullptr || current_materialized_compare == nullptr) {
+    return std::nullopt;
+  }
+  const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
+  if (store == nullptr || store->value.kind != c4c::backend::bir::Value::Kind::Named ||
+      (store->value.type != c4c::backend::bir::TypeKind::F32 &&
+       store->value.type != c4c::backend::bir::TypeKind::F64)) {
+    return std::nullopt;
+  }
+  const auto memory = render_prepared_local_slot_memory_operand_from_handoff_if_supported(
+      block_context,
+      inst_index,
+      store->value.type,
+      store->slot_name,
+      store->byte_offset,
+      store->address.has_value(),
+      *current_ptr_name,
+      used_same_module_globals);
+  if (!memory.has_value()) {
+    return std::nullopt;
+  }
+  const auto& function_context = *block_context.function_context;
+  const auto move_mnemonic =
+      store->value.type == c4c::backend::bir::TypeKind::F32 ? "movss" : "movsd";
+  std::string source_register;
+  std::string rendered;
+  const auto* current_value =
+      store->value.type == c4c::backend::bir::TypeKind::F32 ? current_f32_value
+                                                            : current_f64_value;
+  if (current_value->has_value() && (*current_value)->value_name == store->value.name) {
+    source_register = (*current_value)->register_name;
+  } else if (const auto* home = find_prepared_named_value_home_if_supported(
+                 function_context.prepared_names,
+                 function_context.function_locations,
+                 store->value.name);
+             home != nullptr &&
+             home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+             home->register_name.has_value()) {
+    source_register = *home->register_name;
+  } else {
+    const auto scratch_register =
+        choose_prepared_float_scratch_register_if_supported(function_context.function_locations);
+    if (!scratch_register.has_value()) {
+      return std::nullopt;
+    }
+    source_register = *scratch_register;
+  }
+
+  const auto rendered_source = render_prepared_named_float_source_into_register_if_supported(
+      store->value.type,
+      store->value.name,
+      source_register,
+      block_context.local_layout,
+      function_context.prepared_names,
+      function_context.function_locations);
+  if (!rendered_source.has_value()) {
+    return std::nullopt;
+  }
+  rendered = memory->setup_asm + *rendered_source;
+  rendered +=
+      "    " + std::string(move_mnemonic) + " " + memory->memory_operand + ", " + source_register +
+      "\n";
+  *current_materialized_compare = std::nullopt;
+  *current_i32_name = std::nullopt;
+  *previous_i32_name = std::nullopt;
+  *current_i8_name = std::nullopt;
+  *current_ptr_name = std::nullopt;
+  return rendered;
+}
+
+std::optional<std::string> render_prepared_f128_local_copy_inst_if_supported(
+    const PreparedX86BlockDispatchContext& block_context,
+    const c4c::backend::bir::Inst& inst,
+    std::size_t inst_index,
+    std::unordered_set<std::string_view>* used_same_module_globals,
+    std::optional<std::string_view>* current_i32_name,
+    std::optional<std::string_view>* previous_i32_name,
+    std::optional<std::string_view>* current_i8_name,
+    std::optional<std::string_view>* current_ptr_name,
+    std::optional<MaterializedI32Compare>* current_materialized_compare) {
+  if (block_context.function_context == nullptr || block_context.local_layout == nullptr ||
+      current_i32_name == nullptr || previous_i32_name == nullptr ||
+      current_i8_name == nullptr || current_ptr_name == nullptr ||
+      current_materialized_compare == nullptr) {
+    return std::nullopt;
+  }
+  const auto& function_context = *block_context.function_context;
+
+  if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst)) {
+    if (load->result.kind != c4c::backend::bir::Value::Kind::Named ||
+        load->result.type != c4c::backend::bir::TypeKind::F128) {
+      return std::nullopt;
+    }
+    const auto source_memory = render_prepared_local_slot_memory_operand_from_handoff_if_supported(
+        block_context,
+        inst_index,
+        load->result.type,
+        load->slot_name,
+        load->byte_offset,
+        load->address.has_value(),
+        *current_ptr_name,
+        used_same_module_globals);
+    const auto destination_memory_operand =
+        render_prepared_named_f128_source_memory_operand_if_supported(
+            load->result.name,
+            0,
+            block_context.local_layout,
+            function_context.function,
+            function_context.prepared_names,
+            function_context.function_locations);
+    if (!source_memory.has_value() || !destination_memory_operand.has_value()) {
+      return std::nullopt;
+    }
+    *current_materialized_compare = std::nullopt;
+    *current_i32_name = std::nullopt;
+    *previous_i32_name = std::nullopt;
+    *current_i8_name = std::nullopt;
+    *current_ptr_name = std::nullopt;
+    return source_memory->setup_asm + "    fldt " + source_memory->memory_operand +
+           "\n    fstpt " + *destination_memory_operand + "\n";
+  }
+
+  const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
+  if (store == nullptr || store->value.kind != c4c::backend::bir::Value::Kind::Named ||
+      store->value.type != c4c::backend::bir::TypeKind::F128) {
+    return std::nullopt;
+  }
+  const auto destination_memory = render_prepared_local_slot_memory_operand_from_handoff_if_supported(
+      block_context,
+      inst_index,
+      store->value.type,
+      store->slot_name,
+      store->byte_offset,
+      store->address.has_value(),
+      *current_ptr_name,
+      used_same_module_globals);
+  if (!destination_memory.has_value()) {
+    return std::nullopt;
+  }
+  const auto rendered_copy = render_prepared_named_f128_copy_into_memory_if_supported(
+      store->value.name,
+      destination_memory->memory_operand,
+      0,
+      block_context.local_layout,
+      function_context.function,
+      function_context.prepared_names,
+      function_context.function_locations);
+  if (!rendered_copy.has_value()) {
+    return std::nullopt;
+  }
+  *current_materialized_compare = std::nullopt;
+  *current_i32_name = std::nullopt;
+  *previous_i32_name = std::nullopt;
+  *current_i8_name = std::nullopt;
+  *current_ptr_name = std::nullopt;
+  return destination_memory->setup_asm + *rendered_copy;
+}
+
 std::optional<PreparedScalarMemoryAccessRender>
 render_prepared_pointer_value_memory_operand_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
@@ -2136,6 +2546,180 @@ std::optional<std::string> render_prepared_i32_binary_inst_if_supported(
   *current_i8_name = std::nullopt;
   *current_ptr_name = std::nullopt;
   return std::string{};
+}
+
+std::optional<std::string> render_prepared_ptr_binary_inst_if_supported(
+    const c4c::backend::bir::BinaryInst& binary,
+    const PreparedModuleLocalSlotLayout* local_layout,
+    const c4c::backend::bir::Block* block,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label_id,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    const std::unordered_map<std::string_view, std::string_view>& i64_i32_aliases,
+    std::optional<std::string_view>* current_i32_name,
+    std::optional<std::string_view>* previous_i32_name,
+    std::optional<std::string_view>* current_i8_name,
+    std::optional<std::string_view>* current_ptr_name,
+    std::optional<MaterializedI32Compare>* current_materialized_compare) {
+  if (current_i32_name == nullptr || previous_i32_name == nullptr ||
+      current_i8_name == nullptr || current_ptr_name == nullptr ||
+      current_materialized_compare == nullptr || binary.result.kind != c4c::backend::bir::Value::Kind::Named ||
+      binary.result.type != c4c::backend::bir::TypeKind::Ptr ||
+      (binary.opcode != c4c::backend::bir::BinaryOpcode::Add &&
+       binary.opcode != c4c::backend::bir::BinaryOpcode::Sub)) {
+    return std::nullopt;
+  }
+
+  const auto select_i32_source =
+      [&](std::string_view value_name) -> std::optional<PreparedNamedI32Source> {
+        if (block != nullptr) {
+          return select_prepared_named_i32_block_source_if_supported(
+              local_layout,
+              block,
+              instruction_index,
+              function_addressing,
+              block_label_id,
+              value_name,
+              *current_i32_name,
+              *previous_i32_name,
+              prepared_names,
+              function_locations);
+        }
+        return select_prepared_named_i32_source_if_supported(
+            value_name,
+            *current_i32_name,
+            *previous_i32_name,
+            prepared_names,
+            function_locations);
+      };
+
+  const auto render_signed_offset_into_register =
+      [&](const c4c::backend::bir::Value& value,
+          std::string_view destination_register) -> std::optional<std::string> {
+        if (value.kind == c4c::backend::bir::Value::Kind::Immediate &&
+            (value.type == c4c::backend::bir::TypeKind::I32 ||
+             value.type == c4c::backend::bir::TypeKind::I64)) {
+          return "    mov " + std::string(destination_register) + ", " +
+                 std::to_string(value.type == c4c::backend::bir::TypeKind::I32
+                                    ? static_cast<std::int32_t>(value.immediate)
+                                    : value.immediate) +
+                 "\n";
+        }
+        if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+          return std::nullopt;
+        }
+
+        std::string_view i32_value_name;
+        if (value.type == c4c::backend::bir::TypeKind::I32) {
+          i32_value_name = value.name;
+        } else if (value.type == c4c::backend::bir::TypeKind::I64) {
+          const auto alias_it = i64_i32_aliases.find(value.name);
+          if (alias_it == i64_i32_aliases.end()) {
+            return std::nullopt;
+          }
+          i32_value_name = alias_it->second;
+        } else {
+          return std::nullopt;
+        }
+
+        const auto source = select_i32_source(i32_value_name);
+        if (!source.has_value()) {
+          return std::nullopt;
+        }
+        if (source->immediate_i32.has_value()) {
+          return "    mov " + std::string(destination_register) + ", " +
+                 std::to_string(static_cast<std::int32_t>(*source->immediate_i32)) + "\n";
+        }
+        if (source->register_name.has_value()) {
+          return "    movsxd " + std::string(destination_register) + ", " +
+                 *source->register_name + "\n";
+        }
+        if (source->stack_operand.has_value()) {
+          return "    movsxd " + std::string(destination_register) + ", " +
+                 *source->stack_operand + "\n";
+        }
+        return std::nullopt;
+      };
+
+  const auto is_supported_offset_value =
+      [&](const c4c::backend::bir::Value& value) -> bool {
+        if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+          return value.type == c4c::backend::bir::TypeKind::I32 ||
+                 value.type == c4c::backend::bir::TypeKind::I64;
+        }
+        if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+          return false;
+        }
+        return value.type == c4c::backend::bir::TypeKind::I32 ||
+               (value.type == c4c::backend::bir::TypeKind::I64 &&
+                i64_i32_aliases.find(value.name) != i64_i32_aliases.end());
+      };
+
+  const auto is_named_ptr =
+      [](const c4c::backend::bir::Value& value) {
+        return value.kind == c4c::backend::bir::Value::Kind::Named &&
+               value.type == c4c::backend::bir::TypeKind::Ptr;
+      };
+
+  const c4c::backend::bir::Value* base_value = nullptr;
+  const c4c::backend::bir::Value* offset_value = nullptr;
+  if (binary.opcode == c4c::backend::bir::BinaryOpcode::Add) {
+    if (is_named_ptr(binary.lhs) && is_supported_offset_value(binary.rhs)) {
+      base_value = &binary.lhs;
+      offset_value = &binary.rhs;
+    } else if (is_named_ptr(binary.rhs) && is_supported_offset_value(binary.lhs)) {
+      base_value = &binary.rhs;
+      offset_value = &binary.lhs;
+    }
+  } else if (is_named_ptr(binary.lhs) && is_supported_offset_value(binary.rhs)) {
+    base_value = &binary.lhs;
+    offset_value = &binary.rhs;
+  }
+  if (base_value == nullptr || offset_value == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto offset_register =
+      choose_prepared_pointer_scratch_register_if_supported(function_locations);
+  if (!offset_register.has_value()) {
+    return std::nullopt;
+  }
+  const auto rendered_offset =
+      render_signed_offset_into_register(*offset_value, *offset_register);
+  if (!rendered_offset.has_value()) {
+    return std::nullopt;
+  }
+  const auto rendered_base = render_prepared_named_ptr_into_register_if_supported(
+      base_value->name,
+      "rax",
+      prepared_names,
+      function_locations,
+      *current_ptr_name);
+  if (!rendered_base.has_value()) {
+    return std::nullopt;
+  }
+
+  std::string rendered = *rendered_offset + *rendered_base;
+  rendered += "    ";
+  rendered += binary.opcode == c4c::backend::bir::BinaryOpcode::Add ? "add " : "sub ";
+  rendered += "rax, " + *offset_register + "\n";
+  if (const auto home_sync = render_prepared_named_ptr_home_sync_if_supported(
+          binary.result.name, prepared_names, function_locations);
+      home_sync.has_value()) {
+    rendered += *home_sync;
+  } else {
+    return std::nullopt;
+  }
+
+  *current_materialized_compare = std::nullopt;
+  *current_i32_name = std::nullopt;
+  *previous_i32_name = std::nullopt;
+  *current_i8_name = std::nullopt;
+  *current_ptr_name =
+      prepared_current_ptr_carrier_name(binary.result.name, prepared_names, function_locations);
+  return rendered;
 }
 
 std::optional<std::string> render_prepared_block_return_terminator_if_supported(
@@ -5058,6 +5642,39 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
     }
 
     for (std::size_t index = 0; index < *compare_index; ++index) {
+      if (const auto rendered_float =
+              render_prepared_float_load_or_cast_inst_if_supported(
+                  block_context,
+                  block.insts[index],
+                  index,
+                  &same_module_global_names,
+                  &current_i32_name,
+                  &previous_i32_name,
+                  &current_i8_name,
+                  &current_ptr_name,
+                  &current_f32_value,
+                  &current_f64_value,
+                  &current_materialized_compare);
+          rendered_float.has_value()) {
+        body += *rendered_float;
+        continue;
+      }
+
+      if (const auto rendered_f128 = render_prepared_f128_local_copy_inst_if_supported(
+              block_context,
+              block.insts[index],
+              index,
+              &same_module_global_names,
+              &current_i32_name,
+              &previous_i32_name,
+              &current_i8_name,
+              &current_ptr_name,
+              &current_materialized_compare);
+          rendered_f128.has_value()) {
+        body += *rendered_f128;
+        continue;
+      }
+
       const auto rendered_inst =
           rendered_load_or_store(block.insts[index],
                                  index,
@@ -5134,6 +5751,23 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
           body += *rendered_binary;
           continue;
         }
+      }
+
+      if (const auto rendered_float_store = render_prepared_float_store_inst_if_supported(
+              block_context,
+              block.insts[index],
+              index,
+              &same_module_global_names,
+              &current_i32_name,
+              &previous_i32_name,
+              &current_i8_name,
+              &current_ptr_name,
+              &current_f32_value,
+              &current_f64_value,
+              &current_materialized_compare);
+          rendered_float_store.has_value()) {
+        body += *rendered_float_store;
+        continue;
       }
 
       const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&block.insts[index]);
@@ -7516,384 +8150,48 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
       const auto render_helper_float_load_or_cast =
           [&](const c4c::backend::bir::Inst& inst,
               std::size_t inst_index) -> std::optional<std::string> {
-            const auto emit_float_load = [&](c4c::backend::bir::TypeKind type,
-                                            std::string_view result_name,
-                                            std::string_view memory_operand,
-                                            std::string setup_asm = {})
-                -> std::optional<std::string> {
-              const auto* home = find_prepared_named_value_home_if_supported(
-                  &module.names, candidate_function_locations, result_name);
-              std::string destination_register;
-              if (home != nullptr && home->kind ==
-                                         c4c::backend::prepare::PreparedValueHomeKind::Register &&
-                  home->register_name.has_value()) {
-                destination_register = *home->register_name;
-              } else {
-                const auto scratch_register =
-                    choose_prepared_float_scratch_register_if_supported(candidate_function_locations);
-                if (!scratch_register.has_value()) {
-                  return std::nullopt;
-                }
-                destination_register = *scratch_register;
-              }
-              const auto move_mnemonic =
-                  type == c4c::backend::bir::TypeKind::F32 ? "movss" : "movsd";
-              std::string rendered = std::move(setup_asm);
-              rendered += "    " + std::string(move_mnemonic) + " " + destination_register + ", " +
-                          std::string(memory_operand) + "\n";
-              if (!append_prepared_float_home_sync_if_supported(
-                      &rendered,
-                      type,
-                      destination_register,
-                      result_name,
-                      &*layout,
-                      &module.names,
-                      candidate_function_locations)) {
-                return std::nullopt;
-              }
-              current_materialized_compare = std::nullopt;
-              current_i32_name = std::nullopt;
-              previous_i32_name = std::nullopt;
-              current_i8_name = std::nullopt;
-              current_ptr_name = std::nullopt;
-              if (type == c4c::backend::bir::TypeKind::F32) {
-                current_f32_value = PreparedCurrentFloatCarrier{
-                    .value_name = result_name,
-                    .register_name = destination_register,
-                };
-                current_f64_value = std::nullopt;
-              } else {
-                current_f32_value = std::nullopt;
-                current_f64_value = PreparedCurrentFloatCarrier{
-                    .value_name = result_name,
-                    .register_name = destination_register,
-                };
-              }
-              return rendered;
-            };
-
-            if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst)) {
-              if (load->result.kind != c4c::backend::bir::Value::Kind::Named ||
-                  (load->result.type != c4c::backend::bir::TypeKind::F32 &&
-                   load->result.type != c4c::backend::bir::TypeKind::F64)) {
-                return std::nullopt;
-              }
-              if (load->address.has_value()) {
-                const auto memory = render_prepared_scalar_memory_operand_for_inst_if_supported(
-                    *layout,
-                    &module.names,
-                    candidate_function_locations,
-                    candidate_function_addressing,
-                    block_context.block_label_id,
-                    inst_index,
-                    load->result.type,
-                    &render_asm_symbol_name,
-                    current_ptr_name);
-                if (!memory.has_value()) {
-                  return std::nullopt;
-                }
-                if (const auto* symbol_access = find_prepared_symbol_memory_access(
-                        &module.names,
-                        candidate_function_addressing,
-                        block_context.block_label_id,
-                        inst_index);
-                    symbol_access != nullptr) {
-                  const auto symbol_name =
-                      c4c::backend::prepare::prepared_link_name(
-                          module.names, *symbol_access->address.symbol_name);
-                  if (!symbol_name.empty()) {
-                    if (const auto* global = find_same_module_global(symbol_name); global != nullptr) {
-                      used_same_module_globals.insert(global->name);
-                    }
-                  }
-                }
-                return emit_float_load(
-                    load->result.type,
-                    load->result.name,
-                    memory->memory_operand,
-                    memory->setup_asm);
-              }
-              const auto size_name = prepared_float_memory_operand_size_name(load->result.type);
-              if (!size_name.has_value()) {
-                return std::nullopt;
-              }
-              std::optional<std::size_t> base_offset;
-              if (const auto slot_it = layout->offsets.find(load->slot_name);
-                  slot_it != layout->offsets.end()) {
-                base_offset = slot_it->second;
-              } else {
-                base_offset = find_prepared_value_home_frame_offset(
-                    *layout, &module.names, candidate_function_locations, load->slot_name);
-              }
-              if (!base_offset.has_value()) {
-                return std::nullopt;
-              }
-              return emit_float_load(
-                  load->result.type,
-                  load->result.name,
-                  render_prepared_stack_memory_operand(*base_offset + load->byte_offset, *size_name));
-            }
-
-            const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&inst);
-            if (cast == nullptr ||
-                cast->opcode != c4c::backend::bir::CastOpcode::FPExt ||
-                cast->operand.type != c4c::backend::bir::TypeKind::F32 ||
-                cast->result.type != c4c::backend::bir::TypeKind::F64 ||
-                cast->result.kind != c4c::backend::bir::Value::Kind::Named ||
-                cast->operand.kind != c4c::backend::bir::Value::Kind::Named) {
-              return std::nullopt;
-            }
-            const auto* result_home = find_prepared_named_value_home_if_supported(
-                &module.names, candidate_function_locations, cast->result.name);
-            std::string destination_register;
-            if (result_home != nullptr &&
-                result_home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
-                result_home->register_name.has_value()) {
-              destination_register = *result_home->register_name;
-            } else {
-              const auto scratch_register =
-                  choose_prepared_float_scratch_register_if_supported(candidate_function_locations);
-              if (!scratch_register.has_value()) {
-                return std::nullopt;
-              }
-              destination_register = *scratch_register;
-            }
-            const auto rendered_operand = render_prepared_named_float_source_into_register_if_supported(
-                c4c::backend::bir::TypeKind::F32,
-                cast->operand.name,
-                destination_register,
-                &*layout,
-                &module.names,
-                candidate_function_locations);
-            if (!rendered_operand.has_value()) {
-              return std::nullopt;
-            }
-            std::string rendered = *rendered_operand;
-            rendered += "    cvtss2sd " + destination_register + ", " + destination_register + "\n";
-            if (!append_prepared_float_home_sync_if_supported(
-                    &rendered,
-                    c4c::backend::bir::TypeKind::F64,
-                    destination_register,
-                    cast->result.name,
-                    &*layout,
-                    &module.names,
-                    candidate_function_locations)) {
-              return std::nullopt;
-            }
-            current_materialized_compare = std::nullopt;
-            current_i32_name = std::nullopt;
-            previous_i32_name = std::nullopt;
-            current_i8_name = std::nullopt;
-            current_ptr_name = std::nullopt;
-            current_f32_value = std::nullopt;
-            current_f64_value = PreparedCurrentFloatCarrier{
-                .value_name = cast->result.name,
-                .register_name = destination_register,
-            };
-            return rendered;
+            return render_prepared_float_load_or_cast_inst_if_supported(
+                block_context,
+                inst,
+                inst_index,
+                &used_same_module_globals,
+                &current_i32_name,
+                &previous_i32_name,
+                &current_i8_name,
+                &current_ptr_name,
+                &current_f32_value,
+                &current_f64_value,
+                &current_materialized_compare);
           };
       const auto render_helper_float_store =
           [&](const c4c::backend::bir::Inst& inst,
               std::size_t inst_index) -> std::optional<std::string> {
-            const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
-            if (store == nullptr || store->value.kind != c4c::backend::bir::Value::Kind::Named ||
-                (store->value.type != c4c::backend::bir::TypeKind::F32 &&
-                 store->value.type != c4c::backend::bir::TypeKind::F64)) {
-              return std::nullopt;
-            }
-            const auto move_mnemonic =
-                store->value.type == c4c::backend::bir::TypeKind::F32 ? "movss" : "movsd";
-            std::string destination_memory_operand;
-            std::string destination_setup_asm;
-            if (store->address.has_value()) {
-              const auto memory = render_prepared_scalar_memory_operand_for_inst_if_supported(
-                  *layout,
-                  &module.names,
-                  candidate_function_locations,
-                  candidate_function_addressing,
-                  block_context.block_label_id,
-                  inst_index,
-                  store->value.type,
-                  &render_asm_symbol_name,
-                  current_ptr_name);
-              if (!memory.has_value()) {
-                return std::nullopt;
-              }
-              destination_setup_asm = memory->setup_asm;
-              destination_memory_operand = memory->memory_operand;
-            } else {
-              const auto size_name = prepared_float_memory_operand_size_name(store->value.type);
-              if (!size_name.has_value()) {
-                return std::nullopt;
-              }
-              std::optional<std::size_t> base_offset;
-              if (const auto slot_it = layout->offsets.find(store->slot_name);
-                  slot_it != layout->offsets.end()) {
-                base_offset = slot_it->second;
-              } else {
-                base_offset = find_prepared_value_home_frame_offset(
-                    *layout, &module.names, candidate_function_locations, store->slot_name);
-              }
-              if (!base_offset.has_value()) {
-                return std::nullopt;
-              }
-              destination_memory_operand = render_prepared_stack_memory_operand(
-                  *base_offset + store->byte_offset, *size_name);
-            }
-            std::string source_register;
-            std::string rendered;
-            const auto* current_value =
-                store->value.type == c4c::backend::bir::TypeKind::F32 ? &current_f32_value
-                                                                      : &current_f64_value;
-            if (current_value->has_value() && (*current_value)->value_name == store->value.name) {
-              source_register = (*current_value)->register_name;
-            } else if (const auto* home = find_prepared_named_value_home_if_supported(
-                           &module.names, candidate_function_locations, store->value.name);
-                       home != nullptr &&
-                       home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
-                       home->register_name.has_value()) {
-              source_register = *home->register_name;
-            } else {
-              const auto scratch_register =
-                  choose_prepared_float_scratch_register_if_supported(candidate_function_locations);
-              if (!scratch_register.has_value()) {
-                return std::nullopt;
-              }
-              source_register = *scratch_register;
-            }
-
-            const auto rendered_source = render_prepared_named_float_source_into_register_if_supported(
-                store->value.type,
-                store->value.name,
-                source_register,
-                &*layout,
-                &module.names,
-                candidate_function_locations);
-            if (!rendered_source.has_value()) {
-              return std::nullopt;
-            }
-            rendered = destination_setup_asm + *rendered_source;
-            rendered += "    " + std::string(move_mnemonic) + " " + destination_memory_operand +
-                        ", " + source_register + "\n";
-            current_materialized_compare = std::nullopt;
-            current_i32_name = std::nullopt;
-            previous_i32_name = std::nullopt;
-            current_i8_name = std::nullopt;
-            current_ptr_name = std::nullopt;
-            return rendered;
+            return render_prepared_float_store_inst_if_supported(
+                block_context,
+                inst,
+                inst_index,
+                &used_same_module_globals,
+                &current_i32_name,
+                &previous_i32_name,
+                &current_i8_name,
+                &current_ptr_name,
+                &current_f32_value,
+                &current_f64_value,
+                &current_materialized_compare);
           };
       const auto render_helper_f128_local_copy =
           [&](const c4c::backend::bir::Inst& inst,
               std::size_t inst_index) -> std::optional<std::string> {
-            auto resolve_slot_operand =
-                [&](std::string_view slot_name,
-                    std::size_t byte_offset) -> std::optional<std::string> {
-              std::optional<std::size_t> base_offset;
-              if (const auto slot_it = layout->offsets.find(slot_name); slot_it != layout->offsets.end()) {
-                base_offset = slot_it->second;
-              } else {
-                base_offset = find_prepared_value_home_frame_offset(
-                    *layout, &module.names, candidate_function_locations, slot_name);
-              }
-              if (!base_offset.has_value()) {
-                return std::nullopt;
-              }
-              return render_prepared_stack_memory_operand(*base_offset + byte_offset, "TBYTE");
-            };
-
-            if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst)) {
-              if (load->result.kind != c4c::backend::bir::Value::Kind::Named ||
-                  load->result.type != c4c::backend::bir::TypeKind::F128) {
-                return std::nullopt;
-              }
-              std::optional<std::string> source_memory_operand;
-              std::string source_setup_asm;
-              if (load->address.has_value()) {
-                const auto memory = render_prepared_scalar_memory_operand_for_inst_if_supported(
-                    *layout,
-                    &module.names,
-                    candidate_function_locations,
-                    candidate_function_addressing,
-                    block_context.block_label_id,
-                    inst_index,
-                    load->result.type,
-                    &render_asm_symbol_name,
-                    current_ptr_name);
-                if (!memory.has_value()) {
-                  return std::nullopt;
-                }
-                source_setup_asm = memory->setup_asm;
-                source_memory_operand = memory->memory_operand;
-              } else {
-                source_memory_operand = resolve_slot_operand(load->slot_name, load->byte_offset);
-              }
-              const auto destination_memory_operand =
-                  render_prepared_named_f128_source_memory_operand_if_supported(
-                      load->result.name,
-                      0,
-                      &*layout,
-                      &candidate,
-                      &module.names,
-                      candidate_function_locations);
-              if (!source_memory_operand.has_value() || !destination_memory_operand.has_value()) {
-                return std::nullopt;
-              }
-              current_materialized_compare = std::nullopt;
-              current_i32_name = std::nullopt;
-              previous_i32_name = std::nullopt;
-              current_i8_name = std::nullopt;
-              current_ptr_name = std::nullopt;
-              return source_setup_asm + "    fldt " + *source_memory_operand +
-                     "\n    fstpt " + *destination_memory_operand + "\n";
-            }
-
-            const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
-            if (store == nullptr || store->value.kind != c4c::backend::bir::Value::Kind::Named ||
-                store->value.type != c4c::backend::bir::TypeKind::F128) {
-              return std::nullopt;
-            }
-            std::optional<std::string> destination_memory_operand;
-            std::string destination_setup_asm;
-            if (store->address.has_value()) {
-              const auto memory = render_prepared_scalar_memory_operand_for_inst_if_supported(
-                  *layout,
-                  &module.names,
-                  candidate_function_locations,
-                  candidate_function_addressing,
-                  block_context.block_label_id,
-                  inst_index,
-                  store->value.type,
-                  &render_asm_symbol_name,
-                  current_ptr_name);
-              if (!memory.has_value()) {
-                return std::nullopt;
-              }
-              destination_setup_asm = memory->setup_asm;
-              destination_memory_operand = memory->memory_operand;
-            } else {
-              destination_memory_operand =
-                  resolve_slot_operand(store->slot_name, store->byte_offset);
-              if (!destination_memory_operand.has_value()) {
-                return std::nullopt;
-              }
-            }
-            const auto rendered_copy = render_prepared_named_f128_copy_into_memory_if_supported(
-                store->value.name,
-                *destination_memory_operand,
-                0,
-                &*layout,
-                &candidate,
-                &module.names,
-                candidate_function_locations);
-            if (!rendered_copy.has_value()) {
-              return std::nullopt;
-            }
-            current_materialized_compare = std::nullopt;
-            current_i32_name = std::nullopt;
-            previous_i32_name = std::nullopt;
-            current_i8_name = std::nullopt;
-            current_ptr_name = std::nullopt;
-            return destination_setup_asm + *rendered_copy;
+            return render_prepared_f128_local_copy_inst_if_supported(
+                block_context,
+                inst,
+                inst_index,
+                &used_same_module_globals,
+                &current_i32_name,
+                &previous_i32_name,
+                &current_i8_name,
+                &current_ptr_name,
+                &current_materialized_compare);
           };
       const auto render_helper_local_load_without_prepared_access =
           [&](const c4c::backend::bir::Inst& inst) -> std::optional<std::string> {

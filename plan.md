@@ -1,172 +1,209 @@
-# Prepared Local-Slot Handoff Consumption For X86 Backend
+# Call-Bundle And Multi-Function Prepared-Module Consumption
 
 Status: Active
-Source Idea: ideas/open/68_prepared_local_slot_handoff_consumption_for_x86_backend.md
-Activated from: ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md
+Source Idea: ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md
+Activated from: ideas/open/68_prepared_local_slot_handoff_consumption_for_x86_backend.md
 
 ## Purpose
 
-Switch the active backend leaf from idea 60 to the new local-slot handoff leaf
-now that the full `c_testsuite_x86_backend_src_00204_c` route no longer stops
-at the scalar restriction and instead fails later in the authoritative prepared
-local-slot handoff path.
+Switch the active backend leaf from idea 68 to the prepared-module and
+call-bundle consumption leaf now that full `c_testsuite_x86_backend_src_00204_c`
+no longer stops in the authoritative prepared local-slot family and instead
+stabilizes on the downstream prepared-module restriction.
 
 ## Goal
 
-Repair one authoritative prepared local-slot handoff seam at a time so owned
-cases move past the current local-slot rejection without adding testcase-shaped
-helper branches.
+Repair one prepared-module or prepared call-bundle consumption seam at a time
+so owned cases move past the current module-level rejection without adding
+bounded `main + helper` or named-call x86 fast paths.
 
 ## Core Rule
 
-Do not claim local-slot handoff progress through one named helper fast path
-when the missing ownership is still a generic prepared local-slot,
-continuation, value-home, or control-flow consumption seam.
+Do not claim prepared-module progress through one bounded multi-function entry
+lane or one call spelling when x86 still lacks a generic prepared-module
+traversal or authoritative call-bundle consumer for the same-family cases.
 
 ## Read First
 
-- `ideas/open/68_prepared_local_slot_handoff_consumption_for_x86_backend.md`
-- `ideas/open/57_x86_backend_c_testsuite_capability_families.md`
-- `ideas/open/59_cfg_contract_consumption_for_short_circuit_and_guard_chain.md`
-- `ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md`
 - `ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md`
+- `ideas/open/57_x86_backend_c_testsuite_capability_families.md`
+- `ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md`
+- `ideas/open/68_prepared_local_slot_handoff_consumption_for_x86_backend.md`
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
 - `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
 - `src/backend/prep/prealloc.hpp`
-- `tests/backend/backend_x86_handoff_boundary_local_slot_guard_lane_test.cpp`
 - `tests/backend/backend_x86_route_debug_test.cpp`
 - `tests/c/external/c-testsuite/src/00204.c`
 
 ## Scope
 
-- backend failures that stop with the authoritative prepared local-slot
-  handoff diagnostic owned by idea 68, including the current full-case
-  `00204.c` route
-- shared prepared local-slot, continuation, value-home, and control-flow
-  contracts when the missing meaning is upstream of x86 local-slot rendering
-- durable rehoming of cases that advance out of local-slot handoff and into a
-  later scalar-helper, call/helper-family, or runtime leaf
+- backend failures that stop with the prepared-module restriction owned by idea
+  61, including the newly graduated full-case `00204.c` route
+- authoritative prepared call-bundle consumption failures when the owned route
+  reaches module emission but x86 still rejects the published call contract
+- shared prepared module, function-relationship, value-home, or call-bundle
+  contracts when the missing meaning is upstream of x86 module emission
+- durable rehoming of cases that advance out of prepared-module restriction and
+  into a later runtime or correctness leaf
 
 ## Non-Goals
 
-- reopening idea-60 scalar ownership unless the full-case route regresses back
-  to that top-level blocker
-- adding x86-only helper branches for one named `00204.c` subfunction or one
-  exact local-slot topology
-- call-bundle or multi-function prepared-module work that still belongs in
-  idea 61
+- reopening idea-68 ownership unless the top-level failure regresses back to
+  the authoritative prepared local-slot family
+- adding x86-only entry-lane or helper-lane matchers for one bounded
+  multi-function module shape
+- reopening local call ABI inference when authoritative prepared
+  `BeforeCall` or `AfterCall` ownership already exists
 - trace-only observability work that still belongs in idea 67
 
 ## Working Model
 
-- keep one prepared local-slot seam per packet
-- use the nearest backend route or boundary coverage plus the nearest c-testsuite
-  case to prove the seam without collapsing the packet into one testcase
-- extend shared prepared contracts first when x86 lacks a generic fact it
-  should consume for a local-slot helper route
-- route cases back out as soon as the next real blocker belongs in another
-  downstream idea
+- keep one prepared-module traversal or prepared call-bundle seam per packet
+- use the nearest backend route coverage plus the nearest c-testsuite case to
+  prove the seam without collapsing the packet into one testcase
+- extend shared prepared contracts first when x86 lacks a target-independent
+  module-relationship or call-bundle fact it should already consume
+- route cases back out as soon as the next real blocker belongs in another leaf
 
 ## Execution Rules
 
-- prefer one local-slot handoff seam per packet
+- prefer one prepared-module or call-bundle seam per packet
 - update `todo.md`, not this file, for routine packet progress
 - use `build -> narrow proof` for every accepted code slice
 - keep proof on owned failures plus the nearest backend coverage that protects
-  the changed prepared local-slot/control-flow consumption path
-- record in `todo.md` when a targeted case graduates back into idea 60, idea
-  61, or another downstream leaf
-- reject helper-side named-case growth that only moves one local-slot spelling
-  forward
+  the changed prepared-module or call-bundle consumption path
+- record in `todo.md` when advanced cases now belong in another downstream leaf
+- reject bounded `main + helper` or named-call growth that only moves one owned
+  route forward
 
-## Step 1: Refresh Idea-68 Ownership And Confirm The Next Local-Slot Seam
+## Step 1: Refresh Idea-61 Ownership And Confirm The Next Prepared-Module Seam
 
-Goal: confirm the current idea-68 ownership for
-`c_testsuite_x86_backend_src_00204_c` and identify the exact prepared local-slot,
-continuation, or control-flow seam that now blocks x86 emission.
+Goal: confirm that `c_testsuite_x86_backend_src_00204_c` and any adjacent owned
+cases now belong to idea 61 and identify the exact prepared-module traversal or
+call-bundle seam that currently blocks x86 emission.
 
 Primary targets:
 
 - `c_testsuite_x86_backend_src_00204_c`
 - representative backend route or boundary coverage nearest the current
-  local-slot handoff seam
-- shared prepared contract and x86 local-slot files near the current failure
+  prepared-module restriction
+- shared prepared-module and call-bundle contract surfaces near the current
+  failure
 
 Actions:
 
 - rerun or inspect the narrow subset that shows the full `00204.c` route now
-  fails in the authoritative prepared local-slot family
-- confirm that the observed blocker is not better explained by idea 59, 60, or
-  61
-- identify the exact prepared local-slot instruction, continuation, value-home,
-  or control-flow fact that x86 fails to consume for the current route
+  fails only in the idea-61 prepared-module family
+- confirm that the observed blocker is not better explained by idea 60, 68, or
+  a runtime-correctness leaf
+- identify whether the missing meaning is module traversal, same-module symbol
+  classification, direct variadic runtime-call handling, or authoritative
+  `BeforeCall` / `AfterCall` bundle consumption
 - choose the nearest protective backend coverage that can prove that seam
   without relying only on the named c-testsuite case
 
 Completion check:
 
-- the next executor packet is narrowed to one still-owned idea-68 local-slot
-  seam with named proof targets and a clear ownership boundary
+- the next executor packet is narrowed to one still-owned idea-61 seam with
+  named proof targets and a clear ownership boundary
 
-## Step 2.1: Repair The Selected Prepared Local-Slot Handoff Seam
+## Step 2.1: Preserve The Rehomed Boundary And Reject Entry-Lane Overfit
 
-Goal: implement the smallest durable local-slot handoff repair that advances
-the selected idea-68 case beyond the current authoritative local-slot
-rejection.
+Goal: keep the rehomed `00204.c` baseline anchored to the current idea-61
+restriction while rejecting probes that only add another bounded
+multi-function entry lane or regress the focused `myprintf` guardrail.
 
 Primary targets:
 
-- shared prepared local-slot, continuation, value-home, or control-flow
+- `tests/backend/backend_x86_route_debug_test.cpp`
+- `tests/c/external/c-testsuite/src/00204.c`
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+
+Actions:
+
+- treat the focused `myprintf` rejection as a guardrail for any remaining idea-61
+  repair on this route
+- reject module-shape widening that only accepts one bounded `main-entry +
+  helper` topology without consuming a generic prepared-module relationship
+- reject local ABI fallback that bypasses authoritative prepared call-bundle
+  ownership
+- keep the current packet record explicit that `00204.c` now belongs to idea 61
+  because the top-level failure is the prepared-module restriction
+
+Completion check:
+
+- the runbook and `todo.md` clearly preserve the rehomed baseline and the
+  route-drift rejection that blocks another bounded entry-lane shortcut
+
+## Step 2.2: Repair The Current Prepared-Module Or Call-Bundle Seam
+
+Goal: implement the smallest durable repair that lets the owned full-module
+route clear the current prepared-module restriction without regressing the
+focused `myprintf` route or reopening local-slot ownership.
+
+Primary targets:
+
+- shared prepared module, function-relationship, value-home, or call-bundle
   contracts for the chosen seam
-- x86 local-slot helpers that should consume those contracts generically
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- `src/backend/prep/prealloc.hpp` when the current module or call contract is
+  not expressive enough for generic consumption
 
 Actions:
 
 - repair the selected seam at the layer that owns the missing meaning
-- prefer contract-first fixes when x86 is missing a shared prepared fact
-- keep the repair generic across nearby same-family local-slot routes
-- confirm the targeted cases now move past the old idea-68 failure family or
-  graduate cleanly into a later leaf
+- prefer contract-first fixes when x86 is missing a target-independent prepared
+  fact
+- make x86 consume normalized prepared-module traversal or prepared call-bundle
+  ownership instead of adding one more bounded topology matcher
+- keep the repair generic across nearby same-family prepared-module routes
+  instead of admitting another testcase-shaped fast path
+- confirm the targeted cases either clear the old idea-61 failure family or
+  expose a stable downstream runtime/correctness issue without reopening idea
+  68
 
 Completion check:
 
-- the targeted owned cases no longer fail for the selected idea-68 local-slot
-  seam and instead reach the next downstream route
+- the targeted owned case no longer fails for the selected idea-61 seam and
+  either emits successfully or graduates cleanly into a downstream non-idea-61
+  leaf
 
-## Step 2.2: Prove Family Shrinkage And Record Rehoming
+## Step 2.3: Prove Family Shrinkage And Record Rehoming
 
-Goal: show the accepted slice shrinks the real idea-68 family and preserves
+Goal: show the accepted slice shrinks the real idea-61 family and preserves
 explicit routing for any graduated cases.
 
 Actions:
 
 - require a fresh build for each accepted code slice
 - prove the repaired seam on the targeted owned cases plus the nearest backend
-  coverage that protects the changed local-slot/control-flow path
-- record in `todo.md` when advanced cases now belong in idea 60, idea 61, or a
-  later downstream leaf
+  coverage that protects the changed prepared-module or call-bundle path
+- record in `todo.md` when advanced cases now belong in another leaf
 - only return to Step 1 after the current seam is proven and any graduated
   routing is explicit
 
 Completion check:
 
-- accepted slices show real shrinkage of the idea-68 local-slot handoff family
-  and preserve clear routing for any graduated downstream cases
+- accepted slices show real shrinkage of the idea-61 prepared-module or
+  call-bundle family and preserve clear routing for any graduated downstream
+  cases
 
-## Step 3: Continue The Loop Until Idea 68 Is Exhausted
+## Step 3: Continue The Loop Until Idea 61 Is Exhausted
 
 Goal: keep repeating the Step 1 -> 2.2 loop until the remaining failures no
-longer belong to idea 68.
+longer belong to idea 61.
 
 Actions:
 
-- keep idea 68 active only while cases still fail for authoritative prepared
-  local-slot handoff reasons that are not better explained by another open leaf
+- keep idea 61 active only while cases still fail for prepared-module or
+  authoritative call-bundle reasons that are not better explained by another
+  open leaf
 - use `todo.md` to preserve which cases graduated downstream after each packet
 - call lifecycle review again when the next step becomes oversized or when the
   remaining family is exhausted
 
 Completion check:
 
-- the next active packet is queued under Step 1 for a still-owned idea-68
-  local-slot seam, or lifecycle state is ready to hand off or close because
-  idea 68 no longer owns the remaining failures
+- the next active packet is queued under Step 1 for a still-owned idea-61 seam,
+  or lifecycle state is ready to hand off or close because idea 61 no longer
+  owns the remaining failures
