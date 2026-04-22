@@ -5019,6 +5019,41 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
       c4c::backend::prepare::resolve_prepared_function_name_id(
           *function_context.prepared_names, function_context.function->name)
           .value_or(c4c::kInvalidFunctionName);
+  const auto normalize_prepared_gp_register_family_if_supported =
+      [&](std::string_view register_name) -> std::optional<std::string> {
+        if (register_name == "rax" || register_name == "eax") return std::string("rax");
+        if (register_name == "rbx" || register_name == "ebx") return std::string("rbx");
+        if (register_name == "rcx" || register_name == "ecx") return std::string("rcx");
+        if (register_name == "rdx" || register_name == "edx") return std::string("rdx");
+        if (register_name == "rdi" || register_name == "edi") return std::string("rdi");
+        if (register_name == "rsi" || register_name == "esi") return std::string("rsi");
+        if (register_name == "rbp" || register_name == "ebp") return std::string("rbp");
+        if (register_name == "rsp" || register_name == "esp") return std::string("rsp");
+        if (register_name == "r8" || register_name == "r8d") return std::string("r8");
+        if (register_name == "r9" || register_name == "r9d") return std::string("r9");
+        if (register_name == "r10" || register_name == "r10d") return std::string("r10");
+        if (register_name == "r11" || register_name == "r11d") return std::string("r11");
+        if (register_name == "r12" || register_name == "r12d") return std::string("r12");
+        if (register_name == "r13" || register_name == "r13d") return std::string("r13");
+        if (register_name == "r14" || register_name == "r14d") return std::string("r14");
+        if (register_name == "r15" || register_name == "r15d") return std::string("r15");
+        return std::nullopt;
+      };
+  const auto render_prepared_gp_register_family_for_source =
+      [&](std::string_view scratch_family, std::string_view source_register) -> std::string {
+        const auto source_family =
+            normalize_prepared_gp_register_family_if_supported(source_register);
+        if (source_family.has_value() && source_register == *source_family) {
+          return std::string(scratch_family);
+        }
+        if (source_family.has_value()) {
+          const auto narrowed = narrow_i32_register(scratch_family);
+          if (narrowed.has_value()) {
+            return *narrowed;
+          }
+        }
+        return std::string(scratch_family);
+      };
   struct PreparedNamedI64Source {
     std::optional<std::string> register_name;
     std::optional<std::string> stack_operand;
@@ -5069,6 +5104,282 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
         }
         return false;
       };
+  const auto select_prepared_named_ptr_source_register_if_supported =
+      [&](std::string_view pointer_name) -> std::optional<std::string> {
+        if (pointer_name.empty()) {
+          return std::nullopt;
+        }
+        if (pointer_name.front() == '@') {
+          return std::nullopt;
+        }
+        if (current_ptr_name->has_value() && **current_ptr_name == pointer_name) {
+          return std::string("rax");
+        }
+        if (block_context.local_layout != nullptr) {
+          const auto frame_offset = find_prepared_authoritative_named_stack_offset_if_supported(
+              *block_context.local_layout,
+              function_context.stack_layout,
+              function_context.function_addressing,
+              function_context.prepared_names,
+              function_context.function_locations,
+              function_name_id,
+              pointer_name);
+          if (frame_offset.has_value()) {
+            return std::nullopt;
+          }
+        }
+        const auto* home = c4c::backend::prepare::find_prepared_value_home(
+            *function_context.prepared_names, *function_context.function_locations, pointer_name);
+        if (home == nullptr ||
+            home->kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+            !home->register_name.has_value()) {
+          return std::nullopt;
+        }
+        return *home->register_name;
+      };
+  std::unordered_map<std::string, std::size_t> pending_gp_source_family_uses;
+  std::unordered_set<std::string> referenced_gp_source_families;
+  std::unordered_set<std::string> referenced_gp_destination_families;
+  const auto note_prepared_direct_extern_pending_source_family =
+      [&](const std::optional<std::string>& source_register) {
+        if (!source_register.has_value()) {
+          return;
+        }
+        const auto family =
+            normalize_prepared_gp_register_family_if_supported(*source_register);
+        if (!family.has_value()) {
+          return;
+        }
+        referenced_gp_source_families.insert(*family);
+        pending_gp_source_family_uses[*family] += 1;
+      };
+  for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
+    const auto& arg = call->args[arg_index];
+    const auto arg_type = call->arg_types[arg_index];
+    if (const auto destination_stack_offset = select_prepared_call_argument_abi_stack_offset_if_supported(
+            function_context.function_locations,
+            block_context.block_index,
+            instruction_index,
+            arg_index);
+        !destination_stack_offset.has_value()) {
+      const auto destination_register = arg_type == c4c::backend::bir::TypeKind::I32
+                                            ? select_prepared_i32_call_argument_abi_register_if_supported(
+                                                  function_context.function_locations,
+                                                  block_context.block_index,
+                                                  instruction_index,
+                                                  arg_index)
+                                            : select_prepared_call_argument_abi_register_if_supported(
+                                                  function_context.function_locations,
+                                                  block_context.block_index,
+                                                  instruction_index,
+                                                  arg_index);
+      if (destination_register.has_value()) {
+        const auto family =
+            normalize_prepared_gp_register_family_if_supported(*destination_register);
+        if (family.has_value()) {
+          referenced_gp_destination_families.insert(*family);
+        }
+      }
+    }
+    if (arg.kind != c4c::backend::bir::Value::Kind::Named) {
+      continue;
+    }
+    if (arg_type == c4c::backend::bir::TypeKind::Ptr) {
+      note_prepared_direct_extern_pending_source_family(
+          select_prepared_named_ptr_source_register_if_supported(arg.name));
+      continue;
+    }
+    if (arg_type == c4c::backend::bir::TypeKind::I64) {
+      const auto selected_source = select_prepared_named_i64_source_if_supported(arg.name);
+      note_prepared_direct_extern_pending_source_family(
+          selected_source.has_value() ? selected_source->register_name : std::nullopt);
+      continue;
+    }
+    if (arg_type == c4c::backend::bir::TypeKind::I32) {
+      const auto selected_source = select_prepared_named_i32_block_source_if_supported(
+          block_context.local_layout,
+          block_context.block,
+          instruction_index,
+          function_context.function_addressing,
+          block_context.block_label_id,
+          arg.name,
+          *current_i32_name,
+          *previous_i32_name,
+          function_context.prepared_names,
+          function_context.function_locations);
+      note_prepared_direct_extern_pending_source_family(
+          selected_source.has_value() ? selected_source->register_name : std::nullopt);
+    }
+  }
+  std::vector<std::string> available_gp_preservation_scratch_families;
+  for (const auto candidate : {"r11", "r10", "r9", "r8"}) {
+    if (prepared_value_homes_use_register(function_context.function_locations, candidate)) {
+      continue;
+    }
+    if (referenced_gp_source_families.find(candidate) != referenced_gp_source_families.end()) {
+      continue;
+    }
+    if (referenced_gp_destination_families.find(candidate) != referenced_gp_destination_families.end()) {
+      continue;
+    }
+    available_gp_preservation_scratch_families.push_back(candidate);
+  }
+  std::unordered_map<std::string, std::string> preserved_gp_source_families;
+  const auto remap_prepared_direct_extern_source_register =
+      [&](std::string_view source_register) -> std::string {
+        const auto family =
+            normalize_prepared_gp_register_family_if_supported(source_register);
+        if (!family.has_value()) {
+          return std::string(source_register);
+        }
+        const auto preserved = preserved_gp_source_families.find(*family);
+        if (preserved == preserved_gp_source_families.end()) {
+          return std::string(source_register);
+        }
+        return render_prepared_gp_register_family_for_source(
+            preserved->second, source_register);
+      };
+  const auto consume_prepared_direct_extern_source_register =
+      [&](const std::optional<std::string>& source_register) {
+        if (!source_register.has_value()) {
+          return;
+        }
+        const auto family =
+            normalize_prepared_gp_register_family_if_supported(*source_register);
+        if (!family.has_value()) {
+          return;
+        }
+        const auto it = pending_gp_source_family_uses.find(*family);
+        if (it == pending_gp_source_family_uses.end() || it->second == 0) {
+          return;
+        }
+        it->second -= 1;
+      };
+  const auto preserve_prepared_direct_extern_source_family_if_needed =
+      [&](std::string_view destination_register,
+          std::string* rendered_body) -> bool {
+        const auto family =
+            normalize_prepared_gp_register_family_if_supported(destination_register);
+        if (!family.has_value()) {
+          return true;
+        }
+        const auto pending_it = pending_gp_source_family_uses.find(*family);
+        if (pending_it == pending_gp_source_family_uses.end() || pending_it->second == 0) {
+          return true;
+        }
+        if (preserved_gp_source_families.find(*family) != preserved_gp_source_families.end()) {
+          return true;
+        }
+        if (available_gp_preservation_scratch_families.empty()) {
+          return false;
+        }
+        const auto scratch_family = available_gp_preservation_scratch_families.back();
+        available_gp_preservation_scratch_families.pop_back();
+        *rendered_body += "    mov " + scratch_family + ", " + *family + "\n";
+        preserved_gp_source_families.emplace(*family, scratch_family);
+        return true;
+      };
+  const auto append_prepared_named_ptr_move_into_register_with_preserved_sources_if_supported =
+      [&](std::string_view pointer_name,
+          std::string_view destination_register,
+          std::size_t stack_byte_bias,
+          std::string* rendered_body) -> bool {
+        if (pointer_name.empty()) {
+          return false;
+        }
+        if (pointer_name.front() == '@') {
+          const std::string_view symbol_name(pointer_name.data() + 1, pointer_name.size() - 1);
+          if (function_context.find_string_constant != nullptr) {
+            if (const auto* string_constant = function_context.find_string_constant(symbol_name);
+                string_constant != nullptr) {
+              if (function_context.used_string_names != nullptr) {
+                function_context.used_string_names->insert(symbol_name);
+              }
+              *rendered_body += "    lea ";
+              *rendered_body += destination_register;
+              *rendered_body += ", [rip + ";
+              *rendered_body += function_context.render_private_data_label(symbol_name);
+              *rendered_body += "]\n";
+              return true;
+            }
+          }
+          if (function_context.find_same_module_global != nullptr) {
+            if (const auto* global = function_context.find_same_module_global(symbol_name);
+                global != nullptr) {
+              if (function_context.used_same_module_global_names != nullptr) {
+                function_context.used_same_module_global_names->insert(global->name);
+              }
+              *rendered_body += "    lea ";
+              *rendered_body += destination_register;
+              *rendered_body += ", [rip + ";
+              *rendered_body += function_context.render_asm_symbol_name(global->name);
+              *rendered_body += "]\n";
+              return true;
+            }
+          }
+          return false;
+        }
+
+        if (current_ptr_name->has_value() && **current_ptr_name == pointer_name) {
+          const auto remapped_source = remap_prepared_direct_extern_source_register("rax");
+          if (destination_register != remapped_source) {
+            *rendered_body += "    mov ";
+            *rendered_body += destination_register;
+            *rendered_body += ", ";
+            *rendered_body += remapped_source;
+            *rendered_body += "\n";
+          }
+          return true;
+        }
+
+        if (block_context.local_layout != nullptr) {
+          const auto frame_offset = find_prepared_authoritative_named_stack_offset_if_supported(
+              *block_context.local_layout,
+              function_context.stack_layout,
+              function_context.function_addressing,
+              function_context.prepared_names,
+              function_context.function_locations,
+              function_name_id,
+              pointer_name);
+          if (frame_offset.has_value()) {
+            *rendered_body += "    lea ";
+            *rendered_body += destination_register;
+            *rendered_body += ", ";
+            *rendered_body += render_prepared_stack_address_expr(*frame_offset + stack_byte_bias);
+            *rendered_body += "\n";
+            return true;
+          }
+        }
+
+        const auto* home = c4c::backend::prepare::find_prepared_value_home(
+            *function_context.prepared_names, *function_context.function_locations, pointer_name);
+        if (home == nullptr) {
+          return false;
+        }
+        if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+            home->register_name.has_value()) {
+          const auto remapped_source =
+              remap_prepared_direct_extern_source_register(*home->register_name);
+          if (destination_register != remapped_source) {
+            *rendered_body += "    mov ";
+            *rendered_body += destination_register;
+            *rendered_body += ", ";
+            *rendered_body += remapped_source;
+            *rendered_body += "\n";
+          }
+          return true;
+        }
+        if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+            home->offset_bytes.has_value()) {
+          *rendered_body += "    lea ";
+          *rendered_body += destination_register;
+          *rendered_body += ", ";
+          *rendered_body += render_prepared_stack_address_expr(*home->offset_bytes + stack_byte_bias);
+          *rendered_body += "\n";
+          return true;
+        }
+        return false;
+      };
   std::string body;
   static constexpr const char* kArgRegs64[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
   std::size_t float_register_args = 0;
@@ -5113,6 +5424,7 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
     }
     if (arg_type == c4c::backend::bir::TypeKind::I64) {
       PreparedNamedI64Source source;
+      std::optional<std::string> source_register;
       if (arg.kind == c4c::backend::bir::Value::Kind::Immediate) {
         source.immediate_i64 = arg.immediate;
       } else if (arg.kind == c4c::backend::bir::Value::Kind::Named) {
@@ -5121,6 +5433,7 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
           return std::nullopt;
         }
         source = *selected_source;
+        source_register = source.register_name;
       } else {
         return std::nullopt;
       }
@@ -5140,6 +5453,15 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
       if (!destination_register.has_value()) {
         throw std::invalid_argument(std::string(kPreparedCallBundleHandoffRequired));
       }
+      consume_prepared_direct_extern_source_register(source_register);
+      if (!preserve_prepared_direct_extern_source_family_if_needed(
+              *destination_register, &body)) {
+        return std::nullopt;
+      }
+      if (source.register_name.has_value()) {
+        source.register_name =
+            remap_prepared_direct_extern_source_register(*source.register_name);
+      }
       if (!append_prepared_named_i64_move_into_register_if_supported(
               *destination_register, source, &body)) {
         return std::nullopt;
@@ -5158,91 +5480,17 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
       if (arg.kind != c4c::backend::bir::Value::Kind::Named) {
         return std::nullopt;
       }
-      if (!arg.name.empty() && arg.name.front() == '@') {
-        const std::string_view symbol_name(arg.name.data() + 1, arg.name.size() - 1);
-        if (function_context.find_string_constant != nullptr) {
-          if (const auto* string_constant = function_context.find_string_constant(symbol_name);
-              string_constant != nullptr) {
-            if (function_context.used_string_names != nullptr) {
-              function_context.used_string_names->insert(symbol_name);
-            }
-            body += "    lea ";
-            body += *destination_register;
-            body += ", [rip + ";
-            body += function_context.render_private_data_label(symbol_name);
-            body += "]\n";
-            continue;
-          }
-        }
-        if (function_context.find_same_module_global != nullptr) {
-          if (const auto* global = function_context.find_same_module_global(symbol_name);
-              global != nullptr) {
-            if (function_context.used_same_module_global_names != nullptr) {
-              function_context.used_same_module_global_names->insert(global->name);
-            }
-            body += "    lea ";
-            body += *destination_register;
-            body += ", [rip + ";
-            body += function_context.render_asm_symbol_name(global->name);
-            body += "]\n";
-            continue;
-          }
-        }
+      consume_prepared_direct_extern_source_register(
+          select_prepared_named_ptr_source_register_if_supported(arg.name));
+      if (!preserve_prepared_direct_extern_source_family_if_needed(
+              *destination_register, &body)) {
         return std::nullopt;
       }
-      if (current_ptr_name->has_value() && **current_ptr_name == arg.name) {
-        if (*destination_register != "rax") {
-          body += "    mov ";
-          body += *destination_register;
-          body += ", rax\n";
-        }
-        continue;
+      if (!append_prepared_named_ptr_move_into_register_with_preserved_sources_if_supported(
+              arg.name, *destination_register, 0, &body)) {
+        return std::nullopt;
       }
-      if (block_context.local_layout != nullptr) {
-        const auto frame_offset = find_prepared_authoritative_named_stack_offset_if_supported(
-            *block_context.local_layout,
-            function_context.stack_layout,
-            function_context.function_addressing,
-            function_context.prepared_names,
-            function_context.function_locations,
-            function_name_id,
-            arg.name);
-        if (frame_offset.has_value()) {
-          body += "    lea ";
-          body += *destination_register;
-          body += ", ";
-          body += render_prepared_stack_address_expr(*frame_offset);
-          body += "\n";
-          continue;
-        }
-      }
-      if (function_context.prepared_names != nullptr && function_context.function_locations != nullptr) {
-        const auto* home = c4c::backend::prepare::find_prepared_value_home(
-            *function_context.prepared_names, *function_context.function_locations, arg.name);
-        if (home != nullptr) {
-          if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
-              home->register_name.has_value()) {
-            if (*home->register_name != *destination_register) {
-              body += "    mov ";
-              body += *destination_register;
-              body += ", ";
-              body += *home->register_name;
-              body += "\n";
-            }
-            continue;
-          }
-          if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-              home->offset_bytes.has_value()) {
-            body += "    lea ";
-            body += *destination_register;
-            body += ", ";
-            body += render_prepared_stack_address_expr(*home->offset_bytes);
-            body += "\n";
-            continue;
-          }
-        }
-      }
-      return std::nullopt;
+      continue;
     }
     if (arg_type == c4c::backend::bir::TypeKind::F32 ||
         arg_type == c4c::backend::bir::TypeKind::F64) {
@@ -5288,6 +5536,7 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
     }
 
     PreparedNamedI32Source source;
+    std::optional<std::string> source_register;
     if (arg.kind == c4c::backend::bir::Value::Kind::Immediate) {
       source.immediate_i32 = static_cast<std::int32_t>(arg.immediate);
     } else if (arg.kind == c4c::backend::bir::Value::Kind::Named) {
@@ -5306,6 +5555,7 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
         return std::nullopt;
       }
       source = *selected_source;
+      source_register = source.register_name;
     } else {
       return std::nullopt;
     }
@@ -5317,6 +5567,15 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
         arg_index);
     if (!destination_register.has_value()) {
       throw std::invalid_argument(std::string(kPreparedCallBundleHandoffRequired));
+    }
+    consume_prepared_direct_extern_source_register(source_register);
+    if (!preserve_prepared_direct_extern_source_family_if_needed(
+            *destination_register, &body)) {
+      return std::nullopt;
+    }
+    if (source.register_name.has_value()) {
+      source.register_name =
+          remap_prepared_direct_extern_source_register(*source.register_name);
     }
     if (!append_prepared_named_i32_move_into_register_if_supported(
             &body, *destination_register, source)) {
@@ -5362,14 +5621,15 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
     const auto stack_memory_operand =
         render_prepared_stack_memory_operand(*destination_stack_offset, "QWORD");
     if (arg_type == c4c::backend::bir::TypeKind::Ptr) {
-      if (arg.kind != c4c::backend::bir::Value::Kind::Named ||
-          !append_prepared_named_ptr_argument_move_into_register_if_supported(
-              block_context,
-              function_name_id,
+      if (arg.kind != c4c::backend::bir::Value::Kind::Named) {
+        return std::nullopt;
+      }
+      consume_prepared_direct_extern_source_register(
+          select_prepared_named_ptr_source_register_if_supported(arg.name));
+      if (!append_prepared_named_ptr_move_into_register_with_preserved_sources_if_supported(
               arg.name,
               *scratch_register,
               stack_arg_bytes,
-              *current_ptr_name,
               &body)) {
         return std::nullopt;
       }
