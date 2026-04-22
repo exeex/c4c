@@ -153,6 +153,54 @@ PreparedModuleMultiDefinedDispatchState build_module_multi_defined_dispatch(
       });
 }
 
+struct ModuleMultiDefinedSupport {
+  const std::vector<const c4c::backend::bir::Function*>& defined_functions;
+  const PreparedModuleMultiDefinedDispatchState& dispatch;
+
+  [[nodiscard]] bool has_multiple_defined_functions() const {
+    return defined_functions.size() > 1;
+  }
+
+  [[nodiscard]] bool bounded_helpers_active() const {
+    return has_multiple_defined_functions() && dispatch.has_bounded_same_module_helpers;
+  }
+
+  [[nodiscard]] const std::unordered_set<std::string_view>& helper_names_or_empty(
+      bool defer_module_data_emission) const {
+    static const std::unordered_set<std::string_view> kNoHelperNames;
+    return defer_module_data_emission ? kNoHelperNames : dispatch.helper_names;
+  }
+
+  [[nodiscard]] const std::unordered_set<std::string_view>& helper_global_names_or_empty(
+      bool defer_module_data_emission) const {
+    static const std::unordered_set<std::string_view> kNoHelperNames;
+    return defer_module_data_emission ? kNoHelperNames : dispatch.helper_global_names;
+  }
+
+  [[nodiscard]] std::string prepend_helper_prefix(std::string asm_text) const {
+    if (!dispatch.helper_prefix.empty()) {
+      return dispatch.helper_prefix + asm_text;
+    }
+    return asm_text;
+  }
+
+  void throw_contract(std::optional<std::string_view> detailed_error = std::nullopt) const {
+    if (!bounded_helpers_active()) {
+      return;
+    }
+    if (detailed_error.has_value()) {
+      throw std::invalid_argument(std::string(*detailed_error));
+    }
+    throw std::invalid_argument(std::string(kMultiDefinedModuleContractError));
+  }
+
+  [[nodiscard]] std::string annotate_local_slot_detail(std::string_view function_name,
+                                                       std::string_view lane_name) const {
+    return "x86 backend emitter requires the authoritative prepared local-slot instruction handoff through the canonical prepared-module handoff [bounded function: " +
+           std::string(function_name) + ", lane: " + std::string(lane_name) + "]";
+  }
+};
+
 }  // namespace
 
 std::string emit_prepared_module_text(
@@ -190,39 +238,14 @@ std::string emit_prepared_module_text(
     return c4c::backend::x86::render_prepared_trivial_defined_function_if_supported(
         candidate, prepared_arch, minimal_function_return_register, minimal_function_asm_prefix);
   };
-  const auto throw_multi_defined_contract = [&]() -> void {
-    throw std::invalid_argument(std::string(kMultiDefinedModuleContractError));
-  };
   const auto multi_defined_dispatch = build_module_multi_defined_dispatch(
       module, defined_function_inventory, prepared_arch, module_data_support,
       render_trivial_defined_function_if_supported, minimal_function_return_register,
       minimal_function_asm_prefix, minimal_param_register_at);
-  const auto& bounded_same_module_helper_names = multi_defined_dispatch.helper_names;
-  const auto& bounded_same_module_helper_global_names =
-      multi_defined_dispatch.helper_global_names;
-  const auto prepend_bounded_same_module_helpers = [&](std::string asm_text) {
-    if (!multi_defined_dispatch.helper_prefix.empty()) {
-      return multi_defined_dispatch.helper_prefix + asm_text;
-    }
-    return asm_text;
-  };
-  const auto throw_multi_defined_contract_if_active =
-      [&](std::optional<std::string_view> detailed_error = std::nullopt) -> void {
-    if (defined_functions.size() > 1 && multi_defined_dispatch.has_bounded_same_module_helpers) {
-      if (detailed_error.has_value()) {
-        throw std::invalid_argument(std::string(*detailed_error));
-      }
-      throw_multi_defined_contract();
-    }
-  };
-  const auto annotate_multi_defined_local_slot_detail =
-      [&](std::string_view function_name, std::string_view lane_name) -> std::string {
-    return "x86 backend emitter requires the authoritative prepared local-slot instruction handoff through the canonical prepared-module handoff [bounded function: " +
-           std::string(function_name) + ", lane: " + std::string(lane_name) + "]";
-  };
+  const ModuleMultiDefinedSupport multi_defined_support{defined_functions, multi_defined_dispatch};
   if (multi_defined_dispatch.rendered_module.has_value()) {
     return module_data_support.finalize_multi_defined_rendered_module_text(
-        multi_defined_dispatch.helper_prefix + *multi_defined_dispatch.rendered_module);
+        multi_defined_support.prepend_helper_prefix(*multi_defined_dispatch.rendered_module));
   }
   const auto render_defined_function =
       [&](const c4c::backend::bir::Function& function,
@@ -232,7 +255,7 @@ std::string emit_prepared_module_text(
     if (function.is_declaration || function.blocks.empty()) {
       constexpr std::string_view kMinimalReturnFunctionError =
           "x86 backend emitter only supports a minimal i32 return function through the canonical prepared-module handoff";
-      throw_multi_defined_contract_if_active(kMinimalReturnFunctionError);
+      multi_defined_support.throw_contract(kMinimalReturnFunctionError);
       throw std::invalid_argument(std::string(kMinimalReturnFunctionError));
     }
 
@@ -293,12 +316,14 @@ std::string emit_prepared_module_text(
     };
 
     const auto& entry = function.blocks.front();
-    static const std::unordered_set<std::string_view> kNoHelperNames;
     const auto identity_prepend = [](std::string asm_text) { return asm_text; };
     const std::function<std::string(std::string)> prepend_helpers =
         defer_module_data_emission
             ? std::function<std::string(std::string)>(identity_prepend)
-            : std::function<std::string(std::string)>(prepend_bounded_same_module_helpers);
+            : std::function<std::string(std::string)>(
+                  [&](std::string asm_text) {
+                    return multi_defined_support.prepend_helper_prefix(std::move(asm_text));
+                  });
     const PreparedX86FunctionDispatchContext function_dispatch_context{
         .prepared_module = &module,
         .module = &module.module,
@@ -313,9 +338,9 @@ std::string emit_prepared_module_text(
         .asm_prefix = asm_prefix,
         .return_register = return_register_text,
         .bounded_same_module_helper_names =
-            defer_module_data_emission ? &kNoHelperNames : &bounded_same_module_helper_names,
+            &multi_defined_support.helper_names_or_empty(defer_module_data_emission),
         .bounded_same_module_helper_global_names =
-            defer_module_data_emission ? &kNoHelperNames : &bounded_same_module_helper_global_names,
+            &multi_defined_support.helper_global_names_or_empty(defer_module_data_emission),
         .find_block = find_block,
         .find_string_constant =
             [&](std::string_view name) { return module_data_support.find_string_constant(name); },
@@ -742,12 +767,12 @@ std::string emit_prepared_module_text(
       } catch (const std::invalid_argument& error) {
         if (std::string_view(error.what()).find(
                 "authoritative prepared local-slot ") != std::string_view::npos) {
-          if (defined_functions.size() > 1 && multi_defined_dispatch.has_bounded_same_module_helpers) {
+          if (multi_defined_support.bounded_helpers_active()) {
             throw std::invalid_argument(
-                annotate_multi_defined_local_slot_detail(function.name,
-                                                         "local-structural-dispatch"));
+                multi_defined_support.annotate_local_slot_detail(function.name,
+                                                                 "local-structural-dispatch"));
           }
-          throw_multi_defined_contract_if_active();
+          multi_defined_support.throw_contract();
         }
         throw;
       }
@@ -756,11 +781,11 @@ std::string emit_prepared_module_text(
           function.blocks.size() > 1 && !function_control_flow->branch_conditions.empty() &&
           !function_control_flow->join_transfers.empty()) {
         if (function.params.size() > 1) {
-          throw_multi_defined_contract_if_active(kScalarPreparedControlFlowShapeError);
+          multi_defined_support.throw_contract(kScalarPreparedControlFlowShapeError);
           throw std::invalid_argument(std::string(kScalarPreparedControlFlowShapeError));
         }
       }
-      throw_multi_defined_contract_if_active(kScalarPreparedControlFlowShapeError);
+      multi_defined_support.throw_contract(kScalarPreparedControlFlowShapeError);
       throw std::invalid_argument(std::string(kScalarPreparedControlFlowShapeError));
     }
 
@@ -768,7 +793,7 @@ std::string emit_prepared_module_text(
     if (returned.type != c4c::backend::bir::TypeKind::I32) {
       constexpr std::string_view kI32ReturnValueError =
           "x86 backend emitter only supports i32 return values through the canonical prepared-module handoff";
-      throw_multi_defined_contract_if_active(kI32ReturnValueError);
+      multi_defined_support.throw_contract(kI32ReturnValueError);
       throw std::invalid_argument(std::string(kI32ReturnValueError));
     }
     if (const auto rendered_scalar_move_bundle_return =
@@ -785,11 +810,11 @@ std::string emit_prepared_module_text(
 
     constexpr std::string_view kDirectI32ReturnShapeError =
         "x86 backend emitter only supports direct immediate i32 returns, constant-evaluable straight-line no-parameter i32 return expressions, direct single-parameter i32 passthrough returns, single-parameter i32 add-immediate/sub-immediate/mul-immediate/and-immediate/or-immediate/xor-immediate/shl-immediate/lshr-immediate/ashr-immediate returns, a bounded equality-against-immediate guard family with immediate return leaves, or one bounded compare-against-zero branch family through the canonical prepared-module handoff";
-    throw_multi_defined_contract_if_active(kDirectI32ReturnShapeError);
+    multi_defined_support.throw_contract(kDirectI32ReturnShapeError);
     throw std::invalid_argument(std::string(kDirectI32ReturnShapeError));
   };
 
-  if (defined_functions.size() > 1) {
+  if (multi_defined_support.has_multiple_defined_functions()) {
     std::string rendered_functions;
     std::unordered_set<std::string_view> used_string_names;
     std::unordered_set<std::string_view> used_same_module_global_names;
@@ -798,7 +823,7 @@ std::string emit_prepared_module_text(
           *function, true, &used_string_names, &used_same_module_global_names);
     }
     return module_data_support.finalize_selected_module_text(
-        multi_defined_dispatch.helper_prefix + rendered_functions, used_string_names,
+        multi_defined_support.prepend_helper_prefix(rendered_functions), used_string_names,
         &used_same_module_global_names);
   }
 
