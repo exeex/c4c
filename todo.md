@@ -3,29 +3,28 @@
 Status: Active
 Source Idea Path: ideas/open/74_post_link_byval_param_pointer_argument_runtime_correctness_for_x86_backend.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Confirm The Byval-Param Pointer-Argument Crash Surface
-Plan Review Counter: 1 / 4
+Current Step ID: 2
+Current Step Title: Repair The Authoritative Byval-Home Pointer Materialization Seam
+Plan Review Counter: 0 / 4
 # Current Packet
 
 ## Just Finished
 
-Plan step `1` reconfirmed the owned idea-74 seam with fresh proof plus prepared
-inspection. `fa_s1` still stores byval param `%p.a` in fixed stack slot `0`,
-but prepared value locations classify `%t2` as plain register home `r12` and
-the before-call bundle forwards that register into `rsi`; generated
-`00204.c.s` therefore still emits `mov rsi, r12`. A narrow x86-side
-authoritative-home lookup experiment did not change the emitted asm and was
-reverted, so the next owned repair is upstream in prepared pointer-home
-derivation rather than in final x86 call-argument rendering.
+Plan step `1` remains complete: fresh proof plus prepared inspection still show
+the owned idea-74 seam is upstream of final x86 call rendering. Reviewer report
+`review/reviewA.md` then rejected the current uncommitted route reset because it
+reconstructed pointer ownership with a lone-byval-param heuristic rather than a
+semantic derivation of `%t2` from `%p.a`'s authoritative home. Canonical state
+is now tightened for a new step `2` packet that starts from that rejection.
 
 ## Suggested Next
 
-Start plan step `2` on the prealloc/regalloc ownership path. Trace why
-prepared value-home classification leaves `%t2` as `kind=register reg=r12`
-instead of a carrier that preserves `%p.a`'s authoritative byval stack home,
-then repair that shared pointer-home derivation so fixed-arity helper call
-arguments materialize from the same byval home seen in prepared stack layout.
+Execute rewritten plan step `2` on the prealloc/regalloc ownership path with
+the reviewer constraint in force. Trace how `%t2` is formed from `%p.a` using
+prepared-addressing, load/store provenance, or another explicit semantic owner,
+then repair shared pointer-home derivation so fixed-arity helper call arguments
+materialize from the same authoritative byval stack home without any
+function-shape uniqueness fallback.
 
 ## Watchouts
 
@@ -52,6 +51,15 @@ arguments materialize from the same byval home seen in prepared stack layout.
   `%lv.param.*` copies; it does not record a separate `%t2` access, so the
   next packet should inspect `src/backend/prealloc/regalloc.cpp` pointer
   carrier/value-home derivation instead of adding more x86-side lookup cases.
+- The current uncommitted heuristic path is rejected for lifecycle purposes:
+  do not accept carrier inference keyed only to `exactly one byval pointer
+  param`, unnamed `ptr` call args, or other function-shape shortcuts.
+- Treat the existing x86 `PointerBasePlusOffset` rendering work as downstream
+  only. It may be reusable later, but it is not proof that the upstream carrier
+  is semantically owned.
+- Before more execution, the next packet must name the concrete provenance that
+  connects `%t2` back to `%p.a`; if that provenance is absent, stop and record
+  the ambiguity instead of reviving the rejected heuristic.
 
 ## Proof
 
@@ -70,3 +78,7 @@ Diagnostic inspection:
 Result:
 - prepared value locations and move bundles confirm `%t2` is already classified
   as register home `r12` before x86 emission
+Lifecycle route reset basis:
+- `review/reviewA.md` judged the uncommitted regalloc fallback to be heuristic,
+  broader than the owned seam, and in need of a plan/todo rewrite before more
+  execution

@@ -22,7 +22,11 @@ correct execution or a later, more precise runtime leaf.
 Treat this as a truthful pointer-materialization correctness problem for
 address-exposed `byval_param` permanent homes, not as a reason to reopen the
 already-cleared `%lv.s` local-slot seam or to add testcase-shaped helper
-special cases.
+special cases. Reject ownership guesses based only on function shape such as
+`exactly one byval pointer param`; the active route must derive the emitted
+pointer home from prepared-addressing provenance or another explicit semantic
+owner that proves how the forwarded pointer value aliases the authoritative
+byval home.
 
 ## Read First
 
@@ -119,8 +123,12 @@ Actions:
 - repair the semantic owner that decides how pointer arguments are materialized
   when `source_kind=byval_param`, `address_exposed=yes`, and
   `permanent_home_slot=yes`
+- require explicit provenance for the forwarded pointer value, such as
+  prepared-addressing / load-store evidence or another shared semantic owner
+  that proves how `%t2` derives from `%p.a`'s authoritative home
 - keep the repair at the shared ownership layer instead of adding helper-name
-  exceptions for `fa_s*` or `printf`
+  exceptions for `fa_s*` or `printf`, and reject fallback alias rules that
+  infer ownership only from the presence of a lone byval pointer parameter
 - prove the owned case advances beyond the current fixed-arity
   pointer/home mismatch without reopening cleared local-slot or aggregate
   transport routes
