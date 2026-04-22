@@ -5,30 +5,29 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 1.5
 Current Step Title: Audit Transitional Forwarding And Buildability Across Shared Seams
-Plan Review Counter: 4 / 6
+Plan Review Counter: 5 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed a follow-on step-1.5 transitional-forwarding audit packet by moving
-most backend handoff-boundary tests from the broad
-`src/backend/mir/x86/codegen/x86_codegen.hpp` compatibility header to the
-reviewed `src/backend/mir/x86/codegen/api/x86_codegen_api.hpp` emit surface
-and `src/backend/mir/x86/codegen/route_debug.hpp`, while narrowing
-`module/module_emit.hpp` and `module/module_data_emit.hpp` to explicit
-prepared-module dependencies and making `module/module_emit.cpp` own the
-remaining broad implementation include directly. The only tests left on
-`x86_codegen.hpp` in this slice are the ones that still exercise real helper
-declarations such as stack-memory operand and multi-defined helper rendering
-support.
+Completed another step-1.5 duplicate-ownership cleanup packet by promoting the
+canonical i32 ABI register-narrowing helper into
+`src/backend/mir/x86/codegen/abi/x86_target_abi.*`, deleting the copied
+helper logic from `module/module_emit.cpp` and the handoff-boundary backend
+tests, and rebinding those consumers to the reviewed `abi/` seam while
+leaving the remaining broad `x86_codegen.hpp` dependencies in place only for
+real helper declarations such as stack-memory operand rendering and
+multi-defined dispatch support.
 
 ## Suggested Next
 
-Continue step 1.5 by auditing the remaining real consumers of
-`src/backend/mir/x86/codegen/x86_codegen.hpp`, especially helper-heavy backend
-tests and codegen implementation files, to decide which declarations should
-move into narrower reviewed helper seams versus which remaining broad includes
-are still honest implementation dependencies for now.
+Continue step 1.5 by auditing the remaining
+`src/backend/mir/x86/codegen/x86_codegen.hpp` dependencies that are still real
+helper contracts, especially `render_prepared_stack_memory_operand(...)` and
+`PreparedModuleMultiDefinedDispatchState`, to decide whether they should stay
+as explicit compatibility holdouts until the reviewed `prepared/` seams land
+or whether any existing reviewed owner can take them without changing the
+stage-3 contract.
 
 ## Watchouts
 
@@ -49,6 +48,9 @@ are still honest implementation dependencies for now.
 - Do not force helper-heavy tests off `x86_codegen.hpp` unless their actual
   helper declarations have a real narrower owner; API-only include churn is
   fine, but fake narrowing that breaks helper users is not progress.
+- Do not invent new replacement headers for prepared helpers during step 1.5;
+  if a remaining helper has no reviewed owner yet, keep it classified as a
+  compatibility dependency until the planned `prepared/` conversion work.
 
 ## Proof
 

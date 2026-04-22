@@ -1,6 +1,7 @@
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/bir_printer.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
+#include "src/backend/mir/x86/codegen/abi/x86_target_abi.hpp"
 #include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 
@@ -110,17 +111,6 @@ bir::Module make_x86_param_passthrough_module() {
   return module;
 }
 
-std::string narrow_abi_register(std::string_view wide_register) {
-  if (wide_register == "rax") return "eax";
-  if (wide_register == "rdi") return "edi";
-  if (wide_register == "rsi") return "esi";
-  if (wide_register == "rdx") return "edx";
-  if (wide_register == "rcx") return "ecx";
-  if (wide_register == "r8") return "r8d";
-  if (wide_register == "r9") return "r9d";
-  return std::string(wide_register);
-}
-
 std::string minimal_i32_return_register() {
   const auto abi =
       c4c::backend::lir_to_bir_detail::compute_function_return_abi(x86_target_profile(),
@@ -134,7 +124,7 @@ std::string minimal_i32_return_register() {
   if (!wide_register.has_value()) {
     throw std::runtime_error("missing canonical i32 return register for x86 handoff test");
   }
-  return narrow_abi_register(*wide_register);
+  return c4c::backend::x86::abi::narrow_i32_register_name(*wide_register);
 }
 
 std::string minimal_i32_param_register() {
@@ -150,7 +140,7 @@ std::string minimal_i32_param_register() {
   if (!wide_register.has_value()) {
     throw std::runtime_error("missing canonical i32 parameter register for x86 handoff test");
   }
-  return narrow_abi_register(*wide_register);
+  return c4c::backend::x86::abi::narrow_i32_register_name(*wide_register);
 }
 
 std::string asm_header(const char* function_name) {

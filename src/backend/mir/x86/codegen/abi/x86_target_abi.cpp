@@ -24,6 +24,26 @@ bool is_apple_darwin_target(std::string_view target_triple) {
   return target_triple.find("apple-darwin") != std::string_view::npos;
 }
 
+std::string narrow_i32_register_name(std::string_view wide_register) {
+  if (wide_register == "rax") return "eax";
+  if (wide_register == "rbx") return "ebx";
+  if (wide_register == "rcx") return "ecx";
+  if (wide_register == "rdx") return "edx";
+  if (wide_register == "rdi") return "edi";
+  if (wide_register == "rsi") return "esi";
+  if (wide_register == "rbp") return "ebp";
+  if (wide_register == "rsp") return "esp";
+  if (wide_register == "r8") return "r8d";
+  if (wide_register == "r9") return "r9d";
+  if (wide_register == "r10") return "r10d";
+  if (wide_register == "r11") return "r11d";
+  if (wide_register == "r12") return "r12d";
+  if (wide_register == "r13") return "r13d";
+  if (wide_register == "r14") return "r14d";
+  if (wide_register == "r15") return "r15d";
+  return std::string(wide_register);
+}
+
 std::string render_asm_symbol_name(std::string_view target_triple,
                                    std::string_view logical_name) {
   if (is_apple_darwin_target(target_triple)) {

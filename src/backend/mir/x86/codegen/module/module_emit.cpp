@@ -27,40 +27,12 @@ struct DefinedFunctionInventory {
 };
 
 struct ModuleMinimalAbiSupport {
-  static std::optional<std::string> narrow_i32_register_name(std::string_view wide_register) {
-    if (wide_register == "rax") return std::string("eax");
-    if (wide_register == "rbx") return std::string("ebx");
-    if (wide_register == "rcx") return std::string("ecx");
-    if (wide_register == "rdx") return std::string("edx");
-    if (wide_register == "rdi") return std::string("edi");
-    if (wide_register == "rsi") return std::string("esi");
-    if (wide_register == "rbp") return std::string("ebp");
-    if (wide_register == "rsp") return std::string("esp");
-    if (wide_register == "r8") return std::string("r8d");
-    if (wide_register == "r9") return std::string("r9d");
-    if (wide_register == "r10") return std::string("r10d");
-    if (wide_register == "r11") return std::string("r11d");
-    if (wide_register == "r12") return std::string("r12d");
-    if (wide_register == "r13") return std::string("r13d");
-    if (wide_register == "r14") return std::string("r14d");
-    if (wide_register == "r15") return std::string("r15d");
-    if (wide_register == "eax" || wide_register == "ebx" || wide_register == "ecx" ||
-        wide_register == "edx" || wide_register == "edi" || wide_register == "esi" ||
-        wide_register == "ebp" || wide_register == "esp" || wide_register == "r8d" ||
-        wide_register == "r9d" || wide_register == "r10d" || wide_register == "r11d" ||
-        wide_register == "r12d" || wide_register == "r13d" || wide_register == "r14d" ||
-        wide_register == "r15d") {
-      return std::string(wide_register);
-    }
-    return std::string(wide_register);
-  }
-
   static std::optional<std::string> narrow_register_name(
       const std::optional<std::string>& wide_register) {
     if (!wide_register.has_value()) {
       return std::nullopt;
     }
-    return narrow_i32_register_name(*wide_register);
+    return c4c::backend::x86::abi::narrow_i32_register_name(*wide_register);
   }
 
   template <typename TargetProfile>
@@ -362,7 +334,7 @@ struct ModuleFunctionReturnSupport {
         !home.register_name.has_value()) {
       return std::nullopt;
     }
-    return ModuleMinimalAbiSupport::narrow_i32_register_name(*home.register_name);
+    return c4c::backend::x86::abi::narrow_i32_register_name(*home.register_name);
   }
 
   [[nodiscard]] bool append_i32_home_move(
@@ -424,7 +396,7 @@ struct ModuleFunctionReturnSupport {
       return std::nullopt;
     }
     if (move.destination_register_name.has_value()) {
-      return ModuleMinimalAbiSupport::narrow_i32_register_name(*move.destination_register_name);
+      return c4c::backend::x86::abi::narrow_i32_register_name(*move.destination_register_name);
     }
     if (move.destination_kind != c4c::backend::prepare::PreparedMoveDestinationKind::Value) {
       return std::nullopt;
@@ -436,7 +408,7 @@ struct ModuleFunctionReturnSupport {
         !destination_home->register_name.has_value()) {
       return std::nullopt;
     }
-    return ModuleMinimalAbiSupport::narrow_i32_register_name(*destination_home->register_name);
+    return c4c::backend::x86::abi::narrow_i32_register_name(*destination_home->register_name);
   }
 
   [[nodiscard]] std::optional<std::string> render_named_before_return_body_if_supported(
@@ -475,14 +447,11 @@ struct ModuleFunctionReturnSupport {
       throw std::invalid_argument(
           "x86 backend emitter requires the authoritative prepared return-bundle handoff through the canonical prepared-module handoff");
     }
-    const auto destination_register =
-        ModuleMinimalAbiSupport::narrow_i32_register_name(*return_move.destination_register_name);
-    if (!destination_register.has_value()) {
-      throw std::invalid_argument(
-          "x86 backend emitter requires the authoritative prepared return-bundle handoff through the canonical prepared-module handoff");
-    }
     std::string body;
-    if (!append_i32_home_move(body, *source_home, *destination_register)) {
+    if (!append_i32_home_move(
+            body, *source_home,
+            c4c::backend::x86::abi::narrow_i32_register_name(
+                *return_move.destination_register_name))) {
       return std::nullopt;
     }
     return render_frame_wrapped_return(body, required_frame_size_for_home(*source_home), false);

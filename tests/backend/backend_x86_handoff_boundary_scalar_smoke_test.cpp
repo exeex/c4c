@@ -2,6 +2,7 @@
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/bir_printer.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
+#include "src/backend/mir/x86/codegen/abi/x86_target_abi.hpp"
 #include "src/backend/mir/x86/codegen/x86_codegen.hpp"
 #include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
@@ -35,26 +36,6 @@ int fail(const char* message) {
   return 1;
 }
 
-std::string narrow_abi_register(std::string_view wide_register) {
-  if (wide_register == "rax") return "eax";
-  if (wide_register == "rbx") return "ebx";
-  if (wide_register == "rcx") return "ecx";
-  if (wide_register == "rdx") return "edx";
-  if (wide_register == "rdi") return "edi";
-  if (wide_register == "rsi") return "esi";
-  if (wide_register == "rbp") return "ebp";
-  if (wide_register == "rsp") return "esp";
-  if (wide_register == "r8") return "r8d";
-  if (wide_register == "r9") return "r9d";
-  if (wide_register == "r10") return "r10d";
-  if (wide_register == "r11") return "r11d";
-  if (wide_register == "r12") return "r12d";
-  if (wide_register == "r13") return "r13d";
-  if (wide_register == "r14") return "r14d";
-  if (wide_register == "r15") return "r15d";
-  return std::string(wide_register);
-}
-
 std::string minimal_i32_return_register() {
   const auto abi =
       c4c::backend::lir_to_bir_detail::compute_function_return_abi(x86_target_profile(),
@@ -68,7 +49,7 @@ std::string minimal_i32_return_register() {
   if (!wide_register.has_value()) {
     throw std::runtime_error("missing canonical i32 return register for x86 handoff test");
   }
-  return narrow_abi_register(*wide_register);
+  return c4c::backend::x86::abi::narrow_i32_register_name(*wide_register);
 }
 
 bir::Module make_x86_param_passthrough_module() {
@@ -109,7 +90,7 @@ std::string minimal_i32_param_register() {
   if (!wide_register.has_value()) {
     throw std::runtime_error("missing canonical i32 parameter register for x86 handoff test");
   }
-  return narrow_abi_register(*wide_register);
+  return c4c::backend::x86::abi::narrow_i32_register_name(*wide_register);
 }
 
 bir::Module make_x86_param_add_immediate_module();
@@ -324,7 +305,8 @@ int check_add_one_prepared_move_bundle_contract() {
 
   const auto* sum_home = prepare::find_prepared_value_home(prepared.names, *function_locations, "sum");
   if (sum_home == nullptr || sum_home->kind != prepare::PreparedValueHomeKind::Register ||
-      !sum_home->register_name.has_value() || narrow_abi_register(*sum_home->register_name) != "r11d") {
+      !sum_home->register_name.has_value() ||
+      c4c::backend::x86::abi::narrow_i32_register_name(*sum_home->register_name) != "r11d") {
     return fail("minimal i32 parameter add-immediate route: prepared value-location contract lost the canonical result home");
   }
 
@@ -342,7 +324,8 @@ int check_add_one_prepared_move_bundle_contract() {
   if (before_return == nullptr || before_return->moves.size() != 1 ||
       before_return->moves.front().destination_kind != prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
       !before_return->moves.front().destination_register_name.has_value() ||
-      narrow_abi_register(*before_return->moves.front().destination_register_name) !=
+      c4c::backend::x86::abi::narrow_i32_register_name(
+          *before_return->moves.front().destination_register_name) !=
           minimal_i32_return_register()) {
     return fail("minimal i32 parameter add-immediate route: prepared move-bundle contract lost the return ABI move");
   }
@@ -364,7 +347,8 @@ int check_id_i32_prepared_value_location_contract() {
       prepare::find_prepared_value_home(prepared.names, *function_locations, "p.x");
   if (param_home == nullptr || param_home->kind != prepare::PreparedValueHomeKind::Register ||
       !param_home->register_name.has_value() ||
-      narrow_abi_register(*param_home->register_name) != minimal_i32_param_register()) {
+      c4c::backend::x86::abi::narrow_i32_register_name(*param_home->register_name) !=
+          minimal_i32_param_register()) {
     std::string detail =
         "minimal i32 parameter passthrough route: prepared value-location contract lost the canonical parameter home";
     if (param_home == nullptr) {
@@ -385,7 +369,8 @@ int check_id_i32_prepared_value_location_contract() {
           prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
       before_return->moves.front().from_value_id != param_home->value_id ||
       !before_return->moves.front().destination_register_name.has_value() ||
-      narrow_abi_register(*before_return->moves.front().destination_register_name) !=
+      c4c::backend::x86::abi::narrow_i32_register_name(
+          *before_return->moves.front().destination_register_name) !=
           minimal_i32_return_register()) {
     return fail("minimal i32 parameter passthrough route: prepared value-location contract lost the return move bundle");
   }
