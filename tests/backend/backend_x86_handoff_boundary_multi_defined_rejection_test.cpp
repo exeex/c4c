@@ -232,7 +232,7 @@ int run_backend_x86_handoff_boundary_multi_defined_rejection_tests() {
   // into the supported-path same-module call lane.
   if (const auto status = check_route_rejection(
           make_x86_multi_defined_global_function_pointer_boundary_module(),
-          "one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls",
+          "x86 backend emitter only supports direct immediate i32 returns, constant-evaluable straight-line no-parameter i32 return expressions, direct single-parameter i32 passthrough returns, single-parameter i32 add-immediate/sub-immediate/mul-immediate/and-immediate/or-immediate/xor-immediate/shl-immediate/lshr-immediate/ashr-immediate returns, a bounded equality-against-immediate guard family with immediate return leaves, or one bounded compare-against-zero branch family through the canonical prepared-module handoff",
           "multi-defined global-function-pointer and indirect variadic-runtime boundary");
       status != 0) {
     return status;

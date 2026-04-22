@@ -5,30 +5,27 @@ Source Idea Path: ideas/open/70_post_asm_global_function_pointer_and_variadic_ru
 Source Plan Path: plan.md
 Current Step ID: 2.1
 Current Step Title: Repair The Selected Post-Asm Closure Seam
-Plan Review Counter: 1 / 4
+Plan Review Counter: 2 / 4
 # Current Packet
 
 ## Just Finished
 
-Step `2.1` repaired the first post-assembly link-closure gap in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp`: the emitted x86 module
-now closes over the missing same-module symbol definitions that left
-`c_testsuite_x86_backend_src_00204_c` with unresolved `s1`..`s16`, and it
-also emits direct variadic-runtime helper symbols such as `llvm.va_start.p0`
-so the case advances beyond the prior unresolved-reference family. With that
-closure seam repaired, `00204.c` now links and reaches a later downstream
-runtime crash inside the variadic path instead of failing at link. That crash
-is now explicitly split into `ideas/open/71_post_link_variadic_runtime_correctness_for_x86_backend.md`
-rather than remaining implicit next work for this active plan.
+Step `2.1` repaired the remaining idea-70 boundary seam for
+`backend_x86_handoff_boundary` by rechecking the actual current rejection
+surface after the accepted post-assembly closure slice. The focused boundary
+fixture no longer fails at the stale coarse multi-function contract; the live
+`emit_prepared_module` rejection is the direct-return-shape contract for the
+unsupported `main` body, while the route-debug summary still reports the
+coarser bounded multi-function module-lane detail. The test now records those
+two truthful current surfaces separately instead of assuming they are the same
+message.
 
 ## Suggested Next
 
-Keep idea 70 focused on the remaining truthful boundary-contract seam:
-recheck `backend_x86_handoff_boundary` against the actual current rejection
-wording, then repair either the contract text or the owning rejection surface
-without reopening post-link runtime semantics. The newly linked `00204.c`
-runtime segfault now belongs to idea 71 and is not the next packet under this
-active runbook.
+Idea 70's Step `2.1` is now closure-complete for the boundary seam. The next
+supervisor action should be lifecycle review or the next active-plan packet,
+while keeping the linked `00204.c` variadic-runtime crash under idea 71 rather
+than reopening runtime semantics here.
 
 ## Watchouts
 
@@ -41,15 +38,17 @@ active runbook.
   now resolves, but the helper semantics are not yet sufficient to preserve
   correct runtime behavior for the full `myprintf` path; do not absorb that
   runtime repair back into idea 70.
-- `backend_x86_handoff_boundary` still fails on contract wording, not on the
-  repaired same-module symbol or direct variadic-runtime unresolved-reference
-  seam.
+- For this boundary fixture, the thrown rejection contract and the route-debug
+  module summary are intentionally different current surfaces: the emitted
+  rejection now bottoms out at the unsupported `main` direct-return shape,
+  while the debug summary still describes the rejected bounded multi-function
+  lane at module scope.
 
 ## Proof
 
 Delegated executor proof:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$' > test_after.log || true`
-Result: build stayed green, `test_after.log` no longer reports unresolved
-`s1`..`s16` or unresolved `llvm.va_start.p0` for `00204.c`, and that case now
-fails later with `[RUNTIME_NONZERO]` / `Segmentation fault`. The focused
-boundary test still fails on contract wording.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_x86_handoff_boundary$' > test_after.log || true`
+Result: the focused `backend_x86_handoff_boundary` subset now passes with the
+truthful current rejection split between the thrown direct-return contract and
+the existing route-debug module-lane summary, and `test_after.log` is the
+canonical proof log for this packet.
