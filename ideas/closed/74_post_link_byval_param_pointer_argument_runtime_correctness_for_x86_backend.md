@@ -1,8 +1,10 @@
 # Post-Link Byval-Param Pointer-Argument Runtime Correctness For X86 Backend
 
-Status: Open
+Status: Closed
 Created: 2026-04-22
 Last-Updated: 2026-04-22
+Closed: 2026-04-22
+Disposition: Completed by exhausting the owned byval-param pointer-argument runtime family and rehoming `00204.c` into a later prepared/x86 call-lane clobber leaf.
 Parent Idea: [73_post_link_address_exposed_local_home_runtime_correctness_for_x86_backend.md](/workspaces/c4c/ideas/closed/73_post_link_address_exposed_local_home_runtime_correctness_for_x86_backend.md)
 
 ## Intent
@@ -79,3 +81,37 @@ This idea is complete when the owned post-link byval-param pointer-argument
 runtime cases no longer fail at their current fixed-arity helper materialized
 pointer/home mismatch and instead either execute correctly or graduate into a
 later, better-fitting runtime leaf.
+
+## Closure Note
+
+Closed on 2026-04-22 after the owned byval-param pointer-argument runtime
+family was exhausted for the only confirmed case:
+
+- `c_testsuite_x86_backend_src_00204_c` no longer stops at the earlier
+  fixed-arity helper pointer/home mismatch; semantic BIR now publishes
+  `printf(..., ptr %lv.param.a.0)` for `fa_s1` through `fa_s16` and
+  `printf(..., ptr %p.a)` for `fa_s17`
+- focused proof still shows `backend_x86_handoff_boundary` passing while
+  `00204.c` fails later with `[RUNTIME_MISMATCH]`
+- the first remaining bad fact now lives in the prepared/x86 call-lane
+  consumer: generated asm for `fa_s17` emits `mov rsi, rdi` after loading the
+  format string into `rdi`, so arg1 is copied from the clobbered format
+  register instead of the authoritative `%p.a` owner
+- the same later overlapping-lane clobber also appears in `pll`, which shows
+  the remaining blocker is a downstream prepared/x86 call-lane runtime leaf,
+  not an idea-74 byval-param owner-publication defect
+
+## Validation At Closure
+
+Close-time guard used the existing focused runtime scope:
+
+- `cmake --build --preset default`
+- `ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$' | tee test_after.log`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result:
+
+- guard passed for lifecycle-only closure with equal pass count allowed
+- before reported `1` passed / `1` failed / `2` total
+- after reported `1` passed / `1` failed / `2` total
+- no new failing tests were introduced on the matched scope
