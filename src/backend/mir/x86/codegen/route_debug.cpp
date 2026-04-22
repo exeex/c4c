@@ -1,3 +1,4 @@
+#include "route_debug.hpp"
 #include "x86_codegen.hpp"
 #include "abi/x86_target_abi.hpp"
 

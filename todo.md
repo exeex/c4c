@@ -5,39 +5,44 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 1.5
 Current Step Title: Audit Transitional Forwarding And Buildability Across Shared Seams
-Plan Review Counter: 1 / 6
+Plan Review Counter: 2 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed a step-1.5 transitional-forwarding audit packet by making the legacy
-`src/backend/mir/x86/codegen/emit.cpp` public entrypoints explicit
-compatibility wrappers over `src/backend/mir/x86/codegen/api/`, narrowing
-`api/x86_codegen_api.hpp` so it no longer republishes the broad
-`x86_codegen.hpp` surface, and moving x86-local assemble ownership into the
-reviewed api seam while preserving the legacy `x86::assemble_module(...)`
-symbol as a thin forwarding layer.
+Completed a step-1.5 transitional-forwarding audit packet by rebinding
+`src/backend/backend.cpp` to the reviewed
+`src/backend/mir/x86/codegen/api/x86_codegen_api.hpp` emit surface and a new
+explicit `src/backend/mir/x86/codegen/route_debug.hpp` declaration seam,
+removing stale route-debug and legacy public-entry declarations from the broad
+`x86_codegen.hpp` compatibility header, and splitting
+`api/x86_codegen_api.cpp` so the emit-facing api object no longer drags the
+x86 assembler ownership graph into ordinary backend links while
+`x86_codegen_api_assemble.cpp` retains the target-aware assemble contract.
 
 ## Suggested Next
 
-Continue step 1.5 by auditing whether any remaining legacy declarations in
-`src/backend/mir/x86/codegen/x86_codegen.hpp` still advertise mixed ownership
-across `api/`, `module/`, and route-debug helpers, then shrink or reclassify
-those declarations without widening the public seam.
+Continue step 1.5 by auditing whether the remaining consumers of
+`src/backend/mir/x86/codegen/x86_codegen.hpp`, especially module-facing
+headers and backend tests, still rely on broad compatibility reach-through for
+types or declarations that should move into narrower reviewed seams.
 
 ## Watchouts
 
-- Keep `emit.cpp` wrapper-thin; do not reintroduce lowering or assembler
-  ownership there now that `api/x86_codegen_api.cpp` owns the x86-compatible
-  entry logic for this seam.
+- Keep `emit.cpp` and `prepared_module_emit.cpp` wrapper-thin; step 1.5 is
+  still classifying compatibility entrypoints, not handing ownership back to
+  legacy files.
+- Keep `route_debug.hpp` declaration-only; route-debug implementation should
+  stay in `route_debug.cpp` and not recreate another broad mixed-owner header.
+- Keep `x86_codegen_api.cpp` limited to emit-facing entry logic and
+  `x86_codegen_api_assemble.cpp` limited to assemble ownership so ordinary
+  backend links do not silently depend on assembler implementation files.
 - Preserve the legacy `x86::emit_module(...)`, `x86::assemble_module(...)`,
   and `x86::emit_prepared_module(...)` symbols until the supervisor retires
-  them explicitly; step 1.5 only reclassifies them as compatibility surfaces.
-- `api/x86_codegen_api.hpp` now stands on backend-facing types directly; avoid
-  pulling `x86_codegen.hpp` back into that public api unless a concrete build
-  dependency requires it.
-- `backend.cpp` still includes `x86_codegen.hpp` and was out of scope here, so
-  any broader public-entry retirement must be coordinated in a later packet.
+  those compatibility surfaces explicitly.
+- Backend tests that exercise route-debug reporting now need
+  `route_debug.hpp`; do not rely on `x86_codegen.hpp` to leak those
+  declarations back in.
 
 ## Proof
 

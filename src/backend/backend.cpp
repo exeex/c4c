@@ -1,7 +1,8 @@
 #include "backend.hpp"
 
 #include "bir/bir_printer.hpp"
-#include "mir/x86/codegen/x86_codegen.hpp"
+#include "mir/x86/codegen/api/x86_codegen_api.hpp"
+#include "mir/x86/codegen/route_debug.hpp"
 #include "prealloc/prepared_printer.hpp"
 
 #include "../codegen/lir/lir_printer.hpp"
@@ -924,7 +925,7 @@ std::string emit_target_bir_module(const bir::Module& module,
                                    const c4c::TargetProfile& target_profile) {
   const auto prepared = prepare_semantic_bir_pipeline(module, target_profile);
   if (is_x86_target(target_profile)) {
-    return c4c::backend::x86::emit_prepared_module(prepared);
+    return c4c::backend::x86::api::emit_prepared_module(prepared);
   }
   return render_prepared_bir_text(prepared.module);
 }
@@ -936,7 +937,7 @@ std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
   if (lowering.module.has_value()) {
     const auto prepared_bir = prepare_semantic_bir_pipeline(*lowering.module, target_profile);
     if (is_x86_target(target_profile)) {
-      return c4c::backend::x86::emit_prepared_module(prepared_bir);
+      return c4c::backend::x86::api::emit_prepared_module(prepared_bir);
     }
     return render_prepared_bir_text(prepared_bir.module);
   }
@@ -986,7 +987,7 @@ std::string emit_module(const BackendModuleInput& input,
     }
     const auto prepared_bir = prepare_semantic_bir_pipeline(*lowering.module, target_profile);
     if (is_x86_target(target_profile)) {
-      return c4c::backend::x86::emit_prepared_module(prepared_bir);
+      return c4c::backend::x86::api::emit_prepared_module(prepared_bir);
     }
     return render_prepared_bir_text(prepared_bir.module);
   }

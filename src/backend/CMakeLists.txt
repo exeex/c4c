@@ -7,6 +7,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/backend.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/abi/x86_target_abi.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/api/x86_codegen_api.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/api/x86_codegen_api_assemble.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/core/x86_codegen_output.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/module/module_data_emit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/module/module_emit.cpp"
