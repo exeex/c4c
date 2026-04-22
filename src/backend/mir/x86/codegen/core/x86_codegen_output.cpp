@@ -3,6 +3,7 @@
 #include "../x86_codegen.hpp"
 
 #include <cctype>
+#include <limits>
 
 namespace c4c::backend::x86 {
 
@@ -14,11 +15,21 @@ constexpr const char* kX86FloatArgRegs[] = {
 
 std::string format_reg(const char* reg) { return std::string("%") + reg; }
 
+const char* reg_name_to_32_or_self(const char* reg) {
+  const char* narrowed = reg_name_to_32(reg);
+  return narrowed[0] == '\0' ? reg : narrowed;
+}
+
 void append_asm_line(X86CodegenOutput* out, std::string line) {
   if (out == nullptr || out->owner == nullptr) {
     return;
   }
   out->owner->asm_lines.push_back(std::move(line));
+}
+
+void emit_zero_reg(X86Codegen& codegen, const char* reg) {
+  codegen.state.emit(std::string("    xorl %") + reg_name_to_32_or_self(reg) + ", %" +
+                     reg_name_to_32_or_self(reg));
 }
 
 }  // namespace
@@ -287,6 +298,80 @@ void X86CodegenState::mark_needs_got_for_addr(std::string name) {
 
 bool X86CodegenState::needs_got_for_addr(std::string_view name) const {
   return got_addr_symbols.find(std::string(name)) != got_addr_symbols.end();
+}
+
+std::optional<std::int64_t> X86Codegen::const_as_imm32(const Operand& op) const {
+  if (!op.immediate.has_value()) {
+    return std::nullopt;
+  }
+  if (*op.immediate < static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()) ||
+      *op.immediate > static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())) {
+    return std::nullopt;
+  }
+  return *op.immediate;
+}
+
+void X86Codegen::emit_alloca_addr_to(const char* reg, std::uint32_t val_id, std::int64_t offset) {
+  if (const auto align = this->state.alloca_over_align(val_id)) {
+    this->state.out.emit_instr_rbp_reg("    leaq", offset, reg);
+    this->state.out.emit_instr_imm_reg("    addq", static_cast<std::int64_t>(*align - 1), reg);
+    this->state.out.emit_instr_imm_reg("    andq", -static_cast<std::int64_t>(*align), reg);
+  } else {
+    this->state.out.emit_instr_rbp_reg("    leaq", offset, reg);
+  }
+}
+
+void X86Codegen::operand_to_reg(const Operand& op, const char* reg) {
+  if (const auto imm = this->const_as_imm32(op)) {
+    if (*imm == 0) {
+      emit_zero_reg(*this, reg);
+    } else {
+      this->state.out.emit_instr_imm_reg("    movq", *imm, reg);
+    }
+    return;
+  }
+
+  if (const auto assigned = this->state.assigned_reg_index(op.raw)) {
+    const auto source = phys_reg_name(c4c::backend::PhysReg{*assigned});
+    if (std::string_view(source) != reg) {
+      this->state.emit(std::string("    movq %") + source + ", %" + reg);
+    }
+    return;
+  }
+
+  if (const auto addr = this->state.resolve_slot_addr(op.raw)) {
+    switch (addr->kind) {
+      case SlotAddr::Kind::Direct:
+        this->state.out.emit_instr_rbp_reg("    movq", addr->slot.raw, reg);
+        return;
+      case SlotAddr::Kind::Indirect:
+      case SlotAddr::Kind::OverAligned:
+        this->emit_alloca_addr_to(reg, op.raw, addr->slot.raw);
+        return;
+    }
+  }
+
+  emit_zero_reg(*this, reg);
+}
+
+void X86Codegen::operand_to_rax(const Operand& op) {
+  this->operand_to_reg(op, "rax");
+  this->state.reg_cache.invalidate_acc();
+}
+
+void X86Codegen::store_rax_to(const Value& dest) {
+  if (const auto slot = this->state.get_slot(dest.raw)) {
+    this->state.emit("    movq %rax, " + std::to_string(slot->raw) + "(%rbp)");
+  }
+  this->state.reg_cache.set_acc(dest.raw, false);
+}
+
+void X86Codegen::store_rax_rdx_to(const Value& dest) {
+  if (const auto slot = this->state.get_slot(dest.raw)) {
+    this->state.emit("    movq %rax, " + std::to_string(slot->raw) + "(%rbp)");
+    this->state.emit("    movq %rdx, " + std::to_string(slot->raw + 8) + "(%rbp)");
+  }
+  this->state.reg_cache.invalidate_all();
 }
 
 }  // namespace c4c::backend::x86
