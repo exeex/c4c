@@ -5,52 +5,52 @@ Source Idea Path: ideas/open/75_post_link_prepared_call_lane_clobber_runtime_cor
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Re-Establish The Downstream Consumer Ownership
-Plan Review Counter: 0 / 5
+Plan Review Counter: 1 / 5
 # Current Packet
 
 ## Just Finished
 
-Lifecycle repair switched the active runbook from idea 76 to idea 75 after the
-latest step-2 trace proved `00204.c` no longer fails in an upstream
-publication/layout seam. The durable facts preserved into the source ideas are:
-`stack_layout::assign_frame_slots(...)` publishes `%t37.0` at `364` and
-`%t38.0/.4/.8/.12` at `80/84/88/92`; regalloc publishes distinct late homes at
-`6264`, `6272`, and `6376/6380/6384/6388`; the prepared `fa4(...)` move bundle
-uses register ABI destinations only; and the emitted x86 still collapses those
-truthful facts into an overlapping write at `[rsp + 364]` before `call fa4`.
-That makes the current packet a downstream prepared-to-x86 consumer problem,
-not another upstream publisher/layout search.
+Plan step 1 is now re-established with fresh proof on `00204.c`: the test still
+fails first inside `Arguments:` in `arg()` before `Return values:`. The active
+consumer seam remains the `fa4(...)` setup in
+`build/c_testsuite_x86_backend/src/00204.c.s`, where the truthful prepared/home
+facts already carried forward from idea 76 stay distinct upstream
+(`%t37.0 -> 364`, `%t38.0/.4/.8/.12 -> 80/84/88/92`, late homes at `6264`,
+`6272`, and `6376/6380/6384/6388`), but the emitted x86 still stages the call
+through `[rsp + 352..364]` and overwrites `[rsp + 364]` twice before `call fa4`
+at line `3493`: first `s1` byte storage at line `3452`, then `hfa14.d` at line
+`3469`. That keeps ownership in idea 75's downstream prepared-to-x86 consumer
+route, not in idea 76's already-truthful publishers or idea 77's later
+return/HFA route.
 
 ## Suggested Next
 
-Re-establish idea 75 ownership in packet form:
-
-- confirm the first mismatch still occurs in `arg()` before `Return values:`
-- restate the truthful prepared offsets versus the emitted `[rsp + 352..364]`
-  overlap at `fa4(...)`
-- set the next seam on the x86 lowering consumers in
-  `prepared_local_slot_render.cpp` and `x86_codegen.hpp`
+Inspect the downstream x86 consumer seam that turns those truthful prepared
+homes into the emitted `[rsp + 352..364]` staging area before `fa4(...)`,
+starting with `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` and
+`src/backend/mir/x86/codegen/x86_codegen.hpp`, while keeping the proving set
+narrow to `00204.c` plus the prepared/assembly evidence around that call site.
 
 ## Watchouts
 
-- Do not reopen `src/backend/prealloc/**` unless fresh proof contradicts the
-  current truthful publisher facts.
-- Do not treat idea 77 as active while the first bad fact is still a pre-call
-  overlap before `fa4(...)` executes.
-- Reject callsite-shaped fixes that only special-case `00204.c` instead of
-  repairing the shared x86 lowering contract.
+- Do not reopen `src/backend/prealloc/**`: fresh proof still shows the first bad
+  fact only after the truthful upstream homes are consumed into emitted x86
+  call setup.
+- Do not hand route ownership to idea 77 while the earliest mismatch remains in
+  `arg()` before `fa4(...)` and before `Return values:`.
+- Reject any fix that only reshapes this single call site instead of repairing
+  the shared x86 consumer contract that materializes byval/local call lanes.
 
 ## Proof
 
-Fresh proof carried forward into this lifecycle repair on 2026-04-22 used:
+Fresh proof on 2026-04-22 used:
 
 - `cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^c_testsuite_x86_backend_src_00204_c$' | tee test_after.log`
 - result: still fails, with the first mismatch still inside `Arguments:` in
   `arg()` before `Return values:`
 - proof log: `test_after.log`
-- supporting inspection: `build/c_testsuite_x86_backend/src/00204.c.s` around
-  the `arg()` `fa4(...)` setup plus the focused prepared-BIR dump showing
-  `prepared.func @arg frame_size=376`, stack-layout slots `#718-#721` and
-  `#990`, regalloc homes `#2440-#2441` and `#2461-#2464`, and the
-  `move_bundle phase=before_call block_index=0 instruction_index=623`
-  register-only ABI destinations for `fa4(...)`
+- supporting inspection:
+  `build/c_testsuite_x86_backend/src/00204.c.s:3451-3493`, where the emitted
+  call setup stores `s1` to `[rsp + 364]`, then rewrites that same location as
+  the tail of the staged HFA copy while using `[rsp + 352]` as the `fa4(...)`
+  aggregate base
