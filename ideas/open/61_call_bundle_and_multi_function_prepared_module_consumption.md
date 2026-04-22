@@ -2,7 +2,7 @@
 
 Status: Open
 Created: 2026-04-20
-Last-Updated: 2026-04-21
+Last-Updated: 2026-04-22
 Parent Idea: [57_x86_backend_c_testsuite_capability_families.md](/workspaces/c4c/ideas/open/57_x86_backend_c_testsuite_capability_families.md)
 
 ## Intent
@@ -64,14 +64,15 @@ Prepared call-bundle failures:
 
 ## Latest Durable Note
 
-As of 2026-04-21, the latest accepted prepared short-circuit handoff repair
-advanced `c_testsuite_x86_backend_src_00204_c` out of this idea and back into
-idea 60. The old authoritative prepared-module handoff rejection is gone for
-that route; `00204.c` now reaches the downstream scalar restriction instead of
-stopping in prepared-module or call-bundle consumption. Keep this idea focused
-on cases that still fail for multi-function prepared-module traversal or
-authoritative call-bundle ownership, and only reopen `00204.c` here if it
-regresses to one of those failure families.
+As of 2026-04-22, the accepted helper-active module-boundary repair in
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` advanced
+`c_testsuite_x86_backend_src_00204_c` back out of this idea. The old generic
+prepared-module rejection is no longer the top-level blocker for that route;
+`00204.c` now stops on the downstream authoritative prepared local-slot
+handoff family again, so durable ownership returns to idea 68. Keep this idea
+focused on cases that still fail for multi-function prepared-module traversal
+or authoritative prepared call-bundle ownership, and only reopen `00204.c`
+here if it regresses to one of those failure families.
 
 ## Scope Notes
 
