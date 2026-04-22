@@ -5,26 +5,27 @@ Source Idea Path: ideas/open/74_post_link_byval_param_pointer_argument_runtime_c
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Confirm The Byval-Param Pointer-Argument Crash Surface
-Plan Review Counter: 0 / 4
+Plan Review Counter: 1 / 4
 # Current Packet
 
 ## Just Finished
 
-Lifecycle switch completed after closing idea 73. The accepted `%lv.s`
-permanent-home repair kept `myprintf` on its authoritative local-slot home, and
-fresh focused proof shows the first remaining bad fact now occurs earlier in
-fixed-arity helpers such as `fa_s1`: generated asm stores incoming byval
-pointer `%p.a` at `[rsp]` but still calls `printf("%.1s\n", a.x)` with
-`mov rsi, r12` instead of the address of `a.x`. Durable ownership therefore
-moved to idea 74's byval-param pointer-materialization family.
+Plan step `1` reconfirmed the owned idea-74 seam with fresh proof plus prepared
+inspection. `fa_s1` still stores byval param `%p.a` in fixed stack slot `0`,
+but prepared value locations classify `%t2` as plain register home `r12` and
+the before-call bundle forwards that register into `rsi`; generated
+`00204.c.s` therefore still emits `mov rsi, r12`. A narrow x86-side
+authoritative-home lookup experiment did not change the emitted asm and was
+reverted, so the next owned repair is upstream in prepared pointer-home
+derivation rather than in final x86 call-argument rendering.
 
 ## Suggested Next
 
-Start plan step `1` for idea 74. Reconfirm the first owned seam in `fa_s1` and
-nearby `fa_sN` helpers using the existing focused proof, generated
-`00204.c.s`, and prepared metadata for `%p.a` / `%t2`, then narrow the first
-repair packet to the shared authoritative-home decision that should feed
-pointer-argument materialization for address-exposed `byval_param` values.
+Start plan step `2` on the prealloc/regalloc ownership path. Trace why
+prepared value-home classification leaves `%t2` as `kind=register reg=r12`
+instead of a carrier that preserves `%p.a`'s authoritative byval stack home,
+then repair that shared pointer-home derivation so fixed-arity helper call
+arguments materialize from the same byval home seen in prepared stack layout.
 
 ## Watchouts
 
@@ -42,23 +43,30 @@ pointer-argument materialization for address-exposed `byval_param` values.
 - `fa_s2` through `fa_s17` show the same `mov rsi, r12` shape in emitted asm,
   so any repair must stay semantic and family-level rather than helper-name
   specific.
+- Prepared evidence now narrows the semantic owner further than the original
+  plan note: in `--dump-prepared-bir`, `prepared.func @fa_s1` reports
+  `home %p.a ... kind=stack_slot slot_id=0 offset=0` but
+  `home %t2 ... kind=register reg=r12`, and the before-call move bundle sends
+  value id `5` to ABI arg `1` in `rsi`.
+- `prepared-addressing` for `fa_s1` only records `%p.a`-based byte loads into
+  `%lv.param.*` copies; it does not record a separate `%t2` access, so the
+  next packet should inspect `src/backend/prealloc/regalloc.cpp` pointer
+  carrier/value-home derivation instead of adding more x86-side lookup cases.
 
 ## Proof
 
-Lifecycle close and switch used the focused proof scope:
+Focused proof and seam confirmation used:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$' | tee test_after.log`
 Result:
 - `backend_x86_handoff_boundary`: passed
 - `c_testsuite_x86_backend_src_00204_c`: failed with `[RUNTIME_MISMATCH]`
-  after staying beyond the old `match()` crash; the first bad observable fact
-  is now the wrong `Arguments:` output from `fa_s1`, not a `myprintf`
-  `local_slot` crash
+  with the same post-link `fa_s1` family mismatch; generated asm still shows
+  `mov rsi, r12` in `fa_s1` through `fa_s17`
 - Proof log path: `test_after.log`
-Close-time regression guard:
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+Diagnostic inspection:
+- `./build/c4cll --dump-prepared-bir --target x86_64-unknown-linux-gnu tests/c/external/c-testsuite/src/00204.c > /tmp/00204.prepared.txt`
+- `./build/c4cll --trace-mir --target x86_64-unknown-linux-gnu tests/c/external/c-testsuite/src/00204.c`
 Result:
-- guard passed
-- before reported `1` passed / `1` failed / `2` total
-- after reported `1` passed / `1` failed / `2` total
-- no new failing tests on the matched scope
+- prepared value locations and move bundles confirm `%t2` is already classified
+  as register home `r12` before x86 emission
