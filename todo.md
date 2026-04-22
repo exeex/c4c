@@ -5,26 +5,28 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 1.4.2
 Current Step Title: Extract Function-Level Dispatch Context Assembly Behind Module Owners
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed plan step 1.4.1 by extracting the remaining multi-defined helper-prefix
-and contract-guard orchestration near the top of
+Completed a first packet for plan step 1.4.2 by extracting function-local
+prepared-query lookup and `PreparedX86FunctionDispatchContext` assembly out of
 `src/backend/mir/x86/codegen/module/module_emit.cpp` into an anonymous-namespace
-`ModuleMultiDefinedSupport` helper, so `emit_prepared_module_text(...)` now
-delegates helper-prefix injection, bounded-helper activation checks, helper-set
-selection, and local-slot contract-detail annotation without changing lowering
-ownership or the legacy prepared-module compatibility entry behavior.
+`ModuleFunctionPreparedQueries` / `build_module_function_dispatch_context(...)`
+helper pair, so `render_defined_function(...)` now delegates per-function
+prepared metadata discovery and dispatch-context wiring without changing any
+lowering decisions or widening the compatibility surface.
 
 ## Suggested Next
 
 Continue plan step 1.4.2 by extracting the next bounded module-local support
-cluster from `module_emit.cpp` inside `render_defined_function(...)`, likely
-around the prepared return/home-move helpers or dispatch-context assembly,
-while keeping the reviewed compatibility wrapper thin and avoiding any new
-public seam.
+cluster from `module_emit.cpp` inside `render_defined_function(...)`, most
+likely the prepared return/home-move helpers
+(`required_function_frame_size`, `append_i32_home_move`,
+`render_frame_wrapped_return`, and adjacent return-bundle helpers), while
+keeping the reviewed compatibility wrapper thin and avoiding any new public
+seam.
 
 ## Watchouts
 
@@ -35,9 +37,9 @@ public seam.
   next packet should keep peeling orchestration support out of
   `render_defined_function(...)` without moving instruction-shape or lowering
   decisions behind the data seam.
-- `ModuleMultiDefinedSupport` now centralizes helper-prefix and bounded-helper
-  contract checks; keep follow-on extractions aligned with that seam instead of
-  reintroducing top-level orchestration lambdas.
+- `ModuleMultiDefinedSupport` and `ModuleFunctionPreparedQueries` now
+  centralize module-local orchestration state; keep follow-on extractions
+  aligned with those seams instead of reintroducing top-level lambdas.
 - Preserve the legacy `x86::emit_prepared_module(...)` symbol until the
   supervisor retires that compatibility entry explicitly.
 
