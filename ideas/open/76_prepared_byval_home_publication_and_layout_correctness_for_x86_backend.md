@@ -27,31 +27,30 @@ This idea owns x86 backend failures where:
 
 ## Current Known Failed Cases It Owns
 
-- none currently confirmed; `c_testsuite_x86_backend_src_00204_c` graduated on
-  2026-04-22 into a downstream post-link return-value / HFA runtime leaf after
-  the overlapping byval-home publication/layout seam stopped being the first
-  bad fact
+- `c_testsuite_x86_backend_src_00204_c`
 
 ## Latest Durable Note
 
-As of 2026-04-22, commit `d61017fa` repaired the owned publication/layout seam
-generically: once one slice of an address-exposed aggregate-local family
-requires a fixed home, `assign_frame_slots(...)` keeps the whole slice family
-in the fixed-location group so helper byval payload homes publish contiguously
-instead of interleaving only their `.0` slices. Focused `00204.c` proof after
-that change still fails later at runtime, but the visible `Arguments:` section
-now matches through the earlier multi-aggregate byval probes and the remaining
-mismatch sits in the later return-value / HFA surface, not in overlapping
-helper payload homes.
+As of 2026-04-22, commit `d61017fa` still stands as a real generic repair for
+one publication/layout seam: once one slice of an address-exposed
+aggregate-local family requires a fixed home, `assign_frame_slots(...)` keeps
+the whole slice family in the fixed-location group so helper byval payload
+homes do not interleave only their `.0` slices. But a fresh focused proof,
 
-The source idea's semantic completion signal is therefore satisfied: the first
-bad fact moved downstream out of publication/layout ownership. A close review
-on 2026-04-22 still rejected formal closure because the strongest committed
-close-grade scope available in-repo,
-`ctest --test-dir build -j --output-on-failure -R '^backend_'`, stayed flat at
-`103` passes before and after. Idea 76 remains open only until a committed
-closure-grade probe exists for the repaired publication/layout seam; active
-execution has graduated into idea 77's downstream runtime leaf.
+`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^c_testsuite_x86_backend_src_00204_c$'`
+
+plus the regenerated `build/c_testsuite_x86_backend/src/00204.c.s`, shows
+`00204.c` still failing first at the tail of `Arguments:` in direct mixed
+aggregate/HFA call `fa4(...)`, not first in a downstream return-value / HFA
+leaf. At the current call site, the byte home for `s1` at `[rsp + 364]` is
+immediately overwritten by `hfa14.d`, proving the first remaining bad fact is
+still upstream prepared byval-home publication/layout overlap before the call,
+not later runtime return semantics.
+
+Idea 76 therefore still owns `00204.c`. The earlier same-day graduation into
+idea 77 was premature and has been repaired in lifecycle state. Keep this idea
+focused on the upstream publication/layout family until the first bad fact
+actually moves downstream.
 
 ## Scope Notes
 

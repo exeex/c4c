@@ -27,25 +27,29 @@ This idea owns x86 backend failures where:
 
 ## Current Known Failed Cases It Owns
 
-- `c_testsuite_x86_backend_src_00204_c`
+- none currently confirmed; the same-day `00204.c` graduation was reverted
+  after fresh focused proof showed the first bad fact still occurs earlier in
+  direct mixed aggregate/HFA argument publication/layout
 
 ## Latest Durable Note
 
-As of 2026-04-22, idea 76's stack-layout repair kept fixed-home aggregate
-slice families contiguous, clearing the earlier overlapping helper byval-home
-publication seam. Focused proof still shows `00204.c` failing with
-`[RUNTIME_MISMATCH]`, but the mismatch now appears later in the
-`Return values:` / `HFA` portion of the program output after the earlier
-multi-aggregate byval argument probes succeed. The publication/layout leaf no
-longer owns the first bad fact, and the remaining route has not moved back
-into idea 75's call-lane consumer clobber seam or idea 71's true variadic
-traversal seam.
+As of 2026-04-22, the source-idea split from idea 76 remains a plausible
+downstream leaf, but the same-day activation was premature. Fresh focused
+proof,
 
-Durable ownership for that case therefore graduates into a dedicated post-link
-return-value / HFA runtime leaf. Keep this idea focused on truthful runtime
-return semantics after helper argument publication is already correct, and only
-rehome `00204.c` again if the first bad fact moves either earlier into call
-argument publication or later into `va_start` / `va_list` traversal.
+`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^c_testsuite_x86_backend_src_00204_c$'`
+
+followed by inspection of
+`build/c_testsuite_x86_backend/src/00204.c.s`, shows the current first bad
+fact still occurs in `arg()` at direct mixed aggregate/HFA call `fa4(...)`:
+the byte home for `s1` at `[rsp + 364]` is overwritten by `hfa14.d` before the
+call executes. That means `00204.c` has not yet advanced into a truthful
+downstream return-value / HFA runtime leaf.
+
+Keep idea 77 open only as a future downstream bucket for cases whose first bad
+fact really does move past argument publication/layout into post-link return
+or HFA runtime handling. `00204.c` should remain outside this idea until that
+boundary is actually reached.
 
 ## Scope Notes
 
