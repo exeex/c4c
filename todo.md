@@ -1,56 +1,46 @@
 # Execution State
 
 Status: Active
-Source Idea Path: ideas/open/68_prepared_local_slot_handoff_consumption_for_x86_backend.md
+Source Idea Path: ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 2.2
-Current Step Title: Repair The Current Local-Slot Or Continuation Seam
+Current Step ID: 1
+Current Step Title: Refresh Idea-61 Ownership And Confirm The Next Prepared-Module Seam
 Plan Review Counter: 0 / 4
 # Current Packet
 
 ## Just Finished
 
-Step `2.2` wired the existing generic pointer-binary renderer into
-`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`, which lets
-`myprintf` consume the first authoritative `vaarg` local-slot seam without a
-testcase-shaped matcher. Fresh `--dump-prepared-bir`, `--trace-mir`, and the
-delegated proof now show that `c_testsuite_x86_backend_src_00204_c` no longer
-fails on the idea-68 local-slot `instruction` handoff; `myprintf` now matches
-the `local-slot-guard-chain` lane and the full route graduates downstream into
-idea-61's bounded multi-function prepared-module restriction.
+Step `2.2` under the retired idea-68 runbook cleared the authoritative
+prepared local-slot `instruction` handoff for
+`c_testsuite_x86_backend_src_00204_c`, so the active lifecycle state now hands
+ownership back to idea 61's bounded multi-function prepared-module family.
 
 ## Suggested Next
 
-Run lifecycle review from the new stable state: record that
-`c_testsuite_x86_backend_src_00204_c` has rehomed back to idea 61's
-multi-function prepared-module family, then decide whether idea 68 has any
-remaining owned failures or should hand off/close.
+Inspect the current `00204.c` rejection under idea 61, confirm the exact
+bounded multi-function prepared-module or call/result-handoff seam now exposed
+in `prepared_module_emit.cpp`, and pick the nearest backend coverage that
+should anchor the next executor packet.
 
 ## Watchouts
 
-- The focused `00204` route tests now need to guard the downstream
-  multi-function prepared-module rejection, not the old idea-68 local-slot
-  rejection, because the local-slot seam is no longer the top-level blocker.
-- Keep rejecting helper-topology or testcase-shaped x86 growth; this slice was
-  a generic pointer-add consumption repair, and the next idea-61 packet should
-  stay module-contract-first.
-- `myprintf` still carries explicit variadic runtime state, so bounded helper
-  matching is not sufficient for the remaining downstream failure.
+- Keep the focused `00204` route anchored to the downstream multi-function
+  prepared-module rejection; the old idea-68 local-slot blocker is cleared and
+  should only reopen if the top-level failure genuinely regresses.
+- Reject `main + helper` or local ABI shortcuts that only accept the current
+  route without improving generic prepared-module traversal or call-bundle
+  consumption.
+- `myprintf` still carries explicit variadic/runtime state, so the next packet
+  must stay contract-first and avoid helper-topology overfit.
 
 ## Proof
 
-Latest delegated proof run:
+Latest accepted proof from the handoff slice:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_cli_trace_mir_00204_myprintf_rejection|c_testsuite_x86_backend_src_00204_c)$' | tee test_after.log`
 
-Observed state for lifecycle routing:
-after the pointer-add repair, the focused `backend_cli_*_00204_myprintf_*`
-route output shifted to `final: matched local-slot-guard-chain` plus the
-module-level bounded multi-function rejection from
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp`, and the full
-`c_testsuite_x86_backend_src_00204_c` case now fails with
-`x86 backend emitter only supports a minimal single-block i32 return
-terminator, a bounded equality-against-immediate guard family with immediate
-return leaves including fixed-offset same-module global i32 loads and
-pointer-backed same-module global roots, or one bounded compare-against-zero
-branch family through the canonical prepared-module handoff`.
-Proof log path: `test_after.log`.
+Observed routing state carried into the new active plan:
+the focused `backend_cli_*_00204_myprintf_*` route now reaches
+`final: matched local-slot-guard-chain`, and the full
+`c_testsuite_x86_backend_src_00204_c` case fails later in
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` with the bounded
+multi-function prepared-module restriction. Proof log path: `test_after.log`.

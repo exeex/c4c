@@ -16,17 +16,19 @@ beyond a single-function minimal route.
 This idea owns these current diagnostic families:
 
 - `error: x86 backend emitter only supports a single-function prepared module ...`
+  and nearby bounded multi-function prepared-module restrictions from the same
+  canonical prepared-module handoff family
 - `error: x86 backend emitter requires the authoritative prepared call-bundle ...`
 
-Current sizes from the 2026-04-20 backend run plus same-day graduations from
-upstream lowering work:
+Current sizes from the 2026-04-20 backend run plus later same-family
+re-homing from upstream leaf work:
 
-- single-function prepared-module restriction: 19 failures
+- prepared-module restriction family: 20 failures
 - prepared call-bundle requirement: 5 failures
 
 ## Current Known Failed Cases It Owns
 
-Single-function prepared-module restriction cases:
+Prepared-module restriction cases:
 
 - `c_testsuite_x86_backend_src_00077_c`
 - `c_testsuite_x86_backend_src_00078_c`
@@ -45,6 +47,7 @@ Single-function prepared-module restriction cases:
 - `c_testsuite_x86_backend_src_00198_c`
 - `c_testsuite_x86_backend_src_00199_c`
 - `c_testsuite_x86_backend_src_00200_c`
+- `c_testsuite_x86_backend_src_00204_c`
 - `c_testsuite_x86_backend_src_00210_c`
 - `c_testsuite_x86_backend_src_00219_c`
 
@@ -64,15 +67,16 @@ Prepared call-bundle failures:
 
 ## Latest Durable Note
 
-As of 2026-04-22, the accepted helper-active module-boundary repair in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` advanced
-`c_testsuite_x86_backend_src_00204_c` back out of this idea. The old generic
-prepared-module rejection is no longer the top-level blocker for that route;
-`00204.c` now stops on the downstream authoritative prepared local-slot
-handoff family again, so durable ownership returns to idea 68. Keep this idea
-focused on cases that still fail for multi-function prepared-module traversal
-or authoritative prepared call-bundle ownership, and only reopen `00204.c`
-here if it regresses to one of those failure families.
+As of 2026-04-22, the accepted idea-68 pointer-add/local-slot handoff repair
+advanced `c_testsuite_x86_backend_src_00204_c` back out of the authoritative
+prepared local-slot family and into this idea's bounded multi-function
+prepared-module restriction again. Fresh route proof now shows the focused
+`myprintf` lane matching `local-slot-guard-chain`, while the full top-level
+case stops later in
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` with the bounded
+multi-function prepared-module rejection. Durable ownership therefore returns
+to idea 61 until `00204.c` either clears that module/call family or graduates
+into another downstream leaf.
 
 ## Scope Notes
 

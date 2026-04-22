@@ -31,7 +31,9 @@ when the route is not better explained by an already-open narrower leaf for:
 
 ## Current Known Failed Cases It Owns
 
-- `c_testsuite_x86_backend_src_00204_c`
+- none currently confirmed; `c_testsuite_x86_backend_src_00204_c` graduated
+  back to idea 61 on 2026-04-22 after the authoritative prepared local-slot
+  handoff repair cleared the old blocker
 
 As additional backend cases are confirmed to stop on the same authoritative
 prepared local-slot handoff family, they should route here instead of being
@@ -39,18 +41,15 @@ forced back into idea 59, 60, or 61.
 
 ## Latest Durable Note
 
-As of 2026-04-22, the fresh probe
-`ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_x86_backend_src_00204_c|backend_cli_trace_mir_00204_match_rejection)$'`
-showed that `backend_cli_trace_mir_00204_match_rejection` still passes and the
-focused `match` helper still exposes an internal scalar restriction on the
-`local-slot-guard-chain` lane, but the full top-level
-`c_testsuite_x86_backend_src_00204_c` route no longer stops there. It now
-fails later with
-`error: x86 backend emitter requires the authoritative prepared local-slot instruction handoff through the canonical prepared-module handoff`
-from `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` when
-continuation or authoritative multi-block control-flow is present. Durable
-ownership therefore moves out of idea 60 and into this new local-slot handoff
-leaf until the full case advances again.
+As of 2026-04-22, the accepted pointer-add/local-slot consumption repair in
+`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` cleared the old
+authoritative prepared local-slot `instruction` handoff blocker for
+`c_testsuite_x86_backend_src_00204_c`. Fresh route proof now shows
+`myprintf` matching the `local-slot-guard-chain` lane and the top-level case
+graduating downstream into idea 61's bounded multi-function prepared-module
+restriction from `src/backend/mir/x86/codegen/prepared_module_emit.cpp`.
+Idea 68 stays open for future authoritative prepared local-slot handoff cases,
+but `00204.c` is no longer an owned failure.
 
 ## Scope Notes
 
