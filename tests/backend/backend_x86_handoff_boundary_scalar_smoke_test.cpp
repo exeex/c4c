@@ -3,7 +3,7 @@
 #include "src/backend/bir/bir_printer.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/mir/x86/codegen/abi/x86_target_abi.hpp"
-#include "src/backend/mir/x86/codegen/x86_codegen.hpp"
+#include "src/backend/mir/x86/codegen/x86_codegen.hpp"  // Compatibility holdout for render_prepared_stack_memory_operand().
 #include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 

@@ -2,7 +2,7 @@
 #include "src/backend/bir/bir_printer.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/mir/x86/codegen/abi/x86_target_abi.hpp"
-#include "src/backend/mir/x86/codegen/x86_codegen.hpp"
+#include "src/backend/mir/x86/codegen/x86_codegen.hpp"  // Compatibility holdout for prepared helper/render reach-throughs without narrower owners yet.
 #include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 
@@ -3616,7 +3616,7 @@ int check_route_renders_helper_same_module_local_byval_helper_prefix() {
     if (!wide_register.has_value()) {
       return std::nullopt;
     }
-    return c4c::backend::x86::narrow_i32_register(*wide_register);
+    return c4c::backend::x86::abi::narrow_i32_register_name(*wide_register);
   };
   const auto minimal_param_register_at =
       [&](const bir::Param& param, std::size_t arg_index) -> std::optional<std::string> {
@@ -3871,7 +3871,7 @@ int check_route_renders_helper_same_module_local_byval_f32_helper_prefix() {
     if (!wide_register.has_value()) {
       return std::nullopt;
     }
-    return c4c::backend::x86::narrow_i32_register(*wide_register);
+    return c4c::backend::x86::abi::narrow_i32_register_name(*wide_register);
   };
   const auto minimal_param_register_at =
       [&](const bir::Param& param, std::size_t arg_index) -> std::optional<std::string> {

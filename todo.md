@@ -5,28 +5,27 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 1.5.3
 Current Step Title: Audit Remaining Broad-Header Holdouts Before Lowering Migration
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed a step-1.5 compatibility-classification packet by marking
-`render_prepared_stack_memory_operand(...)` and
-`PreparedModuleMultiDefinedDispatchState` /
-`build_prepared_module_multi_defined_dispatch_state(...)` as explicit prepared
-compatibility holdouts in `x86_codegen.hpp`, and by annotating the reviewed
-`module/module_emit.cpp` and `route_debug.cpp` consumers so those remaining
-`x86_codegen.hpp` includes are clearly intentional until the reviewed
-`prepared/*` seams land.
+Completed step 1.5.3 by auditing the remaining backend handoff boundary tests
+that still include `src/backend/mir/x86/codegen/x86_codegen.hpp`: kept
+`backend_x86_handoff_boundary_scalar_smoke_test.cpp` and
+`backend_x86_handoff_boundary_compare_branch_test.cpp` as explicit
+compatibility holdouts for `render_prepared_stack_memory_operand(...)`, kept
+`backend_x86_handoff_boundary_multi_defined_call_test.cpp` as a prepared
+helper/render holdout where no narrower reviewed owner exists yet, and
+removed the reviewed register-narrowing reach-through in that test by using
+`x86::abi::narrow_i32_register_name(...)` instead of the broad-header helper.
 
 ## Suggested Next
 
-Continue step 1.5.3 by auditing the other reviewed-seam consumers that still
-include `src/backend/mir/x86/codegen/x86_codegen.hpp`, and separate true
-prepared compatibility holdouts from any API/core/abi/module declarations that
-already have a narrower owner so the remaining broad-header usage is limited
-to honest staged dependencies only before step 2 starts migrating lowering
-families.
+Move to the next step-1.5.3 consumer packet outside these backend handoff
+boundary tests and apply the same rule: remove only declaration reach-throughs
+that already have a reviewed owner, while leaving helper/prepared compatibility
+holdouts on `x86_codegen.hpp` until their real seams land.
 
 ## Watchouts
 
@@ -44,6 +43,12 @@ families.
 - Backend tests that exercise route-debug reporting now need
   `route_debug.hpp`; do not rely on `x86_codegen.hpp` to leak those
   declarations back in.
+- `render_prepared_stack_memory_operand(...)`,
+  `render_prepared_trivial_defined_function_if_supported(...)`,
+  `render_prepared_bounded_same_module_helper_prefix_if_supported(...)`, and
+  the prepared call-argument ABI selectors still have no narrower reviewed
+  owner, so forcing these three tests off `x86_codegen.hpp` would be fake
+  narrowing rather than progress.
 - Do not force helper-heavy tests off `x86_codegen.hpp` unless their actual
   helper declarations have a real narrower owner; API-only include churn is
   fine, but fake narrowing that breaks helper users is not progress.
@@ -53,11 +58,7 @@ families.
 
 ## Proof
 
-Step 1.5 compatibility-holdout classification packet on 2026-04-22 using:
+Step 1.5.3 backend handoff broad-header audit packet on 2026-04-22 using:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 Backend subset passed. Proof log path: `test_after.log`
-Regression guard script result:
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
-reported no new failures but rejected the pair because passed count stayed
-`106 -> 106`, so the canonical baseline was not rolled forward.
