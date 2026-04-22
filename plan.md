@@ -89,6 +89,124 @@ Completion check:
 - the shared replacement seams exist in real source form and the backend still
   builds with the legacy route intact
 
+### Step 1.1: Land Replacement `api` And `core` File Boundaries
+
+Goal: make the reviewed `api/` and `core/` seams real in source form without
+changing who owns lowering behavior yet.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/api/`
+- `src/backend/mir/x86/codegen/core/`
+
+Actions:
+
+- add the reviewed `api/` and `core/` headers and source files that define the
+  replacement surface area
+- move declarations and light helper wiring out of legacy mixed headers into
+  the new file boundaries
+- keep legacy entrypoints compiling through forwarding or wrapper includes
+  where needed
+
+Completion check:
+
+- the reviewed `api/` and `core/` seam files exist and compile without forcing
+  public entrypoint rewiring yet
+
+### Step 1.2: Extract Shared Core Helpers Behind Narrow Owners
+
+Goal: peel reusable shared state, helper logic, and common queries behind the
+reviewed `core/` owners instead of leaving them fused into legacy orchestration
+files.
+
+Primary targets:
+
+- shared helper-heavy files under `src/backend/mir/x86/codegen/`
+- reviewed `core/` implementation seams
+
+Actions:
+
+- move one coherent helper family at a time behind the reviewed `core/`
+  boundaries
+- replace broad `x86_codegen.hpp` reach-throughs with narrower includes and
+  local adapters where possible
+- preserve behavior by keeping legacy callers routed through the new helpers
+  until later steps rewire ownership
+
+Completion check:
+
+- shared helper families start living behind reviewed `core/` owners and the
+  backend still builds through both old and new call paths
+
+### Step 1.3: Stand Up The Reviewed `abi` Support Surface
+
+Goal: materialize the reviewed `abi/` seam so calling-convention and data-layout
+support stop depending on ad hoc legacy header reach-through.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/abi/`
+- legacy ABI-related helper surfaces that should forward into the new seam
+
+Actions:
+
+- add the reviewed `abi/` replacement files and wire them into the build
+- move or wrap existing ABI support helpers behind the new seam names
+- keep consumers compiling through compatibility forwarding until canonical
+  lowering families migrate in step 2
+
+Completion check:
+
+- the reviewed `abi/` seam is present in real source form and legacy callers
+  can still compile through transitional forwarding
+
+### Step 1.4: Materialize Module Support Seams While Preserving Compatibility Wrappers
+
+Goal: move whole-module support helpers behind the reviewed `module/` seams
+while keeping the legacy prepared-module route as a thin compatibility layer.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/module/`
+- compatibility wrappers that still expose legacy module entrypoints
+
+Actions:
+
+- extract concrete module helper families into reviewed `module/` owners one
+  packet at a time
+- keep `prepared_module_emit.cpp` and similar legacy module surfaces wrapper-thin
+  instead of letting orchestration drift back into compatibility files
+- preserve legacy symbol contracts until step 4 explicitly rewires module entry
+  and dispatch ownership
+
+Completion check:
+
+- module support helpers live behind reviewed `module/` seams and compatibility
+  wrappers remain thin while the backend still builds
+
+### Step 1.5: Audit Transitional Forwarding And Buildability Across Shared Seams
+
+Goal: leave step 1 with explicit transitional forwarding and a buildable backend
+instead of an ambiguous mix of new files and silent legacy reach-through.
+
+Primary targets:
+
+- transitional wrappers and forwarding points under `src/backend/mir/x86/codegen/`
+- build wiring for the reviewed shared seams
+
+Actions:
+
+- classify remaining shared-seam legacy files as forwarding, compatibility, or
+  still-pending extraction points
+- remove accidental duplicate ownership created during seam materialization
+- prove the backend still builds before step 2 starts moving canonical lowering
+  families
+
+Completion check:
+
+- shared-seam forwarding is explicit, duplicate ownership is not silently
+  growing, and the backend still builds with the legacy route intact
+
 ## Step 2: Migrate Canonical Lowering Families Into Reviewed Owners
 
 Goal: move frame, call, return, memory, comparison, scalar, float, and

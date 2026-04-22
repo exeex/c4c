@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implementation_for_phoenix_rebuild.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Materialize Shared Seam Scaffolding And Keep Legacy Route Compiling
-Plan Review Counter: 6 / 6
+Current Step ID: 1.4
+Current Step Title: Materialize Module Support Seams While Preserving Compatibility Wrappers
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
