@@ -5,7 +5,7 @@ Source Idea Path: ideas/open/70_post_asm_global_function_pointer_and_variadic_ru
 Source Plan Path: plan.md
 Current Step ID: 2.1
 Current Step Title: Repair The Selected Post-Asm Closure Seam
-Plan Review Counter: 0 / 4
+Plan Review Counter: 1 / 4
 # Current Packet
 
 ## Just Finished
@@ -17,15 +17,18 @@ now closes over the missing same-module symbol definitions that left
 also emits direct variadic-runtime helper symbols such as `llvm.va_start.p0`
 so the case advances beyond the prior unresolved-reference family. With that
 closure seam repaired, `00204.c` now links and reaches a later downstream
-runtime crash inside the variadic path instead of failing at link.
+runtime crash inside the variadic path instead of failing at link. That crash
+is now explicitly split into `ideas/open/71_post_link_variadic_runtime_correctness_for_x86_backend.md`
+rather than remaining implicit next work for this active plan.
 
 ## Suggested Next
 
-Start the next Step `2.1` packet on truthful variadic-runtime semantics for
-the emitted `llvm.va_start.p0` closure path so the newly linked `00204.c`
-advances beyond its current runtime segfault, while separately rechecking the
-nearest boundary expectation against the actual rejection wording before any
-test update.
+Keep idea 70 focused on the remaining truthful boundary-contract seam:
+recheck `backend_x86_handoff_boundary` against the actual current rejection
+wording, then repair either the contract text or the owning rejection surface
+without reopening post-link runtime semantics. The newly linked `00204.c`
+runtime segfault now belongs to idea 71 and is not the next packet under this
+active runbook.
 
 ## Watchouts
 
@@ -33,10 +36,11 @@ test update.
   closed and should not be reopened unless assembler-invalid output returns.
 - The link-time unresolved-reference family for `00204.c` is cleared; the next
   observed blocker is a runtime segfault after the new helper closure lets the
-  binary link.
+  binary link, and that runtime work is now tracked separately in idea 71.
 - The variadic helper closure is only a first ownership repair. `llvm.va_start`
   now resolves, but the helper semantics are not yet sufficient to preserve
-  correct runtime behavior for the full `myprintf` path.
+  correct runtime behavior for the full `myprintf` path; do not absorb that
+  runtime repair back into idea 70.
 - `backend_x86_handoff_boundary` still fails on contract wording, not on the
   repaired same-module symbol or direct variadic-runtime unresolved-reference
   seam.

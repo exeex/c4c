@@ -30,13 +30,13 @@ This idea owns x86 backend failures where:
 
 ## Current Known Failed Cases It Owns
 
-- `c_testsuite_x86_backend_src_00204_c`
+- `backend_x86_handoff_boundary`
 
 ## Latest Durable Note
 
 As of 2026-04-22, idea 69's owned long-double aggregate asm-emission seam is
 cleared: `00204.c` now assembles and the generated asm no longer contains the
-old invalid `fldt` / `fstpt` forms. Fresh proof now fails later on two
+old invalid `fldt` / `fstpt` forms. Fresh proof first failed later on two
 downstream surfaces from the same family:
 
 - `backend_x86_handoff_boundary` reports a stale wrong-contract expectation
@@ -47,6 +47,14 @@ downstream surfaces from the same family:
 
 Durable ownership therefore graduates out of idea 69 and into this new
 post-assembly closure leaf.
+
+Later on 2026-04-22, the first post-assembly closure repair removed those
+unresolved same-module and variadic-runtime references for `00204.c`. That
+case now links and fails later at runtime with a variadic-path segfault, which
+is no longer owned here and must be tracked as a separate runtime initiative.
+The remaining currently owned seam for idea 70 is the truthful
+`backend_x86_handoff_boundary` contract wording for the post-assembly closure
+family.
 
 ## Scope Notes
 
