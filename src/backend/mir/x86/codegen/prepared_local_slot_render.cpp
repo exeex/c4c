@@ -5018,6 +5018,8 @@ std::optional<std::string> render_prepared_block_same_module_call_inst_if_suppor
   const bool needs_call_alignment_pad =
       block_context.local_layout != nullptr &&
       ((block_context.local_layout->frame_size + stack_arg_bytes) % 16) == 0;
+  const std::size_t call_stack_reserve =
+      stack_arg_bytes + (needs_call_alignment_pad ? std::size_t{8} : std::size_t{0});
 
   std::string body;
   const auto preserved_param_registers =
@@ -5205,6 +5207,9 @@ std::optional<std::string> render_prepared_block_same_module_call_inst_if_suppor
   if (stack_arg_bytes != 0) {
     body += "    sub rsp, " + std::to_string(stack_arg_bytes) + "\n";
   }
+  if (needs_call_alignment_pad) {
+    body += "    sub rsp, 8\n";
+  }
   for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
     const auto destination_stack_offset = select_prepared_call_argument_abi_stack_offset_if_supported(
         function_context.function_locations,
@@ -5234,7 +5239,7 @@ std::optional<std::string> render_prepared_block_same_module_call_inst_if_suppor
               function_name_id,
               arg.name,
               *scratch_register,
-              stack_arg_bytes,
+              call_stack_reserve,
               *current_ptr_name,
               &body)) {
         return std::nullopt;
@@ -5267,7 +5272,7 @@ std::optional<std::string> render_prepared_block_same_module_call_inst_if_suppor
       const auto rendered_arg = render_prepared_named_f128_copy_into_memory_if_supported(
           arg.name,
           render_prepared_stack_memory_operand(*destination_stack_offset, "TBYTE"),
-          stack_arg_bytes,
+          call_stack_reserve,
           block_context.local_layout,
           function_context.function,
           function_context.prepared_names,
@@ -5317,14 +5322,8 @@ std::optional<std::string> render_prepared_block_same_module_call_inst_if_suppor
   }
 
   if (call->is_variadic) {
-    if (needs_call_alignment_pad) {
-      body += "    sub rsp, 8\n";
-    }
     body += "    mov eax, " + std::to_string(float_register_args) + "\n";
   } else {
-    if (needs_call_alignment_pad) {
-      body += "    sub rsp, 8\n";
-    }
     body += "    xor eax, eax\n";
   }
   body += "    call ";
@@ -5843,6 +5842,8 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
   const bool needs_call_alignment_pad =
       block_context.local_layout != nullptr &&
       ((block_context.local_layout->frame_size + stack_arg_bytes) % 16) == 0;
+  const std::size_t call_stack_reserve =
+      stack_arg_bytes + (needs_call_alignment_pad ? std::size_t{8} : std::size_t{0});
   for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
     const auto& arg = call->args[arg_index];
     const auto arg_type = call->arg_types[arg_index];
@@ -6015,6 +6016,9 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
   if (stack_arg_bytes != 0) {
     body += "    sub rsp, " + std::to_string(stack_arg_bytes) + "\n";
   }
+  if (needs_call_alignment_pad) {
+    body += "    sub rsp, 8\n";
+  }
   for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
     const auto destination_stack_offset = select_prepared_call_argument_abi_stack_offset_if_supported(
         function_context.function_locations,
@@ -6031,7 +6035,7 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
       const auto rendered_arg = render_prepared_named_f128_copy_into_memory_if_supported(
           arg.name,
           render_prepared_stack_memory_operand(*destination_stack_offset, "TBYTE"),
-          stack_arg_bytes,
+          call_stack_reserve,
           block_context.local_layout,
           function_context.function,
           function_context.prepared_names,
@@ -6058,7 +6062,7 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
       if (!append_prepared_named_ptr_move_into_register_with_preserved_sources_if_supported(
               arg.name,
               *scratch_register,
-              stack_arg_bytes,
+              call_stack_reserve,
               &body)) {
         return std::nullopt;
       }
@@ -6075,14 +6079,8 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
   }
 
   if (call->is_variadic) {
-    if (needs_call_alignment_pad) {
-      body += "    sub rsp, 8\n";
-    }
     body += "    mov eax, " + std::to_string(float_register_args) + "\n";
   } else {
-    if (needs_call_alignment_pad) {
-      body += "    sub rsp, 8\n";
-    }
     body += "    xor eax, eax\n";
   }
   body += "    call ";
