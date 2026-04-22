@@ -886,7 +886,7 @@ add_test(
           -DDUMP_FLAG=--trace-mir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
           "-DEXTRA_ARGS=--mir-focus-function;match"
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: match|function match|try lane local-slot-guard-chain|result: matched|try lane compare-driven-entry|detail: x86 backend emitter only supports a minimal single-block i32 return terminator, a bounded equality-against-immediate guard family with immediate return leaves including fixed-offset same-module global i32 loads and pointer-backed same-module global roots, or one bounded compare-against-zero branch family through the canonical prepared-module handoff|final: matched local-slot-guard-chain|focused functions matched: 1"
+          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: match|module-level bounded multi-function lane|module-level final facts: bounded lane facts: myprintf/local-slot-guard-chain and myprintf/single-block-return-dispatch|function match|try lane local-slot-guard-chain|result: matched|try lane compare-driven-entry|detail: x86 backend emitter only supports a minimal single-block i32 return terminator, a bounded equality-against-immediate guard family with immediate return leaves including fixed-offset same-module global i32 loads and pointer-backed same-module global roots, or one bounded compare-against-zero branch family through the canonical prepared-module handoff|final: matched local-slot-guard-chain|focused functions matched: 1"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_trace_mir_00204_match_rejection PROPERTIES

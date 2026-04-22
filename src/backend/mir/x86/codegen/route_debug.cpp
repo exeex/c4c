@@ -47,6 +47,7 @@ struct FinalRejectionReport {
 
 struct ModuleLaneRejectionReport {
   std::string summary;
+  std::optional<std::string> facts;
   std::string next_surface;
 };
 
@@ -501,16 +502,43 @@ ModuleLaneRejectionReport build_module_lane_rejection_report(
     return ModuleLaneRejectionReport{
         .summary =
             "bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support",
+        .facts = std::nullopt,
         .next_surface =
             "inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
     };
   }
 
+  std::optional<std::string> facts;
+  constexpr std::string_view kBoundedFunctionPrefix = "[bounded function: ";
+  constexpr std::string_view kLanePrefix = ", lane: ";
+  constexpr std::string_view kSuffix = "]";
+  const auto detail_view = std::string_view(*detail);
+  const auto bounded_function_pos = detail_view.find(kBoundedFunctionPrefix);
+  if (bounded_function_pos != std::string_view::npos) {
+    const auto function_start = bounded_function_pos + kBoundedFunctionPrefix.size();
+    const auto lane_pos = detail_view.find(kLanePrefix, function_start);
+    const auto suffix_pos =
+        lane_pos == std::string_view::npos ? std::string_view::npos
+                                           : detail_view.find(kSuffix, lane_pos + kLanePrefix.size());
+    if (lane_pos != std::string_view::npos && suffix_pos != std::string_view::npos &&
+        lane_pos > function_start) {
+      const auto function_name = detail_view.substr(function_start, lane_pos - function_start);
+      const auto lane_name = detail_view.substr(lane_pos + kLanePrefix.size(),
+                                                suffix_pos - (lane_pos + kLanePrefix.size()));
+      facts = "bounded lane facts: function=" + std::string(function_name) +
+              ", lane=" + std::string(lane_name);
+    }
+  }
+
   return ModuleLaneRejectionReport{
       .summary =
           "bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support",
+      .facts = std::move(facts),
       .next_surface =
-          "inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
+          detail_view.find("authoritative prepared local-slot instruction handoff") !=
+                  std::string_view::npos
+              ? "inspect the bounded multi-function local-slot handoff consumed in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
+              : "inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
   };
 }
 
@@ -1703,6 +1731,9 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           multi_defined_dispatch_detail.value_or(std::string(kBoundedMultiFunctionLaneShapeError));
       out << "- module-level final rejection: " << rejection.summary << "\n";
       out << "- module-level final detail: " << detail << "\n";
+      if (rejection.facts.has_value()) {
+        out << "- module-level final facts: " << *rejection.facts << "\n";
+      }
       out << "- module-level next inspect: " << rejection.next_surface << "\n";
     }
   } else {
@@ -1716,6 +1747,9 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
           multi_defined_dispatch_detail.value_or(std::string(kBoundedMultiFunctionLaneShapeError));
       out << "  final: rejected: " << rejection.summary << "\n";
       out << "  final detail: " << detail << "\n";
+      if (rejection.facts.has_value()) {
+        out << "  final facts: " << *rejection.facts << "\n";
+      }
       out << "  next inspect: " << rejection.next_surface << "\n";
     } else if (multi_defined_dispatch_detail.has_value()) {
       out << "  detail: " << *multi_defined_dispatch_detail << "\n";
@@ -1728,11 +1762,13 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
   std::size_t focused_prepared_block_count = 0;
   std::size_t focused_prepared_value_count = 0;
   std::size_t focused_prepared_move_bundle_count = 0;
+  std::vector<std::string> module_lane_fact_labels;
   for (const auto* function : defined_functions) {
-    if (focus.function.has_value() && function->name != *focus.function) {
-      continue;
+    const bool function_in_focus =
+        !focus.function.has_value() || function->name == *focus.function;
+    if (function_in_focus) {
+      ++focused_function_count;
     }
-    ++focused_function_count;
     const auto function_name_id =
         c4c::backend::prepare::resolve_prepared_function_name_id(module.names, function->name)
             .value_or(c4c::kInvalidFunctionName);
@@ -1769,14 +1805,15 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
             function_control_flow == nullptr ? 0 : function_control_flow->join_transfers.size(),
     };
     const auto focused_bir_blocks =
-        focus.block.has_value() ? collect_focused_bir_block_labels(*function, focus.block)
-                                : std::vector<std::string_view>{};
+        function_in_focus && focus.block.has_value()
+            ? collect_focused_bir_block_labels(*function, focus.block)
+            : std::vector<std::string_view>{};
     const auto focused_prepared_blocks =
-        focus.block.has_value()
+        function_in_focus && focus.block.has_value()
             ? collect_focused_prepared_block_labels(module.names, function_control_flow, focus.block)
             : std::vector<std::string_view>{};
     const auto focus_value_id =
-        focus_value.has_value()
+        function_in_focus && focus_value.has_value()
             ? c4c::backend::prepare::resolve_prepared_value_name_id(module.names, *focus_value)
             : std::nullopt;
     const auto focused_prepared_value_ids =
@@ -1807,58 +1844,63 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
                                  focused_prepared_value_ids.count(move.to_value_id) != 0;
                         });
                   }));
-    if (focus.block.has_value()) {
+    if (function_in_focus && focus.block.has_value()) {
       focused_bir_block_count += focused_bir_blocks.size();
       focused_prepared_block_count += focused_prepared_blocks.size();
     }
-    if (focus_value.has_value()) {
+    if (function_in_focus && focus_value.has_value()) {
       focused_prepared_value_count += focused_prepared_values;
       focused_prepared_move_bundle_count += focused_prepared_move_bundles;
     }
 
-    if (verbosity == RouteDebugVerbosity::Summary) {
-      out << "\nfunction " << report.function_name << "\n";
-      out << "- bir blocks: " << report.bir_block_count << "\n";
-      out << "- prepared blocks: " << report.prepared_block_count << "\n";
-      out << "- branch conditions: " << report.branch_condition_count << "\n";
-      out << "- join transfers: " << report.join_transfer_count << "\n";
-      if (focus_value.has_value()) {
-        out << "- focused prepared values: " << focused_prepared_values << "\n";
-        out << "- focused prepared move bundles: " << focused_prepared_move_bundles << "\n";
-      }
-      if (focus.block.has_value()) {
-        out << "- focused bir blocks: " << focused_bir_blocks.size() << "\n";
-        for (const auto label : focused_bir_blocks) {
-          append_indented_line(out, 1, std::string("- ") + std::string(label));
+    if (function_in_focus) {
+      if (verbosity == RouteDebugVerbosity::Summary) {
+        out << "\nfunction " << report.function_name << "\n";
+        out << "- bir blocks: " << report.bir_block_count << "\n";
+        out << "- prepared blocks: " << report.prepared_block_count << "\n";
+        out << "- branch conditions: " << report.branch_condition_count << "\n";
+        out << "- join transfers: " << report.join_transfer_count << "\n";
+        if (focus_value.has_value()) {
+          out << "- focused prepared values: " << focused_prepared_values << "\n";
+          out << "- focused prepared move bundles: " << focused_prepared_move_bundles << "\n";
         }
-        out << "- focused prepared blocks: " << focused_prepared_blocks.size() << "\n";
-        for (const auto label : focused_prepared_blocks) {
-          append_indented_line(out, 1, std::string("- ") + std::string(label));
+        if (focus.block.has_value()) {
+          out << "- focused bir blocks: " << focused_bir_blocks.size() << "\n";
+          for (const auto label : focused_bir_blocks) {
+            append_indented_line(out, 1, std::string("- ") + std::string(label));
+          }
+          out << "- focused prepared blocks: " << focused_prepared_blocks.size() << "\n";
+          for (const auto label : focused_prepared_blocks) {
+            append_indented_line(out, 1, std::string("- ") + std::string(label));
+          }
         }
-      }
-    } else {
-      out << "\nfunction " << report.function_name << "\n";
-      out << "  facts: bir_blocks=" << report.bir_block_count
-          << ", prepared_blocks=" << report.prepared_block_count
-          << ", branch_conditions=" << report.branch_condition_count
-          << ", join_transfers=" << report.join_transfer_count << "\n";
-      if (focus_value.has_value()) {
-        out << "  focused prepared values: " << focused_prepared_values << "\n";
-        out << "  focused prepared move bundles: " << focused_prepared_move_bundles << "\n";
-      }
-      if (focus.block.has_value()) {
-        out << "  focused bir blocks: " << focused_bir_blocks.size() << "\n";
-        for (const auto label : focused_bir_blocks) {
-          append_indented_line(out, 2, std::string("- ") + std::string(label));
+      } else {
+        out << "\nfunction " << report.function_name << "\n";
+        out << "  facts: bir_blocks=" << report.bir_block_count
+            << ", prepared_blocks=" << report.prepared_block_count
+            << ", branch_conditions=" << report.branch_condition_count
+            << ", join_transfers=" << report.join_transfer_count << "\n";
+        if (focus_value.has_value()) {
+          out << "  focused prepared values: " << focused_prepared_values << "\n";
+          out << "  focused prepared move bundles: " << focused_prepared_move_bundles << "\n";
         }
-        out << "  focused prepared blocks: " << focused_prepared_blocks.size() << "\n";
-        for (const auto label : focused_prepared_blocks) {
-          append_indented_line(out, 2, std::string("- ") + std::string(label));
+        if (focus.block.has_value()) {
+          out << "  focused bir blocks: " << focused_bir_blocks.size() << "\n";
+          for (const auto label : focused_bir_blocks) {
+            append_indented_line(out, 2, std::string("- ") + std::string(label));
+          }
+          out << "  focused prepared blocks: " << focused_prepared_blocks.size() << "\n";
+          for (const auto label : focused_prepared_blocks) {
+            append_indented_line(out, 2, std::string("- ") + std::string(label));
+          }
         }
       }
     }
 
     if (function->blocks.empty()) {
+      if (!function_in_focus) {
+        continue;
+      }
       if (verbosity == RouteDebugVerbosity::Summary) {
         out << "- final: empty function body\n";
       } else {
@@ -2015,6 +2057,29 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
                                            return attempt.matched;
                                          });
 
+    if (!multi_defined_dispatch.rendered_module.has_value() &&
+        multi_defined_dispatch_detail.has_value() &&
+        string_contains(*multi_defined_dispatch_detail,
+                        "authoritative prepared local-slot instruction handoff")) {
+      for (const auto& attempt : report.attempts) {
+        if (!attempt.detail.has_value() ||
+            !string_contains(*attempt.detail,
+                             "authoritative prepared local-slot instruction handoff")) {
+          continue;
+        }
+        const auto label = report.function_name + "/" + attempt.lane_name;
+        if (std::find(module_lane_fact_labels.begin(),
+                      module_lane_fact_labels.end(),
+                      label) == module_lane_fact_labels.end()) {
+          module_lane_fact_labels.push_back(label);
+        }
+      }
+    }
+
+    if (!function_in_focus) {
+      continue;
+    }
+
     if (verbosity == RouteDebugVerbosity::Summary) {
       out << "- top-level lane: "
           << (matched_it == report.attempts.end() ? "no current lane matched"
@@ -2053,10 +2118,17 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
   }
 
   if (focus.function.has_value()) {
+    if (!module_lane_fact_labels.empty()) {
+      out << "module-level final facts: bounded lane facts: "
+          << join_fact_labels(module_lane_fact_labels) << "\n";
+    }
     out << "\nfocused functions matched: " << focused_function_count << "\n";
     if (focused_function_count == 0) {
       out << "no defined function matched the requested MIR focus\n";
     }
+  } else if (!module_lane_fact_labels.empty()) {
+    out << "\nmodule-level final facts: bounded lane facts: "
+        << join_fact_labels(module_lane_fact_labels) << "\n";
   }
   if (focus.block.has_value()) {
     out << "focused bir blocks matched: " << focused_bir_block_count << "\n";

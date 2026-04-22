@@ -363,6 +363,11 @@ std::string emit_prepared_module(
       throw_multi_defined_contract();
     }
   };
+  const auto annotate_multi_defined_local_slot_detail =
+      [&](std::string_view function_name, std::string_view lane_name) -> std::string {
+    return "x86 backend emitter requires the authoritative prepared local-slot instruction handoff through the canonical prepared-module handoff [bounded function: " +
+           std::string(function_name) + ", lane: " + std::string(lane_name) + "]";
+  };
   if (multi_defined_dispatch.rendered_module.has_value()) {
     if (!multi_defined_dispatch.helper_prefix.empty()) {
       return multi_defined_dispatch.helper_prefix + *multi_defined_dispatch.rendered_module;
@@ -861,6 +866,11 @@ std::string emit_prepared_module(
       } catch (const std::invalid_argument& error) {
         if (std::string_view(error.what()).find(
                 "authoritative prepared local-slot ") != std::string_view::npos) {
+          if (defined_functions.size() > 1 && multi_defined_dispatch.has_bounded_same_module_helpers) {
+            throw std::invalid_argument(
+                annotate_multi_defined_local_slot_detail(function.name,
+                                                         "local-structural-dispatch"));
+          }
           throw_multi_defined_contract_if_active();
         }
         throw;
