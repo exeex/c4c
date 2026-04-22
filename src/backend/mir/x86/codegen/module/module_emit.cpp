@@ -891,6 +891,40 @@ struct ModuleFunctionDispatchAssemblySupport {
   }
 };
 
+struct ModuleRenderSupport {
+  const std::vector<const c4c::backend::bir::Function*>& defined_functions;
+  const c4c::backend::bir::Function& entry_function;
+  const PreparedModuleMultiDefinedDispatchState& multi_defined_dispatch;
+  const ModuleMultiDefinedSupport& multi_defined_support;
+  const ModuleFunctionDispatchAssemblySupport& function_dispatch_assembly_support;
+  const c4c::backend::x86::module::ModuleDataSupport& module_data_support;
+
+  [[nodiscard]] std::string render_selected_defined_functions() const {
+    std::string rendered_functions;
+    std::unordered_set<std::string_view> used_string_names;
+    std::unordered_set<std::string_view> used_same_module_global_names;
+    for (const auto* function : defined_functions) {
+      rendered_functions += function_dispatch_assembly_support.render_defined_function(
+          *function, true, &used_string_names, &used_same_module_global_names);
+    }
+    return module_data_support.finalize_selected_module_text(
+        multi_defined_support.prepend_helper_prefix(rendered_functions), used_string_names,
+        &used_same_module_global_names);
+  }
+
+  [[nodiscard]] std::string render_module_text() const {
+    if (multi_defined_dispatch.rendered_module.has_value()) {
+      return module_data_support.finalize_multi_defined_rendered_module_text(
+          multi_defined_support.prepend_helper_prefix(*multi_defined_dispatch.rendered_module));
+    }
+    if (multi_defined_support.has_multiple_defined_functions()) {
+      return render_selected_defined_functions();
+    }
+    return function_dispatch_assembly_support.render_defined_function(entry_function, false,
+                                                                     nullptr, nullptr);
+  }
+};
+
 }  // namespace
 
 std::string emit_prepared_module_text(
@@ -933,10 +967,6 @@ std::string emit_prepared_module_text(
       render_trivial_defined_function_if_supported, minimal_function_return_register,
       minimal_function_asm_prefix, minimal_param_register_at);
   const ModuleMultiDefinedSupport multi_defined_support{defined_functions, multi_defined_dispatch};
-  if (multi_defined_dispatch.rendered_module.has_value()) {
-    return module_data_support.finalize_multi_defined_rendered_module_text(
-        multi_defined_support.prepend_helper_prefix(*multi_defined_dispatch.rendered_module));
-  }
   const ModuleFunctionDispatchAssemblySupport function_dispatch_assembly_support{
       .module = module,
       .prepared_arch = prepared_arch,
@@ -946,22 +976,15 @@ std::string emit_prepared_module_text(
       .minimal_function_asm_prefix = minimal_function_asm_prefix,
       .minimal_param_register_at = minimal_param_register_at,
   };
-
-  if (multi_defined_support.has_multiple_defined_functions()) {
-    std::string rendered_functions;
-    std::unordered_set<std::string_view> used_string_names;
-    std::unordered_set<std::string_view> used_same_module_global_names;
-    for (const auto* function : defined_functions) {
-      rendered_functions += function_dispatch_assembly_support.render_defined_function(
-          *function, true, &used_string_names, &used_same_module_global_names);
-    }
-    return module_data_support.finalize_selected_module_text(
-        multi_defined_support.prepend_helper_prefix(rendered_functions), used_string_names,
-        &used_same_module_global_names);
-  }
-
-  return function_dispatch_assembly_support.render_defined_function(*entry_function_ptr, false,
-                                                                   nullptr, nullptr);
+  const ModuleRenderSupport module_render_support{
+      .defined_functions = defined_functions,
+      .entry_function = *entry_function_ptr,
+      .multi_defined_dispatch = multi_defined_dispatch,
+      .multi_defined_support = multi_defined_support,
+      .function_dispatch_assembly_support = function_dispatch_assembly_support,
+      .module_data_support = module_data_support,
+  };
+  return module_render_support.render_module_text();
 }
 
 
