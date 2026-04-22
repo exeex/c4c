@@ -104,61 +104,151 @@ Do not write the rebuild ideas ad hoc in the current turn. Hand the initial
 idea creation to `c4c-plan-owner` so the source ideas remain consistent with
 the repo's lifecycle rules.
 
-Ask `c4c-plan-owner` to create exactly these four source ideas:
+Ask `c4c-plan-owner` to create exactly four source ideas and make the role
+write them as explicit stage contracts, not loose summaries.
 
-1. extract the target `.cpp` and `.hpp` into `.md`
-2. define the replacement architecture layout from the extracted `.md`, judge
-   whether that layout addresses the historical failure families that motivated
-   the rebuild, and specify the draft-file layout for stage 3
-3. produce new corresponding `.cpp.md` / `.hpp.md` drafts and review them
-4. convert the reviewed drafts into real `.cpp` / `.hpp` implementation
+Every phoenix-rebuild idea must include, at minimum:
 
-The first idea must explicitly require that the extraction:
-
-- converts every in-scope legacy `.cpp` and `.hpp` into its own companion `.md`
-- also produces one directory-level index `.md` that summarizes the whole scope
-- keeps only the important APIs and contracts
-- uses short fenced `cpp` blocks such as
-
-```cpp
-// some important code ....
-```
-
-The second idea must explicitly require:
-
-- a broad review of the extracted `.md`
-- a reconstruction of how the current design works
-- a concrete replacement architecture layout for the rebuilt subsystem
-- an explicit judgment about whether that layout would address the motivating
-  historical ideas or failure families
-- the planned `.cpp.md` / `.hpp.md` draft layout that stage 3 must fill
-
-The third idea must explicitly require new `.cpp.md` / `.hpp.md` drafts plus
-review of those drafts.
-
-The third idea must explicitly require that:
-
-- every planned replacement `.cpp` gets its own `.cpp.md`
-- every planned replacement `.hpp` gets its own `.hpp.md`
-- if the rebuild introduces a new directory or subsystem family, the draft set
-  also includes one index `.md` that explains the replacement ownership map
-
-The fourth idea must explicitly require converting the reviewed drafts into
-real `.cpp` / `.hpp` source.
+- `## Intent`
+- `## Stage In Sequence`
+- `## Produces`
+- `## Does Not Yet Own`
+- `## Unlocks`
+- `## Scope Notes`
+- `## Boundaries`
+- `## Completion Signal`
 
 Keep each idea narrow. Do not let one idea silently span the whole rebuild.
 
 When asking `c4c-plan-owner` to create those ideas, require each idea to state:
 
-- its stage in the sequence
+- its stage number in the four-stage sequence
 - the exact artifacts it produces
 - what it does not own yet
 - what downstream stage it unlocks
+- a concrete close condition in `## Completion Signal`
 
-For the extraction and draft ideas, require the exact artifact list to be
-complete enough that the close condition can say "every in-scope source file
-has its corresponding markdown artifact" rather than only naming one summary
-document.
+Do not allow `Completion Signal` to say vague things like "artifact exists" or
+"review is done". It must say what full artifact set or decision package must
+exist before the idea can close.
+
+#### Step 1 Produces Idea 1
+
+Idea 1 is the extraction idea. In the current x86 rebuild sequence, this maps
+to idea 78.
+
+Idea 1 must say that it produces:
+
+- one `.md` companion for every in-scope legacy `.cpp` / `.hpp`
+- one directory-level index `.md` for the whole extracted scope
+
+Idea 1 content must explicitly require:
+
+- one-to-one mapping from each in-scope legacy source file to its markdown
+  artifact
+- compressed extraction rather than source dumping
+- important APIs, contracts, dependency directions, hidden dependencies,
+  responsibility buckets, and special-case classification
+- short fenced `cpp` blocks only for essential surfaces, for example:
+
+```cpp
+// some important code ....
+```
+
+Idea 1 close condition must explicitly require:
+
+- every in-scope legacy `.cpp` / `.hpp` has its corresponding `.md`
+- the directory-level index points at the full artifact set
+- the extraction is compressed enough to be reviewable
+
+#### Step 2 Produces Idea 2
+
+Idea 2 is the extraction-review and replacement-layout idea. In the current
+x86 rebuild sequence, this maps to idea 79.
+
+Idea 2 must say that it produces:
+
+- one stage-2 review and replacement-layout document
+- one explicit handoff document from idea 2 to idea 3
+
+Idea 2 content must explicitly require:
+
+- a broad review of the extracted `.md` set from idea 1
+- reconstruction of how the current design actually works
+- judgment about whether the idea-1 extraction set itself needs correction,
+  expansion, compression, splitting, merging, or reorganization
+- a concrete replacement architecture layout for the rebuilt subsystem
+- an explicit judgment about whether that layout addresses the motivating
+  historical ideas or failure families
+- the exact `.cpp.md` / `.hpp.md` draft-file layout that idea 3 must fill
+- a handoff artifact that tells idea 3 which extracted artifacts are trustworthy,
+  which require correction first, which replacement draft files are mandatory,
+  and what route constraints must be preserved
+
+Idea 2 close condition must explicitly require:
+
+- the review/layout document explains the current subsystem shape and the
+  replacement layout
+- it explicitly states how the idea-1 extraction set must be improved before
+  later stages rely on it
+- the stage-2-to-stage-3 handoff document exists and is concrete enough that
+  idea 3 can consume it as an intake contract
+
+#### Step 3 Produces Idea 3
+
+Idea 3 is the replacement-draft and draft-review idea. In the current x86
+rebuild sequence, this maps to idea 80.
+
+Idea 3 must say that it produces:
+
+- one `.cpp.md` for every planned replacement implementation file declared by
+  idea 2
+- one `.hpp.md` for every planned replacement header file declared by idea 2
+- one directory-level index `.md` for the replacement draft set when needed
+- one review artifact for the replacement draft set
+
+Idea 3 content must explicitly require:
+
+- following the exact replacement file layout declared by idea 2
+- following the explicit handoff contract from idea 2
+- partitioning by responsibility and dependency direction rather than by
+  arbitrary slices of legacy code
+- per-file ownership statements: owned inputs, owned outputs, indirect
+  queries, forbidden knowledge, and whether the file is core logic, dispatch,
+  optional fast path, or compatibility
+
+Idea 3 close condition must explicitly require:
+
+- every replacement `.cpp` / `.hpp` declared by idea 2 has its corresponding
+  `.cpp.md` / `.hpp.md`
+- any required replacement index `.md` exists
+- the draft-review artifact exists and says the draft set is coherent enough
+  for implementation conversion
+
+#### Step 4 Produces Idea 4
+
+Idea 4 is the draft-to-implementation conversion idea. In the current x86
+rebuild sequence, this maps to idea 81.
+
+Idea 4 must say that it produces:
+
+- real `.cpp` / `.hpp` implementation that matches the reviewed draft set
+- dispatcher and ownership rewiring that routes behavior through the reviewed
+  replacement seams
+- legacy deletion or retirement only after the new owner is live and proved
+
+Idea 4 content must explicitly require:
+
+- staged migration rather than all-at-once rewrite
+- explicit accounting of what responsibility moved and what remains legacy
+- proof for each migrated capability family before claiming completion
+
+Idea 4 close condition must explicitly require:
+
+- the reviewed draft set has been converted into real implementation
+- the new ownership seams are actually in use
+- remaining legacy code is explicitly classified
+- proof shows the migrated capability families still work
 
 The supervisor's deliverable for this step is the plan-owner-generated four
 ideas, not the extraction artifact itself.
@@ -242,6 +332,9 @@ to use the `.md` artifact from idea 1 as the review target.
 
 Review:
 
+- whether the stage-1 extraction set is shaped well enough for redesign work
+- what extraction artifacts must be corrected, expanded, compressed, split,
+  merged, or reorganized before later stages should trust them
 - what responsibilities are mixed together
 - what interfaces are falsely coupled
 - which APIs are truly stable
@@ -251,6 +344,7 @@ Review:
 - whether that layout actually addresses the historical motivating failure
   families
 - what exact `.cpp.md` / `.hpp.md` artifact layout stage 3 should produce
+- what explicit handoff stage 3 must consume
 
 Do not draft replacement file contents before this stage exists. This stage is
 allowed to define the replacement architecture layout and the planned stage-3
@@ -258,6 +352,8 @@ artifact map.
 
 Review questions:
 
+- is the idea-1 extraction set itself good enough, and if not, what must be
+  corrected before stage 3 should trust it
 - what responsibilities are mixed together
 - what interfaces are falsely coupled
 - which APIs are truly stable
@@ -268,6 +364,7 @@ Review questions:
 - whether that layout addresses the earlier idea family that exposed the
   rebuild pressure
 - what exact per-file `.cpp.md` / `.hpp.md` draft set stage 3 should create
+- what stage-2-to-stage-3 handoff contract must exist
 
 ### Step 6: Executor Draft Rules
 
@@ -310,12 +407,9 @@ Treat the stage-2 layout artifact as the contract for which per-file drafts
 must exist in stage 3. If stage 3 wants to add or remove planned files, that is
 a stage-2 contract repair first, not silent drift.
 
-Stage 3 should also remove the in-scope legacy `.cpp` / `.hpp` files from
-their active source location once the extraction set and replacement draft set
-are complete enough to stand on their own. This is a deliberate anti-overfit
-gate: do not leave the old implementation sitting beside the new drafts in a
-way that encourages the next executor to keep patching legacy files instead of
-following the reviewed markdown design.
+Treat the stage-2 handoff artifact as the intake contract for stage 3. If the
+handoff says some extraction artifact must be repaired before a specific draft
+is trustworthy, do not silently ignore that requirement.
 
 For each replacement component, define:
 
@@ -359,12 +453,14 @@ Use a reviewer when route quality or draft quality is unclear.
 
 Typical gates:
 
-- extraction idea: markdown artifact exists and is compressed correctly
-- review idea: layout is concrete, reconstructs the current design, and judges
-  whether the new structure addresses the motivating failure families
+- extraction idea: the full per-file markdown artifact set exists, the index
+  points at the complete set, and the extraction is compressed correctly
+- review idea: the review/layout artifact is concrete, judges whether the
+  idea-1 extraction set itself needs improvement, defines the new structure,
+  addresses the motivating failure families, and includes the stage-2-to-stage-3
+  handoff artifact
 - draft idea: `.cpp.md` / `.hpp.md` drafts exist, were reviewed, and the old
-  in-scope `.cpp` / `.hpp` files have been removed from the active source
-  location
+  replacement ownership map is concrete enough to drive implementation
 - implementation idea: real source exists, ownership moved, and proof passes
 
 For each accepted packet, require the executor record:
@@ -415,11 +511,11 @@ Produce these artifacts during the rebuild:
 - four ordered source ideas under `ideas/open/`, created by `c4c-plan-owner`
 - one extracted `.md` per in-scope legacy `.cpp` / `.hpp`
 - one directory-level index `.md` for the extracted scope
+- one stage-2 review/layout artifact
+- one explicit stage-2-to-stage-3 handoff artifact
 - reviewed replacement `.cpp.md` / `.hpp.md` drafts for every planned new
   implementation/header file
 - one directory-level index `.md` for the replacement draft set when needed
-- removal of the legacy in-scope `.cpp` / `.hpp` files from the active source
-  location before implementation conversion begins
 - new or revised headers that define the replacement seams
 - staged implementation files that take ownership incrementally
 - proof notes or command logs appropriate to the repo workflow
