@@ -3,53 +3,58 @@
 Status: Active
 Source Idea Path: ideas/open/68_prepared_local_slot_handoff_consumption_for_x86_backend.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Refresh Idea-68 Ownership And Confirm The Next Local-Slot Seam
-Plan Review Counter: 1 / 4
+Current Step ID: 2.1
+Current Step Title: Repair The Selected Prepared Local-Slot Handoff Seam
+Plan Review Counter: 0 / 4
 # Current Packet
 
 ## Just Finished
 
-Step 1 / 2.1 observability only: extended the existing `--trace-mir` module
-surface so focused `00204.c` trace runs now publish bounded multi-function
-culprit facts even when the function body output stays focused on `match`.
-The trace now narrows the active instruction-handoff family to
-`myprintf/local-slot-guard-chain` and `myprintf/single-block-return-dispatch`
-while the top-level `00204.c` failure remains the same authoritative prepared
-local-slot `instruction` handoff.
+Step 2.1 packet audit only: reran the delegated proof and checked the focused
+`myprintf` `--trace-mir` / `--dump-mir` surfaces against the owned renderer
+window in `prepared_local_slot_render.cpp`. The focused `myprintf` route now
+already advances past both local-slot instruction-handoff lanes and lands in
+the downstream `bounded-same-module-variadic-helper` rejection, while the full
+`c_testsuite_x86_backend_src_00204_c` compile still stops earlier at the
+module-level bounded multi-function handoff with the old authoritative
+prepared local-slot `instruction` detail.
 
 ## Suggested Next
 
-Repair the real local-slot instruction seam inside `myprintf` by tracing only
-the `local-slot-guard-chain` and `single-block-return-dispatch` consumption
-paths in `prepared_local_slot_render.cpp`, then implement the smallest durable
-instruction-handoff fix that keeps the bounded multi-function failure family
-from widening into unrelated helper routes.
+Trace the module-level bounded multi-function renderer path that still emits
+the authoritative prepared local-slot `instruction` detail even after focused
+`myprintf` has already graduated downstream, then isolate which shared
+bounded-entry or helper-consumption path in `prepared_local_slot_render.cpp`
+still rethrows the local-slot handoff before the later variadic-helper route
+can own the full case.
 
 ## Watchouts
 
-- `match` still reports `matched local-slot-guard-chain`; the new module-level
-  facts show that focused `match` output is not the blocker and should not be
-  “fixed” directly.
-- The bounded culprit is narrowed to `myprintf`, but the exact throwing
-  instruction index is still unresolved between the two local-slot consumer
-  lanes named above.
-- Keep the next packet inside the `myprintf` instruction seam. Do not widen
-  into aggregate-helper, variadic-helper, or scalar-wrapper route families just
-  because they also reject in the full unfocused trace.
+- The current proof test `backend_cli_trace_mir_00204_myprintf_rejection`
+  already expects `myprintf` to finish in the downstream bounded
+  same-module variadic-helper family, so trying to “repair myprintf” again
+  would be route drift.
+- The full module trace still reports module-level bounded-lane facts
+  `myprintf/local-slot-guard-chain and myprintf/single-block-return-dispatch`,
+  but that detail no longer identifies a focused-function top-level blocker.
+- The unresolved failure is still inside the owned renderer family, but it is
+  no longer a smallest `myprintf`-only instruction seam under the current
+  observability. Do not widen into route-debug, lifecycle, or unrelated helper
+  families from this packet record.
 
 ## Proof
 
-Focused observability probe used:
-`/workspaces/c4c/build/c4cll --trace-mir --target x86_64-unknown-linux-gnu --mir-focus-function match /workspaces/c4c/tests/c/external/c-testsuite/src/00204.c`
-and the full unfocused `--trace-mir` surface to confirm that only `myprintf`
-publishes the local-slot instruction-handoff detail.
+Supervisor-selected proof run:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_cli_trace_mir_00204_myprintf_rejection|c_testsuite_x86_backend_src_00204_c)$' | tee test_after.log`
 
-Supervisor-selected proof run unchanged:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_cli_trace_mir_00204_match_rejection|c_testsuite_x86_backend_src_00204_c)$' | tee test_after.log`
+Focused audit probes:
+`/workspaces/c4c/build/c4cll --trace-mir --target x86_64-unknown-linux-gnu --mir-focus-function myprintf /workspaces/c4c/tests/c/external/c-testsuite/src/00204.c`
+and
+`/workspaces/c4c/build/c4cll --dump-mir --target x86_64-unknown-linux-gnu --mir-focus-function myprintf /workspaces/c4c/tests/c/external/c-testsuite/src/00204.c`
 
-Observed state: `backend_cli_trace_mir_00204_match_rejection` passed with the
-new bounded-lane facts; `c_testsuite_x86_backend_src_00204_c` still failed with
-`error: x86 backend emitter requires the authoritative prepared local-slot
+Observed state: `backend_cli_trace_mir_00204_myprintf_rejection` passed and
+confirmed that focused `myprintf` now ends in the bounded same-module
+variadic-helper rejection; `c_testsuite_x86_backend_src_00204_c` still failed
+with `error: x86 backend emitter requires the authoritative prepared local-slot
 instruction handoff through the canonical prepared-module handoff`.
 Proof log path: `test_after.log`.
