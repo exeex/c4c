@@ -1,0 +1,7 @@
+# `lowering/scalar_lowering.hpp`
+
+Status: Placeholder created during plan step 1.
+
+- Planned role: scalar lowering declarations
+- Draft bucket: `lowering`
+- Step-3 follow-up: define canonical scalar lowering surfaces

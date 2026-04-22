@@ -5,30 +5,36 @@ Source Idea Path: ideas/open/80_draft_replacement_x86_codegen_interfaces_for_pho
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Materialize Manifest Coverage And Directory Skeleton
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Lifecycle switch on 2026-04-22: closed idea 79 and activated the stage-3
-draft-generation runbook from idea 80.
+Completed plan step 1, "Materialize Manifest Coverage And Directory Skeleton,"
+by creating `docs/backend/x86_codegen_rebuild/`, the reviewed top-level index
+artifacts, placeholder `review.md`, and every mandatory stage-2-declared
+`.cpp.md` / `.hpp.md` draft path.
 
 ## Suggested Next
 
-Begin plan step 1 by materializing the exact stage-2 manifest under
-`docs/backend/x86_codegen_rebuild/`, including the directory/index artifacts
-and every required `.cpp.md` / `.hpp.md` path.
+Advance to plan step 2 by drafting the `api/`, `core/`, `abi/`, and `module/`
+contracts so the shared entry, output, ABI, and module seams are explicit
+before lowering-family work starts.
 
 ## Watchouts
 
-- The stage-2 manifest is binding. Missing, renamed, merged, or dropped draft
-  files are a contract violation unless stage 2 is repaired first.
-- Prepared routes must stay consumers of canonical seams instead of growing a
-  second lowering stack in the draft tree.
-- The rebuild boundary still excludes the legacy `peephole/` subtree.
+- The stage-2 manifest is now materialized and should stay exact; any future
+  rename, merge, or drop is a stage-2 contract violation unless lifecycle
+  state is repaired first.
+- Step 2 must keep the shared seams narrow enough that prepared adapters later
+  consume them instead of reopening mixed `x86_codegen.hpp` behavior.
+- The rebuild boundary still excludes the legacy `peephole/` subtree and the
+  draft tree should not claim ownership beyond that scope.
 
 ## Proof
 
-Lifecycle-only switch on 2026-04-22. Close-time regression guard reused the
-existing canonical logs with:
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+Docs-only manifest coverage proof passed with:
+`python3 - <<'PY' > test_after.log ...`
+The check verified the exact required stage-2 artifact set under
+`docs/backend/x86_codegen_rebuild/` with no missing or extra files.
+Proof log: `test_after.log`.
