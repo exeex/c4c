@@ -3906,6 +3906,7 @@ int run_backend_x86_handoff_boundary_multi_defined_call_tests() {
           check_route_contains_fragments(
               make_x86_multi_defined_helper_same_module_sret_i8_call_lane_module(),
               {"fr_s1:\n",
+               "    mov QWORD PTR [rsp], rdi\n",
                "ret:\n",
                "    lea rdi, [rsp]\n",
                "    xor eax, eax\n",
@@ -3922,6 +3923,7 @@ int run_backend_x86_handoff_boundary_multi_defined_call_tests() {
           check_route_contains_fragments(
               make_x86_multi_defined_helper_same_module_sret_i8_copyout_lane_module(),
               {"fr_s1:\n",
+               "    mov QWORD PTR [rsp], rdi\n",
                "ret:\n",
                "    call fr_s1\n",
                "main:\n",
@@ -3936,6 +3938,7 @@ int run_backend_x86_handoff_boundary_multi_defined_call_tests() {
           check_route_contains_fragments(
               make_x86_multi_defined_helper_same_module_sret_i8x2_copyout_lane_module(),
               {"fr_s2:\n",
+               "    mov QWORD PTR [rsp], rdi\n",
                "ret:\n",
                "    call fr_s2\n",
                "    movsx eax, BYTE PTR [rsp",
@@ -3952,6 +3955,7 @@ int run_backend_x86_handoff_boundary_multi_defined_call_tests() {
           check_route_contains_fragments(
               make_x86_multi_defined_helper_same_module_sret_f32_copyout_lane_module(),
               {"fr_hfa11:\n",
+               "    mov QWORD PTR [rsp], rdi\n",
                "    movss ",
                "ret:\n",
                "    call fr_hfa11\n",
@@ -3967,6 +3971,7 @@ int run_backend_x86_handoff_boundary_multi_defined_call_tests() {
           check_route_contains_fragments(
               make_x86_multi_defined_helper_same_module_sret_f128_copyout_lane_module(),
               {"fr_hfa31:\n",
+               "    mov QWORD PTR [rsp], rdi\n",
                "    fld TBYTE PTR [rip + hfa31]\n",
                "    fstp TBYTE PTR [r",
                "ret:\n",

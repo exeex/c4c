@@ -5,25 +5,25 @@ Source Idea Path: ideas/open/72_post_link_aggregate_call_runtime_correctness_for
 Source Plan Path: plan.md
 Current Step ID: 2.1
 Current Step Title: Repair The Selected Aggregate-Call Runtime Seam
-Plan Review Counter: 2 / 4
+Plan Review Counter: 3 / 4
 # Current Packet
 
 ## Just Finished
 
-Plan step `2.1` repaired the next helper-side long-double/HFA runtime seam:
-prepared direct-extern helper calls with a nonzero local frame now keep the
-same x86-64 call-alignment fix even when the call also materializes stacked
-arguments, so long-double HFA helpers like `fa_hfa31`/`fa_hfa32` no longer
-enter variadic libc calls with the stack 8 bytes off. The focused proof still
-fails, but `00204.c` now executes beyond the `fa_hfa31` family and graduates
-into the later return-helper leaf `fr_s1`.
+Plan step `2.1` repaired the selected small-aggregate return-helper seam:
+bounded same-module x86 return helpers now home `%ret.sret` into stack-slot
+pointer homes and refresh that home before pointer-based copyout writes, so
+`fr_s1`/`fr_s2` no longer dereference an uninitialized destination pointer
+slot after the long-double HFA seam was cleared. The focused proof still
+fails, but `00204.c` now executes beyond the `fr_s1` helper family and
+graduates into a later variadic-runtime crash inside `ret()`.
 
 ## Suggested Next
 
-Take the next packet on the advanced `fr_s1` crash surface: inspect the
-prepared return-helper path for small aggregate returns and repair the helper
-result-pointer home or writeback contract that now fails after the long-double
-HFA variadic-call alignment seam is cleared.
+Take the next packet on the advanced post-`fr_s1` crash surface: inspect the
+`ret()` variadic `printf("%.1f\\n", ...)` call path after the aggregate-return
+helpers and repair the remaining x86-64 stack-alignment/accounting seam that
+still reaches `__printf` with `%rsp` misaligned for SSE register saveout.
 
 ## Watchouts
 
@@ -47,10 +47,14 @@ HFA variadic-call alignment seam is cleared.
   call alignment path for prepared helpers with an existing local frame; keep
   the fix scoped there unless later proof shows stack-arg-bearing helpers need
   a broader variant.
-- The next failing surface is no longer `fa_hfa11`; the focused gdb probe now
-  advances through the long-double HFA helper family and stops later in
-  `fr_s1`, where the small-aggregate return helper writes through an invalid
-  destination pointer home.
+- The repaired small-aggregate return-helper seam lives in the same bounded
+  helper-prefix renderer: `TypeKind::Ptr` stack-slot homes must materialize the
+  incoming register, and `%ret.sret` must participate in the pointer-home
+  refresh path just like other pointer params.
+- The next failing surface is no longer `fr_s1`; the focused gdb probe now
+  advances into `ret()` and stops in glibc `__printf("%.1f\\n")`, where
+  `movaps %xmm0, 0x50(%rsp)` faults with `al=1`, indicating the caller still
+  reaches that variadic site with misaligned stack state.
 
 ## Proof
 
@@ -59,13 +63,14 @@ Focused runtime probe for step-2.1 aggregate/helper runtime repair:
 `ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$' | tee test_after.log`
 Result: `backend_x86_handoff_boundary` PASS; `c_testsuite_x86_backend_src_00204_c`
 still fails with `[RUNTIME_NONZERO] ... exit=Segmentation fault`, but the
-live crash surface advanced beyond the `fa_hfa31` long-double HFA leaf into a
-later return-helper leaf.
+live crash surface advanced beyond the `fr_s1`/`fr_s2` return-helper leaf into
+the later `ret()` variadic-runtime path.
 
 Crash-surface confirmation for the repaired seam:
 `gdb -batch -ex 'run' -ex 'bt' -ex 'frame 5' -ex 'x/24i $pc-24' -ex 'info registers rsp rbp rdi rsi rdx rcx r8 r9 eax al' --args build/c_testsuite_x86_backend/src/00204.c.bin`
 and `build/c_testsuite_x86_backend/src/00204.c.s`
-Result: generated `fa_hfa31`/`fa_hfa32` now emit the missing `sub rsp, 8` /
-`add rsp, 8` around their variadic `printf` calls and no longer crash there;
-the new stop is in `fr_s1`, where the helper writes through a bad destination
-pointer. Proof log path is `test_after.log`.
+Result: generated `fr_s1`/`fr_s2` now emit the missing `mov QWORD PTR [rsp],
+rdi` home store before helper copyout writes and no longer crash there; the
+new stop is in glibc `__printf` on the `ret()` path, where `movaps` faults
+while saving `%xmm0`, indicating a later variadic-call alignment/runtime seam.
+Proof log path is `test_after.log`.

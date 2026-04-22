@@ -8766,7 +8766,7 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
       std::unordered_map<std::string_view, std::string> pointer_param_abi_registers;
       for (std::size_t param_index = 0; param_index < candidate.params.size(); ++param_index) {
         const auto& param = candidate.params[param_index];
-        if (param.type != c4c::backend::bir::TypeKind::Ptr || param.is_varargs || param.is_sret ||
+        if (param.type != c4c::backend::bir::TypeKind::Ptr || param.is_varargs ||
             !param.abi.has_value()) {
           continue;
         }
@@ -8780,7 +8780,7 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
       const auto render_entry_param_home_materialization =
           [&](const c4c::backend::bir::Param& param,
               std::size_t param_index) -> std::optional<std::string> {
-            if (param.is_varargs || param.is_sret || !param.abi.has_value()) {
+            if (param.is_varargs || !param.abi.has_value()) {
               return std::string{};
             }
             const auto incoming_register =
@@ -8803,6 +8803,12 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
                     return std::string{};
                   }
                   return "    mov " + *home->register_name + ", " + *incoming_register + "\n";
+                }
+                if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+                    home->offset_bytes.has_value()) {
+                  return "    mov " +
+                         render_prepared_stack_memory_operand(*home->offset_bytes, "QWORD") +
+                         ", " + *incoming_register + "\n";
                 }
                 return std::string{};
               case c4c::backend::bir::TypeKind::I64:
