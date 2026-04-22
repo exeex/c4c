@@ -19,6 +19,52 @@ std::int64_t prepared_x86_param_stack_offset(std::size_t class_stack_offset) {
   return 16 + static_cast<std::int64_t>(class_stack_offset);
 }
 
+std::optional<std::string_view> inst_result_name(const c4c::backend::bir::Inst& inst) {
+  if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst)) {
+    return binary->result.name;
+  }
+  if (const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&inst)) {
+    return cast->result.name;
+  }
+  if (const auto* select = std::get_if<c4c::backend::bir::SelectInst>(&inst)) {
+    return select->result.name;
+  }
+  if (const auto* load_local = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst)) {
+    return load_local->result.name;
+  }
+  if (const auto* load_global = std::get_if<c4c::backend::bir::LoadGlobalInst>(&inst)) {
+    return load_global->result.name;
+  }
+  return std::nullopt;
+}
+
+bool block_defines_named_value(const c4c::backend::bir::Block& block, std::string_view value_name) {
+  for (const auto& inst : block.insts) {
+    if (const auto result_name = inst_result_name(inst);
+        result_name.has_value() && *result_name == value_name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool short_circuit_join_has_join_defined_named_incoming(
+    const c4c::backend::prepare::PreparedShortCircuitJoinContext& join_context) {
+  if (join_context.join_block == nullptr) {
+    return false;
+  }
+
+  const auto named_incoming_is_join_defined =
+      [&](const c4c::backend::prepare::PreparedEdgeValueTransfer* transfer) {
+        return transfer != nullptr &&
+               transfer->incoming_value.kind == c4c::backend::bir::Value::Kind::Named &&
+               block_defines_named_value(*join_context.join_block, transfer->incoming_value.name);
+      };
+
+  return named_incoming_is_join_defined(join_context.true_transfer) ||
+         named_incoming_is_join_defined(join_context.false_transfer);
+}
+
 }  // namespace
 
 std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
@@ -2646,7 +2692,8 @@ select_prepared_short_circuit_cond_branch_render_if_supported(
             .true_label = join_context->continuation_true_label,
             .false_label = join_context->continuation_false_label,
         });
-    if (!rhs_compare_index.has_value() || *rhs_compare_index >= rhs_entry_block->insts.size()) {
+    if ((!rhs_compare_index.has_value() || *rhs_compare_index >= rhs_entry_block->insts.size()) &&
+        !short_circuit_join_has_join_defined_named_incoming(*join_context)) {
       return std::nullopt;
     }
   }
@@ -4928,6 +4975,20 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
       rendered_blocks.emplace(block.label, PreparedRenderedBlockState::Rendering);
     }
     const c4c::BlockLabelId block_label_id = block_context.block_label_id;
+    const auto throw_authoritative_local_slot_handoff =
+        [&](std::string_view surface) -> void {
+      const bool has_authoritative_multi_block_control_flow =
+          context.function_control_flow != nullptr &&
+          (!context.function_control_flow->branch_conditions.empty() ||
+           !context.function_control_flow->join_transfers.empty()) &&
+          has_authoritative_prepared_control_flow_block(context.function_control_flow,
+                                                        block_label_id);
+      if (continuation.has_value() || has_authoritative_multi_block_control_flow) {
+        throw std::invalid_argument(
+            "x86 backend emitter requires the authoritative prepared local-slot " +
+            std::string(surface) + " handoff through the canonical prepared-module handoff");
+      }
+    };
 
     auto rendered_load_or_store =
         [&](const c4c::backend::bir::Inst& inst,
@@ -5115,6 +5176,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
       if (needs_reentry_label) {
         rendered_blocks.erase(block.label);
       }
+      throw_authoritative_local_slot_handoff("instruction");
       return std::nullopt;
     }
 
@@ -5143,6 +5205,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
         if (needs_reentry_label) {
           rendered_blocks.erase(block.label);
         }
+        throw_authoritative_local_slot_handoff("return");
         return std::nullopt;
       }
       if (needs_reentry_label) {
@@ -5166,6 +5229,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
         if (needs_reentry_label) {
           rendered_blocks.erase(block.label);
         }
+        throw_authoritative_local_slot_handoff("branch");
         return std::nullopt;
       }
       if (needs_reentry_label) {
@@ -5188,6 +5252,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
       if (needs_reentry_label) {
         rendered_blocks.erase(block.label);
       }
+      throw_authoritative_local_slot_handoff("cond-branch");
       return std::nullopt;
     }
     if (needs_reentry_label) {

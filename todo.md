@@ -3,65 +3,51 @@
 Status: Active
 Source Idea Path: ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md
 Source Plan Path: plan.md
-Current Step ID: 2.2
-Current Step Title: Prove Family Shrinkage And Record Rehoming
-Plan Review Counter: 1 / 4
+Current Step ID: 2.1 / 2.2
+Current Step Title: Repair The Selected Scalar Prepared/Emitter Seam And Prove Family Shrinkage
+Plan Review Counter: 0 / 4
 # Current Packet
 
 ## Just Finished
 
-Step 2.2 now has fresh proof that the direct-immediate family shrank beyond
-`00023.c` and `00024.c`. The straight-line constant-folded single-block return
-route now consumes authoritative no-parameter `i8` string-constant loads plus
-`i8 -> i32` sign extension, which moves
-`c_testsuite_x86_backend_src_00026_c` past the old direct-immediate rejection
-without perturbing the existing same-module global return routes. A focused
-recheck of `c_testsuite_x86_backend_src_00025_c` shows that it no longer
-belongs to idea 60 either: codegen now succeeds and the case fails later as a
-runtime bug (`strlen("hello") - 5` returns nonzero at runtime), so it should
-stay out of the scalar-emitter proof set.
+Step 2.1 / 2.2 reworked the short-circuit/local-slot selector so the
+authoritative join-owned carrier case no longer silently falls back to the
+idea-60 generic x86 minimal single-block/control-flow rejection. The owned
+`backend_x86_handoff_boundary` proof still passes, and
+`c_testsuite_x86_backend_src_00204_c` now fails later with the narrower
+`x86 backend emitter requires the authoritative prepared local-slot instruction handoff through the canonical prepared-module handoff`
+contract instead of the old idea-60 diagnostic. This shrinks the owned
+`00204.c` route out of the prior generic family, but it does not yet finish the
+underlying local-slot instruction consumer needed for the `match` path to emit.
 
 ## Suggested Next
 
-Return to Step 1 and pick the next still-owned direct-immediate case after
-`00026.c`, keeping `backend_x86_handoff_boundary` plus `00023.c`, `00024.c`,
-and `00026.c` as the protective regression subset. Do not spend the next
-packet on `00025.c`; it has already graduated downstream into runtime
-debugging and should only be mentioned as a rehomed case, not treated as the
-next scalar-emitter seam.
+Keep ownership in `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+and add the nearest handoff-boundary coverage for the exact later leaf now
+surfaced by `00204.c`. The smallest next slice is to identify which
+authoritative local-slot instruction in `match` still falls through the generic
+consumer and implement that instruction-family support without reopening raw
+topology fallback.
 
 ## Watchouts
 
-- Do not special-case `load_global` or one named testcase. The prepared dump
-  for `00023.c` already shows the generic facts the dispatcher should consume:
-  named value-home ownership plus one authoritative `before_return` move
-  bundle into the return ABI register.
-- `backend_x86_route_debug` can still report a matched exploratory lane even
-  when `--codegen asm` ends in the direct-immediate rejection. Acceptance for
-  the next packet still needs real asm/codegen proof, not only trace output.
-- `00035.c` and `00041.c` currently fail on the authoritative prepared
-  guard-chain handoff and should not be used as idea-60 proof targets.
-- `00019.c` has graduated out of the scalar-emitter family into a runtime bug;
-  do not use it as the primary idea-60 proof case.
-- `00025.c` has now joined that downstream runtime bucket. Keep it out of the
-  acceptance regex even though it remains useful as rehoming evidence.
-- The accepted fix depends on authoritative prepared addressing plus the
-  existing single-block renderer. Do not regress back to a global-name or
-  aggregate-layout-specific fast path when extending the remaining direct
-  return family.
+- `backend_x86_route_debug` still reports `match` as `local-slot-guard-chain`
+  matched, so trace probing remains looser than real emission and should not be
+  used as acceptance proof for this seam.
+- The new `00204.c` leaf is inside the authoritative local-slot instruction
+  consumer, not the old generic control-flow gate. The next packet should keep
+  the repair at that instruction layer rather than adding case-specific routing.
+- The focused `match` prepared dump still shows the same 11-block, 3
+  branch-condition, 1 join-transfer looped short-circuit route, so the next
+  packet should preserve the join-owned continuation logic and only repair the
+  remaining instruction-family fallthrough.
 
 ## Proof
 
-Accepted packet proof:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00023_c|c_testsuite_x86_backend_src_00024_c|c_testsuite_x86_backend_src_00026_c)$'`.
-Supporting inspection used
-`./build/c4cll --dump-prepared-bir --target x86_64-unknown-linux-gnu tests/c/external/c-testsuite/src/00026.c`,
-`./build/c4cll --trace-mir --target x86_64-unknown-linux-gnu tests/c/external/c-testsuite/src/00026.c`,
-and an explicit rehoming probe with
-`ctest --test-dir build -j --output-on-failure -R '^c_testsuite_x86_backend_src_00025_c$'`.
-Result: `backend_x86_handoff_boundary`,
-`c_testsuite_x86_backend_src_00023_c`,
-`c_testsuite_x86_backend_src_00024_c`, and
-`c_testsuite_x86_backend_src_00026_c` now pass; `00025.c` fails later at
-runtime instead of at scalar emission; `test_after.log` holds the
-acceptance-ready narrow proof command.
+Ran the delegated proof command
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$' | tee test_after.log`.
+`backend_x86_handoff_boundary` passed. `c_testsuite_x86_backend_src_00204_c`
+still fails, but the failure moved off the old idea-60 minimal
+single-block/control-flow diagnostic and now reports the narrower authoritative
+prepared local-slot instruction handoff contract. Proof log path:
+`test_after.log`.

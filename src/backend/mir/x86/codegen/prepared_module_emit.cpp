@@ -852,10 +852,18 @@ std::string emit_prepared_module(
           return *rendered_compare_driven_entry;
         }
       }
-      if (const auto rendered_local_structural_dispatch =
-              render_local_structural_dispatch_if_supported();
-          rendered_local_structural_dispatch.has_value()) {
-        return *rendered_local_structural_dispatch;
+      try {
+        if (const auto rendered_local_structural_dispatch =
+                render_local_structural_dispatch_if_supported();
+            rendered_local_structural_dispatch.has_value()) {
+          return *rendered_local_structural_dispatch;
+        }
+      } catch (const std::invalid_argument& error) {
+        if (std::string_view(error.what()).find(
+                "authoritative prepared local-slot ") != std::string_view::npos) {
+          throw_multi_defined_contract_if_active();
+        }
+        throw;
       }
       if (const auto* function_control_flow = find_control_flow_function();
           function_control_flow != nullptr &&
