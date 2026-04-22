@@ -1,0 +1,4 @@
+interface:
+  display_name: "Phoenix Rebuild"
+  short_description: "Staged rewrite idea generator"
+  default_prompt: "Use $phoenix-rebuild to generate a staged source-idea series for rebuilding a tangled subsystem, then drive markdown extraction, design review, replacement drafts, and only later real implementation."
