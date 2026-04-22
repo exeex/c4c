@@ -5062,9 +5062,8 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
     stack_arg_bytes += 8;
   }
   const bool needs_call_alignment_pad =
-      stack_arg_bytes == 0 && block_context.local_layout != nullptr &&
-      block_context.local_layout->frame_size != 0 &&
-      block_context.local_layout->frame_size % 16 == 0;
+      block_context.local_layout != nullptr && block_context.local_layout->frame_size != 0 &&
+      ((block_context.local_layout->frame_size + stack_arg_bytes) % 16) == 0;
   for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
     const auto& arg = call->args[arg_index];
     const auto arg_type = call->arg_types[arg_index];

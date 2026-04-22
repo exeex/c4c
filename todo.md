@@ -5,26 +5,25 @@ Source Idea Path: ideas/open/72_post_link_aggregate_call_runtime_correctness_for
 Source Plan Path: plan.md
 Current Step ID: 2.1
 Current Step Title: Repair The Selected Aggregate-Call Runtime Seam
-Plan Review Counter: 1 / 4
+Plan Review Counter: 2 / 4
 # Current Packet
 
 ## Just Finished
 
-Plan step `2.1` repaired the next helper-side floating/HFA runtime seam after
-the fixed-arity aggregate-forwarding crash: prepared direct-extern helper calls
-with a nonzero local frame now insert the missing 8-byte x86-64 call-alignment
-pad before variadic/libc calls, so framed helpers like `fa_hfa11` and the
-following float/double HFA helpers no longer enter `printf` with a misaligned
-stack. The focused proof still fails, but `00204.c` now executes past
-`fa_hfa11`/`fa_hfa24` and graduates into the later `fa_hfa31` long-double
-helper leaf inside `__printf_fp_l_buffer`.
+Plan step `2.1` repaired the next helper-side long-double/HFA runtime seam:
+prepared direct-extern helper calls with a nonzero local frame now keep the
+same x86-64 call-alignment fix even when the call also materializes stacked
+arguments, so long-double HFA helpers like `fa_hfa31`/`fa_hfa32` no longer
+enter variadic libc calls with the stack 8 bytes off. The focused proof still
+fails, but `00204.c` now executes beyond the `fa_hfa31` family and graduates
+into the later return-helper leaf `fr_s1`.
 
 ## Suggested Next
 
-Take the next packet on the advanced `fa_hfa31` crash surface: inspect the
-prepared helper long-double/HFA variadic path and repair the remaining
-helper-side long-double argument materialization or stack contract that still
-breaks once the float/double variadic call-alignment seam is fixed.
+Take the next packet on the advanced `fr_s1` crash surface: inspect the
+prepared return-helper path for small aggregate returns and repair the helper
+result-pointer home or writeback contract that now fails after the long-double
+HFA variadic-call alignment seam is cleared.
 
 ## Watchouts
 
@@ -49,8 +48,9 @@ breaks once the float/double variadic call-alignment seam is fixed.
   the fix scoped there unless later proof shows stack-arg-bearing helpers need
   a broader variant.
 - The next failing surface is no longer `fa_hfa11`; the focused gdb probe now
-  advances through `fa_hfa24` and stops in `fa_hfa31` during long-double
-  formatting inside `__printf_fp_l_buffer`.
+  advances through the long-double HFA helper family and stops later in
+  `fr_s1`, where the small-aggregate return helper writes through an invalid
+  destination pointer home.
 
 ## Proof
 
@@ -59,13 +59,13 @@ Focused runtime probe for step-2.1 aggregate/helper runtime repair:
 `ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$' | tee test_after.log`
 Result: `backend_x86_handoff_boundary` PASS; `c_testsuite_x86_backend_src_00204_c`
 still fails with `[RUNTIME_NONZERO] ... exit=Segmentation fault`, but the
-live crash surface advanced beyond `fa_hfa11` into the later long-double HFA
-leaf.
+live crash surface advanced beyond the `fa_hfa31` long-double HFA leaf into a
+later return-helper leaf.
 
 Crash-surface confirmation for the repaired seam:
-`gdb -batch -ex 'run' -ex 'bt' -ex 'frame 1' -ex 'info registers rdi rsi rdx rcx r8 r9 al rsp' -ex 'x/24i $pc-24' --args build/c_testsuite_x86_backend/src/00204.c.bin`
+`gdb -batch -ex 'run' -ex 'bt' -ex 'frame 5' -ex 'x/24i $pc-24' -ex 'info registers rsp rbp rdi rsi rdx rcx r8 r9 eax al' --args build/c_testsuite_x86_backend/src/00204.c.bin`
 and `build/c_testsuite_x86_backend/src/00204.c.s`
-Result: generated `fa_hfa11` now emits `sub rsp, 8` / `add rsp, 8` around the
-variadic `printf` call and no longer crashes there; the new stop is inside
-`__printf_fp_l_buffer` called from `fa_hfa31`. Proof log path is
-`test_after.log`.
+Result: generated `fa_hfa31`/`fa_hfa32` now emit the missing `sub rsp, 8` /
+`add rsp, 8` around their variadic `printf` calls and no longer crash there;
+the new stop is in `fr_s1`, where the helper writes through a bad destination
+pointer. Proof log path is `test_after.log`.
