@@ -4,8 +4,8 @@ Status: Active
 Source Idea Path: ideas/open/78_extract_x86_codegen_subsystem_to_markdown_for_phoenix_rebuild.md
 Source Plan Path: plan.md
 Current Step ID: 2
-Current Step Title: Extract Stable Entry Points And Shared Contracts
-Plan Review Counter: 2 / 5
+Current Step Title: Extract Canonical Entry Points, Contracts, And Lowering Families
+Plan Review Counter: 0 / 5
 # Current Packet
 
 ## Just Finished

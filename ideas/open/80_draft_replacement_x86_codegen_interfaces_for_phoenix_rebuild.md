@@ -7,52 +7,69 @@ Parent Idea: [79_review_extracted_x86_codegen_subsystem_for_phoenix_rebuild.md](
 
 ## Intent
 
-Draft the replacement x86 codegen subsystem as reviewed markdown interfaces
-before any implementation conversion begins.
+Draft the replacement x86 codegen subsystem as reviewed per-file markdown
+interfaces from the stage-2 layout and handoff before any implementation
+conversion begins.
 
 ## Stage In Sequence
 
-Stage 3 of 4: replacement drafting.
+Stage 3 of 4: replacement draft generation and draft review.
 
 ## Produces
 
-- `docs/backend/x86_codegen_rebuild.hpp.md`
-- `docs/backend/x86_codegen_rebuild.cpp.md`
-- `docs/backend/x86_codegen_rebuild_review.md`
+- the complete stage-2-declared replacement draft set under
+  `docs/backend/x86_codegen_rebuild/`
+- one `.cpp.md` for every planned replacement implementation file declared in
+  `docs/backend/x86_codegen_rebuild_plan.md`
+- one `.hpp.md` for every planned replacement header file declared in
+  `docs/backend/x86_codegen_rebuild_plan.md`
+- any directory-level index `.md` required by the stage-2 replacement layout
+- `docs/backend/x86_codegen_rebuild/review.md`
 
-The drafts must define:
+The draft set must:
 
-- the replacement component graph for `src/backend/mir/x86/codegen/`
-- the dispatcher boundaries that decide which `.cpp` owns which lowering family
-- how prepared routes consume shared seams instead of growing a parallel
-  lowering stack
-- which responsibilities are core lowering, dispatch, optional fast path, or
-  legacy compatibility
+- follow the exact file layout declared by stage 2 rather than silently
+  inventing or dropping planned files
+- follow the route constraints and trust/correction guidance declared in
+  `docs/backend/x86_codegen_rebuild_handoff.md`
+- partition behavior by responsibility and dependency direction instead of by
+  arbitrary slices of the old implementation
+- state owned inputs, owned outputs, indirect queries, forbidden knowledge,
+  and whether each component is core lowering, dispatch, optional fast path,
+  or compatibility
+- receive an explicit review inside
+  `docs/backend/x86_codegen_rebuild/review.md`
 
 ## Does Not Yet Own
 
 This stage does not own:
 
-- real `.cpp` / `.hpp` implementation edits
-- deleting the old subsystem
-- proving final runtime correctness
+- converting the reviewed drafts into real `.cpp` / `.hpp` files
+- changing the stage-2 replacement layout without first repairing stage 2
+- proving final runtime correctness for the completed rebuild
 
 ## Unlocks
 
-This stage unlocks stage 4 conversion by giving implementation work a reviewed
-replacement contract and ownership map.
+This stage unlocks stage 4 by giving implementation conversion a reviewed,
+per-file replacement contract and ownership map instead of another informal
+rewrite attempt.
 
 ## Scope Notes
 
-The draft must partition behavior by responsibility and dependency direction,
-not by arbitrary line ranges or one-file-per-old-file mirroring.
+The draft set must show how prepared routes consume shared seams instead of
+growing a second lowering stack, and it must make the replacement ownership
+graph legible at the file level. Stage 3 should treat
+`docs/backend/x86_codegen_rebuild_handoff.md` as the explicit intake contract
+from idea 79.
 
 ## Boundaries
 
-Do not convert drafts into real source during this stage.
+Do not convert the drafts into real source during this stage.
 
 ## Completion Signal
 
-This idea is complete when the reviewed `.hpp.md` / `.cpp.md` drafts define a
-clean ownership model for the replacement x86 codegen subsystem and explain how
-prepared paths reuse canonical seams instead of bypassing them.
+This idea is complete when every planned replacement `.cpp` / `.hpp` from the
+stage-2 layout has its corresponding reviewed `.cpp.md` / `.hpp.md` artifact
+under `docs/backend/x86_codegen_rebuild/`, any required directory-level index
+exists, and `docs/backend/x86_codegen_rebuild/review.md` records that the
+draft set is coherent enough to drive implementation conversion.

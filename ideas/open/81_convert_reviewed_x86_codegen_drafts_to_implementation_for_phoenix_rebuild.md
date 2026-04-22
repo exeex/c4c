@@ -17,17 +17,20 @@ Stage 4 of 4: draft-to-implementation conversion.
 ## Produces
 
 - real `.cpp` / `.hpp` implementation under `src/backend/mir/x86/codegen/`
-- dispatch rewiring that routes prepared and non-prepared lowering through the
-  reviewed ownership seams
-- deletion or retirement of legacy x86 codegen paths only after replacement
-  ownership is proven
+  that matches the reviewed draft set from
+  `docs/backend/x86_codegen_rebuild/`
+- dispatcher and ownership rewiring that routes prepared and non-prepared
+  lowering through the reviewed seams
+- deletion or retirement of legacy x86 codegen paths only after the
+  replacement owners are live and proved
 
 ## Does Not Yet Own
 
 This stage does not own:
 
-- changing the reviewed draft contract without first repairing the draft stage
-- deleting legacy logic before the new owner is live and proved
+- changing the reviewed draft contract without first repairing stage 3
+- deleting legacy logic before the new owner is actually in use and proved
+- redefining the replacement architecture outside the reviewed draft set
 
 ## Unlocks
 
@@ -37,7 +40,9 @@ ownership graph is live, proven, and no longer depends on the legacy routes.
 ## Scope Notes
 
 Migration should typically move shared helpers first, then coherent lowering
-families, then dispatch rewiring, and only then legacy deletion.
+families, then dispatcher rewiring, and only then legacy deletion. Every
+packet should make it clear what responsibility moved and what remains in the
+legacy route.
 
 ## Boundaries
 
@@ -46,7 +51,7 @@ the migrated behavior.
 
 ## Completion Signal
 
-This idea is complete when the reviewed drafts are converted into real x86
-codegen implementation, the new ownership seams are actually in use, remaining
-legacy code is explicitly classified, and proof shows the migrated capability
-families still work.
+This idea is complete when the reviewed replacement draft set has been
+converted into real x86 codegen implementation, the new ownership seams are
+actually in use, remaining legacy code is explicitly classified, and proof
+shows the migrated capability families still work.
