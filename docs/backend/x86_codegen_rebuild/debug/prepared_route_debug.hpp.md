@@ -1,7 +1,31 @@
 # `debug/prepared_route_debug.hpp`
 
-Status: Placeholder created during plan step 1.
+Primary role: declare route-summary and trace surfaces for prepared-path proof
+and debugging.
 
-- Planned role: prepared-route debug declarations
-- Draft bucket: `debug`
-- Step-4 follow-up: keep route-proof surfaces observational only
+Owned inputs:
+
+- prepared route facts, prepared query context facts, and canonical admission
+  decisions that are safe to expose for diagnostics
+
+Owned outputs:
+
+- declarations for route summaries, traces, and focused debug views that help
+  explain prepared routing
+- debug-only types that stay outside the lowering and prepared ownership paths
+
+Allowed indirect queries:
+
+- `prepared/prepared_query_context.hpp`
+- `prepared/prepared_fast_path_dispatch.hpp`
+- `core/x86_codegen_types.hpp`
+
+Forbidden knowledge:
+
+- machine-code emission ownership
+- fast-path admission decisions beyond reporting them
+- module-data emission or canonical lowering semantics
+
+Role classification:
+
+- `debug`

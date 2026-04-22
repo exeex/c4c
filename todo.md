@@ -3,42 +3,40 @@
 Status: Active
 Source Idea Path: ideas/open/80_draft_replacement_x86_codegen_interfaces_for_phoenix_rebuild.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Draft Canonical Lowering Family Contracts
+Current Step ID: 4
+Current Step Title: Draft Prepared And Debug Adapter Contracts
 Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed plan step 3, "Draft Canonical Lowering Family Contracts," by
-replacing the step-1 placeholders in `lowering/` with explicit frame, call,
-return, memory, comparison, scalar, float, and atomics/intrinsics ownership
-contracts.
+Completed plan step 4, "Draft Prepared And Debug Adapter Contracts," by
+replacing the step-1 placeholders in `prepared/` and `debug/` with explicit
+adapter and proof-surface contracts that consume the canonical seams instead
+of reopening lowering ownership locally.
 
 ## Suggested Next
 
-Advance to plan step 4 by drafting the `prepared/` and `debug/` adapter
-contracts so the prepared route is explicitly constrained to consume the
-canonical seams instead of acting like a second lowering stack.
+Advance to plan step 5 by reviewing the full draft tree for manifest
+completeness, dependency direction, and stage-4 implementation readiness, then
+record that review in `docs/backend/x86_codegen_rebuild/review.md`.
 
 ## Watchouts
 
-- The lowering drafts now name the semantic owners; step 4 must treat those as
-  consumed services rather than reopening frame homes, call lanes, memory
-  operands, or predicate policy inside prepared-facing files.
-- `float_lowering` intentionally absorbs the legacy `f128`/x87 path so that
-  step 4 does not invent a separate compatibility owner for long-double
-  behavior.
-- `atomics_intrinsics_lowering` remains canonical lowering despite containing
-  ISA-specialized helpers; prepared adapters should not become another target-
-  specific capability bucket.
+- The prepared layer is now explicitly query-shaped; step 5 should verify that
+  no file in the draft tree slips back into broad prepared-context ownership
+  or hidden lowering helpers.
+- `prepared_fast_path_operands` must stay a translator over canonical frame
+  and memory seams, not a rebadged local-slot subsystem.
+- The debug layer must remain observational even when it mirrors matcher
+  vocabulary; it should describe admission and fallback facts, not own them.
 
 ## Proof
 
 Docs-only contract proof passed with:
 `python3 - <<'PY' > test_after.log ...`
-The check verified that the 16 step-3 `lowering/` files no longer contain the
-step-1 placeholder marker and that each file records owned inputs, owned
-outputs, allowed indirect queries, forbidden knowledge, and role
-classification.
+The check verified that the 7 step-4 `prepared/` and `debug/` files no longer
+contain the step-1 placeholder marker and that each file records owned
+inputs, owned outputs, allowed indirect queries, forbidden knowledge, and
+role classification.
 Proof log: `test_after.log`.
