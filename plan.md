@@ -583,8 +583,91 @@ Actions:
 
 Completion check:
 
-- canonical call and return helpers are owned by reviewed lowering seams and
-  legacy callers only remain as explicit forwarding or compatibility shells
+- step 2.2.1 through step 2.2.3 are complete, canonical call and return
+  helpers are owned by reviewed lowering seams, and legacy callers only remain
+  as explicit forwarding or compatibility shells
+
+#### Step 2.2.1: Migrate Canonical Call Setup And Shared Operand Prep Helpers
+
+Goal: finish the foundational call-lane migration by standing up the reviewed
+call/return lowering file boundaries and moving canonical call-setup,
+operand-pair loading, and shared result-prep helpers behind compiled lowering
+owners instead of dormant mixed support files.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/lowering/call_lowering.*`
+- `src/backend/mir/x86/codegen/lowering/return_lowering.*`
+- dormant or mixed shared support around canonical call setup and operand prep
+
+Actions:
+
+- keep reviewed call/return lowering files as the compiled ownership seams for
+  canonical call and return helpers
+- move call-setup and shared operand/result-prep helper families out of
+  dormant support files one coherent cluster at a time
+- leave module and prepared compatibility entrypoints as forwarding callers
+  instead of reviving mixed legacy owners
+
+Completion check:
+
+- canonical call-setup and shared operand/result-prep helpers are owned by
+  compiled reviewed lowering seams and dormant mixed support no longer owns
+  that family
+
+#### Step 2.2.2: Migrate Canonical Call Issuance, Cleanup, And Result Publication
+
+Goal: move the next live canonical call family so actual call issuance,
+post-call cleanup, and result publication stop depending on mixed or dormant
+support ownership.
+
+Primary targets:
+
+- canonical call/result publication helpers under
+  `src/backend/mir/x86/codegen/lowering/`
+- remaining mixed or dormant support around call cleanup and result lanes
+
+Actions:
+
+- classify the next coherent helper family still living around call issuance,
+  cleanup, or result publication
+- migrate that family behind reviewed lowering or compiled owners without
+  widening into prepared-route admission or ABI-policy work
+- keep compatibility callers explicit and thin while the canonical owners take
+  responsibility for the moved family
+
+Completion check:
+
+- canonical call issuance, cleanup, and result publication helpers are owned
+  by reviewed lowering seams and no mixed support file remains a hidden owner
+  for that family
+
+#### Step 2.2.3: Migrate Canonical Return-Lane Handoff And Audit Remaining Holdouts
+
+Goal: finish the call/return migration by moving return-lane handoff and any
+remaining canonical call/return holdouts behind reviewed lowering seams, then
+make the leftover compatibility surface explicit.
+
+Primary targets:
+
+- remaining canonical return-lane helpers under
+  `src/backend/mir/x86/codegen/lowering/`
+- compatibility wrappers and residual mixed call/return support files
+
+Actions:
+
+- move return-lane handoff helpers and any remaining canonical call/return
+  holdouts behind `return_lowering` or adjacent reviewed lowering owners
+- classify leftover legacy call/return helpers as forwarded compatibility
+  shells or honest later-step holdouts
+- keep prepared-route admission, ABI policy, and non-canonical lowering work
+  out of this step
+
+Completion check:
+
+- canonical return-lane handoff is owned by reviewed lowering seams and the
+  remaining legacy call/return surface is explicitly classified instead of
+  silently retaining mixed ownership
 
 ### Step 2.3: Migrate Scalar And Comparison Lowering Families
 
