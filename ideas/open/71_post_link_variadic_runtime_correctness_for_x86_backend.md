@@ -25,22 +25,31 @@ This idea owns x86 backend failures where:
 
 ## Current Known Failed Cases It Owns
 
-- `c_testsuite_x86_backend_src_00204_c`
+- none currently confirmed; `c_testsuite_x86_backend_src_00204_c` graduated on
+  2026-04-22 into a separate fixed-arity aggregate-call runtime leaf after the
+  first post-link crash proved not to be variadic-path-owned
 
 ## Latest Durable Note
 
 As of 2026-04-22, idea 70's closure repair in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` removed the unresolved
-same-module `s1`..`s16` references and the unresolved `llvm.va_start.p0`
-failure for `00204.c`. Fresh focused proof now links that case successfully
-and reaches a later runtime failure:
+`src/backend/mir/x86/codegen/prepared_module_emit.cpp` still stands: fresh
+focused proof
 
-- `c_testsuite_x86_backend_src_00204_c` exits via `[RUNTIME_NONZERO]`
-- the executable crashes with `Segmentation fault`
+`ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$'`
 
-That runtime crash is a separate initiative from idea 70's remaining
-post-assembly boundary-contract work and should not be silently absorbed back
-into the closure leaf.
+shows `backend_x86_handoff_boundary` passing while `00204.c` links and then
+fails later at runtime. A follow-on `gdb` backtrace against the generated
+`build/c_testsuite_x86_backend/src/00204.c.bin` shows the first crash in
+fixed-arity helper `fa_s2`, not in `myprintf`, `llvm.va_start.p0`, or later
+`va_list` traversal. The emitted code dereferences a bogus pointer from
+`(%rsp)` and forwards `%r12` to `printf`, so `00204.c` no longer belongs to
+this variadic-runtime leaf.
+
+Durable ownership for that case therefore graduates into a separate post-link
+fixed-arity aggregate-call runtime leaf. Keep idea 71 focused on genuine
+variadic runtime failures after link succeeds, and only rehome `00204.c` back
+here if its first runtime blocker advances into `va_start`, `va_list`, or
+later `myprintf`-owned execution.
 
 ## Scope Notes
 
