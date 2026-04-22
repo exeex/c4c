@@ -379,7 +379,4 @@ void X86Codegen::emit_call_store_i128_result_impl(const Value& dest) {
   this->store_rax_rdx_to(dest);
 }
 
-void X86Codegen::emit_call_move_f32_to_acc_impl() { this->state.emit("    movd %xmm0, %eax"); }
-void X86Codegen::emit_call_move_f64_to_acc_impl() { this->state.emit("    movq %xmm0, %rax"); }
-
 }  // namespace c4c::backend::x86
