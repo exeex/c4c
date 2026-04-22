@@ -12,6 +12,13 @@ namespace {
 
 constexpr std::string_view kScalarPreparedControlFlowShapeError =
     "x86 backend emitter only supports a minimal single-block i32 return terminator, a bounded equality-against-immediate guard family with immediate return leaves including fixed-offset same-module global i32 loads and pointer-backed same-module global roots, or one bounded compare-against-zero branch family through the canonical prepared-module handoff";
+constexpr std::string_view kMultiDefinedModuleContractError =
+    "x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls through the canonical prepared-module handoff";
+
+struct DefinedFunctionInventory {
+  std::vector<const c4c::backend::bir::Function*> defined_functions;
+  const c4c::backend::bir::Function* entry_function = nullptr;
+};
 
 std::optional<std::string> narrow_i32_register_name(std::string_view wide_register) {
   if (wide_register == "rax") return std::string("eax");
@@ -77,6 +84,75 @@ std::string render_minimal_function_asm_prefix(const c4c::backend::bir::Function
          ", @function\n" + candidate.name + ":\n";
 }
 
+DefinedFunctionInventory collect_defined_function_inventory(
+    const c4c::backend::prepare::PreparedBirModule& module) {
+  DefinedFunctionInventory inventory;
+  for (const auto& candidate : module.module.functions) {
+    if (candidate.is_declaration) {
+      continue;
+    }
+    inventory.defined_functions.push_back(&candidate);
+    if (candidate.name == "main") {
+      inventory.entry_function = &candidate;
+    } else if (inventory.entry_function == nullptr) {
+      inventory.entry_function = &candidate;
+    }
+  }
+  if (inventory.entry_function == nullptr) {
+    throw std::invalid_argument(std::string(kMultiDefinedModuleContractError));
+  }
+  return inventory;
+}
+
+PreparedModuleMultiDefinedDispatchState build_module_multi_defined_dispatch(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const DefinedFunctionInventory& inventory,
+    c4c::TargetArch prepared_arch,
+    const c4c::backend::x86::module::ModuleDataSupport& module_data_support,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
+        render_trivial_defined_function_if_supported,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
+        minimal_function_return_register,
+    const std::function<std::string(const c4c::backend::bir::Function&)>&
+        minimal_function_asm_prefix,
+    const std::function<std::optional<std::string>(const c4c::backend::bir::Param&, std::size_t)>&
+        minimal_param_register_at) {
+  return c4c::backend::x86::build_prepared_module_multi_defined_dispatch_state(
+      module, inventory.defined_functions, inventory.entry_function, prepared_arch,
+      render_trivial_defined_function_if_supported, minimal_function_return_register,
+      minimal_function_asm_prefix,
+      [&](std::string_view name) { return module_data_support.find_same_module_global(name); },
+      [&](const c4c::backend::bir::Global& global,
+          c4c::backend::bir::TypeKind type,
+          std::size_t byte_offset) {
+        return module_data_support.same_module_global_supports_scalar_load(global, type,
+                                                                           byte_offset);
+      },
+      minimal_param_register_at,
+      [&](std::string_view symbol_name) {
+        const std::string prefixed_name = "@" + std::string(symbol_name);
+        return module_data_support.render_private_data_label(prefixed_name);
+      },
+      [&](std::string_view symbol_name) {
+        return module_data_support.has_string_constant(symbol_name);
+      },
+      [&](std::string_view symbol_name) {
+        return module_data_support.has_same_module_global(symbol_name);
+      },
+      [&](std::string_view symbol_name) {
+        return module_data_support.render_asm_symbol_name(symbol_name);
+      },
+      [&](std::string_view symbol_name) {
+        return module_data_support.find_string_constant(symbol_name);
+      },
+      [&](const c4c::backend::bir::StringConstant& string_constant) {
+        return module_data_support.emit_string_constant_data(string_constant);
+      },
+      [&](const c4c::backend::bir::Global& global) {
+        return module_data_support.emit_same_module_global_data(global);
+      });
+}
+
 }  // namespace
 
 std::string emit_prepared_module_text(
@@ -90,23 +166,9 @@ std::string emit_prepared_module_text(
         "x86 backend emitter requires an x86 target for the canonical prepared-module handoff");
   }
 
-  std::vector<const c4c::backend::bir::Function*> defined_functions;
-  const c4c::backend::bir::Function* entry_function_ptr = nullptr;
-  for (const auto& candidate : module.module.functions) {
-    if (candidate.is_declaration) {
-      continue;
-    }
-    defined_functions.push_back(&candidate);
-    if (candidate.name == "main") {
-      entry_function_ptr = &candidate;
-    } else if (entry_function_ptr == nullptr) {
-      entry_function_ptr = &candidate;
-    }
-  }
-  if (entry_function_ptr == nullptr) {
-    throw std::invalid_argument(
-        "x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls through the canonical prepared-module handoff");
-  }
+  const auto defined_function_inventory = collect_defined_function_inventory(module);
+  const auto& defined_functions = defined_function_inventory.defined_functions;
+  const auto* entry_function_ptr = defined_function_inventory.entry_function;
   const auto minimal_param_register_at =
       [&](const c4c::backend::bir::Param& param,
           std::size_t arg_index) -> std::optional<std::string> {
@@ -129,43 +191,12 @@ std::string emit_prepared_module_text(
         candidate, prepared_arch, minimal_function_return_register, minimal_function_asm_prefix);
   };
   const auto throw_multi_defined_contract = [&]() -> void {
-    throw std::invalid_argument(
-        "x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls through the canonical prepared-module handoff");
+    throw std::invalid_argument(std::string(kMultiDefinedModuleContractError));
   };
-  const auto multi_defined_dispatch = [&]() {
-    return c4c::backend::x86::build_prepared_module_multi_defined_dispatch_state(
-        module, defined_functions, entry_function_ptr, prepared_arch,
-        render_trivial_defined_function_if_supported, minimal_function_return_register,
-        minimal_function_asm_prefix,
-        [&](std::string_view name) { return module_data_support.find_same_module_global(name); },
-        [&](const c4c::backend::bir::Global& global,
-            c4c::backend::bir::TypeKind type,
-            std::size_t byte_offset) {
-          return module_data_support.same_module_global_supports_scalar_load(global, type,
-                                                                             byte_offset);
-        },
-        minimal_param_register_at,
-        [&](std::string_view symbol_name) {
-          const std::string prefixed_name = "@" + std::string(symbol_name);
-          return module_data_support.render_private_data_label(prefixed_name);
-        },
-        [&](std::string_view symbol_name) { return module_data_support.has_string_constant(symbol_name); },
-        [&](std::string_view symbol_name) {
-          return module_data_support.has_same_module_global(symbol_name);
-        },
-        [&](std::string_view symbol_name) {
-          return module_data_support.render_asm_symbol_name(symbol_name);
-        },
-        [&](std::string_view symbol_name) {
-          return module_data_support.find_string_constant(symbol_name);
-        },
-        [&](const c4c::backend::bir::StringConstant& string_constant) {
-          return module_data_support.emit_string_constant_data(string_constant);
-        },
-        [&](const c4c::backend::bir::Global& global) {
-          return module_data_support.emit_same_module_global_data(global);
-        });
-  }();
+  const auto multi_defined_dispatch = build_module_multi_defined_dispatch(
+      module, defined_function_inventory, prepared_arch, module_data_support,
+      render_trivial_defined_function_if_supported, minimal_function_return_register,
+      minimal_function_asm_prefix, minimal_param_register_at);
   const auto& bounded_same_module_helper_names = multi_defined_dispatch.helper_names;
   const auto& bounded_same_module_helper_global_names =
       multi_defined_dispatch.helper_global_names;
@@ -189,7 +220,7 @@ std::string emit_prepared_module_text(
     return "x86 backend emitter requires the authoritative prepared local-slot instruction handoff through the canonical prepared-module handoff [bounded function: " +
            std::string(function_name) + ", lane: " + std::string(lane_name) + "]";
   };
-    if (multi_defined_dispatch.rendered_module.has_value()) {
+  if (multi_defined_dispatch.rendered_module.has_value()) {
     return module_data_support.finalize_multi_defined_rendered_module_text(
         multi_defined_dispatch.helper_prefix + *multi_defined_dispatch.rendered_module);
   }
