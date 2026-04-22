@@ -1,6 +1,6 @@
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/bir_printer.hpp"
-#include "src/backend/mir/x86/codegen/x86_codegen.hpp"
+#include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -498,7 +498,7 @@ int check_route_outputs(const bir::Module& module,
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the prepared handoff with exception: " +
@@ -627,7 +627,7 @@ int check_local_i32_guard_route_rejects_authoritative_join_contract(
   entry_branch_condition->false_label = intern_block_label(prepared, "block_2");
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted a local guard fallback while authoritative join ownership remained active")
                     .c_str());
@@ -734,7 +734,7 @@ int check_short_circuit_route_prefers_prepared_passthrough_branch_target_impl(
       .terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(77)},
   });
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_minimal_local_i32_short_circuit_or_guard_asm(function_name)) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped preferring the authoritative rhs passthrough branch target over raw branch drift")
@@ -819,7 +819,7 @@ int check_short_circuit_route_ignores_rhs_compare_carrier_state_when_prepared_co
       .rhs = bir::Value::immediate_i32(7),
   };
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_minimal_local_i32_short_circuit_or_guard_asm(function_name)) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped preferring the prepared rhs continuation compare contract")
@@ -928,7 +928,7 @@ int check_short_circuit_route_requires_authoritative_rhs_continuation_compare_ca
   rhs_block->insts.clear();
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted a rhs branch carrier with authoritative continuation ownership but no compare carrier")
                     .c_str());
@@ -1116,7 +1116,7 @@ int check_short_circuit_route_consumes_prepared_control_flow_impl(const bir::Mod
     });
   }
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_minimal_local_i32_short_circuit_or_guard_asm(function_name)) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following authoritative short-circuit metadata over carrier labels")
@@ -1584,7 +1584,7 @@ int check_short_circuit_route_prefers_prepared_continuation_labels_when_join_bra
       intern_block_label(prepared, join_block->terminator.false_label);
   join_branch_condition->predicate = bir::BinaryOpcode::Eq;
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_minimal_local_i32_short_circuit_or_guard_asm(function_name)) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following authoritative rhs continuation labels when join-branch labels drift")
@@ -1709,7 +1709,7 @@ int check_short_circuit_route_requires_authoritative_rhs_prepared_branch_conditi
   rhs_branch_condition->predicate.reset();
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted a drifted rhs prepared branch contract")
                     .c_str());
@@ -1855,7 +1855,7 @@ int check_short_circuit_route_requires_authoritative_entry_prepared_branch_condi
   entry_branch_condition->predicate.reset();
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted a drifted short-circuit entry prepared branch contract")
                     .c_str());
@@ -2005,7 +2005,7 @@ int check_short_circuit_route_requires_authoritative_entry_prepared_target_label
       intern_block_label(prepared, "contract.entry.misleading.false");
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted drifted entry prepared target labels")
                     .c_str());
@@ -2610,7 +2610,7 @@ int check_short_circuit_route_validates_authoritative_join_carrier_impl(
   join_block->terminator.true_label = "carrier.join.true";
   join_block->terminator.false_label = "carrier.join.false";
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_minimal_local_i32_short_circuit_or_guard_asm(function_name)) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped validating the authoritative short-circuit join carrier")

@@ -3,6 +3,7 @@
 #include "src/backend/bir/bir_printer.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/mir/x86/codegen/x86_codegen.hpp"
+#include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 
 #include <iostream>
@@ -436,7 +437,7 @@ int check_id_i32_requires_authoritative_prepared_return_bundle() {
   erase_prepared_move_bundle(*function_locations, prepare::PreparedMovePhase::BeforeReturn, 0, 0);
 
   try {
-    static_cast<void>(c4c::backend::x86::emit_prepared_module(prepared));
+    static_cast<void>(c4c::backend::x86::api::emit_prepared_module(prepared));
   } catch (const std::invalid_argument& ex) {
     if (std::string(ex.what()).find("canonical prepared-module handoff") !=
         std::string::npos) {
@@ -477,7 +478,7 @@ int check_id_i32_requires_authoritative_prepared_return_home() {
       function_locations->value_homes.end());
 
   try {
-    static_cast<void>(c4c::backend::x86::emit_prepared_module(prepared));
+    static_cast<void>(c4c::backend::x86::api::emit_prepared_module(prepared));
   } catch (const std::invalid_argument& ex) {
     if (std::string(ex.what()).find("canonical prepared-module handoff") !=
         std::string::npos) {
@@ -547,7 +548,7 @@ int check_id_i32_stack_home_passthrough_consumes_prepared_value_location_contrac
   param_home->offset_bytes = 0;
   prepared.stack_layout.frame_size_bytes = 4;
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_minimal_stack_home_passthrough_asm("id_i32", 4, 0)) {
     return fail("stack-backed i32 parameter passthrough route: x86 prepared-module consumer stopped following authoritative prepared stack homes");
   }
@@ -586,7 +587,7 @@ int check_add_one_stack_home_consumes_prepared_value_location_contract() {
   param_home->offset_bytes = 0;
   prepared.stack_layout.frame_size_bytes = 4;
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm !=
       expected_minimal_stack_home_param_binary_asm("add_one", "add", 1, 4, 0)) {
     return fail("stack-backed i32 add-immediate route: x86 prepared-module consumer stopped following authoritative prepared stack homes");
@@ -627,7 +628,7 @@ int check_immediate_add_param_stack_home_consumes_prepared_value_location_contra
   param_home->offset_bytes = 0;
   prepared.stack_layout.frame_size_bytes = 4;
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm !=
       expected_minimal_stack_home_param_binary_asm("add_one_commuted", "add", 1, 4, 0)) {
     return fail("stack-backed i32 commuted add-immediate route: x86 prepared-module consumer stopped following authoritative prepared stack homes");
@@ -668,7 +669,7 @@ int check_immediate_xor_param_stack_home_consumes_prepared_value_location_contra
   param_home->offset_bytes = 0;
   prepared.stack_layout.frame_size_bytes = 4;
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm !=
       expected_minimal_stack_home_param_binary_asm("flip_masked_bits_commuted", "xor", 10, 4, 0)) {
     return fail("stack-backed i32 commuted xor-immediate route: x86 prepared-module consumer stopped following authoritative prepared stack homes");
@@ -709,7 +710,7 @@ int check_immediate_or_param_stack_home_consumes_prepared_value_location_contrac
   param_home->offset_bytes = 0;
   prepared.stack_layout.frame_size_bytes = 4;
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm !=
       expected_minimal_stack_home_param_binary_asm("set_low_bits_commuted", "or", 12, 4, 0)) {
     return fail("stack-backed i32 commuted or-immediate route: x86 prepared-module consumer stopped following authoritative prepared stack homes");
@@ -749,7 +750,7 @@ int check_mul_three_stack_home_consumes_prepared_value_location_contract() {
   param_home->offset_bytes = 0;
   prepared.stack_layout.frame_size_bytes = 4;
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm !=
       expected_minimal_stack_home_param_binary_asm("mul_three", "imul", 3, 4, 0)) {
     return fail("stack-backed i32 mul-immediate route: x86 prepared-module consumer stopped following authoritative prepared stack homes");
@@ -789,7 +790,7 @@ int check_mask_low_bits_stack_home_consumes_prepared_value_location_contract() {
   param_home->offset_bytes = 0;
   prepared.stack_layout.frame_size_bytes = 4;
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm !=
       expected_minimal_stack_home_param_binary_asm("mask_low_bits", "and", 15, 4, 0)) {
     return fail("stack-backed i32 and-immediate route: x86 prepared-module consumer stopped following authoritative prepared stack homes");
@@ -829,7 +830,7 @@ int check_shift_left_stack_home_consumes_prepared_value_location_contract() {
   param_home->offset_bytes = 0;
   prepared.stack_layout.frame_size_bytes = 4;
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm !=
       expected_minimal_stack_home_param_binary_asm("shift_left_three", "shl", 3, 4, 0)) {
     return fail("stack-backed i32 shl-immediate route: x86 prepared-module consumer stopped following authoritative prepared stack homes");
@@ -869,7 +870,7 @@ int check_logical_shift_right_stack_home_consumes_prepared_value_location_contra
   param_home->offset_bytes = 0;
   prepared.stack_layout.frame_size_bytes = 4;
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm !=
       expected_minimal_stack_home_param_binary_asm("shift_right_two", "shr", 2, 4, 0)) {
     return fail("stack-backed i32 lshr-immediate route: x86 prepared-module consumer stopped following authoritative prepared stack homes");
@@ -909,7 +910,7 @@ int check_arithmetic_shift_right_stack_home_consumes_prepared_value_location_con
   param_home->offset_bytes = 0;
   prepared.stack_layout.frame_size_bytes = 4;
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm !=
       expected_minimal_stack_home_param_binary_asm("shift_right_signed", "sar", 3, 4, 0)) {
     return fail("stack-backed i32 ashr-immediate route: x86 prepared-module consumer stopped following authoritative prepared stack homes");
@@ -1402,7 +1403,7 @@ int check_route_outputs(const bir::Module& module,
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the prepared handoff with exception: " +

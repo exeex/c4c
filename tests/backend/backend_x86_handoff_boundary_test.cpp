@@ -1,6 +1,6 @@
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/bir_printer.hpp"
-#include "src/backend/mir/x86/codegen/x86_codegen.hpp"
+#include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 
 #include <cstdlib>
@@ -53,7 +53,7 @@ int check_route_outputs(const bir::Module& module,
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the prepared handoff with exception: " +
@@ -99,7 +99,7 @@ int check_route_rejection(const bir::Module& module,
           module, target_profile_from_module_triple(module.target_triple, target_profile));
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted an out-of-scope route")
                     .c_str());

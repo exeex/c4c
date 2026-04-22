@@ -1,6 +1,6 @@
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/bir_printer.hpp"
-#include "src/backend/mir/x86/codegen/x86_codegen.hpp"
+#include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -487,7 +487,7 @@ int check_route_outputs(const bir::Module& module,
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the prepared handoff with exception: " +
@@ -621,7 +621,7 @@ int check_loop_countdown_route_consumes_prepared_control_flow(const bir::Module&
   loop_compare->rhs = bir::Value::immediate_i32(7);
   body_store->value = bir::Value::immediate_i32(44);
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following the authoritative loop control-flow contract over unrelated prepared records")
@@ -672,7 +672,7 @@ int check_loop_countdown_route_ignores_slot_shaped_join_storage_metadata(
     edge_transfer.storage_name.reset();
   }
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer still depends on slot-shaped loop-carry storage metadata")
@@ -722,7 +722,7 @@ int check_loop_countdown_route_consumes_prepared_control_flow_with_reversed_join
 
   std::swap(join_transfer.edge_transfers.front(), join_transfer.edge_transfers.back());
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped identifying loop-carry ownership by predecessor labels")
@@ -766,7 +766,7 @@ int check_loop_countdown_route_consumes_prepared_control_flow_with_preheader_blo
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the prepared loop handoff with exception: " +
@@ -816,7 +816,7 @@ int check_loop_countdown_route_consumes_prepared_control_flow_with_preheader_cha
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the prepared loop handoff with exception: " +
@@ -890,7 +890,7 @@ int check_loop_countdown_route_prefers_prepared_preheader_handoff_value(
   loop_compare->rhs = bir::Value::immediate_i32(7);
   body_store->value = bir::Value::immediate_i32(44);
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped taking the authoritative preheader loop-carry handoff value from prepared metadata")
@@ -936,7 +936,7 @@ int check_loop_countdown_route_requires_supported_entry_handoff_carrier(
   entry_store->slot_name = "%entry.counter.drift";
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted a drifted entry handoff carrier")
                     .c_str());
@@ -987,7 +987,7 @@ int check_loop_countdown_route_requires_authoritative_transparent_entry_prefix(
   function.blocks.push_back(std::move(intruder));
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted a non-authoritative transparent entry prefix")
                     .c_str());
@@ -1036,7 +1036,7 @@ int check_loop_countdown_route_requires_authoritative_prepared_branch_condition(
       bir::Value::named(bir::TypeKind::I32, "drifted.loop.condition");
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted a drifted prepared loop branch condition")
                     .c_str());
@@ -1085,7 +1085,7 @@ int check_loop_countdown_route_rejects_transfer_drift_when_authoritative_branch_
       prepare::PreparedJoinTransferKind::SelectMaterialization;
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly reopened the local countdown fallback after loop-transfer drift")
                     .c_str());
@@ -1122,7 +1122,7 @@ int check_local_countdown_guard_route_consumes_authoritative_guard_branch_condit
 
   std::string baseline_asm;
   try {
-    baseline_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    baseline_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": local countdown fallback fixture no longer renders before authoritative guard ownership is injected: " +
@@ -1159,7 +1159,7 @@ int check_local_countdown_guard_route_consumes_authoritative_guard_branch_condit
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the authoritative guard-owned countdown fallback with exception: " +
@@ -1196,7 +1196,7 @@ int check_local_countdown_guard_route_consumes_authoritative_join_transfer(
 
   std::string baseline_asm;
   try {
-    baseline_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    baseline_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": local countdown fallback fixture no longer renders before authoritative join ownership is injected: " +
@@ -1252,7 +1252,7 @@ int check_local_countdown_guard_route_consumes_authoritative_join_transfer(
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the authoritative join-owned countdown fallback with exception: " +
@@ -1288,7 +1288,7 @@ int check_local_countdown_guard_route_prefers_authoritative_continuation_init_ta
 
   std::string baseline_asm;
   try {
-    baseline_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    baseline_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": local countdown fallback fixture no longer renders before continuation-carrier target drift is injected: " +
@@ -1309,7 +1309,7 @@ int check_local_countdown_guard_route_prefers_authoritative_continuation_init_ta
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the authoritative continuation-carrier branch ownership with exception: " +
@@ -1345,7 +1345,7 @@ int check_local_countdown_guard_route_prefers_authoritative_continuation_body_ta
 
   std::string baseline_asm;
   try {
-    baseline_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    baseline_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": local countdown fallback fixture no longer renders before continuation-body target drift is injected: " +
@@ -1366,7 +1366,7 @@ int check_local_countdown_guard_route_prefers_authoritative_continuation_body_ta
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the authoritative continuation-body branch ownership with exception: " +
@@ -1403,7 +1403,7 @@ int check_local_countdown_guard_route_prefers_authoritative_loop_targets_after_j
 
   std::string baseline_asm;
   try {
-    baseline_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    baseline_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": local countdown fallback fixture no longer renders before authoritative continuation-loop ownership is injected: " +
@@ -1456,7 +1456,7 @@ int check_local_countdown_guard_route_prefers_authoritative_loop_targets_after_j
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the authoritative continuation-loop ownership with exception: " +
@@ -1523,7 +1523,7 @@ int check_loop_countdown_route_consumes_prepared_eq_zero_branch_contract(
   loop_compare->lhs = bir::Value::immediate_i32(7);
   loop_compare->rhs = bir::Value::immediate_i32(7);
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following the authoritative eq-zero loop branch contract")
@@ -1586,7 +1586,7 @@ int check_loop_countdown_route_consumes_prepared_eq_zero_branch_contract_with_ze
   loop_compare->lhs = bir::Value::immediate_i32(7);
   loop_compare->rhs = bir::Value::immediate_i32(7);
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following the authoritative eq-zero loop branch contract when zero is the prepared lhs")
@@ -1644,7 +1644,7 @@ int check_loop_countdown_route_prefers_authoritative_prepared_branch_labels(
                     .c_str());
   }
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped preferring authoritative prepared loop branch metadata over raw loop terminator drift")
@@ -1685,7 +1685,7 @@ int check_loop_countdown_route_prefers_authoritative_single_successor_targets(
   entry_block->terminator.target_label = "drifted.entry.loop";
   body_block->terminator.target_label = "drifted.body.loop";
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped preferring authoritative prepared single-successor targets over raw entry/body branch drift")
@@ -1726,7 +1726,7 @@ int check_loop_countdown_route_prefers_authoritative_transparent_prefix_targets(
   carrier_block->terminator.target_label = "drifted.prefix.preheader";
   preheader_block->terminator.target_label = "drifted.prefix.loop";
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following authoritative transparent-prefix targets over raw preheader-chain drift")

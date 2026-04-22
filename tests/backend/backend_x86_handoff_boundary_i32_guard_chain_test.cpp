@@ -1,6 +1,6 @@
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/bir_printer.hpp"
-#include "src/backend/mir/x86/codegen/x86_codegen.hpp"
+#include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 
 #include <iostream>
@@ -588,7 +588,7 @@ int check_route_outputs(const bir::Module& module,
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the prepared handoff with exception: " +
@@ -659,7 +659,7 @@ int check_i32_guard_chain_route_requires_authoritative_prepared_branch_labels(
   branch_condition->false_label = prepared.names.block_labels.intern("drifted.guard.chain.false");
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted drifted prepared guard-chain labels")
                     .c_str());
@@ -724,7 +724,7 @@ int check_i32_guard_chain_route_consumes_authoritative_prepared_compare_contract
   compare->lhs = bir::Value::immediate_i32(7);
   compare->rhs = bir::Value::immediate_i32(3);
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following authoritative prepared compare ownership over drifted raw compare carriers")
@@ -771,7 +771,7 @@ int check_same_module_global_guard_chain_route_consumes_prepared_address_contrac
   entry_load->global_name = "drifted_same_module_global";
   second_load->global_name = "drifted_same_module_global";
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following authoritative prepared same-module global accesses over drifted raw global carriers")
@@ -833,7 +833,7 @@ int check_same_module_global_guard_chain_route_requires_authoritative_prepared_a
   mutable_addressing->accesses.clear();
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(mutated);
+    (void)c4c::backend::x86::api::emit_prepared_module(mutated);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly fell back to raw same-module global carriers after prepared access loss")
                     .c_str());
@@ -886,7 +886,7 @@ int check_same_module_global_store_guard_chain_route_consumes_prepared_address_c
   entry_load->global_name = "drifted_same_module_global";
   entry_load->byte_offset = 0;
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following authoritative prepared same-module global store accesses over drifted raw global carriers")
@@ -948,7 +948,7 @@ int check_same_module_global_store_guard_chain_route_requires_authoritative_prep
   mutable_addressing->accesses.clear();
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(mutated);
+    (void)c4c::backend::x86::api::emit_prepared_module(mutated);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly fell back to raw same-module global store carriers after prepared access loss")
                     .c_str());
@@ -999,7 +999,7 @@ int check_pointer_backed_same_module_global_guard_chain_route_consumes_prepared_
                     .c_str());
   }
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following authoritative prepared pointer-backed same-module global accesses over drifted raw global carriers")
@@ -1059,7 +1059,7 @@ int check_pointer_backed_same_module_global_guard_chain_route_requires_authorita
   mutable_addressing->accesses.clear();
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(mutated);
+    (void)c4c::backend::x86::api::emit_prepared_module(mutated);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly fell back to raw pointer-backed same-module global carriers after prepared access loss")
                     .c_str());

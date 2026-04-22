@@ -1,6 +1,6 @@
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/bir_printer.hpp"
-#include "src/backend/mir/x86/codegen/x86_codegen.hpp"
+#include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 
 #include <algorithm>
@@ -554,7 +554,7 @@ int check_route_outputs(const bir::Module& module,
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the prepared handoff with exception: " +
@@ -609,7 +609,7 @@ int check_guard_lane_requires_authoritative_prepared_branch_record(const bir::Mo
   control_flow->branch_conditions.clear();
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly reopened the raw compare-driven local-slot guard carrier after the prepared branch record was removed")
                     .c_str());
@@ -666,7 +666,7 @@ int check_guard_lane_consumes_prepared_branch_contract(const bir::Module& module
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the drifted local-slot guard carriers with exception: " +
@@ -718,7 +718,7 @@ int check_branch_lane_requires_authoritative_prepared_block_record(const bir::Mo
   }
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly reopened the raw local-slot branch carrier after the prepared control-flow block was removed")
                     .c_str());
@@ -777,7 +777,7 @@ int check_branch_lane_consumes_prepared_block_contract(const bir::Module& module
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the drifted local-slot passthrough carrier with exception: " +

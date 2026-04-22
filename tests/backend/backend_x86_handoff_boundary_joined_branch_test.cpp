@@ -1,7 +1,7 @@
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/bir_printer.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
-#include "src/backend/mir/x86/codegen/x86_codegen.hpp"
+#include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 
 #include <cstdlib>
@@ -1965,7 +1965,7 @@ int check_route_outputs(const bir::Module& module,
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the prepared handoff with exception: " +
@@ -2411,7 +2411,7 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
     }
   }
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != mutated_expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following the authoritative prepared control-flow contract")
@@ -4158,7 +4158,7 @@ int check_materialized_compare_join_route_ignores_non_compare_entry_carrier_impl
                     .c_str());
   }
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped preferring the prepared compare-join entry branch contract")
@@ -4281,7 +4281,7 @@ int check_materialized_compare_join_route_requires_authoritative_prepared_branch
   branch_condition.predicate.reset();
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted a drifted compare-join prepared branch contract")
                     .c_str());
@@ -4407,7 +4407,7 @@ int check_materialized_compare_join_route_requires_authoritative_prepared_branch
   control_flow->branch_conditions.clear();
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted a missing compare-join prepared branch record")
                     .c_str());
@@ -4486,7 +4486,7 @@ int check_materialized_compare_join_route_requires_authoritative_prepared_return
       function_locations_it->move_bundles.end());
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted a compare-join return after the authoritative prepared return bundle was removed")
                     .c_str());
@@ -4530,7 +4530,7 @@ int check_materialized_compare_join_route_consumes_authoritative_prepared_param_
   param_home->offset_bytes.reset();
   param_home->immediate_i32.reset();
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following the authoritative prepared parameter home in compare-join returns")
@@ -4620,7 +4620,7 @@ int check_minimal_compare_branch_route_rejects_authoritative_join_contract_impl(
   false_block->terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(11)};
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted a plain param-zero branch fallback while authoritative join ownership remained active")
                     .c_str());
@@ -5308,7 +5308,7 @@ int check_materialized_compare_join_branches_publish_prepared_immediate_return_c
     return status;
   }
   if (expected_asm != nullptr) {
-    const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
     if (prepared_asm != *expected_asm) {
       return fail((std::string(failure_context) +
                    ": x86 prepared-module consumer stopped preferring the prepared compare-join entry branch contract")
@@ -5719,7 +5719,7 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
     }
 
     try {
-      (void)c4c::backend::x86::emit_prepared_module(prepared);
+      (void)c4c::backend::x86::api::emit_prepared_module(prepared);
       return fail((std::string(failure_context) +
                    ": x86 prepared-module consumer unexpectedly accepted a broken compare-join prepared branch contract")
                       .c_str());
@@ -5929,7 +5929,7 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
     return status;
   }
   if (expected_asm != nullptr) {
-    const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
     if (prepared_asm != *expected_asm) {
       return fail((std::string(failure_context) +
                    ": x86 prepared-module consumer stopped preferring the prepared compare-join entry branch contract")

@@ -2,6 +2,7 @@
 #include "src/backend/bir/bir_printer.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/mir/x86/codegen/x86_codegen.hpp"
+#include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 
 #include <algorithm>
@@ -507,7 +508,7 @@ int check_route_outputs(const bir::Module& module,
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the prepared handoff with exception: " +
@@ -586,7 +587,7 @@ int check_minimal_compare_branch_consumes_prepared_control_flow_impl(
     });
   }
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following the authoritative prepared branch metadata")
@@ -632,7 +633,7 @@ int check_minimal_compare_branch_requires_authoritative_prepared_branch_labels(
       prepared.names.block_labels.intern("drifted.compare.false");
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted drifted prepared compare-branch labels")
                     .c_str());
@@ -666,7 +667,7 @@ int check_minimal_compare_branch_requires_authoritative_prepared_branch_record(
   control_flow->branch_conditions.clear();
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly reopened raw compare-branch recovery after the prepared branch record was removed")
                     .c_str());
@@ -708,7 +709,7 @@ int check_minimal_compare_branch_param_return_requires_authoritative_prepared_re
       mutable_locations.move_bundles.end());
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted a parameter-leaf return after the authoritative prepared return bundle was removed")
                     .c_str());
@@ -777,7 +778,7 @@ int check_minimal_compare_branch_param_return_requires_authoritative_prepared_re
       function_locations_it->value_homes.end());
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted a parameter-leaf return after the authoritative prepared return home was removed")
                     .c_str());
@@ -843,7 +844,7 @@ int check_minimal_compare_branch_stack_home_consumes_prepared_entry_home(
   param_home->immediate_i32.reset();
   prepared.stack_layout.frame_size_bytes = 4;
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following the authoritative prepared stack entry home")
@@ -874,7 +875,7 @@ int check_minimal_compare_branch_rematerialized_home_consumes_prepared_entry_hom
   param_home->offset_bytes.reset();
   param_home->immediate_i32 = 13;
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following the authoritative prepared rematerializable entry home")
@@ -906,7 +907,7 @@ int check_compare_join_stack_home_consumes_prepared_entry_and_return_home(
   param_home->immediate_i32.reset();
   prepared.stack_layout.frame_size_bytes = 4;
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following the authoritative prepared stack home through compare-join entry and return")
@@ -937,7 +938,7 @@ int check_compare_join_rematerialized_home_consumes_prepared_entry_and_return_ho
   param_home->offset_bytes.reset();
   param_home->immediate_i32 = 13;
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following the authoritative prepared rematerialized home through compare-join entry and return")
@@ -956,7 +957,7 @@ int check_multi_param_compare_driven_shape_rejection(const bir::Module& module,
       module, target_profile_from_module_triple(module.target_triple, target_profile));
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted a multi-parameter compare-driven join shape")
                     .c_str());
@@ -1038,7 +1039,7 @@ int check_minimal_compare_branch_requires_authoritative_prepared_entry_home(
       function_locations_it->value_homes.end());
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly reopened ABI entry fallback after the authoritative prepared home was removed")
                     .c_str());

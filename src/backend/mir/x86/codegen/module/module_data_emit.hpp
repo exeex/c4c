@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../../../../bir/bir.hpp"
-#include "../x86_codegen.hpp"
+#include "../../../../prealloc/prealloc.hpp"
 
 #include <cstddef>
 #include <optional>

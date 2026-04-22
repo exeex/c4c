@@ -1,7 +1,7 @@
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/bir_printer.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
-#include "src/backend/mir/x86/codegen/x86_codegen.hpp"
+#include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 
 #include <cstdlib>
@@ -265,7 +265,7 @@ int check_route_outputs(const bir::Module& module,
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the prepared handoff with exception: " +
@@ -355,7 +355,7 @@ int check_local_i32_return_route_requires_authoritative_prepared_frame_access_co
   mutable_addressing->accesses.clear();
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(mutated);
+    (void)c4c::backend::x86::api::emit_prepared_module(mutated);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly fell back to raw local slot carriers after prepared frame-slot access loss")
                     .c_str());
@@ -419,7 +419,7 @@ int check_local_i32_guard_route_consumes_prepared_branch_contract(
       .terminator = bir::BranchTerminator{.target_label = original_false_label},
   });
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following the authoritative prepared branch contract over local guard carrier state")
@@ -449,7 +449,7 @@ int check_local_i32_guard_route_requires_authoritative_prepared_branch_labels(
   branch_condition.false_label = prepared.names.block_labels.intern("drifted.guard.false");
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted drifted prepared guard labels")
                     .c_str());
@@ -484,7 +484,7 @@ int check_local_i32_guard_route_requires_authoritative_prepared_branch_record(
   control_flow->branch_conditions.clear();
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly reopened the raw local guard matcher after the prepared branch record was removed")
                     .c_str());
@@ -587,7 +587,7 @@ int check_local_i32_guard_route_consumes_prepared_frame_contract(const bir::Modu
   mutable_addressing->frame_size_bytes = 24;
   mutable_addressing->frame_alignment_bytes = 8;
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(mutated);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(mutated);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following the authoritative prepared frame facts for local guard stack adjustment")
@@ -632,7 +632,7 @@ int check_local_i32_guard_route_consumes_prepared_frame_access_contract(
   entry_store->slot_name = "%drifted.local.guard";
   entry_load->slot_name = "%drifted.local.guard";
 
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer stopped following authoritative prepared frame-slot accesses over drifted local slot carriers")

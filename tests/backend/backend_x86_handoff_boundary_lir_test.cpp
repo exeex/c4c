@@ -1,6 +1,6 @@
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
-#include "src/backend/mir/x86/codegen/x86_codegen.hpp"
+#include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 #include "src/codegen/lir/ir.hpp"
 
 #include <iostream>
@@ -571,7 +571,7 @@ int check_lir_route_outputs(const lir::LirModule& module, const char* failure_co
 
   const auto prepared =
       prepare::prepare_semantic_bir_module_with_options(*lowering.module, module.target_profile);
-  const auto prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
 
   const auto public_asm = c4c::backend::emit_target_lir_module(module, module.target_profile);
   if (public_asm != prepared_asm) {

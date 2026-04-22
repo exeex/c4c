@@ -2,6 +2,7 @@
 #include "src/backend/bir/bir_printer.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/mir/x86/codegen/x86_codegen.hpp"
+#include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 
 #include <algorithm>
@@ -2822,7 +2823,7 @@ int check_route_outputs(const bir::Module& module,
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the prepared handoff with exception: " +
@@ -2872,7 +2873,7 @@ int check_route_contains_fragments(
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer rejected the prepared handoff with exception: " +
@@ -3252,7 +3253,7 @@ int check_route_consumes_prepared_call_move_bundle_contract() {
 
   std::string prepared_asm;
   try {
-    prepared_asm = c4c::backend::x86::emit_prepared_module(prepared);
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
   } catch (const std::exception& ex) {
     return fail((std::string("bounded multi-defined call contract drift route: x86 prepared-module consumer rejected the mutated prepared handoff with exception: ") +
                  ex.what())
@@ -3289,7 +3290,7 @@ int check_route_requires_authoritative_prepared_after_call_bundle() {
   erase_prepared_move_bundle(*function_locations, prepare::PreparedMovePhase::AfterCall, 0, 0);
 
   try {
-    static_cast<void>(c4c::backend::x86::emit_prepared_module(prepared));
+    static_cast<void>(c4c::backend::x86::api::emit_prepared_module(prepared));
   } catch (const std::invalid_argument& ex) {
     if (std::string(ex.what()).find("authoritative prepared call-bundle handoff") !=
         std::string::npos) {
@@ -3320,7 +3321,7 @@ int check_route_requires_authoritative_prepared_before_call_bundle() {
   erase_prepared_move_bundle(*function_locations, prepare::PreparedMovePhase::BeforeCall, 0, 3);
 
   try {
-    static_cast<void>(c4c::backend::x86::emit_prepared_module(prepared));
+    static_cast<void>(c4c::backend::x86::api::emit_prepared_module(prepared));
   } catch (const std::invalid_argument& ex) {
     if (std::string(ex.what()).find("authoritative prepared call-bundle handoff") !=
         std::string::npos) {

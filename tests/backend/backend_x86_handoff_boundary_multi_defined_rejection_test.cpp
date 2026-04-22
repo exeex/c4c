@@ -1,7 +1,7 @@
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/bir_printer.hpp"
 #include "src/backend/mir/x86/codegen/route_debug.hpp"
-#include "src/backend/mir/x86/codegen/x86_codegen.hpp"
+#include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 
 #include <iostream>
 #include <stdexcept>
@@ -140,7 +140,7 @@ int check_route_rejection(const bir::Module& module,
           module, target_profile_from_module_triple(module.target_triple, target_profile));
 
   try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
     return fail((std::string(failure_context) +
                  ": x86 prepared-module consumer unexpectedly accepted an out-of-scope route")
                     .c_str());
