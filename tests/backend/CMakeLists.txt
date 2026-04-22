@@ -52,6 +52,43 @@ function(c4c_add_backend_codegen_route_test test_name)
   c4c_set_backend_test_labels("${test_name}" backend_route ${ARG_LABELS})
 endfunction()
 
+function(c4c_add_backend_runtime_case test_name)
+  set(options)
+  set(one_value_args SRC)
+  set(multi_value_args LABELS)
+  cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
+
+  if(ARG_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR
+      "c4c_add_backend_runtime_case(${test_name}) got unexpected arguments: ${ARG_UNPARSED_ARGUMENTS}")
+  endif()
+
+  if(NOT DEFINED ARG_SRC OR "${ARG_SRC}" STREQUAL "")
+    message(FATAL_ERROR
+      "c4c_add_backend_runtime_case(${test_name}) missing SRC")
+  endif()
+
+  if(NOT CLANG_EXECUTABLE)
+    message(FATAL_ERROR
+      "c4c_add_backend_runtime_case(${test_name}) requires CLANG_EXECUTABLE")
+  endif()
+
+  get_filename_component(case_stem "${ARG_SRC}" NAME_WE)
+
+  add_test(
+    NAME "${test_name}"
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DCLANG=${CLANG_EXECUTABLE}
+            -DSRC=${ARG_SRC}
+            -DOUT_LL=${CMAKE_BINARY_DIR}/backend_runtime/${case_stem}.ll
+            -DOUT_CLANG_BIN=${CMAKE_BINARY_DIR}/backend_runtime/${case_stem}.clang.bin
+            -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/backend_runtime/${case_stem}.c2ll.bin
+            -P "${PROJECT_SOURCE_DIR}/tests/c/internal/cmake/run_positive_case.cmake"
+  )
+  c4c_set_backend_test_labels("${test_name}" backend_runtime case ${ARG_LABELS})
+endfunction()
+
 add_executable(backend_prepare_phi_materialize_test
     "${BACKEND_TEST_ROOT}/backend_prepare_phi_materialize_test.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir.cpp"
@@ -975,6 +1012,26 @@ c4c_add_backend_codegen_route_test(
   REQUIRED_SNIPPETS "bir.func @variadic_pair_second(i32 %p.seed) -> i32 {|bir.call void llvm.va_start.p0(ptr %lv.ap)|bir.call void llvm.va_arg.aggregate(ptr sret(size=8, align=4) %t0, ptr %lv.ap)|%lv.second.aggregate.copy.0 = bir.load_local i32 %t0.0|bir.store_local %lv.second.0, i32 %lv.second.aggregate.copy.0|%lv.second.aggregate.copy.4 = bir.load_local i32 %t0.4|bir.store_local %lv.second.4, i32 %lv.second.aggregate.copy.4|bir.call void llvm.va_end.p0(ptr %lv.ap)|bir.ret i32 %t3|bir.func @apply(ptr %p.fn, ptr byval(size=8, align=4) %p.pair) -> i32 {|%t0 = bir.call i32 %p.fn(i32 1, ptr byval(size=8, align=4) %lv.param.p.pair)|bir.ret i32 %t0|bir.func @main() -> i32 {|%t3 = bir.call i32 apply(ptr @variadic_pair_second, ptr byval(size=8, align=4) %lv.pair)|bir.ret i32 %t3"
   FORBIDDEN_SNIPPETS "define i32 @variadic_pair_second|define i32 @apply|define i32 @main()|call void @llvm.va_start.p0|call void @llvm.va_end.p0|va_arg ptr %lv.ap, %struct.Pair|call i32 (i32, ...) %p.fn(i32 1, i64 %t3)"
 )
+
+if(CLANG_EXECUTABLE)
+  c4c_add_backend_runtime_case(
+    backend_runtime_byval_helper_payload_8_to_13
+    SRC "${BACKEND_CASE_ROOT}/byval_helper_payload_8_to_13.c"
+    LABELS x86 byval abi
+  )
+
+  c4c_add_backend_runtime_case(
+    backend_runtime_byval_helper_payload_9_to_14
+    SRC "${BACKEND_CASE_ROOT}/byval_helper_payload_9_to_14.c"
+    LABELS x86 byval abi
+  )
+
+  c4c_add_backend_runtime_case(
+    backend_runtime_byval_helper_mixed_hfa_payload
+    SRC "${BACKEND_CASE_ROOT}/byval_helper_mixed_hfa_payload.c"
+    LABELS x86 byval abi hfa
+  )
+endif()
 
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_vla_goto_stackrestore_observe_semantic_bir
