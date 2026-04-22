@@ -408,6 +408,107 @@ Completion check:
   and existing callers use explicit forwarding instead of broad hidden
   reach-through
 
+#### Step 2.1.1: Materialize Reviewed Frame And Memory Lowering File Boundaries
+
+Goal: make the reviewed `frame_lowering.*` and `memory_lowering.*` seams exist
+in real source form with explicit compatibility forwarding instead of leaving
+frame and memory ownership fused into legacy mixed files.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/lowering/frame_lowering.*`
+- `src/backend/mir/x86/codegen/lowering/memory_lowering.*`
+- legacy frame and memory entrypoints that should forward into the new owners
+
+Actions:
+
+- add the reviewed frame and memory lowering headers and source files
+- route legacy frame and memory entrypoints through explicit forwarding into
+  the new seams instead of broad include reach-through
+- keep prepared and non-prepared callers compiling while the real owners are
+  stood up
+
+Completion check:
+
+- reviewed frame and memory lowering seams exist in source form and legacy
+  callers compile through explicit forwarding rather than hidden mixed-file
+  ownership
+
+#### Step 2.1.2: Move Canonical Frame-Home And Stack-Layout Queries Behind Lowering Owners
+
+Goal: migrate frame-home lookup, stack-slot, and stack-layout helper families
+behind `frame_lowering.*` so later lowering packets can depend on canonical
+frame services instead of querying legacy orchestration files directly.
+
+Primary targets:
+
+- frame-home and stack-layout helpers under `src/backend/mir/x86/codegen/`
+- `src/backend/mir/x86/codegen/lowering/frame_lowering.*`
+
+Actions:
+
+- move one coherent frame-home or stack-layout helper family at a time behind
+  `frame_lowering.*`
+- keep legacy callers working through explicit forwarding while ownership
+  shifts to the reviewed seam
+- avoid widening the step into ABI policy or public entrypoint rewiring
+
+Completion check:
+
+- canonical frame-home and stack-layout queries live behind
+  `frame_lowering.*`, and legacy callers use explicit forwarding to reach them
+
+#### Step 2.1.3: Move Prepared-Home Selection And Memory Render Helpers Behind Lowering Owners
+
+Goal: migrate prepared-home selection, stack-address computation, and local
+load/store render helpers behind `frame_lowering.*` and `memory_lowering.*`
+so prepared local-slot rendering stops rebuilding memory ownership inline.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- `src/backend/mir/x86/codegen/lowering/frame_lowering.*`
+- `src/backend/mir/x86/codegen/lowering/memory_lowering.*`
+
+Actions:
+
+- move prepared-home selection helpers behind lowering-owned frame services
+- move stack-address and memory render helper families behind
+  `memory_lowering.*`
+- keep prepared callers compiling through explicit forwarding instead of
+  leaving `PreparedValueHome` inspection scattered inline
+
+Completion check:
+
+- prepared local-slot render paths delegate home selection and memory emission
+  to lowering-owned helpers instead of rebuilding those decisions inline
+
+#### Step 2.1.4: Audit Remaining Frame/Memory Holdouts Before Later Lowering Families
+
+Goal: leave step 2.1 with explicit frame and memory compatibility holdouts so
+later call, compare, scalar, and float packets inherit clear ownership rather
+than ambiguous mixed helpers.
+
+Primary targets:
+
+- remaining frame and memory helper holdouts under `src/backend/mir/x86/codegen/`
+- explicit forwarding points into `lowering/frame_lowering.*` and
+  `lowering/memory_lowering.*`
+
+Actions:
+
+- classify any remaining frame or memory helpers as lowered, forwarded, or
+  honest later-step holdouts
+- remove accidental duplicate ownership created while moving helper families
+- keep the backend building while recording which holdouts intentionally remain
+  for later lowering packets
+
+Completion check:
+
+- remaining frame and memory helper ownership is explicit, duplicate ownership
+  is not silently growing, and later lowering packets can build on clear
+  canonical services
+
 ### Step 2.2: Migrate Canonical Call And Return Families
 
 Goal: move canonical call setup, call issuance, cleanup, result publication,
