@@ -5918,6 +5918,16 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_f
 
   std::unordered_map<std::string_view, ConstantValue> named_values;
   std::unordered_map<std::size_t, ConstantValue> local_memory;
+  std::unordered_map<std::string_view, std::size_t> symbolic_ptr_roots;
+  std::size_t next_symbolic_ptr_root = 1;
+
+  const auto intern_symbolic_ptr_root = [&](std::string_view value_name) -> std::size_t {
+    const auto [it, inserted] = symbolic_ptr_roots.emplace(value_name, next_symbolic_ptr_root);
+    if (inserted) {
+      ++next_symbolic_ptr_root;
+    }
+    return it->second;
+  };
 
   const auto resolve_i32_value =
       [&](const c4c::backend::bir::Value& value) -> std::optional<std::int32_t> {
@@ -5979,8 +5989,36 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_f
           }
           return static_cast<std::size_t>(value_it->second.value);
         }
-        return find_prepared_value_home_frame_offset(
-            *layout, prepared_names, function_locations, value.name);
+        if (const auto frame_offset = find_prepared_value_home_frame_offset(
+                *layout, prepared_names, function_locations, value.name);
+            frame_offset.has_value()) {
+          return frame_offset;
+        }
+        if (!value.name.empty() && value.name.front() == '@') {
+          const std::string_view symbol_name(value.name.data() + 1, value.name.size() - 1);
+          if (module != nullptr) {
+            for (const auto& string_constant : module->string_constants) {
+              if (string_constant.name == symbol_name) {
+                return intern_symbolic_ptr_root(value.name);
+              }
+            }
+            for (const auto& global : module->globals) {
+              if (global.name == symbol_name) {
+                return intern_symbolic_ptr_root(value.name);
+              }
+            }
+          }
+        }
+        const auto is_param = std::any_of(function.params.begin(),
+                                          function.params.end(),
+                                          [&](const c4c::backend::bir::Param& param) {
+                                            return param.type == c4c::backend::bir::TypeKind::Ptr &&
+                                                   param.name == value.name;
+                                          });
+        if (is_param || block_defines_named_value(entry, value.name)) {
+          return std::nullopt;
+        }
+        return intern_symbolic_ptr_root(value.name);
       };
 
   const auto resolve_prepared_memory_address = [&](std::size_t inst_index)
@@ -6060,6 +6098,22 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_f
 
   const auto fold_binary_i32 =
       [&](const c4c::backend::bir::BinaryInst& binary) -> std::optional<std::int32_t> {
+        if (binary.result.type == c4c::backend::bir::TypeKind::I32 &&
+            binary.operand_type == c4c::backend::bir::TypeKind::Ptr) {
+          const auto lhs = resolve_ptr_value(binary.lhs);
+          const auto rhs = resolve_ptr_value(binary.rhs);
+          if (!lhs.has_value() || !rhs.has_value()) {
+            return std::nullopt;
+          }
+          switch (binary.opcode) {
+            case c4c::backend::bir::BinaryOpcode::Eq:
+              return *lhs == *rhs ? 1 : 0;
+            case c4c::backend::bir::BinaryOpcode::Ne:
+              return *lhs != *rhs ? 1 : 0;
+            default:
+              return std::nullopt;
+          }
+        }
         const auto lhs = resolve_i32_value(binary.lhs);
         const auto rhs = resolve_i32_value(binary.rhs);
         if (!lhs.has_value() || !rhs.has_value()) {
@@ -6183,8 +6237,7 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_f
     }
 
     const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
-    if (binary == nullptr || binary->operand_type != c4c::backend::bir::TypeKind::I32 ||
-        binary->result.type != c4c::backend::bir::TypeKind::I32) {
+    if (binary == nullptr || binary->result.type != c4c::backend::bir::TypeKind::I32) {
       return std::nullopt;
     }
     const auto folded = fold_binary_i32(*binary);

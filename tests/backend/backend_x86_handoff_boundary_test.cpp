@@ -141,6 +141,58 @@ int check_route_rejection(const bir::Module& module,
   return 0;
 }
 
+std::string expected_x86_constant_pointer_eq_null_return_asm() {
+  return ".intel_syntax noprefix\n"
+         ".text\n"
+         ".globl main\n"
+         ".type main, @function\n"
+         "main:\n"
+         "    mov eax, 0\n"
+         "    ret\n";
+}
+
+bir::Module make_x86_constant_pointer_eq_null_return_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.string_constants.push_back(bir::StringConstant{
+      .name = ".str0",
+      .bytes = "abc",
+  });
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t2"),
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = bir::Value::named(bir::TypeKind::Ptr, "%t0"),
+      .rhs = bir::Value{
+          .kind = bir::Value::Kind::Immediate,
+          .type = bir::TypeKind::Ptr,
+          .immediate = 0,
+      },
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "%t2"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int check_constant_pointer_eq_null_single_block_return_route() {
+  auto module = make_x86_constant_pointer_eq_null_return_module();
+  return check_route_outputs(module,
+                             expected_x86_constant_pointer_eq_null_return_asm(),
+                             "%t2 = bir.eq ptr %t0, 0",
+                             "single-block constant pointer-eq-null return route");
+}
+
 }  // namespace
 
 int run_backend_x86_handoff_boundary_compare_branch_tests();
@@ -158,6 +210,11 @@ int run_backend_x86_handoff_boundary_scalar_smoke_tests();
 int run_backend_x86_handoff_boundary_local_slot_guard_lane_tests();
 
 int main() {
+  if (const auto status = check_constant_pointer_eq_null_single_block_return_route();
+      status != 0) {
+    return status;
+  }
+
   if (const auto status = run_backend_x86_handoff_boundary_scalar_smoke_tests(); status != 0) {
     return status;
   }
