@@ -4414,12 +4414,17 @@ bool append_prepared_named_ptr_argument_move_into_register_if_supported(
     std::size_t stack_byte_bias,
     const std::optional<std::string_view>& current_ptr_name,
     std::string* body);
+std::optional<std::size_t> resolve_prepared_named_ptr_published_payload_frame_offset_if_supported(
+    const PreparedX86BlockDispatchContext& block_context,
+    c4c::FunctionNameId function_name_id,
+    std::string_view pointer_name);
 bool append_prepared_small_byval_payload_move_into_register_if_supported(
     const PreparedX86BlockDispatchContext& block_context,
     c4c::FunctionNameId function_name_id,
     std::string_view pointer_name,
     std::string_view destination_register,
     std::size_t size_bytes,
+    std::size_t align_bytes,
     std::size_t stack_byte_bias,
     const std::optional<std::string_view>& current_ptr_name,
     std::string* body);
@@ -4479,6 +4484,7 @@ select_prepared_bounded_same_module_helper_call_render_if_supported(
                       arg.name,
                       kArgRegs64[arg_index],
                       call->arg_abi[arg_index].size_bytes,
+                      call->arg_abi[arg_index].align_bytes,
                       0,
                       current_ptr_name,
                       &rendered_arg_moves)
@@ -4721,12 +4727,79 @@ std::optional<std::string> choose_prepared_pointer_payload_address_scratch_regis
   return std::nullopt;
 }
 
+std::optional<std::size_t> resolve_prepared_named_ptr_published_payload_frame_offset_if_supported(
+    const PreparedX86BlockDispatchContext& block_context,
+    c4c::FunctionNameId function_name_id,
+    std::string_view pointer_name) {
+  if (block_context.function_context == nullptr || pointer_name.empty()) {
+    return std::nullopt;
+  }
+  const auto& function_context = *block_context.function_context;
+  if (function_context.prepared_names == nullptr || function_context.function_locations == nullptr) {
+    return std::nullopt;
+  }
+
+  std::string slice_zero_name;
+  std::string_view slice_zero_query = pointer_name;
+  if (!c4c::backend::prepare::parse_prepared_slot_slice_name(pointer_name).has_value()) {
+    slice_zero_name = std::string(pointer_name) + ".0";
+    slice_zero_query = slice_zero_name;
+  }
+  if (block_context.local_layout != nullptr) {
+    if (const auto slice_zero_offset = resolve_prepared_local_slot_base_offset_if_supported(
+            *block_context.local_layout,
+            function_context.prepared_names,
+            function_context.function_locations,
+            slice_zero_query);
+        slice_zero_offset.has_value()) {
+      return slice_zero_offset;
+    }
+    if (const auto exact_offset = resolve_prepared_local_slot_base_offset_if_supported(
+            *block_context.local_layout,
+            function_context.prepared_names,
+            function_context.function_locations,
+            pointer_name);
+        exact_offset.has_value()) {
+      return exact_offset;
+    }
+  }
+  if (const auto* slice_zero_home =
+          c4c::backend::prepare::find_prepared_value_home(
+              *function_context.prepared_names,
+              *function_context.function_locations,
+              slice_zero_query);
+      slice_zero_home != nullptr &&
+      slice_zero_home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+      slice_zero_home->offset_bytes.has_value()) {
+    return *slice_zero_home->offset_bytes;
+  }
+
+  if (const auto* home = c4c::backend::prepare::find_prepared_value_home(
+          *function_context.prepared_names, *function_context.function_locations, pointer_name);
+      home != nullptr &&
+      home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+      home->offset_bytes.has_value()) {
+    return *home->offset_bytes;
+  }
+
+  if (function_context.stack_layout != nullptr && function_name_id != c4c::kInvalidFunctionName) {
+    return c4c::backend::prepare::find_prepared_stack_frame_offset_by_name(
+        *function_context.prepared_names,
+        *function_context.stack_layout,
+        function_name_id,
+        pointer_name);
+  }
+
+  return std::nullopt;
+}
+
 bool append_prepared_small_byval_payload_move_into_register_if_supported(
     const PreparedX86BlockDispatchContext& block_context,
     c4c::FunctionNameId function_name_id,
     std::string_view pointer_name,
     std::string_view destination_register,
     std::size_t size_bytes,
+    std::size_t align_bytes,
     std::size_t stack_byte_bias,
     const std::optional<std::string_view>& current_ptr_name,
     std::string* body) {
@@ -4749,38 +4822,48 @@ bool append_prepared_small_byval_payload_move_into_register_if_supported(
   if (const auto& function_context = *block_context.function_context;
       function_context.prepared_names != nullptr) {
     std::optional<std::size_t> frame_offset;
-    if (function_context.function_locations != nullptr) {
-      std::string slice_zero_name;
-      std::string_view slice_zero_query = pointer_name;
-      if (!c4c::backend::prepare::parse_prepared_slot_slice_name(pointer_name).has_value()) {
-        slice_zero_name = std::string(pointer_name) + ".0";
-        slice_zero_query = slice_zero_name;
+    if (align_bytes > 1) {
+      frame_offset = resolve_prepared_named_ptr_published_payload_frame_offset_if_supported(
+          block_context, function_name_id, pointer_name);
+    } else {
+      if (function_context.function_locations != nullptr) {
+        std::string slice_zero_name;
+        std::string_view slice_zero_query = pointer_name;
+        if (!c4c::backend::prepare::parse_prepared_slot_slice_name(pointer_name).has_value()) {
+          slice_zero_name = std::string(pointer_name) + ".0";
+          slice_zero_query = slice_zero_name;
+        }
+        if (const auto* slice_zero_home =
+                c4c::backend::prepare::find_prepared_value_home(
+                    *function_context.prepared_names,
+                    *function_context.function_locations,
+                    slice_zero_query);
+            slice_zero_home != nullptr &&
+            slice_zero_home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+            slice_zero_home->offset_bytes.has_value()) {
+          frame_offset = *slice_zero_home->offset_bytes;
+        }
       }
-      if (const auto* slice_zero_home =
-              c4c::backend::prepare::find_prepared_value_home(
-                  *function_context.prepared_names,
-                  *function_context.function_locations,
-                  slice_zero_query);
-          slice_zero_home != nullptr &&
-          slice_zero_home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-          slice_zero_home->offset_bytes.has_value()) {
-        frame_offset = *slice_zero_home->offset_bytes;
+      if (const auto* home =
+              frame_offset.has_value() || function_context.function_locations == nullptr
+                  ? nullptr
+                  : c4c::backend::prepare::find_prepared_value_home(
+                        *function_context.prepared_names,
+                        *function_context.function_locations,
+                        pointer_name);
+          home != nullptr &&
+          home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+          home->offset_bytes.has_value()) {
+        frame_offset = *home->offset_bytes;
       }
-    }
-    if (const auto* home =
-            frame_offset.has_value() || function_context.function_locations == nullptr
-                ? nullptr
-                : c4c::backend::prepare::find_prepared_value_home(
-                      *function_context.prepared_names, *function_context.function_locations, pointer_name);
-        home != nullptr &&
-        home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-        home->offset_bytes.has_value()) {
-      frame_offset = *home->offset_bytes;
-    }
-    if (!frame_offset.has_value() && function_context.stack_layout != nullptr &&
-        function_name_id != c4c::kInvalidFunctionName) {
-      frame_offset = c4c::backend::prepare::find_prepared_stack_frame_offset_by_name(
-          *function_context.prepared_names, *function_context.stack_layout, function_name_id, pointer_name);
+      if (!frame_offset.has_value() && function_context.stack_layout != nullptr &&
+          function_name_id != c4c::kInvalidFunctionName) {
+        frame_offset = c4c::backend::prepare::find_prepared_stack_frame_offset_by_name(
+            *function_context.prepared_names,
+            *function_context.stack_layout,
+            function_name_id,
+            pointer_name);
+      }
     }
     if (!frame_offset.has_value()) {
       frame_offset = find_prepared_authoritative_named_stack_offset_if_supported(
@@ -4983,6 +5066,7 @@ std::optional<std::string> render_prepared_block_same_module_call_inst_if_suppor
                       arg.name,
                       *destination_register,
                       call->arg_abi[arg_index].size_bytes,
+                      call->arg_abi[arg_index].align_bytes,
                       0,
                       *current_ptr_name,
                       &body)
@@ -5720,6 +5804,17 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
   std::string body;
   static constexpr const char* kArgRegs64[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
   std::size_t float_register_args = 0;
+  const auto select_prepared_direct_extern_float_argument_register =
+      [&](std::size_t arg_index) -> std::optional<std::string> {
+        if (call->is_variadic) {
+          return std::string("xmm") + std::to_string(float_register_args);
+        }
+        return select_prepared_call_argument_abi_register_if_supported(
+            function_context.function_locations,
+            block_context.block_index,
+            instruction_index,
+            arg_index);
+      };
   std::size_t stack_arg_bytes = 0;
   for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
     const auto destination_stack_offset = select_prepared_call_argument_abi_stack_offset_if_supported(
@@ -5834,11 +5929,8 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
       if (arg.kind != c4c::backend::bir::Value::Kind::Named) {
         return std::nullopt;
       }
-      const auto destination_register = select_prepared_call_argument_abi_register_if_supported(
-          function_context.function_locations,
-          block_context.block_index,
-          instruction_index,
-          arg_index);
+      const auto destination_register =
+          select_prepared_direct_extern_float_argument_register(arg_index);
       if (!destination_register.has_value()) {
         throw std::invalid_argument(std::string(kPreparedCallBundleHandoffRequired));
       }
