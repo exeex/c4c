@@ -345,6 +345,20 @@ std::optional<std::string> render_prepared_i32_operand_from_source_if_supported(
   return source.stack_operand;
 }
 
+std::optional<std::string> render_prepared_named_i32_operand_if_supported(
+    std::string_view value_name,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::optional<std::string_view>& previous_i32_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  const auto source = select_prepared_named_i32_source_if_supported(
+      value_name, current_i32_name, previous_i32_name, prepared_names, function_locations);
+  if (!source.has_value()) {
+    return std::nullopt;
+  }
+  return render_prepared_i32_operand_from_source_if_supported(*source);
+}
+
 bool append_prepared_named_i32_move_into_register_if_supported(
     std::string* body,
     std::string_view destination_register,

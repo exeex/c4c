@@ -89,6 +89,13 @@ std::optional<PreparedNamedI32Source> select_prepared_named_i32_block_source_if_
     const std::function<std::optional<std::string>(std::size_t)>&
         render_i32_memory_operand_for_inst);
 
+std::optional<std::string> render_prepared_named_i32_operand_if_supported(
+    std::string_view value_name,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::optional<std::string_view>& previous_i32_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
+
 std::optional<std::string> render_prepared_i32_operand_from_source_if_supported(
     const PreparedNamedI32Source& source);
 

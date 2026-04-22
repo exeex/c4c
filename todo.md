@@ -5,28 +5,25 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 2.1.3
 Current Step Title: Move Prepared-Home Selection And Memory Render Helpers Behind Lowering Owners
-Plan Review Counter: 3 / 6
+Plan Review Counter: 4 / 6
 # Current Packet
 
 ## Just Finished
 
-Continued step 2.1.3 by moving the next prepared-home `I32` local-slot and
-block-source fallback helper family behind lowering owners:
-`memory_lowering.*` now owns
-`select_prepared_named_i32_block_source_if_supported(...)`, and
-`frame_lowering.*` now owns
-`render_prepared_named_stack_memory_operand_if_supported(...)` for
-local-slot/value-home stack operand fallback, so
-`prepared_local_slot_render.cpp` now stays as a thin bridge that only
-supplies setup-free prior-load memory operands instead of composing
-lowered home resolution inline.
+Continued step 2.1.3 by moving the next prepared-home `I32` operand adapter
+behind lowering owners: `memory_lowering.*` now owns
+`render_prepared_named_i32_operand_if_supported(...)`, and
+`prepared_local_slot_render.cpp` keeps only the prepared-side forwarding
+overload instead of translating lowering-owned `PreparedNamedI32Source`
+state into operand strings inline.
 
 ## Suggested Next
 
-Continue step 2.1.3 by moving the next `I32` operand adapter behind lowering
-owners, starting with `render_prepared_named_i32_operand_if_supported(...)`
-so the remaining compare/call bundle paths stop translating
-lowering-owned `PreparedNamedI32Source` values into operand strings inside
+Continue step 2.1.3 by tightening the remaining prepared-side `I32`
+forwarding seams, starting with the block-aware operand-selection call sites
+that still build local adapter lambdas around
+`select_prepared_named_i32_block_source_if_supported(...)` and
+`render_prepared_i32_operand_from_source_if_supported(...)` inside
 `prepared_local_slot_render.cpp`.
 
 ## Watchouts
@@ -43,7 +40,7 @@ lowering-owned `PreparedNamedI32Source` values into operand strings inside
 
 ## Proof
 
-Step 2.1.3 prepared-home `I32` block-source lowering migration on 2026-04-22:
+Step 2.1.3 prepared-home `I32` operand adapter lowering migration on 2026-04-22:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 Backend subset passed (`106/106`). Canonical log paths: `test_before.log`,

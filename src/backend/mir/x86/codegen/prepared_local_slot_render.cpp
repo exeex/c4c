@@ -1498,18 +1498,8 @@ std::optional<std::string> render_prepared_named_i32_operand_if_supported(
     const std::optional<std::string_view>& previous_i32_name,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
-  const auto source = select_prepared_named_i32_source_if_supported(
+  return c4c::backend::x86::render_prepared_named_i32_operand_if_supported(
       value_name, current_i32_name, previous_i32_name, prepared_names, function_locations);
-  if (!source.has_value()) {
-    return std::nullopt;
-  }
-  if (source->immediate_i32.has_value()) {
-    return std::to_string(static_cast<std::int32_t>(*source->immediate_i32));
-  }
-  if (source->register_name.has_value()) {
-    return *source->register_name;
-  }
-  return source->stack_operand;
 }
 
 template <class ResolveNamedOperand>
