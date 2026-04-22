@@ -257,6 +257,83 @@ std::optional<PreparedNamedI32Source> select_prepared_i32_source_if_supported(
       value.name, current_i32_name, previous_i32_name, prepared_names, function_locations);
 }
 
+std::optional<PreparedNamedI32Source> select_prepared_named_i32_block_source_if_supported(
+    const PreparedModuleLocalSlotLayout* local_layout,
+    const c4c::backend::bir::Block* block,
+    std::size_t instruction_index,
+    std::string_view value_name,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::optional<std::string_view>& previous_i32_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    const std::function<std::optional<std::string>(std::size_t)>&
+        render_i32_memory_operand_for_inst) {
+  if (current_i32_name.has_value() && value_name == *current_i32_name) {
+    return PreparedNamedI32Source{
+        .register_name = std::string("eax"),
+        .stack_operand = std::nullopt,
+        .immediate_i32 = std::nullopt,
+    };
+  }
+  if (local_layout != nullptr) {
+    if (block != nullptr && instruction_index <= block->insts.size()) {
+      for (std::size_t prior_index = instruction_index; prior_index > 0; --prior_index) {
+        const auto* load =
+            std::get_if<c4c::backend::bir::LoadLocalInst>(&block->insts[prior_index - 1]);
+        if (load != nullptr &&
+            load->byte_offset == 0 &&
+            load->result.kind == c4c::backend::bir::Value::Kind::Named &&
+            load->result.type == c4c::backend::bir::TypeKind::I32 &&
+            load->result.name == value_name) {
+          const auto memory_operand = render_i32_memory_operand_for_inst(prior_index - 1);
+          if (memory_operand.has_value()) {
+            return PreparedNamedI32Source{
+                .register_name = std::nullopt,
+                .stack_operand = *memory_operand,
+                .immediate_i32 = std::nullopt,
+            };
+          }
+        }
+        const auto* store =
+            std::get_if<c4c::backend::bir::StoreLocalInst>(&block->insts[prior_index - 1]);
+        if (store == nullptr || store->byte_offset != 0 ||
+            store->value.kind != c4c::backend::bir::Value::Kind::Named ||
+            store->value.type != c4c::backend::bir::TypeKind::I32 ||
+            store->value.name != value_name) {
+          continue;
+        }
+        const auto stack_operand = render_prepared_named_stack_memory_operand_if_supported(
+            *local_layout, prepared_names, function_locations, store->slot_name, "DWORD");
+        if (stack_operand.has_value()) {
+          return PreparedNamedI32Source{
+              .register_name = std::nullopt,
+              .stack_operand = *stack_operand,
+              .immediate_i32 = std::nullopt,
+          };
+        }
+      }
+    }
+    const auto stack_operand = render_prepared_named_stack_memory_operand_if_supported(
+        *local_layout, prepared_names, function_locations, value_name, "DWORD");
+    if (stack_operand.has_value()) {
+      return PreparedNamedI32Source{
+          .register_name = std::nullopt,
+          .stack_operand = *stack_operand,
+          .immediate_i32 = std::nullopt,
+      };
+    }
+  }
+  if (previous_i32_name.has_value() && value_name == *previous_i32_name) {
+    return PreparedNamedI32Source{
+        .register_name = std::string("ecx"),
+        .stack_operand = std::nullopt,
+        .immediate_i32 = std::nullopt,
+    };
+  }
+  return select_prepared_named_i32_source_if_supported(
+      value_name, std::nullopt, std::nullopt, prepared_names, function_locations);
+}
+
 std::optional<std::string> render_prepared_i32_operand_from_source_if_supported(
     const PreparedNamedI32Source& source) {
   if (source.immediate_i32.has_value()) {

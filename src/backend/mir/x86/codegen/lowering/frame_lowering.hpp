@@ -44,6 +44,14 @@ std::optional<std::size_t> resolve_prepared_named_payload_frame_offset_if_suppor
     c4c::FunctionNameId function_name,
     std::string_view pointer_name);
 
+std::optional<std::string> render_prepared_named_stack_memory_operand_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::string_view value_name,
+    std::string_view size_name,
+    std::size_t stack_byte_bias = 0);
+
 std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,

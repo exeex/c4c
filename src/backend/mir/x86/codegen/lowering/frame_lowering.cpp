@@ -1,5 +1,7 @@
 #include "frame_lowering.hpp"
 
+#include "memory_lowering.hpp"
+
 #include <algorithm>
 
 namespace c4c::backend::x86 {
@@ -145,6 +147,27 @@ std::optional<std::size_t> resolve_prepared_named_payload_frame_offset_if_suppor
         *prepared_names, *stack_layout, function_name, pointer_name);
   }
 
+  return std::nullopt;
+}
+
+std::optional<std::string> render_prepared_named_stack_memory_operand_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::string_view value_name,
+    std::string_view size_name,
+    std::size_t stack_byte_bias) {
+  if (value_name.empty() || size_name.empty()) {
+    return std::nullopt;
+  }
+  if (const auto slot_it = local_layout.offsets.find(value_name); slot_it != local_layout.offsets.end()) {
+    return render_prepared_stack_memory_operand(slot_it->second + stack_byte_bias, size_name);
+  }
+  if (const auto frame_offset = find_prepared_value_home_frame_offset(
+          local_layout, prepared_names, function_locations, value_name);
+      frame_offset.has_value()) {
+    return render_prepared_stack_memory_operand(*frame_offset + stack_byte_bias, size_name);
+  }
   return std::nullopt;
 }
 
