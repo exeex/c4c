@@ -1,9 +1,11 @@
 # Review Extracted X86 Codegen Subsystem For Phoenix Rebuild
 
-Status: Open
+Status: Closed
 Created: 2026-04-22
 Last-Updated: 2026-04-22
-Parent Idea: [78_extract_x86_codegen_subsystem_to_markdown_for_phoenix_rebuild.md](/workspaces/c4c/ideas/open/78_extract_x86_codegen_subsystem_to_markdown_for_phoenix_rebuild.md)
+Closed: 2026-04-22
+Disposition: Completed by defining the reviewed replacement layout and handoff for the stage-3 drafting runbook.
+Parent Idea: [78_extract_x86_codegen_subsystem_to_markdown_for_phoenix_rebuild.md](/workspaces/c4c/ideas/closed/78_extract_x86_codegen_subsystem_to_markdown_for_phoenix_rebuild.md)
 
 ## Intent
 
@@ -96,3 +98,35 @@ explicitly judges whether that layout addresses the motivating prepared-route
 failure family, names the complete stage-3 `.cpp.md` / `.hpp.md` artifact set
 that must exist next, and `docs/backend/x86_codegen_rebuild_handoff.md`
 provides an explicit contract for what stage 3 must consume and preserve.
+
+## Closure Note
+
+Closed on 2026-04-22 after the stage-2 review satisfied the owned completion
+signal:
+
+- `docs/backend/x86_codegen_rebuild_plan.md` now records the extraction audit,
+  current seam map, idea-75 failure pressure, and the mandatory stage-3 draft
+  manifest
+- `docs/backend/x86_codegen_rebuild_handoff.md` now gives stage 3 an explicit
+  intake contract covering trusted artifacts, required corrections, mandatory
+  outputs, and route constraints
+- the remaining Phoenix work is no longer stage-2 review; it is stage-3 draft
+  generation against that reviewed contract
+
+This idea therefore closes as complete and hands execution forward to
+idea 80, `80_draft_replacement_x86_codegen_interfaces_for_phoenix_rebuild.md`.
+
+## Validation At Closure
+
+Close-time guard on 2026-04-22 reused the existing focused canonical scope:
+
+- `cmake --build --preset default`
+- `ctest --test-dir build -j --output-on-failure -R '^c_testsuite_x86_backend_src_00204_c$' > test_after.log`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result:
+
+- guard passed for lifecycle-only closure with equal pass count allowed
+- before reported `0` passed / `1` failed / `1` total
+- after reported `0` passed / `1` failed / `1` total
+- no new failing tests were introduced on the matched scope

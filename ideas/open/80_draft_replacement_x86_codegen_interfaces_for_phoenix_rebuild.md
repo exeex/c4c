@@ -3,7 +3,7 @@
 Status: Open
 Created: 2026-04-22
 Last-Updated: 2026-04-22
-Parent Idea: [79_review_extracted_x86_codegen_subsystem_for_phoenix_rebuild.md](/workspaces/c4c/ideas/open/79_review_extracted_x86_codegen_subsystem_for_phoenix_rebuild.md)
+Parent Idea: [79_review_extracted_x86_codegen_subsystem_for_phoenix_rebuild.md](/workspaces/c4c/ideas/closed/79_review_extracted_x86_codegen_subsystem_for_phoenix_rebuild.md)
 
 ## Intent
 
