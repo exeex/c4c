@@ -1,6 +1,8 @@
 #include "x86_codegen.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <functional>
 #include <stdexcept>
 
 namespace c4c::backend::x86 {
@@ -313,6 +315,137 @@ std::string emit_prepared_module(
     }
     return data;
   };
+  const auto asm_symbol_char = [](char ch) -> bool {
+    const auto uch = static_cast<unsigned char>(ch);
+    return std::isalnum(uch) || ch == '_' || ch == '.' || ch == '$';
+  };
+  const auto asm_text_references_symbol =
+      [&](std::string_view asm_text, std::string_view symbol_name) -> bool {
+    if (symbol_name.empty()) {
+      return false;
+    }
+    std::size_t search_from = 0;
+    while (true) {
+      const auto pos = asm_text.find(symbol_name, search_from);
+      if (pos == std::string_view::npos) {
+        return false;
+      }
+      const auto end = pos + symbol_name.size();
+      const bool prev_is_symbol = pos > 0 && asm_symbol_char(asm_text[pos - 1]);
+      const bool next_is_symbol = end < asm_text.size() && asm_symbol_char(asm_text[end]);
+      if (!prev_is_symbol && !next_is_symbol) {
+        return true;
+      }
+      search_from = pos + 1;
+    }
+  };
+  const auto asm_text_defines_symbol =
+      [&](std::string_view asm_text, std::string_view symbol_name) -> bool {
+    if (symbol_name.empty()) {
+      return false;
+    }
+    std::size_t search_from = 0;
+    while (true) {
+      const auto pos = asm_text.find(symbol_name, search_from);
+      if (pos == std::string_view::npos) {
+        return false;
+      }
+      const auto end = pos + symbol_name.size();
+      const bool prev_is_symbol = pos > 0 && asm_symbol_char(asm_text[pos - 1]);
+      const bool next_is_label = end < asm_text.size() && asm_text[end] == ':';
+      if (!prev_is_symbol && next_is_label) {
+        return true;
+      }
+      search_from = pos + 1;
+    }
+  };
+  const auto emit_missing_same_module_global_data =
+      [&](std::string_view asm_text) -> std::string {
+    std::string missing_data;
+    std::unordered_set<std::string_view> emitted_missing_globals;
+    std::function<void(std::string_view)> add_same_module_global_closure =
+        [&](std::string_view global_name) {
+          const auto* same_module_global = find_same_module_global(global_name);
+          if (same_module_global == nullptr ||
+              emitted_missing_globals.find(same_module_global->name) !=
+                  emitted_missing_globals.end() ||
+              asm_text_defines_symbol(asm_text, render_asm_symbol_name(same_module_global->name))) {
+            return;
+          }
+          emitted_missing_globals.insert(same_module_global->name);
+          if (same_module_global->initializer_symbol_name.has_value()) {
+            add_same_module_global_closure(*same_module_global->initializer_symbol_name);
+          }
+          if (same_module_global->initializer.has_value() &&
+              same_module_global->initializer->kind == c4c::backend::bir::Value::Kind::Named &&
+              same_module_global->initializer->type == c4c::backend::bir::TypeKind::Ptr &&
+              !same_module_global->initializer->name.empty() &&
+              same_module_global->initializer->name.front() == '@') {
+            add_same_module_global_closure(same_module_global->initializer->name.substr(1));
+          }
+          for (const auto& element : same_module_global->initializer_elements) {
+            if (element.kind != c4c::backend::bir::Value::Kind::Named ||
+                element.type != c4c::backend::bir::TypeKind::Ptr || element.name.empty() ||
+                element.name.front() != '@') {
+              continue;
+            }
+            add_same_module_global_closure(element.name.substr(1));
+          }
+          const auto rendered_global_data = emit_same_module_global_data(*same_module_global);
+          if (!rendered_global_data.has_value()) {
+            return;
+          }
+          missing_data += *rendered_global_data;
+        };
+    for (const auto& global : module.module.globals) {
+      if (!asm_text_references_symbol(asm_text, render_asm_symbol_name(global.name)) ||
+          asm_text_defines_symbol(asm_text, render_asm_symbol_name(global.name))) {
+        continue;
+      }
+      add_same_module_global_closure(global.name);
+    }
+    return missing_data;
+  };
+  const auto emit_direct_variadic_runtime_helpers =
+      [&](std::string_view asm_text) -> std::string {
+    std::string helpers;
+    const auto emit_function_prelude = [&](std::string_view symbol_name) {
+      helpers += ".intel_syntax noprefix\n.text\n.globl " + std::string(symbol_name) + "\n";
+      if (resolved_target_triple.find("apple-darwin") == std::string::npos) {
+        helpers += ".type " + std::string(symbol_name) + ", @function\n";
+      }
+      helpers += std::string(symbol_name) + ":\n";
+    };
+    if (asm_text_references_symbol(asm_text, "llvm.va_start.p0") &&
+        !asm_text_defines_symbol(asm_text, "llvm.va_start.p0")) {
+      emit_function_prelude("llvm.va_start.p0");
+      helpers += "    mov DWORD PTR [rdi], 48\n";
+      helpers += "    mov DWORD PTR [rdi + 4], 176\n";
+      helpers += "    lea rax, [rsp + 8]\n";
+      helpers += "    mov QWORD PTR [rdi + 8], rax\n";
+      helpers += "    mov QWORD PTR [rdi + 16], rax\n";
+      helpers += "    ret\n";
+    }
+    if (asm_text_references_symbol(asm_text, "llvm.va_end.p0") &&
+        !asm_text_defines_symbol(asm_text, "llvm.va_end.p0")) {
+      emit_function_prelude("llvm.va_end.p0");
+      helpers += "    ret\n";
+    }
+    if (asm_text_references_symbol(asm_text, "llvm.va_copy.p0.p0") &&
+        !asm_text_defines_symbol(asm_text, "llvm.va_copy.p0.p0")) {
+      emit_function_prelude("llvm.va_copy.p0.p0");
+      helpers += "    mov eax, DWORD PTR [rsi]\n";
+      helpers += "    mov DWORD PTR [rdi], eax\n";
+      helpers += "    mov eax, DWORD PTR [rsi + 4]\n";
+      helpers += "    mov DWORD PTR [rdi + 4], eax\n";
+      helpers += "    mov rax, QWORD PTR [rsi + 8]\n";
+      helpers += "    mov QWORD PTR [rdi + 8], rax\n";
+      helpers += "    mov rax, QWORD PTR [rsi + 16]\n";
+      helpers += "    mov QWORD PTR [rdi + 16], rax\n";
+      helpers += "    ret\n";
+    }
+    return helpers;
+  };
   const auto minimal_function_return_register =
       [&](const c4c::backend::bir::Function& candidate) -> std::optional<std::string> {
     if (!candidate.return_abi.has_value()) {
@@ -375,10 +508,12 @@ std::string emit_prepared_module(
            std::string(function_name) + ", lane: " + std::string(lane_name) + "]";
   };
   if (multi_defined_dispatch.rendered_module.has_value()) {
-    if (!multi_defined_dispatch.helper_prefix.empty()) {
-      return multi_defined_dispatch.helper_prefix + *multi_defined_dispatch.rendered_module;
-    }
-    return *multi_defined_dispatch.rendered_module;
+    const std::string rendered_text =
+        multi_defined_dispatch.helper_prefix + *multi_defined_dispatch.rendered_module;
+    const std::string rendered_variadic_runtime_helpers =
+        emit_direct_variadic_runtime_helpers(rendered_text);
+    return rendered_text + rendered_variadic_runtime_helpers +
+           emit_missing_same_module_global_data(rendered_text + rendered_variadic_runtime_helpers);
   }
   const auto render_defined_function =
       [&](const c4c::backend::bir::Function& function,
@@ -928,6 +1063,41 @@ std::string emit_prepared_module(
       rendered_functions += render_defined_function(
           *function, true, &used_string_names, &used_same_module_global_names);
     }
+    const std::string rendered_text = multi_defined_dispatch.helper_prefix + rendered_functions;
+    std::function<void(std::string_view)> add_same_module_global_closure =
+        [&](std::string_view global_name) {
+          const auto* same_module_global = find_same_module_global(global_name);
+          if (same_module_global == nullptr ||
+              !used_same_module_global_names.insert(same_module_global->name).second) {
+            return;
+          }
+          if (same_module_global->initializer_symbol_name.has_value()) {
+            add_same_module_global_closure(*same_module_global->initializer_symbol_name);
+          }
+          if (same_module_global->initializer.has_value() &&
+              same_module_global->initializer->kind == c4c::backend::bir::Value::Kind::Named &&
+              same_module_global->initializer->type == c4c::backend::bir::TypeKind::Ptr &&
+              !same_module_global->initializer->name.empty() &&
+              same_module_global->initializer->name.front() == '@') {
+            add_same_module_global_closure(same_module_global->initializer->name.substr(1));
+          }
+          for (const auto& element : same_module_global->initializer_elements) {
+            if (element.kind != c4c::backend::bir::Value::Kind::Named ||
+                element.type != c4c::backend::bir::TypeKind::Ptr || element.name.empty() ||
+                element.name.front() != '@') {
+              continue;
+            }
+            add_same_module_global_closure(element.name.substr(1));
+          }
+        };
+    for (const auto& global : module.module.globals) {
+      if (!asm_text_references_symbol(rendered_text, render_asm_symbol_name(global.name))) {
+        continue;
+      }
+      add_same_module_global_closure(global.name);
+    }
+    const std::string rendered_variadic_runtime_helpers =
+        emit_direct_variadic_runtime_helpers(rendered_text);
 
     std::string rendered_data;
     for (const auto& string_constant : module.module.string_constants) {
@@ -947,7 +1117,9 @@ std::string emit_prepared_module(
       }
       rendered_data += *rendered_global_data;
     }
-    return rendered_functions + rendered_data;
+    return rendered_text + rendered_variadic_runtime_helpers + rendered_data +
+           emit_missing_same_module_global_data(rendered_text + rendered_variadic_runtime_helpers +
+                                                rendered_data);
   }
 
   return render_defined_function(*entry_function_ptr, false, nullptr, nullptr);
