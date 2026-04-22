@@ -44,7 +44,12 @@ struct PreparedSupportedImmediateBinary;
 struct ParsedBackendExternCallArg;
 struct LivenessInput;
 struct LivenessResult;
-struct PhysReg;
+struct PhysReg {
+  std::uint32_t index = 0;
+
+  constexpr PhysReg() = default;
+  constexpr explicit PhysReg(std::uint32_t v) : index(v) {}
+};
 struct RegAllocIntegrationResult;
 }  // namespace c4c::backend
 
