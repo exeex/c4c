@@ -5,24 +5,24 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 2.1
 Current Step Title: Stand Up Frame And Memory Lowering Owners
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed step 1.5.3 by confirming that the remaining broad-header consumers
-in `module/module_emit.cpp`, `route_debug.cpp`, and the three backend handoff
-boundary tests are honest prepared-route compatibility holdouts rather than
-missed reviewed-owner narrowing opportunities, then split step 2 into
-execution-sized lowering-family substeps so the next packet can start real
-canonical lowering migration.
+Started step 2.1 by materializing reviewed `lowering/frame_lowering.*` and
+`lowering/memory_lowering.*` source files, then moved the prepared local-slot
+layout builder and stack-memory operand render helpers out of
+`prepared_local_slot_render.cpp` so prepared and module callers now include
+explicit lowering seams instead of depending on those frame/home helpers
+through the mixed local-slot renderer.
 
 ## Suggested Next
 
-Start step 2.1 by standing up the reviewed `lowering/frame_lowering.*` and
-`lowering/memory_lowering.*` seams, moving one coherent frame-home or
-memory-operand helper family behind those owners while keeping legacy and
-prepared callers compiling through explicit forwarding.
+Continue step 2.1 by moving the next canonical frame-home family behind the
+same lowering seams, preferably the authoritative stack-offset or frame-address
+queries that still live in `prepared_local_slot_render.cpp` and adjacent
+prepared compatibility helpers.
 
 ## Watchouts
 
@@ -42,8 +42,7 @@ prepared callers compiling through explicit forwarding.
 
 ## Proof
 
-Step 1.5.3 classification closeout and step-2 runbook split on 2026-04-22.
-Latest code proof remains the last accepted backend subset run:
+Step 2.1 lowering seam extraction on 2026-04-22:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 Backend subset passed. Canonical log paths: `test_before.log`, `test_after.log`

@@ -1,4 +1,5 @@
 #include "x86_codegen.hpp"
+#include "lowering/frame_lowering.hpp"
 
 namespace c4c::backend::x86 {
 

@@ -1,0 +1,32 @@
+#include "memory_lowering.hpp"
+
+namespace c4c::backend::x86 {
+
+std::string render_prepared_stack_memory_operand(std::size_t byte_offset,
+                                                 std::string_view size_name) {
+  if (byte_offset == 0) {
+    return std::string(size_name) + " PTR [rsp]";
+  }
+  return std::string(size_name) + " PTR [rsp + " + std::to_string(byte_offset) + "]";
+}
+
+std::string render_prepared_stack_address_expr(std::size_t byte_offset) {
+  if (byte_offset == 0) {
+    return "[rsp]";
+  }
+  return "[rsp + " + std::to_string(byte_offset) + "]";
+}
+
+std::optional<std::string> render_prepared_local_slot_memory_operand_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view slot_name,
+    std::size_t stack_byte_bias,
+    std::string_view size_name) {
+  const auto slot_it = local_layout.offsets.find(slot_name);
+  if (slot_it == local_layout.offsets.end()) {
+    return std::nullopt;
+  }
+  return render_prepared_stack_memory_operand(slot_it->second + stack_byte_bias, size_name);
+}
+
+}  // namespace c4c::backend::x86

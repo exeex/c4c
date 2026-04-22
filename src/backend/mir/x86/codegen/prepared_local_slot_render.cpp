@@ -1,4 +1,6 @@
 #include "x86_codegen.hpp"
+#include "lowering/frame_lowering.hpp"
+#include "lowering/memory_lowering.hpp"
 
 #include <algorithm>
 #include <array>
@@ -66,102 +68,6 @@ bool short_circuit_join_has_join_defined_named_incoming(
 }
 
 }  // namespace
-
-std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
-    const c4c::backend::bir::Function& function,
-    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
-    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    c4c::TargetArch prepared_arch) {
-  if (prepared_arch != c4c::TargetArch::X86_64) {
-    return std::nullopt;
-  }
-  PreparedModuleLocalSlotLayout layout;
-  std::size_t next_offset = 0;
-  std::size_t max_align = 16;
-  std::size_t max_frame_slot_end = 0;
-  const c4c::FunctionNameId function_name_id =
-      prepared_names == nullptr ? c4c::kInvalidFunctionName
-                                : c4c::backend::prepare::resolve_prepared_function_name_id(
-                                      *prepared_names, function.name)
-                                      .value_or(c4c::kInvalidFunctionName);
-  for (const auto& slot : function.local_slots) {
-    if (slot.type != c4c::backend::bir::TypeKind::I8 &&
-        slot.type != c4c::backend::bir::TypeKind::I16 &&
-        slot.type != c4c::backend::bir::TypeKind::I32 &&
-        slot.type != c4c::backend::bir::TypeKind::I64 &&
-        slot.type != c4c::backend::bir::TypeKind::F32 &&
-        slot.type != c4c::backend::bir::TypeKind::F64 &&
-        slot.type != c4c::backend::bir::TypeKind::F128 &&
-        slot.type != c4c::backend::bir::TypeKind::Ptr) {
-      return std::nullopt;
-    }
-    const auto slot_size = slot.size_bytes != 0
-                               ? slot.size_bytes
-                               : (slot.type == c4c::backend::bir::TypeKind::Ptr ? 8u
-                                  : slot.type == c4c::backend::bir::TypeKind::I64 ? 8u
-                                  : slot.type == c4c::backend::bir::TypeKind::F64 ? 8u
-                                  : slot.type == c4c::backend::bir::TypeKind::F128 ? 16u
-                                  : slot.type == c4c::backend::bir::TypeKind::I16 ? 2u
-                                  : slot.type == c4c::backend::bir::TypeKind::F32 ? 4u
-                                  : slot.type == c4c::backend::bir::TypeKind::I32 ? 4u
-                                                                                  : 1u);
-    const auto slot_align = slot.align_bytes != 0 ? slot.align_bytes : slot_size;
-    if (slot_size == 0 || slot_size > 16 || slot_align > 16) {
-      return std::nullopt;
-    }
-    next_offset = align_up(next_offset, slot_align);
-    layout.offsets.emplace(slot.name, next_offset);
-    next_offset += slot_size;
-    max_align = std::max(max_align, slot_align);
-  }
-  if (stack_layout != nullptr) {
-    for (const auto& frame_slot : stack_layout->frame_slots) {
-      if (frame_slot.function_name != function_name_id) {
-        continue;
-      }
-      layout.frame_slot_offsets.emplace(frame_slot.slot_id, frame_slot.offset_bytes);
-      max_frame_slot_end =
-          std::max(max_frame_slot_end, frame_slot.offset_bytes + frame_slot.size_bytes);
-    }
-  }
-  if (function_locations != nullptr) {
-    for (const auto& home : function_locations->value_homes) {
-      if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
-          !home.offset_bytes.has_value()) {
-        continue;
-      }
-      max_frame_slot_end = std::max(max_frame_slot_end, *home.offset_bytes + std::size_t{8});
-    }
-  }
-  if (function_addressing != nullptr) {
-    if (function_name_id == c4c::kInvalidFunctionName ||
-        function_addressing->function_name != function_name_id) {
-      return std::nullopt;
-    }
-    const auto required_frame_alignment =
-        std::max<std::size_t>(16, function_addressing->frame_alignment_bytes);
-    layout.frame_alignment = required_frame_alignment;
-    layout.frame_size = align_up(
-        std::max({function_addressing->frame_size_bytes, next_offset, max_frame_slot_end}),
-        required_frame_alignment);
-    return layout;
-  }
-  layout.frame_alignment = max_align;
-  layout.frame_size = align_up(next_offset, max_align);
-  return layout;
-}
-
-std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
-    const c4c::backend::bir::Function& function,
-    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
-    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    c4c::TargetArch prepared_arch) {
-  return build_prepared_module_local_slot_layout(
-      function, stack_layout, function_addressing, prepared_names, nullptr, prepared_arch);
-}
 
 namespace {
 
@@ -6470,21 +6376,6 @@ const c4c::backend::bir::Block* resolve_authoritative_prepared_branch_target(
 
 }  // namespace
 
-std::string render_prepared_stack_memory_operand(std::size_t byte_offset,
-                                                 std::string_view size_name) {
-  if (byte_offset == 0) {
-    return std::string(size_name) + " PTR [rsp]";
-  }
-  return std::string(size_name) + " PTR [rsp + " + std::to_string(byte_offset) + "]";
-}
-
-std::string render_prepared_stack_address_expr(std::size_t byte_offset) {
-  if (byte_offset == 0) {
-    return "[rsp]";
-  }
-  return "[rsp + " + std::to_string(byte_offset) + "]";
-}
-
 std::optional<std::string> render_prepared_value_home_stack_address_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
@@ -6505,18 +6396,6 @@ std::optional<std::string> render_prepared_value_home_stack_address_if_supported
     return std::nullopt;
   }
   return render_prepared_stack_address_expr(*frame_offset);
-}
-
-std::optional<std::string> render_prepared_local_slot_memory_operand_if_supported(
-    const PreparedModuleLocalSlotLayout& local_layout,
-    std::string_view slot_name,
-    std::size_t stack_byte_bias,
-    std::string_view size_name) {
-  const auto slot_it = local_layout.offsets.find(slot_name);
-  if (slot_it == local_layout.offsets.end()) {
-    return std::nullopt;
-  }
-  return render_prepared_stack_memory_operand(slot_it->second + stack_byte_bias, size_name);
 }
 
 std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
