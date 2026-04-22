@@ -5,43 +5,40 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 1.4
 Current Step Title: Materialize Module Support Seams While Preserving Compatibility Wrappers
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Continued plan step 1 by moving the direct variadic-runtime helper emission
-out of `module/module_emit.cpp` and behind the reviewed
-`module/module_data_emit.*` seam without changing the compatibility wrapper
-contract.
-
-Kept `module/module_emit.cpp` focused on whole-module routing by delegating the
-inline `llvm.va_*` helper body emission to the module support seam while
-preserving the existing helper-selection behavior and legacy prepared-module
-handoff.
+Completed plan step 1.4 by materializing the reviewed module-level support seam
+as `ModuleDataSupport` in `module/module_data_emit.*`, then rewiring
+`module/module_emit.cpp` to consume that seam for symbol lookup, label
+rendering, variadic helper injection, referenced-global collection, and
+selected-data emission without changing lowering ownership or the legacy
+prepared-module entry behavior.
 
 ## Suggested Next
 
-Continue plan step 1 by extracting the next concrete helper family that still
-keeps `module/module_emit.cpp` coupled to low-level support behavior, while
-leaving `prepared_module_emit.cpp` as a compatibility wrapper and preserving
-the reviewed module seam boundaries.
+Continue plan step 1 by extracting the next cohesive non-orchestration helper
+family that still keeps `module/module_emit.cpp` broad, while preserving the
+existing compatibility wrapper and avoiding any drift of lowering logic into
+`module/module_data_emit.*`.
 
 ## Watchouts
 
 - Keep `prepared_module_emit.cpp` wrapper-thin; new whole-module orchestration
   logic should land in `module/module_emit.cpp` or sibling reviewed seams
   instead of drifting back into the compatibility surface.
-- `module/module_emit.cpp` still owns several local helper families and broad
-  `x86_codegen.hpp` reach-throughs, so adjacent packets should keep peeling
-  concrete module support behind reviewed seams instead of re-fusing helper
-  bodies, data publication, or symbol inspection into orchestration.
+- `ModuleDataSupport` is an adapter seam for module-level symbol/data support,
+  not a place to migrate function-lowering ownership; adjacent packets should
+  keep peeling support setup and helper publication out of orchestration
+  without moving instruction-shape decisions behind this seam.
 - Preserve the legacy `x86::emit_prepared_module(...)` symbol until the
   supervisor retires that compatibility entry explicitly.
 
 ## Proof
 
-Step-1 variadic-helper seam packet on 2026-04-22 using:
+Step 1.4 module-support seam packet on 2026-04-22 using:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
-Proof log path: `test_after.log`
+Proof passed. Proof log path: `test_after.log`

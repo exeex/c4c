@@ -87,47 +87,8 @@ std::string emit_prepared_module_text(
         resolved_target_profile, *param.abi, arg_index));
   };
   const auto resolved_target_triple = c4c::backend::x86::abi::resolve_target_triple(module);
-  const auto render_asm_symbol_name = [&](std::string_view logical_name) -> std::string {
-    return c4c::backend::x86::abi::render_asm_symbol_name(resolved_target_triple, logical_name);
-  };
-  const auto render_private_data_label = [&](std::string_view pool_name) -> std::string {
-    return c4c::backend::x86::abi::render_private_data_label(resolved_target_triple, pool_name);
-  };
-  const auto find_string_constant =
-      [&](std::string_view name) -> const c4c::backend::bir::StringConstant* {
-    return c4c::backend::x86::module::find_string_constant(module, name);
-  };
-  const auto find_same_module_global =
-      [&](std::string_view name) -> const c4c::backend::bir::Global* {
-    return c4c::backend::x86::module::find_same_module_global(module, name);
-  };
-  const auto emit_string_constant_data =
-      [&](const c4c::backend::bir::StringConstant& string_constant) -> std::string {
-    return c4c::backend::x86::module::emit_string_constant_data(resolved_target_triple,
-                                                                string_constant);
-  };
-  const auto same_module_global_supports_scalar_load =
-      [&](const c4c::backend::bir::Global& global,
-          c4c::backend::bir::TypeKind type,
-          std::size_t byte_offset) -> bool {
-    return c4c::backend::x86::module::same_module_global_supports_scalar_load(global, type,
-                                                                              byte_offset);
-  };
-  const auto emit_same_module_global_data =
-      [&](const c4c::backend::bir::Global& global) -> std::optional<std::string> {
-    return c4c::backend::x86::module::emit_same_module_global_data(resolved_target_triple,
-                                                                   global);
-  };
-  const auto emit_missing_same_module_global_data =
-      [&](std::string_view asm_text) -> std::string {
-    return c4c::backend::x86::module::emit_missing_same_module_global_data(
-        module, resolved_target_triple, asm_text);
-  };
-  const auto emit_direct_variadic_runtime_helpers =
-      [&](std::string_view asm_text) -> std::string {
-    return c4c::backend::x86::module::emit_direct_variadic_runtime_helpers(
-        resolved_target_triple, asm_text);
-  };
+  const auto module_data_support =
+      c4c::backend::x86::module::make_module_data_support(module, resolved_target_triple);
   const auto minimal_function_return_register =
       [&](const c4c::backend::bir::Function& candidate) -> std::optional<std::string> {
     if (!candidate.return_abi.has_value()) {
@@ -154,17 +115,35 @@ std::string emit_prepared_module_text(
     return c4c::backend::x86::build_prepared_module_multi_defined_dispatch_state(
         module, defined_functions, entry_function_ptr, prepared_arch,
         render_trivial_defined_function_if_supported, minimal_function_return_register,
-        minimal_function_asm_prefix, find_same_module_global,
-        same_module_global_supports_scalar_load, minimal_param_register_at,
+        minimal_function_asm_prefix,
+        [&](std::string_view name) { return module_data_support.find_same_module_global(name); },
+        [&](const c4c::backend::bir::Global& global,
+            c4c::backend::bir::TypeKind type,
+            std::size_t byte_offset) {
+          return module_data_support.same_module_global_supports_scalar_load(global, type,
+                                                                             byte_offset);
+        },
+        minimal_param_register_at,
         [&](std::string_view symbol_name) {
           const std::string prefixed_name = "@" + std::string(symbol_name);
-          return render_private_data_label(prefixed_name);
+          return module_data_support.render_private_data_label(prefixed_name);
         },
-        [&](std::string_view symbol_name) { return find_string_constant(symbol_name) != nullptr; },
-        [&](std::string_view symbol_name) { return find_same_module_global(symbol_name) != nullptr; },
-        [&](std::string_view symbol_name) { return render_asm_symbol_name(symbol_name); },
-        [&](std::string_view symbol_name) { return find_string_constant(symbol_name); },
-        emit_string_constant_data, emit_same_module_global_data);
+        [&](std::string_view symbol_name) { return module_data_support.has_string_constant(symbol_name); },
+        [&](std::string_view symbol_name) {
+          return module_data_support.has_same_module_global(symbol_name);
+        },
+        [&](std::string_view symbol_name) {
+          return module_data_support.render_asm_symbol_name(symbol_name);
+        },
+        [&](std::string_view symbol_name) {
+          return module_data_support.find_string_constant(symbol_name);
+        },
+        [&](const c4c::backend::bir::StringConstant& string_constant) {
+          return module_data_support.emit_string_constant_data(string_constant);
+        },
+        [&](const c4c::backend::bir::Global& global) {
+          return module_data_support.emit_same_module_global_data(global);
+        });
   }();
   const auto& bounded_same_module_helper_names = multi_defined_dispatch.helper_names;
   const auto& bounded_same_module_helper_global_names =
@@ -189,13 +168,14 @@ std::string emit_prepared_module_text(
     return "x86 backend emitter requires the authoritative prepared local-slot instruction handoff through the canonical prepared-module handoff [bounded function: " +
            std::string(function_name) + ", lane: " + std::string(lane_name) + "]";
   };
-  if (multi_defined_dispatch.rendered_module.has_value()) {
+    if (multi_defined_dispatch.rendered_module.has_value()) {
     const std::string rendered_text =
         multi_defined_dispatch.helper_prefix + *multi_defined_dispatch.rendered_module;
     const std::string rendered_variadic_runtime_helpers =
-        emit_direct_variadic_runtime_helpers(rendered_text);
+        module_data_support.emit_direct_variadic_runtime_helpers(rendered_text);
     return rendered_text + rendered_variadic_runtime_helpers +
-           emit_missing_same_module_global_data(rendered_text + rendered_variadic_runtime_helpers);
+           module_data_support.emit_missing_same_module_global_data(
+               rendered_text + rendered_variadic_runtime_helpers);
   }
   const auto render_defined_function =
       [&](const c4c::backend::bir::Function& function,
@@ -290,13 +270,30 @@ std::string emit_prepared_module_text(
         .bounded_same_module_helper_global_names =
             defer_module_data_emission ? &kNoHelperNames : &bounded_same_module_helper_global_names,
         .find_block = find_block,
-        .find_string_constant = find_string_constant,
-        .find_same_module_global = find_same_module_global,
-        .same_module_global_supports_scalar_load = same_module_global_supports_scalar_load,
-        .render_private_data_label = render_private_data_label,
-        .render_asm_symbol_name = render_asm_symbol_name,
-        .emit_string_constant_data = emit_string_constant_data,
-        .emit_same_module_global_data = emit_same_module_global_data,
+        .find_string_constant =
+            [&](std::string_view name) { return module_data_support.find_string_constant(name); },
+        .find_same_module_global = [&](std::string_view name) {
+          return module_data_support.find_same_module_global(name);
+        },
+        .same_module_global_supports_scalar_load =
+            [&](const c4c::backend::bir::Global& global,
+                c4c::backend::bir::TypeKind type,
+                std::size_t byte_offset) {
+              return module_data_support.same_module_global_supports_scalar_load(global, type,
+                                                                                 byte_offset);
+            },
+        .render_private_data_label = [&](std::string_view pool_name) {
+          return module_data_support.render_private_data_label(pool_name);
+        },
+        .render_asm_symbol_name = [&](std::string_view logical_name) {
+          return module_data_support.render_asm_symbol_name(logical_name);
+        },
+        .emit_string_constant_data = [&](const c4c::backend::bir::StringConstant& string_constant) {
+          return module_data_support.emit_string_constant_data(string_constant);
+        },
+        .emit_same_module_global_data = [&](const c4c::backend::bir::Global& global) {
+          return module_data_support.emit_same_module_global_data(global);
+        },
         .prepend_bounded_same_module_helpers = prepend_helpers,
         .minimal_param_register = minimal_param_register,
         .used_string_names = used_string_names,
@@ -462,8 +459,15 @@ std::string emit_prepared_module_text(
           prepared_return_arm,
           param,
           minimal_param_register,
-          render_asm_symbol_name,
-          same_module_global_supports_scalar_load);
+          [&](std::string_view logical_name) {
+            return module_data_support.render_asm_symbol_name(logical_name);
+          },
+          [&](const c4c::backend::bir::Global& global,
+              c4c::backend::bir::TypeKind type,
+              std::size_t byte_offset) {
+            return module_data_support.same_module_global_supports_scalar_load(global, type,
+                                                                               byte_offset);
+          });
     };
     const auto render_minimal_scalar_move_bundle_return_if_supported =
         [&]() -> std::optional<std::string> {
@@ -746,15 +750,15 @@ std::string emit_prepared_module_text(
           *function, true, &used_string_names, &used_same_module_global_names);
     }
     const std::string rendered_text = multi_defined_dispatch.helper_prefix + rendered_functions;
-    c4c::backend::x86::module::add_referenced_same_module_globals(
-        module, resolved_target_triple, rendered_text, &used_same_module_global_names);
+    module_data_support.add_referenced_same_module_globals(rendered_text,
+                                                           &used_same_module_global_names);
     const std::string rendered_variadic_runtime_helpers =
-        emit_direct_variadic_runtime_helpers(rendered_text);
-    const std::string rendered_data = c4c::backend::x86::module::emit_selected_module_data(
-        module, resolved_target_triple, used_string_names, used_same_module_global_names);
+        module_data_support.emit_direct_variadic_runtime_helpers(rendered_text);
+    const std::string rendered_data = module_data_support.emit_selected_module_data(
+        used_string_names, used_same_module_global_names);
     return rendered_text + rendered_variadic_runtime_helpers + rendered_data +
-           emit_missing_same_module_global_data(rendered_text + rendered_variadic_runtime_helpers +
-                                                rendered_data);
+           module_data_support.emit_missing_same_module_global_data(
+               rendered_text + rendered_variadic_runtime_helpers + rendered_data);
   }
 
   return render_defined_function(*entry_function_ptr, false, nullptr, nullptr);
