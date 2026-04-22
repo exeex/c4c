@@ -5,31 +5,25 @@ Source Idea Path: ideas/open/78_extract_x86_codegen_subsystem_to_markdown_for_ph
 Source Plan Path: plan.md
 Current Step ID: 2
 Current Step Title: Extract Stable Entry Points And Shared Contracts
-Plan Review Counter: 1 / 5
+Plan Review Counter: 2 / 5
 # Current Packet
 
 ## Just Finished
 
-Advanced plan step 2, `Extract Stable Entry Points And Shared Contracts`, by
-tightening
-[x86_codegen_subsystem.md](/workspaces/c4c/docs/backend/x86_codegen_subsystem.md:1)
-around the real shared contract clusters: the `PreparedX86FunctionDispatchContext`
-surface in `x86_codegen.hpp`, the header-level prepared entrypoints and route
-tracing declarations, and the concrete ownership already present in canonical
-`calls.cpp`, `returns.cpp`, and `memory.cpp`. The artifact now also records a
-clearer prepared-divergence map for `prepared_module_emit.cpp`,
-`prepared_param_zero_render.cpp`, `prepared_countdown_render.cpp`, and
-`prepared_local_slot_render.cpp`, including which prepared metadata families
-each file consumes directly.
+Repaired the Phoenix extraction contract: stage 1 no longer closes on one
+summary markdown file. It now closes only when every in-scope
+`src/backend/mir/x86/codegen/*.cpp` / `x86_codegen.hpp` has its own companion
+`.md` and one directory-level index `.md` ties the set together. The
+lifecycle artifacts and the `phoenix-rebuild` skill now agree on that shape,
+and stage 3 likewise requires one `.cpp.md` / `.hpp.md` per planned
+replacement file.
 
 ## Suggested Next
 
-Finish the remaining step 2 / step 3 extraction by compressing one or two more
-representative contract blocks from the prepared family itself, especially the
-call-lane and same-module data-emission helpers inside
-`prepared_module_emit.cpp` and `prepared_local_slot_render.cpp`, then prune any
-markdown that still reads like file-by-file narration instead of subsystem
-ownership.
+Replace the single-file extraction output with a real artifact set under
+`docs/backend/`: one `.md` for each in-scope x86 codegen `.cpp` / `.hpp`, plus
+one directory-level index `.md` that summarizes ownership, dependency
+direction, and prepared-route divergence across the set.
 
 ## Watchouts
 
@@ -42,10 +36,10 @@ ownership.
 - Do not let the prepared family masquerade as “just a few helpers”; the
   artifact should keep calling out when it behaves like a parallel lowering
   stack.
+- Do not accept stage-1 completion until coverage is complete at the
+  file-to-markdown level.
 
 ## Proof
 
-Extraction-stage documentation update on 2026-04-22. No build or test proof
-required yet; this slice only updated
-[x86_codegen_subsystem.md](/workspaces/c4c/docs/backend/x86_codegen_subsystem.md:1)
-and `todo.md`.
+Lifecycle and skill-contract update on 2026-04-22. No build or test proof
+required yet; this slice only updated planning/skill documents.
