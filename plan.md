@@ -103,31 +103,95 @@ Completion check:
 - the next executor packet is narrowed to one idea-75-owned overlapping
   call-lane seam with a clear boundary against ideas 61, 71, and 74
 
-## Step 2: Repair The Overlapping Call-Lane Source-Preservation Seam
+## Step 2.1: Repair The HFA Long-Double Full-Reserve Source-Bias Seam
 
-Goal: make emitted fixed-arity call lanes preserve source values when
-authoritative prepared argument homes overlap ABI argument registers.
+Goal: preserve authoritative HFA long-double stack sources when prepared/x86
+call rendering reserves outgoing stack space before materializing overlapping
+call-lane values.
 
 Primary targets:
 
-- prepared call-lane consumers that plan or apply BeforeCall moves
-- x86 call render paths that currently materialize arg0 into `rdi` before arg1
-  still sources the old `rdi` home
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- prepared same-module and direct-extern fixed-arity call rendering that reads
+  stack-backed HFA long-double sources after reserving outgoing call space
+- the helper-lane reserve shape protected by `backend_x86_handoff_boundary`
 
 Actions:
 
-- repair the generic prepared/x86 call-lane planning or move-application layer
-  so overlapping sources are preserved through truthful ordering or a shared
-  temporary rule derived from prepared ownership
-- keep the repair at the shared call-lane layer instead of adding helper,
-  callee-name, or register-pair exceptions
-- prove the owned case advances beyond the current `fa_s17` / `pll` clobber
-  without reopening idea 74's owner-publication seam
+- bias stack-source loads against the full reserved outgoing call area rather
+  than only `stack_arg_bytes` when the prepared lane still sources pre-reserve
+  homes
+- keep the reserve emission in the helper-compatible two-step shape: stack-arg
+  area first, then the 8-byte call-alignment pad
+- prove `00204.c` advances past the HFA long-double `Arguments:` seam without
+  reopening idea 74 or regressing `backend_x86_handoff_boundary`
 
 Completion check:
 
-- the targeted owned case no longer fails at the current overlapping
-  call-lane clobber and instead executes further
+- the targeted owned case no longer fails at the HFA long-double `Arguments:`
+  call-lane seam and instead executes further
+
+## Step 2.2: Repair The Same-Module Aggregate String/Mixed-Aggregate Call-Lane Seam
+
+Goal: restore source-preserving prepared/x86 call-lane materialization for the
+next same-module aggregate-string and mixed-aggregate calls now exposed after
+the HFA long-double repair.
+
+Primary targets:
+
+- the first bad same-module aggregate/string call lanes after the repaired HFA
+  long-double block in `00204.c`
+- prepared call-lane consumers that materialize overlapping aggregate or mixed
+  scalar/aggregate homes for fixed-arity calls
+- shared x86 call rendering only where the prepared ownership already carries
+  the needed source-preservation fact
+
+Actions:
+
+- inspect the authoritative prepared homes, BeforeCall obligations, and emitted
+  materialization order for the corrupted aggregate-string and mixed-aggregate
+  lines
+- repair the shared prepared/x86 call-lane layer so those overlapping homes
+  survive materialization generically instead of through helper-name,
+  callee-name, or register-pair exceptions
+- prove `00204.c` advances beyond the current `sAJ...`, `AJT...`, and mixed
+  aggregate corruption before treating later failures as the next seam
+
+Completion check:
+
+- the targeted owned case no longer first fails at the same-module aggregate
+  string/mixed-aggregate call-lane seam and instead executes further
+
+## Step 2.3: Classify And Repair The Downstream Return-Value / `stdarg` Runtime Seam
+
+Goal: decide whether the later corrupted `Return values:` and empty `stdarg:`
+output remain idea-75-owned prepared/x86 call-lane source-preservation work
+after Step 2.2, and repair only the smallest remaining owned seam.
+
+Primary targets:
+
+- the first bad fact that still feeds the downstream `Return values:` or
+  `stdarg:` corruption after the aggregate-string seam is cleared
+- prepared/x86 fixed-arity call-lane consumers only if they still own that
+  first bad fact
+- idea-boundary evidence separating idea 75 from idea 71's genuine variadic
+  traversal work
+
+Actions:
+
+- inspect the first remaining bad load, move order, or home materialization
+  fact after the Step 2.2 aggregate-string seam
+- keep the packet in idea 75 only if the missing meaning is still prepared/x86
+  fixed-arity call-lane source preservation rather than a later variadic or
+  non-call-lane runtime leaf
+- repair that owned seam or record explicit onward routing in `todo.md` if the
+  case has graduated out of idea 75
+
+Completion check:
+
+- the next accepted packet either advances `00204.c` beyond the current
+  `Return values:` / `stdarg:` corruption through an idea-75-owned repair or
+  records an explicit rehoming boundary
 
 ## Step 3: Prove Runtime-Family Shrinkage And Record Rehoming
 
