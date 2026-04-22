@@ -790,59 +790,12 @@ std::string emit_prepared_module_text(
           *function, true, &used_string_names, &used_same_module_global_names);
     }
     const std::string rendered_text = multi_defined_dispatch.helper_prefix + rendered_functions;
-    std::function<void(std::string_view)> add_same_module_global_closure =
-        [&](std::string_view global_name) {
-          const auto* same_module_global = find_same_module_global(global_name);
-          if (same_module_global == nullptr ||
-              !used_same_module_global_names.insert(same_module_global->name).second) {
-            return;
-          }
-          if (same_module_global->initializer_symbol_name.has_value()) {
-            add_same_module_global_closure(*same_module_global->initializer_symbol_name);
-          }
-          if (same_module_global->initializer.has_value() &&
-              same_module_global->initializer->kind == c4c::backend::bir::Value::Kind::Named &&
-              same_module_global->initializer->type == c4c::backend::bir::TypeKind::Ptr &&
-              !same_module_global->initializer->name.empty() &&
-              same_module_global->initializer->name.front() == '@') {
-            add_same_module_global_closure(same_module_global->initializer->name.substr(1));
-          }
-          for (const auto& element : same_module_global->initializer_elements) {
-            if (element.kind != c4c::backend::bir::Value::Kind::Named ||
-                element.type != c4c::backend::bir::TypeKind::Ptr || element.name.empty() ||
-                element.name.front() != '@') {
-              continue;
-            }
-            add_same_module_global_closure(element.name.substr(1));
-          }
-        };
-    for (const auto& global : module.module.globals) {
-      if (!asm_text_references_symbol(rendered_text, render_asm_symbol_name(global.name))) {
-        continue;
-      }
-      add_same_module_global_closure(global.name);
-    }
+    c4c::backend::x86::module::add_referenced_same_module_globals(
+        module, resolved_target_triple, rendered_text, &used_same_module_global_names);
     const std::string rendered_variadic_runtime_helpers =
         emit_direct_variadic_runtime_helpers(rendered_text);
-
-    std::string rendered_data;
-    for (const auto& string_constant : module.module.string_constants) {
-      if (used_string_names.find(string_constant.name) == used_string_names.end()) {
-        continue;
-      }
-      rendered_data += emit_string_constant_data(string_constant);
-    }
-    for (const auto& global : module.module.globals) {
-      if (used_same_module_global_names.find(global.name) == used_same_module_global_names.end()) {
-        continue;
-      }
-      const auto rendered_global_data = emit_same_module_global_data(global);
-      if (!rendered_global_data.has_value()) {
-        throw std::invalid_argument(
-            "x86 backend emitter requires same-module global data emission support through the canonical prepared-module handoff");
-      }
-      rendered_data += *rendered_global_data;
-    }
+    const std::string rendered_data = c4c::backend::x86::module::emit_selected_module_data(
+        module, resolved_target_triple, used_string_names, used_same_module_global_names);
     return rendered_text + rendered_variadic_runtime_helpers + rendered_data +
            emit_missing_same_module_global_data(rendered_text + rendered_variadic_runtime_helpers +
                                                 rendered_data);

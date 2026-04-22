@@ -281,4 +281,71 @@ std::string emit_missing_same_module_global_data(
   return missing_data;
 }
 
+void add_referenced_same_module_globals(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    std::string_view target_triple,
+    std::string_view asm_text,
+    std::unordered_set<std::string_view>* used_same_module_global_names) {
+  std::function<void(std::string_view)> add_same_module_global_closure =
+      [&](std::string_view global_name) {
+        const auto* same_module_global = lookup_same_module_global(module, global_name);
+        if (same_module_global == nullptr ||
+            !used_same_module_global_names->insert(same_module_global->name).second) {
+          return;
+        }
+        if (same_module_global->initializer_symbol_name.has_value()) {
+          add_same_module_global_closure(*same_module_global->initializer_symbol_name);
+        }
+        if (same_module_global->initializer.has_value() &&
+            same_module_global->initializer->kind == c4c::backend::bir::Value::Kind::Named &&
+            same_module_global->initializer->type == c4c::backend::bir::TypeKind::Ptr &&
+            !same_module_global->initializer->name.empty() &&
+            same_module_global->initializer->name.front() == '@') {
+          add_same_module_global_closure(same_module_global->initializer->name.substr(1));
+        }
+        for (const auto& element : same_module_global->initializer_elements) {
+          if (element.kind != c4c::backend::bir::Value::Kind::Named ||
+              element.type != c4c::backend::bir::TypeKind::Ptr || element.name.empty() ||
+              element.name.front() != '@') {
+            continue;
+          }
+          add_same_module_global_closure(element.name.substr(1));
+        }
+      };
+  for (const auto& global : module.module.globals) {
+    const auto rendered_name =
+        c4c::backend::x86::abi::render_asm_symbol_name(target_triple, global.name);
+    if (!c4c::backend::x86::core::asm_text_references_symbol(asm_text, rendered_name)) {
+      continue;
+    }
+    add_same_module_global_closure(global.name);
+  }
+}
+
+std::string emit_selected_module_data(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    std::string_view target_triple,
+    const std::unordered_set<std::string_view>& used_string_names,
+    const std::unordered_set<std::string_view>& used_same_module_global_names) {
+  std::string rendered_data;
+  for (const auto& string_constant : module.module.string_constants) {
+    if (used_string_names.find(string_constant.name) == used_string_names.end()) {
+      continue;
+    }
+    rendered_data += emit_string_constant_data(target_triple, string_constant);
+  }
+  for (const auto& global : module.module.globals) {
+    if (used_same_module_global_names.find(global.name) == used_same_module_global_names.end()) {
+      continue;
+    }
+    const auto rendered_global_data = emit_same_module_global_data(target_triple, global);
+    if (!rendered_global_data.has_value()) {
+      throw std::invalid_argument(
+          "x86 backend emitter requires same-module global data emission support through the canonical prepared-module handoff");
+    }
+    rendered_data += *rendered_global_data;
+  }
+  return rendered_data;
+}
+
 }  // namespace c4c::backend::x86::module

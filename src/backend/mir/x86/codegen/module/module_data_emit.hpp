@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 
 namespace c4c::backend::x86::module {
 
@@ -34,5 +35,17 @@ namespace c4c::backend::x86::module {
     const c4c::backend::prepare::PreparedBirModule& module,
     std::string_view target_triple,
     std::string_view asm_text);
+
+void add_referenced_same_module_globals(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    std::string_view target_triple,
+    std::string_view asm_text,
+    std::unordered_set<std::string_view>* used_same_module_global_names);
+
+[[nodiscard]] std::string emit_selected_module_data(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    std::string_view target_triple,
+    const std::unordered_set<std::string_view>& used_string_names,
+    const std::unordered_set<std::string_view>& used_same_module_global_names);
 
 }  // namespace c4c::backend::x86::module
