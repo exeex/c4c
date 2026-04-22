@@ -12,6 +12,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/lowering/call_lowering.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/lowering/comparison_lowering.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/lowering/frame_lowering.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/lowering/float_lowering.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/lowering/memory_lowering.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/lowering/return_lowering.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/lowering/scalar_lowering.cpp"
