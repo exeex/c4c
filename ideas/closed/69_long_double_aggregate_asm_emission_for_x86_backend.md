@@ -1,8 +1,10 @@
 # Long-Double Aggregate Asm Emission For X86 Backend
 
-Status: Open
+Status: Closed
 Created: 2026-04-22
 Last-Updated: 2026-04-22
+Closed: 2026-04-22
+Disposition: Completed; the owned long-double aggregate asm-emission family no longer fails because the assembler rejects x86-emitted instructions and the surviving `00204.c` route graduated into a later post-assembly leaf.
 Parent Idea: [57_x86_backend_c_testsuite_capability_families.md](/workspaces/c4c/ideas/open/57_x86_backend_c_testsuite_capability_families.md)
 
 ## Intent
@@ -35,12 +37,16 @@ prepared local-slot handoff ownership.
 
 ## Latest Durable Note
 
-As of 2026-04-22, the active `00204.c` route now clears the bounded
-multi-function prepared-module family that idea 61 owned. Fresh proof shows
-the top-level case advancing into final assembly, where the assembler rejects
-generated `fldt` / `fstpt` instructions in the long-double aggregate path.
-That downstream seam is no longer a prepared-module or local-slot handoff
-problem, so it needs its own leaf.
+As of 2026-04-22, the active `00204.c` route still clears the bounded
+multi-function prepared-module family that idea 61 owned, and the accepted
+idea-69 packet cleared the remaining assembler-invalid long-double aggregate
+mnemonic seam. Fresh proof now shows `00204.c` assembling successfully and
+failing later at link time, while the paired
+`backend_x86_handoff_boundary` proof also moved to a downstream stale
+post-asm contract expectation for the multi-defined global-function-pointer /
+indirect variadic-runtime boundary. Durable ownership therefore graduates out
+of this asm-emission leaf and into
+`ideas/open/70_post_asm_global_function_pointer_and_variadic_runtime_link_closure_for_x86_backend.md`.
 
 ## Scope Notes
 

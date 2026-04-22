@@ -1,162 +1,162 @@
-# Long-Double Aggregate Asm Emission
+# Post-Asm Global-Function-Pointer And Variadic-Runtime Link Closure
 
 Status: Active
-Source Idea: ideas/open/69_long_double_aggregate_asm_emission_for_x86_backend.md
-Activated from: ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md
+Source Idea: ideas/open/70_post_asm_global_function_pointer_and_variadic_runtime_link_closure_for_x86_backend.md
+Activated from: ideas/closed/69_long_double_aggregate_asm_emission_for_x86_backend.md
 
 ## Purpose
 
-Switch the active backend leaf to the downstream long-double aggregate
-asm-emission seam now that `c_testsuite_x86_backend_src_00204_c` has advanced
-past idea 61's bounded multi-function prepared-module family.
+Switch the active backend leaf to the first downstream family that remains once
+`00204.c` clears both prepared-module rejection and assembler-invalid
+long-double aggregate emission.
 
 ## Goal
 
-Repair one long-double aggregate asm-emission seam at a time so owned cases
-assemble successfully without adding testcase-shaped x87 or aggregate render
-shortcuts.
+Repair one post-assembly global-function-pointer / indirect variadic-runtime
+closure seam at a time so owned cases progress from assembly into successful
+link or an even later runtime-only leaf.
 
 ## Core Rule
 
-Do not claim progress through one more named-case mnemonic rewrite when the
-missing ownership is still a generic long-double load/store or aggregate
-rendering plan that x86 should emit canonically.
+Do not claim progress through testcase-shaped symbol or helper exceptions when
+the missing ownership is still a generic post-assembly closure rule for
+same-module symbols, variadic-runtime references, or their truthful boundary
+contract.
 
 ## Read First
 
-- `ideas/open/69_long_double_aggregate_asm_emission_for_x86_backend.md`
-- `ideas/open/57_x86_backend_c_testsuite_capability_families.md`
+- `ideas/open/70_post_asm_global_function_pointer_and_variadic_runtime_link_closure_for_x86_backend.md`
+- `ideas/closed/69_long_double_aggregate_asm_emission_for_x86_backend.md`
 - `ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md`
-- `ideas/open/68_prepared_local_slot_handoff_consumption_for_x86_backend.md`
-- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
-- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- `ideas/open/67_backend_trace_and_error_contract_for_x86_handoff.md`
+- `tests/backend/backend_x86_handoff_boundary_multi_defined_rejection_test.cpp`
 - `tests/c/external/c-testsuite/src/00204.c`
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
 
 ## Scope
 
-- backend failures that reach final x86 assembly and then fail because the
-  emitted long-double aggregate path uses assembler-invalid instruction forms
-- ownership between prepared value/home facts and the final x87 or long-double
-  render lane when the route already clears prepared-module and local-slot
-  handoff
-- durable rehoming of cases that advance from asm-emission failure into later
-  runtime-correctness ownership
+- x86 backend failures that already assemble but still fail on the
+  global-function-pointer / indirect variadic-runtime family afterward
+- truthful ownership between the accepted prepared-module route and later
+  same-module symbol or variadic-runtime closure obligations
+- explicit routing for cases that advance past link closure into later runtime
+  correctness work
 
 ## Non-Goals
 
-- reopening prepared-module, call-bundle, or local-slot ownership that is
-  already cleared for the current route
-- rewriting long-double handling through one more testcase-named x86 fast path
-- treating stale route-debug or trace expectations as the main work item
-- claiming runtime correctness progress before assembly succeeds
+- reopening prepared-module rejection ownership that idea 61 already cleared
+- reopening assembler-invalid long-double aggregate emission from idea 69
+- downgrading boundary coverage to match stale rejection wording
+- claiming runtime correctness progress before the owned cases link
 
 ## Working Model
 
-- keep one long-double aggregate asm-emission seam per packet
-- use the nearest owned c-testsuite case plus the nearest backend coverage
-  that protects the same render lane without collapsing the packet into one
-  testcase
-- prefer canonical render-plan fixes over mnemonic-string patching when the
-  prepared facts already identify the operation
-- route cases out immediately once they assemble and the next real blocker
-  belongs to runtime correctness or another downstream leaf
+- keep one post-assembly closure seam per packet
+- use `c_testsuite_x86_backend_src_00204_c` plus the nearest boundary coverage
+  that protects the same post-assembly contract
+- prefer canonical ownership for same-module symbols and variadic-runtime
+  references over testcase-named link hacks
+- route cases out immediately once they link and the next real blocker belongs
+  to a later runtime-only leaf
 
 ## Execution Rules
 
-- prefer one assembler-rejected long-double render seam per packet
+- prefer one post-assembly closure seam per packet
 - update `todo.md`, not this file, for routine packet progress
 - use `build -> narrow proof` for every accepted code slice
-- keep proof on the owned asm-emission failure plus the nearest backend
-  coverage that protects the changed long-double render surface
-- reject testcase-shaped instruction spelling branches that only unblock
-  `00204.c`
+- keep proof on the owned `00204.c` route plus the nearest boundary coverage
+  for the changed contract
+- reject testcase-shaped symbol-definition or helper-name shortcuts that only
+  unblock `00204.c`
 
-## Step 1: Confirm Downstream Ownership And Narrow The Long-Double Render Seam
+## Step 1: Confirm Downstream Ownership And Narrow The Post-Asm Closure Seam
 
-Goal: confirm that `c_testsuite_x86_backend_src_00204_c` is now blocked by an
-idea-69-owned long-double aggregate asm-emission seam and isolate the exact
-render surface.
+Goal: confirm the first remaining `00204.c` blocker belongs to this
+post-assembly family and isolate the exact closure seam.
 
 Primary targets:
 
 - `c_testsuite_x86_backend_src_00204_c`
-- x86 codegen files that emit long-double load/store or aggregate instructions
-- backend coverage nearest the current long-double render route
+- `backend_x86_handoff_boundary`
+- x86 emit or lowering surfaces that still own same-module symbol or
+  variadic-runtime closure after assembly succeeds
 
 Actions:
 
-- rerun or inspect the focused proof that reproduces the assembler rejection
-- confirm the old idea-61 module/call family now matches and no longer owns
+- rerun or inspect the focused proof that reproduces the current post-assembly
+  failures
+- confirm the old idea-69 asm-emission seam stays cleared and no longer owns
   the top-level failure
-- identify the exact long-double aggregate render path that emits invalid
-  `fldt` / `fstpt` forms and note whether the missing meaning is render-plan
-  normalization or plain instruction spelling
-- choose the nearest protective coverage that can prove this seam without
-  relying only on `00204.c`
+- identify whether the next packet is primarily a truthful boundary-contract
+  update, same-module symbol-definition closure, or variadic-runtime reference
+  closure
+- choose the nearest protective coverage that proves this seam without relying
+  only on `00204.c`
 
 Completion check:
 
-- the next executor packet is narrowed to one idea-69-owned asm-emission seam
+- the next executor packet is narrowed to one idea-70-owned post-assembly seam
   with named proof targets and a clear ownership boundary
 
-## Step 2.1: Repair The Selected Long-Double Aggregate Asm-Emission Seam
+## Step 2.1: Repair The Selected Post-Asm Closure Seam
 
-Goal: implement the smallest durable render-path repair that advances the
-selected owned case beyond the current assembler rejection.
+Goal: implement the smallest durable repair that advances the selected owned
+case beyond the current post-assembly blocker.
 
 Primary targets:
 
-- x86 long-double or x87 render helpers that own the current invalid emission
-- shared prepared helpers only if the render lane lacks a needed generic fact
+- the boundary or codegen surfaces that own the selected post-assembly seam
+- shared helpers only if the current layer lacks a needed generic fact
 
 Actions:
 
 - repair the selected seam at the layer that owns the missing meaning
-- prefer canonical render-plan fixes over ad hoc testcase mnemonic branches
-- keep the repair generic across nearby long-double aggregate routes
-- confirm the targeted case now assembles or graduates cleanly into a later
-  downstream leaf
+- prefer canonical closure or contract fixes over ad hoc testcase or
+  symbol-name branches
+- keep the repair generic across nearby same-module global-function-pointer and
+  variadic-runtime routes
+- confirm the targeted case now links or graduates cleanly into a later
+  runtime-only leaf
 
 Completion check:
 
-- the targeted owned case no longer fails for the selected idea-69
-  asm-emission seam and instead reaches the next downstream route
+- the targeted owned case no longer fails for the selected idea-70
+  post-assembly seam and instead reaches the next downstream route
 
 ## Step 2.2: Prove Family Shrinkage And Record Rehoming
 
-Goal: show the accepted slice shrinks the real idea-69 family and preserves
+Goal: show the accepted slice shrinks the real idea-70 family and preserves
 explicit routing for any graduated cases.
 
 Actions:
 
 - require a fresh build for each accepted code slice
-- prove the repaired seam on the targeted owned case plus the nearest backend
-  coverage that protects the changed long-double render path
-- record in `todo.md` when advanced cases now belong in idea 63 or another
-  downstream leaf
+- prove the repaired seam on the targeted owned case plus the nearest boundary
+  coverage that protects the changed post-assembly contract
+- record in `todo.md` when advanced cases now belong in a later runtime leaf
 - only return to Step 1 after the current seam is proven and any graduated
   routing is explicit
 
 Completion check:
 
-- accepted slices show real shrinkage of the idea-69 family and preserve clear
+- accepted slices show real shrinkage of the idea-70 family and preserve clear
   routing for any graduated downstream cases
 
-## Step 3: Continue The Loop Until Idea 69 Is Exhausted
+## Step 3: Continue The Loop Until Idea 70 Is Exhausted
 
 Goal: keep repeating the Step 1 -> 2.2 loop until the remaining failures no
-longer belong to idea 69.
+longer belong to idea 70.
 
 Actions:
 
-- keep idea 69 active only while cases still fail because emitted long-double
-  aggregate asm is rejected before execution starts
+- keep idea 70 active only while cases still fail in this post-assembly
+  global-function-pointer / indirect variadic-runtime closure family
 - use `todo.md` to preserve which cases graduate into later leaves
 - call lifecycle review again when the next step becomes oversized or when the
   remaining family is exhausted
 
 Completion check:
 
-- the next active packet is queued under Step 1 for a still-owned idea-69
-  seam, or lifecycle state is ready to hand off because idea 69 no longer owns
+- the next active packet is queued under Step 1 for a still-owned idea-70
+  seam, or lifecycle state is ready to hand off because idea 70 no longer owns
   the remaining failures
