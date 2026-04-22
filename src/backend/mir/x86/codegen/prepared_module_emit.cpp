@@ -20,12 +20,7 @@ std::string emit_prepared_module(
     const c4c::backend::prepare::PreparedBirModule& module) {
   constexpr std::string_view kCompareDrivenEntryParamShapeError =
       "x86 backend emitter only supports multi-block compare-driven entry routes through the canonical prepared-module handoff when the function exposes exactly one non-variadic i32 parameter";
-  const auto resolved_target_profile = module.target_profile.arch != c4c::TargetArch::Unknown
-                                           ? module.target_profile
-                                           : c4c::target_profile_from_triple(
-                                                 module.module.target_triple.empty()
-                                                     ? c4c::default_host_target_triple()
-                                                     : module.module.target_triple);
+  const auto resolved_target_profile = c4c::backend::x86::abi::resolve_target_profile(module);
   const auto prepared_arch = resolved_target_profile.arch;
   if (prepared_arch != c4c::TargetArch::X86_64 && prepared_arch != c4c::TargetArch::I686) {
     throw std::invalid_argument(
@@ -92,9 +87,7 @@ std::string emit_prepared_module(
     return narrow_register(c4c::backend::prepare::call_arg_destination_register_name(
         resolved_target_profile, *param.abi, arg_index));
   };
-  const auto resolved_target_triple =
-      module.module.target_triple.empty() ? c4c::default_host_target_triple()
-                                          : module.module.target_triple;
+  const auto resolved_target_triple = c4c::backend::x86::abi::resolve_target_triple(module);
   const auto render_asm_symbol_name = [&](std::string_view logical_name) -> std::string {
     return c4c::backend::x86::abi::render_asm_symbol_name(resolved_target_triple, logical_name);
   };
@@ -144,7 +137,7 @@ std::string emit_prepared_module(
     std::string helpers;
     const auto emit_function_prelude = [&](std::string_view symbol_name) {
       helpers += ".intel_syntax noprefix\n.text\n.globl " + std::string(symbol_name) + "\n";
-      if (resolved_target_triple.find("apple-darwin") == std::string::npos) {
+      if (!c4c::backend::x86::abi::is_apple_darwin_target(resolved_target_triple)) {
         helpers += ".type " + std::string(symbol_name) + ", @function\n";
       }
       helpers += std::string(symbol_name) + ":\n";

@@ -1,4 +1,5 @@
 #include "x86_codegen.hpp"
+#include "abi/x86_target_abi.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -1441,16 +1442,9 @@ const c4c::backend::prepare::PreparedValueLocationFunction* find_value_location_
       module.value_locations, function_name_id);
 }
 
-std::string resolve_target_triple(const c4c::backend::prepare::PreparedBirModule& module) {
-  return module.module.target_triple.empty() ? c4c::default_host_target_triple()
-                                             : module.module.target_triple;
-}
-
 std::optional<c4c::TargetArch> resolve_prepared_arch(
     const c4c::backend::prepare::PreparedBirModule& module) {
-  const auto target_profile = module.target_profile.arch != c4c::TargetArch::Unknown
-                                  ? module.target_profile
-                                  : c4c::target_profile_from_triple(resolve_target_triple(module));
+  const auto target_profile = c4c::backend::x86::abi::resolve_target_profile(module);
   if (target_profile.arch != c4c::TargetArch::X86_64 &&
       target_profile.arch != c4c::TargetArch::I686) {
     return std::nullopt;
@@ -1514,7 +1508,8 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
     }
   }
 
-  const auto target_triple = resolve_target_triple(module);
+  const auto target_triple = c4c::backend::x86::abi::resolve_target_triple(module);
+  const auto target_profile = c4c::backend::x86::abi::resolve_target_profile(module);
   out << (verbosity == RouteDebugVerbosity::Summary ? "x86 handoff summary\n"
                                                     : "x86 handoff trace\n");
   out << "target: " << target_triple << "\n";
@@ -1544,23 +1539,10 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
     return narrow_i32_register(*wide_register);
   };
   const auto render_asm_symbol_name = [&](std::string_view logical_name) -> std::string {
-    if (target_triple.find("apple-darwin") != std::string::npos) {
-      return "_" + std::string(logical_name);
-    }
-    return std::string(logical_name);
+    return c4c::backend::x86::abi::render_asm_symbol_name(target_triple, logical_name);
   };
   const auto render_private_data_label = [&](std::string_view pool_name) -> std::string {
-    std::string label(pool_name);
-    if (!label.empty() && label.front() == '@') {
-      label.erase(label.begin());
-    }
-    while (!label.empty() && label.front() == '.') {
-      label.erase(label.begin());
-    }
-    if (target_triple.find("apple-darwin") != std::string::npos) {
-      return "L" + label;
-    }
-    return ".L." + label;
+    return c4c::backend::x86::abi::render_private_data_label(target_triple, pool_name);
   };
   const auto find_string_constant =
       [&](std::string_view name) -> const c4c::backend::bir::StringConstant* {
@@ -1666,9 +1648,7 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
       return std::nullopt;
     }
     return narrow_register(c4c::backend::prepare::call_result_destination_register_name(
-        module.target_profile.arch != c4c::TargetArch::Unknown
-            ? module.target_profile
-            : c4c::target_profile_from_triple(target_triple),
+        target_profile,
         *candidate.return_abi));
   };
   const auto minimal_function_asm_prefix =
@@ -1683,9 +1663,7 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
       return std::nullopt;
     }
     return narrow_register(c4c::backend::prepare::call_arg_destination_register_name(
-        module.target_profile.arch != c4c::TargetArch::Unknown
-            ? module.target_profile
-            : c4c::target_profile_from_triple(target_triple),
+        target_profile,
         *param.abi, arg_index));
   };
   const auto render_trivial_defined_function_if_supported =
