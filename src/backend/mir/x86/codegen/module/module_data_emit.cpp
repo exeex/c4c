@@ -197,6 +197,28 @@ void ModuleDataSupport::add_referenced_same_module_globals(
                                                                 used_same_module_global_names);
 }
 
+std::string ModuleDataSupport::finalize_multi_defined_rendered_module_text(
+    std::string_view rendered_text) const {
+  const std::string rendered_variadic_runtime_helpers =
+      emit_direct_variadic_runtime_helpers(rendered_text);
+  const std::string finalized_text = std::string(rendered_text) + rendered_variadic_runtime_helpers;
+  return finalized_text + emit_missing_same_module_global_data(finalized_text);
+}
+
+std::string ModuleDataSupport::finalize_selected_module_text(
+    std::string_view rendered_text,
+    const std::unordered_set<std::string_view>& used_string_names,
+    std::unordered_set<std::string_view>* used_same_module_global_names) const {
+  add_referenced_same_module_globals(rendered_text, used_same_module_global_names);
+  const std::string rendered_variadic_runtime_helpers =
+      emit_direct_variadic_runtime_helpers(rendered_text);
+  const std::string rendered_data =
+      emit_selected_module_data(used_string_names, *used_same_module_global_names);
+  const std::string finalized_text =
+      std::string(rendered_text) + rendered_variadic_runtime_helpers + rendered_data;
+  return finalized_text + emit_missing_same_module_global_data(finalized_text);
+}
+
 std::string ModuleDataSupport::emit_selected_module_data(
     const std::unordered_set<std::string_view>& used_string_names,
     const std::unordered_set<std::string_view>& used_same_module_global_names) const {

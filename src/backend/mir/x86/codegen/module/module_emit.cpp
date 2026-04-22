@@ -169,13 +169,8 @@ std::string emit_prepared_module_text(
            std::string(function_name) + ", lane: " + std::string(lane_name) + "]";
   };
     if (multi_defined_dispatch.rendered_module.has_value()) {
-    const std::string rendered_text =
-        multi_defined_dispatch.helper_prefix + *multi_defined_dispatch.rendered_module;
-    const std::string rendered_variadic_runtime_helpers =
-        module_data_support.emit_direct_variadic_runtime_helpers(rendered_text);
-    return rendered_text + rendered_variadic_runtime_helpers +
-           module_data_support.emit_missing_same_module_global_data(
-               rendered_text + rendered_variadic_runtime_helpers);
+    return module_data_support.finalize_multi_defined_rendered_module_text(
+        multi_defined_dispatch.helper_prefix + *multi_defined_dispatch.rendered_module);
   }
   const auto render_defined_function =
       [&](const c4c::backend::bir::Function& function,
@@ -749,16 +744,9 @@ std::string emit_prepared_module_text(
       rendered_functions += render_defined_function(
           *function, true, &used_string_names, &used_same_module_global_names);
     }
-    const std::string rendered_text = multi_defined_dispatch.helper_prefix + rendered_functions;
-    module_data_support.add_referenced_same_module_globals(rendered_text,
-                                                           &used_same_module_global_names);
-    const std::string rendered_variadic_runtime_helpers =
-        module_data_support.emit_direct_variadic_runtime_helpers(rendered_text);
-    const std::string rendered_data = module_data_support.emit_selected_module_data(
-        used_string_names, used_same_module_global_names);
-    return rendered_text + rendered_variadic_runtime_helpers + rendered_data +
-           module_data_support.emit_missing_same_module_global_data(
-               rendered_text + rendered_variadic_runtime_helpers + rendered_data);
+    return module_data_support.finalize_selected_module_text(
+        multi_defined_dispatch.helper_prefix + rendered_functions, used_string_names,
+        &used_same_module_global_names);
   }
 
   return render_defined_function(*entry_function_ptr, false, nullptr, nullptr);

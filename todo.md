@@ -5,7 +5,7 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 1.4
 Current Step Title: Materialize Module Support Seams While Preserving Compatibility Wrappers
-Plan Review Counter: 2 / 6
+Plan Review Counter: 3 / 6
 # Current Packet
 
 ## Just Finished
@@ -13,16 +13,17 @@ Plan Review Counter: 2 / 6
 Completed plan step 1.4 by materializing the reviewed module-level support seam
 as `ModuleDataSupport` in `module/module_data_emit.*`, then rewiring
 `module/module_emit.cpp` to consume that seam for symbol lookup, label
-rendering, variadic helper injection, referenced-global collection, and
-selected-data emission without changing lowering ownership or the legacy
-prepared-module entry behavior.
+rendering, whole-module finalization, variadic helper injection,
+referenced-global collection, and selected-data emission without changing
+lowering ownership or the legacy prepared-module entry behavior.
 
 ## Suggested Next
 
 Continue plan step 1 by extracting the next cohesive non-orchestration helper
 family that still keeps `module/module_emit.cpp` broad, while preserving the
 existing compatibility wrapper and avoiding any drift of lowering logic into
-`module/module_data_emit.*`.
+`module/module_data_emit.*` now that module-output support publication is owned
+by the reviewed module-data seam.
 
 ## Watchouts
 
@@ -33,6 +34,9 @@ existing compatibility wrapper and avoiding any drift of lowering logic into
   not a place to migrate function-lowering ownership; adjacent packets should
   keep peeling support setup and helper publication out of orchestration
   without moving instruction-shape decisions behind this seam.
+- The new finalization helpers intentionally centralize helper/data publication
+  in `module/module_data_emit.*`; follow-on packets should reuse that seam
+  rather than rebuilding output concatenation inside `module/module_emit.cpp`.
 - Preserve the legacy `x86::emit_prepared_module(...)` symbol until the
   supervisor retires that compatibility entry explicitly.
 

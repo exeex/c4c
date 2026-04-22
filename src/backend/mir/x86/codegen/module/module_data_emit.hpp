@@ -36,6 +36,12 @@ struct ModuleDataSupport {
   void add_referenced_same_module_globals(
       std::string_view asm_text,
       std::unordered_set<std::string_view>* used_same_module_global_names) const;
+  [[nodiscard]] std::string finalize_multi_defined_rendered_module_text(
+      std::string_view rendered_text) const;
+  [[nodiscard]] std::string finalize_selected_module_text(
+      std::string_view rendered_text,
+      const std::unordered_set<std::string_view>& used_string_names,
+      std::unordered_set<std::string_view>* used_same_module_global_names) const;
   [[nodiscard]] std::string emit_selected_module_data(
       const std::unordered_set<std::string_view>& used_string_names,
       const std::unordered_set<std::string_view>& used_same_module_global_names) const;
