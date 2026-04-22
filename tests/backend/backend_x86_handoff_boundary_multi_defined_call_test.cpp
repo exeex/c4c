@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -14,6 +15,7 @@
 namespace {
 
 namespace bir = c4c::backend::bir;
+namespace lir = c4c::codegen::lir;
 namespace prepare = c4c::backend::prepare;
 using c4c::backend::BackendModuleInput;
 using c4c::backend::BackendOptions;
@@ -2909,6 +2911,163 @@ int check_route_contains_fragments(
   return 0;
 }
 
+std::optional<prepare::PreparedBirModule> lower_and_prepare_local_byval_home_pointer_call_module() {
+  lir::LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.type_decls.push_back("%struct.s1 = type { [1 x i8] }");
+
+  lir::LirFunction sink_decl;
+  sink_decl.name = "sink";
+  sink_decl.is_declaration = true;
+  sink_decl.signature_text = "declare void @sink(ptr)";
+  module.functions.push_back(std::move(sink_decl));
+
+  lir::LirFunction function;
+  function.name = "lowered_local_byval_home_pointer_call";
+  function.signature_text =
+      "define void @lowered_local_byval_home_pointer_call(%struct.s1 %p.a)";
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand("%lv.param.a"),
+      .type_str = "%struct.s1",
+      .count = lir::LirOperand(""),
+      .align = 1,
+  });
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirStoreOp{
+      .type_str = "%struct.s1",
+      .val = lir::LirOperand("%p.a"),
+      .ptr = lir::LirOperand("%lv.param.a"),
+  });
+  entry.insts.push_back(lir::LirGepOp{
+      .result = lir::LirOperand("%t2"),
+      .element_type = "%struct.s1",
+      .ptr = lir::LirOperand("%lv.param.a"),
+      .indices = {lir::LirOperand("i64 0"), lir::LirOperand("i64 0")},
+  });
+  entry.insts.push_back(lir::LirCallOp{
+      .result = lir::LirOperand(""),
+      .return_type = "void",
+      .callee = lir::LirOperand("@sink"),
+      .callee_type_suffix = "(ptr)",
+      .args_str = "ptr %t2",
+  });
+  entry.terminator = lir::LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto lowered = c4c::backend::try_lower_to_bir_with_options(
+      module, c4c::backend::BirLoweringOptions{});
+  if (!lowered.module.has_value()) {
+    return std::nullopt;
+  }
+
+  return prepare::prepare_semantic_bir_module_with_options(std::move(*lowered.module),
+                                                           x86_target_profile());
+}
+
+std::optional<prepare::PreparedBirModule> lower_and_prepare_byval_param_pointer_call_module() {
+  lir::LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.type_decls.push_back("%struct.s1 = type { [1 x i8] }");
+
+  lir::LirFunction sink_decl;
+  sink_decl.name = "sink";
+  sink_decl.is_declaration = true;
+  sink_decl.signature_text = "declare void @sink(ptr)";
+  module.functions.push_back(std::move(sink_decl));
+
+  lir::LirFunction function;
+  function.name = "lowered_byval_param_pointer_call";
+  function.signature_text = "define void @lowered_byval_param_pointer_call(%struct.s1 %p.a)";
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirGepOp{
+      .result = lir::LirOperand("%t2"),
+      .element_type = "%struct.s1",
+      .ptr = lir::LirOperand("%p.a"),
+      .indices = {lir::LirOperand("i64 0"), lir::LirOperand("i64 0")},
+  });
+  entry.insts.push_back(lir::LirCallOp{
+      .result = lir::LirOperand(""),
+      .return_type = "void",
+      .callee = lir::LirOperand("@sink"),
+      .callee_type_suffix = "(ptr)",
+      .args_str = "ptr %t2",
+  });
+  entry.terminator = lir::LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto lowered = c4c::backend::try_lower_to_bir_with_options(
+      module, c4c::backend::BirLoweringOptions{});
+  if (!lowered.module.has_value()) {
+    return std::nullopt;
+  }
+
+  return prepare::prepare_semantic_bir_module_with_options(std::move(*lowered.module),
+                                                           x86_target_profile());
+}
+
+std::optional<prepare::PreparedBirModule> lower_and_prepare_indirect_aggregate_param_pointer_call_module() {
+  lir::LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.type_decls.push_back("%struct.s17 = type { [17 x i8] }");
+
+  lir::LirFunction sink_decl;
+  sink_decl.name = "sink";
+  sink_decl.is_declaration = true;
+  sink_decl.signature_text = "declare void @sink(ptr)";
+  module.functions.push_back(std::move(sink_decl));
+
+  lir::LirFunction function;
+  function.name = "lowered_indirect_aggregate_param_pointer_call";
+  function.signature_text =
+      "define void @lowered_indirect_aggregate_param_pointer_call(%struct.s17 %p.a)";
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirGepOp{
+      .result = lir::LirOperand("%t2"),
+      .element_type = "%struct.s17",
+      .ptr = lir::LirOperand("%p.a"),
+      .indices = {lir::LirOperand("i64 0"), lir::LirOperand("i64 0")},
+  });
+  entry.insts.push_back(lir::LirCallOp{
+      .result = lir::LirOperand(""),
+      .return_type = "void",
+      .callee = lir::LirOperand("@sink"),
+      .callee_type_suffix = "(ptr)",
+      .args_str = "ptr %t2",
+  });
+  entry.terminator = lir::LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto lowered = c4c::backend::try_lower_to_bir_with_options(
+      module, c4c::backend::BirLoweringOptions{});
+  if (!lowered.module.has_value()) {
+    return std::nullopt;
+  }
+
+  return prepare::prepare_semantic_bir_module_with_options(std::move(*lowered.module),
+                                                           x86_target_profile());
+}
+
 prepare::PreparedValueLocationFunction* find_mutable_prepared_value_location_function(
     prepare::PreparedBirModule& prepared,
     std::string_view function_name) {
@@ -2967,6 +3126,27 @@ void erase_prepared_move_bundle(prepare::PreparedValueLocationFunction& function
                               move_bundle.instruction_index == instruction_index;
                      }),
       function_locations.move_bundles.end());
+}
+
+bool has_prepared_call_argument_register_binding(
+    const prepare::PreparedValueLocationFunction& function_locations,
+    std::size_t abi_index,
+    std::string_view register_name) {
+  for (const auto& move_bundle : function_locations.move_bundles) {
+    if (move_bundle.phase != prepare::PreparedMovePhase::BeforeCall) {
+      continue;
+    }
+    for (const auto& move : move_bundle.moves) {
+      if (move.destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+          move.destination_abi_index != std::optional<std::size_t>{abi_index}) {
+        continue;
+      }
+      if (move.destination_register_name == register_name) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 int check_route_consumes_prepared_call_move_bundle_contract() {
@@ -3245,6 +3425,174 @@ int check_route_publishes_helper_same_module_local_byval_symbol_access() {
   if (!access->address.symbol_name.has_value() ||
       prepare::prepared_link_name(prepared.names, *access->address.symbol_name) != "s1") {
     return fail("bounded multi-defined helper same-module local byval call route: helper-side global aggregate load published the wrong symbol name");
+  }
+  return 0;
+}
+
+int check_route_publishes_lowered_local_byval_home_pointer_owner() {
+  auto prepared = lower_and_prepare_local_byval_home_pointer_call_module();
+  if (!prepared.has_value()) {
+    return fail("bounded multi-defined lowered local byval-home pointer-call route: lowering failed before prepared handoff inspection");
+  }
+
+  const bir::Function* module_function = nullptr;
+  for (const auto& function : prepared->module.functions) {
+    if (function.name == "lowered_local_byval_home_pointer_call") {
+      module_function = &function;
+      break;
+    }
+  }
+  if (module_function == nullptr || module_function->blocks.size() != 1) {
+    return fail("bounded multi-defined lowered local byval-home pointer-call route: missing lowered function body");
+  }
+
+  const bir::CallInst* call = nullptr;
+  for (const auto& inst : module_function->blocks.front().insts) {
+    const auto* candidate = std::get_if<bir::CallInst>(&inst);
+    if (candidate != nullptr) {
+      call = candidate;
+      break;
+    }
+  }
+  if (call == nullptr || call->callee != "sink" || call->args.size() != 1) {
+    return fail("bounded multi-defined lowered local byval-home pointer-call route: missing sink call after lowering");
+  }
+  const auto& pointer_owner = call->args.front();
+  if (pointer_owner.kind != bir::Value::Kind::Named || pointer_owner.type != bir::TypeKind::Ptr ||
+      pointer_owner.name == "%t2") {
+    const std::string observed_owner =
+        pointer_owner.kind == bir::Value::Kind::Named ? pointer_owner.name : "<non-named>";
+    return fail((std::string("bounded multi-defined lowered local byval-home pointer-call route: lowering did not publish the authoritative byval-home leaf as the pointer call owner; saw ") +
+                 observed_owner)
+                    .c_str());
+  }
+
+  auto* function_locations =
+      find_mutable_prepared_value_location_function(*prepared, "lowered_local_byval_home_pointer_call");
+  if (function_locations == nullptr) {
+    return fail("bounded multi-defined lowered local byval-home pointer-call route: missing prepared value-location function");
+  }
+  if (find_mutable_prepared_value_home(*prepared, *function_locations, "%t2") != nullptr) {
+    return fail("bounded multi-defined lowered local byval-home pointer-call route: prepared handoff still published a synthetic %t2 owner");
+  }
+
+  auto* owner_home =
+      find_mutable_prepared_value_home(*prepared, *function_locations, pointer_owner.name);
+  if (owner_home == nullptr) {
+    return fail("bounded multi-defined lowered local byval-home pointer-call route: prepared handoff dropped the authoritative byval-home owner");
+  }
+
+  if (!has_prepared_call_argument_register_binding(*function_locations, 0, "rdi")) {
+    return fail("bounded multi-defined lowered local byval-home pointer-call route: prepared BeforeCall bundle did not publish the canonical x86 pointer-argument ABI register");
+  }
+  return 0;
+}
+
+int check_route_publishes_lowered_byval_param_pointer_owner() {
+  auto prepared = lower_and_prepare_byval_param_pointer_call_module();
+  if (!prepared.has_value()) {
+    return fail("bounded multi-defined lowered byval-param pointer-call route: lowering failed before prepared handoff inspection");
+  }
+
+  const bir::Function* module_function = nullptr;
+  for (const auto& function : prepared->module.functions) {
+    if (function.name == "lowered_byval_param_pointer_call") {
+      module_function = &function;
+      break;
+    }
+  }
+  if (module_function == nullptr || module_function->blocks.size() != 1) {
+    return fail("bounded multi-defined lowered byval-param pointer-call route: missing lowered function body");
+  }
+
+  const bir::CallInst* call = nullptr;
+  for (const auto& inst : module_function->blocks.front().insts) {
+    const auto* candidate = std::get_if<bir::CallInst>(&inst);
+    if (candidate != nullptr) {
+      call = candidate;
+      break;
+    }
+  }
+  if (call == nullptr || call->callee != "sink" || call->args.size() != 1) {
+    return fail("bounded multi-defined lowered byval-param pointer-call route: missing sink call after lowering");
+  }
+  const auto& pointer_owner = call->args.front();
+  if (pointer_owner.kind != bir::Value::Kind::Named || pointer_owner.type != bir::TypeKind::Ptr ||
+      pointer_owner.name != "%p.a") {
+    return fail("bounded multi-defined lowered byval-param pointer-call route: lowering did not publish the byval-param home as the zero-offset pointer call owner");
+  }
+
+  auto* function_locations =
+      find_mutable_prepared_value_location_function(*prepared, "lowered_byval_param_pointer_call");
+  if (function_locations == nullptr) {
+    return fail("bounded multi-defined lowered byval-param pointer-call route: missing prepared value-location function");
+  }
+  if (find_mutable_prepared_value_home(*prepared, *function_locations, "%t2") != nullptr) {
+    return fail("bounded multi-defined lowered byval-param pointer-call route: prepared handoff still published a synthetic %t2 owner");
+  }
+
+  auto* owner_home = find_mutable_prepared_value_home(*prepared, *function_locations, "%p.a");
+  if (owner_home == nullptr) {
+    return fail("bounded multi-defined lowered byval-param pointer-call route: prepared handoff dropped the byval-param home owner");
+  }
+
+  if (!has_prepared_call_argument_register_binding(*function_locations, 0, "rdi")) {
+    return fail("bounded multi-defined lowered byval-param pointer-call route: prepared BeforeCall bundle did not publish the canonical x86 pointer-argument ABI register");
+  }
+  return 0;
+}
+
+int check_route_publishes_lowered_indirect_aggregate_param_pointer_owner() {
+  auto prepared = lower_and_prepare_indirect_aggregate_param_pointer_call_module();
+  if (!prepared.has_value()) {
+    return fail("bounded multi-defined lowered indirect aggregate-param pointer-call route: lowering failed before prepared handoff inspection");
+  }
+
+  const bir::Function* module_function = nullptr;
+  for (const auto& function : prepared->module.functions) {
+    if (function.name == "lowered_indirect_aggregate_param_pointer_call") {
+      module_function = &function;
+      break;
+    }
+  }
+  if (module_function == nullptr || module_function->blocks.size() != 1) {
+    return fail("bounded multi-defined lowered indirect aggregate-param pointer-call route: missing lowered function body");
+  }
+
+  const bir::CallInst* call = nullptr;
+  for (const auto& inst : module_function->blocks.front().insts) {
+    const auto* candidate = std::get_if<bir::CallInst>(&inst);
+    if (candidate != nullptr) {
+      call = candidate;
+      break;
+    }
+  }
+  if (call == nullptr || call->callee != "sink" || call->args.size() != 1) {
+    return fail("bounded multi-defined lowered indirect aggregate-param pointer-call route: missing sink call after lowering");
+  }
+  const auto& pointer_owner = call->args.front();
+  if (pointer_owner.kind != bir::Value::Kind::Named || pointer_owner.type != bir::TypeKind::Ptr ||
+      pointer_owner.name != "%p.a") {
+    return fail("bounded multi-defined lowered indirect aggregate-param pointer-call route: lowering did not publish the incoming aggregate-param owner for the zero-offset pointer call");
+  }
+
+  auto* function_locations =
+      find_mutable_prepared_value_location_function(*prepared,
+                                                    "lowered_indirect_aggregate_param_pointer_call");
+  if (function_locations == nullptr) {
+    return fail("bounded multi-defined lowered indirect aggregate-param pointer-call route: missing prepared value-location function");
+  }
+  if (find_mutable_prepared_value_home(*prepared, *function_locations, "%t2") != nullptr) {
+    return fail("bounded multi-defined lowered indirect aggregate-param pointer-call route: prepared handoff still published a synthetic %t2 owner");
+  }
+
+  auto* owner_home = find_mutable_prepared_value_home(*prepared, *function_locations, "%p.a");
+  if (owner_home == nullptr) {
+    return fail("bounded multi-defined lowered indirect aggregate-param pointer-call route: prepared handoff dropped the incoming aggregate-param owner");
+  }
+
+  if (!has_prepared_call_argument_register_binding(*function_locations, 0, "rdi")) {
+    return fail("bounded multi-defined lowered indirect aggregate-param pointer-call route: prepared BeforeCall bundle did not publish the canonical x86 pointer-argument ABI register");
   }
   return 0;
 }
@@ -3800,6 +4148,18 @@ int run_backend_x86_handoff_boundary_multi_defined_call_tests() {
     return status;
   }
   if (const auto status = check_route_publishes_helper_same_module_local_byval_symbol_access();
+      status != 0) {
+    return status;
+  }
+  if (const auto status = check_route_publishes_lowered_local_byval_home_pointer_owner();
+      status != 0) {
+    return status;
+  }
+  if (const auto status = check_route_publishes_lowered_byval_param_pointer_owner();
+      status != 0) {
+    return status;
+  }
+  if (const auto status = check_route_publishes_lowered_indirect_aggregate_param_pointer_owner();
       status != 0) {
     return status;
   }

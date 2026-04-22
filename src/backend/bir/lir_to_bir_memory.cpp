@@ -160,6 +160,11 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
       local_scalar_slot_values.erase(ptr_it->second);
     }
   };
+  const auto publish_exact_local_pointer_owner =
+      [&](std::string_view result_name, std::string_view slot_name) {
+        value_aliases[std::string(result_name)] =
+            bir::Value::named(bir::TypeKind::Ptr, std::string(slot_name));
+      };
   if (lower_scalar_compare_inst(inst, value_aliases, compare_exprs, lowered_insts)) {
     return true;
   }
@@ -465,26 +470,41 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         if (resolved_target->byte_offset >= 0 &&
             (target_layout.kind == AggregateTypeLayout::Kind::Struct ||
              target_layout.kind == AggregateTypeLayout::Kind::Array)) {
-          local_aggregate_slots[gep->result.str()] = LocalAggregateSlots{
+          LocalAggregateSlots subobject_slots{
               .storage_type_text = aggregate_it->second.storage_type_text,
-              .type_text = std::move(resolved_target->type_text),
+              .type_text = resolved_target->type_text,
               .base_byte_offset = static_cast<std::size_t>(resolved_target->byte_offset),
               .leaf_slots = aggregate_it->second.leaf_slots,
           };
+          std::optional<std::vector<std::string>> scalar_array_slots;
           if (target_layout.kind == AggregateTypeLayout::Kind::Array) {
-            if (const auto array_slots = collect_local_scalar_array_slots(
-                    local_aggregate_slots[gep->result.str()].type_text,
-                    type_decls,
-                    local_aggregate_slots[gep->result.str()]);
-                array_slots.has_value()) {
-              local_pointer_array_bases[gep->result.str()] = LocalPointerArrayBase{
-                  .element_slots = *array_slots,
-                  .base_index = 0,
-              };
-            }
+            scalar_array_slots = collect_local_scalar_array_slots(
+                subobject_slots.type_text, type_decls, subobject_slots);
           }
           const auto leaf_it = aggregate_it->second.leaf_slots.find(
               static_cast<std::size_t>(resolved_target->byte_offset));
+          if (scalar_array_slots.has_value() && leaf_it != aggregate_it->second.leaf_slots.end()) {
+            local_pointer_array_bases[gep->result.str()] = LocalPointerArrayBase{
+                .element_slots = *scalar_array_slots,
+                .base_index = 0,
+            };
+            auto subobject_address = LocalSlotAddress{
+                .slot_name = leaf_it->second,
+                .value_type = bir::TypeKind::Void,
+                .byte_offset = 0,
+                .storage_type_text = aggregate_it->second.storage_type_text,
+                .type_text = subobject_slots.type_text,
+            };
+            if (const auto array_base_it = local_pointer_array_bases.find(gep->result.str());
+                array_base_it != local_pointer_array_bases.end()) {
+              subobject_address.array_element_slots = array_base_it->second.element_slots;
+              subobject_address.array_base_index = array_base_it->second.base_index;
+            }
+            local_slot_pointer_values[gep->result.str()] = std::move(subobject_address);
+            publish_exact_local_pointer_owner(gep->result.str(), leaf_it->second);
+            return true;
+          }
+          local_aggregate_slots[gep->result.str()] = std::move(subobject_slots);
           if (leaf_it != aggregate_it->second.leaf_slots.end()) {
             auto subobject_address = LocalSlotAddress{
                 .slot_name = leaf_it->second,
@@ -493,12 +513,19 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
                 .storage_type_text = aggregate_it->second.storage_type_text,
                 .type_text = local_aggregate_slots[gep->result.str()].type_text,
             };
+            if (scalar_array_slots.has_value()) {
+              local_pointer_array_bases[gep->result.str()] = LocalPointerArrayBase{
+                  .element_slots = *scalar_array_slots,
+                  .base_index = 0,
+              };
+            }
             if (const auto array_base_it = local_pointer_array_bases.find(gep->result.str());
                 array_base_it != local_pointer_array_bases.end()) {
               subobject_address.array_element_slots = array_base_it->second.element_slots;
               subobject_address.array_base_index = array_base_it->second.base_index;
             }
             local_slot_pointer_values[gep->result.str()] = std::move(subobject_address);
+            publish_exact_local_pointer_owner(gep->result.str(), leaf_it->second);
           }
           established_aggregate_subobject = true;
         }
@@ -510,6 +537,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
             aggregate_it->second.type_text, *gep, value_aliases, type_decls, aggregate_it->second);
         if (resolved_slot.has_value()) {
           local_pointer_slots[gep->result.str()] = *resolved_slot;
+          publish_exact_local_pointer_owner(gep->result.str(), *resolved_slot);
         }
         local_pointer_array_bases[gep->result.str()] = LocalPointerArrayBase{
             .element_slots = std::move(*pointer_array_slots),
@@ -536,6 +564,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
                 .storage_type_text = aggregate_it->second.storage_type_text,
                 .type_text = resolved_target->type_text,
             };
+            publish_exact_local_pointer_owner(gep->result.str(), *resolved_slot);
             return true;
           }
           if (scalar_array_slots.has_value() && !scalar_array_slots->empty()) {
@@ -562,6 +591,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           }
         }
         local_pointer_slots[gep->result.str()] = *resolved_slot;
+        publish_exact_local_pointer_owner(gep->result.str(), *resolved_slot);
         return true;
       }
       if (established_aggregate_subobject) {
@@ -877,10 +907,21 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           const auto base_byte_offset = addressed_ptr_it != pointer_value_addresses.end()
                                             ? addressed_ptr_it->second.byte_offset
                                             : 0;
-          const auto resolved_target = resolve_relative_gep_target(
-              addressed_ptr_it != pointer_value_addresses.end() &&
-                      !addressed_ptr_it->second.type_text.empty()
+          auto addressed_base_type_text =
+              addressed_ptr_it != pointer_value_addresses.end()
                   ? addressed_ptr_it->second.type_text
+                  : std::string{};
+          if (addressed_base_type_text.empty() &&
+              base_pointer->kind == bir::Value::Kind::Named &&
+              base_pointer->type == bir::TypeKind::Ptr) {
+            if (const auto aggregate_param_it = aggregate_params.find(base_pointer->name);
+                aggregate_param_it != aggregate_params.end()) {
+              addressed_base_type_text = aggregate_param_it->second.type_text;
+            }
+          }
+          const auto resolved_target = resolve_relative_gep_target(
+              !addressed_base_type_text.empty()
+                  ? addressed_base_type_text
                   : std::string(c4c::codegen::lir::trim_lir_arg_text(gep->element_type.str())),
               base_byte_offset,
               *gep,
@@ -906,6 +947,9 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
                 .storage_type_text = std::move(storage_type_text),
                 .type_text = std::move(resolved_target->type_text),
             };
+            if (resolved_target->byte_offset == base_byte_offset) {
+              value_aliases[gep->result.str()] = *base_pointer;
+            }
             return true;
           }
 
@@ -1536,6 +1580,19 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
     bool is_indirect_call = false;
     bool is_variadic_call = false;
     std::optional<std::string> sret_slot_name;
+    const auto lower_public_pointer_call_arg_value =
+        [&](const c4c::codegen::lir::LirOperand& operand) -> std::optional<bir::Value> {
+      if (operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+        if (const auto resolved_address = resolve_runtime_pointer_address(operand.str());
+            resolved_address.has_value() && resolved_address->byte_offset == 0 &&
+            resolved_address->base_value.kind == bir::Value::Kind::Named &&
+            resolved_address->base_value.type == bir::TypeKind::Ptr) {
+          return resolved_address->base_value;
+        }
+      }
+      return lower_call_pointer_arg_value(
+          operand, value_aliases, local_aggregate_slots, global_types, function_symbols);
+    };
     const auto lower_byval_call_arg_value =
         [&](const c4c::codegen::lir::LirOperand& operand,
             const AggregateTypeLayout& aggregate_layout) -> std::optional<bir::Value> {
@@ -1801,13 +1858,9 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
           const auto trimmed_param_type =
               c4c::codegen::lir::trim_lir_arg_text(parsed_call->typed_call.param_types[index]);
           if (trimmed_param_type == "ptr") {
-            const auto arg = lower_call_pointer_arg_value(
+            const auto arg = lower_public_pointer_call_arg_value(
                 c4c::codegen::lir::LirOperand(
-                    std::string(parsed_call->typed_call.args[index].operand)),
-                value_aliases,
-                local_aggregate_slots,
-                global_types,
-                function_symbols);
+                    std::string(parsed_call->typed_call.args[index].operand)));
             if (!arg.has_value()) {
               return fail_call_family(call_family);
             }
@@ -1880,12 +1933,8 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
         const auto trimmed_param_type =
             c4c::codegen::lir::trim_lir_arg_text(parsed_call->param_types[index]);
         if (trimmed_param_type == "ptr") {
-          const auto arg = lower_call_pointer_arg_value(
-              c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand)),
-              value_aliases,
-              local_aggregate_slots,
-              global_types,
-              function_symbols);
+          const auto arg = lower_public_pointer_call_arg_value(
+              c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand)));
           if (!arg.has_value()) {
             return fail_call_family(call_family);
           }
