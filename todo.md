@@ -5,24 +5,26 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 2.1
 Current Step Title: Stand Up Frame And Memory Lowering Owners
-Plan Review Counter: 3 / 6
+Plan Review Counter: 4 / 6
 # Current Packet
 
 ## Just Finished
 
-Continued step 2.1 by moving the prepared pointer/byval payload helper family
-out of `prepared_local_slot_render.cpp`: published payload frame-offset
-resolution now lives in `lowering/frame_lowering.*`, named stack-address
-rendering for pointer/value-home cases routes through `lowering/memory_lowering.*`,
-and the prepared helpers now call those owners instead of rebuilding slot/home
-offsets inline.
+Continued step 2.1 by moving the next prepared stack-address consumers behind
+the reviewed lowering owners: pointer-home stack-address reconstruction in
+`prepared_local_slot_render.cpp` now routes through
+`render_prepared_value_home_stack_address_if_supported(...)` and
+`render_prepared_named_stack_address_if_supported(...)`, including the direct
+extern pointer-move path that previously rebuilt authoritative/home offsets
+inline before emitting `lea`.
 
 ## Suggested Next
 
 Continue step 2.1 by moving the next remaining prepared stack-address
-consumers behind the same seams, preferably the other call/pointer helpers in
-`prepared_local_slot_render.cpp` that still spell out direct `home->offset_bytes`
-stack address reconstruction instead of using lowering-owned render helpers.
+consumers behind the same seams, preferably the aggregate slice/root-home
+helpers in `prepared_local_slot_render.cpp` that still walk
+`find_prepared_value_home(...)` and authoritative offset fallback inline
+instead of delegating to lowering-owned frame/memory queries.
 
 ## Watchouts
 
@@ -41,10 +43,14 @@ stack address reconstruction instead of using lowering-owned render helpers.
   relocate semantic lowering owners, not add new named-case shortcuts.
 - Keep these new lowering helpers about frame-home and stack-address ownership
   only; do not widen step 2.1 into ABI policy or prepared entry-surface edits.
+- The direct extern pointer argument path still has register-home fallback
+  logic locally; only the stack-address/home-offset branches moved in this
+  packet, so keep the next packet focused on remaining address-resolution
+  families rather than register shuffling.
 
 ## Proof
 
-Step 2.1 frame-home query migration on 2026-04-22:
+Step 2.1 prepared stack-address consumer migration on 2026-04-22:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 Backend subset passed. Canonical log paths: `test_before.log`, `test_after.log`

@@ -1101,7 +1101,7 @@ render_prepared_pointer_value_memory_operand_if_supported(
     return std::nullopt;
   }
 
-  const auto frame_offset = find_prepared_authoritative_value_stack_offset_if_supported(
+  const auto frame_offset = render_prepared_value_home_stack_address_if_supported(
       local_layout,
       static_cast<const c4c::backend::prepare::PreparedStackLayout*>(nullptr),
       function_addressing,
@@ -1125,8 +1125,7 @@ render_prepared_pointer_value_memory_operand_if_supported(
       return std::nullopt;
     }
     if (frame_offset.has_value()) {
-      setup_asm = "    lea " + *scratch_register + ", " +
-                  render_prepared_stack_address_expr(*frame_offset) + "\n";
+      setup_asm = "    lea " + *scratch_register + ", " + *frame_offset + "\n";
     } else {
       const auto rendered_pointer = render_prepared_named_ptr_into_register_if_supported(
           pointer_name,
@@ -4000,7 +3999,7 @@ std::optional<std::string> render_prepared_scalar_store_inst_if_supported(
   };
   auto render_value_home_stack_address =
       [&](std::string_view value_name) -> std::optional<std::string> {
-    const auto frame_offset = find_prepared_authoritative_value_stack_offset_if_supported(
+    return render_prepared_value_home_stack_address_if_supported(
         layout,
         static_cast<const c4c::backend::prepare::PreparedStackLayout*>(nullptr),
         function_addressing,
@@ -4008,13 +4007,6 @@ std::optional<std::string> render_prepared_scalar_store_inst_if_supported(
         function_locations,
         c4c::kInvalidFunctionName,
         value_name);
-    if (!frame_offset.has_value()) {
-      return std::nullopt;
-    }
-    if (*frame_offset == 0) {
-      return std::string("[rsp]");
-    }
-    return "[rsp + " + std::to_string(*frame_offset) + "]";
   };
   auto render_named_ptr_store =
       [&](const c4c::backend::bir::Value& value,
@@ -5306,18 +5298,20 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
         if (current_ptr_name->has_value() && **current_ptr_name == pointer_name) {
           return std::string("rax");
         }
-        if (block_context.local_layout != nullptr) {
-          const auto frame_offset = find_prepared_authoritative_value_stack_offset_if_supported(
-              *block_context.local_layout,
-              function_context.stack_layout,
-              function_context.function_addressing,
-              function_context.prepared_names,
-              function_context.function_locations,
-              function_name_id,
-              pointer_name);
-          if (frame_offset.has_value()) {
-            return std::nullopt;
-          }
+        const PreparedModuleLocalSlotLayout empty_layout;
+        const auto& local_layout =
+            block_context.local_layout == nullptr ? empty_layout : *block_context.local_layout;
+        if (render_prepared_named_stack_address_if_supported(
+                local_layout,
+                function_context.stack_layout,
+                function_context.function_addressing,
+                function_context.prepared_names,
+                function_context.function_locations,
+                function_name_id,
+                pointer_name,
+                0)
+                .has_value()) {
+          return std::nullopt;
         }
         const auto* home = c4c::backend::prepare::find_prepared_value_home(
             *function_context.prepared_names, *function_context.function_locations, pointer_name);
@@ -5523,23 +5517,25 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
           return true;
         }
 
-        if (block_context.local_layout != nullptr) {
-          const auto frame_offset = find_prepared_authoritative_value_stack_offset_if_supported(
-              *block_context.local_layout,
-              function_context.stack_layout,
-              function_context.function_addressing,
-              function_context.prepared_names,
-              function_context.function_locations,
-              function_name_id,
-              pointer_name);
-          if (frame_offset.has_value()) {
-            *rendered_body += "    lea ";
-            *rendered_body += destination_register;
-            *rendered_body += ", ";
-            *rendered_body += render_prepared_stack_address_expr(*frame_offset + stack_byte_bias);
-            *rendered_body += "\n";
-            return true;
-          }
+        const PreparedModuleLocalSlotLayout empty_layout;
+        const auto& local_layout =
+            block_context.local_layout == nullptr ? empty_layout : *block_context.local_layout;
+        if (const auto stack_address = render_prepared_named_stack_address_if_supported(
+                local_layout,
+                function_context.stack_layout,
+                function_context.function_addressing,
+                function_context.prepared_names,
+                function_context.function_locations,
+                function_name_id,
+                pointer_name,
+                stack_byte_bias);
+            stack_address.has_value()) {
+          *rendered_body += "    lea ";
+          *rendered_body += destination_register;
+          *rendered_body += ", ";
+          *rendered_body += *stack_address;
+          *rendered_body += "\n";
+          return true;
         }
 
         const auto* home = c4c::backend::prepare::find_prepared_value_home(
@@ -5558,15 +5554,6 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
             *rendered_body += remapped_source;
             *rendered_body += "\n";
           }
-          return true;
-        }
-        if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-            home->offset_bytes.has_value()) {
-          *rendered_body += "    lea ";
-          *rendered_body += destination_register;
-          *rendered_body += ", ";
-          *rendered_body += render_prepared_stack_address_expr(*home->offset_bytes + stack_byte_bias);
-          *rendered_body += "\n";
           return true;
         }
         return false;
