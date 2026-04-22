@@ -1,6 +1,437 @@
 #include "call_lowering.hpp"
 
+#include <limits>
+
 namespace c4c::backend::x86 {
+
+namespace {
+
+constexpr const char* kX86ArgRegs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+constexpr const char* kX86FloatArgRegs[] = {
+    "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7"};
+
+const char* reg_name_to_32_or_self(const char* reg) {
+  const char* narrowed = reg_name_to_32(reg);
+  return narrowed[0] == '\0' ? reg : narrowed;
+}
+
+std::string format_reg(const char* reg) { return std::string("%") + reg; }
+
+void append_asm_line(X86CodegenOutput* out, std::string line) {
+  if (out == nullptr || out->owner == nullptr) {
+    return;
+  }
+  out->owner->asm_lines.push_back(std::move(line));
+}
+
+void emit_zero_reg(X86Codegen& codegen, const char* reg) {
+  codegen.state.emit(std::string("    xorl %") + reg_name_to_32_or_self(reg) + ", %" +
+                     reg_name_to_32_or_self(reg));
+}
+
+}  // namespace
+
+const char* reg_name_to_32(std::string_view name) {
+  if (name == "rax") return "eax";
+  if (name == "rbx") return "ebx";
+  if (name == "rcx") return "ecx";
+  if (name == "rdx") return "edx";
+  if (name == "rsi") return "esi";
+  if (name == "rdi") return "edi";
+  if (name == "rsp") return "esp";
+  if (name == "rbp") return "ebp";
+  if (name == "r8") return "r8d";
+  if (name == "r9") return "r9d";
+  if (name == "r10") return "r10d";
+  if (name == "r11") return "r11d";
+  if (name == "r12") return "r12d";
+  if (name == "r13") return "r13d";
+  if (name == "r14") return "r14d";
+  if (name == "r15") return "r15d";
+  return "";
+}
+
+const char* phys_reg_name(c4c::backend::PhysReg reg) {
+  switch (reg.index) {
+    case 1: return "rbx";
+    case 2: return "r12";
+    case 3: return "r13";
+    case 4: return "r14";
+    case 5: return "r15";
+    case 10: return "r11";
+    case 11: return "r10";
+    case 12: return "r8";
+    case 13: return "r9";
+    case 14: return "rdi";
+    case 15: return "rsi";
+    default: return "";
+  }
+}
+
+const char* x86_arg_reg_name(std::size_t reg_index) {
+  return reg_index < std::size(kX86ArgRegs) ? kX86ArgRegs[reg_index] : "";
+}
+
+const char* x86_float_arg_reg_name(std::size_t reg_index) {
+  return reg_index < std::size(kX86FloatArgRegs) ? kX86FloatArgRegs[reg_index] : "";
+}
+
+bool x86_allow_struct_split_reg_stack() { return false; }
+
+void X86CodegenOutput::emit_instr_imm_reg(const char* mnemonic,
+                                          std::int64_t imm,
+                                          const char* reg) {
+  append_asm_line(this, std::string(mnemonic) + " $" + std::to_string(imm) + ", " +
+                            format_reg(reg));
+}
+
+void X86CodegenOutput::emit_instr_rbp_reg(const char* mnemonic,
+                                          std::int64_t offset,
+                                          const char* reg) {
+  append_asm_line(this, std::string(mnemonic) + " " + std::to_string(offset) + "(%rbp), " +
+                            format_reg(reg));
+}
+
+void X86CodegenOutput::emit_instr_rbp(const char* mnemonic, std::int64_t offset) {
+  append_asm_line(this, std::string(mnemonic) + " " + std::to_string(offset) + "(%rbp)");
+}
+
+void X86CodegenRegCache::invalidate_all() {
+  acc_value_id.reset();
+  acc_known_zero_extended = false;
+  acc_valid = false;
+}
+
+void X86CodegenRegCache::invalidate_acc() {
+  acc_value_id.reset();
+  acc_known_zero_extended = false;
+  acc_valid = false;
+}
+
+void X86CodegenRegCache::set_acc(std::uint32_t value_id, bool known_zero_extended) {
+  acc_value_id = value_id;
+  acc_known_zero_extended = known_zero_extended;
+  acc_valid = true;
+}
+
+void X86CodegenState::emit(const std::string& asm_line) { asm_lines.push_back(asm_line); }
+
+std::optional<StackSlot> X86CodegenState::get_slot(std::uint32_t value_id) const {
+  const auto it = slots.find(value_id);
+  if (it == slots.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+std::optional<std::uint8_t> X86CodegenState::assigned_reg_index(std::uint32_t value_id) const {
+  const auto it = reg_assignment_indices.find(value_id);
+  if (it == reg_assignment_indices.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+bool X86CodegenState::is_alloca(std::uint32_t value_id) const {
+  return allocas.find(value_id) != allocas.end();
+}
+
+std::optional<SlotAddr> X86CodegenState::resolve_slot_addr(std::uint32_t value_id) const {
+  const auto slot = get_slot(value_id);
+  if (!slot.has_value()) {
+    return std::nullopt;
+  }
+  if (over_aligned_allocas.find(value_id) != over_aligned_allocas.end()) {
+    return SlotAddr::OverAligned(*slot, value_id);
+  }
+  if (is_alloca(value_id)) {
+    return SlotAddr::Indirect(*slot);
+  }
+  return SlotAddr::Direct(*slot);
+}
+
+std::optional<std::size_t> X86CodegenState::alloca_over_align(std::uint32_t value_id) const {
+  const auto it = over_aligned_allocas.find(value_id);
+  if (it == over_aligned_allocas.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+std::optional<std::int64_t> X86Codegen::const_as_imm32(const Operand& op) const {
+  if (!op.immediate.has_value()) {
+    return std::nullopt;
+  }
+  if (*op.immediate < static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()) ||
+      *op.immediate > static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())) {
+    return std::nullopt;
+  }
+  return *op.immediate;
+}
+
+void X86Codegen::emit_alloca_addr_to(const char* reg, std::uint32_t val_id, std::int64_t offset) {
+  if (const auto align = this->state.alloca_over_align(val_id)) {
+    this->state.out.emit_instr_rbp_reg("    leaq", offset, reg);
+    this->state.out.emit_instr_imm_reg("    addq", static_cast<std::int64_t>(*align - 1), reg);
+    this->state.out.emit_instr_imm_reg("    andq", -static_cast<std::int64_t>(*align), reg);
+  } else {
+    this->state.out.emit_instr_rbp_reg("    leaq", offset, reg);
+  }
+}
+
+void X86Codegen::operand_to_reg(const Operand& op, const char* reg) {
+  if (const auto imm = this->const_as_imm32(op)) {
+    if (*imm == 0) {
+      emit_zero_reg(*this, reg);
+    } else {
+      this->state.out.emit_instr_imm_reg("    movq", *imm, reg);
+    }
+    return;
+  }
+
+  if (const auto assigned = this->state.assigned_reg_index(op.raw)) {
+    const auto source = phys_reg_name(c4c::backend::PhysReg{*assigned});
+    if (std::string_view(source) != reg) {
+      this->state.emit(std::string("    movq %") + source + ", %" + reg);
+    }
+    return;
+  }
+
+  if (const auto addr = this->state.resolve_slot_addr(op.raw)) {
+    switch (addr->kind) {
+      case SlotAddr::Kind::Direct:
+        this->state.out.emit_instr_rbp_reg("    movq", addr->slot.raw, reg);
+        return;
+      case SlotAddr::Kind::Indirect:
+      case SlotAddr::Kind::OverAligned:
+        this->emit_alloca_addr_to(reg, op.raw, addr->slot.raw);
+        return;
+    }
+  }
+
+  emit_zero_reg(*this, reg);
+}
+
+void X86Codegen::operand_to_rax(const Operand& op) {
+  this->operand_to_reg(op, "rax");
+  this->state.reg_cache.invalidate_acc();
+}
+
+void X86Codegen::store_rax_to(const Value& dest) {
+  if (const auto slot = this->state.get_slot(dest.raw)) {
+    this->state.emit("    movq %rax, " + std::to_string(slot->raw) + "(%rbp)");
+  }
+  this->state.reg_cache.set_acc(dest.raw, false);
+}
+
+void X86Codegen::store_rax_rdx_to(const Value& dest) {
+  if (const auto slot = this->state.get_slot(dest.raw)) {
+    this->state.emit("    movq %rax, " + std::to_string(slot->raw) + "(%rbp)");
+    this->state.emit("    movq %rdx, " + std::to_string(slot->raw + 8) + "(%rbp)");
+  }
+  this->state.reg_cache.invalidate_all();
+}
+
+std::optional<std::string> select_prepared_call_argument_abi_register_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::size_t arg_index) {
+  if (function_locations == nullptr) {
+    return std::nullopt;
+  }
+  const auto* before_call_bundle = c4c::backend::prepare::find_prepared_move_bundle(
+      *function_locations, c4c::backend::prepare::PreparedMovePhase::BeforeCall, block_index,
+      instruction_index);
+  if (before_call_bundle == nullptr) {
+    return std::nullopt;
+  }
+  for (const auto& move : before_call_bundle->moves) {
+    if (move.destination_kind != c4c::backend::prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+        move.destination_storage_kind != c4c::backend::prepare::PreparedMoveStorageKind::Register ||
+        move.destination_abi_index != std::optional<std::size_t>{arg_index} ||
+        !move.destination_register_name.has_value()) {
+      continue;
+    }
+    return *move.destination_register_name;
+  }
+  for (const auto& binding : before_call_bundle->abi_bindings) {
+    if (binding.destination_kind !=
+            c4c::backend::prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+        binding.destination_storage_kind !=
+            c4c::backend::prepare::PreparedMoveStorageKind::Register ||
+        binding.destination_abi_index != std::optional<std::size_t>{arg_index} ||
+        !binding.destination_register_name.has_value()) {
+      continue;
+    }
+    return *binding.destination_register_name;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::size_t> select_prepared_call_argument_abi_stack_offset_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::size_t arg_index) {
+  if (function_locations == nullptr) {
+    return std::nullopt;
+  }
+  const auto* before_call_bundle = c4c::backend::prepare::find_prepared_move_bundle(
+      *function_locations, c4c::backend::prepare::PreparedMovePhase::BeforeCall, block_index,
+      instruction_index);
+  if (before_call_bundle == nullptr) {
+    return std::nullopt;
+  }
+  for (const auto& move : before_call_bundle->moves) {
+    if (move.destination_kind != c4c::backend::prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+        move.destination_storage_kind != c4c::backend::prepare::PreparedMoveStorageKind::StackSlot ||
+        move.destination_abi_index != std::optional<std::size_t>{arg_index} ||
+        !move.destination_stack_offset_bytes.has_value()) {
+      continue;
+    }
+    return move.destination_stack_offset_bytes;
+  }
+  for (const auto& binding : before_call_bundle->abi_bindings) {
+    if (binding.destination_kind !=
+            c4c::backend::prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+        binding.destination_storage_kind !=
+            c4c::backend::prepare::PreparedMoveStorageKind::StackSlot ||
+        binding.destination_abi_index != std::optional<std::size_t>{arg_index} ||
+        !binding.destination_stack_offset_bytes.has_value()) {
+      continue;
+    }
+    return binding.destination_stack_offset_bytes;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> select_prepared_call_argument_abi_register_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t instruction_index,
+    std::size_t arg_index) {
+  return select_prepared_call_argument_abi_register_if_supported(
+      function_locations, 0, instruction_index, arg_index);
+}
+
+std::optional<std::size_t> select_prepared_call_argument_abi_stack_offset_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t instruction_index,
+    std::size_t arg_index) {
+  return select_prepared_call_argument_abi_stack_offset_if_supported(
+      function_locations, 0, instruction_index, arg_index);
+}
+
+std::optional<std::string> select_prepared_i32_call_argument_abi_register_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::size_t arg_index) {
+  const auto abi_register = select_prepared_call_argument_abi_register_if_supported(
+      function_locations, block_index, instruction_index, arg_index);
+  if (!abi_register.has_value()) {
+    return std::nullopt;
+  }
+  return narrow_i32_register(*abi_register);
+}
+
+std::optional<std::string> select_prepared_i32_call_argument_abi_register_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t instruction_index,
+    std::size_t arg_index) {
+  return select_prepared_i32_call_argument_abi_register_if_supported(
+      function_locations, 0, instruction_index, arg_index);
+}
+
+std::optional<PreparedCallResultAbiSelection> select_prepared_call_result_abi_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedValueHome* result_home) {
+  if (function_locations == nullptr) {
+    return std::nullopt;
+  }
+  const auto* after_call_bundle = c4c::backend::prepare::find_prepared_move_bundle(
+      *function_locations, c4c::backend::prepare::PreparedMovePhase::AfterCall, block_index,
+      instruction_index);
+  if (after_call_bundle == nullptr) {
+    return std::nullopt;
+  }
+  const auto* after_call_move = [&]() -> const c4c::backend::prepare::PreparedMoveResolution* {
+    if (result_home != nullptr) {
+      for (const auto& move : after_call_bundle->moves) {
+        if (move.destination_kind ==
+                c4c::backend::prepare::PreparedMoveDestinationKind::CallResultAbi &&
+            move.to_value_id == result_home->value_id) {
+          return &move;
+        }
+      }
+    }
+    for (const auto& move : after_call_bundle->moves) {
+      if (move.destination_kind ==
+          c4c::backend::prepare::PreparedMoveDestinationKind::CallResultAbi) {
+        return &move;
+      }
+    }
+    return nullptr;
+  }();
+  if (after_call_move != nullptr && after_call_move->destination_register_name.has_value()) {
+    return PreparedCallResultAbiSelection{
+        .move = after_call_move,
+        .abi_register = *after_call_move->destination_register_name,
+    };
+  }
+  for (const auto& binding : after_call_bundle->abi_bindings) {
+    if (binding.destination_kind !=
+            c4c::backend::prepare::PreparedMoveDestinationKind::CallResultAbi ||
+        binding.destination_storage_kind !=
+            c4c::backend::prepare::PreparedMoveStorageKind::Register ||
+        !binding.destination_register_name.has_value()) {
+      continue;
+    }
+    return PreparedCallResultAbiSelection{
+        .move = nullptr,
+        .abi_register = *binding.destination_register_name,
+    };
+  }
+  return std::nullopt;
+}
+
+std::optional<PreparedCallResultAbiSelection> select_prepared_call_result_abi_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedValueHome* result_home) {
+  return select_prepared_call_result_abi_if_supported(
+      function_locations, 0, instruction_index, result_home);
+}
+
+std::optional<PreparedI32CallResultAbiSelection> select_prepared_i32_call_result_abi_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedValueHome* result_home) {
+  const auto selection = select_prepared_call_result_abi_if_supported(
+      function_locations, block_index, instruction_index, result_home);
+  if (!selection.has_value()) {
+    return std::nullopt;
+  }
+  const auto abi_register = narrow_i32_register(selection->abi_register);
+  if (!abi_register.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedI32CallResultAbiSelection{
+      .move = selection->move,
+      .abi_register = std::move(*abi_register),
+  };
+}
+
+std::optional<PreparedI32CallResultAbiSelection> select_prepared_i32_call_result_abi_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedValueHome* result_home) {
+  return select_prepared_i32_call_result_abi_if_supported(
+      function_locations, 0, instruction_index, result_home);
+}
 
 CallAbiConfig X86Codegen::call_abi_config_impl() const {
   return CallAbiConfig{

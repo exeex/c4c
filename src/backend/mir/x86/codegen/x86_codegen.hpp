@@ -257,210 +257,64 @@ inline std::optional<std::string> narrow_i8_register(std::string_view wide_regis
   return std::string(wide_register);
 }
 
-inline std::optional<std::string> select_prepared_call_argument_abi_register_if_supported(
+std::optional<std::string> select_prepared_call_argument_abi_register_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::size_t block_index,
     std::size_t instruction_index,
-    std::size_t arg_index) {
-  if (function_locations == nullptr) {
-    return std::nullopt;
-  }
-  const auto* before_call_bundle = c4c::backend::prepare::find_prepared_move_bundle(
-      *function_locations, c4c::backend::prepare::PreparedMovePhase::BeforeCall, block_index,
-      instruction_index);
-  if (before_call_bundle == nullptr) {
-    return std::nullopt;
-  }
-  for (const auto& move : before_call_bundle->moves) {
-    if (move.destination_kind != c4c::backend::prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
-        move.destination_storage_kind != c4c::backend::prepare::PreparedMoveStorageKind::Register ||
-        move.destination_abi_index != std::optional<std::size_t>{arg_index} ||
-        !move.destination_register_name.has_value()) {
-      continue;
-    }
-    return *move.destination_register_name;
-  }
-  for (const auto& binding : before_call_bundle->abi_bindings) {
-    if (binding.destination_kind !=
-            c4c::backend::prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
-        binding.destination_storage_kind !=
-            c4c::backend::prepare::PreparedMoveStorageKind::Register ||
-        binding.destination_abi_index != std::optional<std::size_t>{arg_index} ||
-        !binding.destination_register_name.has_value()) {
-      continue;
-    }
-    return *binding.destination_register_name;
-  }
-  return std::nullopt;
-}
+    std::size_t arg_index);
 
-inline std::optional<std::size_t> select_prepared_call_argument_abi_stack_offset_if_supported(
+std::optional<std::size_t> select_prepared_call_argument_abi_stack_offset_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::size_t block_index,
     std::size_t instruction_index,
-    std::size_t arg_index) {
-  if (function_locations == nullptr) {
-    return std::nullopt;
-  }
-  const auto* before_call_bundle = c4c::backend::prepare::find_prepared_move_bundle(
-      *function_locations, c4c::backend::prepare::PreparedMovePhase::BeforeCall, block_index,
-      instruction_index);
-  if (before_call_bundle == nullptr) {
-    return std::nullopt;
-  }
-  for (const auto& move : before_call_bundle->moves) {
-    if (move.destination_kind != c4c::backend::prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
-        move.destination_storage_kind != c4c::backend::prepare::PreparedMoveStorageKind::StackSlot ||
-        move.destination_abi_index != std::optional<std::size_t>{arg_index} ||
-        !move.destination_stack_offset_bytes.has_value()) {
-      continue;
-    }
-    return move.destination_stack_offset_bytes;
-  }
-  for (const auto& binding : before_call_bundle->abi_bindings) {
-    if (binding.destination_kind !=
-            c4c::backend::prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
-        binding.destination_storage_kind !=
-            c4c::backend::prepare::PreparedMoveStorageKind::StackSlot ||
-        binding.destination_abi_index != std::optional<std::size_t>{arg_index} ||
-        !binding.destination_stack_offset_bytes.has_value()) {
-      continue;
-    }
-    return binding.destination_stack_offset_bytes;
-  }
-  return std::nullopt;
-}
+    std::size_t arg_index);
 
-inline std::optional<std::string> select_prepared_call_argument_abi_register_if_supported(
+std::optional<std::string> select_prepared_call_argument_abi_register_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::size_t instruction_index,
-    std::size_t arg_index) {
-  return select_prepared_call_argument_abi_register_if_supported(
-      function_locations, 0, instruction_index, arg_index);
-}
+    std::size_t arg_index);
 
-inline std::optional<std::size_t> select_prepared_call_argument_abi_stack_offset_if_supported(
+std::optional<std::size_t> select_prepared_call_argument_abi_stack_offset_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::size_t instruction_index,
-    std::size_t arg_index) {
-  return select_prepared_call_argument_abi_stack_offset_if_supported(
-      function_locations, 0, instruction_index, arg_index);
-}
+    std::size_t arg_index);
 
-inline std::optional<std::string> select_prepared_i32_call_argument_abi_register_if_supported(
+std::optional<std::string> select_prepared_i32_call_argument_abi_register_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::size_t block_index,
     std::size_t instruction_index,
-    std::size_t arg_index) {
-  const auto abi_register = select_prepared_call_argument_abi_register_if_supported(
-      function_locations, block_index, instruction_index, arg_index);
-  if (!abi_register.has_value()) {
-    return std::nullopt;
-  }
-  return narrow_i32_register(*abi_register);
-}
+    std::size_t arg_index);
 
-inline std::optional<std::string> select_prepared_i32_call_argument_abi_register_if_supported(
+std::optional<std::string> select_prepared_i32_call_argument_abi_register_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::size_t instruction_index,
-    std::size_t arg_index) {
-  return select_prepared_i32_call_argument_abi_register_if_supported(
-      function_locations, 0, instruction_index, arg_index);
-}
+    std::size_t arg_index);
 
-inline std::optional<PreparedCallResultAbiSelection>
+std::optional<PreparedCallResultAbiSelection>
 select_prepared_call_result_abi_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::size_t block_index,
     std::size_t instruction_index,
-    const c4c::backend::prepare::PreparedValueHome* result_home) {
-  if (function_locations == nullptr) {
-    return std::nullopt;
-  }
-  const auto* after_call_bundle = c4c::backend::prepare::find_prepared_move_bundle(
-      *function_locations, c4c::backend::prepare::PreparedMovePhase::AfterCall, block_index,
-      instruction_index);
-  if (after_call_bundle == nullptr) {
-    return std::nullopt;
-  }
-  const auto* after_call_move = [&]() -> const c4c::backend::prepare::PreparedMoveResolution* {
-    if (result_home != nullptr) {
-      for (const auto& move : after_call_bundle->moves) {
-        if (move.destination_kind ==
-                c4c::backend::prepare::PreparedMoveDestinationKind::CallResultAbi &&
-            move.to_value_id == result_home->value_id) {
-          return &move;
-        }
-      }
-    }
-    for (const auto& move : after_call_bundle->moves) {
-      if (move.destination_kind ==
-          c4c::backend::prepare::PreparedMoveDestinationKind::CallResultAbi) {
-        return &move;
-      }
-    }
-    return nullptr;
-  }();
-  if (after_call_move != nullptr && after_call_move->destination_register_name.has_value()) {
-    return PreparedCallResultAbiSelection{
-        .move = after_call_move,
-        .abi_register = *after_call_move->destination_register_name,
-    };
-  }
-  for (const auto& binding : after_call_bundle->abi_bindings) {
-    if (binding.destination_kind !=
-            c4c::backend::prepare::PreparedMoveDestinationKind::CallResultAbi ||
-        binding.destination_storage_kind !=
-            c4c::backend::prepare::PreparedMoveStorageKind::Register ||
-        !binding.destination_register_name.has_value()) {
-      continue;
-    }
-    return PreparedCallResultAbiSelection{
-        .move = nullptr,
-        .abi_register = *binding.destination_register_name,
-    };
-  }
-  return std::nullopt;
-}
+    const c4c::backend::prepare::PreparedValueHome* result_home);
 
-inline std::optional<PreparedCallResultAbiSelection>
+std::optional<PreparedCallResultAbiSelection>
 select_prepared_call_result_abi_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::size_t instruction_index,
-    const c4c::backend::prepare::PreparedValueHome* result_home) {
-  return select_prepared_call_result_abi_if_supported(
-      function_locations, 0, instruction_index, result_home);
-}
+    const c4c::backend::prepare::PreparedValueHome* result_home);
 
-inline std::optional<PreparedI32CallResultAbiSelection>
+std::optional<PreparedI32CallResultAbiSelection>
 select_prepared_i32_call_result_abi_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::size_t block_index,
     std::size_t instruction_index,
-    const c4c::backend::prepare::PreparedValueHome* result_home) {
-  const auto selection = select_prepared_call_result_abi_if_supported(
-      function_locations, block_index, instruction_index, result_home);
-  if (!selection.has_value()) {
-    return std::nullopt;
-  }
-  const auto abi_register = narrow_i32_register(selection->abi_register);
-  if (!abi_register.has_value()) {
-    return std::nullopt;
-  }
-  return PreparedI32CallResultAbiSelection{
-      .move = selection->move,
-      .abi_register = std::move(*abi_register),
-  };
-}
+    const c4c::backend::prepare::PreparedValueHome* result_home);
 
-inline std::optional<PreparedI32CallResultAbiSelection>
+std::optional<PreparedI32CallResultAbiSelection>
 select_prepared_i32_call_result_abi_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::size_t instruction_index,
-    const c4c::backend::prepare::PreparedValueHome* result_home) {
-  return select_prepared_i32_call_result_abi_if_supported(
-      function_locations, 0, instruction_index, result_home);
-}
+    const c4c::backend::prepare::PreparedValueHome* result_home);
 
 template <typename RenderMoveToEaxFn, typename RenderI32OperandFn>
 inline std::optional<std::string> render_prepared_i32_binary_in_eax_if_supported(
