@@ -1,6 +1,6 @@
 # Post-Asm Global-Function-Pointer And Variadic-Runtime Link Closure For X86 Backend
 
-Status: Open
+Status: Closed
 Created: 2026-04-22
 Last-Updated: 2026-04-22
 Parent Idea: [57_x86_backend_c_testsuite_capability_families.md](/workspaces/c4c/ideas/open/57_x86_backend_c_testsuite_capability_families.md)
@@ -86,3 +86,13 @@ This idea is complete when the owned cases no longer fail in this post-assembly
 global-function-pointer / indirect variadic-runtime closure family and instead
 either link successfully or graduate into a later, better-fitting runtime
 correctness leaf.
+
+## Closure Note
+
+Closed on 2026-04-22 after the owned post-assembly family was exhausted:
+
+- `c_testsuite_x86_backend_src_00204_c` no longer fails on unresolved
+  same-module or direct variadic-runtime references and now routes into the
+  separate post-link runtime leaf tracked by idea 71
+- `backend_x86_handoff_boundary` now passes with assertions aligned to the
+  truthful current thrown rejection surface and separate route-debug summary
