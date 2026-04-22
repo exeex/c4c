@@ -5,7 +5,7 @@ Source Idea Path: ideas/open/76_prepared_byval_home_publication_and_layout_corre
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Re-Establish The Owned Publication/Layout Seam
-Plan Review Counter: 0 / 5
+Plan Review Counter: 1 / 5
 # Current Packet
 
 ## Just Finished
