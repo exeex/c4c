@@ -5,28 +5,31 @@ Source Idea Path: ideas/open/78_extract_x86_codegen_subsystem_to_markdown_for_ph
 Source Plan Path: plan.md
 Current Step ID: 2
 Current Step Title: Extract Stable Entry Points And Shared Contracts
-Plan Review Counter: 0 / 5
+Plan Review Counter: 1 / 5
 # Current Packet
 
 ## Just Finished
 
-Lifecycle switched the active runbook from idea 75 to Phoenix stage 1 for the
-whole `src/backend/mir/x86/codegen/` subsystem, and the first extraction
-artifact now exists at
-[x86_codegen_subsystem.md](/workspaces/c4c/docs/backend/x86_codegen_subsystem.md:1).
-The artifact records the current subsystem boundary, the canonical lowering
-families, the prepared-route family, the mixed contract pressure in
-`x86_codegen.hpp`, and the initial classification of dispatch, core lowering,
-compatibility, and overfit risk.
+Advanced plan step 2, `Extract Stable Entry Points And Shared Contracts`, by
+tightening
+[x86_codegen_subsystem.md](/workspaces/c4c/docs/backend/x86_codegen_subsystem.md:1)
+around the real shared contract clusters: the `PreparedX86FunctionDispatchContext`
+surface in `x86_codegen.hpp`, the header-level prepared entrypoints and route
+tracing declarations, and the concrete ownership already present in canonical
+`calls.cpp`, `returns.cpp`, and `memory.cpp`. The artifact now also records a
+clearer prepared-divergence map for `prepared_module_emit.cpp`,
+`prepared_param_zero_render.cpp`, `prepared_countdown_render.cpp`, and
+`prepared_local_slot_render.cpp`, including which prepared metadata families
+each file consumes directly.
 
 ## Suggested Next
 
-Deepen step 2 and step 3 by extracting a tighter representative contract set
-from `x86_codegen.hpp` plus the canonical `calls.cpp` / `returns.cpp` /
-`memory.cpp` seams, then add a more concrete prepared-divergence map for the
-shape-specific ownership that currently lives in `prepared_module_emit.cpp`,
-`prepared_param_zero_render.cpp`, `prepared_countdown_render.cpp`, and
-`prepared_local_slot_render.cpp`.
+Finish the remaining step 2 / step 3 extraction by compressing one or two more
+representative contract blocks from the prepared family itself, especially the
+call-lane and same-module data-emission helpers inside
+`prepared_module_emit.cpp` and `prepared_local_slot_render.cpp`, then prune any
+markdown that still reads like file-by-file narration instead of subsystem
+ownership.
 
 ## Watchouts
 
@@ -43,4 +46,6 @@ shape-specific ownership that currently lives in `prepared_module_emit.cpp`,
 ## Proof
 
 Extraction-stage documentation update on 2026-04-22. No build or test proof
-required yet.
+required yet; this slice only updated
+[x86_codegen_subsystem.md](/workspaces/c4c/docs/backend/x86_codegen_subsystem.md:1)
+and `todo.md`.

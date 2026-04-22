@@ -79,6 +79,29 @@ Observed contract pressure:
   flow, names, globals, and helper-emission callbacks
 - this suggests the seam is context-heavy and weakly partitioned
 
+Representative declaration cluster near the bottom of the header:
+
+```cpp
+c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
+    const c4c::backend::LivenessInput& liveness_input);
+
+std::string emit_prepared_module(
+    const c4c::backend::prepare::PreparedBirModule& module);
+std::string summarize_prepared_module_routes(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    std::optional<std::string_view> focus_function = std::nullopt,
+    std::optional<std::string_view> focus_block = std::nullopt);
+std::string trace_prepared_module_routes(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    std::optional<std::string_view> focus_function = std::nullopt,
+    std::optional<std::string_view> focus_block = std::nullopt);
+```
+
+This matters because the same header that exposes shared machine helpers also
+publishes prepared-module entrypoints, route tracing, and a very large family
+of prepared shape renderers. The contract is not split into "canonical
+lowering interface" versus "prepared structural fast-path interface".
+
 ## Canonical Lowering Families
 
 Current canonical files look closer to coherent lowering buckets:
@@ -126,6 +149,22 @@ void X86Codegen::emit_store_with_const_offset_impl(
 }
 ```
 
+What the canonical buckets already own:
+
+- `calls.cpp` centralizes SysV call policy through
+  `call_abi_config_impl(...)`, stack-space sizing, argument register moves,
+  direct versus indirect call emission, and result storage after the call
+- `returns.cpp` owns function epilogue policy and return-register publication,
+  including the mixed integer/SSE `i128` cases and x87-backed `f128` return
+  handling
+- `memory.cpp` owns stack-slot and indirect-memory access policy through
+  `resolve_slot_addr(...)`, the `SlotAddr::Kind` split, typed load/store
+  helpers, and GEP/address materialization
+
+That ownership split is why prepared files are notable when they redo
+addressing, register selection, return shaping, or direct assembly rendering
+without flowing through these seams.
+
 ## Prepared Route Family
 
 The prepared family currently looks like a parallel subsystem layered beside
@@ -140,6 +179,19 @@ Observed responsibility:
 - same-module global and string data handling
 - multi-function dispatch context construction
 - shape-based routing into specialized prepared render helpers
+- same-module helper discovery, private data label rendering, and direct data
+  section emission
+
+Representative metadata pressure inside the dispatcher:
+
+- target resolution and target-specific symbol naming
+- function enumeration and entry selection
+- string constant lookup and `.rodata` emission
+- same-module global lookup and `.data` / `.bss` emission
+- prepared name tables, value-location tables, addressing tables, and
+  control-flow tables
+- construction of `PreparedX86FunctionDispatchContext`, which is then handed to
+  many `render_prepared_*if_supported(...)` helpers
 
 Representative surface:
 
@@ -164,6 +216,14 @@ Observed responsibility:
 This is not just rendering syntax; it is doing shape recognition plus value
 materialization policy.
 
+Concrete dependency story:
+
+- looks up `PreparedValueHome` records to decide whether a value lives in a
+  register, stack slot, or rematerializable immediate
+- narrows architectural register names itself before emitting compare setup
+- synthesizes compare and branch assembly directly instead of asking a shared
+  branch-lowering seam to own the decision
+
 ### `prepared_countdown_render.cpp`
 
 Observed responsibility:
@@ -174,6 +234,15 @@ Observed responsibility:
 
 This is pattern-driven control-flow lowering embedded in a prepared-specialized
 file instead of flowing through a shared branch-lowering seam.
+
+Concrete dependency story:
+
+- walks `PreparedControlFlowFunction::join_transfers` and prepared branch
+  conditions directly
+- resolves authoritative branch targets through prepared labels rather than
+  a shared block-lowering abstraction
+- rebuilds stack-layout assumptions for the local countdown case before
+  rendering assembly text
 
 ### `prepared_local_slot_render.cpp`
 
@@ -197,6 +266,15 @@ This file is currently mixing:
 - special-case runtime/copy ordering
 - shape-based fast paths
 
+Concrete dependency story:
+
+- computes `PreparedModuleLocalSlotLayout` from stack-layout, addressing, name,
+  and value-location metadata
+- resolves frame-slot and global-symbol memory accesses directly from prepared
+  addressing tables
+- contains call-lane helpers that select argument registers and stack offsets
+  from prepared value-location data instead of going through `calls.cpp`
+
 ## Responsibility Mixing
 
 Current false coupling signals:
@@ -219,6 +297,27 @@ Current likely dependency story:
    produce final assembly strings themselves
 4. canonical lowering files still define reusable machine/ABI logic, but the
    prepared family does not consistently depend on them as its primary seams
+
+## Prepared Divergence Map
+
+Representative ownership overlap versus the canonical families:
+
+- branch and compare shaping:
+  `prepared_param_zero_render.cpp` and `prepared_countdown_render.cpp` decide
+  predicates, block targets, and compare setup locally instead of using one
+  shared terminator-lowering owner
+- call-lane and argument placement:
+  `prepared_local_slot_render.cpp` selects ABI registers and stack offsets from
+  prepared metadata even though `calls.cpp` already owns canonical call-policy
+  machinery
+- memory and address formation:
+  prepared local-slot helpers reconstruct frame-slot, local-slot, and symbol
+  memory operands from prepared metadata instead of treating `memory.cpp` as
+  the sole owner
+- dispatcher and data emission:
+  `prepared_module_emit.cpp` combines route choice, symbol naming, data-section
+  emission, and helper-family invocation in one file rather than stopping at a
+  narrow dispatch seam
 
 ## Special-Case Classification
 
