@@ -5,28 +5,26 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 1.4.2
 Current Step Title: Extract Function-Level Dispatch Context Assembly Behind Module Owners
-Plan Review Counter: 7 / 6
+Plan Review Counter: 8 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed the next packet for plan step 1.4.2 by moving the remaining
-declaration / empty-block contract gate out of `render_defined_function(...)`
-and into `ModuleFunctionDispatchAssemblySupport`, so
-`render_defined_function(...)` in
-`src/backend/mir/x86/codegen/module/module_emit.cpp` into the anonymous-namespace
-is now only the call-site wrapper around one module-owned dispatch-or-render
-handoff layered on top of the existing
+Completed the next packet for plan step 1.4.2 by folding the remaining
+`render_defined_function(...)` callback adapter into
+`ModuleFunctionDispatchAssemblySupport::render_defined_function(...)`, so
+`emit_prepared_module_text(...)` now calls a concrete module-owned entrypoint
+instead of carrying a function-local wrapper around the existing
 `ModuleFunctionDispatchAssemblySupport`,
 `ModuleFunctionReturnSupport`, and
 `ModuleFunctionDispatchFallbackSupport` seams.
 
 ## Suggested Next
 
-Review whether step 1.4.2 is now thin enough to stop extracting from
-`render_defined_function(...)` and move to the next reviewed module-owned
-support packet, or whether the remaining wrapper should itself become a named
-`module/` helper before closing this seam-shrinking pass.
+Review whether step 1.4.2 is now complete enough to shift from function-level
+dispatch-context extraction to the next reviewed module-support boundary, or
+whether the remaining multi-function loop/finalization orchestration should be
+peeled into one more module-owned helper before advancing.
 
 ## Watchouts
 
@@ -51,9 +49,10 @@ support packet, or whether the remaining wrapper should itself become a named
   local structural fallback lane; keep future non-return routing and contract
   rewrite logic there instead of rebuilding that ladder inline.
 - `ModuleFunctionDispatchAssemblySupport` now owns the prepared-query / ABI /
-  dispatch-context setup plus the defined-function contract gate; if the next
-  packet widens that seam, preserve the callback-scoped lifetime model instead
-  of returning self-referential support aggregates by value.
+  dispatch-context setup plus the defined-function contract gate and concrete
+  render entrypoint; if the next packet widens that seam, preserve the
+  callback-scoped lifetime model instead of returning self-referential support
+  aggregates by value.
 - Preserve the legacy `x86::emit_prepared_module(...)` symbol until the
   supervisor retires that compatibility entry explicitly.
 - `module_emit.hpp` did not need a new public seam for this packet; keep the

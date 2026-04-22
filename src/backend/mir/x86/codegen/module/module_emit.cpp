@@ -877,6 +877,18 @@ struct ModuleFunctionDispatchAssemblySupport {
     };
     return std::forward<RenderBody>(render_body)(function_render_support);
   }
+
+  [[nodiscard]] std::string render_defined_function(
+      const c4c::backend::bir::Function& function,
+      bool defer_module_data_emission,
+      std::unordered_set<std::string_view>* used_string_names,
+      std::unordered_set<std::string_view>* used_same_module_global_names) const {
+    return render_with_dispatch_support(
+        function, defer_module_data_emission, used_string_names, used_same_module_global_names,
+        [&](const ModuleFunctionRenderSupport& function_render_support) -> std::string {
+          return function_render_support.render_return_or_dispatch();
+        });
+  }
 };
 
 }  // namespace
@@ -934,24 +946,13 @@ std::string emit_prepared_module_text(
       .minimal_function_asm_prefix = minimal_function_asm_prefix,
       .minimal_param_register_at = minimal_param_register_at,
   };
-  const auto render_defined_function =
-      [&](const c4c::backend::bir::Function& function,
-          bool defer_module_data_emission,
-          std::unordered_set<std::string_view>* used_string_names,
-          std::unordered_set<std::string_view>* used_same_module_global_names) -> std::string {
-    return function_dispatch_assembly_support.render_with_dispatch_support(
-        function, defer_module_data_emission, used_string_names, used_same_module_global_names,
-        [&](const ModuleFunctionRenderSupport& function_render_support) -> std::string {
-          return function_render_support.render_return_or_dispatch();
-        });
-  };
 
   if (multi_defined_support.has_multiple_defined_functions()) {
     std::string rendered_functions;
     std::unordered_set<std::string_view> used_string_names;
     std::unordered_set<std::string_view> used_same_module_global_names;
     for (const auto* function : defined_functions) {
-      rendered_functions += render_defined_function(
+      rendered_functions += function_dispatch_assembly_support.render_defined_function(
           *function, true, &used_string_names, &used_same_module_global_names);
     }
     return module_data_support.finalize_selected_module_text(
@@ -959,7 +960,8 @@ std::string emit_prepared_module_text(
         &used_same_module_global_names);
   }
 
-  return render_defined_function(*entry_function_ptr, false, nullptr, nullptr);
+  return function_dispatch_assembly_support.render_defined_function(*entry_function_ptr, false,
+                                                                   nullptr, nullptr);
 }
 
 
