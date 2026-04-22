@@ -1,7 +1,31 @@
 # `lowering/frame_lowering.hpp`
 
-Status: Placeholder created during plan step 1.
+Primary role: declare the canonical frame-layout and prologue/epilogue seam.
 
-- Planned role: frame lowering declarations
-- Draft bucket: `lowering`
-- Step-3 follow-up: define canonical frame ownership outside prepared routes
+Owned inputs:
+
+- ABI stack-alignment and callee-save policy from `abi`
+- function-local frame requirements and parameter-home publication needs
+
+Owned outputs:
+
+- declarations for frame sizing, prologue setup, epilogue teardown, and
+  incoming-parameter home publication
+- narrow frame-service types that prepared adapters may query instead of
+  recreating frame policy locally
+
+Allowed indirect queries:
+
+- `abi/x86_target_abi.hpp`
+- `core/x86_codegen_types.hpp`
+- `core/x86_codegen_output.hpp`
+
+Forbidden knowledge:
+
+- prepared fast-path route selection
+- module/data emission orchestration
+- call-result publication and return-register semantics
+
+Role classification:
+
+- `lowering`

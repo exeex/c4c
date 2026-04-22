@@ -1,7 +1,30 @@
 # `lowering/atomics_intrinsics_lowering.cpp`
 
-Status: Placeholder created during plan step 1.
+Primary role: implement atomic operations and explicit ISA intrinsic lowering.
 
-- Planned role: atomics and intrinsics lowering implementation
-- Draft bucket: `lowering`
-- Step-3 follow-up: describe low-level atomics/intrinsics lowering services
+Owned inputs:
+
+- atomic operations, ordering, pointer/value operands, and intrinsic opcodes
+- register/XMM facts and canonical operand-home services
+
+Owned outputs:
+
+- atomic load/store/RMW/cmpxchg/fence sequences
+- explicit intrinsic instruction sequences such as SSE helpers and nontemporal
+  stores
+
+Allowed indirect queries:
+
+- `lowering/memory_lowering.hpp`
+- `abi/x86_target_abi.hpp`
+- `core/x86_codegen_output.hpp`
+
+Forbidden knowledge:
+
+- prepared matcher or dispatcher ownership
+- module/data emission
+- generic route-debug reporting
+
+Role classification:
+
+- `lowering`
