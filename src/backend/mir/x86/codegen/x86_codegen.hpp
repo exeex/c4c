@@ -990,6 +990,70 @@ find_prepared_bounded_multi_defined_named_value_home(
   return c4c::backend::prepare::find_prepared_value_home(module.names, function_locations, value_name);
 }
 
+inline std::optional<std::size_t> find_prepared_fixed_permanent_named_stack_offset_if_supported(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
+    c4c::FunctionNameId function_name,
+    std::string_view value_name) {
+  if (value_name.empty() || function_name == c4c::kInvalidFunctionName) {
+    return std::nullopt;
+  }
+
+  const auto requested_slice = c4c::backend::prepare::parse_prepared_slot_slice_name(value_name);
+  std::optional<std::size_t> best_slice_offset;
+  std::optional<std::size_t> best_frame_offset;
+  for (const auto& object : stack_layout.objects) {
+    if (object.function_name != function_name || !object.permanent_home_slot ||
+        !object.address_exposed || object.source_kind != "local_slot") {
+      continue;
+    }
+    const auto* frame_slot =
+        c4c::backend::prepare::find_prepared_frame_slot(stack_layout, object.object_id);
+    if (frame_slot == nullptr || !frame_slot->fixed_location) {
+      continue;
+    }
+
+    const auto object_name = c4c::backend::prepare::prepared_stack_object_name(prepared_names, object);
+    if (object_name == value_name) {
+      return frame_slot->offset_bytes;
+    }
+
+    if (!object.slot_name.has_value()) {
+      continue;
+    }
+    const auto slot_name = c4c::backend::prepare::prepared_slot_name(prepared_names, *object.slot_name);
+    const auto candidate_slice = c4c::backend::prepare::parse_prepared_slot_slice_name(slot_name);
+    if (!candidate_slice.has_value()) {
+      continue;
+    }
+
+    std::optional<std::size_t> resolved_offset;
+    if (requested_slice.has_value()) {
+      if (candidate_slice->first != requested_slice->first ||
+          requested_slice->second < candidate_slice->second ||
+          requested_slice->second >= candidate_slice->second + object.size_bytes) {
+        continue;
+      }
+      resolved_offset =
+          frame_slot->offset_bytes + (requested_slice->second - candidate_slice->second);
+    } else {
+      if (candidate_slice->first != value_name || candidate_slice->second != 0) {
+        continue;
+      }
+      resolved_offset = frame_slot->offset_bytes;
+    }
+
+    if (!resolved_offset.has_value() ||
+        (best_slice_offset.has_value() && candidate_slice->second >= *best_slice_offset)) {
+      continue;
+    }
+    best_slice_offset = candidate_slice->second;
+    best_frame_offset = *resolved_offset;
+  }
+
+  return best_frame_offset;
+}
+
 inline std::optional<std::size_t> find_prepared_authoritative_named_stack_offset_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
@@ -1009,6 +1073,15 @@ inline std::optional<std::size_t> find_prepared_authoritative_named_stack_offset
   }
   if (!visited_names->insert(value_name).second) {
     return std::nullopt;
+  }
+
+  if (stack_layout != nullptr && function_name != c4c::kInvalidFunctionName) {
+    if (const auto permanent_home_offset =
+            find_prepared_fixed_permanent_named_stack_offset_if_supported(
+                *stack_layout, *prepared_names, function_name, value_name);
+        permanent_home_offset.has_value()) {
+      return permanent_home_offset;
+    }
   }
 
   if (const auto local_slot_it = local_layout.offsets.find(value_name);
