@@ -750,64 +750,25 @@ struct ModuleFunctionDispatchFallbackSupport {
   }
 };
 
-}  // namespace
+struct ModuleFunctionDispatchAssemblySupport {
+  const c4c::backend::prepare::PreparedBirModule& module;
+  c4c::TargetArch prepared_arch;
+  const ModuleMultiDefinedSupport& multi_defined_support;
+  const c4c::backend::x86::module::ModuleDataSupport& module_data_support;
+  const std::function<std::optional<std::string>(const c4c::backend::bir::Function&)>&
+      minimal_function_return_register;
+  const std::function<std::string(const c4c::backend::bir::Function&)>&
+      minimal_function_asm_prefix;
+  const std::function<std::optional<std::string>(const c4c::backend::bir::Param&, std::size_t)>&
+      minimal_param_register_at;
 
-std::string emit_prepared_module_text(
-    const c4c::backend::prepare::PreparedBirModule& module) {
-  constexpr std::string_view kCompareDrivenEntryParamShapeError =
-      "x86 backend emitter only supports multi-block compare-driven entry routes through the canonical prepared-module handoff when the function exposes exactly one non-variadic i32 parameter";
-  const auto resolved_target_profile = c4c::backend::x86::abi::resolve_target_profile(module);
-  const auto prepared_arch = resolved_target_profile.arch;
-  if (prepared_arch != c4c::TargetArch::X86_64 && prepared_arch != c4c::TargetArch::I686) {
-    throw std::invalid_argument(
-        "x86 backend emitter requires an x86 target for the canonical prepared-module handoff");
-  }
-
-  const auto defined_function_inventory = collect_defined_function_inventory(module);
-  const auto& defined_functions = defined_function_inventory.defined_functions;
-  const auto* entry_function_ptr = defined_function_inventory.entry_function;
-  const auto minimal_param_register_at =
-      [&](const c4c::backend::bir::Param& param,
-          std::size_t arg_index) -> std::optional<std::string> {
-    return resolve_minimal_param_register_at(resolved_target_profile, param, arg_index);
-  };
-  const auto resolved_target_triple = c4c::backend::x86::abi::resolve_target_triple(module);
-  const auto module_data_support =
-      c4c::backend::x86::module::make_module_data_support(module, resolved_target_triple);
-  const auto minimal_function_return_register =
-      [&](const c4c::backend::bir::Function& candidate) -> std::optional<std::string> {
-    return resolve_minimal_function_return_register(resolved_target_profile, candidate);
-  };
-  const auto minimal_function_asm_prefix =
-      [&](const c4c::backend::bir::Function& candidate) -> std::string {
-    return render_minimal_function_asm_prefix(candidate);
-  };
-  const auto render_trivial_defined_function_if_supported =
-      [&](const c4c::backend::bir::Function& candidate) -> std::optional<std::string> {
-    return c4c::backend::x86::render_prepared_trivial_defined_function_if_supported(
-        candidate, prepared_arch, minimal_function_return_register, minimal_function_asm_prefix);
-  };
-  const auto multi_defined_dispatch = build_module_multi_defined_dispatch(
-      module, defined_function_inventory, prepared_arch, module_data_support,
-      render_trivial_defined_function_if_supported, minimal_function_return_register,
-      minimal_function_asm_prefix, minimal_param_register_at);
-  const ModuleMultiDefinedSupport multi_defined_support{defined_functions, multi_defined_dispatch};
-  if (multi_defined_dispatch.rendered_module.has_value()) {
-    return module_data_support.finalize_multi_defined_rendered_module_text(
-        multi_defined_support.prepend_helper_prefix(*multi_defined_dispatch.rendered_module));
-  }
-  const auto render_defined_function =
-      [&](const c4c::backend::bir::Function& function,
-          bool defer_module_data_emission,
-          std::unordered_set<std::string_view>* used_string_names,
-          std::unordered_set<std::string_view>* used_same_module_global_names) -> std::string {
-    if (function.is_declaration || function.blocks.empty()) {
-      constexpr std::string_view kMinimalReturnFunctionError =
-          "x86 backend emitter only supports a minimal i32 return function through the canonical prepared-module handoff";
-      multi_defined_support.throw_contract(kMinimalReturnFunctionError);
-      throw std::invalid_argument(std::string(kMinimalReturnFunctionError));
-    }
-
+  template <typename RenderBody>
+  [[nodiscard]] std::string render_with_dispatch_support(
+      const c4c::backend::bir::Function& function,
+      bool defer_module_data_emission,
+      std::unordered_set<std::string_view>* used_string_names,
+      std::unordered_set<std::string_view>* used_same_module_global_names,
+      RenderBody&& render_body) const {
     const auto prepared_queries = resolve_module_function_prepared_queries(module, function);
     const auto asm_prefix = minimal_function_asm_prefix(function);
     const auto return_register = function.return_type == c4c::backend::bir::TypeKind::Void
@@ -859,35 +820,114 @@ std::string emit_prepared_module_text(
         .function_return_support = function_return_support,
         .multi_defined_support = multi_defined_support,
     };
+    return std::forward<RenderBody>(render_body)(function_dispatch_context,
+                                                 function_return_support,
+                                                 function_dispatch_fallback_support);
+  }
+};
 
-    if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
-        !entry.terminator.value.has_value()) {
-      return function_dispatch_fallback_support.render_non_return_dispatch_or_throw();
-    }
+}  // namespace
 
-    const auto& returned = *entry.terminator.value;
-    if (returned.type != c4c::backend::bir::TypeKind::I32) {
-      constexpr std::string_view kI32ReturnValueError =
-          "x86 backend emitter only supports i32 return values through the canonical prepared-module handoff";
-      multi_defined_support.throw_contract(kI32ReturnValueError);
-      throw std::invalid_argument(std::string(kI32ReturnValueError));
-    }
-    if (const auto rendered_scalar_move_bundle_return =
-            function_return_support.render_minimal_scalar_move_bundle_return_if_supported();
-        rendered_scalar_move_bundle_return.has_value()) {
-      return *rendered_scalar_move_bundle_return;
-    }
-    if (const auto rendered_single_block_return =
-            c4c::backend::x86::render_prepared_single_block_return_dispatch_if_supported(
-                function_dispatch_context);
-        rendered_single_block_return.has_value()) {
-      return *rendered_single_block_return;
-    }
+std::string emit_prepared_module_text(
+    const c4c::backend::prepare::PreparedBirModule& module) {
+  constexpr std::string_view kCompareDrivenEntryParamShapeError =
+      "x86 backend emitter only supports multi-block compare-driven entry routes through the canonical prepared-module handoff when the function exposes exactly one non-variadic i32 parameter";
+  const auto resolved_target_profile = c4c::backend::x86::abi::resolve_target_profile(module);
+  const auto prepared_arch = resolved_target_profile.arch;
+  if (prepared_arch != c4c::TargetArch::X86_64 && prepared_arch != c4c::TargetArch::I686) {
+    throw std::invalid_argument(
+        "x86 backend emitter requires an x86 target for the canonical prepared-module handoff");
+  }
 
-    constexpr std::string_view kDirectI32ReturnShapeError =
-        "x86 backend emitter only supports direct immediate i32 returns, constant-evaluable straight-line no-parameter i32 return expressions, direct single-parameter i32 passthrough returns, single-parameter i32 add-immediate/sub-immediate/mul-immediate/and-immediate/or-immediate/xor-immediate/shl-immediate/lshr-immediate/ashr-immediate returns, a bounded equality-against-immediate guard family with immediate return leaves, or one bounded compare-against-zero branch family through the canonical prepared-module handoff";
-    multi_defined_support.throw_contract(kDirectI32ReturnShapeError);
-    throw std::invalid_argument(std::string(kDirectI32ReturnShapeError));
+  const auto defined_function_inventory = collect_defined_function_inventory(module);
+  const auto& defined_functions = defined_function_inventory.defined_functions;
+  const auto* entry_function_ptr = defined_function_inventory.entry_function;
+  const auto minimal_param_register_at =
+      [&](const c4c::backend::bir::Param& param,
+          std::size_t arg_index) -> std::optional<std::string> {
+    return resolve_minimal_param_register_at(resolved_target_profile, param, arg_index);
+  };
+  const auto resolved_target_triple = c4c::backend::x86::abi::resolve_target_triple(module);
+  const auto module_data_support =
+      c4c::backend::x86::module::make_module_data_support(module, resolved_target_triple);
+  const auto minimal_function_return_register =
+      [&](const c4c::backend::bir::Function& candidate) -> std::optional<std::string> {
+    return resolve_minimal_function_return_register(resolved_target_profile, candidate);
+  };
+  const auto minimal_function_asm_prefix =
+      [&](const c4c::backend::bir::Function& candidate) -> std::string {
+    return render_minimal_function_asm_prefix(candidate);
+  };
+  const auto render_trivial_defined_function_if_supported =
+      [&](const c4c::backend::bir::Function& candidate) -> std::optional<std::string> {
+    return c4c::backend::x86::render_prepared_trivial_defined_function_if_supported(
+        candidate, prepared_arch, minimal_function_return_register, minimal_function_asm_prefix);
+  };
+  const auto multi_defined_dispatch = build_module_multi_defined_dispatch(
+      module, defined_function_inventory, prepared_arch, module_data_support,
+      render_trivial_defined_function_if_supported, minimal_function_return_register,
+      minimal_function_asm_prefix, minimal_param_register_at);
+  const ModuleMultiDefinedSupport multi_defined_support{defined_functions, multi_defined_dispatch};
+  if (multi_defined_dispatch.rendered_module.has_value()) {
+    return module_data_support.finalize_multi_defined_rendered_module_text(
+        multi_defined_support.prepend_helper_prefix(*multi_defined_dispatch.rendered_module));
+  }
+  const ModuleFunctionDispatchAssemblySupport function_dispatch_assembly_support{
+      .module = module,
+      .prepared_arch = prepared_arch,
+      .multi_defined_support = multi_defined_support,
+      .module_data_support = module_data_support,
+      .minimal_function_return_register = minimal_function_return_register,
+      .minimal_function_asm_prefix = minimal_function_asm_prefix,
+      .minimal_param_register_at = minimal_param_register_at,
+  };
+  const auto render_defined_function =
+      [&](const c4c::backend::bir::Function& function,
+          bool defer_module_data_emission,
+          std::unordered_set<std::string_view>* used_string_names,
+          std::unordered_set<std::string_view>* used_same_module_global_names) -> std::string {
+    if (function.is_declaration || function.blocks.empty()) {
+      constexpr std::string_view kMinimalReturnFunctionError =
+          "x86 backend emitter only supports a minimal i32 return function through the canonical prepared-module handoff";
+      multi_defined_support.throw_contract(kMinimalReturnFunctionError);
+      throw std::invalid_argument(std::string(kMinimalReturnFunctionError));
+    }
+    return function_dispatch_assembly_support.render_with_dispatch_support(
+        function, defer_module_data_emission, used_string_names, used_same_module_global_names,
+        [&](const PreparedX86FunctionDispatchContext& function_dispatch_context,
+            const ModuleFunctionReturnSupport& function_return_support,
+            const ModuleFunctionDispatchFallbackSupport&
+                function_dispatch_fallback_support) -> std::string {
+          const auto& entry = function_return_support.entry;
+          if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+              !entry.terminator.value.has_value()) {
+            return function_dispatch_fallback_support.render_non_return_dispatch_or_throw();
+          }
+
+          const auto& returned = *entry.terminator.value;
+          if (returned.type != c4c::backend::bir::TypeKind::I32) {
+            constexpr std::string_view kI32ReturnValueError =
+                "x86 backend emitter only supports i32 return values through the canonical prepared-module handoff";
+            multi_defined_support.throw_contract(kI32ReturnValueError);
+            throw std::invalid_argument(std::string(kI32ReturnValueError));
+          }
+          if (const auto rendered_scalar_move_bundle_return =
+                  function_return_support.render_minimal_scalar_move_bundle_return_if_supported();
+              rendered_scalar_move_bundle_return.has_value()) {
+            return *rendered_scalar_move_bundle_return;
+          }
+          if (const auto rendered_single_block_return =
+                  c4c::backend::x86::render_prepared_single_block_return_dispatch_if_supported(
+                      function_dispatch_context);
+              rendered_single_block_return.has_value()) {
+            return *rendered_single_block_return;
+          }
+
+          constexpr std::string_view kDirectI32ReturnShapeError =
+              "x86 backend emitter only supports direct immediate i32 returns, constant-evaluable straight-line no-parameter i32 return expressions, direct single-parameter i32 passthrough returns, single-parameter i32 add-immediate/sub-immediate/mul-immediate/and-immediate/or-immediate/xor-immediate/shl-immediate/lshr-immediate/ashr-immediate returns, a bounded equality-against-immediate guard family with immediate return leaves, or one bounded compare-against-zero branch family through the canonical prepared-module handoff";
+          multi_defined_support.throw_contract(kDirectI32ReturnShapeError);
+          throw std::invalid_argument(std::string(kDirectI32ReturnShapeError));
+        });
   };
 
   if (multi_defined_support.has_multiple_defined_functions()) {

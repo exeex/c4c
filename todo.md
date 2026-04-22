@@ -5,27 +5,30 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 1.4.2
 Current Step Title: Extract Function-Level Dispatch Context Assembly Behind Module Owners
-Plan Review Counter: 3 / 6
+Plan Review Counter: 4 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed the next packet for plan step 1.4.2 by extracting the
-compare-driven/non-return dispatch fallback path out of
+Completed the next packet for plan step 1.4.2 by extracting the remaining
+prepared-query / ABI / `PreparedX86FunctionDispatchContext` assembly out of
 `render_defined_function(...)` in
 `src/backend/mir/x86/codegen/module/module_emit.cpp` into the anonymous-namespace
-`ModuleFunctionDispatchFallbackSupport` owner, which now centralizes the
-compare-driven entry callback wiring, the local structural dispatch ladder, and
-the shared prepared-control-flow contract fallback so the function renderer only
-assembles module-owned support objects and delegates the non-return route.
+`ModuleFunctionDispatchAssemblySupport` owner, which now centralizes prepared
+function query lookup, asm-prefix and return-register ABI resolution, minimal
+param-register binding, helper-prefix wiring, and the construction of
+`PreparedX86FunctionDispatchContext`,
+`ModuleFunctionReturnSupport`, and
+`ModuleFunctionDispatchFallbackSupport` before handing the prepared support
+cluster back to the function renderer callback.
 
 ## Suggested Next
 
-Continue plan step 1.4.2 by extracting the remaining function-level dispatch
-context assembly out of `render_defined_function(...)`, most likely the
-prepared-query / ABI / `PreparedX86FunctionDispatchContext` setup that still
-wires `asm_prefix`, return-register resolution, and minimal param-register
-lookup inline before the helper owners run.
+Continue plan step 1.4.2 by extracting the remaining single-block return
+triage out of `render_defined_function(...)` so the lambda becomes a thin
+precheck plus one module-owned dispatch/render handoff, ideally reusing
+`ModuleFunctionReturnSupport` instead of leaving the terminator/I32-shape
+branch ladder inline.
 
 ## Watchouts
 
@@ -45,6 +48,10 @@ lookup inline before the helper owners run.
 - `ModuleFunctionDispatchFallbackSupport` now owns the compare-driven entry and
   local structural fallback lane; keep future non-return routing and contract
   rewrite logic there instead of rebuilding that ladder inline.
+- `ModuleFunctionDispatchAssemblySupport` now owns the prepared-query / ABI /
+  dispatch-context setup; if the next packet widens that seam, preserve the
+  callback-scoped lifetime model instead of returning self-referential support
+  aggregates by value.
 - Preserve the legacy `x86::emit_prepared_module(...)` symbol until the
   supervisor retires that compatibility entry explicitly.
 - `module_emit.hpp` did not need a new public seam for this packet; keep the
