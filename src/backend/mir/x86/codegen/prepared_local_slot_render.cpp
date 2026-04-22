@@ -5733,6 +5733,25 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
 
       const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&block.insts[index]);
       if (binary != nullptr) {
+        const auto rendered_ptr_binary = render_prepared_ptr_binary_inst_if_supported(
+            *binary,
+            &*layout,
+            block_context.block,
+            index,
+            function_addressing,
+            block_label_id,
+            prepared_names,
+            function_locations,
+            i64_i32_aliases,
+            &current_i32_name,
+            &previous_i32_name,
+            &current_i8_name,
+            &current_ptr_name,
+            &current_materialized_compare);
+        if (rendered_ptr_binary.has_value()) {
+          body += *rendered_ptr_binary;
+          continue;
+        }
         const auto rendered_binary = render_prepared_i32_binary_inst_if_supported(
             *binary,
             &*layout,

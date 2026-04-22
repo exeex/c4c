@@ -660,7 +660,7 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DDUMP_FLAG=--dump-mir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff summary|function myprintf|- final rejection: bounded same-module variadic helper lane recognized the function, but the prepared helper shape is outside the current x86 support|- final facts: prepared variadic-helper facts: explicit variadic runtime calls=|same-module helper calls=|direct extern calls=|- next inspect: inspect the current x86 same-module helper shape support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
+          "-DREQUIRED_SNIPPETS=x86 handoff summary|function myprintf|module-level bounded multi-function lane: rejected|- module-level final rejection: bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support|- module-level next inspect: inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp|- top-level lane: local-slot-guard-chain"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_dump_mir_00204_myprintf_rejection PROPERTIES
@@ -674,7 +674,7 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DDUMP_FLAG=--trace-mir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|function myprintf|try lane bounded-same-module-variadic-helper|detail: x86 backend emitter only supports non-entry bounded same-module variadic helpers when they already reduce to the current direct-extern or local-slot-guard helper surfaces; this helper still carries explicit variadic-runtime state|final: rejected: bounded same-module variadic helper lane recognized the function, but the prepared helper shape is outside the current x86 support|final facts: prepared variadic-helper facts: explicit variadic runtime calls=|same-module helper calls=|direct extern calls=|next inspect: inspect the current x86 same-module helper shape support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
+          "-DREQUIRED_SNIPPETS=x86 handoff trace|function myprintf|try lane bounded-same-module-variadic-helper|detail: x86 backend emitter only supports non-entry bounded same-module variadic helpers when they already reduce to the current direct-extern or local-slot-guard helper surfaces; this helper still carries explicit variadic-runtime state|final: matched local-slot-guard-chain|module-level bounded multi-function lane|final detail: x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls through the canonical prepared-module handoff|next inspect: inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_trace_mir_00204_myprintf_rejection PROPERTIES
