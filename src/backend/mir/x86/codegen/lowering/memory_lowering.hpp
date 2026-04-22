@@ -4,6 +4,11 @@
 
 namespace c4c::backend::x86 {
 
+struct PreparedNamedFloatLoadRender {
+  std::string body;
+  std::string destination_register;
+};
+
 std::string render_prepared_stack_memory_operand(std::size_t byte_offset,
                                                  std::string_view size_name);
 
@@ -59,6 +64,22 @@ std::optional<std::string> render_prepared_named_i32_stack_home_sync_if_supporte
 std::optional<std::string> render_prepared_named_ptr_home_sync_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     std::string_view value_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
+
+std::optional<std::string> render_prepared_named_qword_load_from_memory_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view value_name,
+    std::string_view source_memory,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::string_view scratch_register = "rax");
+
+std::optional<PreparedNamedFloatLoadRender> render_prepared_named_float_load_from_memory_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    c4c::backend::bir::TypeKind type,
+    std::string_view value_name,
+    std::string_view source_memory,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
 

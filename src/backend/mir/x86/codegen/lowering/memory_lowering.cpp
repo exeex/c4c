@@ -4,6 +4,34 @@
 
 namespace c4c::backend::x86 {
 
+namespace {
+
+bool prepared_value_homes_use_register(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::string_view register_name) {
+  if (function_locations == nullptr || register_name.empty()) {
+    return false;
+  }
+  for (const auto& home : function_locations->value_homes) {
+    if (home.kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+        home.register_name.has_value() && *home.register_name == register_name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::optional<std::string> choose_prepared_float_load_scratch_register_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  constexpr std::string_view kScratchRegister = "xmm15";
+  if (prepared_value_homes_use_register(function_locations, kScratchRegister)) {
+    return std::nullopt;
+  }
+  return std::string(kScratchRegister);
+}
+
+}  // namespace
+
 std::string render_prepared_stack_memory_operand(std::size_t byte_offset,
                                                  std::string_view size_name) {
   if (byte_offset == 0) {
@@ -186,6 +214,82 @@ std::optional<std::string> render_prepared_named_ptr_home_sync_if_supported(
            ", rax\n";
   }
   return std::string{};
+}
+
+std::optional<std::string> render_prepared_named_qword_load_from_memory_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view value_name,
+    std::string_view source_memory,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::string_view scratch_register) {
+  if (source_memory.empty()) {
+    return std::nullopt;
+  }
+
+  const auto home = resolve_prepared_named_home_if_supported(
+      local_layout, prepared_names, function_locations, value_name);
+  if (home.has_value() && home->register_name.has_value()) {
+    return "    mov " + *home->register_name + ", " + std::string(source_memory) + "\n";
+  }
+  if (home.has_value() && home->frame_offset.has_value()) {
+    const auto destination_memory =
+        render_prepared_stack_memory_operand(*home->frame_offset, "QWORD");
+    if (destination_memory == source_memory) {
+      return std::string{};
+    }
+    return "    mov " + std::string(scratch_register) + ", " + std::string(source_memory) +
+           "\n    mov " + destination_memory + ", " + std::string(scratch_register) + "\n";
+  }
+  return "    mov " + std::string(scratch_register) + ", " + std::string(source_memory) + "\n";
+}
+
+std::optional<PreparedNamedFloatLoadRender> render_prepared_named_float_load_from_memory_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    c4c::backend::bir::TypeKind type,
+    std::string_view value_name,
+    std::string_view source_memory,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  if (source_memory.empty() ||
+      (type != c4c::backend::bir::TypeKind::F32 &&
+       type != c4c::backend::bir::TypeKind::F64)) {
+    return std::nullopt;
+  }
+
+  const auto move_mnemonic =
+      type == c4c::backend::bir::TypeKind::F32 ? "movss" : "movsd";
+  const auto home = resolve_prepared_named_home_if_supported(
+      local_layout, prepared_names, function_locations, value_name);
+
+  std::string destination_register;
+  if (home.has_value() && home->register_name.has_value()) {
+    destination_register = *home->register_name;
+  } else {
+    const auto scratch_register =
+        choose_prepared_float_load_scratch_register_if_supported(function_locations);
+    if (!scratch_register.has_value()) {
+      return std::nullopt;
+    }
+    destination_register = *scratch_register;
+  }
+
+  PreparedNamedFloatLoadRender rendered{
+      .destination_register = destination_register,
+  };
+  rendered.body = "    " + std::string(move_mnemonic) + " " + destination_register + ", " +
+                  std::string(source_memory) + "\n";
+  if (home.has_value() && home->frame_offset.has_value()) {
+    const auto destination_memory =
+        render_prepared_stack_memory_operand(*home->frame_offset,
+                                             type == c4c::backend::bir::TypeKind::F32 ? "DWORD"
+                                                                                       : "QWORD");
+    if (destination_memory != source_memory) {
+      rendered.body += "    " + std::string(move_mnemonic) + " " + destination_memory + ", " +
+                       destination_register + "\n";
+    }
+  }
+  return rendered;
 }
 
 }  // namespace c4c::backend::x86
