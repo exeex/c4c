@@ -5,22 +5,28 @@ Source Idea Path: ideas/open/68_prepared_local_slot_handoff_consumption_for_x86_
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Refresh Idea-68 Ownership And Confirm The Next Local-Slot Seam
-Plan Review Counter: 0 / 4
+Plan Review Counter: 1 / 4
 # Current Packet
 
 ## Just Finished
 
-Lifecycle switch completed. The last accepted idea-61 packet proved that
-`c_testsuite_x86_backend_src_00204_c` no longer stops in the generic
-prepared-module restriction and now belongs to idea 68 again because the
-top-level failure is the authoritative prepared local-slot handoff family.
+Step `1` confirmed that `c_testsuite_x86_backend_src_00204_c` still belongs to
+idea 68 and narrows the next owned seam to `myprintf`'s first authoritative
+multi-block `vaarg` join/local-slot handoff. Fresh `--trace-mir`,
+`--dump-prepared-bir`, and backend asm repros show the route still keeps the
+focused `backend_cli_trace_mir_00204_myprintf_rejection` guardrail green while
+the full case now dies later on the local-slot `instruction` handoff after
+`myprintf` publishes authoritative prepared control-flow blocks and branches
+into the first `vaarg.amd64.reg.16|stack.17 -> vaarg.amd64.join.18` join path.
 
 ## Suggested Next
 
-Run Step `1` of the idea-68 runbook: confirm the exact authoritative prepared
-local-slot or continuation seam now blocking `00204.c`, and keep proof on
-`backend_cli_trace_mir_00204_myprintf_rejection|c_testsuite_x86_backend_src_00204_c`
-until the next still-owned local-slot seam is explicit.
+Run Step `2.2` against one seam only: make
+`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` consume the first
+authoritative `vaarg` join-transfer/local-slot copy path in `myprintf`
+generically, starting with the `vaarg.amd64.join.18` family and only extending
+shared prepared control-flow/local-slot contract surface if the current
+metadata is not expressive enough for normalized join-copy rendering.
 
 ## Watchouts
 
@@ -30,9 +36,12 @@ until the next still-owned local-slot seam is explicit.
 - Reject helper-topology or testcase-shaped x86 growth that only admits one
   bounded continuation/helper lane without consuming the prepared contract
   generally.
-- Route the next packet through `prepared_local_slot_render.cpp` or shared
-  prepared local-slot/control-flow contracts, not back through idea-61
-  module-shape handling unless the top-level failure actually regresses.
+- The current failure surface is `instruction`, not `branch` or `return`; keep
+  the next packet focused on unsupported authoritative join-copy/local-slot
+  instruction consumption before touching later aggregate-print blocks.
+- The prepared dump for `myprintf` already carries authoritative
+  `branch_conditions` through the `vaarg` ladder, so re-deriving control-flow
+  from raw CFG shape would be route drift.
 
 ## Proof
 
@@ -43,6 +52,8 @@ Observed state for lifecycle routing:
 `backend_cli_trace_mir_00204_myprintf_rejection` passed, and
 `c_testsuite_x86_backend_src_00204_c` failed only with
 `x86 backend emitter requires the authoritative prepared local-slot
-instruction handoff through the canonical prepared-module handoff`.
-That is the activation baseline for idea 68.
+instruction handoff through the canonical prepared-module handoff`. Supporting
+inspection with `build/c4cll --dump-prepared-bir --target x86_64-unknown-linux-gnu --mir-focus-function myprintf tests/c/external/c-testsuite/src/00204.c`
+showed the first authoritative multi-block local-slot join at
+`vaarg.amd64.join.18`, which is the current Step `1` handoff target.
 Proof log path: `test_after.log`.
