@@ -284,6 +284,82 @@ Completion check:
 - shared-seam forwarding is explicit, duplicate ownership is not silently
   growing, and the backend still builds with the legacy route intact
 
+#### Step 1.5.1: Classify Transitional Wrapper Surfaces Across Shared Seams
+
+Goal: make the reviewed `api/`, `module/`, and top-level compatibility wrappers
+explicit so step-1 seam materialization does not quietly re-expand mixed-owner
+entrypoints.
+
+Primary targets:
+
+- legacy forwarding surfaces under `src/backend/mir/x86/codegen/`
+- top-level wrapper entrypoints that should stay compatibility-thin
+
+Actions:
+
+- classify wrapper-heavy shared-seam files as forwarding, compatibility, or
+  still-pending extraction points
+- keep reviewed `api/` and `module/` owners real while preserving the legacy
+  public symbol contracts
+- prevent top-level orchestration from drifting back into wrapper files during
+  shared-seam materialization
+
+Completion check:
+
+- compatibility wrappers are explicit and thin, and reviewed shared seams own
+  the extracted responsibility they already absorbed
+
+#### Step 1.5.2: Narrow Reviewed Shared-Seam Consumers To Their Real Owners
+
+Goal: replace accidental `x86_codegen.hpp` reach-through for reviewed
+`api/`, `abi/`, `module/`, and route-debug surfaces with the narrow owners that
+now exist in source form.
+
+Primary targets:
+
+- reviewed shared-seam consumers under `src/backend/mir/x86/codegen/`
+- backend tests that only need declarations now owned by narrow reviewed seams
+
+Actions:
+
+- move reviewed-seam consumers onto narrow includes when the needed owner is
+  already live
+- keep helper-heavy or still-unowned dependencies on `x86_codegen.hpp`
+  explicitly classified instead of faking narrower ownership
+- preserve buildability while reducing duplicate declaration ownership
+
+Completion check:
+
+- consumers that only need live reviewed shared seams no longer depend on broad
+  header reach-through, and remaining broad-header use is explicit about why it
+  still exists
+
+#### Step 1.5.3: Audit Remaining Broad-Header Holdouts Before Lowering Migration
+
+Goal: finish step-1 forwarding audit by separating real prepared or
+still-unowned compatibility dependencies from any remaining shared-seam
+consumers that can already move off `x86_codegen.hpp`.
+
+Primary targets:
+
+- remaining `x86_codegen.hpp` consumers under `src/backend/mir/x86/codegen/`
+- backend tests and helper entrypoints that still rely on broad-header staging
+
+Actions:
+
+- audit the remaining broad-header consumers and group them by reviewed-owner
+  narrowing opportunity versus honest compatibility holdout
+- annotate prepared-route or later-step dependencies so step 2 does not inherit
+  ambiguous broad-header usage
+- keep the backend building while recording which holdouts stay intentionally
+  staged for the later `prepared/` and lowering conversions
+
+Completion check:
+
+- remaining `x86_codegen.hpp` usage is either narrowed to a live reviewed owner
+  or explicitly classified as a real staged compatibility dependency before
+  step 2 begins
+
 ## Step 2: Migrate Canonical Lowering Families Into Reviewed Owners
 
 Goal: move frame, call, return, memory, comparison, scalar, float, and

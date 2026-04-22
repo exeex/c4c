@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implementation_for_phoenix_rebuild.md
 Source Plan Path: plan.md
-Current Step ID: 1.5
-Current Step Title: Audit Transitional Forwarding And Buildability Across Shared Seams
-Plan Review Counter: 6 / 6
+Current Step ID: 1.5.3
+Current Step Title: Audit Remaining Broad-Header Holdouts Before Lowering Migration
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
@@ -21,11 +21,12 @@ compatibility holdouts in `x86_codegen.hpp`, and by annotating the reviewed
 
 ## Suggested Next
 
-Continue step 1.5 by auditing the other reviewed-seam consumers that still
+Continue step 1.5.3 by auditing the other reviewed-seam consumers that still
 include `src/backend/mir/x86/codegen/x86_codegen.hpp`, and separate true
 prepared compatibility holdouts from any API/core/abi/module declarations that
 already have a narrower owner so the remaining broad-header usage is limited
-to honest staged dependencies only.
+to honest staged dependencies only before step 2 starts migrating lowering
+families.
 
 ## Watchouts
 
