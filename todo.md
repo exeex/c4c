@@ -3,14 +3,14 @@
 Status: Active
 Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implementation_for_phoenix_rebuild.md
 Source Plan Path: plan.md
-Current Step ID: 2.1.3
-Current Step Title: Move Prepared-Home Selection And Memory Render Helpers Behind Lowering Owners
-Plan Review Counter: 6 / 6
+Current Step ID: 2.1.3.2
+Current Step Title: Move Remaining Prepared I32 Binary And Select Render Helpers Behind Lowering Owners
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
 
-Continued step 2.1.3 by moving the duplicated prepared-side `I32` load-result
+Completed step 2.1.3.1 by moving the duplicated prepared-side `I32` load-result
 finalization seam behind lowering owners:
 `memory_lowering.*` now owns the stack-home sync plus prior-`eax` to `ecx`
 spill/update helper for named `I32` loads, and
@@ -20,7 +20,7 @@ paths.
 
 ## Suggested Next
 
-Continue step 2.1.3 by migrating the remaining prepared-side `I32`
+Advance step 2.1.3.2 by migrating the remaining prepared-side `I32`
 binary/select helpers that still make local `eax`/`ecx` register-move choices
 around lowering-owned `PreparedNamedI32Source` flows, without widening into
 scalar-lowering ownership, frame lowering, or entry-surface rewiring.
@@ -43,7 +43,7 @@ scalar-lowering ownership, frame lowering, or entry-surface rewiring.
 
 ## Proof
 
-Step 2.1.3 prepared-home `I32` load-finalization lowering migration on 2026-04-22:
+Step 2.1.3.1 prepared-home `I32` load-finalization lowering migration on 2026-04-22:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 Backend subset passed (`106/106`). Canonical log paths: `test_before.log`,

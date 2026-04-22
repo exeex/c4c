@@ -483,6 +483,59 @@ Completion check:
 - prepared local-slot render paths delegate home selection and memory emission
   to lowering-owned helpers instead of rebuilding those decisions inline
 
+##### Step 2.1.3.1: Move Prepared Load/Source And Operand Helpers Behind Lowering Owners
+
+Goal: migrate the prepared local-load, block-source fallback, named-operand,
+and load-finalization helper families behind `memory_lowering.*` so
+prepared-local-slot rendering stops duplicating `I32` source selection and
+home-sync policy inline.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- `src/backend/mir/x86/codegen/lowering/memory_lowering.*`
+
+Actions:
+
+- move prepared local-load and block-source fallback helpers behind
+  `memory_lowering.*`
+- move named `I32` source/operand adapter helpers behind the lowering seam
+- move load-finalization and stack-home sync helpers behind lowering-owned
+  `PreparedNamedI32Source` flows
+
+Completion check:
+
+- prepared local-load, source/operand, and load-finalization helpers live
+  behind `memory_lowering.*`, and `prepared_local_slot_render.cpp` only keeps
+  thin bridging logic for those flows
+
+##### Step 2.1.3.2: Move Remaining Prepared `I32` Binary And Select Render Helpers Behind Lowering Owners
+
+Goal: migrate the remaining prepared-side `I32` binary/select register-move
+and result-publication helpers behind lowering owners so
+`prepared_local_slot_render.cpp` stops making local `eax`/`ecx` move choices
+around lowering-owned `PreparedNamedI32Source` flows.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- `src/backend/mir/x86/codegen/lowering/memory_lowering.*`
+
+Actions:
+
+- move the remaining prepared `I32` binary/select helpers that still choose
+  current/previous-register moves inline in `prepared_local_slot_render.cpp`
+- keep overload wrappers thin by delegating authoritative memory rendering and
+  result-publication policy into lowering-owned helpers
+- avoid widening the packet into scalar-lowering ownership, frame lowering, or
+  prepared entry-surface rewiring
+
+Completion check:
+
+- prepared `I32` binary/select helper paths delegate register-move and result
+  publication decisions to lowering-owned helpers, and
+  `prepared_local_slot_render.cpp` remains a thin bridge for those flows
+
 #### Step 2.1.4: Audit Remaining Frame/Memory Holdouts Before Later Lowering Families
 
 Goal: leave step 2.1 with explicit frame and memory compatibility holdouts so
