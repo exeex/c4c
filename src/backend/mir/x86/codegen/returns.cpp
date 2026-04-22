@@ -24,7 +24,7 @@ void X86Codegen::emit_return_impl(const std::optional<Operand>& val, std::int64_
     const auto value_id = val->raw;
     if (this->state.f128_direct_slots.find(value_id) != this->state.f128_direct_slots.end()) {
       if (const auto slot = this->state.get_slot(value_id)) {
-        this->state.out.emit_instr_rbp("    fldt", slot->raw);
+        this->state.out.emit_instr_rbp("    fld", slot->raw);
         emit_return_epilogue_and_ret(*this, frame_size);
         return;
       }
@@ -33,15 +33,15 @@ void X86Codegen::emit_return_impl(const std::optional<Operand>& val, std::int64_
       if (const auto addr = this->state.resolve_slot_addr(*ptr_id)) {
         switch (addr->kind) {
           case SlotAddr::Kind::Direct:
-            this->state.out.emit_instr_rbp("    fldt", addr->slot.raw);
+            this->state.out.emit_instr_rbp("    fld", addr->slot.raw);
             break;
           case SlotAddr::Kind::OverAligned:
             this->emit_alloca_aligned_addr_impl(addr->slot, addr->value_id);
-            this->state.emit("    fldt (%rcx)");
+            this->state.emit("    fld (%rcx)");
             break;
           case SlotAddr::Kind::Indirect:
             this->emit_load_ptr_from_slot_impl(addr->slot, *ptr_id);
-            this->state.emit("    fldt (%rcx)");
+            this->state.emit("    fld (%rcx)");
             break;
         }
         emit_return_epilogue_and_ret(*this, frame_size);
@@ -144,8 +144,8 @@ void X86Codegen::emit_set_return_f32_second_impl(const Operand& src) {
 
 void X86Codegen::emit_get_return_f128_second_impl(const Value& dest) {
   if (const auto slot = this->state.get_slot(dest.raw)) {
-    this->state.emit("    fstpt " + std::to_string(slot->raw) + "(%rbp)");
-    this->state.emit("    fldt " + std::to_string(slot->raw) + "(%rbp)");
+    this->state.emit("    fstp " + std::to_string(slot->raw) + "(%rbp)");
+    this->state.emit("    fld " + std::to_string(slot->raw) + "(%rbp)");
     this->state.emit("    subq $8, %rsp");
     this->state.emit("    fstpl (%rsp)");
     this->state.emit("    popq %rax");
@@ -158,7 +158,7 @@ void X86Codegen::emit_get_return_f128_second_impl(const Value& dest) {
 
 void X86Codegen::emit_set_return_f128_second_impl(const Operand& src) {
   if (const auto slot = this->state.get_slot(src.raw)) {
-    this->state.emit("    fldt " + std::to_string(slot->raw) + "(%rbp)");
+    this->state.emit("    fld " + std::to_string(slot->raw) + "(%rbp)");
     return;
   }
   this->operand_to_rax(src);

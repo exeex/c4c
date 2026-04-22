@@ -1,46 +1,51 @@
 # Execution State
 
 Status: Active
-Source Idea Path: ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md
+Source Idea Path: ideas/open/69_long_double_aggregate_asm_emission_for_x86_backend.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Refresh Idea-61 Ownership And Confirm The Next Prepared-Module Seam
+Current Step ID: 2.1
+Current Step Title: Repair The Selected Long-Double Aggregate Asm-Emission Seam
 Plan Review Counter: 0 / 4
 # Current Packet
 
 ## Just Finished
 
-Step `2.2` under the retired idea-68 runbook cleared the authoritative
-prepared local-slot `instruction` handoff for
-`c_testsuite_x86_backend_src_00204_c`, so the active lifecycle state now hands
-ownership back to idea 61's bounded multi-function prepared-module family.
+Step `2.1` under idea 69 cleared the remaining owned long-double asm-emission
+seam: `cast_ops.cpp` and the prepared `f128` local-copy/render path now also
+emit Intel-syntax `fld` / `fstp`, the nearest handoff-boundary `f128` snippets
+were updated to the same contract, and the generated `00204.c.s` no longer
+contains `fldt` / `fstpt`.
+The packet stops here because the proof now fails on the first downstream
+non-seam blockers instead of on invalid long-double mnemonics.
 
 ## Suggested Next
 
-Inspect the current `00204.c` rejection under idea 61, confirm the exact
-bounded multi-function prepared-module or call/result-handoff seam now exposed
-in `prepared_module_emit.cpp`, and pick the nearest backend coverage that
-should anchor the next executor packet.
+Start a new bounded packet outside this seam for the first post-asm-emission
+blocker: either the stale contract expectation in
+`backend_x86_handoff_boundary_multi_defined_call_test.cpp` for the
+global-function-pointer indirect variadic-runtime boundary, or the new
+`00204.c` link-stage undefined-reference surface if that is the chosen
+execution route.
 
 ## Watchouts
 
-- Keep the focused `00204` route anchored to the downstream multi-function
-  prepared-module rejection; the old idea-68 local-slot blocker is cleared and
-  should only reopen if the top-level failure genuinely regresses.
-- Reject `main + helper` or local ABI shortcuts that only accept the current
-  route without improving generic prepared-module traversal or call-bundle
-  consumption.
-- `myprintf` still carries explicit variadic/runtime state, so the next packet
-  must stay contract-first and avoid helper-topology overfit.
+- Keep the accumulated `fld` / `fstp` swap; the long-double asm-emission seam
+  is now clean across the owned and previously patched emitters.
+- A direct `rg` over `src/backend/mir/x86/codegen` and the generated
+  `build/c_testsuite_x86_backend/src/00204.c.s` finds no remaining
+  `fldt` / `fstpt` occurrences.
+- `backend_x86_handoff_boundary` now fails on a different contract message:
+  `multi-defined global-function-pointer and indirect variadic-runtime boundary`
+  rejects with the wrong out-of-scope contract text.
+- `c_testsuite_x86_backend_src_00204_c` now gets past assembly and fails later
+  at link time with undefined references such as `s1`..`s16` and
+  `llvm.va_start.p0`.
 
 ## Proof
 
-Latest accepted proof from the handoff slice:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_cli_trace_mir_00204_myprintf_rejection|c_testsuite_x86_backend_src_00204_c)$' | tee test_after.log`
-
-Observed routing state carried into the new active plan:
-the focused `backend_cli_*_00204_myprintf_*` route now reaches
-`final: matched local-slot-guard-chain`, and the full
-`c_testsuite_x86_backend_src_00204_c` case fails later in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` with the bounded
-multi-function prepared-module restriction. Proof log path: `test_after.log`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$' | tee test_after.log`
+ran and failed, but no longer on invalid long-double mnemonics.
+`backend_x86_handoff_boundary` now fails on a stale wrong-contract expectation
+for the global-function-pointer indirect variadic-runtime boundary, and
+`c_testsuite_x86_backend_src_00204_c` now fails later at link time on undefined
+references. Proof log path: `test_after.log`.

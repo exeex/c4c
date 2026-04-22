@@ -47,7 +47,6 @@ Prepared-module restriction cases:
 - `c_testsuite_x86_backend_src_00198_c`
 - `c_testsuite_x86_backend_src_00199_c`
 - `c_testsuite_x86_backend_src_00200_c`
-- `c_testsuite_x86_backend_src_00204_c`
 - `c_testsuite_x86_backend_src_00210_c`
 - `c_testsuite_x86_backend_src_00219_c`
 
@@ -68,15 +67,16 @@ Prepared call-bundle failures:
 ## Latest Durable Note
 
 As of 2026-04-22, the accepted idea-68 pointer-add/local-slot handoff repair
-advanced `c_testsuite_x86_backend_src_00204_c` back out of the authoritative
-prepared local-slot family and into this idea's bounded multi-function
-prepared-module restriction again. Fresh route proof now shows the focused
-`myprintf` lane matching `local-slot-guard-chain`, while the full top-level
-case stops later in
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` with the bounded
-multi-function prepared-module rejection. Durable ownership therefore returns
-to idea 61 until `00204.c` either clears that module/call family or graduates
-into another downstream leaf.
+first advanced `c_testsuite_x86_backend_src_00204_c` back into this idea's
+bounded multi-function prepared-module restriction, and the current executor
+packet then advanced it through that family. Fresh route proof now shows the
+module-level bounded multi-function lane matching for `00204.c`; the first
+remaining failure is downstream in final assembly, where the assembler rejects
+generated `fldt` / `fstpt` instructions in a long-double aggregate path.
+Durable ownership for `00204.c` therefore graduates out of idea 61 and into
+idea 69's downstream asm-emission leaf. Keep idea 61 focused on cases whose
+current top-level blocker is still prepared-module traversal or prepared
+call-bundle consumption.
 
 ## Scope Notes
 

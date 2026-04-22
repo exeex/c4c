@@ -117,14 +117,14 @@ void X86Codegen::emit_cast_impl(const Value& dest,
         this->state.emit("    movq %rax, (%rsp)");
         this->state.out.emit_instr_imm_reg("    movq", 0x403F, "rax");
         this->state.emit("    movq %rax, 8(%rsp)");
-        this->state.emit("    fldt (%rsp)");
+        this->state.emit("    fld (%rsp)");
         this->state.emit("    addq $16, %rsp");
         this->state.emit("    faddp %st, %st(1)");
         this->state.emit(done_label + ":");
       }
 
-      this->state.out.emit_instr_rbp("    fstpt", dest_slot->raw);
-      this->state.out.emit_instr_rbp("    fldt", dest_slot->raw);
+      this->state.out.emit_instr_rbp("    fstp", dest_slot->raw);
+      this->state.out.emit_instr_rbp("    fld", dest_slot->raw);
       this->state.emit("    subq $8, %rsp");
       this->state.emit("    fstpl (%rsp)");
       this->state.emit("    popq %rax");

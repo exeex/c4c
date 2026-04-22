@@ -36,7 +36,7 @@ void X86Codegen::emit_store_impl(const Operand& val, const Value& ptr, IrType ty
       }
       if (this->state.f128_direct_slots.find(val.raw) != this->state.f128_direct_slots.end()) {
         if (const auto src_slot = this->state.get_slot(val.raw)) {
-          this->state.out.emit_instr_rbp("    fldt", src_slot->raw);
+          this->state.out.emit_instr_rbp("    fld", src_slot->raw);
           this->emit_f128_fstpt(*addr, ptr.raw, 0);
           return;
         }
@@ -73,7 +73,7 @@ void X86Codegen::emit_store_with_const_offset_impl(const Operand& val,
       }
       if (this->state.f128_direct_slots.find(val.raw) != this->state.f128_direct_slots.end()) {
         if (const auto src_slot = this->state.get_slot(val.raw)) {
-          this->state.out.emit_instr_rbp("    fldt", src_slot->raw);
+          this->state.out.emit_instr_rbp("    fld", src_slot->raw);
           this->emit_f128_fstpt(*addr, base.raw, offset);
           return;
         }

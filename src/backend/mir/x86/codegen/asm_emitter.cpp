@@ -136,7 +136,7 @@ std::string src_reg_for_type(std::string_view reg, IrType ty) {
 const char* fld_instr_for_type(IrType ty) {
   switch (ty) {
     case IrType::F32: return "flds";
-    case IrType::F128: return "fldt";
+    case IrType::F128: return "fld";
     default: return "fldl";
   }
 }
@@ -144,7 +144,7 @@ const char* fld_instr_for_type(IrType ty) {
 const char* fstp_instr_for_type(IrType ty) {
   switch (ty) {
     case IrType::F32: return "fstps";
-    case IrType::F128: return "fstpt";
+    case IrType::F128: return "fstp";
     default: return "fstpl";
   }
 }

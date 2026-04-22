@@ -87,18 +87,18 @@ std::optional<std::int64_t> X86Codegen::emit_f128_resolve_addr(const SlotAddr& a
 
 void X86Codegen::emit_f128_fldt(const SlotAddr& addr, std::uint32_t ptr_id, std::int64_t offset) {
   if (const auto rbp_off = this->emit_f128_resolve_addr(addr, ptr_id, offset)) {
-    this->state.out.emit_instr_rbp("    fldt", *rbp_off);
+    this->state.out.emit_instr_rbp("    fld", *rbp_off);
     return;
   }
-  this->state.emit("    fldt (%rcx)");
+  this->state.emit("    fld (%rcx)");
 }
 
 void X86Codegen::emit_f128_fstpt(const SlotAddr& addr, std::uint32_t ptr_id, std::int64_t offset) {
   if (const auto rbp_off = this->emit_f128_resolve_addr(addr, ptr_id, offset)) {
-    this->state.out.emit_instr_rbp("    fstpt", *rbp_off);
+    this->state.out.emit_instr_rbp("    fstp", *rbp_off);
     return;
   }
-  this->state.emit("    fstpt (%rcx)");
+  this->state.emit("    fstp (%rcx)");
 }
 
 void X86Codegen::emit_f128_store_raw_bytes(const SlotAddr& addr,
@@ -156,7 +156,7 @@ void X86Codegen::emit_f128_store_f64_via_x87(const SlotAddr& addr, std::uint32_t
       this->state.emit("    pushq %rax");
       this->state.emit("    fldl (%rsp)");
       this->state.emit("    addq $8, %rsp");
-      this->state.out.emit_instr_rbp("    fstpt", addr.slot.raw + offset);
+      this->state.out.emit_instr_rbp("    fstp", addr.slot.raw + offset);
       return;
     case SlotAddr::Kind::OverAligned:
       this->state.emit("    movq %rax, %rdx");
@@ -167,7 +167,7 @@ void X86Codegen::emit_f128_store_f64_via_x87(const SlotAddr& addr, std::uint32_t
       this->state.emit("    pushq %rdx");
       this->state.emit("    fldl (%rsp)");
       this->state.emit("    addq $8, %rsp");
-      this->state.emit("    fstpt (%rcx)");
+      this->state.emit("    fstp (%rcx)");
       return;
     case SlotAddr::Kind::Indirect:
       this->state.emit("    movq %rax, %rdx");
@@ -178,15 +178,15 @@ void X86Codegen::emit_f128_store_f64_via_x87(const SlotAddr& addr, std::uint32_t
       this->state.emit("    pushq %rdx");
       this->state.emit("    fldl (%rsp)");
       this->state.emit("    addq $8, %rsp");
-      this->state.emit("    fstpt (%rcx)");
+      this->state.emit("    fstp (%rcx)");
       return;
   }
 }
 
 void X86Codegen::emit_f128_load_finish(const Value& dest) {
   if (const auto dest_slot = this->state.get_slot(dest.raw)) {
-    this->state.out.emit_instr_rbp("    fstpt", dest_slot->raw);
-    this->state.out.emit_instr_rbp("    fldt", dest_slot->raw);
+    this->state.out.emit_instr_rbp("    fstp", dest_slot->raw);
+    this->state.out.emit_instr_rbp("    fld", dest_slot->raw);
     this->state.emit("    subq $8, %rsp");
     this->state.emit("    fstpl (%rsp)");
     this->state.emit("    popq %rax");
@@ -204,15 +204,15 @@ void X86Codegen::emit_f128_load_finish(const Value& dest) {
 void X86Codegen::emit_f128_to_int_from_memory(const SlotAddr& addr, IrType to_ty) {
   switch (addr.kind) {
     case SlotAddr::Kind::Direct:
-      this->state.out.emit_instr_rbp("    fldt", addr.slot.raw);
+      this->state.out.emit_instr_rbp("    fld", addr.slot.raw);
       break;
     case SlotAddr::Kind::OverAligned:
       this->emit_alloca_aligned_addr_impl(addr.slot, addr.value_id);
-      this->state.emit("    fldt (%rcx)");
+      this->state.emit("    fld (%rcx)");
       break;
     case SlotAddr::Kind::Indirect:
       this->emit_load_ptr_from_slot_impl(addr.slot, 0);
-      this->state.emit("    fldt (%rcx)");
+      this->state.emit("    fld (%rcx)");
       break;
   }
   this->emit_f128_st0_to_int(to_ty);
@@ -600,7 +600,7 @@ void X86Codegen::emit_f128_load_to_x87(const Operand& operand) {
       this->state.emit("    xorl %eax, %eax");
     }
     this->state.emit("    movq %rax, 8(%rsp)");
-    this->state.emit("    fldt (%rsp)");
+    this->state.emit("    fld (%rsp)");
     this->state.emit("    addq $16, %rsp");
     this->state.reg_cache.invalidate_all();
     return;
@@ -608,14 +608,14 @@ void X86Codegen::emit_f128_load_to_x87(const Operand& operand) {
 
   if (this->state.f128_direct_slots.find(operand.raw) != this->state.f128_direct_slots.end()) {
     if (const auto slot = this->state.get_slot(operand.raw)) {
-      this->state.out.emit_instr_rbp("    fldt", slot->raw);
+      this->state.out.emit_instr_rbp("    fld", slot->raw);
       return;
     }
   }
 
   if (const auto slot = this->state.get_slot(operand.raw)) {
     if (this->state.is_alloca(operand.raw)) {
-      this->state.out.emit_instr_rbp("    fldt", slot->raw);
+      this->state.out.emit_instr_rbp("    fld", slot->raw);
       return;
     }
 

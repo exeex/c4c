@@ -156,8 +156,8 @@ void X86Codegen::emit_call_store_result_impl(const Value& dest, IrType return_ty
     this->store_rax_to(dest);
   } else if (return_type == IrType::F128) {
     if (const auto slot = this->state.get_slot(dest.raw)) {
-      this->state.out.emit_instr_rbp("    fstpt", slot->raw);
-      this->state.out.emit_instr_rbp("    fldt", slot->raw);
+      this->state.out.emit_instr_rbp("    fstp", slot->raw);
+      this->state.out.emit_instr_rbp("    fld", slot->raw);
       this->state.emit("    subq $8, %rsp");
       this->state.emit("    fstpl (%rsp)");
       this->state.emit("    popq %rax");
