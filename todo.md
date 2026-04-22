@@ -5,28 +5,27 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 1.4.2
 Current Step Title: Extract Function-Level Dispatch Context Assembly Behind Module Owners
-Plan Review Counter: 2 / 6
+Plan Review Counter: 3 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed the next packet for plan step 1.4.2 by extracting the prepared
-return/home-move helper cluster out of
-`src/backend/mir/x86/codegen/module/module_emit.cpp` into an anonymous-namespace
-`ModuleFunctionReturnSupport` owner that now handles function frame sizing,
-prepared home-to-register moves, frame-wrapped returns, named before-return
-bundles, and the minimal scalar move-bundle return fast path, so
-`render_defined_function(...)` delegates that function-local return scaffolding
-instead of keeping it inline.
+Completed the next packet for plan step 1.4.2 by extracting the
+compare-driven/non-return dispatch fallback path out of
+`render_defined_function(...)` in
+`src/backend/mir/x86/codegen/module/module_emit.cpp` into the anonymous-namespace
+`ModuleFunctionDispatchFallbackSupport` owner, which now centralizes the
+compare-driven entry callback wiring, the local structural dispatch ladder, and
+the shared prepared-control-flow contract fallback so the function renderer only
+assembles module-owned support objects and delegates the non-return route.
 
 ## Suggested Next
 
-Continue plan step 1.4.2 by extracting the next bounded module-local support
-cluster from `module_emit.cpp` inside `render_defined_function(...)`, most
-likely the remaining compare-driven/non-return dispatch fallback wiring
-(`render_local_structural_dispatch_if_supported` and its adjacent
-compare-driven entry orchestration), while keeping the reviewed compatibility
-wrapper thin and avoiding any new public seam.
+Continue plan step 1.4.2 by extracting the remaining function-level dispatch
+context assembly out of `render_defined_function(...)`, most likely the
+prepared-query / ABI / `PreparedX86FunctionDispatchContext` setup that still
+wires `asm_prefix`, return-register resolution, and minimal param-register
+lookup inline before the helper owners run.
 
 ## Watchouts
 
@@ -43,8 +42,14 @@ wrapper thin and avoiding any new public seam.
 - `ModuleFunctionReturnSupport` now owns the prepared return/home-move path;
   follow-on packets should reuse that owner instead of duplicating frame-size
   or return-bundle queries back inside `render_defined_function(...)`.
+- `ModuleFunctionDispatchFallbackSupport` now owns the compare-driven entry and
+  local structural fallback lane; keep future non-return routing and contract
+  rewrite logic there instead of rebuilding that ladder inline.
 - Preserve the legacy `x86::emit_prepared_module(...)` symbol until the
   supervisor retires that compatibility entry explicitly.
+- `module_emit.hpp` did not need a new public seam for this packet; keep the
+  extraction module-local unless the supervisor explicitly asks for a broader
+  interface change.
 
 ## Proof
 

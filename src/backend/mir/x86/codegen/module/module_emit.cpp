@@ -643,6 +643,113 @@ struct ModuleFunctionReturnSupport {
   }
 };
 
+struct ModuleFunctionDispatchFallbackSupport {
+  const PreparedX86FunctionDispatchContext& function_dispatch_context;
+  const ModuleFunctionReturnSupport& function_return_support;
+  const ModuleMultiDefinedSupport& multi_defined_support;
+
+  [[nodiscard]] std::optional<std::string> render_local_structural_dispatch_if_supported() const {
+    if (const auto rendered_local_i32_guard =
+            c4c::backend::x86::render_prepared_local_i32_arithmetic_guard_if_supported(
+                function_dispatch_context);
+        rendered_local_i32_guard.has_value()) {
+      return rendered_local_i32_guard;
+    }
+    if (const auto rendered_countdown_entry =
+            c4c::backend::x86::render_prepared_countdown_entry_routes_if_supported(
+                function_dispatch_context);
+        rendered_countdown_entry.has_value()) {
+      return rendered_countdown_entry;
+    }
+    if (const auto rendered_local_i16_guard =
+            c4c::backend::x86::render_prepared_local_i16_arithmetic_guard_if_supported(
+                function_dispatch_context);
+        rendered_local_i16_guard.has_value()) {
+      return rendered_local_i16_guard;
+    }
+    return c4c::backend::x86::render_prepared_local_slot_guard_chain_if_supported(
+        function_dispatch_context);
+  }
+
+  [[nodiscard]] std::optional<std::string> render_compare_driven_entry_if_supported() const {
+    const auto& function = function_return_support.function;
+    if (function.params.size() != 1) {
+      return std::nullopt;
+    }
+    const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*>
+        named_binaries;
+    return c4c::backend::x86::render_prepared_compare_driven_entry_if_supported(
+        function_dispatch_context,
+        [&](const c4c::backend::bir::Block& return_block,
+            const c4c::backend::bir::Value& value) -> std::optional<std::string> {
+          if (value.kind == c4c::backend::bir::Value::Kind::Named) {
+            const auto prepared_return =
+                function_return_support.render_named_before_return_body_if_supported(
+                    return_block, value.name);
+            if (!prepared_return.has_value()) {
+              throw std::invalid_argument(
+                  "x86 backend emitter requires authoritative prepared value-home and return-bundle data for named return values through the canonical prepared-module handoff");
+            }
+            return prepared_return;
+          }
+          const auto value_render =
+              c4c::backend::x86::render_prepared_param_derived_i32_value_if_supported(
+                  *function_return_support.return_register,
+                  value,
+                  named_binaries,
+                  function.params.front(),
+                  function_return_support.minimal_param_register);
+          if (!value_render.has_value()) {
+            return std::nullopt;
+          }
+          return c4c::backend::x86::render_prepared_return_body(*value_render);
+        },
+        [&](const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm&
+                prepared_return_arm,
+            const c4c::backend::bir::Param& param) -> std::optional<std::string> {
+          return function_return_support.render_materialized_compare_join_return_if_supported(
+              prepared_return_arm, param);
+        });
+  }
+
+  [[nodiscard]] std::string render_non_return_dispatch_or_throw() const {
+    if (const auto rendered_compare_driven_entry = render_compare_driven_entry_if_supported();
+        rendered_compare_driven_entry.has_value()) {
+      return *rendered_compare_driven_entry;
+    }
+    try {
+      if (const auto rendered_local_structural_dispatch =
+              render_local_structural_dispatch_if_supported();
+          rendered_local_structural_dispatch.has_value()) {
+        return *rendered_local_structural_dispatch;
+      }
+    } catch (const std::invalid_argument& error) {
+      if (std::string_view(error.what()).find("authoritative prepared local-slot ") !=
+          std::string_view::npos) {
+        if (multi_defined_support.bounded_helpers_active()) {
+          throw std::invalid_argument(multi_defined_support.annotate_local_slot_detail(
+              function_return_support.function.name, "local-structural-dispatch"));
+        }
+        multi_defined_support.throw_contract();
+      }
+      throw;
+    }
+
+    const auto* function_control_flow = function_dispatch_context.function_control_flow;
+    const auto& function = function_return_support.function;
+    if (function_control_flow != nullptr && function.blocks.size() > 1 &&
+        !function_control_flow->branch_conditions.empty() &&
+        !function_control_flow->join_transfers.empty()) {
+      if (function.params.size() > 1) {
+        multi_defined_support.throw_contract(kScalarPreparedControlFlowShapeError);
+        throw std::invalid_argument(std::string(kScalarPreparedControlFlowShapeError));
+      }
+    }
+    multi_defined_support.throw_contract(kScalarPreparedControlFlowShapeError);
+    throw std::invalid_argument(std::string(kScalarPreparedControlFlowShapeError));
+  }
+};
+
 }  // namespace
 
 std::string emit_prepared_module_text(
@@ -747,102 +854,15 @@ std::string emit_prepared_module_text(
         .minimal_param_register = minimal_param_register,
         .module_data_support = module_data_support,
     };
-    const auto render_local_structural_dispatch_if_supported =
-        [&]() -> std::optional<std::string> {
-      if (const auto rendered_local_i32_guard =
-              c4c::backend::x86::render_prepared_local_i32_arithmetic_guard_if_supported(
-                  function_dispatch_context);
-          rendered_local_i32_guard.has_value()) {
-        return rendered_local_i32_guard;
-      }
-      if (const auto rendered_countdown_entry =
-              c4c::backend::x86::render_prepared_countdown_entry_routes_if_supported(
-                  function_dispatch_context);
-          rendered_countdown_entry.has_value()) {
-        return rendered_countdown_entry;
-      }
-      if (const auto rendered_local_i16_guard =
-              c4c::backend::x86::render_prepared_local_i16_arithmetic_guard_if_supported(
-                  function_dispatch_context);
-          rendered_local_i16_guard.has_value()) {
-        return rendered_local_i16_guard;
-      }
-      return c4c::backend::x86::render_prepared_local_slot_guard_chain_if_supported(
-          function_dispatch_context);
+    const ModuleFunctionDispatchFallbackSupport function_dispatch_fallback_support{
+        .function_dispatch_context = function_dispatch_context,
+        .function_return_support = function_return_support,
+        .multi_defined_support = multi_defined_support,
     };
 
     if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
         !entry.terminator.value.has_value()) {
-      if (function.params.size() == 1) {
-        const std::unordered_map<std::string_view, const c4c::backend::bir::BinaryInst*>
-            named_binaries;
-        const auto rendered_compare_driven_entry =
-            c4c::backend::x86::render_prepared_compare_driven_entry_if_supported(
-                function_dispatch_context,
-                [&](const c4c::backend::bir::Block& return_block,
-                    const c4c::backend::bir::Value& value) -> std::optional<std::string> {
-                  if (value.kind == c4c::backend::bir::Value::Kind::Named) {
-                    const auto prepared_return = function_return_support
-                                                     .render_named_before_return_body_if_supported(
-                                                         return_block, value.name);
-                    if (!prepared_return.has_value()) {
-                      throw std::invalid_argument(
-                          "x86 backend emitter requires authoritative prepared value-home and return-bundle data for named return values through the canonical prepared-module handoff");
-                    }
-                    return prepared_return;
-                  }
-                  const auto value_render =
-                      c4c::backend::x86::render_prepared_param_derived_i32_value_if_supported(
-                          *return_register,
-                          value,
-                          named_binaries,
-                          function.params.front(),
-                          minimal_param_register);
-                  if (!value_render.has_value()) {
-                    return std::nullopt;
-                  }
-                  return c4c::backend::x86::render_prepared_return_body(*value_render);
-                },
-                [&](const c4c::backend::prepare::
-                        PreparedResolvedMaterializedCompareJoinReturnArm& prepared_return_arm,
-                    const c4c::backend::bir::Param& param) -> std::optional<std::string> {
-                  return function_return_support
-                      .render_materialized_compare_join_return_if_supported(prepared_return_arm,
-                                                                            param);
-                });
-        if (rendered_compare_driven_entry.has_value()) {
-          return *rendered_compare_driven_entry;
-        }
-      }
-      try {
-        if (const auto rendered_local_structural_dispatch =
-                render_local_structural_dispatch_if_supported();
-            rendered_local_structural_dispatch.has_value()) {
-          return *rendered_local_structural_dispatch;
-        }
-      } catch (const std::invalid_argument& error) {
-        if (std::string_view(error.what()).find(
-                "authoritative prepared local-slot ") != std::string_view::npos) {
-          if (multi_defined_support.bounded_helpers_active()) {
-            throw std::invalid_argument(
-                multi_defined_support.annotate_local_slot_detail(function.name,
-                                                                 "local-structural-dispatch"));
-          }
-          multi_defined_support.throw_contract();
-        }
-        throw;
-      }
-      if (const auto* function_control_flow = prepared_queries.function_control_flow;
-          function_control_flow != nullptr &&
-          function.blocks.size() > 1 && !function_control_flow->branch_conditions.empty() &&
-          !function_control_flow->join_transfers.empty()) {
-        if (function.params.size() > 1) {
-          multi_defined_support.throw_contract(kScalarPreparedControlFlowShapeError);
-          throw std::invalid_argument(std::string(kScalarPreparedControlFlowShapeError));
-        }
-      }
-      multi_defined_support.throw_contract(kScalarPreparedControlFlowShapeError);
-      throw std::invalid_argument(std::string(kScalarPreparedControlFlowShapeError));
+      return function_dispatch_fallback_support.render_non_return_dispatch_or_throw();
     }
 
     const auto& returned = *entry.terminator.value;
