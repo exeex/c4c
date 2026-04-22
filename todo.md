@@ -5,27 +5,26 @@ Source Idea Path: ideas/open/72_post_link_aggregate_call_runtime_correctness_for
 Source Plan Path: plan.md
 Current Step ID: 2.1
 Current Step Title: Repair The Selected Aggregate-Call Runtime Seam
-Plan Review Counter: 0 / 4
+Plan Review Counter: 1 / 4
 # Current Packet
 
 ## Just Finished
 
-Plan step `2.1` repaired the prepared same-module helper aggregate-parameter
-materialization seam enough to move `00204.c` past the original `fa_s2`
-crash: the generic bounded helper renderer now refreshes pointer/byval param
-homes from their incoming ABI registers at the active prepared pointer-access
-sites, so helper callees consume the forwarded aggregate address instead of
-dereferencing stale stack junk. The focused probe no longer crashes at
-`fa_s2`; it now advances to `fa_hfa11` and dies inside `__printf`, which
-narrows the next live runtime seam to helper-side floating/HFA variadic-call
-ABI handling rather than fixed-arity aggregate address materialization.
+Plan step `2.1` repaired the next helper-side floating/HFA runtime seam after
+the fixed-arity aggregate-forwarding crash: prepared direct-extern helper calls
+with a nonzero local frame now insert the missing 8-byte x86-64 call-alignment
+pad before variadic/libc calls, so framed helpers like `fa_hfa11` and the
+following float/double HFA helpers no longer enter `printf` with a misaligned
+stack. The focused proof still fails, but `00204.c` now executes past
+`fa_hfa11`/`fa_hfa24` and graduates into the later `fa_hfa31` long-double
+helper leaf inside `__printf_fp_l_buffer`.
 
 ## Suggested Next
 
-Take the next packet on the advanced `fa_hfa11` crash surface: inspect the
-prepared same-module helper floating/HFA path around the variadic `printf`
-call, and repair the helper-side ABI/alignment/materialization contract that
-now fails after the fixed-arity aggregate-byval seam is removed.
+Take the next packet on the advanced `fa_hfa31` crash surface: inspect the
+prepared helper long-double/HFA variadic path and repair the remaining
+helper-side long-double argument materialization or stack contract that still
+breaks once the float/double variadic call-alignment seam is fixed.
 
 ## Watchouts
 
@@ -45,22 +44,28 @@ now fails after the fixed-arity aggregate-byval seam is removed.
   spill; overlapping byte-copy locals can clobber that home, so the current
   repair refreshes the authoritative pointer home immediately before each
   prepared pointer-based access.
-- The next failing surface is no longer fixed-arity aggregate forwarding.
-  The focused gdb probe now stops in `fa_hfa11` during `__printf`, which
-  suggests a helper-side floating/HFA variadic ABI seam.
+- The repaired float/double HFA seam is specifically the outbound direct-extern
+  call alignment path for prepared helpers with an existing local frame; keep
+  the fix scoped there unless later proof shows stack-arg-bearing helpers need
+  a broader variant.
+- The next failing surface is no longer `fa_hfa11`; the focused gdb probe now
+  advances through `fa_hfa24` and stops in `fa_hfa31` during long-double
+  formatting inside `__printf_fp_l_buffer`.
 
 ## Proof
 
-Focused runtime probe for step-2.1 aggregate-helper repair:
+Focused runtime probe for step-2.1 aggregate/helper runtime repair:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$' | tee test_after.log`
 Result: `backend_x86_handoff_boundary` PASS; `c_testsuite_x86_backend_src_00204_c`
 still fails with `[RUNTIME_NONZERO] ... exit=Segmentation fault`, but the
-live crash surface advanced beyond `fa_s2`.
+live crash surface advanced beyond `fa_hfa11` into the later long-double HFA
+leaf.
 
 Crash-surface confirmation for the repaired seam:
-`gdb -batch -ex 'run' -ex 'bt' -ex 'info registers rdi r10 rsp' -ex 'x/16i $pc-16' --args build/c_testsuite_x86_backend/src/00204.c.bin`
+`gdb -batch -ex 'run' -ex 'bt' -ex 'frame 1' -ex 'info registers rdi rsi rdx rcx r8 r9 al rsp' -ex 'x/24i $pc-24' --args build/c_testsuite_x86_backend/src/00204.c.bin`
 and `build/c_testsuite_x86_backend/src/00204.c.s`
-Result: generated `fa_s2` now refreshes `QWORD PTR [rsp]` from `%rdi` before
-each pointer-backed byte load and no longer crashes there; the new stop is
-inside `__printf` called from `fa_hfa11`. Proof log path is `test_after.log`.
+Result: generated `fa_hfa11` now emits `sub rsp, 8` / `add rsp, 8` around the
+variadic `printf` call and no longer crashes there; the new stop is inside
+`__printf_fp_l_buffer` called from `fa_hfa31`. Proof log path is
+`test_after.log`.

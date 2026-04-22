@@ -5061,6 +5061,10 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
   if (stack_arg_bytes % 16 != 0) {
     stack_arg_bytes += 8;
   }
+  const bool needs_call_alignment_pad =
+      stack_arg_bytes == 0 && block_context.local_layout != nullptr &&
+      block_context.local_layout->frame_size != 0 &&
+      block_context.local_layout->frame_size % 16 == 0;
   for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
     const auto& arg = call->args[arg_index];
     const auto arg_type = call->arg_types[arg_index];
@@ -5347,13 +5351,22 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
   }
 
   if (call->is_variadic) {
+    if (needs_call_alignment_pad) {
+      body += "    sub rsp, 8\n";
+    }
     body += "    mov eax, " + std::to_string(float_register_args) + "\n";
   } else {
+    if (needs_call_alignment_pad) {
+      body += "    sub rsp, 8\n";
+    }
     body += "    xor eax, eax\n";
   }
   body += "    call ";
   body += function_context.render_asm_symbol_name(call->callee);
   body += "\n";
+  if (needs_call_alignment_pad) {
+    body += "    add rsp, 8\n";
+  }
   if (stack_arg_bytes != 0) {
     body += "    add rsp, " + std::to_string(stack_arg_bytes) + "\n";
   }
