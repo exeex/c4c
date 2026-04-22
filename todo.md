@@ -3,44 +3,40 @@
 Status: Active
 Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implementation_for_phoenix_rebuild.md
 Source Plan Path: plan.md
-Current Step ID: 2.2.3
-Current Step Title: Migrate Canonical Return-Lane Handoff And Audit Remaining Holdouts
-Plan Review Counter: 2 / 6
+Current Step ID: 2.3
+Current Step Title: Migrate Scalar And Comparison Lowering Families
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed step 2.2.3 by auditing the post-move call/return surface and marking
-the only live residual non-policy holdout explicitly: the prepared call-bundle
-ABI selector helpers exported from `lowering/call_lowering.cpp` through
-`x86_codegen.hpp` remain a step-3 compatibility surface for
-`prepared_local_slot_render.cpp`. `return_lowering.cpp` now records that it
-owns only return policy flow and epilogue sequencing while raw register
-publication helpers stay in reviewed owner `core/x86_codegen_output.cpp`.
+Completed step 2.3 by moving the canonical compare/branch/select
+implementation from the legacy top-level `comparison.cpp` bucket into compiled
+reviewed owner `lowering/comparison_lowering.cpp` with matching
+`lowering/comparison_lowering.hpp` seam wiring. The backend target now builds
+comparison lowering from the new lowering translation unit, while
+`comparison.cpp` remains only as an explicit dormant compatibility marker.
 
 ## Suggested Next
 
-Have the supervisor decide whether step 2.2.3 is now exhausted; if a follow-on
-packet is needed, keep it limited to the next explicit step-3 prepared seam
-that can absorb the call-bundle selector compatibility surface without widening
-back into dormant legacy owners.
+Keep step 2.3 focused on the remaining scalar-lowering family only: migrate the
+next reviewed scalar owner into `lowering/scalar_lowering.*` without reopening
+`alu.cpp` or expanding into adjacent prepared/render seams.
 
 ## Watchouts
 
-- The backend target still does not compile `shared_call_support.cpp` or
-  `mod.cpp`; the newly annotated prepared call-bundle selectors must remain a
-  compatibility holdout until a reviewed prepared seam replaces them.
-- `return_lowering.cpp` is no longer hiding raw return publication ownership;
-  only return-path policy flow, including F128-special handling and epilogue
-  sequencing, remains there.
-- Keep `call_lowering.cpp`, `memory.cpp`, and `mod.cpp` non-owning for this
-  route; do not widen into ABI policy, prepared-route rewrites, or dormant
-  utility reattachment just to retire the compatibility note.
+- `comparison.cpp` is intentionally non-owning now; do not reattach live
+  compare logic there just to preserve the old top-level bucket.
+- The reviewed comparison seam still relies on `X86Codegen` declarations in
+  `x86_codegen.hpp`; that transitional surface stays shared until a later
+  lifecycle step moves declarations as well.
+- Keep the remaining scalar migration isolated from `alu.cpp`,
+  `scalar_lowering.*`, and other legacy buckets named in the do-not-touch set
+  for this packet.
 
 ## Proof
 
-Step 2.2.3 canonical return-lane handoff audit and compatibility
-classification on 2026-04-22:
+Step 2.3 comparison lowering ownership move on 2026-04-22:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 Backend subset passed (`106/106`). Canonical log paths: `test_before.log`,
