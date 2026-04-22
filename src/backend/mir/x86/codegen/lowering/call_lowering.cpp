@@ -6,22 +6,9 @@ namespace c4c::backend::x86 {
 
 namespace {
 
-constexpr const char* kX86ArgRegs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
-constexpr const char* kX86FloatArgRegs[] = {
-    "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7"};
-
 const char* reg_name_to_32_or_self(const char* reg) {
   const char* narrowed = reg_name_to_32(reg);
   return narrowed[0] == '\0' ? reg : narrowed;
-}
-
-std::string format_reg(const char* reg) { return std::string("%") + reg; }
-
-void append_asm_line(X86CodegenOutput* out, std::string line) {
-  if (out == nullptr || out->owner == nullptr) {
-    return;
-  }
-  out->owner->asm_lines.push_back(std::move(line));
 }
 
 void emit_zero_reg(X86Codegen& codegen, const char* reg) {
@@ -30,133 +17,6 @@ void emit_zero_reg(X86Codegen& codegen, const char* reg) {
 }
 
 }  // namespace
-
-const char* reg_name_to_32(std::string_view name) {
-  if (name == "rax") return "eax";
-  if (name == "rbx") return "ebx";
-  if (name == "rcx") return "ecx";
-  if (name == "rdx") return "edx";
-  if (name == "rsi") return "esi";
-  if (name == "rdi") return "edi";
-  if (name == "rsp") return "esp";
-  if (name == "rbp") return "ebp";
-  if (name == "r8") return "r8d";
-  if (name == "r9") return "r9d";
-  if (name == "r10") return "r10d";
-  if (name == "r11") return "r11d";
-  if (name == "r12") return "r12d";
-  if (name == "r13") return "r13d";
-  if (name == "r14") return "r14d";
-  if (name == "r15") return "r15d";
-  return "";
-}
-
-const char* phys_reg_name(c4c::backend::PhysReg reg) {
-  switch (reg.index) {
-    case 1: return "rbx";
-    case 2: return "r12";
-    case 3: return "r13";
-    case 4: return "r14";
-    case 5: return "r15";
-    case 10: return "r11";
-    case 11: return "r10";
-    case 12: return "r8";
-    case 13: return "r9";
-    case 14: return "rdi";
-    case 15: return "rsi";
-    default: return "";
-  }
-}
-
-const char* x86_arg_reg_name(std::size_t reg_index) {
-  return reg_index < std::size(kX86ArgRegs) ? kX86ArgRegs[reg_index] : "";
-}
-
-const char* x86_float_arg_reg_name(std::size_t reg_index) {
-  return reg_index < std::size(kX86FloatArgRegs) ? kX86FloatArgRegs[reg_index] : "";
-}
-
-bool x86_allow_struct_split_reg_stack() { return false; }
-
-void X86CodegenOutput::emit_instr_imm_reg(const char* mnemonic,
-                                          std::int64_t imm,
-                                          const char* reg) {
-  append_asm_line(this, std::string(mnemonic) + " $" + std::to_string(imm) + ", " +
-                            format_reg(reg));
-}
-
-void X86CodegenOutput::emit_instr_rbp_reg(const char* mnemonic,
-                                          std::int64_t offset,
-                                          const char* reg) {
-  append_asm_line(this, std::string(mnemonic) + " " + std::to_string(offset) + "(%rbp), " +
-                            format_reg(reg));
-}
-
-void X86CodegenOutput::emit_instr_rbp(const char* mnemonic, std::int64_t offset) {
-  append_asm_line(this, std::string(mnemonic) + " " + std::to_string(offset) + "(%rbp)");
-}
-
-void X86CodegenRegCache::invalidate_all() {
-  acc_value_id.reset();
-  acc_known_zero_extended = false;
-  acc_valid = false;
-}
-
-void X86CodegenRegCache::invalidate_acc() {
-  acc_value_id.reset();
-  acc_known_zero_extended = false;
-  acc_valid = false;
-}
-
-void X86CodegenRegCache::set_acc(std::uint32_t value_id, bool known_zero_extended) {
-  acc_value_id = value_id;
-  acc_known_zero_extended = known_zero_extended;
-  acc_valid = true;
-}
-
-void X86CodegenState::emit(const std::string& asm_line) { asm_lines.push_back(asm_line); }
-
-std::optional<StackSlot> X86CodegenState::get_slot(std::uint32_t value_id) const {
-  const auto it = slots.find(value_id);
-  if (it == slots.end()) {
-    return std::nullopt;
-  }
-  return it->second;
-}
-
-std::optional<std::uint8_t> X86CodegenState::assigned_reg_index(std::uint32_t value_id) const {
-  const auto it = reg_assignment_indices.find(value_id);
-  if (it == reg_assignment_indices.end()) {
-    return std::nullopt;
-  }
-  return it->second;
-}
-
-bool X86CodegenState::is_alloca(std::uint32_t value_id) const {
-  return allocas.find(value_id) != allocas.end();
-}
-
-std::optional<SlotAddr> X86CodegenState::resolve_slot_addr(std::uint32_t value_id) const {
-  const auto slot = get_slot(value_id);
-  if (!slot.has_value()) {
-    return std::nullopt;
-  }
-  if (over_aligned_allocas.find(value_id) != over_aligned_allocas.end()) {
-    return SlotAddr::OverAligned(*slot, value_id);
-  }
-  if (is_alloca(value_id)) {
-    return SlotAddr::Indirect(*slot);
-  }
-  return SlotAddr::Direct(*slot);
-}
-
-std::optional<std::size_t> X86CodegenState::alloca_over_align(std::uint32_t value_id) const {
-  const auto it = over_aligned_allocas.find(value_id);
-  if (it == over_aligned_allocas.end()) {
-    return std::nullopt;
-  }
-  return it->second;
-}
 
 std::optional<std::int64_t> X86Codegen::const_as_imm32(const Operand& op) const {
   if (!op.immediate.has_value()) {
