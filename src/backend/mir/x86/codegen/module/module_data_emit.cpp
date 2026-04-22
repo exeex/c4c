@@ -1,8 +1,8 @@
 #include "module_data_emit.hpp"
 
 #include "../abi/x86_target_abi.hpp"
+#include "../core/x86_codegen_output.hpp"
 
-#include <cctype>
 #include <cstdint>
 #include <functional>
 #include <unordered_set>
@@ -133,51 +133,6 @@ const c4c::backend::bir::Global* lookup_same_module_global(
   return nullptr;
 }
 
-bool asm_symbol_char(char ch) {
-  const auto uch = static_cast<unsigned char>(ch);
-  return std::isalnum(uch) || ch == '_' || ch == '.' || ch == '$';
-}
-
-bool asm_text_references_symbol(std::string_view asm_text, std::string_view symbol_name) {
-  if (symbol_name.empty()) {
-    return false;
-  }
-  std::size_t search_from = 0;
-  while (true) {
-    const auto pos = asm_text.find(symbol_name, search_from);
-    if (pos == std::string_view::npos) {
-      return false;
-    }
-    const auto end = pos + symbol_name.size();
-    const bool prev_is_symbol = pos > 0 && asm_symbol_char(asm_text[pos - 1]);
-    const bool next_is_symbol = end < asm_text.size() && asm_symbol_char(asm_text[end]);
-    if (!prev_is_symbol && !next_is_symbol) {
-      return true;
-    }
-    search_from = pos + 1;
-  }
-}
-
-bool asm_text_defines_symbol(std::string_view asm_text, std::string_view symbol_name) {
-  if (symbol_name.empty()) {
-    return false;
-  }
-  std::size_t search_from = 0;
-  while (true) {
-    const auto pos = asm_text.find(symbol_name, search_from);
-    if (pos == std::string_view::npos) {
-      return false;
-    }
-    const auto end = pos + symbol_name.size();
-    const bool prev_is_symbol = pos > 0 && asm_symbol_char(asm_text[pos - 1]);
-    const bool next_is_label = end < asm_text.size() && asm_text[end] == ':';
-    if (!prev_is_symbol && next_is_label) {
-      return true;
-    }
-    search_from = pos + 1;
-  }
-}
-
 }  // namespace
 
 const c4c::backend::bir::StringConstant* find_string_constant(
@@ -282,7 +237,7 @@ std::string emit_missing_same_module_global_data(
         if (same_module_global == nullptr ||
             emitted_missing_globals.find(same_module_global->name) !=
                 emitted_missing_globals.end() ||
-            asm_text_defines_symbol(
+            c4c::backend::x86::core::asm_text_defines_symbol(
                 asm_text,
                 c4c::backend::x86::abi::render_asm_symbol_name(target_triple,
                                                                same_module_global->name))) {
@@ -317,8 +272,8 @@ std::string emit_missing_same_module_global_data(
   for (const auto& global : module.module.globals) {
     const auto rendered_name =
         c4c::backend::x86::abi::render_asm_symbol_name(target_triple, global.name);
-    if (!asm_text_references_symbol(asm_text, rendered_name) ||
-        asm_text_defines_symbol(asm_text, rendered_name)) {
+    if (!c4c::backend::x86::core::asm_text_references_symbol(asm_text, rendered_name) ||
+        c4c::backend::x86::core::asm_text_defines_symbol(asm_text, rendered_name)) {
       continue;
     }
     add_same_module_global_closure(global.name);

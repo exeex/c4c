@@ -1,9 +1,9 @@
 #include "x86_codegen.hpp"
 #include "abi/x86_target_abi.hpp"
+#include "core/x86_codegen_output.hpp"
 #include "module/module_data_emit.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <functional>
 #include <stdexcept>
 
@@ -126,49 +126,13 @@ std::string emit_prepared_module(
     return c4c::backend::x86::module::emit_same_module_global_data(resolved_target_triple,
                                                                    global);
   };
-  const auto asm_symbol_char = [](char ch) -> bool {
-    const auto uch = static_cast<unsigned char>(ch);
-    return std::isalnum(uch) || ch == '_' || ch == '.' || ch == '$';
-  };
   const auto asm_text_references_symbol =
       [&](std::string_view asm_text, std::string_view symbol_name) -> bool {
-    if (symbol_name.empty()) {
-      return false;
-    }
-    std::size_t search_from = 0;
-    while (true) {
-      const auto pos = asm_text.find(symbol_name, search_from);
-      if (pos == std::string_view::npos) {
-        return false;
-      }
-      const auto end = pos + symbol_name.size();
-      const bool prev_is_symbol = pos > 0 && asm_symbol_char(asm_text[pos - 1]);
-      const bool next_is_symbol = end < asm_text.size() && asm_symbol_char(asm_text[end]);
-      if (!prev_is_symbol && !next_is_symbol) {
-        return true;
-      }
-      search_from = pos + 1;
-    }
+    return c4c::backend::x86::core::asm_text_references_symbol(asm_text, symbol_name);
   };
   const auto asm_text_defines_symbol =
       [&](std::string_view asm_text, std::string_view symbol_name) -> bool {
-    if (symbol_name.empty()) {
-      return false;
-    }
-    std::size_t search_from = 0;
-    while (true) {
-      const auto pos = asm_text.find(symbol_name, search_from);
-      if (pos == std::string_view::npos) {
-        return false;
-      }
-      const auto end = pos + symbol_name.size();
-      const bool prev_is_symbol = pos > 0 && asm_symbol_char(asm_text[pos - 1]);
-      const bool next_is_label = end < asm_text.size() && asm_text[end] == ':';
-      if (!prev_is_symbol && next_is_label) {
-        return true;
-      }
-      search_from = pos + 1;
-    }
+    return c4c::backend::x86::core::asm_text_defines_symbol(asm_text, symbol_name);
   };
   const auto emit_missing_same_module_global_data =
       [&](std::string_view asm_text) -> std::string {

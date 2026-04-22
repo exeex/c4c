@@ -18,4 +18,9 @@ class AssemblyTextBuffer {
   std::string text_;
 };
 
+[[nodiscard]] bool asm_text_references_symbol(std::string_view asm_text,
+                                              std::string_view symbol_name);
+[[nodiscard]] bool asm_text_defines_symbol(std::string_view asm_text,
+                                           std::string_view symbol_name);
+
 }  // namespace c4c::backend::x86::core
