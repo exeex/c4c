@@ -5,38 +5,37 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 1.4
 Current Step Title: Materialize Module Support Seams While Preserving Compatibility Wrappers
-Plan Review Counter: 3 / 6
+Plan Review Counter: 4 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed plan step 1.4 by materializing the reviewed module-level support seam
-as `ModuleDataSupport` in `module/module_data_emit.*`, then rewiring
-`module/module_emit.cpp` to consume that seam for symbol lookup, label
-rendering, whole-module finalization, variadic helper injection,
-referenced-global collection, and selected-data emission without changing
-lowering ownership or the legacy prepared-module entry behavior.
+Completed plan step 1.4 by extracting the module-level ABI/register support
+helpers in `module/module_emit.cpp` into anonymous-namespace functions for
+register narrowing, minimal parameter/return ABI register lookup, and
+function-assembly prefix rendering, shrinking the top-level
+`emit_prepared_module_text(...)` orchestration body without changing lowering
+ownership or the legacy prepared-module compatibility entry behavior.
 
 ## Suggested Next
 
-Continue plan step 1 by extracting the next cohesive non-orchestration helper
-family that still keeps `module/module_emit.cpp` broad, while preserving the
-existing compatibility wrapper and avoiding any drift of lowering logic into
-`module/module_data_emit.*` now that module-output support publication is owned
-by the reviewed module-data seam.
+Continue plan step 1.4 by extracting the defined-function inventory and
+multi-defined dispatch setup at the top of `module/module_emit.cpp` into the
+next bounded module-support helper family so whole-module route selection keeps
+moving out of the monolithic entry function without inventing a new reviewed
+public seam.
 
 ## Watchouts
 
 - Keep `prepared_module_emit.cpp` wrapper-thin; new whole-module orchestration
   logic should land in `module/module_emit.cpp` or sibling reviewed seams
   instead of drifting back into the compatibility surface.
-- `ModuleDataSupport` is an adapter seam for module-level symbol/data support,
-  not a place to migrate function-lowering ownership; adjacent packets should
-  keep peeling support setup and helper publication out of orchestration
-  without moving instruction-shape decisions behind this seam.
-- The new finalization helpers intentionally centralize helper/data publication
-  in `module/module_data_emit.*`; follow-on packets should reuse that seam
-  rather than rebuilding output concatenation inside `module/module_emit.cpp`.
+- Keep `module/module_data_emit.*` focused on data and symbol publication; the
+  next packet should peel route-selection support out of orchestration without
+  moving instruction-shape or lowering decisions behind the data seam.
+- The extracted anonymous-namespace helpers are implementation-local support,
+  not a license to add a new reviewed public file boundary; preserve the stage-3
+  contract unless lifecycle repair explicitly reopens it.
 - Preserve the legacy `x86::emit_prepared_module(...)` symbol until the
   supervisor retires that compatibility entry explicitly.
 

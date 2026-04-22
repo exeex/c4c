@@ -13,6 +13,70 @@ namespace {
 constexpr std::string_view kScalarPreparedControlFlowShapeError =
     "x86 backend emitter only supports a minimal single-block i32 return terminator, a bounded equality-against-immediate guard family with immediate return leaves including fixed-offset same-module global i32 loads and pointer-backed same-module global roots, or one bounded compare-against-zero branch family through the canonical prepared-module handoff";
 
+std::optional<std::string> narrow_i32_register_name(std::string_view wide_register) {
+  if (wide_register == "rax") return std::string("eax");
+  if (wide_register == "rbx") return std::string("ebx");
+  if (wide_register == "rcx") return std::string("ecx");
+  if (wide_register == "rdx") return std::string("edx");
+  if (wide_register == "rdi") return std::string("edi");
+  if (wide_register == "rsi") return std::string("esi");
+  if (wide_register == "rbp") return std::string("ebp");
+  if (wide_register == "rsp") return std::string("esp");
+  if (wide_register == "r8") return std::string("r8d");
+  if (wide_register == "r9") return std::string("r9d");
+  if (wide_register == "r10") return std::string("r10d");
+  if (wide_register == "r11") return std::string("r11d");
+  if (wide_register == "r12") return std::string("r12d");
+  if (wide_register == "r13") return std::string("r13d");
+  if (wide_register == "r14") return std::string("r14d");
+  if (wide_register == "r15") return std::string("r15d");
+  if (wide_register == "eax" || wide_register == "ebx" || wide_register == "ecx" ||
+      wide_register == "edx" || wide_register == "edi" || wide_register == "esi" ||
+      wide_register == "ebp" || wide_register == "esp" || wide_register == "r8d" ||
+      wide_register == "r9d" || wide_register == "r10d" || wide_register == "r11d" ||
+      wide_register == "r12d" || wide_register == "r13d" || wide_register == "r14d" ||
+      wide_register == "r15d") {
+    return std::string(wide_register);
+  }
+  return std::string(wide_register);
+}
+
+std::optional<std::string> narrow_register_name(
+    const std::optional<std::string>& wide_register) {
+  if (!wide_register.has_value()) {
+    return std::nullopt;
+  }
+  return narrow_i32_register_name(*wide_register);
+}
+
+template <typename TargetProfile>
+std::optional<std::string> resolve_minimal_param_register_at(
+    const TargetProfile& resolved_target_profile,
+    const c4c::backend::bir::Param& param,
+    std::size_t arg_index) {
+  if (param.is_varargs || param.is_sret || param.is_byval || !param.abi.has_value()) {
+    return std::nullopt;
+  }
+  return narrow_register_name(c4c::backend::prepare::call_arg_destination_register_name(
+      resolved_target_profile, *param.abi, arg_index));
+}
+
+template <typename TargetProfile>
+std::optional<std::string> resolve_minimal_function_return_register(
+    const TargetProfile& resolved_target_profile,
+    const c4c::backend::bir::Function& candidate) {
+  if (!candidate.return_abi.has_value()) {
+    return std::nullopt;
+  }
+  return narrow_register_name(c4c::backend::prepare::call_result_destination_register_name(
+      resolved_target_profile, *candidate.return_abi));
+}
+
+std::string render_minimal_function_asm_prefix(const c4c::backend::bir::Function& candidate) {
+  return ".intel_syntax noprefix\n.text\n.globl " + candidate.name + "\n.type " + candidate.name +
+         ", @function\n" + candidate.name + ":\n";
+}
+
 }  // namespace
 
 std::string emit_prepared_module_text(
@@ -43,64 +107,21 @@ std::string emit_prepared_module_text(
     throw std::invalid_argument(
         "x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls through the canonical prepared-module handoff");
   }
-  const auto narrow_i32_register = [](std::string_view wide_register) -> std::optional<std::string> {
-    if (wide_register == "rax") return std::string("eax");
-    if (wide_register == "rbx") return std::string("ebx");
-    if (wide_register == "rcx") return std::string("ecx");
-    if (wide_register == "rdx") return std::string("edx");
-    if (wide_register == "rdi") return std::string("edi");
-    if (wide_register == "rsi") return std::string("esi");
-    if (wide_register == "rbp") return std::string("ebp");
-    if (wide_register == "rsp") return std::string("esp");
-    if (wide_register == "r8") return std::string("r8d");
-    if (wide_register == "r9") return std::string("r9d");
-    if (wide_register == "r10") return std::string("r10d");
-    if (wide_register == "r11") return std::string("r11d");
-    if (wide_register == "r12") return std::string("r12d");
-    if (wide_register == "r13") return std::string("r13d");
-    if (wide_register == "r14") return std::string("r14d");
-    if (wide_register == "r15") return std::string("r15d");
-    if (wide_register == "eax" || wide_register == "ebx" || wide_register == "ecx" ||
-        wide_register == "edx" || wide_register == "edi" || wide_register == "esi" ||
-        wide_register == "ebp" || wide_register == "esp" || wide_register == "r8d" ||
-        wide_register == "r9d" || wide_register == "r10d" || wide_register == "r11d" ||
-        wide_register == "r12d" || wide_register == "r13d" || wide_register == "r14d" ||
-        wide_register == "r15d") {
-      return std::string(wide_register);
-    }
-    return std::string(wide_register);
-  };
-  const auto narrow_register = [&](const std::optional<std::string>& wide_register)
-      -> std::optional<std::string> {
-    if (!wide_register.has_value()) {
-      return std::nullopt;
-    }
-    return narrow_i32_register(*wide_register);
-  };
   const auto minimal_param_register_at =
       [&](const c4c::backend::bir::Param& param,
           std::size_t arg_index) -> std::optional<std::string> {
-    if (param.is_varargs || param.is_sret || param.is_byval || !param.abi.has_value()) {
-      return std::nullopt;
-    }
-    return narrow_register(c4c::backend::prepare::call_arg_destination_register_name(
-        resolved_target_profile, *param.abi, arg_index));
+    return resolve_minimal_param_register_at(resolved_target_profile, param, arg_index);
   };
   const auto resolved_target_triple = c4c::backend::x86::abi::resolve_target_triple(module);
   const auto module_data_support =
       c4c::backend::x86::module::make_module_data_support(module, resolved_target_triple);
   const auto minimal_function_return_register =
       [&](const c4c::backend::bir::Function& candidate) -> std::optional<std::string> {
-    if (!candidate.return_abi.has_value()) {
-      return std::nullopt;
-    }
-    return narrow_register(c4c::backend::prepare::call_result_destination_register_name(
-        resolved_target_profile, *candidate.return_abi));
+    return resolve_minimal_function_return_register(resolved_target_profile, candidate);
   };
   const auto minimal_function_asm_prefix =
       [&](const c4c::backend::bir::Function& candidate) -> std::string {
-    return ".intel_syntax noprefix\n.text\n.globl " + candidate.name + "\n.type " + candidate.name +
-           ", @function\n" + candidate.name + ":\n";
+    return render_minimal_function_asm_prefix(candidate);
   };
   const auto render_trivial_defined_function_if_supported =
       [&](const c4c::backend::bir::Function& candidate) -> std::optional<std::string> {
@@ -346,7 +367,7 @@ std::string emit_prepared_module_text(
           !home.register_name.has_value()) {
         return std::nullopt;
       }
-      return narrow_i32_register(*home.register_name);
+      return narrow_i32_register_name(*home.register_name);
     };
     const auto append_i32_home_move =
         [&](std::string& body,
@@ -433,7 +454,8 @@ std::string emit_prepared_module_text(
         throw std::invalid_argument(
             "x86 backend emitter requires the authoritative prepared return-bundle handoff through the canonical prepared-module handoff");
       }
-      const auto destination_register = narrow_i32_register(*return_move.destination_register_name);
+      const auto destination_register =
+          narrow_i32_register_name(*return_move.destination_register_name);
       if (!destination_register.has_value()) {
         throw std::invalid_argument(
             "x86 backend emitter requires the authoritative prepared return-bundle handoff through the canonical prepared-module handoff");
@@ -499,7 +521,7 @@ std::string emit_prepared_module_text(
           return std::nullopt;
         }
         if (move.destination_register_name.has_value()) {
-          return narrow_i32_register(*move.destination_register_name);
+          return narrow_i32_register_name(*move.destination_register_name);
         }
         if (move.destination_kind != c4c::backend::prepare::PreparedMoveDestinationKind::Value) {
           return std::nullopt;
@@ -511,7 +533,7 @@ std::string emit_prepared_module_text(
             !destination_home->register_name.has_value()) {
           return std::nullopt;
         }
-        return narrow_i32_register(*destination_home->register_name);
+        return narrow_i32_register_name(*destination_home->register_name);
       };
 
       const auto* before_return_bundle = c4c::backend::prepare::find_prepared_move_bundle(
