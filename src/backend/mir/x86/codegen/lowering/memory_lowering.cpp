@@ -6,6 +6,17 @@ namespace c4c::backend::x86 {
 
 namespace {
 
+const c4c::backend::prepare::PreparedMemoryAccess* find_prepared_function_memory_access(
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t inst_index) {
+  if (function_addressing == nullptr || block_label == c4c::kInvalidBlockLabel) {
+    return nullptr;
+  }
+  return c4c::backend::prepare::find_prepared_memory_access(
+      *function_addressing, block_label, inst_index);
+}
+
 bool prepared_value_homes_use_register(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::string_view register_name) {
@@ -32,37 +43,74 @@ std::optional<std::string> choose_prepared_float_load_scratch_register_if_suppor
 
 }  // namespace
 
+std::optional<std::string_view> prepared_scalar_memory_operand_size_name(
+    c4c::backend::bir::TypeKind type) {
+  switch (type) {
+    case c4c::backend::bir::TypeKind::Ptr:
+      return "QWORD";
+    case c4c::backend::bir::TypeKind::I8:
+      return "BYTE";
+    case c4c::backend::bir::TypeKind::I32:
+      return "DWORD";
+    case c4c::backend::bir::TypeKind::F32:
+      return "DWORD";
+    case c4c::backend::bir::TypeKind::F64:
+      return "QWORD";
+    case c4c::backend::bir::TypeKind::F128:
+      return "TBYTE";
+    default:
+      return std::nullopt;
+  }
+}
+
+const c4c::backend::prepare::PreparedMemoryAccess* find_prepared_frame_memory_access(
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t inst_index) {
+  const auto* access =
+      find_prepared_function_memory_access(function_addressing, block_label, inst_index);
+  if (access == nullptr ||
+      access->address.base_kind != c4c::backend::prepare::PreparedAddressBaseKind::FrameSlot ||
+      !access->address.frame_slot_id.has_value()) {
+    return nullptr;
+  }
+  return access;
+}
+
+const c4c::backend::prepare::PreparedMemoryAccess* find_prepared_symbol_memory_access(
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t inst_index) {
+  if (prepared_names == nullptr) {
+    return nullptr;
+  }
+  const auto* access =
+      find_prepared_function_memory_access(function_addressing, block_label, inst_index);
+  if (access == nullptr ||
+      access->address.base_kind != c4c::backend::prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !access->address.symbol_name.has_value() ||
+      c4c::backend::prepare::prepared_link_name(*prepared_names, *access->address.symbol_name)
+          .empty()) {
+    return nullptr;
+  }
+  return access;
+}
+
 std::optional<std::string> render_prepared_i32_memory_operand_for_inst_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     c4c::BlockLabelId block_label_id,
     std::size_t inst_index,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
-  if (function_addressing == nullptr || block_label_id == c4c::kInvalidBlockLabel) {
-    return std::nullopt;
-  }
+    const c4c::backend::prepare::PreparedNameTables*,
+    const c4c::backend::prepare::PreparedValueLocationFunction*) {
   const auto* prepared_access =
-      c4c::backend::prepare::find_prepared_memory_access(
-          *function_addressing, block_label_id, inst_index);
-  if (prepared_access == nullptr ||
-      prepared_access->address.base_kind !=
-          c4c::backend::prepare::PreparedAddressBaseKind::FrameSlot ||
-      !prepared_access->address.frame_slot_id.has_value()) {
+      find_prepared_frame_memory_access(function_addressing, block_label_id, inst_index);
+  if (prepared_access == nullptr) {
     return std::nullopt;
   }
-  const auto frame_slot_it =
-      local_layout.frame_slot_offsets.find(*prepared_access->address.frame_slot_id);
-  if (frame_slot_it == local_layout.frame_slot_offsets.end()) {
-    return std::nullopt;
-  }
-  const auto signed_byte_offset =
-      static_cast<std::int64_t>(frame_slot_it->second) + prepared_access->address.byte_offset;
-  if (signed_byte_offset < 0) {
-    return std::nullopt;
-  }
-  return render_prepared_stack_memory_operand(
-      static_cast<std::size_t>(signed_byte_offset), "DWORD");
+  return render_prepared_frame_slot_memory_operand_if_supported(
+      local_layout, prepared_access->address, "DWORD");
 }
 
 std::string render_prepared_stack_memory_operand(std::size_t byte_offset,
@@ -78,6 +126,99 @@ std::string render_prepared_stack_address_expr(std::size_t byte_offset) {
     return "[rsp]";
   }
   return "[rsp + " + std::to_string(byte_offset) + "]";
+}
+
+std::optional<std::string> render_prepared_frame_slot_memory_operand_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedAddress& address,
+    std::string_view size_name) {
+  if (address.base_kind != c4c::backend::prepare::PreparedAddressBaseKind::FrameSlot ||
+      !address.frame_slot_id.has_value()) {
+    return std::nullopt;
+  }
+  const auto frame_slot_it = local_layout.frame_slot_offsets.find(*address.frame_slot_id);
+  if (frame_slot_it == local_layout.frame_slot_offsets.end()) {
+    return std::nullopt;
+  }
+  const auto signed_byte_offset =
+      static_cast<std::int64_t>(frame_slot_it->second) + address.byte_offset;
+  if (signed_byte_offset < 0) {
+    return std::nullopt;
+  }
+  return render_prepared_stack_memory_operand(
+      static_cast<std::size_t>(signed_byte_offset), size_name);
+}
+
+std::optional<std::string> render_prepared_symbol_memory_operand_if_supported(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
+    const c4c::backend::prepare::PreparedAddress& address,
+    std::string_view size_name,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name) {
+  if (address.base_kind != c4c::backend::prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !address.symbol_name.has_value()) {
+    return std::nullopt;
+  }
+  const std::string_view symbol_name =
+      c4c::backend::prepare::prepared_link_name(prepared_names, *address.symbol_name);
+  if (symbol_name.empty()) {
+    return std::nullopt;
+  }
+  std::string memory = std::string(size_name) + " PTR [rip + " +
+                       render_asm_symbol_name(symbol_name);
+  if (address.byte_offset > 0) {
+    memory += " + " + std::to_string(address.byte_offset);
+  } else if (address.byte_offset < 0) {
+    memory += " - " + std::to_string(-address.byte_offset);
+  }
+  memory += "]";
+  return memory;
+}
+
+std::optional<PreparedScalarMemoryAccessRender>
+render_prepared_compatible_scalar_memory_operand_for_inst_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t inst_index,
+    c4c::backend::bir::TypeKind type,
+    const std::function<std::string(std::string_view)>* render_asm_symbol_name) {
+  const auto size_name = prepared_scalar_memory_operand_size_name(type);
+  if (!size_name.has_value()) {
+    return std::nullopt;
+  }
+
+  if (const auto* prepared_access =
+          find_prepared_frame_memory_access(function_addressing, block_label, inst_index);
+      prepared_access != nullptr) {
+    const auto memory_operand = render_prepared_frame_slot_memory_operand_if_supported(
+        local_layout, prepared_access->address, *size_name);
+    if (!memory_operand.has_value()) {
+      return std::nullopt;
+    }
+    return PreparedScalarMemoryAccessRender{
+        .setup_asm = {},
+        .memory_operand = std::move(*memory_operand),
+    };
+  }
+
+  if (prepared_names == nullptr || render_asm_symbol_name == nullptr) {
+    return std::nullopt;
+  }
+  const auto* prepared_access =
+      find_prepared_symbol_memory_access(prepared_names, function_addressing, block_label, inst_index);
+  if (prepared_access == nullptr) {
+    return std::nullopt;
+  }
+  const auto memory_operand = render_prepared_symbol_memory_operand_if_supported(
+      *prepared_names, prepared_access->address, *size_name, *render_asm_symbol_name);
+  if (!memory_operand.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedScalarMemoryAccessRender{
+      .setup_asm = {},
+      .memory_operand = std::move(*memory_operand),
+  };
 }
 
 std::optional<std::string> render_prepared_local_slot_memory_operand_if_supported(

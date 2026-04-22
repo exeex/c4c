@@ -15,15 +15,55 @@ struct PreparedNamedFloatLoadRender {
   std::string destination_register;
 };
 
+struct PreparedScalarMemoryAccessRender {
+  std::string setup_asm;
+  std::string memory_operand;
+};
+
 struct PreparedI32BinaryRender {
   std::string body;
   bool rhs_now_in_ecx = false;
 };
 
+std::optional<std::string_view> prepared_scalar_memory_operand_size_name(
+    c4c::backend::bir::TypeKind type);
+
+const c4c::backend::prepare::PreparedMemoryAccess* find_prepared_frame_memory_access(
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t inst_index);
+
+const c4c::backend::prepare::PreparedMemoryAccess* find_prepared_symbol_memory_access(
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t inst_index);
+
 std::string render_prepared_stack_memory_operand(std::size_t byte_offset,
                                                  std::string_view size_name);
 
 std::string render_prepared_stack_address_expr(std::size_t byte_offset);
+
+std::optional<std::string> render_prepared_frame_slot_memory_operand_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedAddress& address,
+    std::string_view size_name);
+
+std::optional<std::string> render_prepared_symbol_memory_operand_if_supported(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
+    const c4c::backend::prepare::PreparedAddress& address,
+    std::string_view size_name,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name);
+
+std::optional<PreparedScalarMemoryAccessRender>
+render_prepared_compatible_scalar_memory_operand_for_inst_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t inst_index,
+    c4c::backend::bir::TypeKind type,
+    const std::function<std::string(std::string_view)>* render_asm_symbol_name);
 
 std::optional<std::string> render_prepared_local_slot_memory_operand_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
