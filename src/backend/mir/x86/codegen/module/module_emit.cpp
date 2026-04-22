@@ -801,6 +801,15 @@ struct ModuleFunctionDispatchAssemblySupport {
   const std::function<std::optional<std::string>(const c4c::backend::bir::Param&, std::size_t)>&
       minimal_param_register_at;
 
+  void validate_defined_function_contract(const c4c::backend::bir::Function& function) const {
+    if (function.is_declaration || function.blocks.empty()) {
+      constexpr std::string_view kMinimalReturnFunctionError =
+          "x86 backend emitter only supports a minimal i32 return function through the canonical prepared-module handoff";
+      multi_defined_support.throw_contract(kMinimalReturnFunctionError);
+      throw std::invalid_argument(std::string(kMinimalReturnFunctionError));
+    }
+  }
+
   template <typename RenderBody>
   [[nodiscard]] std::string render_with_dispatch_support(
       const c4c::backend::bir::Function& function,
@@ -808,6 +817,7 @@ struct ModuleFunctionDispatchAssemblySupport {
       std::unordered_set<std::string_view>* used_string_names,
       std::unordered_set<std::string_view>* used_same_module_global_names,
       RenderBody&& render_body) const {
+    validate_defined_function_contract(function);
     const auto prepared_queries = resolve_module_function_prepared_queries(module, function);
     const auto asm_prefix = minimal_function_asm_prefix(function);
     const auto return_register = function.return_type == c4c::backend::bir::TypeKind::Void
@@ -929,12 +939,6 @@ std::string emit_prepared_module_text(
           bool defer_module_data_emission,
           std::unordered_set<std::string_view>* used_string_names,
           std::unordered_set<std::string_view>* used_same_module_global_names) -> std::string {
-    if (function.is_declaration || function.blocks.empty()) {
-      constexpr std::string_view kMinimalReturnFunctionError =
-          "x86 backend emitter only supports a minimal i32 return function through the canonical prepared-module handoff";
-      multi_defined_support.throw_contract(kMinimalReturnFunctionError);
-      throw std::invalid_argument(std::string(kMinimalReturnFunctionError));
-    }
     return function_dispatch_assembly_support.render_with_dispatch_support(
         function, defer_module_data_emission, used_string_names, used_same_module_global_names,
         [&](const ModuleFunctionRenderSupport& function_render_support) -> std::string {
