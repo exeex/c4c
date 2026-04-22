@@ -32,6 +32,39 @@ std::optional<std::string> choose_prepared_float_load_scratch_register_if_suppor
 
 }  // namespace
 
+std::optional<std::string> render_prepared_i32_memory_operand_for_inst_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label_id,
+    std::size_t inst_index,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  if (function_addressing == nullptr || block_label_id == c4c::kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+  const auto* prepared_access =
+      c4c::backend::prepare::find_prepared_memory_access(
+          *function_addressing, block_label_id, inst_index);
+  if (prepared_access == nullptr ||
+      prepared_access->address.base_kind !=
+          c4c::backend::prepare::PreparedAddressBaseKind::FrameSlot ||
+      !prepared_access->address.frame_slot_id.has_value()) {
+    return std::nullopt;
+  }
+  const auto frame_slot_it =
+      local_layout.frame_slot_offsets.find(*prepared_access->address.frame_slot_id);
+  if (frame_slot_it == local_layout.frame_slot_offsets.end()) {
+    return std::nullopt;
+  }
+  const auto signed_byte_offset =
+      static_cast<std::int64_t>(frame_slot_it->second) + prepared_access->address.byte_offset;
+  if (signed_byte_offset < 0) {
+    return std::nullopt;
+  }
+  return render_prepared_stack_memory_operand(
+      static_cast<std::size_t>(signed_byte_offset), "DWORD");
+}
+
 std::string render_prepared_stack_memory_operand(std::size_t byte_offset,
                                                  std::string_view size_name) {
   if (byte_offset == 0) {
@@ -261,13 +294,13 @@ std::optional<PreparedNamedI32Source> select_prepared_named_i32_block_source_if_
     const PreparedModuleLocalSlotLayout* local_layout,
     const c4c::backend::bir::Block* block,
     std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label_id,
     std::string_view value_name,
     const std::optional<std::string_view>& current_i32_name,
     const std::optional<std::string_view>& previous_i32_name,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    const std::function<std::optional<std::string>(std::size_t)>&
-        render_i32_memory_operand_for_inst) {
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
   if (current_i32_name.has_value() && value_name == *current_i32_name) {
     return PreparedNamedI32Source{
         .register_name = std::string("eax"),
@@ -285,7 +318,13 @@ std::optional<PreparedNamedI32Source> select_prepared_named_i32_block_source_if_
             load->result.kind == c4c::backend::bir::Value::Kind::Named &&
             load->result.type == c4c::backend::bir::TypeKind::I32 &&
             load->result.name == value_name) {
-          const auto memory_operand = render_i32_memory_operand_for_inst(prior_index - 1);
+          const auto memory_operand = render_prepared_i32_memory_operand_for_inst_if_supported(
+              *local_layout,
+              function_addressing,
+              block_label_id,
+              prior_index - 1,
+              prepared_names,
+              function_locations);
           if (memory_operand.has_value()) {
             return PreparedNamedI32Source{
                 .register_name = std::nullopt,
@@ -334,6 +373,43 @@ std::optional<PreparedNamedI32Source> select_prepared_named_i32_block_source_if_
       value_name, std::nullopt, std::nullopt, prepared_names, function_locations);
 }
 
+std::optional<PreparedNamedI32Source> select_prepared_i32_block_source_if_supported(
+    const c4c::backend::bir::Value& value,
+    const PreparedModuleLocalSlotLayout* local_layout,
+    const c4c::backend::bir::Block* block,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label_id,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::optional<std::string_view>& previous_i32_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  if (value.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    return PreparedNamedI32Source{
+        .register_name = std::nullopt,
+        .stack_operand = std::nullopt,
+        .immediate_i32 = static_cast<std::int32_t>(value.immediate),
+    };
+  }
+  if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  return select_prepared_named_i32_block_source_if_supported(
+      local_layout,
+      block,
+      instruction_index,
+      function_addressing,
+      block_label_id,
+      value.name,
+      current_i32_name,
+      previous_i32_name,
+      prepared_names,
+      function_locations);
+}
+
 std::optional<std::string> render_prepared_i32_operand_from_source_if_supported(
     const PreparedNamedI32Source& source) {
   if (source.immediate_i32.has_value()) {
@@ -353,6 +429,34 @@ std::optional<std::string> render_prepared_named_i32_operand_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
   const auto source = select_prepared_named_i32_source_if_supported(
       value_name, current_i32_name, previous_i32_name, prepared_names, function_locations);
+  if (!source.has_value()) {
+    return std::nullopt;
+  }
+  return render_prepared_i32_operand_from_source_if_supported(*source);
+}
+
+std::optional<std::string> render_prepared_named_i32_block_operand_if_supported(
+    const PreparedModuleLocalSlotLayout* local_layout,
+    const c4c::backend::bir::Block* block,
+    std::size_t instruction_index,
+    std::string_view value_name,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label_id,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::optional<std::string_view>& previous_i32_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  const auto source = select_prepared_named_i32_block_source_if_supported(
+      local_layout,
+      block,
+      instruction_index,
+      function_addressing,
+      block_label_id,
+      value_name,
+      current_i32_name,
+      previous_i32_name,
+      prepared_names,
+      function_locations);
   if (!source.has_value()) {
     return std::nullopt;
   }

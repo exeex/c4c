@@ -2,8 +2,6 @@
 
 #include "../x86_codegen.hpp"
 
-#include <functional>
-
 namespace c4c::backend::x86 {
 
 struct PreparedNamedI32Source {
@@ -81,13 +79,37 @@ std::optional<PreparedNamedI32Source> select_prepared_named_i32_block_source_if_
     const PreparedModuleLocalSlotLayout* local_layout,
     const c4c::backend::bir::Block* block,
     std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label_id,
     std::string_view value_name,
     const std::optional<std::string_view>& current_i32_name,
     const std::optional<std::string_view>& previous_i32_name,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    const std::function<std::optional<std::string>(std::size_t)>&
-        render_i32_memory_operand_for_inst);
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
+
+std::optional<PreparedNamedI32Source> select_prepared_i32_block_source_if_supported(
+    const c4c::backend::bir::Value& value,
+    const PreparedModuleLocalSlotLayout* local_layout,
+    const c4c::backend::bir::Block* block,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label_id,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::optional<std::string_view>& previous_i32_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
+
+std::optional<std::string> render_prepared_named_i32_block_operand_if_supported(
+    const PreparedModuleLocalSlotLayout* local_layout,
+    const c4c::backend::bir::Block* block,
+    std::size_t instruction_index,
+    std::string_view value_name,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label_id,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::optional<std::string_view>& previous_i32_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
 
 std::optional<std::string> render_prepared_named_i32_operand_if_supported(
     std::string_view value_name,

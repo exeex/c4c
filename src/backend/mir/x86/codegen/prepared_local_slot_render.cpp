@@ -1451,47 +1451,6 @@ const char* prepared_i32_setcc_opcode_if_supported(c4c::backend::bir::BinaryOpco
   }
 }
 
-std::optional<PreparedNamedI32Source> select_prepared_named_i32_block_source_if_supported(
-    const PreparedModuleLocalSlotLayout* local_layout,
-    const c4c::backend::bir::Block* block,
-    std::size_t instruction_index,
-    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
-    c4c::BlockLabelId block_label_id,
-    std::string_view value_name,
-    const std::optional<std::string_view>& current_i32_name,
-    const std::optional<std::string_view>& previous_i32_name,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
-  return c4c::backend::x86::select_prepared_named_i32_block_source_if_supported(
-      local_layout,
-      block,
-      instruction_index,
-      value_name,
-      current_i32_name,
-      previous_i32_name,
-      prepared_names,
-      function_locations,
-      [&](std::size_t prior_index) -> std::optional<std::string> {
-        if (local_layout == nullptr) {
-          return std::nullopt;
-        }
-        const auto memory = render_prepared_scalar_memory_operand_for_inst_if_supported(
-            *local_layout,
-            prepared_names,
-            function_locations,
-            function_addressing,
-            block_label_id,
-            prior_index,
-            c4c::backend::bir::TypeKind::I32,
-            nullptr,
-            std::nullopt);
-        if (!memory.has_value() || !memory->setup_asm.empty()) {
-          return std::nullopt;
-        }
-        return memory->memory_operand;
-      });
-}
-
 std::optional<std::string> render_prepared_named_i32_operand_if_supported(
     std::string_view value_name,
     const std::optional<std::string_view>& current_i32_name,
@@ -2020,27 +1979,14 @@ std::optional<std::string> render_prepared_i32_binary_inst_if_supported(
 
   const auto select_i32_source =
       [&](const c4c::backend::bir::Value& value) -> std::optional<PreparedNamedI32Source> {
-        if (value.type != c4c::backend::bir::TypeKind::I32) {
-          return std::nullopt;
-        }
-        if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
-          return PreparedNamedI32Source{
-              .register_name = std::nullopt,
-              .stack_operand = std::nullopt,
-              .immediate_i32 = static_cast<std::int32_t>(value.immediate),
-          };
-        }
-        if (value.kind != c4c::backend::bir::Value::Kind::Named) {
-          return std::nullopt;
-        }
         if (block != nullptr) {
-          return select_prepared_named_i32_block_source_if_supported(
+          return select_prepared_i32_block_source_if_supported(
+              value,
               local_layout,
               block,
               instruction_index,
               function_addressing,
               block_label_id,
-              value.name,
               *current_i32_name,
               *previous_i32_name,
               prepared_names,
@@ -2786,27 +2732,14 @@ std::optional<std::string> render_prepared_select_inst_if_supported(
   }
   const auto select_i32_source =
       [&](const c4c::backend::bir::Value& value) -> std::optional<PreparedNamedI32Source> {
-        if (value.type != c4c::backend::bir::TypeKind::I32) {
-          return std::nullopt;
-        }
-        if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
-          return PreparedNamedI32Source{
-              .register_name = std::nullopt,
-              .stack_operand = std::nullopt,
-              .immediate_i32 = static_cast<std::int32_t>(value.immediate),
-          };
-        }
-        if (value.kind != c4c::backend::bir::Value::Kind::Named) {
-          return std::nullopt;
-        }
         if (block_context.block != nullptr) {
-          return select_prepared_named_i32_block_source_if_supported(
+          return select_prepared_i32_block_source_if_supported(
+              value,
               block_context.local_layout,
               block_context.block,
               inst_index,
               block_context.function_context->function_addressing,
               block_context.block_label_id,
-              value.name,
               *current_i32_name,
               *previous_i32_name,
               prepared_names,
@@ -3635,21 +3568,17 @@ std::optional<std::string> render_prepared_scalar_store_inst_if_supported(
   auto resolve_previous_i32_operand =
       [&](std::string_view value_name) -> std::optional<std::string> {
     if (block != nullptr) {
-      const auto source = select_prepared_named_i32_block_source_if_supported(
+      return render_prepared_named_i32_block_operand_if_supported(
           &layout,
           block,
           inst_index,
+          value_name,
           function_addressing,
           block_label_id,
-          value_name,
           *current_i32_name,
           *previous_i32_name,
           prepared_names,
           function_locations);
-      if (!source.has_value()) {
-        return std::nullopt;
-      }
-      return render_prepared_i32_operand_from_source_if_supported(*source);
     }
     return render_prepared_named_i32_operand_if_supported(
         value_name,

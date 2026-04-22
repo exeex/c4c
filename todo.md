@@ -5,32 +5,34 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 2.1.3
 Current Step Title: Move Prepared-Home Selection And Memory Render Helpers Behind Lowering Owners
-Plan Review Counter: 4 / 6
+Plan Review Counter: 5 / 6
 # Current Packet
 
 ## Just Finished
 
-Continued step 2.1.3 by moving the next prepared-home `I32` operand adapter
-behind lowering owners: `memory_lowering.*` now owns
-`render_prepared_named_i32_operand_if_supported(...)`, and
-`prepared_local_slot_render.cpp` keeps only the prepared-side forwarding
-overload instead of translating lowering-owned `PreparedNamedI32Source`
-state into operand strings inline.
+Continued step 2.1.3 by moving the remaining block-aware prepared-side `I32`
+operand-selection/render forwarding seams behind lowering owners:
+`memory_lowering.*` now owns the block-aware named/value source selectors and
+named operand renderer for prepared `I32` inputs, and
+`prepared_local_slot_render.cpp` no longer builds local adapter lambdas around
+those touched block-aware selection/render paths.
 
 ## Suggested Next
 
-Continue step 2.1.3 by tightening the remaining prepared-side `I32`
-forwarding seams, starting with the block-aware operand-selection call sites
-that still build local adapter lambdas around
-`select_prepared_named_i32_block_source_if_supported(...)` and
-`render_prepared_i32_operand_from_source_if_supported(...)` inside
-`prepared_local_slot_render.cpp`.
+Continue step 2.1.3 by migrating the remaining prepared-side `I32` helpers
+that still duplicate small home-sync or register-move decisions around
+lowering-owned `PreparedNamedI32Source` flows, without widening into frame
+lowering or entry-surface rewiring.
 
 ## Watchouts
 
 - Keep the prepared-side overload wrapper thin: it should only bridge
   authoritative per-instruction memory rendering into lowering and reject any
   path that still needs setup asm.
+- The new block-aware lowering helper only forwards direct frame-slot `DWORD`
+  memory operands; if a future packet needs pointer-setup or symbol-backed
+  `I32` operand materialization, handle that as a separate ownership move
+  instead of silently broadening this seam.
 - `render_prepared_named_stack_memory_operand_if_supported(...)` is a frame/home
   stack fallback helper only; do not widen it into symbol memory, ABI policy,
   or prepared entry-surface rewiring.
