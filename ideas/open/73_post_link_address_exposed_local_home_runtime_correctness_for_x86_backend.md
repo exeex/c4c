@@ -1,0 +1,77 @@
+# Post-Link Address-Exposed Local-Home Runtime Correctness For X86 Backend
+
+Status: Open
+Created: 2026-04-22
+Last-Updated: 2026-04-22
+Parent Idea: [72_post_link_aggregate_call_runtime_correctness_for_x86_backend.md](/workspaces/c4c/ideas/closed/72_post_link_aggregate_call_runtime_correctness_for_x86_backend.md)
+
+## Intent
+
+Repair the next post-link x86 backend runtime leaf revealed by `00204.c`: the
+program now advances past the aggregate-call handoff, but the first bad fact is
+inside same-module helper `myprintf`, where an address-exposed local with a
+permanent home slot is stored and later referenced through disagreeing stack
+homes.
+
+## Owned Failure Family
+
+This idea owns x86 backend failures where:
+
+- the prepared-module route already matches
+- final assembly is already valid and the program links
+- earlier post-link aggregate-call/runtime handoff seams already cleared
+- the next blocker is runtime correctness for address-exposed locals that
+  require authoritative permanent home slots in emitted same-module helpers,
+  such as by-reference helper calls observing a different stack home than the
+  live local value
+
+## Current Known Failed Cases It Owns
+
+- `c_testsuite_x86_backend_src_00204_c`
+
+## Latest Durable Note
+
+As of 2026-04-22, fresh focused proof
+
+`ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$'`
+
+still shows `backend_x86_handoff_boundary` passing while `00204.c` fails at
+runtime with `Segmentation fault`. The first bad stop is now `match()` called
+from `myprintf`: `%rsi` carries a valid pattern pointer, but the caller-supplied
+`*s` is already corrupt, with `match` faulting at `movsbl (%rax), %eax` after
+loading `%rax == 0x000000b000000030`. Generated `myprintf` asm stores the live
+format cursor with `mov QWORD PTR [rsp], rax` but still passes `&s` to
+`match(&s, ...)` as `lea rdi, [rsp + 80]`. Prepared metadata for `%lv.s` says
+`address_exposed=yes`, `requires_home_slot=yes`, and
+`permanent_home_slot=yes`, so durable ownership has graduated out of idea 72's
+aggregate-call family and into this narrower post-link runtime local-home leaf.
+
+## Scope Notes
+
+Expected repair themes include:
+
+- truthful runtime semantics for authoritative permanent-home selection and
+  refresh of address-exposed locals in emitted same-module helpers
+- correct agreement between the live local value location and the by-reference
+  address passed to helper calls such as `match(&s, ...)`
+- focused runtime proof that distinguishes local-home placement bugs from
+  earlier aggregate-call seams and later `va_start` / `va_list` traversal work
+
+## Boundaries
+
+This idea does not own:
+
+- aggregate-by-value argument or result handoff bugs already exhausted under
+  idea 72
+- pre-codegen prepared local-slot handoff rejection; that remains in idea 68
+- generic call/prologue ownership unless fresh proof moves the first bad fact
+  back into those shared paths
+- genuine post-link variadic traversal defects in `llvm.va_start`, `va_list`,
+  or later variadic walking; those return to idea 71
+
+## Completion Signal
+
+This idea is complete when the owned post-link address-exposed local-home
+runtime cases no longer crash at their current same-module helper home mismatch
+and instead either execute correctly or graduate into a later, better-fitting
+runtime leaf.

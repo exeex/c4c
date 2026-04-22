@@ -1,8 +1,10 @@
 # Post-Link Aggregate Call Runtime Correctness For X86 Backend
 
-Status: Open
+Status: Closed
 Created: 2026-04-22
 Last-Updated: 2026-04-22
+Closed: 2026-04-22
+Disposition: Completed by exhausting the owned aggregate-call runtime family and rehoming `00204.c` into a narrower downstream runtime leaf.
 Parent Idea: [71_post_link_variadic_runtime_correctness_for_x86_backend.md](/workspaces/c4c/ideas/open/71_post_link_variadic_runtime_correctness_for_x86_backend.md)
 
 ## Intent
@@ -69,3 +71,34 @@ This idea does not own:
 This idea is complete when the owned post-link aggregate-call runtime cases no
 longer crash at their current fixed-arity aggregate ABI seam and instead
 either execute correctly or graduate into a later, better-fitting runtime leaf.
+
+## Closure Note
+
+Closed on 2026-04-22 after the owned post-link aggregate-call runtime family
+was exhausted for the only confirmed case:
+
+- `c_testsuite_x86_backend_src_00204_c` no longer stops at the earlier
+  fixed-arity helper aggregate-call seam from `fa_s*` / aggregate-pack
+  transport
+- fresh proof and `gdb` now place the first bad fact in same-module helper
+  `myprintf`, where address-exposed local `%lv.s` requires a permanent home
+  slot but emitted asm stores the live cursor at `[rsp]` while `match(&s, ...)`
+  still passes `[rsp + 80]`
+- that mismatch is a narrower post-link runtime leaf for prepared
+  address-exposed local-home placement, not an idea-72 aggregate
+  argument/result handoff defect
+
+## Validation At Closure
+
+Close-time guard used the existing focused runtime scope:
+
+- `cmake --build --preset default`
+- `ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$' | tee test_after.log`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result:
+
+- guard passed for lifecycle-only closure with equal pass count allowed
+- before reported `1` passed / `1` failed / `2` total
+- after reported `1` passed / `1` failed / `2` total
+- no new failing tests were introduced on the matched scope
