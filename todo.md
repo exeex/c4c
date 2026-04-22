@@ -5,22 +5,33 @@ Source Idea Path: ideas/open/73_post_link_address_exposed_local_home_runtime_cor
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Confirm The Address-Exposed Local-Home Crash Surface
-Plan Review Counter: 0 / 4
+Plan Review Counter: 1 / 4
 # Current Packet
 
 ## Just Finished
 
-Lifecycle switch on 2026-04-22 closed idea 72 after `00204.c` advanced out of
-the aggregate-call runtime family. The active runbook is now idea 73, which
-owns the downstream `myprintf` address-exposed local-home mismatch where
-`%lv.s` is stored at `[rsp]` but `match(&s, ...)` still receives `[rsp + 80]`.
+Completed step `1` owner classification for idea 73. The authoritative
+permanent home for `myprintf` `%lv.s` is owned by prepared stack-layout object
+and slot assignment, not by aggregate-call transport: prepared dump evidence
+shows `object #1666 func=myprintf name=%lv.s ... address_exposed=yes
+requires_home_slot=yes permanent_home_slot=yes` and
+`slot #1637 object_id=1666 func=myprintf offset=0 ... fixed_location=yes`,
+while emitted asm still stores the live cursor with `mov QWORD PTR [rsp], rax`
+but passes `match(&s, ...)` as `lea rdi, [rsp + 80]`. The smallest shared
+idea-73 seam is the x86 authoritative named-stack-offset resolver:
+`find_prepared_authoritative_named_stack_offset_if_supported(...)` currently
+returns `local_layout.offsets[value_name]` before consulting fixed prepared
+frame-slot/home-slot identity, and the same-module helper-call path
+`append_prepared_named_ptr_argument_move_into_register_if_supported(...)`
+consumes that stale offset for by-reference pointer arguments like `%lv.s`.
 
 ## Suggested Next
 
-Execute step `1` of `plan.md`: confirm the exact semantic owner of `%lv.s`'s
-permanent home slot in emitted `myprintf`, then narrow the first repair packet
-to the shared local-home placement/refresh seam that makes `match(&s, ...)`
-observe the same address as the live cursor store.
+Execute the first repair packet for idea-73 step `2`: change the shared
+authoritative named-stack-offset resolution path so address-exposed permanent
+home locals prefer prepared frame-slot/home-slot identity before transient
+`local_layout.offsets`, then recheck that `myprintf` passes `&s` from the same
+authoritative home as the live `%lv.s` store.
 
 ## Watchouts
 
@@ -32,17 +43,23 @@ observe the same address as the live cursor store.
   current emitted-home mismatch first regresses back into an x86 rejection.
 - Keep the fix at the shared local-home ownership layer; helper-name or
   testcase-name aliases for `myprintf`, `match`, or `00204.c` are route drift.
-- The current boundary evidence is specific: `mov QWORD PTR [rsp], rax` holds
-  the live `%lv.s` cursor while `match(&s, ...)` still receives
-  `lea rdi, [rsp + 80]`.
+- Preserve non-permanent and slice-based local-slot addressing. The narrowed
+  seam is specifically precedence between transient `local_layout.offsets` and
+  prepared fixed home-slot identity for address-exposed permanent homes.
+- The same resolver feeds multiple pointer-address render paths, so the repair
+  must avoid regressing ordinary stack-local pointer operands that legitimately
+  live in reorderable local slots.
 
 ## Proof
 
-No executor packet has run under idea 73 yet. Initial proof scope for step `1`:
+Step `1` proof run completed with the delegated scope:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$' | tee test_after.log`
-Supplement with the existing crash-surface evidence already recorded in the
-previous packet:
+Result:
+- `backend_x86_handoff_boundary`: passed
+- `c_testsuite_x86_backend_src_00204_c`: failed with `[RUNTIME_NONZERO]` and
+  `exit=Segmentation fault`
+- Proof log path: `test_after.log`
+Supplemental owner evidence used for classification:
 `./build/c4cll --dump-prepared-bir --target x86_64-unknown-linux-gnu tests/c/external/c-testsuite/src/00204.c > /tmp/00204.prepared_bir.txt`
-`gdb -batch -ex 'run' -ex 'bt' -ex 'frame 0' -ex 'x/24i $rip-24' -ex 'info reg rsp rbp rip rdi rsi rdx rcx r8 r9 r10 r11 rax al' --args build/c_testsuite_x86_backend/src/00204.c.bin`
 and inspect `build/c_testsuite_x86_backend/src/00204.c.s`.
