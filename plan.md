@@ -184,6 +184,83 @@ Completion check:
 - module support helpers live behind reviewed `module/` seams and compatibility
   wrappers remain thin while the backend still builds
 
+#### Step 1.4.1: Extract Bounded Same-Module Support Helpers Out Of Top-Level Module Emission
+
+Goal: move helper-prefix, bounded-helper activation, and same-module contract
+support out of top-level module emission flow and into a reviewed
+`module/`-owned helper cluster.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/module/module_emit.cpp`
+- bounded same-module helper support used by prepared multi-function emission
+
+Actions:
+
+- extract helper-prefix and bounded-helper support from
+  `emit_prepared_module_text(...)` into local `module/`-owned helpers
+- keep helper-set selection and contract-detail annotation routed through the
+  new helper cluster instead of top-level orchestration lambdas
+- preserve the compatibility wrapper surface without changing public entrypoint
+  ownership
+
+Completion check:
+
+- top-level module emission delegates bounded same-module support to a local
+  helper owner and the legacy wrapper remains compatibility-thin
+
+#### Step 1.4.2: Extract Function-Level Dispatch Context Assembly Behind Module Owners
+
+Goal: peel the next bounded support cluster out of
+`render_defined_function(...)` so function-local dispatch setup and prepared
+return/home-move scaffolding stop living inline in module orchestration.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/module/module_emit.cpp`
+- function-level module support helpers adjacent to reviewed `module/` seams
+
+Actions:
+
+- extract one coherent helper family from `render_defined_function(...)`,
+  starting with dispatch-context assembly or prepared return/home-move support
+- keep the extracted logic owned by `module/` helpers rather than re-expanding
+  legacy compatibility files
+- preserve existing lowering decisions while narrowing module-orchestration
+  bodies
+
+Completion check:
+
+- `render_defined_function(...)` delegates a concrete function-support cluster
+  to reviewed `module/`-owned helpers and still compiles through the current
+  route
+
+#### Step 1.4.3: Classify Remaining Module-Orchestration Support Between `module_emit` And `module_data_emit`
+
+Goal: make the remaining step-1 module support boundary explicit so module
+orchestration, data publication, and compatibility forwarding do not drift
+back together.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/module/module_emit.cpp`
+- `src/backend/mir/x86/codegen/module/module_data_emit.cpp`
+- remaining compatibility wrappers under `src/backend/mir/x86/codegen/`
+
+Actions:
+
+- move or classify any leftover module-local support helpers so data and symbol
+  publication stay behind `module_data_emit.*`
+- keep `module_emit.*` focused on whole-module orchestration and delegation
+- record any remaining compatibility wrappers explicitly instead of leaving
+  mixed ownership ambiguous
+
+Completion check:
+
+- module-support responsibilities are explicitly split between
+  `module_emit.*`, `module_data_emit.*`, and thin compatibility wrappers
+  without silent ownership overlap
+
 ### Step 1.5: Audit Transitional Forwarding And Buildability Across Shared Seams
 
 Goal: leave step 1 with explicit transitional forwarding and a buildable backend

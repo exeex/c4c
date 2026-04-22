@@ -3,14 +3,14 @@
 Status: Active
 Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implementation_for_phoenix_rebuild.md
 Source Plan Path: plan.md
-Current Step ID: 1.4
-Current Step Title: Materialize Module Support Seams While Preserving Compatibility Wrappers
-Plan Review Counter: 6 / 6
+Current Step ID: 1.4.2
+Current Step Title: Extract Function-Level Dispatch Context Assembly Behind Module Owners
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed plan step 1.4 by extracting the remaining multi-defined helper-prefix
+Completed plan step 1.4.1 by extracting the remaining multi-defined helper-prefix
 and contract-guard orchestration near the top of
 `src/backend/mir/x86/codegen/module/module_emit.cpp` into an anonymous-namespace
 `ModuleMultiDefinedSupport` helper, so `emit_prepared_module_text(...)` now
@@ -20,7 +20,7 @@ ownership or the legacy prepared-module compatibility entry behavior.
 
 ## Suggested Next
 
-Continue plan step 1.4 by extracting the next bounded module-local support
+Continue plan step 1.4.2 by extracting the next bounded module-local support
 cluster from `module_emit.cpp` inside `render_defined_function(...)`, likely
 around the prepared return/home-move helpers or dispatch-context assembly,
 while keeping the reviewed compatibility wrapper thin and avoiding any new
