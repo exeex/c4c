@@ -3,43 +3,40 @@
 Status: Active
 Source Idea Path: ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Refresh Idea-61 Ownership And Confirm The Next Prepared-Module Seam
+Current Step ID: 2.3
+Current Step Title: Prove Family Shrinkage And Record Rehoming
 Plan Review Counter: 0 / 4
 # Current Packet
 
 ## Just Finished
 
-Step `2.2` from the retired idea-68 runbook repaired the ownership boundary so
-`c_testsuite_x86_backend_src_00204_c` no longer stops in the authoritative
-prepared local-slot family. The delegated proof kept
+Step `2.2` from the idea-61 runbook refined the helper-active module boundary
+inside `src/backend/mir/x86/codegen/prepared_module_emit.cpp` so bounded
+same-module helper discovery no longer collapses the next owned seam back into
+the generic idea-61 prepared-module rejection. The fresh proof kept
 `backend_cli_trace_mir_00204_myprintf_rejection` green while full `00204.c`
-now fails only with the downstream idea-61 prepared-module restriction
-`x86 backend emitter only supports a single-function prepared module or one
-bounded multi-defined-function main-entry lane with same-module symbol calls
-and direct variadic runtime calls through the canonical prepared-module
-handoff`.
+advanced out of the generic idea-61 module restriction and now fails with
+`x86 backend emitter requires the authoritative prepared local-slot
+instruction handoff through the canonical prepared-module handoff`.
 
 ## Suggested Next
 
-Work Step `1` of the new idea-61 runbook: confirm the exact prepared-module
-seam now blocking `00204.c`, starting with the bounded multi-defined-function
-main-entry lane, same-module symbol-call classification, and direct variadic
-runtime-call contract in `src/backend/mir/x86/codegen/prepared_module_emit.cpp`.
-Keep the proof on
-`backend_cli_trace_mir_00204_myprintf_rejection|c_testsuite_x86_backend_src_00204_c`
-until the next owned seam is explicit.
+Route lifecycle review instead of another idea-61 code packet. `00204.c` no
+longer belongs to the generic prepared-module restriction owned by idea 61, so
+the next action should switch execution back to the leaf that owns the
+authoritative prepared local-slot handoff family.
 
 ## Watchouts
 
-- Do not reopen idea 68 unless the top-level `00204.c` failure regresses back
-  to the authoritative prepared local-slot family.
 - Treat the focused `myprintf` rejection as a guardrail; do not accept a
   bounded entry-lane repair that breaks that route or bypasses authoritative
   prepared call ownership.
 - Reject `main + helper` or named-call special casing that only admits one
   topology without improving generic prepared-module traversal or call-bundle
   consumption.
+- The new top-level failure is the authoritative prepared local-slot family,
+  so any follow-on work should reopen the matching lifecycle leaf instead of
+  extending idea-61 module-shape handling.
 
 ## Proof
 
@@ -49,8 +46,8 @@ Latest delegated proof run:
 Observed state for lifecycle routing:
 `backend_cli_trace_mir_00204_myprintf_rejection` passed, and
 `c_testsuite_x86_backend_src_00204_c` failed only with
-`x86 backend emitter only supports a single-function prepared module or one
-bounded multi-defined-function main-entry lane with same-module symbol calls
-and direct variadic runtime calls through the canonical prepared-module
-handoff`.
+`x86 backend emitter requires the authoritative prepared local-slot
+instruction handoff through the canonical prepared-module handoff`.
+That proves the helper-active module gate no longer masks the downstream
+family and that `00204.c` should route out of idea 61.
 Proof log path: `test_after.log`.

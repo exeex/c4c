@@ -336,29 +336,20 @@ std::string emit_prepared_module(
         "x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls through the canonical prepared-module handoff");
   };
   const auto multi_defined_dispatch = [&]() {
-    try {
-      return c4c::backend::x86::build_prepared_module_multi_defined_dispatch_state(
-          module, defined_functions, entry_function_ptr, prepared_arch,
-          render_trivial_defined_function_if_supported, minimal_function_return_register,
-          minimal_function_asm_prefix, find_same_module_global,
-          same_module_global_supports_scalar_load, minimal_param_register_at,
-          [&](std::string_view symbol_name) {
-            const std::string prefixed_name = "@" + std::string(symbol_name);
-            return render_private_data_label(prefixed_name);
-          },
-          [&](std::string_view symbol_name) { return find_string_constant(symbol_name) != nullptr; },
-          [&](std::string_view symbol_name) { return find_same_module_global(symbol_name) != nullptr; },
-          [&](std::string_view symbol_name) { return render_asm_symbol_name(symbol_name); },
-          [&](std::string_view symbol_name) { return find_string_constant(symbol_name); },
-          emit_string_constant_data, emit_same_module_global_data);
-    } catch (const std::invalid_argument& error) {
-      if (defined_functions.size() > 1 &&
-          std::string_view(error.what()).find("authoritative prepared local-slot ") !=
-              std::string_view::npos) {
-        throw_multi_defined_contract();
-      }
-      throw;
-    }
+    return c4c::backend::x86::build_prepared_module_multi_defined_dispatch_state(
+        module, defined_functions, entry_function_ptr, prepared_arch,
+        render_trivial_defined_function_if_supported, minimal_function_return_register,
+        minimal_function_asm_prefix, find_same_module_global,
+        same_module_global_supports_scalar_load, minimal_param_register_at,
+        [&](std::string_view symbol_name) {
+          const std::string prefixed_name = "@" + std::string(symbol_name);
+          return render_private_data_label(prefixed_name);
+        },
+        [&](std::string_view symbol_name) { return find_string_constant(symbol_name) != nullptr; },
+        [&](std::string_view symbol_name) { return find_same_module_global(symbol_name) != nullptr; },
+        [&](std::string_view symbol_name) { return render_asm_symbol_name(symbol_name); },
+        [&](std::string_view symbol_name) { return find_string_constant(symbol_name); },
+        emit_string_constant_data, emit_same_module_global_data);
   }();
   const auto& bounded_same_module_helper_names = multi_defined_dispatch.helper_names;
   const auto& bounded_same_module_helper_global_names =
@@ -369,8 +360,12 @@ std::string emit_prepared_module(
     }
     return asm_text;
   };
-  const auto throw_multi_defined_contract_if_active = [&]() -> void {
+  const auto throw_multi_defined_contract_if_active =
+      [&](std::optional<std::string_view> detailed_error = std::nullopt) -> void {
     if (defined_functions.size() > 1 && multi_defined_dispatch.has_bounded_same_module_helpers) {
+      if (detailed_error.has_value()) {
+        throw std::invalid_argument(std::string(*detailed_error));
+      }
       throw_multi_defined_contract();
     }
   };
@@ -391,9 +386,10 @@ std::string emit_prepared_module(
           std::unordered_set<std::string_view>* used_string_names,
           std::unordered_set<std::string_view>* used_same_module_global_names) -> std::string {
     if (function.is_declaration || function.blocks.empty()) {
-      throw_multi_defined_contract_if_active();
-      throw std::invalid_argument(
-          "x86 backend emitter only supports a minimal i32 return function through the canonical prepared-module handoff");
+      constexpr std::string_view kMinimalReturnFunctionError =
+          "x86 backend emitter only supports a minimal i32 return function through the canonical prepared-module handoff";
+      throw_multi_defined_contract_if_active(kMinimalReturnFunctionError);
+      throw std::invalid_argument(std::string(kMinimalReturnFunctionError));
     }
 
     const c4c::FunctionNameId function_name_id =
@@ -891,19 +887,20 @@ std::string emit_prepared_module(
           function.blocks.size() > 1 && !function_control_flow->branch_conditions.empty() &&
           !function_control_flow->join_transfers.empty()) {
         if (function.params.size() > 1) {
-          throw_multi_defined_contract_if_active();
+          throw_multi_defined_contract_if_active(kScalarPreparedControlFlowShapeError);
           throw std::invalid_argument(std::string(kScalarPreparedControlFlowShapeError));
         }
       }
-      throw_multi_defined_contract_if_active();
+      throw_multi_defined_contract_if_active(kScalarPreparedControlFlowShapeError);
       throw std::invalid_argument(std::string(kScalarPreparedControlFlowShapeError));
     }
 
     const auto& returned = *entry.terminator.value;
     if (returned.type != c4c::backend::bir::TypeKind::I32) {
-      throw_multi_defined_contract_if_active();
-      throw std::invalid_argument(
-          "x86 backend emitter only supports i32 return values through the canonical prepared-module handoff");
+      constexpr std::string_view kI32ReturnValueError =
+          "x86 backend emitter only supports i32 return values through the canonical prepared-module handoff";
+      throw_multi_defined_contract_if_active(kI32ReturnValueError);
+      throw std::invalid_argument(std::string(kI32ReturnValueError));
     }
     if (const auto rendered_scalar_move_bundle_return =
             render_minimal_scalar_move_bundle_return_if_supported();
@@ -917,9 +914,10 @@ std::string emit_prepared_module(
       return *rendered_single_block_return;
     }
 
-    throw_multi_defined_contract_if_active();
-    throw std::invalid_argument(
-        "x86 backend emitter only supports direct immediate i32 returns, constant-evaluable straight-line no-parameter i32 return expressions, direct single-parameter i32 passthrough returns, single-parameter i32 add-immediate/sub-immediate/mul-immediate/and-immediate/or-immediate/xor-immediate/shl-immediate/lshr-immediate/ashr-immediate returns, a bounded equality-against-immediate guard family with immediate return leaves, or one bounded compare-against-zero branch family through the canonical prepared-module handoff");
+    constexpr std::string_view kDirectI32ReturnShapeError =
+        "x86 backend emitter only supports direct immediate i32 returns, constant-evaluable straight-line no-parameter i32 return expressions, direct single-parameter i32 passthrough returns, single-parameter i32 add-immediate/sub-immediate/mul-immediate/and-immediate/or-immediate/xor-immediate/shl-immediate/lshr-immediate/ashr-immediate returns, a bounded equality-against-immediate guard family with immediate return leaves, or one bounded compare-against-zero branch family through the canonical prepared-module handoff";
+    throw_multi_defined_contract_if_active(kDirectI32ReturnShapeError);
+    throw std::invalid_argument(std::string(kDirectI32ReturnShapeError));
   };
 
   if (defined_functions.size() > 1) {
