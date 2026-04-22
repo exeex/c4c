@@ -97,32 +97,89 @@ Completion check:
 - the next executor packet is narrowed to one idea-72-owned runtime seam with
   named proof targets and a clear boundary against ideas 70 and 71
 
-## Step 2.1: Repair The Selected Aggregate-Call Runtime Seam
+## Step 2.1: Repair The Helper Pointer-Home Runtime Seam
 
-Goal: implement the smallest durable repair that advances the owned case past
-the current aggregate-call runtime crash.
+Goal: restore the aggregate/helper pointer-home facts needed for the first
+post-link helper copy or aggregate-return handoff to execute correctly.
 
 Primary targets:
 
-- x86 aggregate-call, helper-forwarding, or runtime-lowering surfaces that own
-  the selected seam
-- shared call/runtime helpers only if the current layer lacks a generic needed
-  fact
+- the bounded same-module helper renderer and prepared local-slot surfaces
+  that own `%ret.sret` and other pointer-param homes
+- fixed-arity helper forwarding paths such as `fa_s*` / `fr_s*` only at the
+  layer that materializes their incoming ABI homes
 
 Actions:
 
-- repair the selected runtime seam at the layer that owns the missing meaning
-- prefer canonical aggregate-call ABI and helper semantics over testcase-
-  specific branches
-- confirm the targeted case advances beyond the current segfault, even if it
-  then reveals a later runtime-only blocker
+- materialize pointer-kind stack-slot homes from the incoming ABI register
+  where the prepared helper layer owns that fact
+- include `%ret.sret` in the same pointer-home refresh path instead of
+  treating it as a special excluded case
+- prove the owned case advances beyond the bogus helper destination-pointer
+  dereference without reopening earlier link-closure seams
 
 Completion check:
 
-- the targeted owned case no longer fails at the selected idea-72 crash seam
-  and instead executes further or graduates into a later runtime leaf
+- the targeted owned case no longer fails at the helper destination-pointer
+  or aggregate-return pointer-home seam and instead executes further
 
-## Step 2.2: Prove Runtime-Family Shrinkage And Record Rehoming
+## Step 2.2: Repair The Zero-Stack Call-Alignment Runtime Seam
+
+Goal: restore the outgoing-call stack-parity shim on the prepared same-module
+paths that become visible after the helper pointer-home seam is fixed.
+
+Primary targets:
+
+- the bounded same-module helper-call fast path
+- the general same-module defined-call prepared path
+- any direct-extern prepared zero-frame path only if the same parity rule is
+  already shared there
+
+Actions:
+
+- emit the required 8-byte outgoing-call pad around zero-stack calls when the
+  prepared frame parity requires it
+- keep the repair in the x86 prepared-call ownership layer instead of adding
+  testcase-shaped call-site exceptions
+- prove the owned case advances beyond the `ret()` / `printf` alignment crash
+  into either later execution or a narrower downstream runtime seam
+
+Completion check:
+
+- the targeted owned case no longer fails at the misaligned zero-stack call
+  seam and instead executes further into a later runtime-only blocker
+
+## Step 2.3: Classify And Repair The Newly Exposed Post-`ret()` Runtime Seam
+
+Goal: decide whether the current `stdarg()` crash is still owned by idea 72
+and, if so, repair the smallest remaining aggregate-call/runtime handoff seam.
+
+Primary targets:
+
+- the prepared variadic or aggregate-home tracking surfaces reached
+  immediately after `ret()` returns
+- the first invalid home/pointer/accounting load on the current `stdarg()`
+  crash path
+- idea-boundary evidence showing whether the seam remains aggregate-call
+  runtime ownership or has graduated into idea 71's genuine variadic traversal
+
+Actions:
+
+- inspect the live `stdarg()` crash path and identify the first bad home,
+  pointer, or accounting fact that feeds the invalid load
+- keep the packet in idea 72 only if the missing fact still belongs to
+  aggregate-call/runtime handoff semantics rather than later variadic
+  traversal semantics
+- repair that owned seam at its semantic owner, or explicitly route the case
+  onward if the first failing seam is now a genuine idea-71 variadic leaf
+
+Completion check:
+
+- the next accepted packet either advances `00204.c` beyond the current
+  `stdarg()` crash through an idea-72-owned repair or records an explicit
+  runtime rehoming boundary out of idea 72
+
+## Step 3: Prove Runtime-Family Shrinkage And Record Rehoming
 
 Goal: show the accepted slice shrinks the real idea-72 family and preserves
 explicit routing for any graduated cases.
@@ -142,9 +199,9 @@ Completion check:
 - accepted slices show real shrinkage of the idea-72 runtime family and keep
   downstream routing explicit
 
-## Step 3: Continue The Loop Until Idea 72 Is Exhausted
+## Step 4: Continue The Loop Until Idea 72 Is Exhausted
 
-Goal: repeat the Step 1 -> 2.2 loop until the remaining failures no longer
+Goal: repeat the Step 1 -> 3 loop until the remaining failures no longer
 belong to this post-link aggregate-call runtime-correctness family.
 
 Actions:

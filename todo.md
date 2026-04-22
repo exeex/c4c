@@ -3,14 +3,14 @@
 Status: Active
 Source Idea Path: ideas/open/72_post_link_aggregate_call_runtime_correctness_for_x86_backend.md
 Source Plan Path: plan.md
-Current Step ID: 2.1
-Current Step Title: Repair The Selected Aggregate-Call Runtime Seam
-Plan Review Counter: 4 / 4
+Current Step ID: 2.3
+Current Step Title: Classify And Repair The Newly Exposed Post-`ret()` Runtime Seam
+Plan Review Counter: 0 / 4
 # Current Packet
 
 ## Just Finished
 
-Plan step `2.1` repaired the next aggregate-call runtime handoff after the
+Plan step `2.2` repaired the next aggregate-call runtime handoff after the
 `fr_s1` destination-pointer fix: bounded same-module x86 prepared calls now
 apply the missing 8-byte outgoing stack-alignment pad on both the general
 same-module defined-call lane and the helper-call fast path, so zero-stack
@@ -22,11 +22,11 @@ inside `stdarg()`.
 
 ## Suggested Next
 
-Take the next packet on the advanced post-`ret()` crash surface: inspect the
-`stdarg()` runtime path, especially the prepared variadic aggregate/home loads
-around the faulting `mov (%r10), %eax` fed from `[rsp + 0x2978]`, and repair
-the remaining x86-64 variadic-runtime pointer/accounting seam now exposed
-after the call-alignment handoff was corrected.
+Take the next packet on plan step `2.3`: inspect the advanced post-`ret()`
+`stdarg()` crash surface, classify whether the first bad load still belongs to
+aggregate-call/runtime handoff ownership, and then either repair that
+prepared variadic aggregate/home seam or explicitly route the case onward if
+the crash has graduated into idea 71's genuine variadic traversal.
 
 ## Watchouts
 
@@ -65,7 +65,7 @@ after the call-alignment handoff was corrected.
 
 ## Proof
 
-Focused runtime probe for step-2.1 aggregate/helper runtime repair:
+Focused runtime probe for step-2.2 aggregate/helper runtime repair:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$' | tee test_after.log`
 Result: `backend_x86_handoff_boundary` PASS; `c_testsuite_x86_backend_src_00204_c`
