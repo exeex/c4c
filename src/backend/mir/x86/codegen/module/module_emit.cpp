@@ -5,10 +5,15 @@
 #include <algorithm>
 #include <functional>
 #include <stdexcept>
+#include <utility>
 
 namespace c4c::backend::x86::module {
 
 namespace {
+
+using ResolvedTargetProfile = decltype(
+    c4c::backend::x86::abi::resolve_target_profile(
+        std::declval<const c4c::backend::prepare::PreparedBirModule&>()));
 
 constexpr std::string_view kScalarPreparedControlFlowShapeError =
     "x86 backend emitter only supports a minimal single-block i32 return terminator, a bounded equality-against-immediate guard family with immediate return leaves including fixed-offset same-module global i32 loads and pointer-backed same-module global roots, or one bounded compare-against-zero branch family through the canonical prepared-module handoff";
@@ -925,6 +930,60 @@ struct ModuleRenderSupport {
   }
 };
 
+struct ModuleAssemblySupport {
+  const c4c::backend::prepare::PreparedBirModule& module;
+  ResolvedTargetProfile resolved_target_profile;
+  c4c::TargetArch prepared_arch;
+  DefinedFunctionInventory defined_function_inventory;
+  c4c::backend::x86::module::ModuleDataSupport module_data_support;
+
+  [[nodiscard]] std::string render_module_text() const {
+    const auto& defined_functions = defined_function_inventory.defined_functions;
+    const auto& entry_function = *defined_function_inventory.entry_function;
+    const auto minimal_param_register_at =
+        [&](const c4c::backend::bir::Param& param,
+            std::size_t arg_index) -> std::optional<std::string> {
+      return resolve_minimal_param_register_at(resolved_target_profile, param, arg_index);
+    };
+    const auto minimal_function_return_register =
+        [&](const c4c::backend::bir::Function& candidate) -> std::optional<std::string> {
+      return resolve_minimal_function_return_register(resolved_target_profile, candidate);
+    };
+    const auto minimal_function_asm_prefix =
+        [&](const c4c::backend::bir::Function& candidate) -> std::string {
+      return render_minimal_function_asm_prefix(candidate);
+    };
+    const auto render_trivial_defined_function_if_supported =
+        [&](const c4c::backend::bir::Function& candidate) -> std::optional<std::string> {
+      return c4c::backend::x86::render_prepared_trivial_defined_function_if_supported(
+          candidate, prepared_arch, minimal_function_return_register, minimal_function_asm_prefix);
+    };
+    const auto multi_defined_dispatch = build_module_multi_defined_dispatch(
+        module, defined_function_inventory, prepared_arch, module_data_support,
+        render_trivial_defined_function_if_supported, minimal_function_return_register,
+        minimal_function_asm_prefix, minimal_param_register_at);
+    const ModuleMultiDefinedSupport multi_defined_support{defined_functions, multi_defined_dispatch};
+    const ModuleFunctionDispatchAssemblySupport function_dispatch_assembly_support{
+        .module = module,
+        .prepared_arch = prepared_arch,
+        .multi_defined_support = multi_defined_support,
+        .module_data_support = module_data_support,
+        .minimal_function_return_register = minimal_function_return_register,
+        .minimal_function_asm_prefix = minimal_function_asm_prefix,
+        .minimal_param_register_at = minimal_param_register_at,
+    };
+    const ModuleRenderSupport module_render_support{
+        .defined_functions = defined_functions,
+        .entry_function = entry_function,
+        .multi_defined_dispatch = multi_defined_dispatch,
+        .multi_defined_support = multi_defined_support,
+        .function_dispatch_assembly_support = function_dispatch_assembly_support,
+        .module_data_support = module_data_support,
+    };
+    return module_render_support.render_module_text();
+  }
+};
+
 }  // namespace
 
 std::string emit_prepared_module_text(
@@ -938,53 +997,16 @@ std::string emit_prepared_module_text(
         "x86 backend emitter requires an x86 target for the canonical prepared-module handoff");
   }
 
-  const auto defined_function_inventory = collect_defined_function_inventory(module);
-  const auto& defined_functions = defined_function_inventory.defined_functions;
-  const auto* entry_function_ptr = defined_function_inventory.entry_function;
-  const auto minimal_param_register_at =
-      [&](const c4c::backend::bir::Param& param,
-          std::size_t arg_index) -> std::optional<std::string> {
-    return resolve_minimal_param_register_at(resolved_target_profile, param, arg_index);
-  };
   const auto resolved_target_triple = c4c::backend::x86::abi::resolve_target_triple(module);
-  const auto module_data_support =
-      c4c::backend::x86::module::make_module_data_support(module, resolved_target_triple);
-  const auto minimal_function_return_register =
-      [&](const c4c::backend::bir::Function& candidate) -> std::optional<std::string> {
-    return resolve_minimal_function_return_register(resolved_target_profile, candidate);
-  };
-  const auto minimal_function_asm_prefix =
-      [&](const c4c::backend::bir::Function& candidate) -> std::string {
-    return render_minimal_function_asm_prefix(candidate);
-  };
-  const auto render_trivial_defined_function_if_supported =
-      [&](const c4c::backend::bir::Function& candidate) -> std::optional<std::string> {
-    return c4c::backend::x86::render_prepared_trivial_defined_function_if_supported(
-        candidate, prepared_arch, minimal_function_return_register, minimal_function_asm_prefix);
-  };
-  const auto multi_defined_dispatch = build_module_multi_defined_dispatch(
-      module, defined_function_inventory, prepared_arch, module_data_support,
-      render_trivial_defined_function_if_supported, minimal_function_return_register,
-      minimal_function_asm_prefix, minimal_param_register_at);
-  const ModuleMultiDefinedSupport multi_defined_support{defined_functions, multi_defined_dispatch};
-  const ModuleFunctionDispatchAssemblySupport function_dispatch_assembly_support{
+  const ModuleAssemblySupport module_assembly_support{
       .module = module,
+      .resolved_target_profile = resolved_target_profile,
       .prepared_arch = prepared_arch,
-      .multi_defined_support = multi_defined_support,
-      .module_data_support = module_data_support,
-      .minimal_function_return_register = minimal_function_return_register,
-      .minimal_function_asm_prefix = minimal_function_asm_prefix,
-      .minimal_param_register_at = minimal_param_register_at,
+      .defined_function_inventory = collect_defined_function_inventory(module),
+      .module_data_support =
+          c4c::backend::x86::module::make_module_data_support(module, resolved_target_triple),
   };
-  const ModuleRenderSupport module_render_support{
-      .defined_functions = defined_functions,
-      .entry_function = *entry_function_ptr,
-      .multi_defined_dispatch = multi_defined_dispatch,
-      .multi_defined_support = multi_defined_support,
-      .function_dispatch_assembly_support = function_dispatch_assembly_support,
-      .module_data_support = module_data_support,
-  };
-  return module_render_support.render_module_text();
+  return module_assembly_support.render_module_text();
 }
 
 
