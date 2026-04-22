@@ -1303,83 +1303,6 @@ std::optional<std::string> render_prepared_i32_operand_from_source_if_supported(
   return source.stack_operand;
 }
 
-std::optional<std::string> render_prepared_named_i32_home_sync_if_supported(
-    std::string_view value_name,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
-  if (prepared_names == nullptr || function_locations == nullptr) {
-    return std::string{};
-  }
-  const auto* home =
-      c4c::backend::prepare::find_prepared_value_home(
-          *prepared_names, *function_locations, value_name);
-  if (home == nullptr) {
-    return std::string{};
-  }
-  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
-      home->register_name.has_value()) {
-    const auto narrowed_register = narrow_i32_register(*home->register_name);
-    if (!narrowed_register.has_value()) {
-      return std::nullopt;
-    }
-    if (*narrowed_register == "eax") {
-      return std::string{};
-    }
-    return "    mov " + *narrowed_register + ", eax\n";
-  }
-  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-      home->offset_bytes.has_value()) {
-    return "    mov " + render_prepared_stack_memory_operand(*home->offset_bytes, "DWORD") +
-           ", eax\n";
-  }
-  return std::string{};
-}
-
-std::optional<std::string> render_prepared_named_i32_stack_home_sync_if_supported(
-    std::string_view value_name,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
-  if (prepared_names == nullptr || function_locations == nullptr) {
-    return std::string{};
-  }
-  const auto* home =
-      c4c::backend::prepare::find_prepared_value_home(
-          *prepared_names, *function_locations, value_name);
-  if (home == nullptr ||
-      home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
-      !home->offset_bytes.has_value()) {
-    return std::string{};
-  }
-  return "    mov " + render_prepared_stack_memory_operand(*home->offset_bytes, "DWORD") +
-         ", eax\n";
-}
-
-std::optional<std::string> render_prepared_named_ptr_home_sync_if_supported(
-    std::string_view value_name,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
-  if (prepared_names == nullptr || function_locations == nullptr) {
-    return std::string{};
-  }
-  const auto* home =
-      c4c::backend::prepare::find_prepared_value_home(
-          *prepared_names, *function_locations, value_name);
-  if (home == nullptr) {
-    return std::string{};
-  }
-  if (home->register_name.has_value()) {
-    if (*home->register_name == "rax") {
-      return std::string{};
-    }
-    return "    mov " + *home->register_name + ", rax\n";
-  }
-  if (home->offset_bytes.has_value()) {
-    return "    mov " + render_prepared_stack_memory_operand(*home->offset_bytes, "QWORD") +
-           ", rax\n";
-  }
-  return std::string{};
-}
-
 bool prepared_pointer_value_has_authoritative_memory_use(
     std::string_view value_name,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
@@ -2320,8 +2243,11 @@ std::optional<std::string> render_prepared_i32_binary_inst_if_supported(
       return std::nullopt;
     }
     if (binary.result.type == c4c::backend::bir::TypeKind::I32) {
+      if (local_layout == nullptr) {
+        return std::nullopt;
+      }
       const auto synced_home = render_prepared_named_i32_home_sync_if_supported(
-          binary.result.name, prepared_names, function_locations);
+          *local_layout, binary.result.name, prepared_names, function_locations);
       if (!synced_home.has_value()) {
         return std::nullopt;
       }
@@ -2502,8 +2428,11 @@ std::optional<std::string> render_prepared_i32_binary_inst_if_supported(
       rendered_binary = render_binary_in_eax(binary.rhs, binary.lhs);
     }
     if (rendered_binary.has_value()) {
+      if (local_layout == nullptr) {
+        return std::nullopt;
+      }
       const auto synced_home = render_prepared_named_i32_home_sync_if_supported(
-          binary.result.name, prepared_names, function_locations);
+          *local_layout, binary.result.name, prepared_names, function_locations);
       if (!synced_home.has_value()) {
         return std::nullopt;
       }
@@ -2563,8 +2492,11 @@ std::optional<std::string> render_prepared_i32_binary_inst_if_supported(
   }
 
   if (binary.result.type == c4c::backend::bir::TypeKind::I32) {
+    if (local_layout == nullptr) {
+      return std::nullopt;
+    }
     const auto synced_home = render_prepared_named_i32_home_sync_if_supported(
-        binary.result.name, prepared_names, function_locations);
+        *local_layout, binary.result.name, prepared_names, function_locations);
     if (!synced_home.has_value()) {
       return std::nullopt;
     }
@@ -2620,6 +2552,9 @@ std::optional<std::string> render_prepared_ptr_binary_inst_if_supported(
       binary.result.type != c4c::backend::bir::TypeKind::Ptr ||
       (binary.opcode != c4c::backend::bir::BinaryOpcode::Add &&
        binary.opcode != c4c::backend::bir::BinaryOpcode::Sub)) {
+    return std::nullopt;
+  }
+  if (local_layout == nullptr) {
     return std::nullopt;
   }
 
@@ -2757,7 +2692,7 @@ std::optional<std::string> render_prepared_ptr_binary_inst_if_supported(
   rendered += binary.opcode == c4c::backend::bir::BinaryOpcode::Add ? "add " : "sub ";
   rendered += "rax, " + *offset_register + "\n";
   if (const auto home_sync = render_prepared_named_ptr_home_sync_if_supported(
-          binary.result.name, prepared_names, function_locations);
+          *local_layout, binary.result.name, prepared_names, function_locations);
       home_sync.has_value()) {
     rendered += *home_sync;
   } else {
@@ -3073,6 +3008,9 @@ std::optional<std::string> render_prepared_select_inst_if_supported(
       current_ptr_name == nullptr || current_materialized_compare == nullptr) {
     return std::nullopt;
   }
+  if (block_context.local_layout == nullptr) {
+    return std::nullopt;
+  }
   if (prepared_names != nullptr && block_context.function_context->function_control_flow != nullptr &&
       select.result.kind == c4c::backend::bir::Value::Kind::Named) {
     const auto* join_transfer = c4c::backend::prepare::find_prepared_join_transfer(
@@ -3196,7 +3134,7 @@ std::optional<std::string> render_prepared_select_inst_if_supported(
   }
   body += done_label + ":\n";
   const auto synced_home = render_prepared_named_i32_home_sync_if_supported(
-      select.result.name, prepared_names, function_locations);
+      *block_context.local_layout, select.result.name, prepared_names, function_locations);
   if (!synced_home.has_value()) {
     return std::nullopt;
   }
@@ -3837,7 +3775,7 @@ std::optional<std::string> render_prepared_scalar_load_inst_if_supported(
       if (prepared_pointer_value_has_authoritative_memory_use(
               result.name, prepared_names, function_addressing)) {
         const auto home_sync = render_prepared_named_ptr_home_sync_if_supported(
-            result.name, prepared_names, function_locations);
+            layout, result.name, prepared_names, function_locations);
         if (!home_sync.has_value()) {
           return std::nullopt;
         }
@@ -3859,7 +3797,7 @@ std::optional<std::string> render_prepared_scalar_load_inst_if_supported(
     }
     if (result.type == c4c::backend::bir::TypeKind::I32) {
       const auto home_sync = render_prepared_named_i32_stack_home_sync_if_supported(
-          result.name, prepared_names, function_locations);
+          layout, result.name, prepared_names, function_locations);
       if (!home_sync.has_value()) {
         return std::nullopt;
       }
@@ -9711,7 +9649,7 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
                     if (prepared_pointer_value_has_authoritative_memory_use(
                             load->result.name, &module.names, candidate_function_addressing)) {
                       const auto home_sync = render_prepared_named_ptr_home_sync_if_supported(
-                          load->result.name, &module.names, candidate_function_locations);
+                          *layout, load->result.name, &module.names, candidate_function_locations);
                       if (!home_sync.has_value()) {
                         return std::nullopt;
                       }
@@ -9733,7 +9671,7 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
                   }
                   if (load->result.type == c4c::backend::bir::TypeKind::I32) {
                     const auto home_sync = render_prepared_named_i32_stack_home_sync_if_supported(
-                        load->result.name, &module.names, candidate_function_locations);
+                        *layout, load->result.name, &module.names, candidate_function_locations);
                     if (!home_sync.has_value()) {
                       return std::nullopt;
                     }

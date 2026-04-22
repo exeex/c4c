@@ -112,4 +112,80 @@ std::optional<std::string> render_prepared_named_payload_stack_address_if_suppor
   return render_prepared_stack_address_expr(*frame_offset + stack_byte_bias);
 }
 
+std::optional<std::string> render_prepared_named_i32_home_sync_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view value_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  if (prepared_names == nullptr || function_locations == nullptr) {
+    return std::string{};
+  }
+
+  const auto home = resolve_prepared_named_home_if_supported(
+      local_layout, prepared_names, function_locations, value_name);
+  if (!home.has_value()) {
+    return std::string{};
+  }
+  if (home->register_name.has_value()) {
+    const auto narrowed_register = narrow_i32_register(*home->register_name);
+    if (!narrowed_register.has_value()) {
+      return std::nullopt;
+    }
+    if (*narrowed_register == "eax") {
+      return std::string{};
+    }
+    return "    mov " + *narrowed_register + ", eax\n";
+  }
+  if (home->frame_offset.has_value()) {
+    return "    mov " + render_prepared_stack_memory_operand(*home->frame_offset, "DWORD") +
+           ", eax\n";
+  }
+  return std::string{};
+}
+
+std::optional<std::string> render_prepared_named_i32_stack_home_sync_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view value_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  if (prepared_names == nullptr || function_locations == nullptr) {
+    return std::string{};
+  }
+
+  const auto home = resolve_prepared_named_home_if_supported(
+      local_layout, prepared_names, function_locations, value_name);
+  if (!home.has_value() || !home->frame_offset.has_value()) {
+    return std::string{};
+  }
+  return "    mov " + render_prepared_stack_memory_operand(*home->frame_offset, "DWORD") +
+         ", eax\n";
+}
+
+std::optional<std::string> render_prepared_named_ptr_home_sync_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view value_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  if (prepared_names == nullptr || function_locations == nullptr) {
+    return std::string{};
+  }
+
+  const auto home = resolve_prepared_named_home_if_supported(
+      local_layout, prepared_names, function_locations, value_name);
+  if (!home.has_value()) {
+    return std::string{};
+  }
+  if (home->register_name.has_value()) {
+    if (*home->register_name == "rax") {
+      return std::string{};
+    }
+    return "    mov " + *home->register_name + ", rax\n";
+  }
+  if (home->frame_offset.has_value()) {
+    return "    mov " + render_prepared_stack_memory_operand(*home->frame_offset, "QWORD") +
+           ", rax\n";
+  }
+  return std::string{};
+}
+
 }  // namespace c4c::backend::x86

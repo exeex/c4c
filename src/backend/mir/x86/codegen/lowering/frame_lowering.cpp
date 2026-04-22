@@ -60,6 +60,36 @@ std::optional<std::size_t> find_prepared_value_home_frame_offset(
   return std::nullopt;
 }
 
+std::optional<PreparedNamedHomeSelection> resolve_prepared_named_home_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::string_view value_name) {
+  if (prepared_names == nullptr || function_locations == nullptr || value_name.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* home =
+      c4c::backend::prepare::find_prepared_value_home(*prepared_names, *function_locations, value_name);
+  if (home == nullptr) {
+    return std::nullopt;
+  }
+
+  PreparedNamedHomeSelection selection;
+  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+      home->register_name.has_value()) {
+    selection.register_name = *home->register_name;
+  } else if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot) {
+    selection.frame_offset = find_prepared_value_home_frame_offset(
+        local_layout, prepared_names, function_locations, value_name);
+  }
+
+  if (!selection.register_name.has_value() && !selection.frame_offset.has_value()) {
+    return std::nullopt;
+  }
+  return selection;
+}
+
 std::optional<std::size_t> resolve_prepared_local_slot_base_offset_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,

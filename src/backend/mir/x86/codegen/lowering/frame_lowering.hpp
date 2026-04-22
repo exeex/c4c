@@ -4,6 +4,11 @@
 
 namespace c4c::backend::x86 {
 
+struct PreparedNamedHomeSelection {
+  std::optional<std::string> register_name;
+  std::optional<std::size_t> frame_offset;
+};
+
 std::optional<std::size_t> find_prepared_authoritative_value_stack_offset_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
@@ -14,6 +19,12 @@ std::optional<std::size_t> find_prepared_authoritative_value_stack_offset_if_sup
     std::string_view value_name);
 
 std::optional<std::size_t> find_prepared_value_home_frame_offset(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::string_view value_name);
+
+std::optional<PreparedNamedHomeSelection> resolve_prepared_named_home_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
