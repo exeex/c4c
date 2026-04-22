@@ -1,190 +1,179 @@
-# Draft Replacement X86 Codegen Interfaces For Phoenix Rebuild
+# Convert Reviewed X86 Codegen Drafts To Implementation For Phoenix Rebuild
 
 Status: Active
-Source Idea: ideas/open/80_draft_replacement_x86_codegen_interfaces_for_phoenix_rebuild.md
-Activated after closing: ideas/closed/79_review_extracted_x86_codegen_subsystem_for_phoenix_rebuild.md
+Source Idea: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implementation_for_phoenix_rebuild.md
+Activated after closing: ideas/closed/80_draft_replacement_x86_codegen_interfaces_for_phoenix_rebuild.md
 
 ## Purpose
 
-Turn the reviewed stage-2 rebuild plan into a complete per-file markdown draft
-set under `docs/backend/x86_codegen_rebuild/` so stage 4 can convert an
-explicit replacement contract instead of improvising implementation seams.
+Turn the reviewed stage-3 x86 codegen draft package into real implementation
+under `src/backend/mir/x86/codegen/` without collapsing the new ownership
+graph back into the legacy mixed route.
 
 ## Goal
 
-Produce every stage-2-declared replacement `.cpp.md` / `.hpp.md`, the
-directory-level draft indexes, and `docs/backend/x86_codegen_rebuild/review.md`
-without changing the reviewed layout contract or touching live implementation.
+Land staged implementation slices that make the reviewed seams real, keep the
+legacy path available until the new owners are proved, and leave the backend
+closer to retiring the old subsystem shape.
 
 ## Core Rule
 
-Do not convert any draft into real `.cpp` / `.hpp` code during this runbook.
-Stage 3 owns draft generation and draft review only.
+Do not change the reviewed draft contract during this runbook without first
+repairing stage 3. Implementation should follow
+`docs/backend/x86_codegen_rebuild/`, not improvise new ownership seams.
 
 ## Read First
 
-- `ideas/open/80_draft_replacement_x86_codegen_interfaces_for_phoenix_rebuild.md`
-- `ideas/closed/79_review_extracted_x86_codegen_subsystem_for_phoenix_rebuild.md`
-- `docs/backend/x86_codegen_rebuild_plan.md`
-- `docs/backend/x86_codegen_rebuild_handoff.md`
-- `docs/backend/x86_codegen_subsystem.md`
+- `ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implementation_for_phoenix_rebuild.md`
+- `ideas/closed/80_draft_replacement_x86_codegen_interfaces_for_phoenix_rebuild.md`
+- `docs/backend/x86_codegen_rebuild/index.md`
+- `docs/backend/x86_codegen_rebuild/layout.md`
+- `docs/backend/x86_codegen_rebuild/review.md`
 
 ## Scope
 
-- the full replacement draft tree under `docs/backend/x86_codegen_rebuild/`
-- the exact manifest declared in
-  `docs/backend/x86_codegen_rebuild_plan.md`
-- the intake constraints and trust boundaries from
-  `docs/backend/x86_codegen_rebuild_handoff.md`
-- per-file ownership direction for canonical lowering seams, prepared fast
-  paths, debug surfaces, module/data emission, and ABI support
-- the explicit review artifact at `docs/backend/x86_codegen_rebuild/review.md`
+- real replacement `.cpp` / `.hpp` implementation under
+  `src/backend/mir/x86/codegen/`
+- staged migration of shared seams, canonical lowering families, prepared
+  adapters, and dispatch ownership
+- explicit classification or retirement of legacy files only after the new
+  owners are live and proved
 
 ## Non-Goals
 
-- converting drafts into `src/backend/mir/x86/codegen/`
-- changing the reviewed stage-2 layout without a stage-2 repair
-- deleting or retiring legacy source files
-- proving final runtime correctness for the rebuilt subsystem
+- changing the reviewed stage-3 ownership map without lifecycle repair
+- deleting legacy routes before the replacement owners actually handle the
+  migrated behavior
+- claiming backend correctness beyond the capability slices proved by each
+  packet
 
 ## Working Model
 
-- treat `docs/backend/x86_codegen_rebuild_plan.md` as the manifest contract
-- treat `docs/backend/x86_codegen_rebuild_handoff.md` as the route and trust
-  contract
-- keep each draft file explicit about owned inputs, owned outputs, allowed
-  indirect queries, forbidden knowledge, and role classification
-- keep prepared routes as bounded consumers of shared seams rather than a
-  parallel lowering stack
-- keep the draft tree reviewable as a coherent ownership map, not a prose dump
+- treat `docs/backend/x86_codegen_rebuild/` as the implementation contract
+- keep migration order `shared seams -> lowering families -> prepared rewiring
+  -> legacy retirement`
+- preserve a compileable route at each step, even if some legacy forwarding
+  stays temporarily in place
+- prefer small packets that move one coherent responsibility at a time and
+  prove the affected backend scope
 
 ## Execution Rules
 
-- prefer `manifest coverage -> core seam drafts -> prepared/debug drafts ->
-  draft review`
-- do not silently rename, merge, split, or drop stage-2-declared artifacts
-- if a needed file seems wrong for the draft tree, record the conflict in
-  `todo.md` and stop for stage-2 repair instead of freelancing the layout
-- keep dependency direction explicit at the file level
-- reserve `docs/backend/x86_codegen_rebuild/review.md` for an actual review of
-  coherence, not a duplicate manifest list
+- keep new headers narrow; do not recreate `x86_codegen.hpp` under a new name
+- route prepared behavior through canonical lowering seams rather than new
+  matcher-shaped helpers
+- when a packet introduces a new real owner, classify the leftover legacy code
+  immediately instead of letting both paths silently drift
+- prefer `build -> narrow backend proof`, then escalate to broader validation
+  when the blast radius or milestone status justifies it
 
-## Step 1: Materialize Manifest Coverage And Directory Skeleton
+## Step 1: Materialize Shared Seam Scaffolding And Keep Legacy Route Compiling
 
-Goal: create the stage-2-declared draft tree structure and top-level index
-artifacts without yet filling in every per-file contract.
-
-Primary targets:
-
-- `docs/backend/x86_codegen_rebuild/index.md`
-- `docs/backend/x86_codegen_rebuild/layout.md`
-- directory structure under `docs/backend/x86_codegen_rebuild/`
-
-Actions:
-
-- create the directory/index artifacts required by the stage-2 manifest
-- create placeholder draft files for every required `.cpp.md` and `.hpp.md`
-  path so manifest coverage is explicit from the start
-- organize the tree by the reviewed ownership buckets: `api`, `core`, `abi`,
-  `module`, `lowering`, `prepared`, and `debug`
-- verify the draft tree matches the stage-2 manifest exactly
-
-Completion check:
-
-- every required draft path exists under `docs/backend/x86_codegen_rebuild/`
-  and the directory-level indexes describe the reviewed ownership layout
-
-## Step 2: Draft Canonical Entry, Core, ABI, And Module Contracts
-
-Goal: write the per-file contracts for the entry, shared core, ABI, and module
-layers that the lowering and prepared routes must consume.
+Goal: create the real shared replacement headers and implementation scaffolds
+for the reviewed `api`, `core`, `abi`, and `module` seams while preserving a
+buildable backend.
 
 Primary targets:
 
-- `docs/backend/x86_codegen_rebuild/api/`
-- `docs/backend/x86_codegen_rebuild/core/`
-- `docs/backend/x86_codegen_rebuild/abi/`
-- `docs/backend/x86_codegen_rebuild/module/`
+- `src/backend/mir/x86/codegen/`
+- the reviewed `api/`, `core/`, `abi/`, and `module/` draft contracts
 
 Actions:
 
-- draft `x86_codegen_api`, `x86_codegen_types`, `x86_codegen_output`, target
-  ABI, module emission, and module data emission contracts
-- make the public entrypoints, shared data flow, and ABI facts explicit
-  without reintroducing the old `x86_codegen.hpp` mixed-responsibility shape
-- state which module and output responsibilities are canonical seams versus
-  compatibility or indirect-query surfaces
+- add the replacement shared seam files declared by the reviewed draft package
+- move or wrap existing shared helpers behind the new file boundaries
+- keep the old route compiling while the new seams are introduced
 
 Completion check:
 
-- the entry, core, ABI, and module draft files form a coherent shared seam set
-  that later lowering and prepared drafts can reference directly
+- the shared replacement seams exist in real source form and the backend still
+  builds with the legacy route intact
 
-## Step 3: Draft Canonical Lowering Family Contracts
+## Step 2: Migrate Canonical Lowering Families Into Reviewed Owners
 
-Goal: write the replacement lowering-file contracts so canonical lowering
-ownership is explicit before prepared adapters are described.
+Goal: move frame, call, return, memory, comparison, scalar, float, and
+atomics/intrinsics behavior behind the reviewed canonical lowering seams.
 
 Primary targets:
 
-- `docs/backend/x86_codegen_rebuild/lowering/`
+- `src/backend/mir/x86/codegen/`
+- the reviewed `lowering/` draft contracts
 
 Actions:
 
-- draft the frame, call, return, memory, comparison, scalar, float, and
-  atomics/intrinsics `.hpp.md` / `.cpp.md` pairs
-- define owned inputs, outputs, and allowed queries for each lowering family
-- keep cross-family coordination explicit and bounded so the draft set does
-  not hide the same couplings the rebuild is meant to remove
+- migrate one coherent lowering family at a time into its reviewed owner
+- keep ABI, output, and frame dependencies flowing through the new shared seams
+- prove each migrated family with the smallest backend subset that credibly
+  exercises the moved behavior
 
 Completion check:
 
-- the lowering draft set names clear canonical owners for the major x86 codegen
-  families and makes their boundaries legible without live-source re-reading
+- the major canonical lowering families exist behind the reviewed seam names
+  and the migrated capability slices still pass their proving scope
 
-## Step 4: Draft Prepared And Debug Adapter Contracts
+## Step 3: Rewire Prepared Adapters And Debug Surfaces Over Canonical Seams
 
-Goal: describe the prepared-route and debug surfaces as thin consumers of the
-canonical seams rather than parallel lowering owners.
+Goal: turn the prepared route into bounded adapters over the canonical owners.
 
 Primary targets:
 
-- `docs/backend/x86_codegen_rebuild/prepared/`
-- `docs/backend/x86_codegen_rebuild/debug/`
+- prepared-route implementation under `src/backend/mir/x86/codegen/`
+- the reviewed `prepared/` and `debug/` draft contracts
 
 Actions:
 
-- draft the prepared query context, fast-path dispatch, fast-path operands,
-  and prepared route debug contracts
-- show how prepared routes consume canonical call, frame, memory, comparison,
-  and output seams instead of reconstructing those policies locally
-- mark any remaining compatibility facts explicitly so they cannot masquerade
-  as general lowering ownership
+- replace local-slot and prepared matcher ownership with query-shaped adapter
+  calls into frame, call, memory, and comparison owners
+- keep route-debug surfaces observational while they explain admission and
+  fallback facts
+- reject testcase-shaped matcher growth that would recreate the old route
 
 Completion check:
 
-- the prepared/debug draft files read as bounded adapters over the canonical
-  seams rather than a second subsystem hidden in markdown
+- prepared fast paths consume canonical seams instead of owning local copies of
+  frame, call-lane, address, or predicate policy
 
-## Step 5: Review Draft Coherence And Readiness
+## Step 4: Shift Module Entry And Legacy Dispatch To The Replacement Graph
 
-Goal: review the full draft set for manifest completeness, ownership
-coherence, and stage-4 handoff readiness.
+Goal: make the reviewed replacement ownership graph the live path while
+classifying any remaining legacy forwarding explicitly.
 
 Primary targets:
 
-- `docs/backend/x86_codegen_rebuild/review.md`
-- `docs/backend/x86_codegen_rebuild/`
+- public entrypoints and module orchestration in `src/backend/mir/x86/codegen/`
+- remaining legacy handoff points
 
 Actions:
 
-- review whether the draft set matches the exact manifest from stage 2
-- review whether dependency direction is legible across entry, lowering,
-  prepared, debug, and module layers
-- record whether prepared routes remain consumers of canonical seams
-- note any stage-2 contract conflicts or unresolved compatibility pressure
+- route public entrypoints through the new `api` and `module` owners
+- classify leftover legacy files as forwarding, compatibility, or retirement
+  candidates
+- prove that the active path really flows through the replacement seams
 
 Completion check:
 
-- `docs/backend/x86_codegen_rebuild/review.md` confirms the draft set is
-  coherent enough to drive stage-4 implementation conversion
+- the reviewed replacement graph is the live dispatch path for the migrated
+  capability families and leftover legacy roles are explicit
+
+## Step 5: Retire Or Classify Residual Legacy Shape And Run Broader Validation
+
+Goal: clean up the remaining legacy surface honestly and confirm the migrated
+graph with broader proof.
+
+Primary targets:
+
+- residual legacy `src/backend/mir/x86/codegen/` files
+- broader backend validation scope
+
+Actions:
+
+- delete or clearly classify legacy files only after the new owner is in use
+- run broader validation appropriate for the migrated blast radius
+- record any intentionally deferred legacy pockets explicitly instead of
+  leaving them ambiguous
+
+Completion check:
+
+- the migrated ownership graph is explicit in live code, the remaining legacy
+  surface is honestly classified, and broader proof supports the current
+  milestone

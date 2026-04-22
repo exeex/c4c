@@ -1,8 +1,11 @@
 # Draft Replacement X86 Codegen Interfaces For Phoenix Rebuild
 
-Status: Open
+Status: Closed
 Created: 2026-04-22
 Last-Updated: 2026-04-22
+Closed: 2026-04-22
+Disposition: Completed by drafting and reviewing the full stage-2-declared
+replacement interface tree under `docs/backend/x86_codegen_rebuild/`.
 Parent Idea: [79_review_extracted_x86_codegen_subsystem_for_phoenix_rebuild.md](/workspaces/c4c/ideas/closed/79_review_extracted_x86_codegen_subsystem_for_phoenix_rebuild.md)
 
 ## Intent
@@ -73,3 +76,35 @@ stage-2 layout has its corresponding reviewed `.cpp.md` / `.hpp.md` artifact
 under `docs/backend/x86_codegen_rebuild/`, any required directory-level index
 exists, and `docs/backend/x86_codegen_rebuild/review.md` records that the
 draft set is coherent enough to drive implementation conversion.
+
+## Closure Note
+
+Closed on 2026-04-22 after the stage-3 runbook satisfied the owned completion
+signal:
+
+- `docs/backend/x86_codegen_rebuild/` now contains the complete 37-file
+  stage-2 manifest, including `index.md`, `layout.md`, every required
+  `.hpp.md`, every required `.cpp.md`, and `review.md`
+- the draft set now records explicit owned inputs, owned outputs, allowed
+  indirect queries, forbidden knowledge, and role classification across the
+  full replacement tree
+- `docs/backend/x86_codegen_rebuild/review.md` now records that the package is
+  coherent enough to drive stage-4 implementation conversion
+
+This idea therefore closes as complete and hands execution forward to
+idea 81, `81_convert_reviewed_x86_codegen_drafts_to_implementation_for_phoenix_rebuild.md`.
+
+## Validation At Closure
+
+Close-time guard on 2026-04-22 reused the existing focused canonical scope:
+
+- `cmake --build --preset default`
+- `ctest --test-dir build -j --output-on-failure -R '^c_testsuite_x86_backend_src_00204_c$' > test_after.log`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result:
+
+- close accepted
+- before reported `0` passed / `1` failed / `1` total
+- after reported `0` passed / `1` failed / `1` total
+- no new failing tests were introduced on the matched scope

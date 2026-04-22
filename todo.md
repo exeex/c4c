@@ -1,41 +1,37 @@
 # Execution State
 
 Status: Active
-Source Idea Path: ideas/open/80_draft_replacement_x86_codegen_interfaces_for_phoenix_rebuild.md
+Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implementation_for_phoenix_rebuild.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Review Draft Coherence And Readiness
+Current Step ID: 1
+Current Step Title: Materialize Shared Seam Scaffolding And Keep Legacy Route Compiling
 Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed plan step 5, "Review Draft Coherence And Readiness," by replacing
-`docs/backend/x86_codegen_rebuild/review.md` with an actual coherence review
-covering manifest completeness, dependency direction, prepared-route
-guardrails, boundary scope, and stage-4 readiness.
+Lifecycle switch on 2026-04-22: closed idea 80 after the reviewed stage-3
+draft package completed and activated the stage-4 implementation runbook from
+idea 81.
 
 ## Suggested Next
 
-The stage-3 runbook content is complete. The next lifecycle action should be
-to close idea 80 and activate the stage-4 implementation plan from idea 81 if
-the lifecycle owner agrees the draft package is ready.
+Begin plan step 1 by introducing the reviewed `api`, `core`, `abi`, and
+`module` real-source scaffolding under `src/backend/mir/x86/codegen/` while
+keeping the legacy route compiling.
 
 ## Watchouts
 
-- Stage 4 should treat these drafts as binding ownership contracts and resist
-  the temptation to recreate a broad shared helper header for convenience.
-- Prepared implementation work still has the highest overfit risk; the review
-  only accepts thin admission/fallback adapters, not testcase-shaped matcher
-  growth.
-- The lifecycle state likely needs a close/switch decision now that the draft
-  package and review are complete.
+- The reviewed stage-3 draft package is now the binding implementation
+  contract; do not improvise alternate seam names or a new mixed helper hub.
+- Keep the legacy route available until the new owners actually hold the moved
+  behavior and are proved.
+- Prepared-path migration belongs later; step 1 should focus on shared seam
+  scaffolding and compile-safe ownership introduction.
 
 ## Proof
 
-Docs-only completion proof passed with:
-`python3 - <<'PY' > test_after.log ...`
-The check verified that the full `docs/backend/x86_codegen_rebuild/` tree
-still matches the 37-file manifest, that no step-1 placeholder markers remain
-anywhere in the draft set, and that `review.md` records a readiness verdict.
-Proof log: `test_after.log`.
+Lifecycle switch on 2026-04-22 accepted closure of idea 80 with:
+`cmake --build --preset default`
+`ctest --test-dir build -j --output-on-failure -R '^c_testsuite_x86_backend_src_00204_c$' > test_after.log`
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
