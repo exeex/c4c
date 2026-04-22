@@ -3,62 +3,47 @@
 Status: Active
 Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implementation_for_phoenix_rebuild.md
 Source Plan Path: plan.md
-Current Step ID: 1.5.3
-Current Step Title: Audit Remaining Broad-Header Holdouts Before Lowering Migration
-Plan Review Counter: 1 / 6
+Current Step ID: 2.1
+Current Step Title: Stand Up Frame And Memory Lowering Owners
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed step 1.5.3 by auditing the remaining backend handoff boundary tests
-that still include `src/backend/mir/x86/codegen/x86_codegen.hpp`: kept
-`backend_x86_handoff_boundary_scalar_smoke_test.cpp` and
-`backend_x86_handoff_boundary_compare_branch_test.cpp` as explicit
-compatibility holdouts for `render_prepared_stack_memory_operand(...)`, kept
-`backend_x86_handoff_boundary_multi_defined_call_test.cpp` as a prepared
-helper/render holdout where no narrower reviewed owner exists yet, and
-removed the reviewed register-narrowing reach-through in that test by using
-`x86::abi::narrow_i32_register_name(...)` instead of the broad-header helper.
+Completed step 1.5.3 by confirming that the remaining broad-header consumers
+in `module/module_emit.cpp`, `route_debug.cpp`, and the three backend handoff
+boundary tests are honest prepared-route compatibility holdouts rather than
+missed reviewed-owner narrowing opportunities, then split step 2 into
+execution-sized lowering-family substeps so the next packet can start real
+canonical lowering migration.
 
 ## Suggested Next
 
-Move to the next step-1.5.3 consumer packet outside these backend handoff
-boundary tests and apply the same rule: remove only declaration reach-throughs
-that already have a reviewed owner, while leaving helper/prepared compatibility
-holdouts on `x86_codegen.hpp` until their real seams land.
+Start step 2.1 by standing up the reviewed `lowering/frame_lowering.*` and
+`lowering/memory_lowering.*` seams, moving one coherent frame-home or
+memory-operand helper family behind those owners while keeping legacy and
+prepared callers compiling through explicit forwarding.
 
 ## Watchouts
 
-- Keep `emit.cpp` and `prepared_module_emit.cpp` wrapper-thin; step 1.5 is
-  still classifying compatibility entrypoints, not handing ownership back to
-  legacy files.
-- Keep `route_debug.hpp` declaration-only; route-debug implementation should
-  stay in `route_debug.cpp` and not recreate another broad mixed-owner header.
-- Keep `x86_codegen_api.cpp` limited to emit-facing entry logic and
-  `x86_codegen_api_assemble.cpp` limited to assemble ownership so ordinary
-  backend links do not silently depend on assembler implementation files.
+- Keep `module_emit.cpp` and `route_debug.cpp` classified as prepared-route
+  compatibility holdouts until real reviewed `prepared/` owners exist; do not
+  fake step-2 progress by inventing new prepared headers.
+- Treat step 2 as canonical lowering migration, not public-entry or prepared
+  adapter rewiring; keep `emit.cpp`, `prepared_module_emit.cpp`, and
+  route-debug surfaces wrapper-thin.
+- Start with frame and memory services because later call, comparison, and
+  prepared packets depend on canonical frame-home and operand helpers.
 - Preserve the legacy `x86::emit_module(...)`, `x86::assemble_module(...)`,
-  and `x86::emit_prepared_module(...)` symbols until the supervisor retires
-  those compatibility surfaces explicitly.
-- Backend tests that exercise route-debug reporting now need
-  `route_debug.hpp`; do not rely on `x86_codegen.hpp` to leak those
-  declarations back in.
-- `render_prepared_stack_memory_operand(...)`,
-  `render_prepared_trivial_defined_function_if_supported(...)`,
-  `render_prepared_bounded_same_module_helper_prefix_if_supported(...)`, and
-  the prepared call-argument ABI selectors still have no narrower reviewed
-  owner, so forcing these three tests off `x86_codegen.hpp` would be fake
-  narrowing rather than progress.
-- Do not force helper-heavy tests off `x86_codegen.hpp` unless their actual
-  helper declarations have a real narrower owner; API-only include churn is
-  fine, but fake narrowing that breaks helper users is not progress.
-- Do not invent new replacement headers for prepared helpers during step 1.5;
-  if a remaining helper has no reviewed owner yet, keep it classified as a
-  compatibility dependency until the planned `prepared/` conversion work.
+  and `x86::emit_prepared_module(...)` compatibility surfaces until step 4
+  explicitly rewires live entry ownership.
+- Reject testcase-shaped matcher growth while moving helpers: the packet should
+  relocate semantic lowering owners, not add new named-case shortcuts.
 
 ## Proof
 
-Step 1.5.3 backend handoff broad-header audit packet on 2026-04-22 using:
+Step 1.5.3 classification closeout and step-2 runbook split on 2026-04-22.
+Latest code proof remains the last accepted backend subset run:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
-Backend subset passed. Proof log path: `test_after.log`
+Backend subset passed. Canonical log paths: `test_before.log`, `test_after.log`

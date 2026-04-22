@@ -382,6 +382,129 @@ Completion check:
 - the major canonical lowering families exist behind the reviewed seam names
   and the migrated capability slices still pass their proving scope
 
+### Step 2.1: Stand Up Frame And Memory Lowering Owners
+
+Goal: make the reviewed `lowering/frame_lowering.*` and
+`lowering/memory_lowering.*` seams real first so later lowering and prepared
+packets can query canonical frame-home and operand services instead of
+continuing to reach through legacy mixed files.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/lowering/`
+- legacy frame and memory helpers under `src/backend/mir/x86/codegen/`
+
+Actions:
+
+- add the reviewed frame and memory lowering headers and source files
+- move one coherent frame-home, stack-layout, or memory-operand helper family
+  at a time behind those owners
+- keep legacy and prepared callers compiling through transitional forwarding
+  instead of re-expanding mixed ownership
+
+Completion check:
+
+- canonical frame and memory services live behind reviewed `lowering/` owners
+  and existing callers use explicit forwarding instead of broad hidden
+  reach-through
+
+### Step 2.2: Migrate Canonical Call And Return Families
+
+Goal: move canonical call setup, call issuance, cleanup, result publication,
+and return-lane handoff behind reviewed `call_lowering` and
+`return_lowering` owners.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/lowering/`
+- call and return helper surfaces currently spread across legacy mixed files
+
+Actions:
+
+- stand up the reviewed call and return lowering files
+- move one coherent call-lane or return-publication family at a time behind
+  the new owners
+- keep module and prepared compatibility callers forwarding into the new seams
+  without changing their admission logic yet
+
+Completion check:
+
+- canonical call and return helpers are owned by reviewed lowering seams and
+  legacy callers only remain as explicit forwarding or compatibility shells
+
+### Step 2.3: Migrate Scalar And Comparison Lowering Families
+
+Goal: centralize integer-scalar arithmetic, casts, width conversion, compare
+materialization, and fused compare/branch behavior behind reviewed scalar and
+comparison owners.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/lowering/`
+- scalar and comparison helper-heavy legacy files under
+  `src/backend/mir/x86/codegen/`
+
+Actions:
+
+- stand up the reviewed scalar and comparison lowering files
+- move coherent scalar helper groups and predicate/branch lowering helpers
+  behind those owners instead of growing testcase-shaped matchers
+- keep dependencies on frame and memory services flowing through the new
+  lowering seams
+
+Completion check:
+
+- scalar and comparison behavior is owned by reviewed lowering seams and later
+  prepared work can consume those helpers without reopening legacy ownership
+
+### Step 2.4: Migrate Float And Special-Case Return Support
+
+Goal: move scalar floating arithmetic plus legacy `f128` and related special
+return helpers behind the reviewed float and return lowering owners.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/lowering/`
+- floating and special return helpers currently living in legacy mixed files
+
+Actions:
+
+- stand up the reviewed float lowering files and connect them to canonical
+  memory and return services
+- move coherent floating helper families, including `f128` address/home
+  support, without leaking ownership back into prepared or module files
+- keep special return behavior routed through the reviewed return seam instead
+  of ad hoc helper reach-through
+
+Completion check:
+
+- float and special return behavior is owned by reviewed lowering seams and no
+  longer depends on hidden legacy mixed-owner paths
+
+### Step 2.5: Migrate Atomics And Intrinsics Lowering Families
+
+Goal: finish step 2 by moving atomics and intrinsics behavior behind the
+reviewed `atomics_intrinsics_lowering` seam and classifying any remaining
+mixed-owner helpers that step 3 must still treat as compatibility holdouts.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/lowering/`
+- remaining atomics/intrinsics helper surfaces under
+  `src/backend/mir/x86/codegen/`
+
+Actions:
+
+- stand up the reviewed atomics/intrinsics lowering files
+- move coherent atomics or intrinsic helper families behind that owner
+- record any honest compatibility holdouts explicitly so prepared-adapter work
+  in step 3 starts from a clear boundary
+
+Completion check:
+
+- the reviewed lowering family seams cover atomics and intrinsics behavior and
+  step 3 starts from explicit canonical owners plus clearly classified holdouts
+
 ## Step 3: Rewire Prepared Adapters And Debug Surfaces Over Canonical Seams
 
 Goal: turn the prepared route into bounded adapters over the canonical owners.
