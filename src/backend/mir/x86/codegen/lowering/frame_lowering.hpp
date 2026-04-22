@@ -25,6 +25,14 @@ std::optional<std::size_t> resolve_prepared_local_slot_base_offset_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::string_view slot_name);
 
+std::optional<std::size_t> resolve_prepared_named_payload_frame_offset_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+    c4c::FunctionNameId function_name,
+    std::string_view pointer_name);
+
 std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,

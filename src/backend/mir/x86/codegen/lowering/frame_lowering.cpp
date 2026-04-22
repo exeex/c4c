@@ -72,6 +72,52 @@ std::optional<std::size_t> resolve_prepared_local_slot_base_offset_if_supported(
       local_layout, prepared_names, function_locations, slot_name);
 }
 
+std::optional<std::size_t> resolve_prepared_named_payload_frame_offset_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+    c4c::FunctionNameId function_name,
+    std::string_view pointer_name) {
+  if (prepared_names == nullptr || function_locations == nullptr || pointer_name.empty()) {
+    return std::nullopt;
+  }
+
+  std::string slice_zero_name;
+  std::string_view slice_zero_query = pointer_name;
+  if (!c4c::backend::prepare::parse_prepared_slot_slice_name(pointer_name).has_value()) {
+    slice_zero_name = std::string(pointer_name) + ".0";
+    slice_zero_query = slice_zero_name;
+  }
+
+  if (const auto slice_zero_home_offset = find_prepared_value_home_frame_offset(
+          local_layout, prepared_names, function_locations, slice_zero_query);
+      slice_zero_home_offset.has_value()) {
+    return slice_zero_home_offset;
+  }
+  if (const auto exact_home_offset = find_prepared_value_home_frame_offset(
+          local_layout, prepared_names, function_locations, pointer_name);
+      exact_home_offset.has_value()) {
+    return exact_home_offset;
+  }
+  if (const auto slice_zero_offset = resolve_prepared_local_slot_base_offset_if_supported(
+          local_layout, prepared_names, function_locations, slice_zero_query);
+      slice_zero_offset.has_value()) {
+    return slice_zero_offset;
+  }
+  if (const auto exact_offset = resolve_prepared_local_slot_base_offset_if_supported(
+          local_layout, prepared_names, function_locations, pointer_name);
+      exact_offset.has_value()) {
+    return exact_offset;
+  }
+  if (stack_layout != nullptr && function_name != c4c::kInvalidFunctionName) {
+    return c4c::backend::prepare::find_prepared_stack_frame_offset_by_name(
+        *prepared_names, *stack_layout, function_name, pointer_name);
+  }
+
+  return std::nullopt;
+}
+
 std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,

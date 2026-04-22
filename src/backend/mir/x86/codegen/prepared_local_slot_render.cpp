@@ -4303,10 +4303,6 @@ bool append_prepared_named_ptr_argument_move_into_register_if_supported(
     std::size_t stack_byte_bias,
     const std::optional<std::string_view>& current_ptr_name,
     std::string* body);
-std::optional<std::size_t> resolve_prepared_named_ptr_published_payload_frame_offset_if_supported(
-    const PreparedX86BlockDispatchContext& block_context,
-    c4c::FunctionNameId function_name_id,
-    std::string_view pointer_name);
 bool append_prepared_small_byval_payload_move_into_register_if_supported(
     const PreparedX86BlockDispatchContext& block_context,
     c4c::FunctionNameId function_name_id,
@@ -4556,23 +4552,25 @@ bool append_prepared_named_ptr_argument_move_into_register_if_supported(
     return true;
   }
 
-  if (block_context.local_layout != nullptr) {
-    const auto frame_offset = find_prepared_authoritative_value_stack_offset_if_supported(
-        *block_context.local_layout,
-        function_context.stack_layout,
-        function_context.function_addressing,
-        function_context.prepared_names,
-        function_context.function_locations,
-        function_name_id,
-        pointer_name);
-    if (frame_offset.has_value()) {
-      *body += "    lea ";
-      *body += destination_register;
-      *body += ", ";
-      *body += render_prepared_stack_address_expr(*frame_offset + stack_byte_bias);
-      *body += "\n";
-      return true;
-    }
+  const PreparedModuleLocalSlotLayout empty_layout;
+  const auto& local_layout =
+      block_context.local_layout == nullptr ? empty_layout : *block_context.local_layout;
+  if (const auto stack_address = render_prepared_named_stack_address_if_supported(
+          local_layout,
+          function_context.stack_layout,
+          function_context.function_addressing,
+          function_context.prepared_names,
+          function_context.function_locations,
+          function_name_id,
+          pointer_name,
+          stack_byte_bias);
+      stack_address.has_value()) {
+    *body += "    lea ";
+    *body += destination_register;
+    *body += ", ";
+    *body += *stack_address;
+    *body += "\n";
+    return true;
   }
 
   const auto* home = c4c::backend::prepare::find_prepared_value_home(
@@ -4591,15 +4589,6 @@ bool append_prepared_named_ptr_argument_move_into_register_if_supported(
     }
     return true;
   }
-  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-      home->offset_bytes.has_value()) {
-    *body += "    lea ";
-    *body += destination_register;
-    *body += ", ";
-    *body += render_prepared_stack_address_expr(*home->offset_bytes + stack_byte_bias);
-    *body += "\n";
-    return true;
-  }
   return false;
 }
 
@@ -4613,88 +4602,6 @@ std::optional<std::string> choose_prepared_pointer_payload_address_scratch_regis
     }
     return std::string(candidate);
   }
-  return std::nullopt;
-}
-
-std::optional<std::size_t> resolve_prepared_named_ptr_published_payload_frame_offset_if_supported(
-    const PreparedX86BlockDispatchContext& block_context,
-    c4c::FunctionNameId function_name_id,
-    std::string_view pointer_name) {
-  if (block_context.function_context == nullptr || pointer_name.empty()) {
-    return std::nullopt;
-  }
-  const auto& function_context = *block_context.function_context;
-  if (function_context.prepared_names == nullptr || function_context.function_locations == nullptr) {
-    return std::nullopt;
-  }
-
-  std::string slice_zero_name;
-  std::string_view slice_zero_query = pointer_name;
-  if (!c4c::backend::prepare::parse_prepared_slot_slice_name(pointer_name).has_value()) {
-    slice_zero_name = std::string(pointer_name) + ".0";
-    slice_zero_query = slice_zero_name;
-  }
-  if (const auto slice_zero_home_offset = find_prepared_value_home_frame_offset(
-          block_context.local_layout == nullptr ? PreparedModuleLocalSlotLayout{} : *block_context.local_layout,
-          function_context.prepared_names,
-          function_context.function_locations,
-          slice_zero_query);
-      slice_zero_home_offset.has_value()) {
-    return slice_zero_home_offset;
-  }
-  if (const auto exact_home_offset = find_prepared_value_home_frame_offset(
-          block_context.local_layout == nullptr ? PreparedModuleLocalSlotLayout{} : *block_context.local_layout,
-          function_context.prepared_names,
-          function_context.function_locations,
-          pointer_name);
-      exact_home_offset.has_value()) {
-    return exact_home_offset;
-  }
-  if (block_context.local_layout != nullptr) {
-    if (const auto slice_zero_offset = resolve_prepared_local_slot_base_offset_if_supported(
-            *block_context.local_layout,
-            function_context.prepared_names,
-            function_context.function_locations,
-            slice_zero_query);
-        slice_zero_offset.has_value()) {
-      return slice_zero_offset;
-    }
-    if (const auto exact_offset = resolve_prepared_local_slot_base_offset_if_supported(
-            *block_context.local_layout,
-            function_context.prepared_names,
-            function_context.function_locations,
-            pointer_name);
-        exact_offset.has_value()) {
-      return exact_offset;
-    }
-  }
-  if (const auto* slice_zero_home =
-          c4c::backend::prepare::find_prepared_value_home(
-              *function_context.prepared_names,
-              *function_context.function_locations,
-              slice_zero_query);
-      slice_zero_home != nullptr &&
-      slice_zero_home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-      slice_zero_home->offset_bytes.has_value()) {
-    return *slice_zero_home->offset_bytes;
-  }
-
-  if (const auto* home = c4c::backend::prepare::find_prepared_value_home(
-          *function_context.prepared_names, *function_context.function_locations, pointer_name);
-      home != nullptr &&
-      home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-      home->offset_bytes.has_value()) {
-    return *home->offset_bytes;
-  }
-
-  if (function_context.stack_layout != nullptr && function_name_id != c4c::kInvalidFunctionName) {
-    return c4c::backend::prepare::find_prepared_stack_frame_offset_by_name(
-        *function_context.prepared_names,
-        *function_context.stack_layout,
-        function_name_id,
-        pointer_name);
-  }
-
   return std::nullopt;
 }
 
@@ -4726,65 +4633,24 @@ bool append_prepared_small_byval_payload_move_into_register_if_supported(
   bool rendered_payload_base = false;
   if (const auto& function_context = *block_context.function_context;
       function_context.prepared_names != nullptr) {
-    std::optional<std::size_t> frame_offset;
-    if (align_bytes > 1) {
-      frame_offset = resolve_prepared_named_ptr_published_payload_frame_offset_if_supported(
-          block_context, function_name_id, pointer_name);
-    } else {
-      if (function_context.function_locations != nullptr) {
-        std::string slice_zero_name;
-        std::string_view slice_zero_query = pointer_name;
-        if (!c4c::backend::prepare::parse_prepared_slot_slice_name(pointer_name).has_value()) {
-          slice_zero_name = std::string(pointer_name) + ".0";
-          slice_zero_query = slice_zero_name;
-        }
-        if (const auto* slice_zero_home =
-                c4c::backend::prepare::find_prepared_value_home(
-                    *function_context.prepared_names,
-                    *function_context.function_locations,
-                    slice_zero_query);
-            slice_zero_home != nullptr &&
-            slice_zero_home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-            slice_zero_home->offset_bytes.has_value()) {
-          frame_offset = *slice_zero_home->offset_bytes;
-        }
-      }
-      if (const auto* home =
-              frame_offset.has_value() || function_context.function_locations == nullptr
-                  ? nullptr
-                  : c4c::backend::prepare::find_prepared_value_home(
-                        *function_context.prepared_names,
-                        *function_context.function_locations,
-                        pointer_name);
-          home != nullptr &&
-          home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-          home->offset_bytes.has_value()) {
-        frame_offset = *home->offset_bytes;
-      }
-      if (!frame_offset.has_value() && function_context.stack_layout != nullptr &&
-          function_name_id != c4c::kInvalidFunctionName) {
-        frame_offset = c4c::backend::prepare::find_prepared_stack_frame_offset_by_name(
-            *function_context.prepared_names,
-            *function_context.stack_layout,
+    static_cast<void>(align_bytes);
+    const PreparedModuleLocalSlotLayout empty_layout;
+    const auto& local_layout =
+        block_context.local_layout == nullptr ? empty_layout : *block_context.local_layout;
+    if (const auto stack_address = render_prepared_named_payload_stack_address_if_supported(
+            local_layout,
+            function_context.stack_layout,
+            function_context.function_addressing,
+            function_context.prepared_names,
+            function_context.function_locations,
             function_name_id,
-            pointer_name);
-      }
-    }
-    if (!frame_offset.has_value()) {
-      frame_offset = find_prepared_authoritative_value_stack_offset_if_supported(
-          block_context.local_layout == nullptr ? PreparedModuleLocalSlotLayout{} : *block_context.local_layout,
-          function_context.stack_layout,
-          function_context.function_addressing,
-          function_context.prepared_names,
-          function_context.function_locations,
-          function_name_id,
-          pointer_name);
-    }
-    if (frame_offset.has_value()) {
+            pointer_name,
+            stack_byte_bias);
+        stack_address.has_value()) {
       *body += "    lea ";
       *body += destination_register;
       *body += ", ";
-      *body += render_prepared_stack_address_expr(*frame_offset + stack_byte_bias);
+      *body += *stack_address;
       *body += "\n";
       rendered_payload_base = true;
     }

@@ -5,24 +5,24 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 2.1
 Current Step Title: Stand Up Frame And Memory Lowering Owners
-Plan Review Counter: 2 / 6
+Plan Review Counter: 3 / 6
 # Current Packet
 
 ## Just Finished
 
-Continued step 2.1 by moving the next canonical frame-home query family out of
-`prepared_local_slot_render.cpp`: authoritative stack-offset lookup now routes
-through `lowering/frame_lowering.*`, stack-slot home fallback/base-offset
-queries live there too, and value-home stack-address rendering now routes
-through `lowering/memory_lowering.*` instead of the mixed prepared
-compatibility file.
+Continued step 2.1 by moving the prepared pointer/byval payload helper family
+out of `prepared_local_slot_render.cpp`: published payload frame-offset
+resolution now lives in `lowering/frame_lowering.*`, named stack-address
+rendering for pointer/value-home cases routes through `lowering/memory_lowering.*`,
+and the prepared helpers now call those owners instead of rebuilding slot/home
+offsets inline.
 
 ## Suggested Next
 
-Continue step 2.1 by moving the next remaining frame-home consumers behind the
-same seams, preferably the prepared pointer/byval payload helpers that still
-reconstruct slot-or-home offsets inline instead of calling the lowering-owned
-query helpers directly.
+Continue step 2.1 by moving the next remaining prepared stack-address
+consumers behind the same seams, preferably the other call/pointer helpers in
+`prepared_local_slot_render.cpp` that still spell out direct `home->offset_bytes`
+stack address reconstruction instead of using lowering-owned render helpers.
 
 ## Watchouts
 
@@ -39,6 +39,8 @@ query helpers directly.
   explicitly rewires live entry ownership.
 - Reject testcase-shaped matcher growth while moving helpers: the packet should
   relocate semantic lowering owners, not add new named-case shortcuts.
+- Keep these new lowering helpers about frame-home and stack-address ownership
+  only; do not widen step 2.1 into ABI policy or prepared entry-surface edits.
 
 ## Proof
 

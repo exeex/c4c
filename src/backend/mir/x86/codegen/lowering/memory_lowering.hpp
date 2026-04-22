@@ -24,4 +24,24 @@ std::optional<std::string> render_prepared_value_home_stack_address_if_supported
     c4c::FunctionNameId function_name,
     std::string_view value_name);
 
+std::optional<std::string> render_prepared_named_stack_address_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    c4c::FunctionNameId function_name,
+    std::string_view value_name,
+    std::size_t stack_byte_bias);
+
+std::optional<std::string> render_prepared_named_payload_stack_address_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    c4c::FunctionNameId function_name,
+    std::string_view pointer_name,
+    std::size_t stack_byte_bias);
+
 }  // namespace c4c::backend::x86
