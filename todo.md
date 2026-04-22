@@ -5,43 +5,41 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 2.2
 Current Step Title: Migrate Canonical Call And Return Families
-Plan Review Counter: 5 / 6
+Plan Review Counter: 6 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed step 2.2’s next non-call ownership shrink by moving the typed
-load/store and atomic-loop helper family out of dormant
+Completed step 2.2’s remaining shared operand-pair cluster by moving
+`operand_to_rcx`, `operand_to_rax_rdx`, and `prep_i128_binop` out of dormant
 `shared_call_support.cpp` and into the compiled
-`core/x86_codegen_output.cpp` seam: `reg_for_type`,
-`mov_load_for_type`, `mov_store_for_type`, `type_suffix`, and
-`emit_x86_atomic_op_loop`. The compiled seam now carries its own register-width
-normalization helpers so this family no longer depends on dormant `mod.cpp`
-ownership.
+`core/x86_codegen_output.cpp` seam. Canonical scalar, comparison, i128, and
+return helpers now consume the pair-loader/i128 prep path from the reviewed
+compiled owner instead of leaving that family owned only by the dormant draft
+file.
 
 ## Suggested Next
 
-Keep step 2.2 on the remaining shared operand-pair cluster still owned only by
-dormant `shared_call_support.cpp`: classify and migrate the next coherent
-family among `operand_to_rcx`, `operand_to_rax_rdx`, and `prep_i128_binop`
-through the compiled seam without widening into prepared-route or ABI-policy
-work.
+Keep step 2.2 on canonical call/return ownership only: classify the next
+coherent helper family still living in dormant or mixed legacy support around
+call/result publication, and migrate it behind reviewed lowering or compiled
+owners without widening into prepared-route admission or ABI-policy work.
 
 ## Watchouts
 
 - The backend target still does not compile `shared_call_support.cpp` or
   `mod.cpp`; seam moves have to remain self-contained in compiled reviewed
   owners rather than re-linking dormant utilities.
-- This packet intentionally left the operand-pair/i128 prep helpers in the
-  dormant draft path because they are the next coherent family, not part of
-  the typed move/atomic cluster.
+- The operand-pair/i128 prep helpers now live in the compiled seam, but
+  `shared_call_support.cpp` still carries other dormant support definitions; do
+  not treat this packet as permission to revive that file as an owner.
 - Keep `call_lowering.cpp`, `memory.cpp`, and `mod.cpp` non-owning for this
   route; do not widen into ABI policy, prepared-route admission logic, or
   dormant utility reattachment.
 
 ## Proof
 
-Step 2.2 typed move/atomic helper migration on 2026-04-22:
+Step 2.2 operand-pair/i128 prep helper migration on 2026-04-22:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 Backend subset passed (`106/106`). Canonical log paths: `test_before.log`,

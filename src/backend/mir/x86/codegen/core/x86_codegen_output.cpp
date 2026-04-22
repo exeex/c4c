@@ -436,6 +436,38 @@ void X86Codegen::operand_to_rax(const Operand& op) {
   this->state.reg_cache.invalidate_acc();
 }
 
+void X86Codegen::operand_to_rcx(const Operand& op) {
+  this->operand_to_reg(op, "rcx");
+}
+
+void X86Codegen::operand_to_rax_rdx(const Operand& op) {
+  if (const auto imm = op.immediate) {
+    if (*imm == 0) {
+      this->state.emit("    xorl %eax, %eax");
+      this->state.emit("    xorl %edx, %edx");
+    } else {
+      this->state.out.emit_instr_imm_reg("    movq", *imm, "rax");
+      this->state.emit(*imm < 0 ? "    movq $-1, %rdx" : "    xorl %edx, %edx");
+    }
+  } else if (const auto slot = this->state.get_slot(op.raw)) {
+    this->state.out.emit_instr_rbp_reg("    movq", slot->raw, "rax");
+    this->state.out.emit_instr_rbp_reg("    movq", slot->raw + 8, "rdx");
+  }
+  this->state.reg_cache.invalidate_acc();
+}
+
+void X86Codegen::prep_i128_binop(const Operand& lhs, const Operand& rhs) {
+  this->operand_to_rax_rdx(lhs);
+  this->state.emit("    pushq %rdx");
+  this->state.emit("    pushq %rax");
+  this->operand_to_rax_rdx(rhs);
+  this->state.emit("    movq %rax, %rcx");
+  this->state.emit("    movq %rdx, %rsi");
+  this->state.emit("    popq %rax");
+  this->state.emit("    popq %rdx");
+  this->state.reg_cache.invalidate_all();
+}
+
 void X86Codegen::store_rax_to(const Value& dest) {
   if (const auto slot = this->state.get_slot(dest.raw)) {
     this->state.emit("    movq %rax, " + std::to_string(slot->raw) + "(%rbp)");
