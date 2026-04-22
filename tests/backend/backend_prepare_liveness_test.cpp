@@ -1318,6 +1318,72 @@ std::optional<prepare::PreparedBirModule> lower_and_prepare_helper_aggregate_cal
   return planner.run();
 }
 
+std::optional<prepare::PreparedBirModule> lower_and_prepare_same_module_variadic_global_byval_call_module() {
+  lir::LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.type_decls.push_back("%pair = type { i32, i32 }");
+  module.globals.push_back(lir::LirGlobal{
+      .name = "gpair",
+      .qualifier = "global ",
+      .llvm_type = "%pair",
+      .init_text = "{ i32 7, i32 9 }",
+      .align_bytes = 4,
+  });
+
+  lir::LirFunction myprintf;
+  myprintf.name = "myprintf";
+  myprintf.signature_text = "define void @myprintf(ptr %format, ...)";
+
+  lir::LirBlock myprintf_entry;
+  myprintf_entry.label = "entry";
+  myprintf_entry.terminator = lir::LirRet{
+      .type_str = "void",
+  };
+
+  myprintf.blocks.push_back(std::move(myprintf_entry));
+  module.functions.push_back(std::move(myprintf));
+
+  lir::LirFunction function;
+  function.name = "lowered_same_module_variadic_global_byval_metadata";
+  function.signature_text =
+      "define void @lowered_same_module_variadic_global_byval_metadata(ptr %format)";
+  function.params.emplace_back("%format", c4c::TypeSpec{.base = c4c::TB_VOID, .ptr_level = 1});
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirCallOp{
+      .result = lir::LirOperand(""),
+      .return_type = "void",
+      .callee = lir::LirOperand("@myprintf"),
+      .callee_type_suffix = "(ptr, ...)",
+      .args_str = "ptr %format, ptr byval(%pair) @gpair",
+  });
+  entry.terminator = lir::LirRet{
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto lowered = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!lowered.module.has_value()) {
+    return std::nullopt;
+  }
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(*lowered.module);
+  prepared.target_profile = x86_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
 prepare::PreparedBirModule prepare_evicted_spill_module_with_regalloc() {
   bir::Module module;
 
@@ -2156,18 +2222,49 @@ int check_lowered_helper_aggregate_call_abi(const prepare::PreparedBirModule& pr
   bool saw_byval_move = false;
   for (const auto& move : function->move_resolution) {
     if (move.destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
-        move.destination_storage_kind != prepare::PreparedMoveStorageKind::StackSlot ||
-        move.destination_register_name.has_value()) {
+        move.destination_abi_index != std::optional<std::size_t>{1}) {
       continue;
     }
-    if (move.destination_abi_index == std::optional<std::size_t>{1} &&
-        (move.reason == "call_arg_register_to_stack" ||
-         move.reason == "call_arg_stack_to_stack")) {
+    if ((move.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
+         !move.destination_register_name.has_value() &&
+         (move.reason == "call_arg_register_to_stack" ||
+          move.reason == "call_arg_stack_to_stack")) ||
+        (move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+         (move.reason == "call_arg_register_to_register" ||
+          move.reason == "call_arg_stack_to_register"))) {
       saw_byval_move = true;
     }
   }
   if (!saw_byval_move) {
-    return fail("expected helper-built aggregate byval argument to publish stack-backed ABI consumption");
+    return fail("expected helper-built aggregate byval argument to publish an authoritative ABI destination");
+  }
+
+  return 0;
+}
+
+int check_lowered_same_module_variadic_global_byval_call_abi(
+    const prepare::PreparedBirModule& prepared) {
+  const auto* module_function = find_module_function(
+      prepared, "lowered_same_module_variadic_global_byval_metadata");
+  if (module_function == nullptr || module_function->blocks.size() != 1 ||
+      module_function->blocks.front().insts.size() != 1) {
+    return fail(
+        "expected lowered_same_module_variadic_global_byval_metadata BIR output with one call");
+  }
+
+  const auto* call = std::get_if<bir::CallInst>(&module_function->blocks.front().insts.front());
+  if (call == nullptr || call->callee != "myprintf" || !call->is_variadic ||
+      call->args.size() != 2 || call->arg_abi.size() != 2) {
+    return fail("expected same-module variadic aggregate call BIR output");
+  }
+  if (call->args[1] != bir::Value::named(bir::TypeKind::Ptr, "@gpair")) {
+    return fail("expected same-module variadic aggregate call to preserve the global payload identity");
+  }
+  if (call->arg_abi[1].type != bir::TypeKind::Ptr || !call->arg_abi[1].byval_copy ||
+      call->arg_abi[1].primary_class != bir::AbiValueClass::Memory ||
+      call->arg_abi[1].size_bytes != 8 || call->arg_abi[1].align_bytes != 4) {
+    return fail(
+        "expected same-module variadic aggregate call to preserve explicit byval ABI metadata");
   }
 
   return 0;
@@ -2598,6 +2695,17 @@ int main() {
     return fail("expected lowered helper aggregate-call module to succeed");
   }
   if (const int rc = check_lowered_helper_aggregate_call_abi(*lowered_helper_aggregate_call_prepared);
+      rc != 0) {
+    return rc;
+  }
+
+  const auto lowered_same_module_variadic_global_byval_prepared =
+      lower_and_prepare_same_module_variadic_global_byval_call_module();
+  if (!lowered_same_module_variadic_global_byval_prepared.has_value()) {
+    return fail("expected lowered same-module variadic aggregate-call module to succeed");
+  }
+  if (const int rc = check_lowered_same_module_variadic_global_byval_call_abi(
+          *lowered_same_module_variadic_global_byval_prepared);
       rc != 0) {
     return rc;
   }

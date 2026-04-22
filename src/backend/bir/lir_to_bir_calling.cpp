@@ -402,8 +402,26 @@ BirFunctionLowerer::parse_direct_global_typed_call(const c4c::codegen::lir::LirC
     parsed.typed_call.param_types.reserve(args->size());
     parsed.typed_call.args.reserve(args->size());
     for (std::size_t index = 0; index < args->size(); ++index) {
-      parsed.typed_call.owned_param_types.push_back(
-          std::string(c4c::codegen::lir::trim_lir_arg_text((*args)[index].type)));
+      const auto arg_type = c4c::codegen::lir::trim_lir_arg_text((*args)[index].type);
+      if (index < fixed_param_count) {
+        const auto expected_type = c4c::codegen::lir::trim_lir_arg_text((*param_types)[index]);
+        if (expected_type == arg_type) {
+          parsed.typed_call.owned_param_types.push_back(std::string(expected_type));
+        } else if (expected_type == "ptr") {
+          const auto byval_type = parse_byval_pointee_type(arg_type);
+          if (!byval_type.has_value()) {
+            return std::nullopt;
+          }
+          parsed.typed_call.owned_param_types.push_back(*byval_type);
+        } else {
+          return std::nullopt;
+        }
+      } else if (const auto byval_type = parse_byval_pointee_type(arg_type);
+                 byval_type.has_value()) {
+        parsed.typed_call.owned_param_types.push_back(*byval_type);
+      } else {
+        parsed.typed_call.owned_param_types.push_back(std::string(arg_type));
+      }
       parsed.typed_call.param_types.push_back(parsed.typed_call.owned_param_types.back());
       parsed.typed_call.args.push_back((*args)[index]);
     }
