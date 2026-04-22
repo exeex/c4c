@@ -2853,6 +2853,8 @@ std::string trace_prepared_module_routes(
     const c4c::backend::prepare::PreparedBirModule& module,
     std::optional<std::string_view> focus_function = std::nullopt,
     std::optional<std::string_view> focus_block = std::nullopt);
+// Legacy public entrypoints remain for compatibility only. New ownership for
+// target-aware entry logic lives behind api/x86_codegen_api.hpp.
 std::string emit_module(const c4c::backend::bir::Module& module);
 std::string emit_module(const c4c::codegen::lir::LirModule& module);
 assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,

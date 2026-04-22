@@ -5,51 +5,39 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 1.5
 Current Step Title: Audit Transitional Forwarding And Buildability Across Shared Seams
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed a step-1.5 transitional-forwarding audit packet by making
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` an even thinner
-compatibility wrapper and retargeting route-debug "next inspect" guidance away
-from the legacy wrapper and toward
-`src/backend/mir/x86/codegen/module/module_emit.cpp`, which now owns the
-top-level prepared-module orchestration surfaced by the reviewed rebuild docs.
+Completed a step-1.5 transitional-forwarding audit packet by making the legacy
+`src/backend/mir/x86/codegen/emit.cpp` public entrypoints explicit
+compatibility wrappers over `src/backend/mir/x86/codegen/api/`, narrowing
+`api/x86_codegen_api.hpp` so it no longer republishes the broad
+`x86_codegen.hpp` surface, and moving x86-local assemble ownership into the
+reviewed api seam while preserving the legacy `x86::assemble_module(...)`
+symbol as a thin forwarding layer.
 
 ## Suggested Next
 
-Continue step 1.5 by auditing the remaining shared-seam forwarding points under
-`src/backend/mir/x86/codegen/`, especially any other legacy-facing surfaces or
-debug hints that still imply ownership lives outside the reviewed `api/` and
-`module/` seams.
+Continue step 1.5 by auditing whether any remaining legacy declarations in
+`src/backend/mir/x86/codegen/x86_codegen.hpp` still advertise mixed ownership
+across `api/`, `module/`, and route-debug helpers, then shrink or reclassify
+those declarations without widening the public seam.
 
 ## Watchouts
 
-- Keep `prepared_module_emit.cpp` wrapper-thin; any remaining module-routing or
-  compatibility work should stay under `module/` owners instead of drifting
-  back into the legacy surface.
-- Keep route-debug guidance pointed at the real owner for top-level module
-  orchestration; only lane-specific hints that still genuinely live in
-  `prepared_*` files should mention those surfaces.
-- Keep `module/module_data_emit.*` focused on data and symbol publication; new
-  support helpers may delegate to `ModuleDataSupport`, but concrete
-  `.rodata`/`.data`/`.bss` formatting must stay behind that seam.
-- `ModuleAssemblyInventorySupport` is now the top-of-file whole-module owner;
-  keep future module inventory or multi-defined orchestration helpers there
-  instead of reintroducing free helpers.
-- `ModuleMinimalAbiSupport` and `ModuleFunctionPreparedQuerySupport` are now
-  the function-lowering-side helper clusters; keep register narrowing,
-  prepared-query lookup, block lookup, and dispatch-context assembly on that
-  side of the seam.
-- `ModuleRenderSupport` still owns final whole-module render/finalization
-  choices after assembly, and `ModuleMultiDefinedSupport` still owns bounded
-  helper state and contract detail for multi-defined modules.
-- Preserve the legacy `x86::emit_prepared_module(...)` symbol until the
-  supervisor retires that compatibility entry explicitly.
-- `module_emit.hpp` still does not need a broader public seam for this packet;
-  keep these classifications module-local unless the supervisor explicitly
-  needs a wider interface change.
+- Keep `emit.cpp` wrapper-thin; do not reintroduce lowering or assembler
+  ownership there now that `api/x86_codegen_api.cpp` owns the x86-compatible
+  entry logic for this seam.
+- Preserve the legacy `x86::emit_module(...)`, `x86::assemble_module(...)`,
+  and `x86::emit_prepared_module(...)` symbols until the supervisor retires
+  them explicitly; step 1.5 only reclassifies them as compatibility surfaces.
+- `api/x86_codegen_api.hpp` now stands on backend-facing types directly; avoid
+  pulling `x86_codegen.hpp` back into that public api unless a concrete build
+  dependency requires it.
+- `backend.cpp` still includes `x86_codegen.hpp` and was out of scope here, so
+  any broader public-entry retirement must be coordinated in a later packet.
 
 ## Proof
 
