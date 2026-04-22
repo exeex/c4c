@@ -5,26 +5,26 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 2.1
 Current Step Title: Stand Up Frame And Memory Lowering Owners
-Plan Review Counter: 4 / 6
+Plan Review Counter: 5 / 6
 # Current Packet
 
 ## Just Finished
 
-Continued step 2.1 by moving the next prepared stack-address consumers behind
-the reviewed lowering owners: pointer-home stack-address reconstruction in
-`prepared_local_slot_render.cpp` now routes through
-`render_prepared_value_home_stack_address_if_supported(...)` and
-`render_prepared_named_stack_address_if_supported(...)`, including the direct
-extern pointer-move path that previously rebuilt authoritative/home offsets
-inline before emitting `lea`.
+Continued step 2.1 by moving the aggregate slice/root-home prepared stack-home
+helper in `prepared_local_slot_render.cpp` behind the reviewed lowering
+owners: `render_prepared_aggregate_slice_root_home_memory_operand_if_supported(...)`
+now resolves exact root-home and ancestor/root fallback addresses through
+`find_prepared_value_home_frame_offset(...)` and
+`render_prepared_named_stack_address_if_supported(...)` instead of rebuilding
+prepared home lookup and authoritative-offset fallback inline.
 
 ## Suggested Next
 
-Continue step 2.1 by moving the next remaining prepared stack-address
-consumers behind the same seams, preferably the aggregate slice/root-home
-helpers in `prepared_local_slot_render.cpp` that still walk
-`find_prepared_value_home(...)` and authoritative offset fallback inline
-instead of delegating to lowering-owned frame/memory queries.
+Continue step 2.1 by moving the next remaining prepared stack/home consumers in
+`prepared_local_slot_render.cpp` behind the same seams, especially helper
+paths that still call `find_prepared_value_home(...)` or
+`find_prepared_value_home_frame_offset(...)` directly for operand/home rebuilds
+instead of delegating through lowering-owned frame/memory queries.
 
 ## Watchouts
 
@@ -43,14 +43,14 @@ instead of delegating to lowering-owned frame/memory queries.
   relocate semantic lowering owners, not add new named-case shortcuts.
 - Keep these new lowering helpers about frame-home and stack-address ownership
   only; do not widen step 2.1 into ABI policy or prepared entry-surface edits.
-- The direct extern pointer argument path still has register-home fallback
-  logic locally; only the stack-address/home-offset branches moved in this
-  packet, so keep the next packet focused on remaining address-resolution
-  families rather than register shuffling.
+- This packet intentionally kept the aggregate-root ancestor walk local, but
+  each lookup now delegates through lowering-owned frame/memory queries rather
+  than open-coding prepared-home extraction; keep the next slice focused on the
+  remaining inline prepared-home consumers, not on unrelated register routing.
 
 ## Proof
 
-Step 2.1 prepared stack-address consumer migration on 2026-04-22:
+Step 2.1 aggregate slice/root-home lowering migration on 2026-04-22:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 Backend subset passed. Canonical log paths: `test_before.log`, `test_after.log`

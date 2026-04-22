@@ -489,59 +489,8 @@ std::optional<std::string> render_prepared_aggregate_slice_root_home_memory_oper
   if (!slice.has_value()) {
     return std::nullopt;
   }
-  const auto resolve_exact_root_home_offset =
-      [&](std::string_view value_name) -> std::optional<std::size_t> {
-        const auto* home =
-            c4c::backend::prepare::find_prepared_value_home(
-                *prepared_names, *function_locations, value_name);
-        if (home != nullptr &&
-            home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-            home->offset_bytes.has_value()) {
-          return *home->offset_bytes;
-        }
-        return std::nullopt;
-      };
-  const auto resolve_authoritative_root_home_offset =
-      [&](std::string_view value_name) -> std::optional<std::size_t> {
-        if (const auto exact_home = resolve_exact_root_home_offset(value_name);
-            exact_home.has_value()) {
-          return exact_home;
-        }
-        if (local_layout == nullptr) {
-          return std::nullopt;
-        }
-        return find_prepared_authoritative_value_stack_offset_if_supported(
-            *local_layout,
-            static_cast<const c4c::backend::prepare::PreparedStackLayout*>(nullptr),
-            static_cast<const c4c::backend::prepare::PreparedAddressingFunction*>(nullptr),
-            prepared_names,
-            function_locations,
-            c4c::kInvalidFunctionName,
-            value_name);
-      };
-
-  std::optional<std::size_t> root_home_offset =
-      resolve_exact_root_home_offset(slice->first);
-  if (!root_home_offset.has_value()) {
-    auto ancestor_name = slice->first;
-    while (true) {
-      const auto dot = ancestor_name.rfind('.');
-      if (dot == std::string_view::npos) {
-        break;
-      }
-      ancestor_name = ancestor_name.substr(0, dot);
-      root_home_offset = resolve_authoritative_root_home_offset(ancestor_name);
-      if (root_home_offset.has_value()) {
-        break;
-      }
-    }
-  }
-  if (!root_home_offset.has_value()) {
-    root_home_offset = resolve_authoritative_root_home_offset(slice->first);
-  }
-  if (!root_home_offset.has_value()) {
-    return std::nullopt;
-  }
+  const PreparedModuleLocalSlotLayout empty_layout;
+  const auto& layout = local_layout == nullptr ? empty_layout : *local_layout;
 
   std::optional<std::string_view> size_name;
   if (type == c4c::backend::bir::TypeKind::I8 || type == c4c::backend::bir::TypeKind::I32) {
@@ -555,7 +504,47 @@ std::optional<std::string> render_prepared_aggregate_slice_root_home_memory_oper
     return std::nullopt;
   }
 
-  return render_prepared_stack_memory_operand(*root_home_offset + slice->second, *size_name);
+  if (const auto exact_root_home_offset = find_prepared_value_home_frame_offset(
+          layout, prepared_names, function_locations, slice->first);
+      exact_root_home_offset.has_value()) {
+    return render_prepared_stack_memory_operand(*exact_root_home_offset + slice->second, *size_name);
+  }
+
+  auto ancestor_name = slice->first;
+  while (true) {
+    const auto dot = ancestor_name.rfind('.');
+    if (dot == std::string_view::npos) {
+      break;
+    }
+    ancestor_name = ancestor_name.substr(0, dot);
+    const auto stack_address = render_prepared_named_stack_address_if_supported(
+        layout,
+        static_cast<const c4c::backend::prepare::PreparedStackLayout*>(nullptr),
+        static_cast<const c4c::backend::prepare::PreparedAddressingFunction*>(nullptr),
+        prepared_names,
+        function_locations,
+        c4c::kInvalidFunctionName,
+        ancestor_name,
+        slice->second);
+    if (stack_address.has_value()) {
+      return std::string(*size_name) + " PTR " + *stack_address;
+    }
+  }
+
+  if (const auto root_stack_address = render_prepared_named_stack_address_if_supported(
+          layout,
+          static_cast<const c4c::backend::prepare::PreparedStackLayout*>(nullptr),
+          static_cast<const c4c::backend::prepare::PreparedAddressingFunction*>(nullptr),
+          prepared_names,
+          function_locations,
+          c4c::kInvalidFunctionName,
+          slice->first,
+          slice->second);
+      root_stack_address.has_value()) {
+    return std::string(*size_name) + " PTR " + *root_stack_address;
+  }
+
+  return std::nullopt;
 }
 
 std::optional<std::string> render_prepared_named_f128_source_memory_operand_if_supported(
