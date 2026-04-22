@@ -679,6 +679,7 @@ enum class PreparedValueHomeKind {
   Register,
   StackSlot,
   RematerializableImmediate,
+  PointerBasePlusOffset,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_value_home_kind_name(
@@ -692,6 +693,8 @@ enum class PreparedValueHomeKind {
       return "stack_slot";
     case PreparedValueHomeKind::RematerializableImmediate:
       return "rematerializable_immediate";
+    case PreparedValueHomeKind::PointerBasePlusOffset:
+      return "pointer_base_plus_offset";
   }
   return "unknown";
 }
@@ -729,6 +732,8 @@ struct PreparedValueHome {
   std::optional<PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> offset_bytes;
   std::optional<std::int64_t> immediate_i32;
+  std::optional<ValueNameId> pointer_base_value_name;
+  std::optional<std::int64_t> pointer_byte_delta;
 };
 
 struct PreparedMoveBundle {

@@ -277,6 +277,144 @@ std::optional<std::string> choose_prepared_pointer_scratch_register_if_supported
   return std::nullopt;
 }
 
+std::optional<std::string> render_prepared_named_ptr_into_register_if_supported(
+    std::string_view value_name,
+    std::string_view destination_register,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    const std::optional<std::string_view>& current_ptr_name,
+    std::unordered_set<std::string_view>* active_names = nullptr) {
+  if (prepared_names == nullptr || function_locations == nullptr || value_name.empty()) {
+    return std::nullopt;
+  }
+
+  std::unordered_set<std::string_view> local_active_names;
+  auto* recursion_guard = active_names == nullptr ? &local_active_names : active_names;
+  if (!recursion_guard->insert(value_name).second) {
+    return std::nullopt;
+  }
+
+  auto erase_active_name = [&]() { recursion_guard->erase(value_name); };
+  if (current_ptr_name.has_value() && *current_ptr_name == value_name) {
+    erase_active_name();
+    if (destination_register == "rax") {
+      return std::string{};
+    }
+    return "    mov " + std::string(destination_register) + ", rax\n";
+  }
+
+  const auto* home =
+      find_prepared_named_value_home_if_supported(prepared_names, function_locations, value_name);
+  if (home == nullptr) {
+    erase_active_name();
+    return std::nullopt;
+  }
+  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+      home->register_name.has_value()) {
+    erase_active_name();
+    if (*home->register_name == destination_register) {
+      return std::string{};
+    }
+    return "    mov " + std::string(destination_register) + ", " + *home->register_name + "\n";
+  }
+  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+      home->offset_bytes.has_value()) {
+    erase_active_name();
+    return "    mov " + std::string(destination_register) + ", " +
+           render_prepared_stack_memory_operand(*home->offset_bytes, "QWORD") + "\n";
+  }
+  if (home->kind ==
+          c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
+      home->immediate_i32.has_value()) {
+    erase_active_name();
+    return "    mov " + std::string(destination_register) + ", " +
+           std::to_string(*home->immediate_i32) + "\n";
+  }
+  if (home->kind ==
+          c4c::backend::prepare::PreparedValueHomeKind::PointerBasePlusOffset &&
+      home->pointer_base_value_name.has_value() && home->pointer_byte_delta.has_value()) {
+    const auto base_name = c4c::backend::prepare::prepared_value_name(
+        *prepared_names, *home->pointer_base_value_name);
+    if (base_name.empty()) {
+      erase_active_name();
+      return std::nullopt;
+    }
+    auto rendered_base = render_prepared_named_ptr_into_register_if_supported(base_name,
+                                                                              destination_register,
+                                                                              prepared_names,
+                                                                              function_locations,
+                                                                              current_ptr_name,
+                                                                              recursion_guard);
+    erase_active_name();
+    if (!rendered_base.has_value()) {
+      return std::nullopt;
+    }
+    if (*home->pointer_byte_delta == 0) {
+      return rendered_base;
+    }
+    std::string rendered = std::move(*rendered_base);
+    const auto delta = *home->pointer_byte_delta;
+    const auto magnitude = delta < 0 ? -delta : delta;
+    rendered += "    ";
+    rendered += delta < 0 ? "sub " : "add ";
+    rendered += std::string(destination_register) + ", " + std::to_string(magnitude) + "\n";
+    return rendered;
+  }
+
+  erase_active_name();
+  return std::nullopt;
+}
+
+bool prepared_pointer_value_matches_family_if_supported(
+    std::string_view value_name,
+    std::string_view family_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::unordered_set<std::string_view>* active_names = nullptr) {
+  if (prepared_names == nullptr || function_locations == nullptr ||
+      value_name.empty() || family_name.empty()) {
+    return false;
+  }
+  if (value_name == family_name) {
+    return true;
+  }
+
+  std::unordered_set<std::string_view> local_active_names;
+  auto* recursion_guard = active_names == nullptr ? &local_active_names : active_names;
+  if (!recursion_guard->insert(value_name).second) {
+    return false;
+  }
+
+  auto erase_active_name = [&]() { recursion_guard->erase(value_name); };
+  const auto* home =
+      find_prepared_named_value_home_if_supported(prepared_names, function_locations, value_name);
+  if (home == nullptr ||
+      home->kind != c4c::backend::prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
+      !home->pointer_base_value_name.has_value()) {
+    erase_active_name();
+    return false;
+  }
+  const auto base_name =
+      c4c::backend::prepare::prepared_value_name(*prepared_names, *home->pointer_base_value_name);
+  const bool matches = !base_name.empty() &&
+                       prepared_pointer_value_matches_family_if_supported(base_name,
+                                                                         family_name,
+                                                                         prepared_names,
+                                                                         function_locations,
+                                                                         recursion_guard);
+  erase_active_name();
+  return matches;
+}
+
+std::string_view prepared_current_ptr_carrier_name(
+    std::string_view value_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  (void)prepared_names;
+  (void)function_locations;
+  return value_name;
+}
+
 std::optional<std::string> render_prepared_named_float_source_into_register_if_supported(
     c4c::backend::bir::TypeKind type,
     std::string_view value_name,
@@ -460,38 +598,29 @@ render_prepared_pointer_value_memory_operand_if_supported(
 
   std::string_view base_register;
   std::string setup_asm;
-  if (current_ptr_name.has_value() && *current_ptr_name == pointer_name) {
+  if (current_ptr_name.has_value() &&
+      prepared_pointer_value_matches_family_if_supported(*current_ptr_name,
+                                                         pointer_name,
+                                                         prepared_names,
+                                                         function_locations)) {
     base_register = "rax";
   } else {
-    const auto* home =
-        c4c::backend::prepare::find_prepared_value_home(*prepared_names, *function_locations, pointer_name);
-    if (home == nullptr) {
+    const auto scratch_register =
+        choose_prepared_pointer_scratch_register_if_supported(function_locations);
+    if (!scratch_register.has_value()) {
       return std::nullopt;
     }
-    if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
-        home->register_name.has_value()) {
-      base_register = *home->register_name;
-    } else {
-      const auto scratch_register =
-          choose_prepared_pointer_scratch_register_if_supported(function_locations);
-      if (!scratch_register.has_value()) {
-        return std::nullopt;
-      }
-      if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-          home->offset_bytes.has_value()) {
-        setup_asm = "    mov " + *scratch_register + ", " +
-                    render_prepared_stack_memory_operand(*home->offset_bytes, "QWORD") + "\n";
-        base_register = *scratch_register;
-      } else if (home->kind ==
-                     c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
-                 home->immediate_i32.has_value()) {
-        setup_asm = "    mov " + *scratch_register + ", " +
-                    std::to_string(*home->immediate_i32) + "\n";
-        base_register = *scratch_register;
-      } else {
-        return std::nullopt;
-      }
+    const auto rendered_pointer = render_prepared_named_ptr_into_register_if_supported(
+        pointer_name,
+        *scratch_register,
+        prepared_names,
+        function_locations,
+        current_ptr_name);
+    if (!rendered_pointer.has_value()) {
+      return std::nullopt;
     }
+    setup_asm = std::move(*rendered_pointer);
+    base_register = *scratch_register;
   }
 
   std::string memory_operand = std::string(size_name) + " PTR [" + std::string(base_register);
@@ -731,15 +860,13 @@ std::optional<std::string> render_prepared_named_ptr_home_sync_if_supported(
   if (home == nullptr) {
     return std::string{};
   }
-  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
-      home->register_name.has_value()) {
+  if (home->register_name.has_value()) {
     if (*home->register_name == "rax") {
       return std::string{};
     }
     return "    mov " + *home->register_name + ", rax\n";
   }
-  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-      home->offset_bytes.has_value()) {
+  if (home->offset_bytes.has_value()) {
     return "    mov " + render_prepared_stack_memory_operand(*home->offset_bytes, "QWORD") +
            ", rax\n";
   }
@@ -2134,6 +2261,24 @@ std::optional<std::string> render_prepared_select_inst_if_supported(
       current_ptr_name == nullptr || current_materialized_compare == nullptr) {
     return std::nullopt;
   }
+  if (prepared_names != nullptr && block_context.function_context->function_control_flow != nullptr &&
+      select.result.kind == c4c::backend::bir::Value::Kind::Named) {
+    const auto* join_transfer = c4c::backend::prepare::find_prepared_join_transfer(
+        *prepared_names,
+        *block_context.function_context->function_control_flow,
+        block_context.block_label_id,
+        select.result.name);
+    if (join_transfer != nullptr &&
+        c4c::backend::prepare::effective_prepared_join_transfer_carrier_kind(*join_transfer) ==
+            c4c::backend::prepare::PreparedJoinTransferCarrierKind::SelectMaterialization) {
+      *current_materialized_compare = std::nullopt;
+      *current_i32_name = std::nullopt;
+      *previous_i32_name = std::nullopt;
+      *current_i8_name = std::nullopt;
+      *current_ptr_name = std::nullopt;
+      return std::string{};
+    }
+  }
   if (select.predicate != c4c::backend::bir::BinaryOpcode::Eq ||
       select.compare_type != c4c::backend::bir::TypeKind::I64 ||
       select.result.type != c4c::backend::bir::TypeKind::I32) {
@@ -2362,6 +2507,43 @@ select_prepared_short_circuit_cond_branch_render_if_supported(
           *prepared_names, *function_control_flow, function, *resolved_block_label_id);
   if (!join_context.has_value()) {
     return std::nullopt;
+  }
+  if (c4c::backend::prepare::find_prepared_short_circuit_continuation_targets(
+          *prepared_names, *function_control_flow, function, *resolved_block_label_id)
+          .has_value()) {
+    const auto* source_branch_condition =
+        c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
+                                                              *resolved_block_label_id);
+    if (source_branch_condition == nullptr) {
+      return std::nullopt;
+    }
+    const auto direct_targets =
+        c4c::backend::prepare::resolve_prepared_compare_branch_target_labels(*prepared_names,
+                                                                             function_control_flow,
+                                                                             *resolved_block_label_id,
+                                                                             block,
+                                                                             *source_branch_condition);
+    if (!direct_targets.has_value()) {
+      return std::nullopt;
+    }
+    const auto rhs_entry_label = join_context->classified_incoming.short_circuit_on_compare_true
+                                     ? direct_targets->false_label
+                                     : direct_targets->true_label;
+    const auto* rhs_entry_block =
+        find_block(c4c::backend::prepare::prepared_block_label(*prepared_names, rhs_entry_label));
+    if (rhs_entry_block == nullptr) {
+      return std::nullopt;
+    }
+    const auto rhs_compare_index = select_prepared_block_terminator_compare_index_if_supported(
+        *rhs_entry_block,
+        c4c::backend::prepare::PreparedShortCircuitContinuationLabels{
+            .incoming_label = rhs_entry_label,
+            .true_label = join_context->continuation_true_label,
+            .false_label = join_context->continuation_false_label,
+        });
+    if (!rhs_compare_index.has_value() || *rhs_compare_index >= rhs_entry_block->insts.size()) {
+      return std::nullopt;
+    }
   }
 
   const auto short_circuit_render_plan =
@@ -2652,7 +2834,8 @@ std::optional<std::string> render_prepared_scalar_load_inst_if_supported(
       *current_i32_name = std::nullopt;
       *previous_i32_name = std::nullopt;
       *current_i8_name = std::nullopt;
-      *current_ptr_name = result.name;
+      *current_ptr_name =
+          prepared_current_ptr_carrier_name(result.name, prepared_names, function_locations);
       return rendered_load;
     }
     *current_ptr_name = std::nullopt;
@@ -2817,21 +3000,10 @@ std::optional<std::string> render_prepared_scalar_store_inst_if_supported(
     if (current_ptr_name->has_value() && **current_ptr_name == value.name) {
       return "    mov " + std::string(memory_operand) + ", rax\n";
     }
-    if (prepared_names != nullptr && function_locations != nullptr) {
-      const auto* home = c4c::backend::prepare::find_prepared_value_home(
-          *prepared_names, *function_locations, value.name);
-      if (home != nullptr) {
-        if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
-            home->register_name.has_value()) {
-          return "    mov " + std::string(memory_operand) + ", " + *home->register_name + "\n";
-        }
-        if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-            home->offset_bytes.has_value()) {
-          return "    mov rax, " +
-                 render_prepared_stack_memory_operand(*home->offset_bytes, "QWORD") +
-                 "\n    mov " + std::string(memory_operand) + ", rax\n";
-        }
-      }
+    if (const auto rendered_source = render_prepared_named_ptr_into_register_if_supported(
+            value.name, "rax", prepared_names, function_locations, *current_ptr_name);
+        rendered_source.has_value()) {
+      return *rendered_source + "    mov " + std::string(memory_operand) + ", rax\n";
     }
     return render_prepared_ptr_store_to_memory_if_supported(
         value,
@@ -4015,7 +4187,10 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
                   call_result_selection->abi_register + "\n";
         }
         if (*result_home->register_name == "rax") {
-          *current_ptr_name = call->result->name;
+          *current_ptr_name = prepared_current_ptr_carrier_name(
+              call->result->name,
+              function_context.prepared_names,
+              function_context.function_locations);
         }
         return body;
       }
@@ -4029,7 +4204,10 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
       return std::nullopt;
     }
     if (call_result_selection->abi_register == "rax") {
-      *current_ptr_name = call->result->name;
+      *current_ptr_name = prepared_current_ptr_carrier_name(
+          call->result->name,
+          function_context.prepared_names,
+          function_context.function_locations);
     }
     return body;
   }
@@ -4425,6 +4603,61 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
                                               prepared_arch);
   if (!layout.has_value()) {
     return std::nullopt;
+  }
+  if (prepared_names != nullptr && context.function_control_flow != nullptr) {
+    for (const auto& source_block : function.blocks) {
+      const auto source_block_label_id =
+          c4c::backend::prepare::resolve_prepared_block_label_id(*prepared_names,
+                                                                 source_block.label);
+      if (!source_block_label_id.has_value() ||
+          !c4c::backend::prepare::find_prepared_short_circuit_continuation_targets(
+               *prepared_names,
+               *context.function_control_flow,
+               function,
+               *source_block_label_id)
+               .has_value()) {
+        continue;
+      }
+      const auto join_context =
+          c4c::backend::x86::find_prepared_short_circuit_join_context_if_supported(
+              *prepared_names, *context.function_control_flow, function, *source_block_label_id);
+      if (!join_context.has_value()) {
+        continue;
+      }
+      const auto* source_branch_condition =
+          c4c::backend::prepare::find_prepared_branch_condition(*context.function_control_flow,
+                                                                *source_block_label_id);
+      if (source_branch_condition == nullptr) {
+        continue;
+      }
+      const auto direct_targets =
+          c4c::backend::prepare::resolve_prepared_compare_branch_target_labels(
+              *prepared_names,
+              context.function_control_flow,
+              *source_block_label_id,
+              source_block,
+              *source_branch_condition);
+      if (!direct_targets.has_value()) {
+        continue;
+      }
+      const auto rhs_entry_label = join_context->classified_incoming.short_circuit_on_compare_true
+                                       ? direct_targets->false_label
+                                       : direct_targets->true_label;
+      const auto* rhs_entry_block = find_block(
+          c4c::backend::prepare::prepared_block_label(*prepared_names, rhs_entry_label));
+      if (rhs_entry_block == nullptr || rhs_entry_block->insts.empty()) {
+        continue;
+      }
+      const auto* rhs_compare = std::get_if<c4c::backend::bir::BinaryInst>(
+          &rhs_entry_block->insts.back());
+      if (rhs_compare != nullptr &&
+          rhs_compare->operand_type == c4c::backend::bir::TypeKind::I8 &&
+          (rhs_compare->result.type == c4c::backend::bir::TypeKind::I1 ||
+           rhs_compare->result.type == c4c::backend::bir::TypeKind::I32) &&
+          prepared_i32_setcc_opcode_if_supported(rhs_compare->opcode) != nullptr) {
+        return std::nullopt;
+      }
+    }
   }
   const bool function_has_same_module_call =
       prepared_function_has_same_module_call(module, function);
@@ -5972,20 +6205,26 @@ std::optional<std::string> render_prepared_minimal_local_slot_return_from_contex
       }
       if (store->value.kind == c4c::backend::bir::Value::Kind::Named &&
           store->value.type == c4c::backend::bir::TypeKind::Ptr) {
-        const auto rendered_store = render_prepared_ptr_store_to_memory_if_supported(
-            store->value,
-            std::nullopt,
-            memory->memory_operand,
-            [&](std::string_view value_name) -> std::optional<std::string> {
-              return render_prepared_value_home_stack_address_if_supported(
-                  *layout,
-                  context.stack_layout,
-                  function_addressing,
-                  prepared_names,
-                  function_locations,
-                  function_name_id,
-                  value_name);
-            });
+        auto rendered_store = render_prepared_named_ptr_into_register_if_supported(
+            store->value.name, "rax", prepared_names, function_locations, std::nullopt);
+        if (rendered_store.has_value()) {
+          *rendered_store += "    mov " + memory->memory_operand + ", rax\n";
+        } else {
+          rendered_store = render_prepared_ptr_store_to_memory_if_supported(
+              store->value,
+              std::nullopt,
+              memory->memory_operand,
+              [&](std::string_view value_name) -> std::optional<std::string> {
+                return render_prepared_value_home_stack_address_if_supported(
+                    *layout,
+                    context.stack_layout,
+                    function_addressing,
+                    prepared_names,
+                    function_locations,
+                    function_name_id,
+                    value_name);
+              });
+        }
         if (!rendered_store.has_value()) {
           return std::nullopt;
         }
@@ -7316,7 +7555,8 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
               current_i32_name = std::nullopt;
               previous_i32_name = std::nullopt;
               current_i8_name = std::nullopt;
-              current_ptr_name = load->result.name;
+              current_ptr_name = prepared_current_ptr_carrier_name(
+                  load->result.name, &module.names, candidate_function_locations);
               return body;
             }
             current_ptr_name = std::nullopt;
