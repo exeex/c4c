@@ -5,38 +5,41 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 2.1.4
 Current Step Title: Audit Remaining Frame/Memory Holdouts Before Later Lowering Families
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed step 2.1.4 by moving the duplicated prepared frame-slot/global-symbol
-scalar-memory operand helpers behind lowering-owned seams:
-`memory_lowering.*` now owns scalar size-name selection, frame-slot/global-symbol
-prepared-memory access lookup, and the compatible per-instruction scalar-memory
-operand render path, while `prepared_local_slot_render.cpp` keeps only the
-pointer-value fallback as an explicit compatibility boundary for setup-asm cases.
+Completed step 2.1.4 by moving the remaining pointer-value scalar-memory
+operand/setup helpers behind lowering-owned seams: `memory_lowering.*` now owns
+prepared named-pointer home lookup, pointer scratch selection, pointer-family
+carrier tracking, authoritative pointer-memory-use detection, generic
+pointer-value memory-operand rendering, and the entry pointer-param access-base
+/ scalar-memory operand selection used by the same-module helper prefix. The
+prepared renderer now keeps only the typed load/result-state transitions and
+the final stack-home refresh store as the explicit compatibility boundary.
 
 ## Suggested Next
 
-Take the next 2.1.4 packet on the remaining pointer-value scalar-memory holdout:
-either move the pointer setup/render path behind a lowering-owned seam or record
-why it must stay prepared-only before later float/call family packets build on
-this boundary.
+Advance out of 2.1.4 into the next planned lowering family, or do a quick
+review pass on whether the remaining prepared-only pointer-param home-refresh
+store should stay as the compatibility wrapper until a later ABI/home-lowering
+step owns that writeback surface.
 
 ## Watchouts
 
-- Keep the prepared-side wrapper thin: it should accept lowering-owned
-  frame/symbol compatibility results first, then branch explicitly into the
-  pointer-value setup path instead of regrowing mixed ownership.
+- Keep the remaining prepared-side pointer-param wrapper thin: it should only
+  perform typed load/result-state bookkeeping plus the explicit stack-home
+  writeback, with access-base lookup and memory-operand selection staying in
+  `memory_lowering.*`.
 - Same-module global tracking in the handoff helpers still depends on the
-  symbol-access query; if that path moves again, preserve the current tracking
-  behavior rather than silently dropping global-usage bookkeeping.
-- `render_prepared_named_stack_memory_operand_if_supported(...)` remains a
-  frame/home stack fallback helper only; do not widen it into symbol memory,
-  ABI policy, or prepared entry-surface rewiring.
-- Reject testcase-shaped matcher growth while auditing the remaining holdouts:
-  this route is about ownership boundaries, not named-case shortcuts.
+  lowering-owned symbol-access query; preserve current bookkeeping if later
+  cleanup touches that surface.
+- The surviving pointer-param home-refresh store is ABI/home-policy flavored;
+  do not fold broader ABI rewiring into generic memory-lowering helpers unless
+  a later step explicitly takes ownership of that family.
+- Reject testcase-shaped matcher growth while continuing the ownership cleanup:
+  this route is about seam control, not named-case shortcuts.
 
 ## Proof
 

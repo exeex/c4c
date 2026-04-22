@@ -2,6 +2,9 @@
 
 #include "frame_lowering.hpp"
 
+#include <array>
+#include <unordered_set>
+
 namespace c4c::backend::x86 {
 
 namespace {
@@ -218,6 +221,359 @@ render_prepared_compatible_scalar_memory_operand_for_inst_if_supported(
   return PreparedScalarMemoryAccessRender{
       .setup_asm = {},
       .memory_operand = std::move(*memory_operand),
+  };
+}
+
+const c4c::backend::prepare::PreparedValueHome* find_prepared_named_value_home_if_supported(
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::string_view value_name) {
+  if (prepared_names == nullptr || function_locations == nullptr) {
+    return nullptr;
+  }
+  return c4c::backend::prepare::find_prepared_value_home(
+      *prepared_names, *function_locations, value_name);
+}
+
+std::optional<std::string> choose_prepared_pointer_scratch_register_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  static constexpr std::array<std::string_view, 4> kScratchRegisters = {"r11", "r10", "r9", "r8"};
+  for (const auto candidate : kScratchRegisters) {
+    if (!prepared_value_homes_use_register(function_locations, candidate)) {
+      return std::string(candidate);
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> render_prepared_named_ptr_into_register_if_supported(
+    std::string_view value_name,
+    std::string_view destination_register,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    const std::optional<std::string_view>& current_ptr_name,
+    std::unordered_set<std::string_view>* active_names) {
+  if (prepared_names == nullptr || function_locations == nullptr || value_name.empty()) {
+    return std::nullopt;
+  }
+
+  std::unordered_set<std::string_view> local_active_names;
+  auto* recursion_guard = active_names == nullptr ? &local_active_names : active_names;
+  if (!recursion_guard->insert(value_name).second) {
+    return std::nullopt;
+  }
+
+  auto erase_active_name = [&]() { recursion_guard->erase(value_name); };
+  if (current_ptr_name.has_value() && *current_ptr_name == value_name) {
+    erase_active_name();
+    if (destination_register == "rax") {
+      return std::string{};
+    }
+    return "    mov " + std::string(destination_register) + ", rax\n";
+  }
+
+  const auto* home =
+      find_prepared_named_value_home_if_supported(prepared_names, function_locations, value_name);
+  if (home == nullptr) {
+    erase_active_name();
+    return std::nullopt;
+  }
+  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+      home->register_name.has_value()) {
+    erase_active_name();
+    if (*home->register_name == destination_register) {
+      return std::string{};
+    }
+    return "    mov " + std::string(destination_register) + ", " + *home->register_name + "\n";
+  }
+  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+      home->offset_bytes.has_value()) {
+    erase_active_name();
+    return "    mov " + std::string(destination_register) + ", " +
+           render_prepared_stack_memory_operand(*home->offset_bytes, "QWORD") + "\n";
+  }
+  if (home->kind ==
+          c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
+      home->immediate_i32.has_value()) {
+    erase_active_name();
+    return "    mov " + std::string(destination_register) + ", " +
+           std::to_string(*home->immediate_i32) + "\n";
+  }
+  if (home->kind ==
+          c4c::backend::prepare::PreparedValueHomeKind::PointerBasePlusOffset &&
+      home->pointer_base_value_name.has_value() && home->pointer_byte_delta.has_value()) {
+    const auto base_name = c4c::backend::prepare::prepared_value_name(
+        *prepared_names, *home->pointer_base_value_name);
+    if (base_name.empty()) {
+      erase_active_name();
+      return std::nullopt;
+    }
+    auto rendered_base = render_prepared_named_ptr_into_register_if_supported(base_name,
+                                                                              destination_register,
+                                                                              prepared_names,
+                                                                              function_locations,
+                                                                              current_ptr_name,
+                                                                              recursion_guard);
+    erase_active_name();
+    if (!rendered_base.has_value()) {
+      return std::nullopt;
+    }
+    if (*home->pointer_byte_delta == 0) {
+      return rendered_base;
+    }
+    std::string rendered = std::move(*rendered_base);
+    const auto delta = *home->pointer_byte_delta;
+    const auto magnitude = delta < 0 ? -delta : delta;
+    rendered += "    ";
+    rendered += delta < 0 ? "sub " : "add ";
+    rendered += std::string(destination_register) + ", " + std::to_string(magnitude) + "\n";
+    return rendered;
+  }
+
+  erase_active_name();
+  return std::nullopt;
+}
+
+bool prepared_pointer_value_matches_family_if_supported(
+    std::string_view value_name,
+    std::string_view family_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::unordered_set<std::string_view>* active_names) {
+  if (prepared_names == nullptr || function_locations == nullptr ||
+      value_name.empty() || family_name.empty()) {
+    return false;
+  }
+  if (value_name == family_name) {
+    return true;
+  }
+
+  std::unordered_set<std::string_view> local_active_names;
+  auto* recursion_guard = active_names == nullptr ? &local_active_names : active_names;
+  if (!recursion_guard->insert(value_name).second) {
+    return false;
+  }
+
+  auto erase_active_name = [&]() { recursion_guard->erase(value_name); };
+  const auto* home =
+      find_prepared_named_value_home_if_supported(prepared_names, function_locations, value_name);
+  if (home == nullptr ||
+      home->kind != c4c::backend::prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
+      !home->pointer_base_value_name.has_value()) {
+    erase_active_name();
+    return false;
+  }
+  const auto base_name =
+      c4c::backend::prepare::prepared_value_name(*prepared_names, *home->pointer_base_value_name);
+  const bool matches = !base_name.empty() &&
+                       prepared_pointer_value_matches_family_if_supported(base_name,
+                                                                         family_name,
+                                                                         prepared_names,
+                                                                         function_locations,
+                                                                         recursion_guard);
+  erase_active_name();
+  return matches;
+}
+
+std::string_view prepared_current_ptr_carrier_name(
+    std::string_view value_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::unordered_set<std::string_view>* active_names) {
+  if (prepared_names == nullptr || function_locations == nullptr || value_name.empty()) {
+    return value_name;
+  }
+  std::unordered_set<std::string_view> local_active_names;
+  auto* recursion_guard = active_names == nullptr ? &local_active_names : active_names;
+  if (!recursion_guard->insert(value_name).second) {
+    return value_name;
+  }
+  const auto* home =
+      find_prepared_named_value_home_if_supported(prepared_names, function_locations, value_name);
+  if (home == nullptr ||
+      home->kind != c4c::backend::prepare::PreparedValueHomeKind::PointerBasePlusOffset ||
+      !home->pointer_base_value_name.has_value()) {
+    return value_name;
+  }
+  const auto base_name =
+      c4c::backend::prepare::prepared_value_name(*prepared_names, *home->pointer_base_value_name);
+  if (base_name.empty()) {
+    return value_name;
+  }
+  return prepared_current_ptr_carrier_name(
+      base_name, prepared_names, function_locations, recursion_guard);
+}
+
+std::optional<PreparedScalarMemoryAccessRender>
+render_prepared_pointer_value_memory_operand_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedAddress& address,
+    std::string_view size_name,
+    const std::optional<std::string_view>& current_ptr_name) {
+  if (prepared_names == nullptr || function_locations == nullptr ||
+      address.base_kind != c4c::backend::prepare::PreparedAddressBaseKind::PointerValue ||
+      !address.pointer_value_name.has_value() || !address.can_use_base_plus_offset) {
+    return std::nullopt;
+  }
+
+  const std::string_view pointer_name =
+      c4c::backend::prepare::prepared_value_name(*prepared_names, *address.pointer_value_name);
+  if (pointer_name.empty()) {
+    return std::nullopt;
+  }
+
+  const auto frame_offset = render_prepared_value_home_stack_address_if_supported(
+      local_layout,
+      static_cast<const c4c::backend::prepare::PreparedStackLayout*>(nullptr),
+      function_addressing,
+      prepared_names,
+      function_locations,
+      c4c::kInvalidFunctionName,
+      pointer_name);
+
+  std::string_view base_register;
+  std::string setup_asm;
+  if (!frame_offset.has_value() && current_ptr_name.has_value() &&
+      prepared_pointer_value_matches_family_if_supported(*current_ptr_name,
+                                                         pointer_name,
+                                                         prepared_names,
+                                                         function_locations)) {
+    base_register = "rax";
+  } else {
+    const auto scratch_register =
+        choose_prepared_pointer_scratch_register_if_supported(function_locations);
+    if (!scratch_register.has_value()) {
+      return std::nullopt;
+    }
+    if (frame_offset.has_value()) {
+      setup_asm = "    lea " + *scratch_register + ", " + *frame_offset + "\n";
+    } else {
+      const auto rendered_pointer = render_prepared_named_ptr_into_register_if_supported(
+          pointer_name,
+          *scratch_register,
+          prepared_names,
+          function_locations,
+          current_ptr_name);
+      if (!rendered_pointer.has_value()) {
+        return std::nullopt;
+      }
+      setup_asm = std::move(*rendered_pointer);
+    }
+    base_register = *scratch_register;
+  }
+
+  std::string memory_operand = std::string(size_name) + " PTR [" + std::string(base_register);
+  if (address.byte_offset > 0) {
+    memory_operand += " + " + std::to_string(address.byte_offset);
+  } else if (address.byte_offset < 0) {
+    memory_operand += " - " + std::to_string(-address.byte_offset);
+  }
+  memory_operand += "]";
+  return PreparedScalarMemoryAccessRender{
+      .setup_asm = std::move(setup_asm),
+      .memory_operand = std::move(memory_operand),
+  };
+}
+
+bool prepared_pointer_value_has_authoritative_memory_use(
+    std::string_view value_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing) {
+  if (prepared_names == nullptr || function_addressing == nullptr) {
+    return false;
+  }
+  const auto value_name_id =
+      c4c::backend::prepare::resolve_prepared_value_name_id(*prepared_names, value_name);
+  if (!value_name_id.has_value()) {
+    return false;
+  }
+  return std::any_of(
+      function_addressing->accesses.begin(),
+      function_addressing->accesses.end(),
+      [&](const c4c::backend::prepare::PreparedMemoryAccess& access) {
+        return access.address.base_kind ==
+                   c4c::backend::prepare::PreparedAddressBaseKind::PointerValue &&
+               access.address.pointer_value_name == value_name_id;
+      });
+}
+
+std::optional<PreparedPointerParamAccessBase>
+select_prepared_pointer_param_access_base_if_supported(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t inst_index,
+    const std::function<std::optional<std::string>(std::string_view)>&
+        lookup_pointer_param_register) {
+  const auto* prepared_access =
+      find_prepared_function_memory_access(function_addressing, block_label, inst_index);
+  if (prepared_access == nullptr ||
+      prepared_access->address.base_kind !=
+          c4c::backend::prepare::PreparedAddressBaseKind::PointerValue ||
+      !prepared_access->address.pointer_value_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto pointer_name =
+      c4c::backend::prepare::prepared_value_name(prepared_names,
+                                                 *prepared_access->address.pointer_value_name);
+  if (pointer_name.empty()) {
+    return std::nullopt;
+  }
+  const auto abi_register = lookup_pointer_param_register(pointer_name);
+  if (!abi_register.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedPointerParamAccessBase{
+      .pointer_name = std::string(pointer_name),
+      .abi_register = std::move(*abi_register),
+  };
+}
+
+std::optional<PreparedPointerParamMemoryAccessRender>
+render_prepared_pointer_param_scalar_memory_operand_for_inst_if_supported(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t inst_index,
+    c4c::backend::bir::TypeKind type,
+    const std::function<std::optional<std::string>(std::string_view)>&
+        lookup_pointer_param_register) {
+  const auto* prepared_access =
+      find_prepared_function_memory_access(function_addressing, block_label, inst_index);
+  if (prepared_access == nullptr || !prepared_access->address.can_use_base_plus_offset) {
+    return std::nullopt;
+  }
+
+  const auto base = select_prepared_pointer_param_access_base_if_supported(
+      prepared_names,
+      function_addressing,
+      block_label,
+      inst_index,
+      lookup_pointer_param_register);
+  if (!base.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto size_name = prepared_scalar_memory_operand_size_name(type);
+  if (!size_name.has_value()) {
+    return std::nullopt;
+  }
+
+  std::string memory_operand = std::string(*size_name) + " PTR [" + base->abi_register;
+  if (prepared_access->address.byte_offset > 0) {
+    memory_operand += " + " + std::to_string(prepared_access->address.byte_offset);
+  } else if (prepared_access->address.byte_offset < 0) {
+    memory_operand += " - " + std::to_string(-prepared_access->address.byte_offset);
+  }
+  memory_operand += "]";
+
+  return PreparedPointerParamMemoryAccessRender{
+      .pointer_name = std::move(base->pointer_name),
+      .abi_register = std::move(base->abi_register),
+      .memory_operand = std::move(memory_operand),
   };
 }
 

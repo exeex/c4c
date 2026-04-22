@@ -20,6 +20,17 @@ struct PreparedScalarMemoryAccessRender {
   std::string memory_operand;
 };
 
+struct PreparedPointerParamAccessBase {
+  std::string pointer_name;
+  std::string abi_register;
+};
+
+struct PreparedPointerParamMemoryAccessRender {
+  std::string pointer_name;
+  std::string abi_register;
+  std::string memory_operand;
+};
+
 struct PreparedI32BinaryRender {
   std::string body;
   bool rhs_now_in_ecx = false;
@@ -64,6 +75,69 @@ render_prepared_compatible_scalar_memory_operand_for_inst_if_supported(
     std::size_t inst_index,
     c4c::backend::bir::TypeKind type,
     const std::function<std::string(std::string_view)>* render_asm_symbol_name);
+
+const c4c::backend::prepare::PreparedValueHome* find_prepared_named_value_home_if_supported(
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::string_view value_name);
+
+std::optional<std::string> choose_prepared_pointer_scratch_register_if_supported(
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
+
+std::optional<std::string> render_prepared_named_ptr_into_register_if_supported(
+    std::string_view value_name,
+    std::string_view destination_register,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    const std::optional<std::string_view>& current_ptr_name,
+    std::unordered_set<std::string_view>* active_names = nullptr);
+
+bool prepared_pointer_value_matches_family_if_supported(
+    std::string_view value_name,
+    std::string_view family_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::unordered_set<std::string_view>* active_names = nullptr);
+
+std::string_view prepared_current_ptr_carrier_name(
+    std::string_view value_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::unordered_set<std::string_view>* active_names = nullptr);
+
+std::optional<PreparedScalarMemoryAccessRender>
+render_prepared_pointer_value_memory_operand_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedAddress& address,
+    std::string_view size_name,
+    const std::optional<std::string_view>& current_ptr_name);
+
+bool prepared_pointer_value_has_authoritative_memory_use(
+    std::string_view value_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing);
+
+std::optional<PreparedPointerParamAccessBase>
+select_prepared_pointer_param_access_base_if_supported(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t inst_index,
+    const std::function<std::optional<std::string>(std::string_view)>&
+        lookup_pointer_param_register);
+
+std::optional<PreparedPointerParamMemoryAccessRender>
+render_prepared_pointer_param_scalar_memory_operand_for_inst_if_supported(
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t inst_index,
+    c4c::backend::bir::TypeKind type,
+    const std::function<std::optional<std::string>(std::string_view)>&
+        lookup_pointer_param_register);
 
 std::optional<std::string> render_prepared_local_slot_memory_operand_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
