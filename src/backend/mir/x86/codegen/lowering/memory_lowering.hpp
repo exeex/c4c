@@ -15,6 +15,11 @@ struct PreparedNamedFloatLoadRender {
   std::string destination_register;
 };
 
+struct PreparedI32BinaryRender {
+  std::string body;
+  bool rhs_now_in_ecx = false;
+};
+
 std::string render_prepared_stack_memory_operand(std::size_t byte_offset,
                                                  std::string_view size_name);
 
@@ -121,6 +126,23 @@ std::optional<std::string> render_prepared_named_i32_operand_if_supported(
 std::optional<std::string> render_prepared_i32_operand_from_source_if_supported(
     const PreparedNamedI32Source& source);
 
+std::optional<PreparedI32BinaryRender> render_prepared_i32_binary_from_sources_in_eax_if_supported(
+    c4c::backend::bir::BinaryOpcode opcode,
+    PreparedNamedI32Source lhs_source,
+    PreparedNamedI32Source rhs_source,
+    std::optional<std::string_view> authoritative_lhs_value_name,
+    std::optional<std::string_view> rhs_value_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
+
+std::optional<std::string> render_prepared_i32_select_from_sources_if_supported(
+    const PreparedNamedI32Source& compared_source,
+    std::int64_t compared_immediate,
+    const PreparedNamedI32Source& true_source,
+    const PreparedNamedI32Source& false_source,
+    std::string_view false_label,
+    std::string_view done_label);
+
 bool append_prepared_named_i32_move_into_register_if_supported(
     std::string* body,
     std::string_view destination_register,
@@ -141,6 +163,17 @@ std::optional<std::string> finish_prepared_named_i32_load_if_supported(
     std::optional<std::string_view>* current_i32_name,
     std::optional<std::string_view>* previous_i32_name,
     std::optional<std::string_view>* current_i8_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
+
+std::optional<std::string> publish_prepared_named_i32_result_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view value_name,
+    std::string rendered_value,
+    std::optional<std::string_view>* current_i32_name,
+    std::optional<std::string_view>* previous_i32_name,
+    std::optional<std::string_view>* current_i8_name,
+    std::optional<std::string_view> published_previous_i32_name,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
 

@@ -5,25 +5,25 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 2.1.3.2
 Current Step Title: Move Remaining Prepared I32 Binary And Select Render Helpers Behind Lowering Owners
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed step 2.1.3.1 by moving the duplicated prepared-side `I32` load-result
-finalization seam behind lowering owners:
-`memory_lowering.*` now owns the stack-home sync plus prior-`eax` to `ecx`
-spill/update helper for named `I32` loads, and
-`prepared_local_slot_render.cpp` no longer keeps that load-finish policy
-duplicated across the ordinary prepared-load and bounded same-module helper
-paths.
+Completed step 2.1.3.2 by moving the remaining prepared-side `I32`
+binary/select register-move and result-publication helpers behind lowering
+owners:
+`memory_lowering.*` now owns the `eax`/`ecx` carry-forward policy for prepared
+`I32` binary rendering, the shared prepared `I32` select body builder, and the
+named-`I32` result-publication helper used by these paths, while
+`prepared_local_slot_render.cpp` now stays wrapper-thin around source lookup,
+labels, and lowering-owned publication.
 
 ## Suggested Next
 
-Advance step 2.1.3.2 by migrating the remaining prepared-side `I32`
-binary/select helpers that still make local `eax`/`ecx` register-move choices
-around lowering-owned `PreparedNamedI32Source` flows, without widening into
-scalar-lowering ownership, frame lowering, or entry-surface rewiring.
+Advance step 2.1.4 by auditing the remaining frame/memory compatibility
+holdouts under `src/backend/mir/x86/codegen/` so later lowering-family packets
+inherit explicit ownership boundaries instead of mixed helper drift.
 
 ## Watchouts
 
@@ -43,7 +43,7 @@ scalar-lowering ownership, frame lowering, or entry-surface rewiring.
 
 ## Proof
 
-Step 2.1.3.1 prepared-home `I32` load-finalization lowering migration on 2026-04-22:
+Step 2.1.3.2 prepared-home `I32` binary/select lowering migration on 2026-04-22:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 Backend subset passed (`106/106`). Canonical log paths: `test_before.log`,

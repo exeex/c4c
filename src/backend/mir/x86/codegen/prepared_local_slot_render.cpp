@@ -2009,101 +2009,28 @@ std::optional<std::string> render_prepared_i32_binary_inst_if_supported(
         return std::nullopt;
       }
 
-      PreparedNamedI32Source effective_lhs = *lhs_source;
-      PreparedNamedI32Source effective_rhs = *rhs_source;
-      std::optional<std::string_view> rhs_name =
+      const auto rendered_binary = render_prepared_i32_binary_from_sources_in_eax_if_supported(
+          binary.opcode,
+          *lhs_source,
+          *rhs_source,
+          lhs.kind == c4c::backend::bir::Value::Kind::Named
+              ? std::optional<std::string_view>(lhs.name)
+              : std::nullopt,
           rhs.kind == c4c::backend::bir::Value::Kind::Named
               ? std::optional<std::string_view>(rhs.name)
-              : std::nullopt;
-      std::optional<std::string_view> ecx_value_name;
-      std::string rendered_binary;
-      if (effective_rhs.register_name.has_value() && *effective_rhs.register_name == "eax" &&
-          effective_lhs.register_name.has_value() && *effective_lhs.register_name == "ecx" &&
-          lhs.kind == c4c::backend::bir::Value::Kind::Named) {
-        if (const auto authoritative_lhs = block != nullptr
-                                               ? select_prepared_named_i32_source_if_supported(
-                                                     lhs.name,
-                                                     std::nullopt,
-                                                     std::nullopt,
-                                                     prepared_names,
-                                                     function_locations)
-                                               : select_prepared_named_i32_source_if_supported(
-                                                     lhs.name,
-                                                     std::nullopt,
-                                                     std::nullopt,
-                                                     prepared_names,
-                                                     function_locations);
-            authoritative_lhs.has_value() &&
-            (!authoritative_lhs->register_name.has_value() ||
-             *authoritative_lhs->register_name != "eax")) {
-          effective_lhs = *authoritative_lhs;
-        }
-      }
-      if (effective_rhs.register_name.has_value() && *effective_rhs.register_name == "eax" &&
-          (!effective_lhs.register_name.has_value() || *effective_lhs.register_name != "eax")) {
-        rendered_binary += "    mov ecx, eax\n";
-        effective_rhs.register_name = std::string("ecx");
-        ecx_value_name = rhs_name;
-      }
-      if (!append_prepared_named_i32_move_into_register_if_supported(
-              &rendered_binary, "eax", effective_lhs)) {
+              : std::nullopt,
+          prepared_names,
+          function_locations);
+      if (!rendered_binary.has_value()) {
         return std::nullopt;
       }
-      const auto rhs_operand = render_prepared_i32_operand_from_source_if_supported(effective_rhs);
-      if (!rhs_operand.has_value()) {
-        return std::nullopt;
-        }
-
-        switch (binary.opcode) {
-          case c4c::backend::bir::BinaryOpcode::Add:
-            rendered_binary += "    add eax, " + *rhs_operand + "\n";
-            break;
-          case c4c::backend::bir::BinaryOpcode::Sub:
-            rendered_binary += "    sub eax, " + *rhs_operand + "\n";
-            break;
-          case c4c::backend::bir::BinaryOpcode::Mul:
-            rendered_binary += "    imul eax, " + *rhs_operand + "\n";
-            break;
-          case c4c::backend::bir::BinaryOpcode::And:
-            rendered_binary += "    and eax, " + *rhs_operand + "\n";
-            break;
-          case c4c::backend::bir::BinaryOpcode::Or:
-            rendered_binary += "    or eax, " + *rhs_operand + "\n";
-            break;
-          case c4c::backend::bir::BinaryOpcode::Xor:
-            rendered_binary += "    xor eax, " + *rhs_operand + "\n";
-            break;
-          case c4c::backend::bir::BinaryOpcode::Shl:
-            if (rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
-                rhs.type != c4c::backend::bir::TypeKind::I32) {
-              return std::nullopt;
-            }
-            rendered_binary += "    shl eax, " +
-                               std::to_string(static_cast<std::int32_t>(rhs.immediate)) + "\n";
-            break;
-          case c4c::backend::bir::BinaryOpcode::LShr:
-            if (rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
-                rhs.type != c4c::backend::bir::TypeKind::I32) {
-              return std::nullopt;
-            }
-            rendered_binary += "    shr eax, " +
-                               std::to_string(static_cast<std::int32_t>(rhs.immediate)) + "\n";
-            break;
-          case c4c::backend::bir::BinaryOpcode::AShr:
-            if (rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
-                rhs.type != c4c::backend::bir::TypeKind::I32) {
-              return std::nullopt;
-            }
-            rendered_binary += "    sar eax, " +
-                               std::to_string(static_cast<std::int32_t>(rhs.immediate)) + "\n";
-            break;
-          default:
-            return std::nullopt;
-        }
-        return std::pair<std::string, std::optional<std::string_view>>{
-            std::move(rendered_binary),
-            ecx_value_name,
-        };
+      return std::pair<std::string, std::optional<std::string_view>>{
+          rendered_binary->body,
+          rendered_binary->rhs_now_in_ecx &&
+                  rhs.kind == c4c::backend::bir::Value::Kind::Named
+              ? std::optional<std::string_view>(rhs.name)
+              : std::nullopt,
+      };
       };
 
   if (binary.operand_type == c4c::backend::bir::TypeKind::I32 &&
@@ -2117,17 +2044,20 @@ std::optional<std::string> render_prepared_i32_binary_inst_if_supported(
       if (local_layout == nullptr) {
         return std::nullopt;
       }
-      const auto synced_home = render_prepared_named_i32_home_sync_if_supported(
-          *local_layout, binary.result.name, prepared_names, function_locations);
-      if (!synced_home.has_value()) {
+      auto rendered = publish_prepared_named_i32_result_if_supported(
+          *local_layout,
+          binary.result.name,
+          std::move(rendered_binary->first),
+          current_i32_name,
+          previous_i32_name,
+          current_i8_name,
+          rendered_binary->second,
+          prepared_names,
+          function_locations);
+      if (!rendered.has_value()) {
         return std::nullopt;
       }
-      auto rendered = std::move(rendered_binary->first);
-      rendered += *synced_home;
       *current_materialized_compare = std::nullopt;
-      *current_i32_name = binary.result.name;
-      *previous_i32_name = rendered_binary->second;
-      *current_i8_name = std::nullopt;
       *current_ptr_name = std::nullopt;
       return rendered;
     }
@@ -2764,60 +2694,38 @@ std::optional<std::string> render_prepared_select_inst_if_supported(
     return std::nullopt;
   }
 
-  std::string body;
-  const auto true_operand = render_prepared_i32_operand_from_source_if_supported(*true_source);
-  if (!true_operand.has_value()) {
-    return std::nullopt;
-  }
   const auto done_label = ".L" + block_context.function_context->function->name + "_" +
                           block_context.block->label + "_select_" +
                           std::to_string(inst_index) + "_done";
-  if (compared_source->register_name.has_value() && *compared_source->register_name == "eax") {
-    body += "    cmp eax, " + std::to_string(static_cast<std::int32_t>(select.rhs.immediate)) + "\n";
-    const auto false_label = ".L" + block_context.function_context->function->name + "_" +
-                             block_context.block->label + "_select_" +
-                             std::to_string(inst_index) + "_false";
-    body += "    jne " + false_label + "\n";
-    body += "    mov eax, " + *true_operand + "\n";
-    body += "    jmp " + done_label + "\n";
-    body += false_label + ":\n";
-    if (!append_prepared_named_i32_move_into_register_if_supported(&body, "eax", *false_source)) {
-      return std::nullopt;
-    }
-  } else {
-    if (!append_prepared_named_i32_move_into_register_if_supported(&body, "eax", *false_source)) {
-      return std::nullopt;
-    }
-    if (compared_source->immediate_i32.has_value()) {
-      if (static_cast<std::int32_t>(*compared_source->immediate_i32) ==
-          static_cast<std::int32_t>(select.rhs.immediate)) {
-        body += "    mov eax, " + *true_operand + "\n";
-      }
-    } else {
-      const auto compared_operand =
-          render_prepared_i32_operand_from_source_if_supported(*compared_source);
-      if (!compared_operand.has_value()) {
-        return std::nullopt;
-      }
-      body += "    cmp " + *compared_operand + ", " +
-              std::to_string(static_cast<std::int32_t>(select.rhs.immediate)) + "\n";
-      body += "    jne " + done_label + "\n";
-      body += "    mov eax, " + *true_operand + "\n";
-    }
-  }
-  body += done_label + ":\n";
-  const auto synced_home = render_prepared_named_i32_home_sync_if_supported(
-      *block_context.local_layout, select.result.name, prepared_names, function_locations);
-  if (!synced_home.has_value()) {
+  const auto false_label = ".L" + block_context.function_context->function->name + "_" +
+                           block_context.block->label + "_select_" +
+                           std::to_string(inst_index) + "_false";
+  auto body = render_prepared_i32_select_from_sources_if_supported(
+      *compared_source,
+      select.rhs.immediate,
+      *true_source,
+      *false_source,
+      false_label,
+      done_label);
+  if (!body.has_value()) {
     return std::nullopt;
   }
-  body += *synced_home;
+  body = publish_prepared_named_i32_result_if_supported(
+      *block_context.local_layout,
+      select.result.name,
+      std::move(*body),
+      current_i32_name,
+      previous_i32_name,
+      current_i8_name,
+      std::nullopt,
+      prepared_names,
+      function_locations);
+  if (!body.has_value()) {
+    return std::nullopt;
+  }
   *current_materialized_compare = std::nullopt;
-  *current_i32_name = select.result.name;
-  *previous_i32_name = std::nullopt;
-  *current_i8_name = std::nullopt;
   *current_ptr_name = std::nullopt;
-  return body;
+  return *body;
 }
 
 
