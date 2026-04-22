@@ -171,6 +171,177 @@ std::optional<std::string> render_prepared_named_i32_home_sync_if_supported(
   return std::string{};
 }
 
+std::optional<PreparedNamedI32Source> select_prepared_named_i32_source_if_supported(
+    std::string_view value_name,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::optional<std::string_view>& previous_i32_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  if (current_i32_name.has_value() && value_name == *current_i32_name) {
+    return PreparedNamedI32Source{
+        .register_name = std::string("eax"),
+        .stack_operand = std::nullopt,
+        .immediate_i32 = std::nullopt,
+    };
+  }
+  if (previous_i32_name.has_value() && value_name == *previous_i32_name) {
+    return PreparedNamedI32Source{
+        .register_name = std::string("ecx"),
+        .stack_operand = std::nullopt,
+        .immediate_i32 = std::nullopt,
+    };
+  }
+  if (prepared_names == nullptr || function_locations == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto home = resolve_prepared_named_home_if_supported(
+      PreparedModuleLocalSlotLayout{}, prepared_names, function_locations, value_name);
+  if (!home.has_value()) {
+    return std::nullopt;
+  }
+  if (home->register_name.has_value()) {
+    const auto narrowed_register = narrow_i32_register(*home->register_name);
+    if (!narrowed_register.has_value()) {
+      return std::nullopt;
+    }
+    return PreparedNamedI32Source{
+        .register_name = *narrowed_register,
+        .stack_operand = std::nullopt,
+        .immediate_i32 = std::nullopt,
+    };
+  }
+  if (home->frame_offset.has_value()) {
+    return PreparedNamedI32Source{
+        .register_name = std::nullopt,
+        .stack_operand = render_prepared_stack_memory_operand(*home->frame_offset, "DWORD"),
+        .immediate_i32 = std::nullopt,
+    };
+  }
+  const auto* direct_home =
+      c4c::backend::prepare::find_prepared_value_home(
+          *prepared_names, *function_locations, value_name);
+  if (direct_home != nullptr &&
+      direct_home->kind ==
+          c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
+      direct_home->immediate_i32.has_value()) {
+    return PreparedNamedI32Source{
+        .register_name = std::nullopt,
+        .stack_operand = std::nullopt,
+        .immediate_i32 = *direct_home->immediate_i32,
+    };
+  }
+  return std::nullopt;
+}
+
+std::optional<PreparedNamedI32Source> select_prepared_i32_source_if_supported(
+    const c4c::backend::bir::Value& value,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::optional<std::string_view>& previous_i32_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  if (value.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    return PreparedNamedI32Source{
+        .register_name = std::nullopt,
+        .stack_operand = std::nullopt,
+        .immediate_i32 = static_cast<std::int32_t>(value.immediate),
+    };
+  }
+  if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  return select_prepared_named_i32_source_if_supported(
+      value.name, current_i32_name, previous_i32_name, prepared_names, function_locations);
+}
+
+std::optional<std::string> render_prepared_i32_operand_from_source_if_supported(
+    const PreparedNamedI32Source& source) {
+  if (source.immediate_i32.has_value()) {
+    return std::to_string(static_cast<std::int32_t>(*source.immediate_i32));
+  }
+  if (source.register_name.has_value()) {
+    return *source.register_name;
+  }
+  return source.stack_operand;
+}
+
+bool append_prepared_named_i32_move_into_register_if_supported(
+    std::string* body,
+    std::string_view destination_register,
+    const PreparedNamedI32Source& source) {
+  if (body == nullptr) {
+    return false;
+  }
+  if (source.immediate_i32.has_value()) {
+    *body += "    mov " + std::string(destination_register) + ", " +
+             std::to_string(static_cast<std::int32_t>(*source.immediate_i32)) + "\n";
+    return true;
+  }
+  if (source.register_name.has_value()) {
+    if (*source.register_name != destination_register) {
+      *body += "    mov " + std::string(destination_register) + ", " + *source.register_name + "\n";
+    }
+    return true;
+  }
+  if (source.stack_operand.has_value()) {
+    *body += "    mov " + std::string(destination_register) + ", " + *source.stack_operand + "\n";
+    return true;
+  }
+  return false;
+}
+
+bool append_prepared_named_i32_home_sync_if_supported(
+    std::string* body,
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view value_name,
+    const PreparedNamedI32Source& source,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  if (body == nullptr || prepared_names == nullptr || function_locations == nullptr) {
+    return true;
+  }
+
+  const auto home = resolve_prepared_named_home_if_supported(
+      local_layout, prepared_names, function_locations, value_name);
+  if (!home.has_value()) {
+    return true;
+  }
+  if (home->register_name.has_value()) {
+    const auto narrowed_register = narrow_i32_register(*home->register_name);
+    if (!narrowed_register.has_value()) {
+      return false;
+    }
+    return append_prepared_named_i32_move_into_register_if_supported(
+        body, *narrowed_register, source);
+  }
+  if (home->frame_offset.has_value()) {
+    const auto home_operand =
+        render_prepared_stack_memory_operand(*home->frame_offset, "DWORD");
+    if (source.immediate_i32.has_value()) {
+      *body += "    mov " + home_operand + ", " +
+               std::to_string(static_cast<std::int32_t>(*source.immediate_i32)) + "\n";
+      return true;
+    }
+    if (source.register_name.has_value()) {
+      *body += "    mov " + home_operand + ", " + *source.register_name + "\n";
+      return true;
+    }
+    if (source.stack_operand.has_value()) {
+      if (*source.stack_operand == home_operand) {
+        return true;
+      }
+      *body += "    mov eax, " + *source.stack_operand + "\n";
+      *body += "    mov " + home_operand + ", eax\n";
+      return true;
+    }
+    return false;
+  }
+  return true;
+}
+
 std::optional<std::string> render_prepared_named_i32_stack_home_sync_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     std::string_view value_name,

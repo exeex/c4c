@@ -4,6 +4,12 @@
 
 namespace c4c::backend::x86 {
 
+struct PreparedNamedI32Source {
+  std::optional<std::string> register_name;
+  std::optional<std::string> stack_operand;
+  std::optional<std::int64_t> immediate_i32;
+};
+
 struct PreparedNamedFloatLoadRender {
   std::string body;
   std::string destination_register;
@@ -52,6 +58,36 @@ std::optional<std::string> render_prepared_named_payload_stack_address_if_suppor
 std::optional<std::string> render_prepared_named_i32_home_sync_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     std::string_view value_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
+
+std::optional<PreparedNamedI32Source> select_prepared_named_i32_source_if_supported(
+    std::string_view value_name,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::optional<std::string_view>& previous_i32_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
+
+std::optional<PreparedNamedI32Source> select_prepared_i32_source_if_supported(
+    const c4c::backend::bir::Value& value,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::optional<std::string_view>& previous_i32_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
+
+std::optional<std::string> render_prepared_i32_operand_from_source_if_supported(
+    const PreparedNamedI32Source& source);
+
+bool append_prepared_named_i32_move_into_register_if_supported(
+    std::string* body,
+    std::string_view destination_register,
+    const PreparedNamedI32Source& source);
+
+bool append_prepared_named_i32_home_sync_if_supported(
+    std::string* body,
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view value_name,
+    const PreparedNamedI32Source& source,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
 

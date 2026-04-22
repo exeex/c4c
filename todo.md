@@ -5,27 +5,32 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 2.1.3
 Current Step Title: Move Prepared-Home Selection And Memory Render Helpers Behind Lowering Owners
-Plan Review Counter: 1 / 6
+Plan Review Counter: 2 / 6
 # Current Packet
 
 ## Just Finished
 
-Continued rewritten step 2.1.3 by moving the remaining prepared local-load
-destination selection behind reviewed lowering owners: `memory_lowering.*` now
-owns `render_prepared_named_qword_load_from_memory_if_supported(...)` and
-`render_prepared_named_float_load_from_memory_if_supported(...)`, and the
-late local `I64`/`F32`/`F64` load paths in
-`prepared_local_slot_render.cpp` plus the shared float local-load helper now
-delegate there instead of inspecting `PreparedValueHome` inline to choose
-register versus stack destinations.
+Continued rewritten step 2.1.3 by moving the next prepared-home `I32`
+source-selection and home-sync helpers behind reviewed lowering owners:
+`memory_lowering.*` now owns `PreparedNamedI32Source`,
+`select_prepared_named_i32_source_if_supported(...)`,
+`select_prepared_i32_source_if_supported(...)`,
+`render_prepared_i32_operand_from_source_if_supported(...)`, and
+`append_prepared_named_i32_home_sync_if_supported(...)`, so
+`prepared_local_slot_render.cpp` now delegates the reusable `I32`
+register/stack/immediate source picking and destination home sync logic
+through lowering-owned frame/memory helpers instead of inspecting
+`PreparedValueHome` inline.
 
 ## Suggested Next
 
-Continue step 2.1.3 by moving the next scalar prepared-home selection helpers
-that still construct register/stack/immediate source choices inline in
-`prepared_local_slot_render.cpp`, especially the `I32` source-selection and
-home-sync families that still call `find_prepared_value_home(...)` directly
-outside the new lowering-owned local-load helpers.
+Continue step 2.1.3 by peeling the next `I32` prepared-home helper that still
+mixes block-local slot fallbacks with lowered home resolution in
+`prepared_local_slot_render.cpp`, especially
+`select_prepared_named_i32_block_source_if_supported(...)` and adjacent
+call-result/cast paths that still compose frame offsets and source-family
+selection inline around the new lowering-owned `PreparedNamedI32Source`
+helpers.
 
 ## Watchouts
 
@@ -45,14 +50,14 @@ outside the new lowering-owned local-load helpers.
 - Keep these new lowering helpers about frame-home and stack-address ownership
   only; do not widen step 2.1.3 into ABI policy or prepared entry-surface
   edits.
-- This packet moved local-load destination placement only; `CastInst` float
-  destination choice and the broader scalar source-selection families still
-  live in `prepared_local_slot_render.cpp` and should be peeled off in later
-  step-2.1.3 packets without widening into compare, call, or extern routing.
+- The reusable `I32` home-driven helpers now live in `memory_lowering.*`, but
+  `select_prepared_named_i32_block_source_if_supported(...)` still owns the
+  local-slot and recent-block scan overlays in `prepared_local_slot_render.cpp`;
+  keep that fallback layer separate from broader compare/call/extern rewrites.
 
 ## Proof
 
-Step 2.1.3 local-load destination lowering migration on 2026-04-22:
+Step 2.1.3 prepared-home `I32` helper lowering migration on 2026-04-22:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 Backend subset passed. Canonical log paths: `test_before.log`, `test_after.log`
