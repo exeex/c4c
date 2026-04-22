@@ -1051,11 +1051,15 @@ inline std::optional<std::size_t> find_prepared_authoritative_named_stack_offset
               : c4c::backend::prepare::find_prepared_value_home(
                     *prepared_names, *function_locations, value_name);
       home != nullptr &&
-      home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-      home->slot_id.has_value()) {
-    const auto frame_slot_it = local_layout.frame_slot_offsets.find(*home->slot_id);
-    if (frame_slot_it != local_layout.frame_slot_offsets.end()) {
-      return frame_slot_it->second;
+      home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot) {
+    if (home->slot_id.has_value()) {
+      const auto frame_slot_it = local_layout.frame_slot_offsets.find(*home->slot_id);
+      if (frame_slot_it != local_layout.frame_slot_offsets.end()) {
+        return frame_slot_it->second;
+      }
+    }
+    if (home->offset_bytes.has_value()) {
+      return *home->offset_bytes;
     }
   }
 

@@ -1037,6 +1037,7 @@ render_prepared_pointer_value_memory_operand_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     const c4c::backend::prepare::PreparedAddress& address,
     std::string_view size_name,
     const std::optional<std::string_view>& current_ptr_name) {
@@ -1052,9 +1053,18 @@ render_prepared_pointer_value_memory_operand_if_supported(
     return std::nullopt;
   }
 
+  const auto frame_offset = find_prepared_authoritative_named_stack_offset_if_supported(
+      local_layout,
+      static_cast<const c4c::backend::prepare::PreparedStackLayout*>(nullptr),
+      function_addressing,
+      prepared_names,
+      function_locations,
+      c4c::kInvalidFunctionName,
+      pointer_name);
+
   std::string_view base_register;
   std::string setup_asm;
-  if (current_ptr_name.has_value() &&
+  if (!frame_offset.has_value() && current_ptr_name.has_value() &&
       prepared_pointer_value_matches_family_if_supported(*current_ptr_name,
                                                          pointer_name,
                                                          prepared_names,
@@ -1066,16 +1076,21 @@ render_prepared_pointer_value_memory_operand_if_supported(
     if (!scratch_register.has_value()) {
       return std::nullopt;
     }
-    const auto rendered_pointer = render_prepared_named_ptr_into_register_if_supported(
-        pointer_name,
-        *scratch_register,
-        prepared_names,
-        function_locations,
-        current_ptr_name);
-    if (!rendered_pointer.has_value()) {
-      return std::nullopt;
+    if (frame_offset.has_value()) {
+      setup_asm = "    lea " + *scratch_register + ", " +
+                  render_prepared_stack_address_expr(*frame_offset) + "\n";
+    } else {
+      const auto rendered_pointer = render_prepared_named_ptr_into_register_if_supported(
+          pointer_name,
+          *scratch_register,
+          prepared_names,
+          function_locations,
+          current_ptr_name);
+      if (!rendered_pointer.has_value()) {
+        return std::nullopt;
+      }
+      setup_asm = std::move(*rendered_pointer);
     }
-    setup_asm = std::move(*rendered_pointer);
     base_register = *scratch_register;
   }
 
@@ -5576,6 +5591,7 @@ std::optional<PreparedScalarMemoryAccessRender> render_prepared_scalar_memory_op
     const PreparedModuleLocalSlotLayout& local_layout,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     const c4c::backend::prepare::PreparedAddress& address,
     c4c::backend::bir::TypeKind type,
     const std::function<std::string(std::string_view)>* render_asm_symbol_name,
@@ -5600,6 +5616,7 @@ std::optional<PreparedScalarMemoryAccessRender> render_prepared_scalar_memory_op
         local_layout,
         prepared_names,
         function_locations,
+        function_addressing,
         address,
         *size_name,
         current_ptr_name);
@@ -5639,6 +5656,7 @@ render_prepared_scalar_memory_operand_for_inst_if_supported(
       local_layout,
       prepared_names,
       function_locations,
+      function_addressing,
       prepared_access->address,
       type,
       render_asm_symbol_name,
@@ -5656,16 +5674,20 @@ std::optional<std::size_t> find_prepared_value_home_frame_offset(
 
   const auto* home =
       c4c::backend::prepare::find_prepared_value_home(*prepared_names, *function_locations, value_name);
-  if (home == nullptr || home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
-      !home->slot_id.has_value()) {
+  if (home == nullptr || home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot) {
     return std::nullopt;
   }
-  // Pointer-derived stack addresses must come from canonical prepared frame-slot identity.
-  const auto frame_slot_it = local_layout.frame_slot_offsets.find(*home->slot_id);
-  if (frame_slot_it == local_layout.frame_slot_offsets.end()) {
-    return std::nullopt;
+  if (home->slot_id.has_value()) {
+    // Prefer canonical prepared frame-slot identity when it is available.
+    const auto frame_slot_it = local_layout.frame_slot_offsets.find(*home->slot_id);
+    if (frame_slot_it != local_layout.frame_slot_offsets.end()) {
+      return frame_slot_it->second;
+    }
   }
-  return frame_slot_it->second;
+  if (home->offset_bytes.has_value()) {
+    return *home->offset_bytes;
+  }
+  return std::nullopt;
 }
 
 const c4c::backend::prepare::PreparedBranchCondition*
