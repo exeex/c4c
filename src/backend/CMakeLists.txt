@@ -5,6 +5,11 @@ file(GLOB_RECURSE C4C_BACKEND_PREALLOC_SOURCES CONFIGURE_DEPENDS
 
 set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/backend.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/abi/x86_target_abi.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/api/x86_codegen_api.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/core/x86_codegen_output.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/module/module_data_emit.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/module/module_emit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/prepared_countdown_render.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/prepared_local_slot_render.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/prepared_param_zero_render.cpp"
