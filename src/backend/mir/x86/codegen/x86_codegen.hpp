@@ -257,6 +257,9 @@ inline std::optional<std::string> narrow_i8_register(std::string_view wide_regis
   return std::string(wide_register);
 }
 
+// Compatibility holdout until the reviewed prepared call-bundle render seam
+// lands in step 3. Keep these selectors live here rather than reviving
+// dormant `shared_call_support.cpp` or `mod.cpp` ownership.
 std::optional<std::string> select_prepared_call_argument_abi_register_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::size_t block_index,

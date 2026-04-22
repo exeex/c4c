@@ -2,6 +2,10 @@
 
 namespace c4c::backend::x86 {
 
+// Compatibility holdout: reviewed prepared rendering still queries prepared
+// call-bundle ABI selections through these helpers. Keep the live surface here
+// until the dedicated prepared seam lands instead of reviving dormant legacy
+// owners.
 std::optional<std::string> select_prepared_call_argument_abi_register_if_supported(
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     std::size_t block_index,
@@ -203,6 +207,7 @@ std::optional<PreparedI32CallResultAbiSelection> select_prepared_i32_call_result
       function_locations, 0, instruction_index, result_home);
 }
 
+// Canonical call-lowering ownership resumes here.
 CallAbiConfig X86Codegen::call_abi_config_impl() const {
   return CallAbiConfig{
       .max_int_regs = 6,

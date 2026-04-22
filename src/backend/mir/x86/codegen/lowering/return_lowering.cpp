@@ -4,6 +4,8 @@ namespace c4c::backend::x86 {
 
 namespace {
 
+// Return lowering owns policy dispatch and epilogue sequencing; raw register
+// publication helpers now live in core/x86_codegen_output.cpp.
 void emit_return_epilogue_and_ret(X86Codegen& codegen, std::int64_t frame_size) {
   for (std::size_t index = 0; index < codegen.used_callee_saved.size(); ++index) {
     const auto reg = c4c::backend::PhysReg{codegen.used_callee_saved[index]};
