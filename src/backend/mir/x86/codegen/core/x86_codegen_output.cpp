@@ -491,11 +491,31 @@ void X86Codegen::emit_return_f32_to_reg_impl() { this->state.emit("    movd %eax
 
 void X86Codegen::emit_return_f64_to_reg_impl() { this->state.emit("    movq %rax, %xmm0"); }
 
+void X86Codegen::emit_return_i128_to_regs_impl() {
+  if (this->func_ret_classes.size() != 2) {
+    return;
+  }
+
+  const auto first = this->func_ret_classes[0];
+  const auto second = this->func_ret_classes[1];
+  if (first == EightbyteClass::Integer && second == EightbyteClass::Sse) {
+    this->state.emit("    movq %rdx, %xmm0");
+  } else if (first == EightbyteClass::Sse && second == EightbyteClass::Integer) {
+    this->state.emit("    movq %rax, %xmm0");
+    this->state.emit("    movq %rdx, %rax");
+  } else if (first == EightbyteClass::Sse && second == EightbyteClass::Sse) {
+    this->state.emit("    movq %rax, %xmm0");
+    this->state.emit("    movq %rdx, %xmm1");
+  }
+}
+
 void X86Codegen::emit_return_f128_to_reg_impl() {
   this->state.emit("    pushq %rax");
   this->state.emit("    fldl (%rsp)");
   this->state.emit("    addq $8, %rsp");
 }
+
+void X86Codegen::emit_return_int_to_reg_impl() {}
 
 void X86Codegen::emit_get_return_f64_second_impl(const Value& dest) {
   if (const auto slot = this->state.get_slot(dest.raw)) {

@@ -79,24 +79,4 @@ void X86Codegen::emit_return_impl(const std::optional<Operand>& val, std::int64_
 
 IrType X86Codegen::current_return_type_impl() const { return this->current_return_type; }
 
-void X86Codegen::emit_return_i128_to_regs_impl() {
-  if (this->func_ret_classes.size() != 2) {
-    return;
-  }
-
-  const auto first = this->func_ret_classes[0];
-  const auto second = this->func_ret_classes[1];
-  if (first == EightbyteClass::Integer && second == EightbyteClass::Sse) {
-    this->state.emit("    movq %rdx, %xmm0");
-  } else if (first == EightbyteClass::Sse && second == EightbyteClass::Integer) {
-    this->state.emit("    movq %rax, %xmm0");
-    this->state.emit("    movq %rdx, %rax");
-  } else if (first == EightbyteClass::Sse && second == EightbyteClass::Sse) {
-    this->state.emit("    movq %rax, %xmm0");
-    this->state.emit("    movq %rdx, %xmm1");
-  }
-}
-
-void X86Codegen::emit_return_int_to_reg_impl() {}
-
 }  // namespace c4c::backend::x86
