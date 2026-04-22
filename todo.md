@@ -5,30 +5,29 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 1.4.2
 Current Step Title: Extract Function-Level Dispatch Context Assembly Behind Module Owners
-Plan Review Counter: 5 / 6
+Plan Review Counter: 6 / 6
 # Current Packet
 
 ## Just Finished
 
 Completed the next packet for plan step 1.4.2 by extracting the remaining
-prepared-query / ABI / `PreparedX86FunctionDispatchContext` assembly out of
+single-block return terminator / i32-shape triage out of
 `render_defined_function(...)` in
 `src/backend/mir/x86/codegen/module/module_emit.cpp` into the anonymous-namespace
-`ModuleFunctionDispatchAssemblySupport` owner, which now centralizes prepared
-function query lookup, asm-prefix and return-register ABI resolution, minimal
-param-register binding, helper-prefix wiring, and the construction of
-`PreparedX86FunctionDispatchContext`,
+`ModuleFunctionRenderSupport` owner, so the function-local lambda is now just
+the declaration/empty-block precheck plus one module-owned
+dispatch-or-render handoff layered on top of the existing
+`ModuleFunctionDispatchAssemblySupport`,
 `ModuleFunctionReturnSupport`, and
-`ModuleFunctionDispatchFallbackSupport` before handing the prepared support
-cluster back to the function renderer callback.
+`ModuleFunctionDispatchFallbackSupport` seams.
 
 ## Suggested Next
 
-Continue plan step 1.4.2 by extracting the remaining single-block return
-triage out of `render_defined_function(...)` so the lambda becomes a thin
-precheck plus one module-owned dispatch/render handoff, ideally reusing
-`ModuleFunctionReturnSupport` instead of leaving the terminator/I32-shape
-branch ladder inline.
+Continue plan step 1.4.2 by deciding whether the remaining
+declaration/empty-block precheck should also move behind
+`ModuleFunctionDispatchAssemblySupport`, or whether the callback surface is now
+thin enough to stop this seam extraction and shift to the next reviewed
+module-owned support packet.
 
 ## Watchouts
 
@@ -45,6 +44,10 @@ branch ladder inline.
 - `ModuleFunctionReturnSupport` now owns the prepared return/home-move path;
   follow-on packets should reuse that owner instead of duplicating frame-size
   or return-bundle queries back inside `render_defined_function(...)`.
+- `ModuleFunctionRenderSupport` now owns the return-vs-fallback branch and the
+  single-block i32-shape contract ladder; if follow-on packets keep shrinking
+  the lambda, preserve these error strings and contract annotations at the
+  module-owned seam instead of drifting them back into function-local code.
 - `ModuleFunctionDispatchFallbackSupport` now owns the compare-driven entry and
   local structural fallback lane; keep future non-return routing and contract
   rewrite logic there instead of rebuilding that ladder inline.
@@ -60,7 +63,7 @@ branch ladder inline.
 
 ## Proof
 
-Step 1.4 module-support seam packet on 2026-04-22 using:
+Step 1.4.2 module-support seam packet on 2026-04-22 using:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 Proof passed. Proof log path: `test_after.log`

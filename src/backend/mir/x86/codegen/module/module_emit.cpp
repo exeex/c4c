@@ -750,6 +750,45 @@ struct ModuleFunctionDispatchFallbackSupport {
   }
 };
 
+struct ModuleFunctionRenderSupport {
+  const PreparedX86FunctionDispatchContext& function_dispatch_context;
+  const ModuleFunctionReturnSupport& function_return_support;
+  const ModuleFunctionDispatchFallbackSupport& function_dispatch_fallback_support;
+  const ModuleMultiDefinedSupport& multi_defined_support;
+
+  [[nodiscard]] std::string render_return_or_dispatch() const {
+    const auto& entry = function_return_support.entry;
+    if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        !entry.terminator.value.has_value()) {
+      return function_dispatch_fallback_support.render_non_return_dispatch_or_throw();
+    }
+
+    const auto& returned = *entry.terminator.value;
+    if (returned.type != c4c::backend::bir::TypeKind::I32) {
+      constexpr std::string_view kI32ReturnValueError =
+          "x86 backend emitter only supports i32 return values through the canonical prepared-module handoff";
+      multi_defined_support.throw_contract(kI32ReturnValueError);
+      throw std::invalid_argument(std::string(kI32ReturnValueError));
+    }
+    if (const auto rendered_scalar_move_bundle_return =
+            function_return_support.render_minimal_scalar_move_bundle_return_if_supported();
+        rendered_scalar_move_bundle_return.has_value()) {
+      return *rendered_scalar_move_bundle_return;
+    }
+    if (const auto rendered_single_block_return =
+            c4c::backend::x86::render_prepared_single_block_return_dispatch_if_supported(
+                function_dispatch_context);
+        rendered_single_block_return.has_value()) {
+      return *rendered_single_block_return;
+    }
+
+    constexpr std::string_view kDirectI32ReturnShapeError =
+        "x86 backend emitter only supports direct immediate i32 returns, constant-evaluable straight-line no-parameter i32 return expressions, direct single-parameter i32 passthrough returns, single-parameter i32 add-immediate/sub-immediate/mul-immediate/and-immediate/or-immediate/xor-immediate/shl-immediate/lshr-immediate/ashr-immediate returns, a bounded equality-against-immediate guard family with immediate return leaves, or one bounded compare-against-zero branch family through the canonical prepared-module handoff";
+    multi_defined_support.throw_contract(kDirectI32ReturnShapeError);
+    throw std::invalid_argument(std::string(kDirectI32ReturnShapeError));
+  }
+};
+
 struct ModuleFunctionDispatchAssemblySupport {
   const c4c::backend::prepare::PreparedBirModule& module;
   c4c::TargetArch prepared_arch;
@@ -820,9 +859,13 @@ struct ModuleFunctionDispatchAssemblySupport {
         .function_return_support = function_return_support,
         .multi_defined_support = multi_defined_support,
     };
-    return std::forward<RenderBody>(render_body)(function_dispatch_context,
-                                                 function_return_support,
-                                                 function_dispatch_fallback_support);
+    const ModuleFunctionRenderSupport function_render_support{
+        .function_dispatch_context = function_dispatch_context,
+        .function_return_support = function_return_support,
+        .function_dispatch_fallback_support = function_dispatch_fallback_support,
+        .multi_defined_support = multi_defined_support,
+    };
+    return std::forward<RenderBody>(render_body)(function_render_support);
   }
 };
 
@@ -894,39 +937,8 @@ std::string emit_prepared_module_text(
     }
     return function_dispatch_assembly_support.render_with_dispatch_support(
         function, defer_module_data_emission, used_string_names, used_same_module_global_names,
-        [&](const PreparedX86FunctionDispatchContext& function_dispatch_context,
-            const ModuleFunctionReturnSupport& function_return_support,
-            const ModuleFunctionDispatchFallbackSupport&
-                function_dispatch_fallback_support) -> std::string {
-          const auto& entry = function_return_support.entry;
-          if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
-              !entry.terminator.value.has_value()) {
-            return function_dispatch_fallback_support.render_non_return_dispatch_or_throw();
-          }
-
-          const auto& returned = *entry.terminator.value;
-          if (returned.type != c4c::backend::bir::TypeKind::I32) {
-            constexpr std::string_view kI32ReturnValueError =
-                "x86 backend emitter only supports i32 return values through the canonical prepared-module handoff";
-            multi_defined_support.throw_contract(kI32ReturnValueError);
-            throw std::invalid_argument(std::string(kI32ReturnValueError));
-          }
-          if (const auto rendered_scalar_move_bundle_return =
-                  function_return_support.render_minimal_scalar_move_bundle_return_if_supported();
-              rendered_scalar_move_bundle_return.has_value()) {
-            return *rendered_scalar_move_bundle_return;
-          }
-          if (const auto rendered_single_block_return =
-                  c4c::backend::x86::render_prepared_single_block_return_dispatch_if_supported(
-                      function_dispatch_context);
-              rendered_single_block_return.has_value()) {
-            return *rendered_single_block_return;
-          }
-
-          constexpr std::string_view kDirectI32ReturnShapeError =
-              "x86 backend emitter only supports direct immediate i32 returns, constant-evaluable straight-line no-parameter i32 return expressions, direct single-parameter i32 passthrough returns, single-parameter i32 add-immediate/sub-immediate/mul-immediate/and-immediate/or-immediate/xor-immediate/shl-immediate/lshr-immediate/ashr-immediate returns, a bounded equality-against-immediate guard family with immediate return leaves, or one bounded compare-against-zero branch family through the canonical prepared-module handoff";
-          multi_defined_support.throw_contract(kDirectI32ReturnShapeError);
-          throw std::invalid_argument(std::string(kDirectI32ReturnShapeError));
+        [&](const ModuleFunctionRenderSupport& function_render_support) -> std::string {
+          return function_render_support.render_return_or_dispatch();
         });
   };
 
