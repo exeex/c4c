@@ -1394,6 +1394,14 @@ void append_consumer_move_resolution(const PreparedNameTables& names,
     return PreparedMoveStorageKind::None;
   }
 
+  if (target_profile.arch == c4c::TargetArch::X86_64 &&
+      abi->type == bir::TypeKind::Ptr &&
+      abi->byval_copy &&
+      !abi->sret_pointer &&
+      call_arg_destination_register_name(target_profile, *abi, arg_index).has_value()) {
+    return PreparedMoveStorageKind::Register;
+  }
+
   if (abi->passed_on_stack || abi->byval_copy || abi->sret_pointer ||
       abi->primary_class == bir::AbiValueClass::Memory) {
     return PreparedMoveStorageKind::StackSlot;

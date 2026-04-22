@@ -3,60 +3,71 @@
 Status: Active
 Source Idea Path: ideas/open/75_post_link_prepared_call_lane_clobber_runtime_correctness_for_x86_backend.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Confirm The Prepared/X86 Call-Lane Clobber Surface
-Plan Review Counter: 2 / 4
+Current Step ID: 2
+Current Step Title: Repair The Overlapping Call-Lane Source-Preservation Seam
+Plan Review Counter: 0 / 4
 # Current Packet
 
 ## Just Finished
 
-Plan steps `2` and `3` shrank the owned idea-75 family at the shared
-direct-extern call-lane consumer. The x86 prepared renderer now preserves
-overlapping GP argument sources before rewriting ABI destinations, so the
-generated `fa_s17` and `pll` asm no longer emits the old clobbering
-`lea rdi, ...` then `mov rsi, rdi` sequence; both sites now preserve the old
-source in `r8` and materialize `mov rsi, r8` before `call printf`. Fresh
-focused proof still fails `00204.c`, but the earliest remaining bad fact moved
-downstream to the start of `arg()`: the first failing site is now the caller's
-`fa_s1(s1)` handoff, where `build/c_testsuite_x86_backend/src/00204.c.s`
-stores the small struct into a stack scratch byte and then emits
-`lea rdi, [rsp]` before `call fa_s1`. That feeds an address-shaped temporary
-instead of the by-value payload, so the case has graduated past the old
-direct-extern overlap seam and into the next caller-side aggregate handoff
-leaf.
+Plan step `2` advanced through the active same-module local small-byval caller
+seam in `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`.
+This packet changed the bounded-helper consumer so helper-shaped same-module
+calls with a prepared `call_arg_stack_to_register` bundle now fall through to
+the generic same-module renderer, and it changed the small-byval payload loader
+to prefer the prepared stack object offset for that payload instead of the
+local-slot lane base. As a result, the earliest `arg()` calls now consume the
+repaired publication correctly:
+`mov BYTE PTR [rsp + 96], al`, `lea rdi, [rsp + 96]`,
+`movzx edi, BYTE PTR [rdi]`, `call fa_s1`, and similarly for `fa_s2` / `fa_s3`.
+This packet then repaired the later mixed-aggregate caller overlap too by
+publishing local aggregate slice stores back into their aggregate-root homes
+and by making the small-byval payload handoff prefer those synchronized homes.
+The `fa4(...)` caller no longer overlaps `s1`, `s2`, and `s3` with the later
+`hfa14` scratch; the rebuilt asm now uses root-home handoff like
+`mov BYTE PTR [rsp + 6264], al`, `lea rdi, [rsp + 6264]`,
+`mov BYTE PTR [rsp + 6280], al`, and `lea rdx, [rsp + 6280]`.
+`backend_x86_handoff_boundary` remains green. `00204.c` still fails, but the
+runtime crash has moved past the caller seam and into the `fa4` callee-side
+mixed aggregate unpack path.
 
 ## Suggested Next
 
-Take the next packet on the caller-side aggregate-by-value lowering that feeds
-fixed-arity internal calls in `arg()`, starting with the first `fa_s1(s1)`
-site and the repeated `lea rdi, [rsp + ...]` pattern for the small-struct
-family through the early `fa_s2`..`fa_s8` calls. The repair should preserve
-the now-cleared direct-extern overlap and focus on getting the caller to
-publish the by-value aggregate payload instead of an address-shaped temporary.
+Stay in plan step `2`, but move to the callee-side mixed aggregate unpack seam
+in the same renderer file. The next slice should repair the same-module callee
+prologue for `fa4(s1, hfa14, s2, hfa24, s3, hfa34)` so mixed byval argument
+spill/unpack does not use overlapping slots like `[rsp]` with `[rsp + 4]` and
+`[rsp + 20]` with `[rsp + 22]`.
 
 ## Watchouts
 
-- Treat the old `fa_s17` / `pll` `rdi -> rsi` overlap as repaired unless a
-  fresh proof reintroduces it; the shared direct-extern renderer now preserves
-  those overlapping sources explicitly.
-- The new earliest failure is caller-side, not callee-side: `fa_s1` itself
-  reads the register it was given, but `arg()` currently feeds it an address
-  temporary rather than the aggregate value.
-- The repeated `lea rdi, [rsp + ...]` pattern across the small-struct fixed
-  calls suggests a shared lowering rule for internal by-value aggregate
-  arguments, so avoid testcase-shaped fixes that only special-case one helper.
-- Keep the next packet on this earliest aggregate handoff seam before revisiting
-  later `Return values:`, `stdarg:`, or `MOVI:` corruption.
+- The helper-prefix contract remains a guardrail and is still green:
+  `backend_x86_handoff_boundary` still finds the canonical helper fragments
+  `mov BYTE PTR [rsp], al` plus `lea rdi, [rsp]` for the dedicated helper test.
+- The active `00204.c` route now reaches the generic same-module small-byval
+  renderer for the earliest calls, and the rebuilt asm shows the corrected
+  payload bases (`[rsp + 96]`, `[rsp + 97]`, `[rsp + 99]`, ...).
+- The old `fa4` caller overlap is repaired. The rebuilt caller asm now reloads
+  `s1`, `s2`, and `s3` from root-home offsets `6264`, `6280`, and `6288`
+  instead of the overlapped slice range `364..369`.
+- The next blocker is callee-side, not caller-side. `fa4` still crashes in
+  `printf`, and its prologue now stands out as the next bad seam:
+  `mov QWORD PTR [rsp], rdi` followed by `mov QWORD PTR [rsp + 4], rsi`,
+  and later `mov QWORD PTR [rsp + 20], rdx` followed by
+  `mov QWORD PTR [rsp + 22], r8`.
+- `gdb -batch -ex run -ex bt --args ./build/c_testsuite_x86_backend/src/00204.c.bin`
+  still lands in `fa4` / `printf`, which is consistent with callee-side
+  mixed-byval unpack corruption after the caller handoff was repaired.
 
 ## Proof
 
-Fresh focused proof for the accepted direct-extern overlap repair:
+Fresh focused proof for this renderer follow-up packet:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$' | tee test_after.log`
 Current proof state:
 - `backend_x86_handoff_boundary`: passed
-- `c_testsuite_x86_backend_src_00204_c`: still failed with
-  `[RUNTIME_MISMATCH]`, but the old direct-extern `fa_s17` / `pll` overlap is
-  cleared in the generated asm and the first remaining wrong line now comes
-  from the caller-side `fa_s1(s1)` handoff at the start of `Arguments:`
+- `c_testsuite_x86_backend_src_00204_c`: failed with
+  `[RUNTIME_NONZERO] exit=Segmentation fault`; the same-module caller-side
+  small-byval and mixed-aggregate scratch seams are repaired, but `fa4` still
+  crashes in the callee-side mixed aggregate unpack path
 - Proof log path: `test_after.log`
