@@ -121,6 +121,8 @@ bir::Module make_x86_param_shl_immediate_module();
 bir::Module make_x86_param_lshr_immediate_module();
 bir::Module make_x86_param_ashr_immediate_module();
 bir::Module make_x86_named_immediate_add_module();
+bir::Module make_x86_named_same_module_global_return_module();
+bir::Module make_x86_named_same_module_global_sub_return_module();
 
 std::string asm_header(const char* function_name) {
   return std::string(".intel_syntax noprefix\n.text\n.globl ") + function_name +
@@ -164,6 +166,149 @@ std::string expected_minimal_stack_home_param_binary_asm(const char* function_na
          mnemonic + " r11d, " + std::to_string(immediate) + "\n    mov " +
          minimal_i32_return_register() + ", r11d\n    add rsp, " + std::to_string(frame_size) +
          "\n    ret\n";
+}
+
+std::string expected_minimal_same_module_global_named_return_asm(const char* function_name) {
+  return asm_header(function_name)
+         + "    mov DWORD PTR [rip + x], 0\n"
+           "    mov eax, DWORD PTR [rip + x]\n"
+           "    ret\n"
+           ".bss\n.globl x\n.type x, @object\n.p2align 2\nx:\n"
+           "    .long 0\n";
+}
+
+std::string expected_minimal_same_module_global_sub_return_asm(const char* function_name) {
+  return asm_header(function_name)
+         + "    mov DWORD PTR [rip + v], 1\n"
+           "    mov DWORD PTR [rip + v + 4], 2\n"
+           "    mov eax, DWORD PTR [rip + v]\n"
+           "    mov ecx, eax\n"
+           "    mov eax, 3\n"
+           "    sub eax, ecx\n"
+           "    mov r11d, eax\n"
+           "    mov ecx, eax\n"
+           "    mov eax, DWORD PTR [rip + v + 4]\n"
+           "    mov ecx, eax\n"
+           "    mov eax, r11d\n"
+           "    sub eax, ecx\n"
+           "    mov r12d, eax\n"
+           "    ret\n"
+           ".bss\n.globl v\n.type v, @object\n.p2align 2\nv:\n"
+           "    .byte 0\n"
+           "    .byte 0\n"
+           "    .byte 0\n"
+           "    .byte 0\n"
+           "    .byte 0\n"
+           "    .byte 0\n"
+           "    .byte 0\n"
+           "    .byte 0\n";
+}
+
+bir::Module make_x86_named_same_module_global_return_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.globals.push_back(bir::Global{
+      .name = "x",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = bir::Value::immediate_i32(0),
+  });
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreGlobalInst{
+      .global_name = "x",
+      .value = bir::Value::immediate_i32(0),
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "loaded.x"),
+      .global_name = "x",
+      .align_bytes = 4,
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "loaded.x"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+bir::Module make_x86_named_same_module_global_sub_return_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.globals.push_back(bir::Global{
+      .name = "v",
+      .type = bir::TypeKind::I8,
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .initializer_elements = {
+          bir::Value::immediate_i8(0),
+          bir::Value::immediate_i8(0),
+          bir::Value::immediate_i8(0),
+          bir::Value::immediate_i8(0),
+          bir::Value::immediate_i8(0),
+          bir::Value::immediate_i8(0),
+          bir::Value::immediate_i8(0),
+          bir::Value::immediate_i8(0),
+      },
+  });
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreGlobalInst{
+      .global_name = "v",
+      .value = bir::Value::immediate_i32(1),
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::StoreGlobalInst{
+      .global_name = "v",
+      .value = bir::Value::immediate_i32(2),
+      .byte_offset = 4,
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "loaded.x"),
+      .global_name = "v",
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "first.diff"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(3),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "loaded.x"),
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "loaded.y"),
+      .global_name = "v",
+      .byte_offset = 4,
+      .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "final.diff"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "first.diff"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "loaded.y"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "final.diff"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
 }
 
 int check_add_one_prepared_move_bundle_contract() {
@@ -1373,6 +1518,24 @@ int run_backend_x86_handoff_boundary_scalar_smoke_tests() {
                               expected_minimal_constant_return_asm("const_add", 42),
                               "bir.func @const_add() -> i32 {",
                               "minimal named immediate-add route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_route_outputs(make_x86_named_same_module_global_return_module(),
+                              expected_minimal_same_module_global_named_return_asm("main"),
+                              "loaded.x = bir.load_global i32 @x",
+                              "minimal named same-module global return route");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_route_outputs(make_x86_named_same_module_global_sub_return_module(),
+                              expected_minimal_same_module_global_sub_return_asm("main"),
+                              "final.diff = bir.sub i32 first.diff, loaded.y",
+                              "minimal named same-module global sub return route");
       status != 0) {
     return status;
   }

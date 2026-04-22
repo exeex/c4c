@@ -1568,15 +1568,45 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
         return std::nullopt;
     }
   };
+  const auto same_module_global_is_zero_initialized =
+      [&](const c4c::backend::bir::Global& global) -> bool {
+    if (global.initializer_symbol_name.has_value()) {
+      return false;
+    }
+    if (global.initializer.has_value()) {
+      if (global.initializer->kind != c4c::backend::bir::Value::Kind::Immediate) {
+        return false;
+      }
+      return global.initializer->immediate == 0 && global.initializer->immediate_bits == 0;
+    }
+    if (global.initializer_elements.empty()) {
+      return false;
+    }
+    for (const auto& element : global.initializer_elements) {
+      if (element.kind == c4c::backend::bir::Value::Kind::Named) {
+        return false;
+      }
+      if (element.immediate != 0 || element.immediate_bits != 0) {
+        return false;
+      }
+    }
+    return true;
+  };
   const auto same_module_global_supports_scalar_load =
       [&](const c4c::backend::bir::Global& global,
           c4c::backend::bir::TypeKind type,
           std::size_t byte_offset) -> bool {
-    if (!same_module_global_scalar_size(type).has_value()) {
+    const auto scalar_size = same_module_global_scalar_size(type);
+    if (!scalar_size.has_value()) {
       return false;
     }
     if (global.initializer_symbol_name.has_value()) {
       return type == c4c::backend::bir::TypeKind::Ptr && byte_offset == 0;
+    }
+    if (same_module_global_is_zero_initialized(global) &&
+        byte_offset <= global.size_bytes &&
+        *scalar_size <= global.size_bytes - byte_offset) {
+      return true;
     }
     if (global.initializer.has_value()) {
       const auto init_size = same_module_global_scalar_size(global.initializer->type);

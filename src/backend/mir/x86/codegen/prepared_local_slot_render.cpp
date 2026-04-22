@@ -1884,32 +1884,55 @@ std::optional<std::string> render_prepared_i32_binary_inst_if_supported(
   const auto render_binary_in_eax =
       [&](const c4c::backend::bir::Value& lhs,
           const c4c::backend::bir::Value& rhs) -> std::optional<std::pair<std::string, std::optional<std::string_view>>> {
-        const auto lhs_source = select_i32_source(lhs);
-        const auto rhs_source = select_i32_source(rhs);
-        if (!lhs_source.has_value() || !rhs_source.has_value()) {
-          return std::nullopt;
-        }
+      const auto lhs_source = select_i32_source(lhs);
+      const auto rhs_source = select_i32_source(rhs);
+      if (!lhs_source.has_value() || !rhs_source.has_value()) {
+        return std::nullopt;
+      }
 
-        PreparedNamedI32Source effective_rhs = *rhs_source;
-        std::optional<std::string_view> rhs_name =
-            rhs.kind == c4c::backend::bir::Value::Kind::Named
-                ? std::optional<std::string_view>(rhs.name)
-                : std::nullopt;
-        std::optional<std::string_view> ecx_value_name;
-        std::string rendered_binary;
-        if (effective_rhs.register_name.has_value() && *effective_rhs.register_name == "eax" &&
-            (!lhs_source->register_name.has_value() || *lhs_source->register_name != "eax")) {
-          rendered_binary += "    mov ecx, eax\n";
-          effective_rhs.register_name = std::string("ecx");
-          ecx_value_name = rhs_name;
+      PreparedNamedI32Source effective_lhs = *lhs_source;
+      PreparedNamedI32Source effective_rhs = *rhs_source;
+      std::optional<std::string_view> rhs_name =
+          rhs.kind == c4c::backend::bir::Value::Kind::Named
+              ? std::optional<std::string_view>(rhs.name)
+              : std::nullopt;
+      std::optional<std::string_view> ecx_value_name;
+      std::string rendered_binary;
+      if (effective_rhs.register_name.has_value() && *effective_rhs.register_name == "eax" &&
+          effective_lhs.register_name.has_value() && *effective_lhs.register_name == "ecx" &&
+          lhs.kind == c4c::backend::bir::Value::Kind::Named) {
+        if (const auto authoritative_lhs = block != nullptr
+                                               ? select_prepared_named_i32_source_if_supported(
+                                                     lhs.name,
+                                                     std::nullopt,
+                                                     std::nullopt,
+                                                     prepared_names,
+                                                     function_locations)
+                                               : select_prepared_named_i32_source_if_supported(
+                                                     lhs.name,
+                                                     std::nullopt,
+                                                     std::nullopt,
+                                                     prepared_names,
+                                                     function_locations);
+            authoritative_lhs.has_value() &&
+            (!authoritative_lhs->register_name.has_value() ||
+             *authoritative_lhs->register_name != "eax")) {
+          effective_lhs = *authoritative_lhs;
         }
-        if (!append_prepared_named_i32_move_into_register_if_supported(
-                &rendered_binary, "eax", *lhs_source)) {
-          return std::nullopt;
-        }
-        const auto rhs_operand = render_prepared_i32_operand_from_source_if_supported(effective_rhs);
-        if (!rhs_operand.has_value()) {
-          return std::nullopt;
+      }
+      if (effective_rhs.register_name.has_value() && *effective_rhs.register_name == "eax" &&
+          (!effective_lhs.register_name.has_value() || *effective_lhs.register_name != "eax")) {
+        rendered_binary += "    mov ecx, eax\n";
+        effective_rhs.register_name = std::string("ecx");
+        ecx_value_name = rhs_name;
+      }
+      if (!append_prepared_named_i32_move_into_register_if_supported(
+              &rendered_binary, "eax", effective_lhs)) {
+        return std::nullopt;
+      }
+      const auto rhs_operand = render_prepared_i32_operand_from_source_if_supported(effective_rhs);
+      if (!rhs_operand.has_value()) {
+        return std::nullopt;
         }
 
         switch (binary.opcode) {
@@ -3127,6 +3150,8 @@ std::optional<std::string> render_prepared_scalar_store_inst_if_supported(
     std::size_t inst_index,
     const std::function<std::string(std::string_view)>& render_asm_symbol_name,
     const std::function<const c4c::backend::bir::Global*(std::string_view)>& find_same_module_global,
+    const std::function<bool(const c4c::backend::bir::Global&, c4c::backend::bir::TypeKind,
+                             std::int64_t)>& same_module_global_supports_scalar_load,
     std::unordered_set<std::string_view>* same_module_global_names,
     std::optional<std::string_view>* current_i32_name,
     std::optional<std::string_view>* previous_i32_name,
@@ -3230,7 +3255,7 @@ std::optional<std::string> render_prepared_scalar_store_inst_if_supported(
             find_same_module_global,
             [&](const c4c::backend::bir::Global& global, std::int64_t byte_offset) {
               if (store_type == c4c::backend::bir::TypeKind::I32) {
-                return global.type == store_type;
+                return same_module_global_supports_scalar_load(global, store_type, byte_offset);
               }
               if (store_type == c4c::backend::bir::TypeKind::Ptr) {
                 return byte_offset == 0 && global.type == store_type;
@@ -4944,6 +4969,7 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
           inst_index,
           render_asm_symbol_name,
           find_same_module_global,
+          same_module_global_supports_scalar_load,
           &same_module_global_names,
           current_i32_name,
           previous_i32_name,
@@ -7020,7 +7046,12 @@ std::optional<std::string> render_prepared_single_block_return_dispatch_if_suppo
       rendered_local_i16_i64_return.has_value()) {
     return *rendered_local_i16_i64_return;
   }
-  return render_prepared_minimal_immediate_or_param_return_if_supported(context);
+  if (const auto rendered_immediate_or_param =
+          render_prepared_minimal_immediate_or_param_return_if_supported(context);
+      rendered_immediate_or_param.has_value()) {
+    return *rendered_immediate_or_param;
+  }
+  return render_prepared_local_slot_guard_chain_if_supported(context);
 }
 
 std::optional<PreparedBoundedMultiDefinedCallLaneModuleRender>
@@ -7786,6 +7817,13 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
                 inst_index,
                 render_asm_symbol_name,
                 find_same_module_global,
+                [&](const c4c::backend::bir::Global& global,
+                    c4c::backend::bir::TypeKind type,
+                    std::int64_t byte_offset) {
+                  return byte_offset >= 0 &&
+                         same_module_global_supports_scalar_load(
+                             global, type, static_cast<std::size_t>(byte_offset));
+                },
                 &used_same_module_globals,
                 &current_i32_name,
                 &previous_i32_name,
