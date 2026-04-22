@@ -27,23 +27,31 @@ This idea owns x86 backend failures where:
 
 ## Current Known Failed Cases It Owns
 
-- `c_testsuite_x86_backend_src_00204_c`
+- none currently confirmed; `c_testsuite_x86_backend_src_00204_c` graduated on
+  2026-04-22 into a downstream post-link return-value / HFA runtime leaf after
+  the overlapping byval-home publication/layout seam stopped being the first
+  bad fact
 
 ## Latest Durable Note
 
-As of 2026-04-22, idea 75 step `2.2` proved the first remaining
-aggregate-string / mixed-aggregate corruption for `00204.c` is not a bounded
-helper-fragment defect. Read-only inspection showed the helper lane in
-`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` consumes byval
-payload addresses through `PreparedModuleLocalSlotLayout`, `PreparedValueHome`,
-and `PreparedStackLayout`. The generated
-`build/c_testsuite_x86_backend/src/00204.c.s` already shows overlapping homes
-before the helper call: `s9` byte 8 writes `rsp+6176` while `s10` starts at
-`rsp+6176`, then the same overlap repeats at `rsp+6184`, `rsp+6192`, and
-`rsp+6200`. The helper then passes those published addresses directly to `fa1`
-and `fa2`. Open ideas 61 and 68 do not fit this seam because the case already
-cleared prepared-module traversal and local-slot handoff consumption; the next
-executable route is upstream prepared byval-home publication/layout repair.
+As of 2026-04-22, commit `d61017fa` repaired the owned publication/layout seam
+generically: once one slice of an address-exposed aggregate-local family
+requires a fixed home, `assign_frame_slots(...)` keeps the whole slice family
+in the fixed-location group so helper byval payload homes publish contiguously
+instead of interleaving only their `.0` slices. Focused `00204.c` proof after
+that change still fails later at runtime, but the visible `Arguments:` section
+now matches through the earlier multi-aggregate byval probes and the remaining
+mismatch sits in the later return-value / HFA surface, not in overlapping
+helper payload homes.
+
+The source idea's semantic completion signal is therefore satisfied: the first
+bad fact moved downstream out of publication/layout ownership. A close review
+on 2026-04-22 still rejected formal closure because the strongest committed
+close-grade scope available in-repo,
+`ctest --test-dir build -j --output-on-failure -R '^backend_'`, stayed flat at
+`103` passes before and after. Idea 76 remains open only until a committed
+closure-grade probe exists for the repaired publication/layout seam; active
+execution has graduated into idea 77's downstream runtime leaf.
 
 ## Scope Notes
 
@@ -66,6 +74,8 @@ This idea does not own:
   remains in idea 68
 - downstream helper-lane consumer clobber after byval homes are already
   published truthfully; that remains in idea 75
+- downstream post-link return-value / HFA runtime correctness after helper
+  payload homes are already published truthfully; that remains in idea 77
 - later post-link variadic runtime traversal defects; those remain in idea 71
 
 ## Completion Signal

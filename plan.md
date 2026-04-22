@@ -1,175 +1,182 @@
-# Prepared Byval-Home Publication/Layout Correctness
+# Post-Link Return-Value And HFA Runtime Correctness
 
 Status: Active
-Source Idea: ideas/open/76_prepared_byval_home_publication_and_layout_correctness_for_x86_backend.md
-Activated from: ideas/open/75_post_link_prepared_call_lane_clobber_runtime_correctness_for_x86_backend.md
+Source Idea: ideas/open/77_post_link_return_value_and_hfa_runtime_correctness_for_x86_backend.md
+Activated from: ideas/open/76_prepared_byval_home_publication_and_layout_correctness_for_x86_backend.md
 
 ## Purpose
 
-Keep idea 76 aligned to backend-suite progress instead of letting one probe case
-drive the whole route. The owned problem is still upstream prepared byval-home
-publication/layout correctness, but `00204.c` is only a probe for that family,
-not the definition of success.
+Keep the next `00204.c` runtime route grounded in the downstream seam that now
+remains after idea 76's publication/layout repair. The owned problem is no
+longer helper byval-home publication; it is later post-link return-value / HFA
+runtime correctness once argument publication is already truthful.
 
 ## Goal
 
-Reduce the backend failure surface owned by idea 76 by repairing one generic
-prepared byval-home publication/layout seam at a time and proving the result on
-the owned family, with `00204.c` used only as one representative probe.
+Reduce idea 77's owned runtime failure surface by isolating one generic
+return-value / HFA carrier seam at a time and proving the result on the owned
+family without reopening upstream publication/layout work.
 
 ## Core Rule
 
-Treat this as a failure-family runbook, not a single-testcase chase. Reject
-fixes whose main value is making `c_testsuite_x86_backend_src_00204_c` run
-slightly further without proving a broader prepared byval-home
-publication/layout capability. Do not special-case helper names, one aggregate
-width, or one emitted stack offset spelling.
+Treat this as a downstream runtime leaf, not a license to keep poking
+`00204.c` from every direction. Reject fixes whose main value is making one
+probe print a little more output by reintroducing publication/layout special
+cases, helper-specific hacks, or expectation churn instead of repairing a real
+return-value / HFA runtime contract.
 
 ## Read First
 
+- `ideas/open/77_post_link_return_value_and_hfa_runtime_correctness_for_x86_backend.md`
 - `ideas/open/76_prepared_byval_home_publication_and_layout_correctness_for_x86_backend.md`
-- `ideas/open/57_x86_backend_c_testsuite_capability_families.md`
 - `ideas/open/75_post_link_prepared_call_lane_clobber_runtime_correctness_for_x86_backend.md`
+- `ideas/open/71_post_link_variadic_runtime_correctness_for_x86_backend.md`
 - `tests/c/external/c-testsuite/src/00204.c`
-- `src/backend/prealloc/regalloc.cpp`
-- `src/backend/prealloc/stack_layout/slot_assignment.cpp`
-- `src/backend/prealloc/prealloc.hpp`
-- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- `src/backend/mir/x86/codegen/memory.cpp`
+- `tests/backend/backend_x86_route_debug_test.cpp`
 
 ## Scope
 
-- x86 backend failures whose first bad fact is upstream prepared byval-home
-  publication/layout overlap before helper call emission
-- authoritative `PreparedValueHome`, `PreparedStackLayout`, and nearby producer
-  surfaces that publish helper payload homes
-- backend proof that distinguishes family-level progress from one-case churn
+- x86 backend failures whose first remaining bad fact is a post-link aggregate
+  return-value or HFA runtime mismatch after helper argument publication is
+  already truthful
+- authoritative prepared/x86 return-lane and copyout surfaces that decide how
+  floating or aggregate results are carried at runtime
+- proof that distinguishes return-value / HFA runtime ownership from earlier
+  byval publication defects and later variadic traversal work
 
 ## Non-Goals
 
-- treating `00204.c` as the only success metric for backend progress
-- reopening idea 61 prepared-module traversal or call-bundle ownership
-- reopening idea 68 local-slot handoff consumption
-- reopening idea 75 helper consumer clobber work unless newly published facts
-  prove the blocker moved downstream
-- changing tests or expectations merely to hide overlapping published homes
+- reopening idea 76 publication/layout work unless a new first bad fact proves
+  helper payload homes overlap again
+- reopening idea 75 call-lane consumer clobber unless the first remaining bad
+  fact moves back before the helper call
+- treating true `va_start` / `va_list` traversal failures as part of this leaf
+- changing tests or expectations merely to hide a downstream runtime mismatch
 
 ## Working Model
 
-- start from the backend failing set, then map owned failures into the idea 76
-  family
-- keep `00204.c` as a probe because it already exposes the family, but require
-  at least one adjacent proof beyond that single probe before calling a packet
-  progress
-- prefer generic producer fixes over helper-renderer fragments
-- when the first bad fact leaves publication/layout ownership, graduate the work
-  immediately instead of continuing to mine `00204`
+- start from the current `00204.c` runtime mismatch, then map the first wrong
+  fact specifically into return values or HFA output instead of calling the
+  whole late runtime surface one bucket
+- keep argument publication repair treated as already proven context, not as
+  search space to reopen in the next packet
+- if the owned family still has only one confirmed probe, explicitly isolate
+  the generic carrier seam before editing code
+- once the first bad fact moves into true variadic traversal, graduate the work
+  immediately instead of stretching this leaf
 
 ## Execution Rules
 
-- prefer `build -> owned family proof -> broader backend spot check`
-- keep the proving set tied to the idea 76 family, not just one testcase name
+- prefer `build -> focused runtime proof -> broader backend spot check`
+- keep the proving set tied to the downstream return-value / HFA seam, not just
+  to one big testcase name
+- add committed focused runtime probes when they make the owned seam easier to
+  prove without depending only on `00204.c`
 - record in `todo.md` whenever the owned family grows, shrinks, or graduates
-- if the family currently has only one confirmed probe, say that explicitly and
-  make the next packet about finding or ruling out adjacent owned cases before
-  more code churn
 
-## Step 1: Establish The Owned Failure-Family Baseline
+## Step 1: Re-Establish The Owned Runtime Failure Family
 
-Goal: define what part of `ctest -j8 -R backend` idea 76 actually owns, with
-`00204.c` demoted to a probe.
+Goal: restate exactly what idea 77 owns now that idea 76's publication/layout
+repair is in place.
 
 Primary targets:
 
-- `ctest -j8 -R backend` results or the freshest equivalent backend failure log
-- `ideas/open/57_x86_backend_c_testsuite_capability_families.md`
 - `c_testsuite_x86_backend_src_00204_c`
+- the latest focused runtime proof for `00204.c`
+- `tests/c/external/c-testsuite/src/00204.c`
+- `ideas/open/71_post_link_variadic_runtime_correctness_for_x86_backend.md`
+- `ideas/open/75_post_link_prepared_call_lane_clobber_runtime_correctness_for_x86_backend.md`
 
 Actions:
 
-- inventory the current backend failing buckets instead of assuming `00204.c`
-  is the route
-- identify which failures actually match idea 76's upstream byval-home
-  publication/layout ownership
-- write down whether the owned family currently has multiple members or only
-  one confirmed probe
-- define the narrow proving set for the next packet in family terms
+- confirm that the `Arguments:` portion still reflects the repaired upstream
+  byval-home publication path
+- identify the first wrong line in the later `Return values:` / `HFA` output
+- write down whether the current owned family has one confirmed probe or any
+  adjacent committed runtime probes already exist
+- define the narrow proving set for the next packet in downstream-runtime terms
 
 Completion check:
 
-- `todo.md` names the current owned family, its representative proofs, and why
-  `00204.c` is only a probe rather than the whole target
+- `todo.md` names the owned runtime seam, the representative proof command, and
+  why ideas 71, 75, and 76 do not own the first remaining bad fact
 
-## Step 2: Isolate The Exact Producer Seam For The Owned Family
+## Step 2: Isolate The Return/HFA Carrier Contract
 
-Goal: trace the common producer contract that makes the owned family publish
-overlapping homes.
+Goal: trace the first wrong runtime fact back to one authoritative x86 return
+or copyout carrier seam.
 
 Primary targets:
 
-- `src/backend/prealloc/regalloc.cpp`
-- `src/backend/prealloc/stack_layout/slot_assignment.cpp`
-- `src/backend/prealloc/prealloc.hpp`
-- representative owned-family probes, including `00204.c` if it still fits
+- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
+- `src/backend/mir/x86/codegen/memory.cpp`
+- `tests/backend/backend_x86_route_debug_test.cpp`
+- representative owned-family probes, including `00204.c`
 
 Actions:
 
-- trace the first overlapping helper payload homes back through
-  `PreparedValueHome` and `PreparedStackLayout` publication
-- determine whether the root defect is value sizing, alignment normalization,
-  byval-slice publication, or another producer contract
-- if the family currently has only one confirmed member, explicitly prove why
-  the seam is still generic before editing code
+- trace the first wrong runtime line through the prepared/x86 return or copyout
+  path that materializes that value
+- determine whether the root defect is return ABI carrier selection, floating
+  fragment copyout, sret-adjacent handoff, or another downstream runtime
+  contract
+- if the family still has only one committed probe, isolate why the seam is
+  generic before editing code
 
 Completion check:
 
-- one concrete producer seam is isolated, and the next packet no longer needs a
-  generic search across helper rendering and upstream layout at the same time
+- one concrete downstream carrier seam is isolated, and the next packet no
+  longer needs a generic search across return ABI, helper arguments, and
+  variadic traversal at the same time
 
-## Step 3: Repair The Publication/Layout Producer Generically
+## Step 3: Repair The Downstream Runtime Seam Generically
 
-Goal: publish truthful non-overlapping helper byval homes from authoritative
-aggregate width/layout facts.
+Goal: emit truthful post-link return-value / HFA runtime behavior from the
+authoritative carrier facts isolated in Step 2.
 
 Primary targets:
 
-- the exact producer surface isolated in Step 2
-- shared prepared contract/layout helpers touched by that producer
-- the owned-family proving set from Step 1
+- the exact producer/consumer surface isolated in Step 2
+- any shared helper or route-debug coverage needed to prove the seam
+- the owned runtime proving set from Step 1
 
 Actions:
 
-- implement the smallest generic publication/layout repair that removes the
-  current owned-family overlap without naming one helper or one aggregate case
-- preserve existing downstream helper consumer contracts unless the newly
-  published facts prove the blocker moved later
-- prove the owned family advances beyond the current overlap and does not
-  regress protected boundary coverage
+- implement the smallest generic runtime repair that removes the current wrong
+  return-value / HFA seam without naming one testcase or one helper symbol
+- preserve the already-proved publication/layout and helper-argument behavior
+  unless newly observed facts prove the blocker moved back upstream
+- prove the owned runtime family advances beyond the current mismatch and does
+  not regress protected backend boundaries
 
 Completion check:
 
-- the owned-family probes no longer show the current overlapping-home seam, and
-  any remaining blocker is explicitly reclassified
+- the owned-family probes no longer fail at the current return-value / HFA
+  seam, and any remaining blocker is explicitly reclassified
 
-## Step 4: Reclassify Remaining Backend Failures After The Repair
+## Step 4: Reclassify The Remaining Runtime Route
 
-Goal: convert the packet result into backend-suite progress instead of another
-`00204` loop.
+Goal: turn the packet result into durable lifecycle progress instead of another
+single-probe loop.
 
 Primary targets:
 
-- refreshed owned-family proof output
-- refreshed backend failure snapshot
-- downstream boundaries for ideas 71 and 75
+- refreshed owned-family runtime proof output
+- refreshed broader backend proof
+- downstream boundary for idea 71
 
 Actions:
 
 - rerun the proving set and inspect the next remaining mismatch after the owned
-  seam is repaired
-- compare the backend failing surface before and after the packet
-- keep work in idea 76 only if the next bad fact is still publication/layout
+  return/HFA seam is repaired
+- compare the downstream runtime surface before and after the packet
+- keep work in idea 77 only if the next bad fact is still return-value / HFA
+  runtime ownership
 - otherwise record explicit graduation or de-scoping in `todo.md`
 
 Completion check:
 
-- lifecycle state shows whether idea 76 still owns a backend failure family or
-  whether the route has moved to a different leaf
+- lifecycle state shows whether idea 77 still owns a downstream runtime family
+  or whether the route has moved to a different leaf
