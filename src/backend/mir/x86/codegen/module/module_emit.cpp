@@ -1,6 +1,5 @@
 #include "module_emit.hpp"
 #include "../abi/x86_target_abi.hpp"
-#include "../core/x86_codegen_output.hpp"
 #include "module_data_emit.hpp"
 
 #include <algorithm>
@@ -119,14 +118,6 @@ std::string emit_prepared_module_text(
     return c4c::backend::x86::module::emit_same_module_global_data(resolved_target_triple,
                                                                    global);
   };
-  const auto asm_text_references_symbol =
-      [&](std::string_view asm_text, std::string_view symbol_name) -> bool {
-    return c4c::backend::x86::core::asm_text_references_symbol(asm_text, symbol_name);
-  };
-  const auto asm_text_defines_symbol =
-      [&](std::string_view asm_text, std::string_view symbol_name) -> bool {
-    return c4c::backend::x86::core::asm_text_defines_symbol(asm_text, symbol_name);
-  };
   const auto emit_missing_same_module_global_data =
       [&](std::string_view asm_text) -> std::string {
     return c4c::backend::x86::module::emit_missing_same_module_global_data(
@@ -134,43 +125,8 @@ std::string emit_prepared_module_text(
   };
   const auto emit_direct_variadic_runtime_helpers =
       [&](std::string_view asm_text) -> std::string {
-    std::string helpers;
-    const auto emit_function_prelude = [&](std::string_view symbol_name) {
-      helpers += ".intel_syntax noprefix\n.text\n.globl " + std::string(symbol_name) + "\n";
-      if (!c4c::backend::x86::abi::is_apple_darwin_target(resolved_target_triple)) {
-        helpers += ".type " + std::string(symbol_name) + ", @function\n";
-      }
-      helpers += std::string(symbol_name) + ":\n";
-    };
-    if (asm_text_references_symbol(asm_text, "llvm.va_start.p0") &&
-        !asm_text_defines_symbol(asm_text, "llvm.va_start.p0")) {
-      emit_function_prelude("llvm.va_start.p0");
-      helpers += "    mov DWORD PTR [rdi], 48\n";
-      helpers += "    mov DWORD PTR [rdi + 4], 176\n";
-      helpers += "    lea rax, [rsp + 8]\n";
-      helpers += "    mov QWORD PTR [rdi + 8], rax\n";
-      helpers += "    mov QWORD PTR [rdi + 16], rax\n";
-      helpers += "    ret\n";
-    }
-    if (asm_text_references_symbol(asm_text, "llvm.va_end.p0") &&
-        !asm_text_defines_symbol(asm_text, "llvm.va_end.p0")) {
-      emit_function_prelude("llvm.va_end.p0");
-      helpers += "    ret\n";
-    }
-    if (asm_text_references_symbol(asm_text, "llvm.va_copy.p0.p0") &&
-        !asm_text_defines_symbol(asm_text, "llvm.va_copy.p0.p0")) {
-      emit_function_prelude("llvm.va_copy.p0.p0");
-      helpers += "    mov eax, DWORD PTR [rsi]\n";
-      helpers += "    mov DWORD PTR [rdi], eax\n";
-      helpers += "    mov eax, DWORD PTR [rsi + 4]\n";
-      helpers += "    mov DWORD PTR [rdi + 4], eax\n";
-      helpers += "    mov rax, QWORD PTR [rsi + 8]\n";
-      helpers += "    mov QWORD PTR [rdi + 8], rax\n";
-      helpers += "    mov rax, QWORD PTR [rsi + 16]\n";
-      helpers += "    mov QWORD PTR [rdi + 16], rax\n";
-      helpers += "    ret\n";
-    }
-    return helpers;
+    return c4c::backend::x86::module::emit_direct_variadic_runtime_helpers(
+        resolved_target_triple, asm_text);
   };
   const auto minimal_function_return_register =
       [&](const c4c::backend::bir::Function& candidate) -> std::optional<std::string> {

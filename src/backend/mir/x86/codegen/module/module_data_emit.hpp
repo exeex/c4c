@@ -36,6 +36,10 @@ namespace c4c::backend::x86::module {
     std::string_view target_triple,
     std::string_view asm_text);
 
+[[nodiscard]] std::string emit_direct_variadic_runtime_helpers(
+    std::string_view target_triple,
+    std::string_view asm_text);
+
 void add_referenced_same_module_globals(
     const c4c::backend::prepare::PreparedBirModule& module,
     std::string_view target_triple,

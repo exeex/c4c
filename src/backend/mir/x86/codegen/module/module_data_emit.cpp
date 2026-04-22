@@ -281,6 +281,47 @@ std::string emit_missing_same_module_global_data(
   return missing_data;
 }
 
+std::string emit_direct_variadic_runtime_helpers(std::string_view target_triple,
+                                                 std::string_view asm_text) {
+  std::string helpers;
+  const auto emit_function_prelude = [&](std::string_view symbol_name) {
+    helpers += ".intel_syntax noprefix\n.text\n.globl " + std::string(symbol_name) + "\n";
+    if (!c4c::backend::x86::abi::is_apple_darwin_target(target_triple)) {
+      helpers += ".type " + std::string(symbol_name) + ", @function\n";
+    }
+    helpers += std::string(symbol_name) + ":\n";
+  };
+  if (c4c::backend::x86::core::asm_text_references_symbol(asm_text, "llvm.va_start.p0") &&
+      !c4c::backend::x86::core::asm_text_defines_symbol(asm_text, "llvm.va_start.p0")) {
+    emit_function_prelude("llvm.va_start.p0");
+    helpers += "    mov DWORD PTR [rdi], 48\n";
+    helpers += "    mov DWORD PTR [rdi + 4], 176\n";
+    helpers += "    lea rax, [rsp + 8]\n";
+    helpers += "    mov QWORD PTR [rdi + 8], rax\n";
+    helpers += "    mov QWORD PTR [rdi + 16], rax\n";
+    helpers += "    ret\n";
+  }
+  if (c4c::backend::x86::core::asm_text_references_symbol(asm_text, "llvm.va_end.p0") &&
+      !c4c::backend::x86::core::asm_text_defines_symbol(asm_text, "llvm.va_end.p0")) {
+    emit_function_prelude("llvm.va_end.p0");
+    helpers += "    ret\n";
+  }
+  if (c4c::backend::x86::core::asm_text_references_symbol(asm_text, "llvm.va_copy.p0.p0") &&
+      !c4c::backend::x86::core::asm_text_defines_symbol(asm_text, "llvm.va_copy.p0.p0")) {
+    emit_function_prelude("llvm.va_copy.p0.p0");
+    helpers += "    mov eax, DWORD PTR [rsi]\n";
+    helpers += "    mov DWORD PTR [rdi], eax\n";
+    helpers += "    mov eax, DWORD PTR [rsi + 4]\n";
+    helpers += "    mov DWORD PTR [rdi + 4], eax\n";
+    helpers += "    mov rax, QWORD PTR [rsi + 8]\n";
+    helpers += "    mov QWORD PTR [rdi + 8], rax\n";
+    helpers += "    mov rax, QWORD PTR [rsi + 16]\n";
+    helpers += "    mov QWORD PTR [rdi + 16], rax\n";
+    helpers += "    ret\n";
+  }
+  return helpers;
+}
+
 void add_referenced_same_module_globals(
     const c4c::backend::prepare::PreparedBirModule& module,
     std::string_view target_triple,
