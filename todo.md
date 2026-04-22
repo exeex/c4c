@@ -5,41 +5,43 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Materialize Shared Seam Scaffolding And Keep Legacy Route Compiling
-Plan Review Counter: 3 / 6
+Plan Review Counter: 4 / 6
 # Current Packet
 
 ## Just Finished
 
-Continued plan step 1 by moving shared target-triple resolution, resolved
-target-profile lookup, Darwin target checks, and reviewed symbol/label
-formatting ownership into `abi/x86_target_abi.{hpp,cpp}`, then rewired both
-`prepared_module_emit.cpp` and `route_debug.cpp` to consume that ABI seam
-instead of keeping mixed-surface copies.
+Continued plan step 1 by moving the live whole-module prepared emission
+orchestration out of `prepared_module_emit.cpp` and into the reviewed
+`module/module_emit.cpp` seam, while keeping the legacy
+`x86::emit_prepared_module(...)` entry compiling as a thin compatibility
+wrapper that forwards into the module-owned implementation.
 
-Kept the legacy route compiling while making the reviewed ABI seam own the live
-shared target-resolution and symbol-formatting helpers used by both consumers.
+Kept the existing prepared-module entry stable while reducing
+`prepared_module_emit.cpp` to wrapper-only ownership and making
+`module/module_emit.cpp` the live owner of the canonical whole-module emission
+body.
 
 ## Suggested Next
 
-Continue plan step 1 by extracting the next shared prepared/legacy helper
-family that still spans mixed surfaces, preferably a non-ABI helper cluster in
-`prepared_module_emit.cpp` that also feeds route inspection or shared emission
-state without pulling prepared-path migration forward.
+Continue plan step 1 by extracting the next helper or state family that still
+forces `module/module_emit.cpp` to depend directly on mixed legacy/prepared
+surfaces, preferably by moving another reviewed helper cluster behind the
+module seam without changing the compatibility wrapper contract.
 
 ## Watchouts
 
-- Keep `abi/x86_target_abi.*` as the owner for target-resolution and
-  target-sensitive formatting helpers; do not reintroduce local triple parsing
-  or Darwin string checks in route/debug or prepared emit surfaces.
-- Prepared-path migration still belongs later; step 1 should keep introducing
-  shared seam ownership without collapsing legacy and prepared flows together.
-- `route_debug.cpp` now relies on the shared resolved target profile for ABI
-  register reasoning, so adjacent packets should preserve that single source of
-  truth.
+- Keep `prepared_module_emit.cpp` wrapper-thin; new whole-module orchestration
+  logic should land in `module/module_emit.cpp` or sibling reviewed seams
+  instead of drifting back into the compatibility surface.
+- `module/module_emit.cpp` still reaches into broad x86 prepared helpers via
+  `x86_codegen.hpp`, so adjacent packets should keep peeling shared ownership
+  toward reviewed module seams rather than re-expanding the wrapper.
+- Preserve the legacy `x86::emit_prepared_module(...)` symbol until the
+  supervisor retires that compatibility entry explicitly.
 
 ## Proof
 
-Step-1 shared ABI seam packet on 2026-04-22 using:
+Step-1 module-emission seam packet on 2026-04-22 using:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 Proof log path: `test_after.log`
