@@ -2,7 +2,7 @@
 
 Status: Open
 Created: 2026-04-20
-Last-Updated: 2026-04-21
+Last-Updated: 2026-04-22
 Parent Idea: [57_x86_backend_c_testsuite_capability_families.md](/workspaces/c4c/ideas/open/57_x86_backend_c_testsuite_capability_families.md)
 
 ## Intent
@@ -65,17 +65,20 @@ diagnostic families.
 
 ## Latest Durable Note
 
-As of 2026-04-21, the latest accepted idea-61 prepared short-circuit handoff
-repair advanced `c_testsuite_x86_backend_src_00204_c` back into this idea.
-The old authoritative prepared-module handoff rejection is gone, and the
-remaining full-`00204` blocker is again the downstream scalar restriction:
-`error: x86 backend emitter only supports a minimal single-block i32 return
-terminator, a bounded equality-against-immediate guard family with immediate
-return leaves including fixed-offset same-module global i32 loads and
-pointer-backed same-module global roots, or one bounded compare-against-zero
-branch family through the canonical prepared-module handoff`.
-Current ownership therefore returns to idea 60 until that scalar-emitter route
-advances into a later leaf.
+As of 2026-04-22, the fresh probe
+`ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_x86_backend_src_00204_c|backend_cli_trace_mir_00204_match_rejection)$'`
+showed that `backend_cli_trace_mir_00204_match_rejection` still passes and the
+focused `match` helper still exposes an internal scalar restriction on the
+`local-slot-guard-chain` lane, but the full top-level
+`c_testsuite_x86_backend_src_00204_c` route no longer stops there. It now
+fails later with
+`error: x86 backend emitter requires the authoritative prepared local-slot instruction handoff through the canonical prepared-module handoff`,
+which belongs to
+[68_prepared_local_slot_handoff_consumption_for_x86_backend.md](/workspaces/c4c/ideas/open/68_prepared_local_slot_handoff_consumption_for_x86_backend.md)
+instead of this scalar leaf. Keep idea 60 focused on cases whose current
+top-level blocker is still the scalar expression or terminator restriction, and
+only reopen `00204.c` here if the full-case route regresses back to that
+family.
 
 ## Scope Notes
 

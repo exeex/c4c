@@ -1,46 +1,41 @@
 # Execution State
 
 Status: Active
-Source Idea Path: ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md
+Source Idea Path: ideas/open/68_prepared_local_slot_handoff_consumption_for_x86_backend.md
 Source Plan Path: plan.md
-Current Step ID: 1 / 2.1
-Current Step Title: Refresh Idea-60 Ownership, Confirm The Next Scalar Seam, And Repair The Selected Prepared/Emitter Boundary
+Current Step ID: 1
+Current Step Title: Refresh Idea-68 Ownership And Confirm The Next Local-Slot Seam
 Plan Review Counter: 0 / 4
 # Current Packet
 
 ## Just Finished
 
-Step 1 / 2.1 refreshed the still-owned idea-60 scalar seam for
-`c_testsuite_x86_backend_src_00112_c`, confirmed the blocker was the generic
-x86 direct-immediate return restriction, and repaired the single-block constant
-return folder so pointer `eq/ne` against constant roots can fold through the
-canonical prepared-module handoff without testcase-shaped matching. The owned
-`backend_x86_handoff_boundary` proof still passes, and `00112.c` now advances
-past the old idea-60 return restriction and emits successfully.
+Lifecycle repair only: the active runbook switched from idea 60 to idea 68
+after the fresh `00204.c` probe showed the full case no longer stops at the
+idea-60 scalar restriction and now fails in the authoritative prepared
+local-slot instruction handoff family.
 
 ## Suggested Next
 
-Return to Step 1 with the next still-owned idea-60 scalar-emitter rejection and
-keep the slice at the smallest prepared return or terminator consumer that
-still fails after `00112.c` left the direct-immediate family.
+Start Step 1 for idea 68 by re-confirming the full-case `00204.c` ownership
+boundary, identifying the exact local-slot instruction or continuation seam in
+`prepared_local_slot_render.cpp`, and selecting the narrowest protective
+backend coverage that proves that seam without relying only on the named case.
 
 ## Watchouts
 
-- The accepted fix treats unresolved named pointer roots in no-parameter
-  constant-folded single-block returns as symbolic non-null roots only when the
-  entry block does not define them and they are not pointer params; keep future
-  widening at that semantic constant-root layer instead of adding named-case
-  routes.
-- The new boundary coverage in `backend_x86_handoff_boundary_test.cpp` protects
-  the frontend-shaped `%t0 == 0` pointer compare form that currently reaches
-  the x86 prepared-module consumer from `00112.c`.
-- This packet only shrank the direct-immediate scalar return family; the next
-  packet should re-confirm ownership before moving into any later local-slot,
-  compare-join, or call-family leaf.
+- Do not treat the focused `match` helper trace as the top-level ownership
+  answer for `00204.c`; the active leaf now follows the full-case failure route.
+- Keep idea 68 contract-first: if the local-slot helper lacks a durable
+  prepared fact, extend the shared prepared surface before adding helper-shaped
+  x86 matching.
+- Rehome the case immediately if the next accepted slice moves the full route
+  back into idea 60, idea 61, or another downstream leaf.
 
 ## Proof
 
-Ran the delegated proof command
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00112_c)$' | tee test_after.log`.
-`backend_x86_handoff_boundary` passed. `c_testsuite_x86_backend_src_00112_c`
-passed. Proof log path: `test_after.log`.
+Lifecycle switch used the supervisor-provided probe result:
+`ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_x86_backend_src_00204_c|backend_cli_trace_mir_00204_match_rejection)$'`.
+Observed state: `backend_cli_trace_mir_00204_match_rejection` passed, while
+`c_testsuite_x86_backend_src_00204_c` failed with the authoritative prepared
+local-slot instruction handoff diagnostic.

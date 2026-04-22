@@ -1,172 +1,172 @@
-# Scalar Expression And Terminator Selection For X86 Backend
+# Prepared Local-Slot Handoff Consumption For X86 Backend
 
 Status: Active
-Source Idea: ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md
-Activated from: ideas/open/67_backend_trace_and_error_contract_for_x86_handoff.md
+Source Idea: ideas/open/68_prepared_local_slot_handoff_consumption_for_x86_backend.md
+Activated from: ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md
 
 ## Purpose
 
-Resume the x86 scalar/prepared-emitter leaf now that idea 67 is parked and the
-current durable blocker remains the downstream scalar-emitter restriction for
-`c_testsuite_x86_backend_src_00204_c`.
+Switch the active backend leaf from idea 60 to the new local-slot handoff leaf
+now that the full `c_testsuite_x86_backend_src_00204_c` route no longer stops
+at the scalar restriction and instead fails later in the authoritative prepared
+local-slot handoff path.
 
 ## Goal
 
-Repair one prepared scalar expression or terminator consumption seam at a time
-so owned cases move past the current x86 emitter restriction without adding
-named-case matcher growth.
+Repair one authoritative prepared local-slot handoff seam at a time so owned
+cases move past the current local-slot rejection without adding testcase-shaped
+helper branches.
 
 ## Core Rule
 
-Do not claim scalar-emitter progress through testcase-shaped x86 fast paths or
-expression-specific matchers when the missing ownership is still a generic
-prepared value-home, move-bundle, branch-condition, or terminator-consumption
-seam.
+Do not claim local-slot handoff progress through one named helper fast path
+when the missing ownership is still a generic prepared local-slot,
+continuation, value-home, or control-flow consumption seam.
 
 ## Read First
 
-- `ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md`
+- `ideas/open/68_prepared_local_slot_handoff_consumption_for_x86_backend.md`
 - `ideas/open/57_x86_backend_c_testsuite_capability_families.md`
-- `ideas/open/67_backend_trace_and_error_contract_for_x86_handoff.md`
-- `src/backend/targets/x86_64/emitter.cpp`
-- `src/backend/targets/x86_64/emitter_expr.cpp`
-- `src/backend/targets/x86_64/emitter_stmt.cpp`
+- `ideas/open/59_cfg_contract_consumption_for_short_circuit_and_guard_chain.md`
+- `ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md`
+- `ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md`
+- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
 - `src/backend/prep/prealloc.hpp`
-- `tests/backend/backend_codegen_route_test.cpp`
-- `tests/backend/backend_x86_handoff_boundary_short_circuit_test.cpp`
+- `tests/backend/backend_x86_handoff_boundary_local_slot_guard_lane_test.cpp`
+- `tests/backend/backend_x86_route_debug_test.cpp`
 - `tests/c/external/c-testsuite/src/00204.c`
 
 ## Scope
 
-- backend failures that stop with the x86 scalar-emitter diagnostics owned by
-  idea 60, including the current minimal-return / guard-family restriction that
-  `00204.c` now reaches after the idea-67 observability work
-- shared prepared value-home, move-bundle, branch-condition, and control-flow
-  contracts when the missing meaning is upstream of x86-specific rendering
-- durable rehoming of cases that advance out of scalar emission into later
-  prepared-module, call-family, or runtime leaves once scalar selection
-  succeeds
+- backend failures that stop with the authoritative prepared local-slot
+  handoff diagnostic owned by idea 68, including the current full-case
+  `00204.c` route
+- shared prepared local-slot, continuation, value-home, and control-flow
+  contracts when the missing meaning is upstream of x86 local-slot rendering
+- durable rehoming of cases that advance out of local-slot handoff and into a
+  later scalar-helper, call/helper-family, or runtime leaf
 
 ## Non-Goals
 
-- reopening idea-67 observability work unless a fresh supported-CLI scan shows
-  the route has regressed back to an opaque rejection
-- adding x86-only matcher lanes for one named return, compare, or branch shape
-- call-family ownership that still belongs in idea 65
-- prepared-module multi-function or call-bundle work that still belongs in
+- reopening idea-60 scalar ownership unless the full-case route regresses back
+  to that top-level blocker
+- adding x86-only helper branches for one named `00204.c` subfunction or one
+  exact local-slot topology
+- call-bundle or multi-function prepared-module work that still belongs in
   idea 61
+- trace-only observability work that still belongs in idea 67
 
 ## Working Model
 
-- keep one prepared scalar seam per packet
-- use the nearest backend route coverage plus the nearest c-testsuite case to
-  prove the seam without collapsing the packet into one testcase
+- keep one prepared local-slot seam per packet
+- use the nearest backend route or boundary coverage plus the nearest c-testsuite
+  case to prove the seam without collapsing the packet into one testcase
 - extend shared prepared contracts first when x86 lacks a generic fact it
-  should consume
+  should consume for a local-slot helper route
 - route cases back out as soon as the next real blocker belongs in another
   downstream idea
 
 ## Execution Rules
 
-- prefer one scalar expression or terminator seam per packet
+- prefer one local-slot handoff seam per packet
 - update `todo.md`, not this file, for routine packet progress
 - use `build -> narrow proof` for every accepted code slice
 - keep proof on owned failures plus the nearest backend coverage that protects
-  prepared value-home, move-bundle, branch-condition, or scalar terminator
-  consumption
-- when a targeted case graduates into ideas 61 or 65, record that in
-  `todo.md` and keep this runbook focused on still-owned scalar-emitter work
-- reject emitter-side named-case growth that only moves one arithmetic or
-  branch spelling forward
+  the changed prepared local-slot/control-flow consumption path
+- record in `todo.md` when a targeted case graduates back into idea 60, idea
+  61, or another downstream leaf
+- reject helper-side named-case growth that only moves one local-slot spelling
+  forward
 
-## Step 1: Refresh Idea-60 Ownership And Confirm The Next Scalar Seam
+## Step 1: Refresh Idea-68 Ownership And Confirm The Next Local-Slot Seam
 
-Goal: confirm the returned idea-60 ownership for
-`c_testsuite_x86_backend_src_00204_c` after idea 67 was parked and identify the
-exact prepared scalar return or terminator seam that now blocks x86 emission.
+Goal: confirm the current idea-68 ownership for
+`c_testsuite_x86_backend_src_00204_c` and identify the exact prepared local-slot,
+continuation, or control-flow seam that now blocks x86 emission.
 
 Primary targets:
 
 - `c_testsuite_x86_backend_src_00204_c`
-- representative backend route coverage nearest the current scalar-emitter seam
-- shared prepared contract and x86 emitter files near the current failure
+- representative backend route or boundary coverage nearest the current
+  local-slot handoff seam
+- shared prepared contract and x86 local-slot files near the current failure
 
 Actions:
 
-- rerun or inspect the narrow subset that now leaves idea 67 parked and keeps
-  `00204.c` at the downstream scalar restriction
-- confirm that `00204.c` does not currently need more observability work and
-  still stops in an idea-60-owned scalar-emitter restriction
-- identify the exact prepared return, value-home, move-bundle,
-  branch-condition, or terminator fact that x86 fails to consume for the
-  current route
+- rerun or inspect the narrow subset that shows the full `00204.c` route now
+  fails in the authoritative prepared local-slot family
+- confirm that the observed blocker is not better explained by idea 59, 60, or
+  61
+- identify the exact prepared local-slot instruction, continuation, value-home,
+  or control-flow fact that x86 fails to consume for the current route
 - choose the nearest protective backend coverage that can prove that seam
   without relying only on the named c-testsuite case
 
 Completion check:
 
-- the next executor packet is narrowed to one still-owned idea-60 scalar seam
-  with named proof targets and a clear ownership boundary
+- the next executor packet is narrowed to one still-owned idea-68 local-slot
+  seam with named proof targets and a clear ownership boundary
 
-## Step 2.1: Repair The Selected Scalar Prepared/Emitter Seam
+## Step 2.1: Repair The Selected Prepared Local-Slot Handoff Seam
 
-Goal: implement the smallest durable scalar-emitter repair that advances the
-selected idea-60 case beyond the current minimal scalar restriction.
+Goal: implement the smallest durable local-slot handoff repair that advances
+the selected idea-68 case beyond the current authoritative local-slot
+rejection.
 
 Primary targets:
 
-- shared prepared value-home, move-bundle, branch-condition, or control-flow
+- shared prepared local-slot, continuation, value-home, or control-flow
   contracts for the chosen seam
-- x86 scalar emission helpers that should consume those contracts generically
+- x86 local-slot helpers that should consume those contracts generically
 
 Actions:
 
-- repair the selected scalar seam at the layer that owns the missing meaning
+- repair the selected seam at the layer that owns the missing meaning
 - prefer contract-first fixes when x86 is missing a shared prepared fact
-- keep the repair generic across nearby same-family scalar routes
-- confirm the targeted cases now move past the old idea-60 failure family or
+- keep the repair generic across nearby same-family local-slot routes
+- confirm the targeted cases now move past the old idea-68 failure family or
   graduate cleanly into a later leaf
 
 Completion check:
 
-- the targeted owned cases no longer fail for the selected idea-60 scalar seam
-  and instead reach the next downstream route
+- the targeted owned cases no longer fail for the selected idea-68 local-slot
+  seam and instead reach the next downstream route
 
 ## Step 2.2: Prove Family Shrinkage And Record Rehoming
 
-Goal: show the accepted slice shrinks the real idea-60 family and preserves
+Goal: show the accepted slice shrinks the real idea-68 family and preserves
 explicit routing for any graduated cases.
 
 Actions:
 
 - require a fresh build for each accepted code slice
 - prove the repaired seam on the targeted owned cases plus the nearest backend
-  coverage that protects the changed scalar prepared/emitter path
-- record in `todo.md` when advanced cases now belong in ideas 61 or 65
+  coverage that protects the changed local-slot/control-flow path
+- record in `todo.md` when advanced cases now belong in idea 60, idea 61, or a
+  later downstream leaf
 - only return to Step 1 after the current seam is proven and any graduated
   routing is explicit
 
 Completion check:
 
-- accepted slices show real shrinkage of the idea-60 scalar-emitter family and
-  preserve clear routing for any graduated downstream cases
+- accepted slices show real shrinkage of the idea-68 local-slot handoff family
+  and preserve clear routing for any graduated downstream cases
 
-## Step 3: Continue The Loop Until Idea 60 Is Exhausted
+## Step 3: Continue The Loop Until Idea 68 Is Exhausted
 
 Goal: keep repeating the Step 1 -> 2.2 loop until the remaining failures no
-longer belong to idea 60.
+longer belong to idea 68.
 
 Actions:
 
-- keep idea 60 active only while cases still fail for scalar expression or
-  terminator consumption reasons that are not better explained by another open
-  leaf
+- keep idea 68 active only while cases still fail for authoritative prepared
+  local-slot handoff reasons that are not better explained by another open leaf
 - use `todo.md` to preserve which cases graduated downstream after each packet
 - call lifecycle review again when the next step becomes oversized or when the
   remaining family is exhausted
 
 Completion check:
 
-- the next active packet is queued under Step 1 for a still-owned idea-60
-  scalar seam, or lifecycle state is ready to hand off or close because idea
-  60 no longer owns the remaining failures
+- the next active packet is queued under Step 1 for a still-owned idea-68
+  local-slot seam, or lifecycle state is ready to hand off or close because
+  idea 68 no longer owns the remaining failures
