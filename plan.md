@@ -131,42 +131,110 @@ Completion check:
 - the targeted owned case no longer fails at the HFA long-double `Arguments:`
   call-lane seam and instead executes further
 
-## Step 2.2: Repair The Same-Module Aggregate String/Mixed-Aggregate Call-Lane Seam
+## Step 2.2: Classify The Same-Module Aggregate String/Mixed-Aggregate Boundary
 
-Goal: restore source-preserving prepared/x86 call-lane materialization for the
-next same-module aggregate-string and mixed-aggregate calls now exposed after
-the HFA long-double repair.
+Goal: decide whether the first remaining aggregate-string/mixed-aggregate
+corruption is still an idea-75-owned helper-lane contract defect or has moved
+upstream into prepared byval-home publication/layout that must be rehomed.
 
 Primary targets:
 
 - the first bad same-module aggregate/string call lanes after the repaired HFA
-  long-double block in `00204.c`
-- prepared call-lane consumers that materialize overlapping aggregate or mixed
-  scalar/aggregate homes for fixed-arity calls
-- shared x86 call rendering only where the prepared ownership already carries
-  the needed source-preservation fact
+  long-double block in `00204.c`, specifically the bounded same-module helper
+  route used by `fa1` and `fa2`
+- `backend_x86_handoff_boundary` helper-fragment assertions for bounded helper
+  byval routes
+- the prepared helper byval-home publication/layout facts consumed by the
+  bounded renderer
 
 Actions:
 
 - inspect the authoritative prepared homes, BeforeCall obligations, and emitted
   materialization order for the corrupted aggregate-string and mixed-aggregate
   lines
-- repair the shared prepared/x86 call-lane layer so those overlapping homes
-  survive materialization generically instead of through helper-name,
-  callee-name, or register-pair exceptions
-- prove `00204.c` advances beyond the current `sAJ...`, `AJT...`, and mixed
-  aggregate corruption before treating later failures as the next seam
+- treat the confirmed blocker as a routing question first: the helper renderer
+  cannot both preserve the current canonical helper fragments and repair
+  `fa1`/`fa2` once the published helper byval homes already overlap at 8-byte
+  spacing
+- choose exactly one executable route:
+  1. keep the packet in idea 75 only if the bounded helper contract itself is
+     wrong and can be widened generically, with
+     `backend_x86_handoff_boundary` updated to protect the new canonical helper
+     shape
+  2. otherwise record explicit rehome to an upstream prepared byval-home
+     publication/layout packet because the first bad fact is no longer a pure
+     downstream call-lane consumer issue
 
 Completion check:
 
-- the targeted owned case no longer first fails at the same-module aggregate
-  string/mixed-aggregate call-lane seam and instead executes further
+- the next executor packet is narrowed to one of the two explicit routes above,
+  and the runbook no longer asks for another generic helper-renderer attempt
+  without first crossing that boundary
+
+## Step 2.2.1: If Still Owned, Repair The Helper-Lane Contract And Coverage
+
+Goal: repair the bounded same-module helper-lane contract only if Step 2.2
+proves the helper fragment assertions are too strict for truthful byval
+source-preserving payload placement.
+
+Primary targets:
+
+- helper-lane rendering and coverage for bounded same-module byval helper calls
+- `backend_x86_handoff_boundary` assertions that currently freeze the helper
+  local-byval fragment shape
+- `c_testsuite_x86_backend_src_00204_c` aggregate-string/mixed-aggregate lines
+
+Actions:
+
+- change the helper-lane route generically so bounded helper byval calls may
+  reserve and address a contiguous outgoing payload region without helper-name,
+  callee-name, or register-pair exceptions
+- update `backend_x86_handoff_boundary` to assert the new canonical helper
+  fragment contract rather than the obsolete overlapping-home spelling
+- prove the owned `fa1`/`fa2` seam advances in `00204.c` without regressing the
+  bounded helper family
+
+Completion check:
+
+- `00204.c` advances beyond the current aggregate-string/mixed-aggregate seam
+  and the helper-boundary coverage now protects the new canonical contract
+
+## Step 2.2.2: Otherwise Rehome To Upstream Prepared Byval-Home Publication/Layout
+
+Goal: stop treating the blocked `fa1`/`fa2` helper lane as idea-75-owned if
+the first bad fact is the upstream publication/layout of overlapping helper
+byval homes rather than the downstream consumer.
+
+Primary targets:
+
+- the upstream prepared byval-home owner/offset publication or layout packet
+  that feeds the bounded helper route
+- `todo.md` routing notes for the current first bad fact
+- idea-75 boundary evidence against reopening a pure renderer-only packet
+
+Actions:
+
+- record the concrete rehome trigger: helper byval homes arrive at the bounded
+  renderer already overlapped at 8-byte spacing, so any generic consumer fix
+  either breaks `backend_x86_handoff_boundary`'s current contract or corrupts
+  `00204.c` earlier
+- mark idea 75 blocked on upstream publication/layout repair rather than
+  scheduling another helper-renderer attempt inside the same step
+- leave explicit instructions in `todo.md` for the supervisor that the next
+  executable packet must move upstream or activate a separate initiative if no
+  matching active runbook exists
+
+Completion check:
+
+- lifecycle state explicitly records that the current first bad fact no longer
+  has an executable idea-75-owned consumer repair path without upstream work
 
 ## Step 2.3: Classify And Repair The Downstream Return-Value / `stdarg` Runtime Seam
 
 Goal: decide whether the later corrupted `Return values:` and empty `stdarg:`
 output remain idea-75-owned prepared/x86 call-lane source-preservation work
-after Step 2.2, and repair only the smallest remaining owned seam.
+after the Step `2.2` route is resolved, and repair only the smallest remaining
+owned seam.
 
 Primary targets:
 
@@ -180,7 +248,7 @@ Primary targets:
 Actions:
 
 - inspect the first remaining bad load, move order, or home materialization
-  fact after the Step 2.2 aggregate-string seam
+  fact after the Step `2.2` helper-boundary or rehome decision
 - keep the packet in idea 75 only if the missing meaning is still prepared/x86
   fixed-arity call-lane source preservation rather than a later variadic or
   non-call-lane runtime leaf
