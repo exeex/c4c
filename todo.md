@@ -5,29 +5,27 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 1.5
 Current Step Title: Audit Transitional Forwarding And Buildability Across Shared Seams
-Plan Review Counter: 5 / 6
+Plan Review Counter: 6 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed another step-1.5 duplicate-ownership cleanup packet by promoting the
-canonical i32 ABI register-narrowing helper into
-`src/backend/mir/x86/codegen/abi/x86_target_abi.*`, deleting the copied
-helper logic from `module/module_emit.cpp` and the handoff-boundary backend
-tests, and rebinding those consumers to the reviewed `abi/` seam while
-leaving the remaining broad `x86_codegen.hpp` dependencies in place only for
-real helper declarations such as stack-memory operand rendering and
-multi-defined dispatch support.
+Completed a step-1.5 compatibility-classification packet by marking
+`render_prepared_stack_memory_operand(...)` and
+`PreparedModuleMultiDefinedDispatchState` /
+`build_prepared_module_multi_defined_dispatch_state(...)` as explicit prepared
+compatibility holdouts in `x86_codegen.hpp`, and by annotating the reviewed
+`module/module_emit.cpp` and `route_debug.cpp` consumers so those remaining
+`x86_codegen.hpp` includes are clearly intentional until the reviewed
+`prepared/*` seams land.
 
 ## Suggested Next
 
-Continue step 1.5 by auditing the remaining
-`src/backend/mir/x86/codegen/x86_codegen.hpp` dependencies that are still real
-helper contracts, especially `render_prepared_stack_memory_operand(...)` and
-`PreparedModuleMultiDefinedDispatchState`, to decide whether they should stay
-as explicit compatibility holdouts until the reviewed `prepared/` seams land
-or whether any existing reviewed owner can take them without changing the
-stage-3 contract.
+Continue step 1.5 by auditing the other reviewed-seam consumers that still
+include `src/backend/mir/x86/codegen/x86_codegen.hpp`, and separate true
+prepared compatibility holdouts from any API/core/abi/module declarations that
+already have a narrower owner so the remaining broad-header usage is limited
+to honest staged dependencies only.
 
 ## Watchouts
 
@@ -54,7 +52,11 @@ stage-3 contract.
 
 ## Proof
 
-Step 1.5 transitional-forwarding audit packet on 2026-04-22 using:
+Step 1.5 compatibility-holdout classification packet on 2026-04-22 using:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
-Proof passed. Proof log path: `test_after.log`
+Backend subset passed. Proof log path: `test_after.log`
+Regression guard script result:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+reported no new failures but rejected the pair because passed count stayed
+`106 -> 106`, so the canonical baseline was not rolled forward.

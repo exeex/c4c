@@ -734,6 +734,7 @@ struct PreparedBoundedSameModuleHelperPrefixRender {
   std::unordered_set<std::string_view> helper_global_names;
 };
 
+// Compatibility holdout until the reviewed prepared fast-path dispatch seam lands.
 struct PreparedModuleMultiDefinedDispatchState {
   std::string helper_prefix;
   std::unordered_set<std::string_view> helper_names;
@@ -846,6 +847,7 @@ inline std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_
                                                  prepared_arch);
 }
 
+// Compatibility holdout until the reviewed prepared fast-path operand seam lands.
 std::string render_prepared_stack_memory_operand(std::size_t byte_offset,
                                                  std::string_view size_name);
 
@@ -1785,6 +1787,7 @@ std::optional<std::string> render_prepared_bounded_multi_defined_call_lane_if_su
     const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
         emit_same_module_global_data);
 
+// Compatibility holdout until the reviewed prepared fast-path dispatch seam lands.
 PreparedModuleMultiDefinedDispatchState build_prepared_module_multi_defined_dispatch_state(
     const c4c::backend::prepare::PreparedBirModule& module,
     const std::vector<const c4c::backend::bir::Function*>& defined_functions,
