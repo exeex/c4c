@@ -5,24 +5,25 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 2.1.3
 Current Step Title: Move Prepared-Home Selection And Memory Render Helpers Behind Lowering Owners
-Plan Review Counter: 5 / 6
+Plan Review Counter: 6 / 6
 # Current Packet
 
 ## Just Finished
 
-Continued step 2.1.3 by moving the remaining block-aware prepared-side `I32`
-operand-selection/render forwarding seams behind lowering owners:
-`memory_lowering.*` now owns the block-aware named/value source selectors and
-named operand renderer for prepared `I32` inputs, and
-`prepared_local_slot_render.cpp` no longer builds local adapter lambdas around
-those touched block-aware selection/render paths.
+Continued step 2.1.3 by moving the duplicated prepared-side `I32` load-result
+finalization seam behind lowering owners:
+`memory_lowering.*` now owns the stack-home sync plus prior-`eax` to `ecx`
+spill/update helper for named `I32` loads, and
+`prepared_local_slot_render.cpp` no longer keeps that load-finish policy
+duplicated across the ordinary prepared-load and bounded same-module helper
+paths.
 
 ## Suggested Next
 
-Continue step 2.1.3 by migrating the remaining prepared-side `I32` helpers
-that still duplicate small home-sync or register-move decisions around
-lowering-owned `PreparedNamedI32Source` flows, without widening into frame
-lowering or entry-surface rewiring.
+Continue step 2.1.3 by migrating the remaining prepared-side `I32`
+binary/select helpers that still make local `eax`/`ecx` register-move choices
+around lowering-owned `PreparedNamedI32Source` flows, without widening into
+scalar-lowering ownership, frame lowering, or entry-surface rewiring.
 
 ## Watchouts
 
@@ -42,7 +43,7 @@ lowering or entry-surface rewiring.
 
 ## Proof
 
-Step 2.1.3 prepared-home `I32` operand adapter lowering migration on 2026-04-22:
+Step 2.1.3 prepared-home `I32` load-finalization lowering migration on 2026-04-22:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 Backend subset passed (`106/106`). Canonical log paths: `test_before.log`,

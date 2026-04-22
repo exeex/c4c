@@ -134,6 +134,16 @@ bool append_prepared_named_i32_home_sync_if_supported(
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
 
+std::optional<std::string> finish_prepared_named_i32_load_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view value_name,
+    std::string rendered_load,
+    std::optional<std::string_view>* current_i32_name,
+    std::optional<std::string_view>* previous_i32_name,
+    std::optional<std::string_view>* current_i8_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
+
 std::optional<std::string> render_prepared_named_i32_stack_home_sync_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     std::string_view value_name,

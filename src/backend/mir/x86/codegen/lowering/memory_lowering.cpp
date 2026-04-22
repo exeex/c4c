@@ -537,6 +537,36 @@ bool append_prepared_named_i32_home_sync_if_supported(
   return true;
 }
 
+std::optional<std::string> finish_prepared_named_i32_load_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view value_name,
+    std::string rendered_load,
+    std::optional<std::string_view>* current_i32_name,
+    std::optional<std::string_view>* previous_i32_name,
+    std::optional<std::string_view>* current_i8_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  if (current_i32_name == nullptr || previous_i32_name == nullptr || current_i8_name == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto home_sync = render_prepared_named_i32_stack_home_sync_if_supported(
+      local_layout, value_name, prepared_names, function_locations);
+  if (!home_sync.has_value()) {
+    return std::nullopt;
+  }
+  rendered_load += *home_sync;
+  if (current_i32_name->has_value()) {
+    rendered_load = "    mov ecx, eax\n" + rendered_load;
+    *previous_i32_name = *current_i32_name;
+  } else {
+    *previous_i32_name = std::nullopt;
+  }
+  *current_i32_name = value_name;
+  *current_i8_name = std::nullopt;
+  return rendered_load;
+}
+
 std::optional<std::string> render_prepared_named_i32_stack_home_sync_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     std::string_view value_name,

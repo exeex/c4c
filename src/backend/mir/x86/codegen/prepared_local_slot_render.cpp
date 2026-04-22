@@ -3469,21 +3469,15 @@ std::optional<std::string> render_prepared_scalar_load_inst_if_supported(
       return rendered_load;
     }
     if (result.type == c4c::backend::bir::TypeKind::I32) {
-      const auto home_sync = render_prepared_named_i32_stack_home_sync_if_supported(
-          layout, result.name, prepared_names, function_locations);
-      if (!home_sync.has_value()) {
-        return std::nullopt;
-      }
-      rendered_load = *rendered_load + *home_sync;
-      if (current_i32_name->has_value()) {
-        rendered_load = std::string("    mov ecx, eax\n") + *rendered_load;
-        *previous_i32_name = *current_i32_name;
-      } else {
-        *previous_i32_name = std::nullopt;
-      }
-      *current_i32_name = result.name;
-      *current_i8_name = std::nullopt;
-      return rendered_load;
+      return finish_prepared_named_i32_load_if_supported(
+          layout,
+          result.name,
+          std::move(*rendered_load),
+          current_i32_name,
+          previous_i32_name,
+          current_i8_name,
+          prepared_names,
+          function_locations);
     }
     return std::nullopt;
   };
@@ -9316,21 +9310,15 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
                     return rendered_load;
                   }
                   if (load->result.type == c4c::backend::bir::TypeKind::I32) {
-                    const auto home_sync = render_prepared_named_i32_stack_home_sync_if_supported(
-                        *layout, load->result.name, &module.names, candidate_function_locations);
-                    if (!home_sync.has_value()) {
-                      return std::nullopt;
-                    }
-                    rendered_load += *home_sync;
-                    if (current_i32_name.has_value()) {
-                      rendered_load = "    mov ecx, eax\n" + rendered_load;
-                      previous_i32_name = current_i32_name;
-                    } else {
-                      previous_i32_name = std::nullopt;
-                    }
-                    current_i32_name = load->result.name;
-                    current_i8_name = std::nullopt;
-                    return rendered_load;
+                    return finish_prepared_named_i32_load_if_supported(
+                        *layout,
+                        load->result.name,
+                        std::move(rendered_load),
+                        &current_i32_name,
+                        &previous_i32_name,
+                        &current_i8_name,
+                        &module.names,
+                        candidate_function_locations);
                   }
                   return std::nullopt;
                 };
