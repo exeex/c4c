@@ -519,6 +519,84 @@ void X86Codegen::emit_get_return_f32_second_impl(const Value& dest) {
   }
 }
 
+void X86Codegen::emit_call_cleanup_impl(std::size_t stack_arg_space,
+                                        std::size_t /*f128_temp_space*/,
+                                        bool /*indirect*/) {
+  const bool need_align_pad = (stack_arg_space % 16) != 0;
+  const std::size_t total_cleanup = stack_arg_space + (need_align_pad ? 8 : 0);
+  if (total_cleanup > 0) {
+    this->state.out.emit_instr_imm_reg("    addq", static_cast<std::int64_t>(total_cleanup), "rsp");
+  }
+}
+
+void X86Codegen::emit_call_store_result_impl(const Value& dest, IrType return_type) {
+  if (return_type == IrType::I128) {
+    if (this->call_ret_classes.size() == 2) {
+      const auto c0 = this->call_ret_classes[0];
+      const auto c1 = this->call_ret_classes[1];
+      if (c0 == EightbyteClass::Integer && c1 == EightbyteClass::Sse) {
+        if (const auto slot = this->state.get_slot(dest.raw)) {
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw, "rax");
+          this->state.emit("    movq %xmm0, %rdx");
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw + 8, "rdx");
+        }
+        this->state.reg_cache.invalidate_all();
+        return;
+      }
+      if (c0 == EightbyteClass::Sse && c1 == EightbyteClass::Integer) {
+        if (const auto slot = this->state.get_slot(dest.raw)) {
+          this->state.emit("    movq %xmm0, %rdx");
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw, "rdx");
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw + 8, "rax");
+        }
+        this->state.reg_cache.invalidate_all();
+        return;
+      }
+      if (c0 == EightbyteClass::Sse && c1 == EightbyteClass::Sse) {
+        if (const auto slot = this->state.get_slot(dest.raw)) {
+          this->state.emit("    movq %xmm0, %rax");
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw, "rax");
+          this->state.emit("    movq %xmm1, %rax");
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw + 8, "rax");
+        }
+        this->state.reg_cache.invalidate_all();
+        return;
+      }
+    }
+    this->store_rax_rdx_to(dest);
+    return;
+  }
+
+  if (return_type == IrType::F32) {
+    this->emit_call_move_f32_to_acc_impl();
+    this->store_rax_to(dest);
+  } else if (return_type == IrType::F64) {
+    this->emit_call_move_f64_to_acc_impl();
+    this->store_rax_to(dest);
+  } else if (return_type == IrType::F128) {
+    if (const auto slot = this->state.get_slot(dest.raw)) {
+      this->state.out.emit_instr_rbp("    fstp", slot->raw);
+      this->state.out.emit_instr_rbp("    fld", slot->raw);
+      this->state.emit("    subq $8, %rsp");
+      this->state.emit("    fstpl (%rsp)");
+      this->state.emit("    popq %rax");
+      this->state.reg_cache.set_acc(dest.raw, false);
+      this->state.f128_direct_slots.insert(dest.raw);
+    } else {
+      this->state.emit("    subq $8, %rsp");
+      this->state.emit("    fstpl (%rsp)");
+      this->state.emit("    popq %rax");
+      this->store_rax_to(dest);
+    }
+  } else {
+    this->store_rax_to(dest);
+  }
+}
+
+void X86Codegen::emit_call_store_i128_result_impl(const Value& dest) {
+  this->store_rax_rdx_to(dest);
+}
+
 void X86Codegen::emit_set_return_f32_second_impl(const Operand& src) {
   if (const auto slot = this->state.get_slot(src.raw)) {
     this->state.emit("    movss " + std::to_string(slot->raw) + "(%rbp), %xmm1");
