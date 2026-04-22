@@ -4745,6 +4745,22 @@ std::optional<std::size_t> resolve_prepared_named_ptr_published_payload_frame_of
     slice_zero_name = std::string(pointer_name) + ".0";
     slice_zero_query = slice_zero_name;
   }
+  if (const auto slice_zero_home_offset = find_prepared_value_home_frame_offset(
+          block_context.local_layout == nullptr ? PreparedModuleLocalSlotLayout{} : *block_context.local_layout,
+          function_context.prepared_names,
+          function_context.function_locations,
+          slice_zero_query);
+      slice_zero_home_offset.has_value()) {
+    return slice_zero_home_offset;
+  }
+  if (const auto exact_home_offset = find_prepared_value_home_frame_offset(
+          block_context.local_layout == nullptr ? PreparedModuleLocalSlotLayout{} : *block_context.local_layout,
+          function_context.prepared_names,
+          function_context.function_locations,
+          pointer_name);
+      exact_home_offset.has_value()) {
+    return exact_home_offset;
+  }
   if (block_context.local_layout != nullptr) {
     if (const auto slice_zero_offset = resolve_prepared_local_slot_base_offset_if_supported(
             *block_context.local_layout,

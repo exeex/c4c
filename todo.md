@@ -3,43 +3,51 @@
 Status: Active
 Source Idea Path: ideas/open/75_post_link_prepared_call_lane_clobber_runtime_correctness_for_x86_backend.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Re-Establish The Downstream Consumer Ownership
-Plan Review Counter: 1 / 5
+Current Step ID: 2
+Current Step Title: Isolate The Exact Lowering / Call-Lane Consumer
+Plan Review Counter: 0 / 5
 # Current Packet
 
 ## Just Finished
 
-Plan step 1 is now re-established with fresh proof on `00204.c`: the test still
-fails first inside `Arguments:` in `arg()` before `Return values:`. The active
-consumer seam remains the `fa4(...)` setup in
-`build/c_testsuite_x86_backend/src/00204.c.s`, where the truthful prepared/home
-facts already carried forward from idea 76 stay distinct upstream
-(`%t37.0 -> 364`, `%t38.0/.4/.8/.12 -> 80/84/88/92`, late homes at `6264`,
-`6272`, and `6376/6380/6384/6388`), but the emitted x86 still stages the call
-through `[rsp + 352..364]` and overwrites `[rsp + 364]` twice before `call fa4`
-at line `3493`: first `s1` byte storage at line `3452`, then `hfa14.d` at line
-`3469`. That keeps ownership in idea 75's downstream prepared-to-x86 consumer
-route, not in idea 76's already-truthful publishers or idea 77's later
-return/HFA route.
+Plan step 2 isolated the exact downstream seam for the `fa4(...)` overlap and
+repaired it generically inside the owned x86 consumer. The culprit was the
+aligned-byval payload base resolver
+`resolve_prepared_named_ptr_published_payload_frame_offset_if_supported(...)`
+in [prepared_local_slot_render.cpp](/workspaces/c4c/src/backend/mir/x86/codegen/prepared_local_slot_render.cpp:4732),
+which preferred renderer-local `local_layout.offsets` before the authoritative
+prepared stack homes. That collapsed the truthful prepared HFA payload home
+(`%t38.*` late home rooted at `6272`) into the rendered `[rsp + 352..364]`
+lane. The fix now prefers `find_prepared_value_home_frame_offset(...)` first,
+so the regenerated `fa4(...)` setup no longer hands `rsi` the collapsed lane:
+[00204.c.s](/workspaces/c4c/build/c_testsuite_x86_backend/src/00204.c.s:3485)
+now still passes `s1` via `lea rdi, [rsp + 6264]` but passes the HFA byval
+payload via `lea rsi, [rsp + 6272]` instead of the old `lea rsi, [rsp + 352]`.
+The stale `[rsp + 352..364]` copy sequence is still emitted immediately above
+that call at [00204.c.s](/workspaces/c4c/build/c_testsuite_x86_backend/src/00204.c.s:3454),
+but it is no longer the `fa4(...)` consumer handoff. Fresh proof still fails
+first in `Arguments:` before `Return values:`, so idea 75 remains active, but
+the original `fa4(...)` overlap is now traced to this exact byval-base
+resolution seam rather than to upstream publication/layout.
 
 ## Suggested Next
 
-Inspect the downstream x86 consumer seam that turns those truthful prepared
-homes into the emitted `[rsp + 352..364]` staging area before `fa4(...)`,
-starting with `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` and
-`src/backend/mir/x86/codegen/x86_codegen.hpp`, while keeping the proving set
-narrow to `00204.c` plus the prepared/assembly evidence around that call site.
+Stay on idea 75 and trace the remaining producer of the stale
+`[rsp + 352..364]` HFA copy sequence in `arg()` now that `fa4(...)` no longer
+consumes it, starting from the float/HFA byval materialization helpers in
+`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` that still emit
+those stores before the call.
 
 ## Watchouts
 
-- Do not reopen `src/backend/prealloc/**`: fresh proof still shows the first bad
-  fact only after the truthful upstream homes are consumed into emitted x86
-  call setup.
+- Do not reopen `src/backend/prealloc/**`: the repaired seam confirms the bad
+  collapse was inside the downstream x86 byval consumer, not the truthful
+  prepared publishers.
+- Do not treat the remaining `[rsp + 352..364]` stores as proven harmless just
+  because `rsi` now points at `[rsp + 6272]`; fresh proof still fails in
+  `Arguments:` and the stale copy lane is still being emitted.
 - Do not hand route ownership to idea 77 while the earliest mismatch remains in
-  `arg()` before `fa4(...)` and before `Return values:`.
-- Reject any fix that only reshapes this single call site instead of repairing
-  the shared x86 consumer contract that materializes byval/local call lanes.
+  `arg()` before `Return values:`.
 
 ## Proof
 
@@ -50,7 +58,6 @@ Fresh proof on 2026-04-22 used:
   `arg()` before `Return values:`
 - proof log: `test_after.log`
 - supporting inspection:
-  `build/c_testsuite_x86_backend/src/00204.c.s:3451-3493`, where the emitted
-  call setup stores `s1` to `[rsp + 364]`, then rewrites that same location as
-  the tail of the staged HFA copy while using `[rsp + 352]` as the `fa4(...)`
-  aggregate base
+  `build/c_testsuite_x86_backend/src/00204.c.s:3451-3493`, where the stale HFA
+  copy lane remains at `[rsp + 352..364]` but the repaired `fa4(...)` handoff
+  now uses `lea rsi, [rsp + 6272]` instead of the collapsed `[rsp + 352]`
