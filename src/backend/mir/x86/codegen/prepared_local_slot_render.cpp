@@ -8747,6 +8747,127 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
       if (layout->frame_size != 0) {
         body += "    sub rsp, " + std::to_string(layout->frame_size) + "\n";
       }
+      const auto helper_target_triple =
+          module.module.target_triple.empty() ? c4c::default_host_target_triple()
+                                              : module.module.target_triple;
+      const auto helper_target_profile = c4c::target_profile_from_triple(helper_target_triple);
+      std::unordered_map<std::string_view, std::string> pointer_param_abi_registers;
+      for (std::size_t param_index = 0; param_index < candidate.params.size(); ++param_index) {
+        const auto& param = candidate.params[param_index];
+        if (param.type != c4c::backend::bir::TypeKind::Ptr || param.is_varargs || param.is_sret ||
+            !param.abi.has_value()) {
+          continue;
+        }
+        const auto incoming_register =
+            c4c::backend::prepare::call_arg_destination_register_name(
+                helper_target_profile, *param.abi, param_index);
+        if (incoming_register.has_value()) {
+          pointer_param_abi_registers.emplace(param.name, *incoming_register);
+        }
+      }
+      const auto render_entry_param_home_materialization =
+          [&](const c4c::backend::bir::Param& param,
+              std::size_t param_index) -> std::optional<std::string> {
+            if (param.is_varargs || param.is_sret || !param.abi.has_value()) {
+              return std::string{};
+            }
+            const auto incoming_register =
+                c4c::backend::prepare::call_arg_destination_register_name(
+                    helper_target_profile, *param.abi, param_index);
+            if (!incoming_register.has_value()) {
+              return std::string{};
+            }
+            const auto* home = c4c::backend::prepare::find_prepared_value_home(
+                module.names, *candidate_function_locations, param.name);
+            if (home == nullptr) {
+              return std::string{};
+            }
+
+            switch (param.type) {
+              case c4c::backend::bir::TypeKind::Ptr:
+                if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+                    home->register_name.has_value()) {
+                  if (*home->register_name == *incoming_register) {
+                    return std::string{};
+                  }
+                  return "    mov " + *home->register_name + ", " + *incoming_register + "\n";
+                }
+                return std::string{};
+              case c4c::backend::bir::TypeKind::I64:
+                if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+                    home->register_name.has_value()) {
+                  if (*home->register_name == *incoming_register) {
+                    return std::string{};
+                  }
+                  return "    mov " + *home->register_name + ", " + *incoming_register + "\n";
+                }
+                if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+                    home->offset_bytes.has_value()) {
+                  return "    mov " +
+                         render_prepared_stack_memory_operand(*home->offset_bytes, "QWORD") +
+                         ", " + *incoming_register + "\n";
+                }
+                return std::string{};
+              case c4c::backend::bir::TypeKind::I32: {
+                const auto narrowed_register = narrow_i32_register(*incoming_register);
+                if (!narrowed_register.has_value()) {
+                  return std::nullopt;
+                }
+                if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+                    home->register_name.has_value()) {
+                  const auto narrowed_home_register = narrow_i32_register(*home->register_name);
+                  if (!narrowed_home_register.has_value()) {
+                    return std::nullopt;
+                  }
+                  if (*narrowed_home_register == *narrowed_register) {
+                    return std::string{};
+                  }
+                  return "    mov " + *narrowed_home_register + ", " + *narrowed_register + "\n";
+                }
+                if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+                    home->offset_bytes.has_value()) {
+                  return "    mov " +
+                         render_prepared_stack_memory_operand(*home->offset_bytes, "DWORD") +
+                         ", " + *narrowed_register + "\n";
+                }
+                return std::string{};
+              }
+              case c4c::backend::bir::TypeKind::I8: {
+                const auto narrowed_register = narrow_i8_register(*incoming_register);
+                if (!narrowed_register.has_value()) {
+                  return std::nullopt;
+                }
+                if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+                    home->register_name.has_value()) {
+                  const auto narrowed_home_register = narrow_i8_register(*home->register_name);
+                  if (!narrowed_home_register.has_value()) {
+                    return std::nullopt;
+                  }
+                  if (*narrowed_home_register == *narrowed_register) {
+                    return std::string{};
+                  }
+                  return "    mov " + *narrowed_home_register + ", " + *narrowed_register + "\n";
+                }
+                if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+                    home->offset_bytes.has_value()) {
+                  return "    mov " +
+                         render_prepared_stack_memory_operand(*home->offset_bytes, "BYTE") +
+                         ", " + *narrowed_register + "\n";
+                }
+                return std::string{};
+              }
+              default:
+                return std::string{};
+            }
+          };
+      for (std::size_t param_index = 0; param_index < candidate.params.size(); ++param_index) {
+        const auto rendered_param_home =
+            render_entry_param_home_materialization(candidate.params[param_index], param_index);
+        if (!rendered_param_home.has_value()) {
+          return std::nullopt;
+        }
+        body += *rendered_param_home;
+      }
       std::optional<std::string_view> current_i32_name;
       std::optional<std::string_view> previous_i32_name;
       std::optional<std::string_view> current_i8_name;
@@ -9114,8 +9235,44 @@ render_prepared_bounded_same_module_helper_prefix_if_supported(
             current_ptr_name = std::nullopt;
             return body;
           };
+      const auto render_pointer_param_home_refresh_if_needed =
+          [&](std::size_t inst_index) -> std::optional<std::string> {
+            const auto* prepared_access = find_prepared_function_memory_access(
+                candidate_function_addressing, block_context.block_label_id, inst_index);
+            if (prepared_access == nullptr ||
+                prepared_access->address.base_kind !=
+                    c4c::backend::prepare::PreparedAddressBaseKind::PointerValue ||
+                !prepared_access->address.pointer_value_name.has_value()) {
+              return std::string{};
+            }
+            const auto pointer_name = c4c::backend::prepare::prepared_value_name(
+                module.names, *prepared_access->address.pointer_value_name);
+            if (pointer_name.empty()) {
+              return std::string{};
+            }
+            const auto register_it = pointer_param_abi_registers.find(pointer_name);
+            if (register_it == pointer_param_abi_registers.end()) {
+              return std::string{};
+            }
+            const auto* home = c4c::backend::prepare::find_prepared_value_home(
+                module.names, *candidate_function_locations, pointer_name);
+            if (home == nullptr ||
+                home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot ||
+                !home->offset_bytes.has_value()) {
+              return std::string{};
+            }
+            return "    mov " +
+                   render_prepared_stack_memory_operand(*home->offset_bytes, "QWORD") + ", " +
+                   register_it->second + "\n";
+          };
       for (std::size_t inst_index = 0; inst_index < candidate.blocks.front().insts.size(); ++inst_index) {
         const auto& inst = candidate.blocks.front().insts[inst_index];
+        const auto rendered_pointer_param_home =
+            render_pointer_param_home_refresh_if_needed(inst_index);
+        if (!rendered_pointer_param_home.has_value()) {
+          return std::nullopt;
+        }
+        body += *rendered_pointer_param_home;
         if (const auto rendered_float = render_helper_float_load_or_cast(inst, inst_index);
             rendered_float.has_value()) {
           body += *rendered_float;
