@@ -20,6 +20,68 @@ const char* reg_name_to_32_or_self(const char* reg) {
   return narrowed[0] == '\0' ? reg : narrowed;
 }
 
+std::string reg_name_to_64_or_self(std::string_view reg) {
+  if (reg == "rax" || reg == "eax" || reg == "ax" || reg == "al") return "rax";
+  if (reg == "rbx" || reg == "ebx" || reg == "bx" || reg == "bl") return "rbx";
+  if (reg == "rcx" || reg == "ecx" || reg == "cx" || reg == "cl") return "rcx";
+  if (reg == "rdx" || reg == "edx" || reg == "dx" || reg == "dl") return "rdx";
+  if (reg == "rsi" || reg == "esi" || reg == "si" || reg == "sil") return "rsi";
+  if (reg == "rdi" || reg == "edi" || reg == "di" || reg == "dil") return "rdi";
+  if (reg == "rsp" || reg == "esp" || reg == "sp" || reg == "spl") return "rsp";
+  if (reg == "rbp" || reg == "ebp" || reg == "bp" || reg == "bpl") return "rbp";
+  if (reg == "r8" || reg == "r8d" || reg == "r8w" || reg == "r8b") return "r8";
+  if (reg == "r9" || reg == "r9d" || reg == "r9w" || reg == "r9b") return "r9";
+  if (reg == "r10" || reg == "r10d" || reg == "r10w" || reg == "r10b") return "r10";
+  if (reg == "r11" || reg == "r11d" || reg == "r11w" || reg == "r11b") return "r11";
+  if (reg == "r12" || reg == "r12d" || reg == "r12w" || reg == "r12b") return "r12";
+  if (reg == "r13" || reg == "r13d" || reg == "r13w" || reg == "r13b") return "r13";
+  if (reg == "r14" || reg == "r14d" || reg == "r14w" || reg == "r14b") return "r14";
+  if (reg == "r15" || reg == "r15d" || reg == "r15w" || reg == "r15b") return "r15";
+  return std::string(reg);
+}
+
+std::string reg_name_to_16_or_self(const char* reg) {
+  const auto wide = reg_name_to_64_or_self(reg);
+  if (wide == "rax") return "ax";
+  if (wide == "rbx") return "bx";
+  if (wide == "rcx") return "cx";
+  if (wide == "rdx") return "dx";
+  if (wide == "rsi") return "si";
+  if (wide == "rdi") return "di";
+  if (wide == "rsp") return "sp";
+  if (wide == "rbp") return "bp";
+  if (wide == "r8") return "r8w";
+  if (wide == "r9") return "r9w";
+  if (wide == "r10") return "r10w";
+  if (wide == "r11") return "r11w";
+  if (wide == "r12") return "r12w";
+  if (wide == "r13") return "r13w";
+  if (wide == "r14") return "r14w";
+  if (wide == "r15") return "r15w";
+  return std::string(reg);
+}
+
+std::string reg_name_to_8_or_self(const char* reg) {
+  const auto wide = reg_name_to_64_or_self(reg);
+  if (wide == "rax") return "al";
+  if (wide == "rbx") return "bl";
+  if (wide == "rcx") return "cl";
+  if (wide == "rdx") return "dl";
+  if (wide == "rsi") return "sil";
+  if (wide == "rdi") return "dil";
+  if (wide == "rsp") return "spl";
+  if (wide == "rbp") return "bpl";
+  if (wide == "r8") return "r8b";
+  if (wide == "r9") return "r9b";
+  if (wide == "r10") return "r10b";
+  if (wide == "r11") return "r11b";
+  if (wide == "r12") return "r12b";
+  if (wide == "r13") return "r13b";
+  if (wide == "r14") return "r14b";
+  if (wide == "r15") return "r15b";
+  return std::string(reg);
+}
+
 void append_asm_line(X86CodegenOutput* out, std::string line) {
   if (out == nullptr || out->owner == nullptr) {
     return;
@@ -30,6 +92,21 @@ void append_asm_line(X86CodegenOutput* out, std::string line) {
 void emit_zero_reg(X86Codegen& codegen, const char* reg) {
   codegen.state.emit(std::string("    xorl %") + reg_name_to_32_or_self(reg) + ", %" +
                      reg_name_to_32_or_self(reg));
+}
+
+const char* load_dest_reg(IrType ty) {
+  switch (ty) {
+    case IrType::U32:
+    case IrType::F32:
+      return "%eax";
+    default:
+      return "%rax";
+  }
+}
+
+std::string atomic_loop_label() {
+  static std::uint64_t next_label_id = 0;
+  return ".Latomic_loop_" + std::to_string(next_label_id++);
 }
 
 }  // namespace
@@ -372,6 +449,99 @@ void X86Codegen::store_rax_rdx_to(const Value& dest) {
     this->state.emit("    movq %rdx, " + std::to_string(slot->raw + 8) + "(%rbp)");
   }
   this->state.reg_cache.invalidate_all();
+}
+
+const char* X86Codegen::reg_for_type(const char* reg, IrType ty) const {
+  switch (ty) {
+    case IrType::I8: {
+      static thread_local std::string narrowed;
+      narrowed = reg_name_to_8_or_self(reg);
+      return narrowed.c_str();
+    }
+    case IrType::I16:
+    case IrType::U16: {
+      static thread_local std::string narrowed;
+      narrowed = reg_name_to_16_or_self(reg);
+      return narrowed.c_str();
+    }
+    case IrType::I32:
+    case IrType::U32:
+    case IrType::F32: return reg_name_to_32_or_self(reg);
+    default: return reg;
+  }
+}
+
+const char* X86Codegen::mov_load_for_type(IrType ty) const {
+  switch (ty) {
+    case IrType::I8: return "movsbq";
+    case IrType::I16: return "movswq";
+    case IrType::U16: return "movzwq";
+    case IrType::I32: return "movslq";
+    case IrType::U32:
+    case IrType::F32: return "movl";
+    default: return "movq";
+  }
+}
+
+const char* X86Codegen::mov_store_for_type(IrType ty) const {
+  switch (ty) {
+    case IrType::I8: return "movb";
+    case IrType::I16:
+    case IrType::U16: return "movw";
+    case IrType::I32:
+    case IrType::U32:
+    case IrType::F32: return "movl";
+    default: return "movq";
+  }
+}
+
+const char* X86Codegen::type_suffix(IrType ty) const {
+  switch (ty) {
+    case IrType::I8: return "b";
+    case IrType::I16:
+    case IrType::U16: return "w";
+    case IrType::I32:
+    case IrType::U32: return "l";
+    default: return "q";
+  }
+}
+
+void X86Codegen::emit_x86_atomic_op_loop(IrType ty, const char* op) {
+  this->state.emit("    movq %rax, %r8");
+  this->state.emit(std::string("    ") + this->mov_load_for_type(ty) + " (%rcx), " +
+                   load_dest_reg(ty));
+
+  const auto loop_label = atomic_loop_label();
+  this->state.emit(loop_label + ":");
+  this->state.emit("    movq %rax, %rdx");
+
+  const auto size_suffix = this->type_suffix(ty);
+  const auto rdx_reg = this->reg_for_type("rdx", ty);
+  const char* r8_reg = "r8";
+  switch (ty) {
+    case IrType::I8: r8_reg = "r8b"; break;
+    case IrType::I16:
+    case IrType::U16: r8_reg = "r8w"; break;
+    case IrType::I32:
+    case IrType::U32: r8_reg = "r8d"; break;
+    default: break;
+  }
+
+  if (std::string_view(op) == "sub") {
+    this->state.emit(std::string("    sub") + size_suffix + " %" + r8_reg + ", %" + rdx_reg);
+  } else if (std::string_view(op) == "and") {
+    this->state.emit(std::string("    and") + size_suffix + " %" + r8_reg + ", %" + rdx_reg);
+  } else if (std::string_view(op) == "or") {
+    this->state.emit(std::string("    or") + size_suffix + " %" + r8_reg + ", %" + rdx_reg);
+  } else if (std::string_view(op) == "xor") {
+    this->state.emit(std::string("    xor") + size_suffix + " %" + r8_reg + ", %" + rdx_reg);
+  } else if (std::string_view(op) == "nand") {
+    this->state.emit(std::string("    and") + size_suffix + " %" + r8_reg + ", %" + rdx_reg);
+    this->state.emit(std::string("    not") + size_suffix + " %" + rdx_reg);
+  }
+
+  this->state.emit(std::string("    lock cmpxchg") + size_suffix + " %" + rdx_reg + ", (%rcx)");
+  this->state.emit("    jne " + loop_label);
 }
 
 }  // namespace c4c::backend::x86

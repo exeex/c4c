@@ -5,41 +5,43 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 2.2
 Current Step Title: Migrate Canonical Call And Return Families
-Plan Review Counter: 3 / 6
+Plan Review Counter: 4 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed step 2.2’s generic operand/result bridge cleanup by moving
-`const_as_imm32`, `emit_alloca_addr_to`, `operand_to_reg`, `operand_to_rax`,
-and `store_rax_*` out of `lowering/call_lowering.cpp` and into the compiled
-`core/x86_codegen_output.cpp` seam. `call_lowering.cpp` now keeps only
-call-family ABI selection and lowering behavior instead of owning shared
-operand/result helper bodies.
+Completed step 2.2’s next non-call ownership shrink by moving the typed
+load/store and atomic-loop helper family out of dormant
+`shared_call_support.cpp` and into the compiled
+`core/x86_codegen_output.cpp` seam: `reg_for_type`,
+`mov_load_for_type`, `mov_store_for_type`, `type_suffix`, and
+`emit_x86_atomic_op_loop`. The compiled seam now carries its own register-width
+normalization helpers so this family no longer depends on dormant `mod.cpp`
+ownership.
 
 ## Suggested Next
 
-Keep step 2.2 on canonical ownership cleanup by classifying any remaining
-shared helper bodies that still exist only in the dormant reviewed draft path
-(`shared_call_support.cpp`) and migrate the next genuinely non-call-generic
-piece through a compiled seam without widening into prepared-route or ABI
-policy work.
+Keep step 2.2 on the remaining shared operand-pair cluster still owned only by
+dormant `shared_call_support.cpp`: classify and migrate the next coherent
+family among `operand_to_rcx`, `operand_to_rax_rdx`, and `prep_i128_binop`
+through the compiled seam without widening into prepared-route or ABI-policy
+work.
 
 ## Watchouts
 
 - The backend target still does not compile `shared_call_support.cpp` or
-  `mod.cpp`; step 2.2 cleanup must continue using the reviewed compiled seams
-  rather than re-linking the legacy owners.
-- `memory.cpp` still contains a dormant `emit_alloca_addr_to` body; this packet
-  intentionally left that legacy owner untouched because it is outside the
-  compiled seam and outside owned-file authority.
-- Keep `calls.cpp` and `returns.cpp` non-owning, and do not widen this route
-  into ABI policy changes, prepared-route admission logic, or return-lowering
-  work.
+  `mod.cpp`; seam moves have to remain self-contained in compiled reviewed
+  owners rather than re-linking dormant utilities.
+- This packet intentionally left the operand-pair/i128 prep helpers in the
+  dormant draft path because they are the next coherent family, not part of
+  the typed move/atomic cluster.
+- Keep `call_lowering.cpp`, `memory.cpp`, and `mod.cpp` non-owning for this
+  route; do not widen into ABI policy, prepared-route admission logic, or
+  dormant utility reattachment.
 
 ## Proof
 
-Step 2.2 generic operand/result bridge cleanup on 2026-04-22:
+Step 2.2 typed move/atomic helper migration on 2026-04-22:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 Backend subset passed (`106/106`). Canonical log paths: `test_before.log`,
