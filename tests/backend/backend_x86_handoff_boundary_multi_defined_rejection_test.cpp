@@ -203,7 +203,7 @@ int check_route_debug_surface(const bir::Module& module,
                        failure_context) ||
       !expect_contains(
           summary,
-          "- module-level next inspect: inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
+          "- module-level next inspect: inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/module/module_emit.cpp",
           failure_context)) {
     return 1;
   }
@@ -216,7 +216,7 @@ int check_route_debug_surface(const bir::Module& module,
       !expect_contains(trace, expected_message_fragment, failure_context) ||
       !expect_contains(
           trace,
-          "next inspect: inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
+          "next inspect: inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/module/module_emit.cpp",
           failure_context)) {
     return 1;
   }

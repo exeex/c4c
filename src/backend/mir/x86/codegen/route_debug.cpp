@@ -418,7 +418,7 @@ std::string lane_next_surface(std::string_view lane_name) {
     return "src/backend/mir/x86/codegen/prepared_countdown_render.cpp";
   }
   if (lane_name == "compare-driven-entry") {
-    return "src/backend/mir/x86/codegen/prepared_module_emit.cpp";
+    return "src/backend/mir/x86/codegen/module/module_emit.cpp";
   }
   if (lane_name == "local-i32-arithmetic-guard" ||
       lane_name == "local-i16-arithmetic-guard" ||
@@ -435,13 +435,13 @@ std::string lane_next_surface(std::string_view lane_name) {
       lane_name == "trivial-defined-function") {
     return "src/backend/mir/x86/codegen/prepared_local_slot_render.cpp";
   }
-  return "src/backend/mir/x86/codegen/prepared_module_emit.cpp";
+  return "src/backend/mir/x86/codegen/module/module_emit.cpp";
 }
 
 std::string next_surface_hint(const FunctionRouteAttempt* attempt,
                               FinalRejectionKind kind) {
   if (attempt == nullptr) {
-    return "inspect src/backend/mir/x86/codegen/prepared_module_emit.cpp for the next top-level lane";
+    return "inspect src/backend/mir/x86/codegen/module/module_emit.cpp for the next top-level lane";
   }
 
   const auto lane_surface = lane_next_surface(attempt->lane_name);
@@ -494,7 +494,7 @@ std::string next_surface_hint(const FunctionRouteAttempt* attempt,
     return "inspect the backend exception path in " + lane_surface;
   }
 
-  return "inspect src/backend/mir/x86/codegen/prepared_module_emit.cpp for the next top-level lane";
+  return "inspect src/backend/mir/x86/codegen/module/module_emit.cpp for the next top-level lane";
 }
 
 ModuleLaneRejectionReport build_module_lane_rejection_report(
@@ -505,7 +505,7 @@ ModuleLaneRejectionReport build_module_lane_rejection_report(
             "bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support",
         .facts = std::nullopt,
         .next_surface =
-            "inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
+            "inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/module/module_emit.cpp",
     };
   }
 
@@ -539,7 +539,7 @@ ModuleLaneRejectionReport build_module_lane_rejection_report(
           detail_view.find("authoritative prepared local-slot instruction handoff") !=
                   std::string_view::npos
               ? "inspect the bounded multi-function local-slot handoff consumed in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp"
-              : "inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
+              : "inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/module/module_emit.cpp",
   };
 }
 
@@ -625,7 +625,7 @@ FinalRejectionReport build_final_rejection_report(const FunctionRouteReport& rep
       .summary = "current x86 lanes did not recognize this prepared function shape",
       .facts = std::nullopt,
       .next_surface =
-          "inspect src/backend/mir/x86/codegen/prepared_module_emit.cpp for the next top-level lane",
+          "inspect src/backend/mir/x86/codegen/module/module_emit.cpp for the next top-level lane",
   };
 }
 

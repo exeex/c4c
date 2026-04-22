@@ -1433,13 +1433,13 @@ int main() {
                        "- final rejection: current x86 lanes did not recognize this prepared function shape",
                        "plain miss summary final rejection") ||
       !expect_contains(plain_miss_summary,
-                       "- next inspect: inspect src/backend/mir/x86/codegen/prepared_module_emit.cpp for the next top-level lane",
+                       "- next inspect: inspect src/backend/mir/x86/codegen/module/module_emit.cpp for the next top-level lane",
                        "plain miss summary next inspect") ||
       !expect_contains(plain_miss_trace,
                        "final: rejected: current x86 lanes did not recognize this prepared function shape",
                        "plain miss trace final rejection") ||
       !expect_contains(plain_miss_trace,
-                       "next inspect: inspect src/backend/mir/x86/codegen/prepared_module_emit.cpp for the next top-level lane",
+                       "next inspect: inspect src/backend/mir/x86/codegen/module/module_emit.cpp for the next top-level lane",
                        "plain miss trace next inspect") ||
       !expect_contains(missing_short_circuit_contract_summary,
                        "- final rejection: single-block-return-dispatch is missing prepared handoff data required by the current x86 route",
@@ -1529,7 +1529,7 @@ int main() {
                        "- module-level final detail: x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls through the canonical prepared-module handoff",
                        "module-level rejection summary final detail") ||
       !expect_contains(multi_defined_global_function_pointer_rejection_summary,
-                       "- module-level next inspect: inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
+                       "- module-level next inspect: inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/module/module_emit.cpp",
                        "module-level rejection summary next inspect") ||
       !expect_contains(multi_defined_global_function_pointer_rejection_trace,
                        "final: rejected: bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support",
@@ -1538,7 +1538,7 @@ int main() {
                        "final detail: x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls through the canonical prepared-module handoff",
                        "module-level rejection trace final detail") ||
       !expect_contains(multi_defined_global_function_pointer_rejection_trace,
-                       "next inspect: inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/prepared_module_emit.cpp",
+                       "next inspect: inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/module/module_emit.cpp",
                        "module-level rejection trace next inspect")) {
     return EXIT_FAILURE;
   }

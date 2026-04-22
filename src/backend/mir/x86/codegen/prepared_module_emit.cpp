@@ -1,4 +1,3 @@
-#include "x86_codegen.hpp"
 #include "module/module_emit.hpp"
 
 namespace c4c::backend::x86 {
