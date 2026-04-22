@@ -17,6 +17,8 @@ state, and creates the final commit. It does not own lifecycle rewrites or imple
 - call `c4c-plan-owner` on `gpt-5.4` for lifecycle work
 - call `c4c-executor` on `gpt-5.4` for implementation work
 - call `c4c-reviewer` on `gpt-5.4` for route-drift review
+- use `c4c-divide-and-conquer` when the active route is genuinely stuck and
+  needs a decomposition initiative instead of another repair packet
 
 ## Start Here
 
@@ -190,6 +192,9 @@ Choose the next specialist with these rules:
 - call `c4c-reviewer` only for real route risk:
   repeated lifecycle repairs, multiple direction-changing plan commits, packet boundary drift, or explicit drift suspicion
 - do not call `c4c-reviewer` only because commit count is high
+- when repeated collisions suggest the real problem is route shape rather than
+  one more implementation packet, use `c4c-divide-and-conquer` first and then
+  hand any resulting idea/plan switch to `c4c-plan-owner`
 
 Use `c4c-plan-owner` during normal execution only when one of these is true:
 
@@ -200,6 +205,14 @@ Use `c4c-plan-owner` during normal execution only when one of these is true:
 - the current `plan.md` no longer faithfully represents the linked source idea
 - a reviewer explicitly justified route reset
 - a blocker cannot be resolved within the current runbook
+
+Use `c4c-divide-and-conquer` before sending work to `c4c-plan-owner` when all
+of these are true:
+
+- the route is blocked by repeated collisions rather than one fresh failure
+- the current problem can be decomposed into smaller owned seams
+- switching to a new idea under `ideas/open/` is more honest than stretching
+  the existing runbook
 
 Oversized-step trigger:
 

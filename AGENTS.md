@@ -65,6 +65,9 @@ This repo uses a single-plan lifecycle.
 
 - Owns orchestration, route choice, and anti-drift decisions.
 - Chooses whether to call `plan-owner`, `executor`, or `reviewer`.
+- Uses `.codex/skills/c4c-divide-and-conquer/` when repeated collisions show
+  the active route should be split into a separate decomposition initiative
+  under `ideas/open/` before more execution.
 - Compares execution against the linked source idea, not only `plan.md`.
 - Uses `todo.md` execution metadata, including `Current Step ID`,
   `Current Step Title`, and `Plan Review Counter`, when deciding whether a
