@@ -27,7 +27,9 @@ This idea owns x86 backend failures where:
 
 ## Current Known Failed Cases It Owns
 
-- `c_testsuite_x86_backend_src_00204_c`
+- none currently confirmed; active step-2 tracing on 2026-04-22 proved the
+  current `00204.c` overlap is introduced after the truthful prealloc/layout
+  publishers rather than by them
 
 ## Latest Durable Note
 
@@ -35,22 +37,25 @@ As of 2026-04-22, commit `d61017fa` still stands as a real generic repair for
 one publication/layout seam: once one slice of an address-exposed
 aggregate-local family requires a fixed home, `assign_frame_slots(...)` keeps
 the whole slice family in the fixed-location group so helper byval payload
-homes do not interleave only their `.0` slices. But a fresh focused proof,
+homes do not interleave only their `.0` slices. But the next focused step-2
+trace on
 
 `cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^c_testsuite_x86_backend_src_00204_c$'`
 
-plus the regenerated `build/c_testsuite_x86_backend/src/00204.c.s`, shows
-`00204.c` still failing first at the tail of `Arguments:` in direct mixed
-aggregate/HFA call `fa4(...)`, not first in a downstream return-value / HFA
-leaf. At the current call site, the byte home for `s1` at `[rsp + 364]` is
-immediately overwritten by `hfa14.d`, proving the first remaining bad fact is
-still upstream prepared byval-home publication/layout overlap before the call,
-not later runtime return semantics.
+plus prepared-BIR and regenerated assembly inspection showed the remaining
+`00204.c` corruption is no longer authored by the upstream publishers this
+idea owns. `stack_layout::assign_frame_slots(...)` publishes distinct offsets
+for the local homes (`364` vs `80/84/88/92`), and regalloc publishes distinct
+late homes for the byval copies (`6264`, `6272`, and `6376/6380/6384/6388`).
+The prepared `fa4(...)` move bundle still targets register ABI destinations
+only, yet the emitted assembly collapses those truthful facts back onto
+`[rsp + 364]` before the call executes.
 
-Idea 76 therefore still owns `00204.c`. The earlier same-day graduation into
-idea 77 was premature and has been repaired in lifecycle state. Keep this idea
-focused on the upstream publication/layout family until the first bad fact
-actually moves downstream.
+`00204.c` therefore no longer belongs to idea 76. Keep this idea open for
+future cases whose first bad fact is again an authoritative prepared-home
+publication or stack-layout overlap, but route the current `00204.c` work
+downstream to the consumer that lowers truthful prepared homes into final x86
+addresses and call lanes.
 
 ## Scope Notes
 

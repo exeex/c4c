@@ -25,31 +25,29 @@ This idea owns x86 backend failures where:
 
 ## Current Known Failed Cases It Owns
 
-- none currently confirmed; `c_testsuite_x86_backend_src_00204_c` rehomed on
-  2026-04-22 after step `2.2` proved the first remaining aggregate-string /
-  mixed-aggregate corruption was upstream prepared byval-home
-  publication/layout, not the helper-lane consumer contract this idea owns
+- `c_testsuite_x86_backend_src_00204_c`
 
 ## Latest Durable Note
 
-As of 2026-04-22, step `2.2` of the active runbook classified the first
-remaining same-module aggregate-string / mixed-aggregate corruption out of this
-leaf. Focused proof still shows `backend_x86_handoff_boundary` passing while
-`c_testsuite_x86_backend_src_00204_c` fails with `[RUNTIME_MISMATCH]`, but the
-bounded helper lane in `prepared_local_slot_render.cpp` only consumes already
-published byval homes from `PreparedModuleLocalSlotLayout`,
-`PreparedValueHome`, and `PreparedStackLayout`; it does not author new payload
-spacing. Generated `build/c_testsuite_x86_backend/src/00204.c.s` confirms the
-first bad fact now exists before the helper call: the `fa1` / `fa2`
-aggregate-string lane publishes overlapping stack homes at `rsp+6176`,
-`rsp+6184`, `rsp+6192`, and `rsp+6200`, each acting as both the tail of one
-aggregate copy and the base of the next. Any generic helper-consumer change at
-this point either breaks the current `backend_x86_handoff_boundary` contract
-or corrupts `00204.c` earlier. Durable ownership for `00204.c` therefore
-graduates upstream into a dedicated prepared byval-home publication/layout
-initiative, and idea 75 stays open only for future cases whose first bad fact
-is still a downstream prepared/x86 call-lane consumer clobber seam after
-homes are already published truthfully.
+As of 2026-04-22, fresh lifecycle repair brings `00204.c` back into this leaf.
+The latest focused proof still fails first inside `arg()` before `fa4(...)`
+executes, but step-2 tracing on the upstream idea proved the authoritative
+publishers are already truthful: `stack_layout::assign_frame_slots(...)`
+publishes separate local offsets (`364` vs `80/84/88/92`), regalloc publishes
+separate late homes (`6264`, `6272`, and `6376/6380/6384/6388`), and the
+prepared move bundle uses only register ABI destinations for the direct
+mixed aggregate/HFA call. The final emitted x86 still overwrites `[rsp + 364]`
+before `call fa4`, so the remaining defect is downstream of prepared-home
+publication and belongs to the consumer that lowers truthful `PreparedValueHome`
+and `PreparedAddressingFunction` facts into final x86 addresses and call-lane
+copies.
+
+Keep this idea focused on that downstream consumer seam. The active packet
+should inspect `prepared_local_slot_render.cpp`, `x86_codegen.hpp`, and any
+adjacent x86 lowering helper that turns the truthful prepared offsets above
+into the overlapping `[rsp + 352..364]` writes seen in
+`build/c_testsuite_x86_backend/src/00204.c.s`. Idea 77 remains a later leaf
+only after the first bad fact moves past this pre-call consumer clobber.
 
 ## Scope Notes
 
