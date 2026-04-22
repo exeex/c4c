@@ -25,25 +25,31 @@ This idea owns x86 backend failures where:
 
 ## Current Known Failed Cases It Owns
 
-- `c_testsuite_x86_backend_src_00204_c`
+- none currently confirmed; `c_testsuite_x86_backend_src_00204_c` rehomed on
+  2026-04-22 after step `2.2` proved the first remaining aggregate-string /
+  mixed-aggregate corruption was upstream prepared byval-home
+  publication/layout, not the helper-lane consumer contract this idea owns
 
 ## Latest Durable Note
 
-As of 2026-04-22, fresh focused proof
-
-`ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$'`
-
-shows `backend_x86_handoff_boundary` passing while `00204.c` still fails at
-runtime with `[RUNTIME_MISMATCH]` after idea 74's owner-publication repair.
-Dumped BIR and prepared BIR now show truthful semantic owners:
-`fa_s1` through `fa_s16` call `printf(..., ptr %lv.param.a.0)` and `fa_s17`
-calls `printf(..., ptr %p.a)`. Generated
-`build/c_testsuite_x86_backend/src/00204.c.s`, however, still emits
-`lea rdi, [rip + .L.str16]` followed by `mov rsi, rdi` in `fa_s17`, so arg1 is
-copied from the clobbered format-string register instead of preserving `%p.a`.
-The same prepared/x86 call-lane clobber also appears in `pll`, so durable
-ownership graduates out of idea 74 and into this downstream post-link
-call-lane runtime leaf.
+As of 2026-04-22, step `2.2` of the active runbook classified the first
+remaining same-module aggregate-string / mixed-aggregate corruption out of this
+leaf. Focused proof still shows `backend_x86_handoff_boundary` passing while
+`c_testsuite_x86_backend_src_00204_c` fails with `[RUNTIME_MISMATCH]`, but the
+bounded helper lane in `prepared_local_slot_render.cpp` only consumes already
+published byval homes from `PreparedModuleLocalSlotLayout`,
+`PreparedValueHome`, and `PreparedStackLayout`; it does not author new payload
+spacing. Generated `build/c_testsuite_x86_backend/src/00204.c.s` confirms the
+first bad fact now exists before the helper call: the `fa1` / `fa2`
+aggregate-string lane publishes overlapping stack homes at `rsp+6176`,
+`rsp+6184`, `rsp+6192`, and `rsp+6200`, each acting as both the tail of one
+aggregate copy and the base of the next. Any generic helper-consumer change at
+this point either breaks the current `backend_x86_handoff_boundary` contract
+or corrupts `00204.c` earlier. Durable ownership for `00204.c` therefore
+graduates upstream into a dedicated prepared byval-home publication/layout
+initiative, and idea 75 stays open only for future cases whose first bad fact
+is still a downstream prepared/x86 call-lane consumer clobber seam after
+homes are already published truthfully.
 
 ## Scope Notes
 
