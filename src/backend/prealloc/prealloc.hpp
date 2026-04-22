@@ -421,7 +421,8 @@ void apply_regalloc_hints(PreparedNameTables& names,
                           const FunctionInlineAsmSummary& inline_asm_summary,
                           std::vector<PreparedStackObject>& objects);
 
-std::vector<PreparedFrameSlot> assign_frame_slots(const std::vector<PreparedStackObject>& objects,
+std::vector<PreparedFrameSlot> assign_frame_slots(const PreparedNameTables& names,
+                                                  const std::vector<PreparedStackObject>& objects,
                                                   PreparedFrameSlotId& next_slot_id,
                                                   std::size_t& frame_size_bytes,
                                                   std::size_t& frame_alignment_bytes);

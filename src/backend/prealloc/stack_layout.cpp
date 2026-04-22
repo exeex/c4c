@@ -645,7 +645,7 @@ void BirPreAlloc::run_stack_layout() {
     std::size_t function_frame_size = 0;
     std::size_t function_frame_alignment = 1;
     auto function_slots = stack_layout::assign_frame_slots(
-        function_objects, next_slot_id, function_frame_size, function_frame_alignment);
+        prepared_.names, function_objects, next_slot_id, function_frame_size, function_frame_alignment);
 
     prepared_.stack_layout.frame_size_bytes =
         std::max(prepared_.stack_layout.frame_size_bytes, function_frame_size);

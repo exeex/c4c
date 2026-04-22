@@ -1,6 +1,7 @@
 #include "support.hpp"
 
 #include <algorithm>
+#include <unordered_map>
 #include <string_view>
 #include <vector>
 
@@ -14,6 +15,39 @@ namespace {
 
 [[nodiscard]] bool uses_fixed_location_slot(const PreparedStackObject& object) {
   return object.permanent_home_slot;
+}
+
+[[nodiscard]] std::unordered_map<std::string, bool> build_slice_family_fixed_location_map(
+    const PreparedNameTables& names,
+    const std::vector<PreparedStackObject>& objects) {
+  std::unordered_map<std::string, bool> family_fixed_location;
+  for (const auto& object : objects) {
+    if (!object.slot_name.has_value()) {
+      continue;
+    }
+    const auto slice = parse_prepared_slot_slice_name(prepared_slot_name(names, *object.slot_name));
+    if (!slice.has_value()) {
+      continue;
+    }
+    auto& family_fixed = family_fixed_location[std::string(slice->first)];
+    family_fixed = family_fixed || uses_fixed_location_slot(object);
+  }
+  return family_fixed_location;
+}
+
+[[nodiscard]] bool belongs_to_fixed_slice_family(
+    const PreparedNameTables& names,
+    const PreparedStackObject& object,
+    const std::unordered_map<std::string, bool>& family_fixed_location) {
+  if (!object.slot_name.has_value()) {
+    return false;
+  }
+  const auto slice = parse_prepared_slot_slice_name(prepared_slot_name(names, *object.slot_name));
+  if (!slice.has_value()) {
+    return false;
+  }
+  const auto family_it = family_fixed_location.find(std::string(slice->first));
+  return family_it != family_fixed_location.end() && family_it->second;
 }
 
 [[nodiscard]] bool is_parameter_owned_fixed_slot(const PreparedStackObject& object) {
@@ -110,7 +144,8 @@ void append_slot_for_object(const PreparedStackObject& object,
 
 }  // namespace
 
-std::vector<PreparedFrameSlot> assign_frame_slots(const std::vector<PreparedStackObject>& objects,
+std::vector<PreparedFrameSlot> assign_frame_slots(const PreparedNameTables& names,
+                                                  const std::vector<PreparedStackObject>& objects,
                                                   PreparedFrameSlotId& next_slot_id,
                                                   std::size_t& frame_size_bytes,
                                                   std::size_t& frame_alignment_bytes) {
@@ -125,12 +160,14 @@ std::vector<PreparedFrameSlot> assign_frame_slots(const std::vector<PreparedStac
   parameter_fixed_location_objects.reserve(objects.size());
   local_fixed_location_objects.reserve(objects.size());
   reorderable_objects.reserve(objects.size());
+  const auto slice_family_fixed_location = build_slice_family_fixed_location_map(names, objects);
 
   for (const auto& object : objects) {
     if (!object.requires_home_slot || uses_copy_coalesced_slot(object)) {
       continue;
     }
-    if (uses_fixed_location_slot(object)) {
+    if (uses_fixed_location_slot(object) ||
+        belongs_to_fixed_slice_family(names, object, slice_family_fixed_location)) {
       if (is_parameter_owned_fixed_slot(object)) {
         parameter_fixed_location_objects.push_back(&object);
       } else {

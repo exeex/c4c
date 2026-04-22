@@ -1692,6 +1692,8 @@ void BirPreAlloc::run_regalloc() {
     };
     regalloc_function.values.reserve(liveness_function.values.size());
     regalloc_function.constraints.reserve(liveness_function.values.size());
+    const auto* function =
+        find_bir_function(prepared_.module, prepared_.names, liveness_function.function_name);
 
     for (const auto& liveness_value : liveness_function.values) {
       const PreparedRegisterClass register_class = classify_register_class(liveness_value);
@@ -1925,8 +1927,6 @@ void BirPreAlloc::run_regalloc() {
     }
 
     append_spill_reload_ops(liveness_function, spill_points, regalloc_function);
-    const auto* function =
-        find_bir_function(prepared_.module, prepared_.names, regalloc_function.function_name);
     if (function != nullptr) {
       if (const auto* function_cf =
               find_prepared_control_flow_function(prepared_.control_flow, regalloc_function.function_name);
