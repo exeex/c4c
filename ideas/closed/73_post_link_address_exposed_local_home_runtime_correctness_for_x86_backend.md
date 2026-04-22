@@ -1,8 +1,10 @@
 # Post-Link Address-Exposed Local-Home Runtime Correctness For X86 Backend
 
-Status: Open
+Status: Closed
 Created: 2026-04-22
 Last-Updated: 2026-04-22
+Closed: 2026-04-22
+Disposition: Completed by exhausting the owned address-exposed local-home runtime family and rehoming `00204.c` into a narrower downstream byval-param pointer-materialization leaf.
 Parent Idea: [72_post_link_aggregate_call_runtime_correctness_for_x86_backend.md](/workspaces/c4c/ideas/closed/72_post_link_aggregate_call_runtime_correctness_for_x86_backend.md)
 
 ## Intent
@@ -75,3 +77,36 @@ This idea is complete when the owned post-link address-exposed local-home
 runtime cases no longer crash at their current same-module helper home mismatch
 and instead either execute correctly or graduate into a later, better-fitting
 runtime leaf.
+
+## Closure Note
+
+Closed on 2026-04-22 after the owned address-exposed local-home runtime family
+was exhausted for the only confirmed case:
+
+- `c_testsuite_x86_backend_src_00204_c` no longer stops at the prior
+  `myprintf` `%lv.s` permanent-home disagreement; generated asm now stores the
+  live cursor at `[rsp]` and calls `match(&s, ...)` with `lea rdi, [rsp]`
+- focused proof still shows `backend_x86_handoff_boundary` passing while
+  `00204.c` fails later as `[RUNTIME_MISMATCH]` in the fixed-arity
+  `Arguments:` phase
+- the first remaining bad fact now lives in helpers such as `fa_s1`, where
+  prepared metadata records `%p.a` as an address-exposed `byval_param` with a
+  fixed permanent home at stack offset `0`, but emitted pointer arguments still
+  forward transient register `%t2` / `%r12` into `printf`
+- that is a narrower post-link runtime byval-param pointer-argument
+  materialization seam, not an idea-73 `local_slot` permanent-home defect
+
+## Validation At Closure
+
+Close-time guard used the existing focused runtime scope:
+
+- `cmake --build --preset default`
+- `ctest --test-dir build -j --output-on-failure -R '^(backend_x86_handoff_boundary|c_testsuite_x86_backend_src_00204_c)$' | tee test_after.log`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result:
+
+- guard passed for lifecycle-only closure with equal pass count allowed
+- before reported `1` passed / `1` failed / `2` total
+- after reported `1` passed / `1` failed / `2` total
+- no new failing tests were introduced on the matched scope
