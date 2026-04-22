@@ -5809,6 +5809,7 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_f
   if (context.function == nullptr) {
     return std::nullopt;
   }
+  const auto* module = context.module;
   const auto& function = *context.function;
   const auto* stack_layout = context.stack_layout;
   const auto* function_addressing = context.function_addressing;
@@ -5870,6 +5871,25 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_f
           return std::nullopt;
         }
         return static_cast<std::int32_t>(value_it->second.value);
+      };
+
+  const auto resolve_i8_value =
+      [&](const c4c::backend::bir::Value& value) -> std::optional<std::int8_t> {
+        if (value.type != c4c::backend::bir::TypeKind::I8) {
+          return std::nullopt;
+        }
+        if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+          return static_cast<std::int8_t>(value.immediate);
+        }
+        if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+          return std::nullopt;
+        }
+        const auto value_it = named_values.find(value.name);
+        if (value_it == named_values.end() ||
+            value_it->second.type != c4c::backend::bir::TypeKind::I8) {
+          return std::nullopt;
+        }
+        return static_cast<std::int8_t>(value_it->second.value);
       };
 
   const auto resolve_ptr_value =
@@ -5952,6 +5972,26 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_f
     }
     return static_cast<std::size_t>(signed_offset);
   };
+
+  const auto resolve_string_constant_i8 =
+      [&](std::string_view symbol_name,
+          std::int64_t byte_offset) -> std::optional<std::int8_t> {
+        if (module == nullptr || byte_offset < 0) {
+          return std::nullopt;
+        }
+        for (const auto& string_constant : module->string_constants) {
+          if (string_constant.name != symbol_name) {
+            continue;
+          }
+          const auto index = static_cast<std::size_t>(byte_offset);
+          if (index >= string_constant.bytes.size()) {
+            return std::nullopt;
+          }
+          return static_cast<std::int8_t>(
+              static_cast<unsigned char>(string_constant.bytes[index]));
+        }
+        return std::nullopt;
+      };
 
   const auto fold_binary_i32 =
       [&](const c4c::backend::bir::BinaryInst& binary) -> std::optional<std::int32_t> {
@@ -6036,6 +6076,45 @@ std::optional<std::string> render_prepared_constant_folded_single_block_return_f
       }
       named_values[load->result.name] = value_it->second;
       continue;
+    }
+
+    if (const auto* load = std::get_if<c4c::backend::bir::LoadGlobalInst>(&inst)) {
+      if (load->result.kind != c4c::backend::bir::Value::Kind::Named) {
+        return std::nullopt;
+      }
+      if (load->result.type == c4c::backend::bir::TypeKind::I8) {
+        const auto loaded_value = resolve_string_constant_i8(load->global_name, load->byte_offset);
+        if (!loaded_value.has_value()) {
+          return std::nullopt;
+        }
+        named_values[load->result.name] = ConstantValue{
+            .type = c4c::backend::bir::TypeKind::I8,
+            .value = *loaded_value,
+        };
+        continue;
+      }
+      return std::nullopt;
+    }
+
+    if (const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&inst)) {
+      if (cast->result.kind != c4c::backend::bir::Value::Kind::Named ||
+          cast->operand.kind != c4c::backend::bir::Value::Kind::Named) {
+        return std::nullopt;
+      }
+      if (cast->opcode == c4c::backend::bir::CastOpcode::SExt &&
+          cast->operand.type == c4c::backend::bir::TypeKind::I8 &&
+          cast->result.type == c4c::backend::bir::TypeKind::I32) {
+        const auto extended = resolve_i8_value(cast->operand);
+        if (!extended.has_value()) {
+          return std::nullopt;
+        }
+        named_values[cast->result.name] = ConstantValue{
+            .type = c4c::backend::bir::TypeKind::I32,
+            .value = static_cast<std::int32_t>(*extended),
+        };
+        continue;
+      }
+      return std::nullopt;
     }
 
     const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
