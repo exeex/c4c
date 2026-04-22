@@ -194,13 +194,15 @@ std::string expected_minimal_local_i8_short_circuit_or_guard_asm(const char* fun
   return asm_header(function_name) + "    sub rsp, 16\n"
          "    mov BYTE PTR [rsp], 1\n"
          "    mov BYTE PTR [rsp], 3\n"
-         "    cmp BYTE PTR [rsp], 3\n"
+         "    movsx eax, BYTE PTR [rsp]\n"
+         "    cmp al, 3\n"
          "    je .L" + function_name + "_logic.rhs.7\n"
          "    mov eax, 1\n"
          "    add rsp, 16\n"
          "    ret\n"
          ".L" + function_name + "_logic.rhs.7:\n"
-         "    cmp BYTE PTR [rsp], 3\n"
+         "    movsx eax, BYTE PTR [rsp]\n"
+         "    cmp al, 3\n"
          "    je .L" + function_name + "_block_2\n"
          "    mov eax, 1\n"
          "    add rsp, 16\n"
@@ -528,36 +530,6 @@ int check_route_outputs(const bir::Module& module,
     return fail((std::string(failure_context) +
                  ": test fixture no longer prepares the expected semantic BIR shape before routing into x86")
                     .c_str());
-  }
-
-  return 0;
-}
-
-int check_local_i8_short_circuit_route_graduates_past_authoritative_handoff(
-    const bir::Module& module,
-    const char* failure_context) {
-  c4c::TargetProfile target_profile;
-  const auto prepared =
-      prepare::prepare_semantic_bir_module_with_options(
-          module, target_profile_from_module_triple(module.target_triple, target_profile));
-
-  try {
-    (void)c4c::backend::x86::emit_prepared_module(prepared);
-    return fail((std::string(failure_context) +
-                 ": x86 prepared-module consumer unexpectedly accepted the i8 short-circuit route")
-                    .c_str());
-  } catch (const std::invalid_argument& error) {
-    const std::string_view message(error.what());
-    if (message.find("authoritative prepared short-circuit handoff") != std::string_view::npos) {
-      return fail((std::string(failure_context) +
-                   ": x86 prepared-module consumer still rejects the i8 short-circuit route at the old authoritative handoff seam")
-                      .c_str());
-    }
-    if (message.find("bounded compare-against-zero branch family") == std::string_view::npos) {
-      return fail((std::string(failure_context) +
-                   ": x86 prepared-module consumer advanced past the old short-circuit seam but did not land on the expected downstream scalar restriction")
-                      .c_str());
-    }
   }
 
   return 0;
@@ -2694,9 +2666,10 @@ int run_backend_x86_handoff_boundary_short_circuit_tests() {
     return status;
   }
   if (const auto status =
-          check_local_i8_short_circuit_route_graduates_past_authoritative_handoff(
-              make_x86_local_i8_short_circuit_or_guard_module(),
-              "minimal local-slot i8 short-circuit or-guard route");
+          check_route_outputs(make_x86_local_i8_short_circuit_or_guard_module(),
+                              expected_minimal_local_i8_short_circuit_or_guard_asm("main"),
+                              "select ne i8 %t3, 3, i32 1, %t13",
+                              "minimal local-slot i8 short-circuit or-guard route");
       status != 0) {
     return status;
   }
