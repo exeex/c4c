@@ -1,189 +1,175 @@
-# Extract X86 Codegen Subsystem To Markdown For Phoenix Rebuild
+# Review Extracted X86 Codegen Subsystem For Phoenix Rebuild
 
 Status: Active
-Source Idea: ideas/open/78_extract_x86_codegen_subsystem_to_markdown_for_phoenix_rebuild.md
-Activated from: ideas/open/75_post_link_prepared_call_lane_clobber_runtime_correctness_for_x86_backend.md
+Source Idea: ideas/open/79_review_extracted_x86_codegen_subsystem_for_phoenix_rebuild.md
+Activated after closing: ideas/closed/78_extract_x86_codegen_subsystem_to_markdown_for_phoenix_rebuild.md
 
 ## Purpose
 
-Start the Phoenix rebuild by extracting the full x86 codegen subsystem into a
-complete per-file markdown artifact set that captures the real ownership,
-dispatch, and contract surfaces without treating the live `.cpp` / `.hpp`
-files as the design.
+Turn the stage-1 extraction set into a reviewed redesign input by checking
+whether the extracted subsystem model is actually truthful, compressed
+correctly, and explicit enough to support a replacement layout.
 
 ## Goal
 
-Produce a durable extraction set under `docs/backend/x86_codegen_legacy/` with
-one companion `.md` for every in-scope legacy
-`src/backend/mir/x86/codegen/*.cpp` / `x86_codegen.hpp` file plus a
-directory-level `index.md`.
+Produce `docs/backend/x86_codegen_rebuild_plan.md` and
+`docs/backend/x86_codegen_rebuild_handoff.md` so stage 3 can draft the
+replacement subsystem against an explicit reviewed layout instead of inheriting
+the stage-1 extraction set on trust.
 
 ## Core Rule
 
-Do not redesign or implement during this runbook. Extract the current
-subsystem honestly, keep only important contracts with short fenced `cpp`
-blocks, preserve one-to-one source-to-markdown coverage, and classify special
-cases instead of copying whole files into markdown.
+Do not draft replacement file contents or implementation edits during this
+runbook. This stage owns review, diagnosis, extraction-set improvement
+guidance, replacement layout, and the exact stage-3 handoff only.
 
 ## Read First
 
-- `ideas/open/78_extract_x86_codegen_subsystem_to_markdown_for_phoenix_rebuild.md`
-- `ideas/open/75_post_link_prepared_call_lane_clobber_runtime_correctness_for_x86_backend.md`
-- `src/backend/mir/x86/codegen/`
+- `ideas/open/79_review_extracted_x86_codegen_subsystem_for_phoenix_rebuild.md`
+- `ideas/closed/78_extract_x86_codegen_subsystem_to_markdown_for_phoenix_rebuild.md`
+- `docs/backend/x86_codegen_legacy/`
 - `docs/backend/x86_codegen_subsystem.md`
 
 ## Scope
 
-- the full `src/backend/mir/x86/codegen/` subsystem and its current ownership
-  split
-- a companion extraction artifact for every in-scope legacy `.cpp` / `.hpp`
-  file
-- one directory-level index artifact that summarizes the subsystem and points
-  at the full extraction set
-- how `prepared_*.cpp` duplicates, bypasses, or partially reimplements seams
-  that also exist in canonical x86 codegen files
-- which helpers and contracts are truly shared versus renderer-local growth
+- the full extraction set under `docs/backend/x86_codegen_legacy/`
+- the real ownership, dispatch, helper, and hidden-dependency shape of the
+  current `src/backend/mir/x86/codegen/` subsystem as reconstructed from that
+  set
+- extraction quality judgment: what is trustworthy as-is versus what still
+  needs correction, expansion, compression, reclassification, or
+  reorganization
+- the replacement architecture layout stage 3 must draft, including the full
+  `.cpp.md` / `.hpp.md` manifest it must produce
+- the explicit handoff contract from stage 2 to stage 3
 
 ## Non-Goals
 
-- implementation edits under `src/backend/mir/x86/codegen/`
-- drafting replacement interfaces
-- choosing the final new file layout
-- deleting legacy x86 codegen routes
+- writing replacement `.cpp.md` / `.hpp.md` bodies
+- editing `src/backend/mir/x86/codegen/`
+- converting markdown drafts into implementation
+- deleting legacy code or choosing migration order beyond the owned handoff
 
 ## Working Model
 
-- treat the current subsystem as executable evidence, not as the target design
-- extract by responsibility bucket and dependency direction, not by file order
-- keep each per-file artifact compressed and representative rather than
-  exhaustive
-- use the directory index to explain subsystem-level ownership and dependency
-  direction across the per-file set
-- explicitly classify special-case logic as `core lowering`, `optional fast
-  path`, `legacy compatibility`, or `overfit to reject`
+- treat the stage-1 extraction set as evidence to review, not as an
+  automatically trusted design
+- reconstruct actual ownership and dependency direction before proposing
+  replacement file boundaries
+- call out false seams, stable seams, hidden state, and prepared-route
+  parallel-stack behavior explicitly
+- keep outputs compressed and decision-oriented rather than verbose artifact
+  dumps
+- preserve the motivating failure pressure from idea 75 as a design constraint
+  when judging the replacement layout
 
 ## Execution Rules
 
-- prefer `boundary scan -> artifact map -> contract extraction ->
-  responsibility map -> prepared-route divergence -> artifact review`
-- keep representative code blocks short and only for important APIs or
-  contracts
-- note where prepared routes should have reused existing canonical seams
-- keep the extraction set complete enough that reviewers can check coverage at
-  a glance by filename
+- prefer `artifact audit -> subsystem reconstruction -> layout definition ->
+  handoff validation`
+- if the extraction set is weak in a specific area, record the required fix in
+  the stage-2 output instead of silently trusting it
+- name exact planned draft artifacts for stage 3; do not leave file layout
+  implicit
+- keep boundaries explicit when distinguishing canonical seams, compatibility
+  seams, and overfit to reject
+- keep the result reviewable by another agent without reopening the live
+  source tree first
 
-## Step 1: Establish Extraction Boundary And Artifact Map
+## Step 1: Audit Extraction Set Coverage And Compression
 
-Goal: define exactly which legacy source files are in scope and what markdown
-artifact each one maps to.
-
-Primary targets:
-
-- `src/backend/mir/x86/codegen/`
-- `docs/backend/x86_codegen_legacy/`
-
-Actions:
-
-- enumerate every in-scope `.cpp` / `.hpp` file under
-  `src/backend/mir/x86/codegen/`
-- define the one-to-one markdown companion path for each legacy source file
-- define the directory-level `index.md` sections for ownership buckets,
-  dependency direction, entry points, prepared-route divergence, and proof
-  surfaces
-
-Completion check:
-
-- the artifact map is complete enough that later packets can fill the
-  extraction set without re-deciding file coverage
-
-## Step 2: Extract Canonical Entry Points, Contracts, And Lowering Families
-
-Goal: capture the important APIs, dispatcher seams, and representative
-contracts from the non-prepared portion of x86 codegen.
+Goal: review the stage-1 artifact set for truthfulness, completeness, and
+compression quality before using it as redesign input.
 
 Primary targets:
 
-- `src/backend/mir/x86/codegen/x86_codegen.hpp`
-- `src/backend/mir/x86/codegen/mod.cpp`
-- `src/backend/mir/x86/codegen/emit.cpp`
-- `src/backend/mir/x86/codegen/asm_emitter.cpp`
-- `src/backend/mir/x86/codegen/shared_call_support.cpp`
-- `src/backend/mir/x86/codegen/calls.cpp`
-- `src/backend/mir/x86/codegen/returns.cpp`
-- `src/backend/mir/x86/codegen/memory.cpp`
-- `src/backend/mir/x86/codegen/prologue.cpp`
-- `src/backend/mir/x86/codegen/variadic.cpp`
-- `src/backend/mir/x86/codegen/alu.cpp`
-- `src/backend/mir/x86/codegen/atomics.cpp`
-- `src/backend/mir/x86/codegen/cast_ops.cpp`
-- `src/backend/mir/x86/codegen/comparison.cpp`
-- `src/backend/mir/x86/codegen/f128.cpp`
-- `src/backend/mir/x86/codegen/float_ops.cpp`
-- `src/backend/mir/x86/codegen/globals.cpp`
-- `src/backend/mir/x86/codegen/i128_ops.cpp`
-- `src/backend/mir/x86/codegen/inline_asm.cpp`
-- `src/backend/mir/x86/codegen/intrinsics.cpp`
-- `src/backend/mir/x86/codegen/route_debug.cpp`
-
-Actions:
-
-- extract representative public or pseudo-public contracts for each owned
-  family
-- record which files appear to own dispatch, shared helpers, and concrete
-  lowering
-- keep only short fenced `cpp` blocks for important surfaces
-
-Completion check:
-
-- the extraction set captures the canonical subsystem surfaces another agent
-  would need before evaluating prepared-route divergence
-
-## Step 3: Extract Prepared-Route Divergence And Complete Per-File Coverage
-
-Goal: capture how the prepared route interacts with, duplicates, or bypasses
-the canonical seams and finish the full per-file extraction set.
-
-Primary targets:
-
-- `src/backend/mir/x86/codegen/prepared_countdown_render.cpp`
-- `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
-- `src/backend/mir/x86/codegen/prepared_module_emit.cpp`
-- `src/backend/mir/x86/codegen/prepared_param_zero_render.cpp`
 - `docs/backend/x86_codegen_legacy/index.md`
+- `docs/backend/x86_codegen_legacy/*.md`
 
 Actions:
 
-- extract the major prepared-route responsibilities and hidden dependencies
-- record where prepared helpers reimplement logic that should likely live in
-  canonical seams
-- classify representative special cases as core logic, optional fast path,
-  legacy compatibility, or overfit to reject
-- verify that every in-scope legacy source file has its markdown companion
+- verify the index still tells the truth about ownership buckets, dependency
+  direction, prepared-route divergence, and proof surfaces
+- identify per-file artifacts that need correction, expansion, compression,
+  reclassification, or reorganization before later stages should trust them
+- record where the extraction set still hides important contract or dependency
+  facts
 
 Completion check:
 
-- the extraction set makes the prepared-route divergence explicit and the
-  per-file coverage is complete enough for stage 2 review
+- the review names which stage-1 artifacts are trustworthy as-is and which
+  must be treated as weak evidence or corrected inputs
 
-## Step 4: Validate Compression Quality And Handoff Readiness
+## Step 2: Reconstruct Current Subsystem Seams And Failure Pressure
 
-Goal: finish a complete subsystem artifact set that is compressed, reviewable,
-and ready to drive the next Phoenix stage.
+Goal: explain how the current subsystem actually routes ownership, dispatch,
+shared helpers, and prepared-route bypasses.
 
 Primary targets:
 
+- `docs/backend/x86_codegen_rebuild_plan.md`
 - `docs/backend/x86_codegen_legacy/`
 
 Actions:
 
-- remove file-dump style detail that does not carry contract or ownership
-  meaning
-- ensure the directory index points at every per-file artifact
-- confirm the set still names the real ownership overlaps, false couplings,
-  and available proof surfaces
+- reconstruct the real seam map across canonical lowering families, helper
+  contracts, emitter boundaries, and the `prepared_*.cpp` stack
+- identify false couplings, hidden dependencies, and responsibilities that are
+  mixed together today
+- judge which APIs and contracts are stable enough to preserve and which
+  behaviors should be isolated as compatibility or rejected as overfit
+- explicitly evaluate whether the current seam map explains the prepared-route
+  runtime and call-lane pressure that surfaced in idea 75
 
 Completion check:
 
-- every in-scope legacy source file has a corresponding artifact under
-  `docs/backend/x86_codegen_legacy/`, `index.md` summarizes the subsystem, and
-  the set is compressed enough to serve as the stage-2 review target
+- `docs/backend/x86_codegen_rebuild_plan.md` tells the truth about current
+  subsystem behavior and its motivating failure pressure instead of merely
+  restating the stage-1 file list
+
+## Step 3: Define The Replacement Layout And Draft Manifest
+
+Goal: convert the reviewed subsystem model into a concrete replacement
+architecture layout that stage 3 can draft directly.
+
+Primary targets:
+
+- `docs/backend/x86_codegen_rebuild_plan.md`
+
+Actions:
+
+- define the replacement subsystem boundaries and file layout
+- name every planned `.cpp.md`, every planned `.hpp.md`, and any directory or
+  index markdown stage 3 must produce
+- explain how the replacement layout separates stable seams from compatibility
+  seams and prepared-route-specific pressure
+
+Completion check:
+
+- the rebuild plan contains a concrete mandatory draft manifest rather than a
+  vague architecture sketch
+
+## Step 4: Write Stage-3 Handoff And Validate Readiness
+
+Goal: leave stage 3 with an explicit contract about what to consume, preserve,
+correct first, and reject.
+
+Primary targets:
+
+- `docs/backend/x86_codegen_rebuild_handoff.md`
+- `docs/backend/x86_codegen_rebuild_plan.md`
+
+Actions:
+
+- write the explicit stage-2-to-stage-3 handoff covering trusted extraction
+  inputs, required corrections, mandatory draft artifacts, and route
+  constraints
+- ensure the handoff and rebuild plan agree on the replacement layout and the
+  extraction-set weaknesses that remain relevant
+- confirm the outputs are compressed enough to guide drafting without becoming
+  another legacy dump
+
+Completion check:
+
+- both stage-2 outputs are present, aligned, and explicit enough for stage 3
+  to execute without re-deriving layout or trust assumptions from scratch

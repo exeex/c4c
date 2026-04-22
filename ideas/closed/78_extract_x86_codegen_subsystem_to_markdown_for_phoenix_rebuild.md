@@ -1,8 +1,10 @@
 # Extract X86 Codegen Subsystem To Markdown For Phoenix Rebuild
 
-Status: Open
+Status: Closed
 Created: 2026-04-22
 Last-Updated: 2026-04-22
+Closed: 2026-04-22
+Disposition: Completed by finishing the full stage-1 extraction set and handing off to the stage-2 subsystem review idea.
 Parent Idea: [75_post_link_prepared_call_lane_clobber_runtime_correctness_for_x86_backend.md](/workspaces/c4c/ideas/open/75_post_link_prepared_call_lane_clobber_runtime_correctness_for_x86_backend.md)
 
 ## Intent
@@ -99,3 +101,35 @@ its corresponding companion markdown artifact under
 `docs/backend/x86_codegen_legacy/index.md` summarizes the subsystem and points
 at the full set, and the extraction stays compressed instead of mechanically
 dumping source into markdown.
+
+## Closure Note
+
+Closed on 2026-04-22 after the stage-1 extraction set satisfied the owned
+completion signal:
+
+- every listed legacy `src/backend/mir/x86/codegen/*.cpp` / `x86_codegen.hpp`
+  file now has a one-to-one companion under `docs/backend/x86_codegen_legacy/`
+- the directory-level `docs/backend/x86_codegen_legacy/index.md` points at the
+  full per-file set and calls out the current ownership overlaps and
+  prepared-route divergence
+- the remaining work is no longer extraction; it is stage-2 review of whether
+  the extracted model is truthful, compressed correctly, and strong enough to
+  drive the replacement layout
+
+This idea therefore closes as complete and hands execution forward to
+idea 79, `79_review_extracted_x86_codegen_subsystem_for_phoenix_rebuild.md`.
+
+## Validation At Closure
+
+Close-time guard on 2026-04-22 used the existing focused canonical scope:
+
+- `cmake --build --preset default`
+- `ctest --test-dir build -j --output-on-failure -R '^c_testsuite_x86_backend_src_00204_c$' > test_after.log`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result:
+
+- guard passed for lifecycle-only closure with equal pass count allowed
+- before reported `0` passed / `1` failed / `1` total
+- after reported `0` passed / `1` failed / `1` total
+- no new failing tests were introduced on the matched scope
