@@ -16,6 +16,62 @@ std::size_t align_up(std::size_t value, std::size_t align) {
 
 }  // namespace
 
+std::optional<std::size_t> find_prepared_authoritative_value_stack_offset_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    c4c::FunctionNameId function_name,
+    std::string_view value_name) {
+  return find_prepared_authoritative_named_stack_offset_if_supported(
+      local_layout,
+      stack_layout,
+      function_addressing,
+      prepared_names,
+      function_locations,
+      function_name,
+      value_name);
+}
+
+std::optional<std::size_t> find_prepared_value_home_frame_offset(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::string_view value_name) {
+  if (prepared_names == nullptr || function_locations == nullptr || value_name.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* home =
+      c4c::backend::prepare::find_prepared_value_home(*prepared_names, *function_locations, value_name);
+  if (home == nullptr || home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot) {
+    return std::nullopt;
+  }
+  if (home->slot_id.has_value()) {
+    const auto frame_slot_it = local_layout.frame_slot_offsets.find(*home->slot_id);
+    if (frame_slot_it != local_layout.frame_slot_offsets.end()) {
+      return frame_slot_it->second;
+    }
+  }
+  if (home->offset_bytes.has_value()) {
+    return *home->offset_bytes;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::size_t> resolve_prepared_local_slot_base_offset_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::string_view slot_name) {
+  if (const auto slot_it = local_layout.offsets.find(slot_name); slot_it != local_layout.offsets.end()) {
+    return slot_it->second;
+  }
+  return find_prepared_value_home_frame_offset(
+      local_layout, prepared_names, function_locations, slot_name);
+}
+
 std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
     const c4c::backend::bir::Function& function,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,

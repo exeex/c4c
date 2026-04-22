@@ -149,11 +149,6 @@ render_prepared_scalar_memory_operand_for_inst_if_supported(
     c4c::backend::bir::TypeKind type,
     const std::function<std::string(std::string_view)>* render_asm_symbol_name,
     const std::optional<std::string_view>& current_ptr_name);
-std::optional<std::size_t> find_prepared_value_home_frame_offset(
-    const PreparedModuleLocalSlotLayout& local_layout,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    std::string_view value_name);
 bool has_authoritative_prepared_control_flow_block(
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
     c4c::BlockLabelId block_label_id);
@@ -515,7 +510,7 @@ std::optional<std::string> render_prepared_aggregate_slice_root_home_memory_oper
         if (local_layout == nullptr) {
           return std::nullopt;
         }
-        return find_prepared_authoritative_named_stack_offset_if_supported(
+        return find_prepared_authoritative_value_stack_offset_if_supported(
             *local_layout,
             static_cast<const c4c::backend::prepare::PreparedStackLayout*>(nullptr),
             static_cast<const c4c::backend::prepare::PreparedAddressingFunction*>(nullptr),
@@ -628,18 +623,6 @@ std::optional<std::string> render_prepared_named_f128_copy_into_memory_if_suppor
   }
   return "    fld " + *source_memory_operand + "\n    fstp " + std::string(destination_memory_operand) +
          "\n";
-}
-
-std::optional<std::size_t> resolve_prepared_local_slot_base_offset_if_supported(
-    const PreparedModuleLocalSlotLayout& local_layout,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    std::string_view slot_name) {
-  if (const auto slot_it = local_layout.offsets.find(slot_name); slot_it != local_layout.offsets.end()) {
-    return slot_it->second;
-  }
-  return find_prepared_value_home_frame_offset(
-      local_layout, prepared_names, function_locations, slot_name);
 }
 
 std::optional<PreparedScalarMemoryAccessRender>
@@ -1118,7 +1101,7 @@ render_prepared_pointer_value_memory_operand_if_supported(
     return std::nullopt;
   }
 
-  const auto frame_offset = find_prepared_authoritative_named_stack_offset_if_supported(
+  const auto frame_offset = find_prepared_authoritative_value_stack_offset_if_supported(
       local_layout,
       static_cast<const c4c::backend::prepare::PreparedStackLayout*>(nullptr),
       function_addressing,
@@ -4017,7 +4000,7 @@ std::optional<std::string> render_prepared_scalar_store_inst_if_supported(
   };
   auto render_value_home_stack_address =
       [&](std::string_view value_name) -> std::optional<std::string> {
-    const auto frame_offset = find_prepared_authoritative_named_stack_offset_if_supported(
+    const auto frame_offset = find_prepared_authoritative_value_stack_offset_if_supported(
         layout,
         static_cast<const c4c::backend::prepare::PreparedStackLayout*>(nullptr),
         function_addressing,
@@ -4574,7 +4557,7 @@ bool append_prepared_named_ptr_argument_move_into_register_if_supported(
   }
 
   if (block_context.local_layout != nullptr) {
-    const auto frame_offset = find_prepared_authoritative_named_stack_offset_if_supported(
+    const auto frame_offset = find_prepared_authoritative_value_stack_offset_if_supported(
         *block_context.local_layout,
         function_context.stack_layout,
         function_context.function_addressing,
@@ -4788,7 +4771,7 @@ bool append_prepared_small_byval_payload_move_into_register_if_supported(
       }
     }
     if (!frame_offset.has_value()) {
-      frame_offset = find_prepared_authoritative_named_stack_offset_if_supported(
+      frame_offset = find_prepared_authoritative_value_stack_offset_if_supported(
           block_context.local_layout == nullptr ? PreparedModuleLocalSlotLayout{} : *block_context.local_layout,
           function_context.stack_layout,
           function_context.function_addressing,
@@ -5458,7 +5441,7 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
           return std::string("rax");
         }
         if (block_context.local_layout != nullptr) {
-          const auto frame_offset = find_prepared_authoritative_named_stack_offset_if_supported(
+          const auto frame_offset = find_prepared_authoritative_value_stack_offset_if_supported(
               *block_context.local_layout,
               function_context.stack_layout,
               function_context.function_addressing,
@@ -5675,7 +5658,7 @@ std::optional<std::string> render_prepared_block_direct_extern_call_inst_if_supp
         }
 
         if (block_context.local_layout != nullptr) {
-          const auto frame_offset = find_prepared_authoritative_named_stack_offset_if_supported(
+          const auto frame_offset = find_prepared_authoritative_value_stack_offset_if_supported(
               *block_context.local_layout,
               function_context.stack_layout,
               function_context.function_addressing,
@@ -6272,33 +6255,6 @@ render_prepared_scalar_memory_operand_for_inst_if_supported(
       current_ptr_name);
 }
 
-std::optional<std::size_t> find_prepared_value_home_frame_offset(
-    const PreparedModuleLocalSlotLayout& local_layout,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    std::string_view value_name) {
-  if (prepared_names == nullptr || function_locations == nullptr || value_name.empty()) {
-    return std::nullopt;
-  }
-
-  const auto* home =
-      c4c::backend::prepare::find_prepared_value_home(*prepared_names, *function_locations, value_name);
-  if (home == nullptr || home->kind != c4c::backend::prepare::PreparedValueHomeKind::StackSlot) {
-    return std::nullopt;
-  }
-  if (home->slot_id.has_value()) {
-    // Prefer canonical prepared frame-slot identity when it is available.
-    const auto frame_slot_it = local_layout.frame_slot_offsets.find(*home->slot_id);
-    if (frame_slot_it != local_layout.frame_slot_offsets.end()) {
-      return frame_slot_it->second;
-    }
-  }
-  if (home->offset_bytes.has_value()) {
-    return *home->offset_bytes;
-  }
-  return std::nullopt;
-}
-
 const c4c::backend::prepare::PreparedBranchCondition*
 find_required_prepared_guard_branch_condition(
     const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
@@ -6375,28 +6331,6 @@ const c4c::backend::bir::Block* resolve_authoritative_prepared_branch_target(
 }
 
 }  // namespace
-
-std::optional<std::string> render_prepared_value_home_stack_address_if_supported(
-    const PreparedModuleLocalSlotLayout& local_layout,
-    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
-    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    c4c::FunctionNameId function_name,
-    std::string_view value_name) {
-  const auto frame_offset = find_prepared_authoritative_named_stack_offset_if_supported(
-      local_layout,
-      stack_layout,
-      function_addressing,
-      prepared_names,
-      function_locations,
-      function_name,
-      value_name);
-  if (!frame_offset.has_value()) {
-    return std::nullopt;
-  }
-  return render_prepared_stack_address_expr(*frame_offset);
-}
 
 std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
     const PreparedX86FunctionDispatchContext& context) {

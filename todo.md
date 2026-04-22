@@ -5,24 +5,24 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 2.1
 Current Step Title: Stand Up Frame And Memory Lowering Owners
-Plan Review Counter: 1 / 6
+Plan Review Counter: 2 / 6
 # Current Packet
 
 ## Just Finished
 
-Started step 2.1 by materializing reviewed `lowering/frame_lowering.*` and
-`lowering/memory_lowering.*` source files, then moved the prepared local-slot
-layout builder and stack-memory operand render helpers out of
-`prepared_local_slot_render.cpp` so prepared and module callers now include
-explicit lowering seams instead of depending on those frame/home helpers
-through the mixed local-slot renderer.
+Continued step 2.1 by moving the next canonical frame-home query family out of
+`prepared_local_slot_render.cpp`: authoritative stack-offset lookup now routes
+through `lowering/frame_lowering.*`, stack-slot home fallback/base-offset
+queries live there too, and value-home stack-address rendering now routes
+through `lowering/memory_lowering.*` instead of the mixed prepared
+compatibility file.
 
 ## Suggested Next
 
-Continue step 2.1 by moving the next canonical frame-home family behind the
-same lowering seams, preferably the authoritative stack-offset or frame-address
-queries that still live in `prepared_local_slot_render.cpp` and adjacent
-prepared compatibility helpers.
+Continue step 2.1 by moving the next remaining frame-home consumers behind the
+same seams, preferably the prepared pointer/byval payload helpers that still
+reconstruct slot-or-home offsets inline instead of calling the lowering-owned
+query helpers directly.
 
 ## Watchouts
 
@@ -42,7 +42,7 @@ prepared compatibility helpers.
 
 ## Proof
 
-Step 2.1 lowering seam extraction on 2026-04-22:
+Step 2.1 frame-home query migration on 2026-04-22:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 Backend subset passed. Canonical log paths: `test_before.log`, `test_after.log`
