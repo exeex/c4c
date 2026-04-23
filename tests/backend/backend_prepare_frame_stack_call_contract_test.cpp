@@ -1593,6 +1593,240 @@ bir::Module make_branch_restore_dynamic_stack_module() {
   return module;
 }
 
+bir::Module make_variadic_nested_dynamic_stack_call_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function variadic_extern;
+  variadic_extern.name = "extern_variadic_i32";
+  variadic_extern.is_declaration = true;
+  variadic_extern.is_variadic = true;
+  variadic_extern.return_type = bir::TypeKind::I32;
+  variadic_extern.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "head",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(variadic_extern));
+
+  bir::Function function;
+  function.name = "variadic_nested_dynamic_stack_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I64,
+      .name = "n",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.fixed",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.outer.ptr",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.inner.ptr",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "saved.outer"),
+      .callee = "llvm.stacksave",
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "outer.buf"),
+      .callee = "llvm.dynamic_alloca.i32",
+      .args = {bir::Value::named(bir::TypeKind::I64, "n")},
+      .arg_types = {bir::TypeKind::I64},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.outer.ptr",
+      .value = bir::Value::named(bir::TypeKind::Ptr, "outer.buf"),
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.fixed",
+      .value = bir::Value::immediate_i32(7),
+      .align_bytes = 4,
+  });
+  entry.terminator = bir::BranchTerminator{.target_label = "inner"};
+
+  bir::Block inner;
+  inner.label = "inner";
+  inner.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "saved.inner"),
+      .callee = "llvm.stacksave",
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  inner.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "inner.buf"),
+      .callee = "llvm.dynamic_alloca.i32",
+      .args = {bir::Value::named(bir::TypeKind::I64, "n")},
+      .arg_types = {bir::TypeKind::I64},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  inner.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.inner.ptr",
+      .value = bir::Value::named(bir::TypeKind::Ptr, "inner.buf"),
+      .align_bytes = 8,
+  });
+  inner.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "carry"),
+      .slot_name = "lv.fixed",
+      .align_bytes = 4,
+  });
+  inner.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "tmp.variadic"),
+      .callee = "extern_variadic_i32",
+      .args = {bir::Value::named(bir::TypeKind::I32, "carry"),
+               bir::Value::immediate_f32_bits(0x40800000)},
+      .arg_types = {bir::TypeKind::I32, bir::TypeKind::F32},
+      .arg_abi = {
+          bir::CallArgAbiInfo{
+              .type = bir::TypeKind::I32,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .primary_class = bir::AbiValueClass::Integer,
+              .passed_in_register = true,
+          },
+          bir::CallArgAbiInfo{
+              .type = bir::TypeKind::F32,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .primary_class = bir::AbiValueClass::Sse,
+              .passed_in_register = true,
+          },
+      },
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+      .is_variadic = true,
+  });
+  inner.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.fixed",
+      .value = bir::Value::named(bir::TypeKind::I32, "carry"),
+      .align_bytes = 4,
+  });
+  inner.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "cond.inner"),
+      .true_label = "restore_inner",
+      .false_label = "restore_outer",
+  };
+
+  bir::Block restore_inner;
+  restore_inner.label = "restore_inner";
+  restore_inner.insts.push_back(bir::CallInst{
+      .callee = "llvm.stackrestore",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "saved.inner")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  restore_inner.terminator = bir::BranchTerminator{.target_label = "restore_outer"};
+
+  bir::Block restore_outer;
+  restore_outer.label = "restore_outer";
+  restore_outer.insts.push_back(bir::CallInst{
+      .callee = "llvm.stackrestore",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "saved.outer")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  restore_outer.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "fixed.out"),
+      .slot_name = "lv.fixed",
+      .align_bytes = 4,
+  });
+  restore_outer.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "fixed.out")};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(inner));
+  function.blocks.push_back(std::move(restore_inner));
+  function.blocks.push_back(std::move(restore_outer));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 int check_fixed_frame_contract() {
   const auto prepared = prepare_module(make_fixed_frame_module());
   const auto* object = find_stack_object(prepared, "lv.fixed");
@@ -2321,6 +2555,104 @@ int check_branch_restore_dynamic_stack_contract() {
   return 0;
 }
 
+int check_variadic_nested_dynamic_stack_call_contract() {
+  const auto prepared = prepare_module(make_variadic_nested_dynamic_stack_call_module());
+  const auto* function = find_function(prepared.module, "variadic_nested_dynamic_stack_contract");
+  if (function == nullptr || function->blocks.size() != 4) {
+    return fail("variadic nested dynamic-stack contract: expected four semantic BIR blocks");
+  }
+  if (count_calls_to(*function, "llvm.stacksave") != 2 ||
+      count_calls_to(*function, "llvm.dynamic_alloca.i32") != 2 ||
+      count_calls_to(*function, "llvm.stackrestore") != 2 ||
+      count_calls_to(*function, "extern_variadic_i32") != 1) {
+    return fail("variadic nested dynamic-stack contract: expected two stack-save pairs plus one variadic call");
+  }
+
+  const auto* liveness = find_liveness_function(prepared, "variadic_nested_dynamic_stack_contract");
+  if (liveness == nullptr || liveness->call_points.size() != 7) {
+    return fail(
+        "variadic nested dynamic-stack contract: expected the variadic call to remain visible beside nested stack-state calls");
+  }
+  if (find_stack_object(prepared, "lv.fixed") == nullptr) {
+    return fail("variadic nested dynamic-stack contract: fixed local disappeared while dynamic stack was active");
+  }
+  if (find_stack_object(prepared, "outer.buf") != nullptr ||
+      find_stack_object(prepared, "inner.buf") != nullptr) {
+    return fail("variadic nested dynamic-stack contract: dynamic allocas became fixed stack objects");
+  }
+
+  const auto function_id = prepared.names.function_names.find("variadic_nested_dynamic_stack_contract");
+  const auto* frame_plan = prepare::find_prepared_frame_plan(prepared, function_id);
+  const auto* dynamic_plan = prepare::find_prepared_dynamic_stack_plan(prepared, function_id);
+  const auto* call_plans = find_call_plans_function(prepared, "variadic_nested_dynamic_stack_contract");
+  const auto* storage_plan =
+      find_storage_plan_function(prepared, "variadic_nested_dynamic_stack_contract");
+  const auto* carry =
+      storage_plan == nullptr ? nullptr : find_storage_value(prepared, *storage_plan, "carry");
+  if (frame_plan == nullptr || !frame_plan->has_dynamic_stack ||
+      !frame_plan->uses_frame_pointer_for_fixed_slots) {
+    return fail("variadic nested dynamic-stack contract: frame_plan lost nested dynamic-stack anchoring");
+  }
+  if (dynamic_plan == nullptr || !dynamic_plan->requires_stack_save_restore ||
+      dynamic_plan->operations.size() != 6) {
+    return fail("variadic nested dynamic-stack contract: dynamic_stack_plan lost nested stack-state operations");
+  }
+  if (call_plans == nullptr || call_plans->calls.size() != 7 || storage_plan == nullptr || carry == nullptr) {
+    return fail("variadic nested dynamic-stack contract: missing call-plan or storage-plan publication");
+  }
+
+  const auto variadic_it = std::find_if(call_plans->calls.begin(),
+                                        call_plans->calls.end(),
+                                        [](const prepare::PreparedCallPlan& call_plan) {
+                                          return call_plan.direct_callee_name ==
+                                                     std::optional<std::string>{"extern_variadic_i32"} &&
+                                                 call_plan.wrapper_kind ==
+                                                     prepare::PreparedCallWrapperKind::DirectExternVariadic;
+                                        });
+  if (variadic_it == call_plans->calls.end()) {
+    return fail("variadic nested dynamic-stack contract: missing explicit variadic call-plan record");
+  }
+
+  const auto& variadic_call = *variadic_it;
+  if (variadic_call.block_index != 1 || variadic_call.instruction_index != 4 ||
+      variadic_call.variadic_fpr_arg_register_count != 1 || variadic_call.is_indirect ||
+      variadic_call.arguments.size() != 2 || !variadic_call.result.has_value()) {
+    return fail("variadic nested dynamic-stack contract: variadic call-plan lost wrapper, position, or result authority");
+  }
+  if (variadic_call.arguments.front().source_value_id !=
+          std::optional<prepare::PreparedValueId>{carry->value_id} ||
+      variadic_call.arguments.front().source_encoding != carry->encoding ||
+      variadic_call.arguments.front().source_register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{carry->bank} ||
+      variadic_call.arguments[1].source_encoding != prepare::PreparedStorageEncodingKind::Immediate ||
+      !variadic_call.arguments[1].source_literal.has_value()) {
+    return fail("variadic nested dynamic-stack contract: variadic arguments lost scalar source authority");
+  }
+
+  const auto preserved_it = std::find_if(
+      variadic_call.preserved_values.begin(),
+      variadic_call.preserved_values.end(),
+      [carry](const prepare::PreparedCallPreservedValue& preserved) {
+        return preserved.value_id == carry->value_id &&
+               preserved.value_name == carry->value_name &&
+               preserved.route != prepare::PreparedCallPreservationRoute::Unknown;
+      });
+  if (preserved_it == variadic_call.preserved_values.end()) {
+    return fail("variadic nested dynamic-stack contract: call-plan no longer publishes the live scalar preserved across the variadic call");
+  }
+
+  const std::string prepared_dump = prepare::print(prepared);
+  if (prepared_dump.find("callsite block=1 inst=4 wrapper=direct_extern_variadic callee=extern_variadic_i32 variadic_fpr_args=1") ==
+          std::string::npos ||
+      prepared_dump.find(
+          "prepared.func @variadic_nested_dynamic_stack_contract requires_stack_save_restore=yes") ==
+          std::string::npos) {
+    return fail("variadic nested dynamic-stack contract: prepared dump no longer exposes both variadic and dynamic-stack authority");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -2367,6 +2699,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_branch_restore_dynamic_stack_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_variadic_nested_dynamic_stack_call_contract(); rc != 0) {
     return rc;
   }
   return EXIT_SUCCESS;
