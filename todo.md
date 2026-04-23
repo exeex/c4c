@@ -9,16 +9,17 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Just Finished
 
-- completed the Step 2 shared-lookup alias-removal packet by deleting the
-  `Parser` compatibility aliases for token text, token file, symbol, and name
-  tables and routing the affected parser reads/writes directly through
-  `shared_lookup_state_` in `parser.hpp`, `parser_core.cpp`, and
-  `parser_support.cpp`
+- completed the Step 2 parser-test adaptation packet by switching
+  `tests/frontend/frontend_parser_tests.cpp` from removed `Parser`
+  compatibility aliases to the bundled `shared_lookup_state_` surface
+  exposed by the current parser layout, and followed through on the broader
+  parser-build verification so the test adaptation now has build coverage
+  behind it
 
 ## Suggested Next
 
-- continue Step 2 with the next alias-removal family in `parser.hpp`, most
-  likely the core-input aliases, then re-run the same parser-focused proof
+- continue Step 2 with the next alias-removal family, carrying the broader
+  build awareness forward before narrowing back to the parser-focused proof
   subset
 
 ## Watchouts
@@ -28,12 +29,12 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
   rewrites or grammar changes
 - preserve constructor, snapshot, and rollback behavior while the grouped
   layout is being converted to direct bundle access
-- shared-lookup alias removals are now complete; the next family is likely the
-  core-input bundle, which may have a wider surface than this packet
+- this packet only repaired the test surface; watch for any broader build
+  fallout that still references the removed aliases elsewhere in the parser
+  test tree
 
 ## Proof
 
-- `cmake --build build -j --target c4c_frontend c4cll`
-- `ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_parse_top_level_pragma_pack_preserves_following_decl_dump|cpp_parse_top_level_pragma_gcc_visibility_preserves_following_decl_dump)$'`
+- `cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
 - Result: passed
 - Log: `test_after.log`
