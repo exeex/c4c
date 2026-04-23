@@ -729,7 +729,7 @@ void test_parser_alias_template_value_probes_use_token_spelling() {
   alias_ts.inner_rank = -1;
   alias_ts.base = c4c::TB_INT;
   resolved_parser.register_typedef_binding("ns::Alias", alias_ts, true);
-  resolved_parser.using_value_aliases_[0]["Alias"] = "ns::Alias";
+  resolved_parser.namespace_state_.using_value_aliases[0]["Alias"] = "ns::Alias";
   resolved_parser.alias_template_info_["ns::Alias"] = {};
   resolved_parser.tokens_ = {
       resolved_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
