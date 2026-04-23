@@ -1502,7 +1502,8 @@ std::string Parser::qualify_name(const std::string& name) const {
     const int context_id = current_namespace_context_id();
     if (context_id <= 0) return name;
     if (name.find("::") != std::string::npos) return name;
-    return canonical_name_in_context(context_id, name);
+    return bridge_name_in_context(
+        context_id, parser_text_id_for_token(kInvalidText, name), name);
 }
 
 const char* Parser::qualify_name_arena(const char* name) {
@@ -1639,6 +1640,40 @@ std::string Parser::canonical_name_in_context(int context_id, const std::string&
     return std::string(ctx.canonical_name) + "::" + name;
 }
 
+std::string Parser::bridge_name_in_context(int context_id, TextId name_text_id,
+                                           std::string_view fallback_name) const {
+    std::string name(parser_text(name_text_id, fallback_name));
+    if (name.empty() || context_id <= 0) return name;
+
+    std::vector<int> ancestry;
+    for (int walk = context_id; walk > 0;
+         walk = namespace_state_.namespace_contexts[walk].parent_id) {
+        ancestry.push_back(walk);
+    }
+
+    std::string qualified;
+    for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it) {
+        const NamespaceContext& ctx = namespace_state_.namespace_contexts[*it];
+        if (ctx.is_anonymous) {
+            if (ctx.canonical_name && ctx.canonical_name[0]) {
+                qualified.assign(ctx.canonical_name);
+            }
+            continue;
+        }
+
+        const std::string_view segment =
+            parser_text(ctx.text_id, ctx.display_name ? ctx.display_name : "");
+        if (segment.empty()) continue;
+        if (!qualified.empty()) qualified += "::";
+        qualified += segment;
+    }
+
+    if (qualified.empty()) return name;
+    qualified += "::";
+    qualified += name;
+    return qualified;
+}
+
 int Parser::resolve_namespace_context(const QualifiedNameRef& name) const {
     auto follow_path = [&](int start_id) -> int {
         int context_id = start_id;
@@ -1723,7 +1758,8 @@ std::string Parser::resolve_qualified_type_name(
 
 bool Parser::lookup_value_in_context(int context_id, const std::string& name,
                                      std::string* resolved) const {
-    const std::string candidate = canonical_name_in_context(context_id, name);
+    const std::string candidate = bridge_name_in_context(
+        context_id, find_parser_text_id(name), name);
     if (has_var_type(candidate) || has_known_fn_name(candidate)) {
         *resolved = candidate;
         return true;
@@ -1751,7 +1787,8 @@ bool Parser::lookup_value_in_context(int context_id, const std::string& name,
 
 bool Parser::lookup_type_in_context(int context_id, const std::string& name,
                                     std::string* resolved) const {
-    const std::string candidate = canonical_name_in_context(context_id, name);
+    const std::string candidate = bridge_name_in_context(
+        context_id, find_parser_text_id(name), name);
     if (has_typedef_type(candidate)) {
         *resolved = candidate;
         return true;
@@ -1779,7 +1816,8 @@ bool Parser::lookup_type_in_context(int context_id, const std::string& name,
 
 bool Parser::lookup_concept_in_context(int context_id, const std::string& name,
                                        std::string* resolved) const {
-    const std::string candidate = canonical_name_in_context(context_id, name);
+    const std::string candidate = bridge_name_in_context(
+        context_id, find_parser_text_id(name), name);
     if (binding_state_.concept_names.count(candidate)) {
         *resolved = candidate;
         return true;

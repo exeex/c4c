@@ -9,14 +9,17 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: routed the central qualified namespace value/type helpers in
-  `parser_core.cpp` through namespace-context lookup semantics instead of
-  returning `canonical_name_in_context(...)` after `resolve_namespace_context(...)`
+- Step 2 packet: added `bridge_name_in_context(...)` so parser namespace
+  lookup rebuilds binding-table bridge names from the namespace context tree
+  instead of using stored canonical namespace strings inline in
+  `lookup_value_in_context(...)`, `lookup_type_in_context(...)`,
+  `lookup_concept_in_context(...)`, and `qualify_name(...)`
 
 ## Suggested Next
 
-- continue Step 2 by auditing any remaining `parser_core.cpp` namespace helper
-  paths that still synthesize qualified strings after context resolution
+- continue Step 2 by auditing remaining declaration-side namespace import /
+  alias helpers that still call `canonical_name_in_context(...)` directly after
+  namespace-context resolution
 - keep the follow-on packet inside parser namespace lookup and leave broader
   binding-table or lexical-scope cleanup for later work
 
