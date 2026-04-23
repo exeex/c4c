@@ -379,6 +379,7 @@ class Parser {
   QualifiedNameKey struct_typedef_key_in_context(
       int context_id, TextId name_text_id,
       std::string_view fallback_name) const;
+  QualifiedNameKey qualified_name_key(const QualifiedNameRef& name);
   std::string bridge_name_in_context(int context_id, TextId name_text_id,
                                      std::string_view fallback_name) const;
   std::string qualified_name_text(const QualifiedNameRef& name,

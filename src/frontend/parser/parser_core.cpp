@@ -993,6 +993,22 @@ QualifiedNameKey Parser::struct_typedef_key_in_context(
                                     fallback_name, false);
 }
 
+QualifiedNameKey Parser::qualified_name_key(const QualifiedNameRef& name) {
+    QualifiedNameKey key;
+    key.context_id = 0;
+    key.is_global_qualified = name.is_global_qualified;
+    key.base_text_id = name.base_text_id != kInvalidText
+                           ? name.base_text_id
+                           : parser_text_id_for_token(kInvalidText, name.base_name);
+    if (key.base_text_id == kInvalidText) return key;
+
+    if (!name.qualifier_text_ids.empty()) {
+        key.qualifier_path_id =
+            shared_lookup_state_.parser_name_paths.intern(name.qualifier_text_ids);
+    }
+    return key;
+}
+
 bool Parser::has_known_fn_name(const QualifiedNameKey& key) const {
     return binding_state_.known_fn_names.count(key) > 0;
 }

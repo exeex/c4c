@@ -870,7 +870,8 @@ void test_parser_visible_type_alias_uses_scope_local_typedef_facade() {
   const c4c::TextId alias_text = texts.intern("Alias");
   parser.push_local_binding_scope();
   parser.bind_local_typedef(target_text, target_ts);
-  parser.namespace_state_.using_value_aliases[0][alias_text] = "Target";
+  parser.namespace_state_.using_value_aliases[0][alias_text] = {
+      parser.intern_semantic_name_key("Target"), "corrupted"};
 
   expect_eq(parser.resolve_visible_type_name("Alias"), "Target",
             "unqualified value aliases should resolve through the visible typedef facade when the target is scope-local");
@@ -892,13 +893,40 @@ void test_parser_visible_type_alias_keeps_qualified_target_resolution() {
 
   const c4c::TextId alias_text = texts.intern("Alias");
   parser.register_typedef_binding("ns::Target", target_ts, true);
-  parser.namespace_state_.using_value_aliases[0][alias_text] = "ns::Target";
+  parser.namespace_state_.using_value_aliases[0][alias_text] = {
+      parser.intern_semantic_name_key("ns::Target"), "corrupted"};
 
   expect_eq(parser.resolve_visible_type_name("Alias"), "ns::Target",
             "qualified value aliases should keep namespace-qualified typedef resolution intact");
   const c4c::TypeSpec* visible_alias = parser.find_visible_typedef_type("Alias");
   expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
               "qualified value aliases should still resolve through the existing namespace-visible path");
+}
+
+void test_parser_using_value_import_keeps_structured_target_key() {
+  c4c::Lexer lexer("using ns::Target;\n", c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+  parser.register_var_type_binding("ns::Target", target_ts);
+
+  (void)parser.parse_top_level();
+
+  const c4c::TextId alias_text = parser.find_parser_text_id("Target");
+  expect_true(alias_text != c4c::kInvalidText,
+              "using-import fixture should intern the alias text");
+  auto alias_it = parser.namespace_state_.using_value_aliases[0].find(alias_text);
+  expect_true(alias_it != parser.namespace_state_.using_value_aliases[0].end(),
+              "using-import fixture should record a value-alias entry");
+  alias_it->second.compatibility_name = "corrupted";
+  expect_eq(parser.resolve_visible_value_name("Target"), "ns::Target",
+            "using-import lookup should prefer the structured target key over the compatibility bridge");
 }
 
 void test_parser_template_member_suffix_probe_uses_token_spelling() {
@@ -987,8 +1015,8 @@ void test_parser_alias_template_value_probes_use_token_spelling() {
   alias_ts.base = c4c::TB_INT;
   const c4c::TextId alias_text = resolved_texts.intern("Alias");
   resolved_parser.register_typedef_binding("ns::Alias", alias_ts, true);
-  resolved_parser.namespace_state_.using_value_aliases[0][alias_text] =
-      "ns::Alias";
+  resolved_parser.namespace_state_.using_value_aliases[0][alias_text] = {
+      resolved_parser.intern_semantic_name_key("ns::Alias"), "corrupted"};
   resolved_parser.template_state_.alias_template_info["ns::Alias"] = {};
   resolved_parser.tokens_ = {
       resolved_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
@@ -1086,6 +1114,7 @@ int main() {
   test_parser_record_body_context_keeps_visible_template_origin_lookup_local();
   test_parser_visible_type_alias_uses_scope_local_typedef_facade();
   test_parser_visible_type_alias_keeps_qualified_target_resolution();
+  test_parser_using_value_import_keeps_structured_target_key();
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
   test_parser_alias_template_value_probes_use_token_spelling();
