@@ -3,9 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/82_extract_full_x86_backend_subsystem_to_markdown_for_phoenix_rebuild.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Extract The Missing Root, Assembler, And Linker Legacy Sources
-Plan Review Counter: 0 / 6
+Current Step ID: 1
+Current Step Title: Reproduce The Downstream Tail Boundary
 # Current Packet
 
 ## Just Finished

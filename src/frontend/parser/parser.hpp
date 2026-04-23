@@ -40,156 +40,32 @@
 
 #include "arena.hpp"
 #include "ast.hpp"
+#include "parser_state.hpp"
 #include "source_profile.hpp"
 #include "token.hpp"
-#include "../../shared/text_id_table.hpp"
 
 namespace c4c {
 
 class Parser {
  public:
   // ── parser-side table / identity model ───────────────────────────────────
-  using SymbolId = uint32_t;
-
-  static constexpr SymbolId kInvalidSymbol = 0;
-
-  // Identifier-atom identity layer. Symbols reuse TextTable storage rather
-  // than maintaining a second owning copy of the spelling.
-  struct SymbolTable {
-    explicit SymbolTable(TextTable* texts = nullptr) : texts_(texts) {}
-
-    void attach_text_table(TextTable* texts) { texts_ = texts; }
-
-    SymbolId find_identifier(TextId text_id) const {
-      if (!texts_ || text_id == kInvalidText) return kInvalidSymbol;
-      return symbol_ids_.find(text_id);
-    }
-
-    SymbolId find_identifier(std::string_view text) const {
-      if (!texts_ || text.empty()) return kInvalidSymbol;
-      return find_identifier(texts_->find(text));
-    }
-
-    SymbolId intern_identifier(TextId text_id) {
-      if (!texts_ || text_id == kInvalidText) return kInvalidSymbol;
-      return symbol_ids_.intern(text_id);
-    }
-
-    SymbolId intern_identifier(std::string_view text) {
-      if (!texts_) return kInvalidSymbol;
-      return intern_identifier(texts_->intern(text));
-    }
-
-    TextId text_id(SymbolId id) const {
-      const TextId* stored = symbol_ids_.lookup(id);
-      return stored ? *stored : kInvalidText;
-    }
-
-    std::string_view spelling(SymbolId id) const {
-      if (!texts_) return {};
-      return texts_->lookup(text_id(id));
-    }
-
-    size_t size() const { return symbol_ids_.size(); }
-
-    TextTable* texts_ = nullptr;
-    KeyIdTable<SymbolId, kInvalidSymbol, TextId> symbol_ids_;
-  };
-
-  // Parser-local semantic tables keyed by identifier atoms. Scope and binding
-  // stay outside this struct; this only centralizes atom-keyed parser facts.
-  struct ParserNameTables {
-    SymbolId find_identifier(TextId text_id) const {
-      return symbols ? symbols->find_identifier(text_id) : kInvalidSymbol;
-    }
-
-    SymbolId find_identifier(std::string_view text) const {
-      return symbols ? symbols->find_identifier(text) : kInvalidSymbol;
-    }
-
-    SymbolId intern_identifier(TextId text_id) {
-      return symbols ? symbols->intern_identifier(text_id) : kInvalidSymbol;
-    }
-
-    SymbolId intern_identifier(std::string_view text) {
-      return symbols ? symbols->intern_identifier(text) : kInvalidSymbol;
-    }
-
-    bool is_typedef(SymbolId id) const {
-      return id != kInvalidSymbol && typedefs.count(id) != 0;
-    }
-
-    bool has_typedef_type(SymbolId id) const {
-      return id != kInvalidSymbol && typedef_types.count(id) != 0;
-    }
-
-    const TypeSpec* lookup_typedef_type(SymbolId id) const {
-      const auto it = typedef_types.find(id);
-      return it == typedef_types.end() ? nullptr : &it->second;
-    }
-
-    SymbolTable* symbols = nullptr;
-    std::unordered_set<SymbolId> typedefs;
-    std::unordered_set<SymbolId> user_typedefs;
-    std::unordered_map<SymbolId, TypeSpec> typedef_types;
-    std::unordered_map<SymbolId, TypeSpec> var_types;
-  };
-
-  using ParserSymbolTables = ParserNameTables;
-
-  struct FnPtrTypedefInfo {
-    Node** params = nullptr;
-    int n_params = 0;
-    bool variadic = false;
-  };
+  using SymbolId = ParserSymbolId;
+  static constexpr SymbolId kInvalidSymbol = kInvalidParserSymbol;
+  using SymbolTable = ParserSymbolTable;
+  using ParserSymbolTables = c4c::ParserNameTables;
+  using FnPtrTypedefInfo = ParserFnPtrTypedefInfo;
 
   // ── parser-side structural model ─────────────────────────────────────────
   // Namespace tree node used by C++ qualified-name lookup and using-directive
   // visibility tracking.
-  struct NamespaceContext {
-    int id = 0;
-    int parent_id = -1;
-    bool is_anonymous = false;
-    const char* display_name = nullptr;
-    const char* canonical_name = nullptr;
-  };
+  using NamespaceContext = ParserNamespaceContext;
 
   // Spelled qualified name as seen in the token stream.
-  struct QualifiedNameRef {
-    bool is_global_qualified = false;
-    std::vector<std::string> qualifier_segments;
-    std::vector<TextId> qualifier_text_ids;
-    std::vector<SymbolId> qualifier_symbol_ids;
-    std::string base_name;
-    TextId base_text_id = kInvalidText;
-    SymbolId base_symbol_id = kInvalidSymbol;
-
-    bool is_unqualified_atom() const {
-      return !is_global_qualified && qualifier_segments.empty();
-    }
-
-    std::string spelled(bool include_global_prefix = false) const {
-      std::string name;
-      if (include_global_prefix && is_global_qualified) name = "::";
-      for (size_t i = 0; i < qualifier_segments.size(); ++i) {
-        if (!name.empty() && name != "::") name += "::";
-        name += qualifier_segments[i];
-      }
-      if (!name.empty() && name != "::") name += "::";
-      name += base_name;
-      return name;
-    }
-  };
+  using QualifiedNameRef = ParserQualifiedNameRef;
 
   // Result container for one parsed template argument after type-vs-value
   // disambiguation has been resolved.
-  struct TemplateArgParseResult {
-    bool is_value = false;
-    TypeSpec type{};
-    long long value = 0;
-    const char* nttp_name = nullptr;
-    Node* expr = nullptr;
-  };
+  using TemplateArgParseResult = ParserTemplateArgParseResult;
 
   enum class TypenameTemplateParamKind {
     TypeParameter,
@@ -199,64 +75,14 @@ class Parser {
   // Template-scope stack: tracks active template parameter visibility.
   // Each frame records the parameters introduced by one template<...> clause
   // and the semantic context (enclosing class, member template, or free function).
-  enum class TemplateScopeKind {
-    EnclosingClass,      // template<...> struct/class body
-    MemberTemplate,      // template<...> member inside a class template
-    FreeFunctionTemplate // template<...> free function
-  };
-
-  struct TemplateScopeParam {
-    const char* name = nullptr;
-    bool is_nttp = false;
-  };
-
-  struct TemplateScopeFrame {
-    TemplateScopeKind kind = TemplateScopeKind::FreeFunctionTemplate;
-    std::vector<TemplateScopeParam> params;
-    std::string owner_struct_tag;  // set when kind == EnclosingClass
-  };
-
-  struct RecordBodyState {
-    std::vector<Node*> fields;
-    std::vector<Node*> methods;
-    std::vector<const char*> member_typedef_names;
-    std::vector<TypeSpec> member_typedef_types;
-  };
-
-  enum class RecordMemberRecoveryResult {
-    Failed,
-    SyncedAtSemicolon,
-    StoppedAtNextMember,
-    StoppedAtRBrace,
-  };
-
-  struct ParseContextFrame {
-    std::string function_name;
-    int token_index = -1;
-  };
-
-  struct ParseFailure {
-    bool active = false;
-    bool committed = true;
-    int token_index = -1;
-    TokenKind token_kind = TokenKind::EndOfFile;
-    int line = 1;
-    int column = 1;
-    std::string function_name;
-    std::string expected;
-    std::string got;
-    std::string detail;
-    std::vector<std::string> stack_trace;
-  };
-
-  struct ParseDebugEvent {
-    std::string kind;
-    std::string function_name;
-    std::string detail;
-    int token_index = -1;
-    int line = 1;
-    int column = 1;
-  };
+  using TemplateScopeKind = ParserTemplateScopeKind;
+  using TemplateScopeParam = ParserTemplateScopeParam;
+  using TemplateScopeFrame = ParserTemplateScopeFrame;
+  using RecordBodyState = ParserRecordBodyState;
+  using RecordMemberRecoveryResult = ParserRecordMemberRecoveryResult;
+  using ParseContextFrame = ParserParseContextFrame;
+  using ParseFailure = ParserParseFailure;
+  using ParseDebugEvent = ParserParseDebugEvent;
 
   enum ParseDebugChannel : unsigned {
     ParseDebugNone = 0,
@@ -273,47 +99,12 @@ class Parser {
   };
 
   // ── tentative parse snapshot / guard ─────────────────────────────────────
-  enum class TentativeParseMode {
-    Heavy,
-    Lite,
-  };
-
-  enum class TentativeTextRefKind {
-    None,
-    TextId,
-  };
-
-  struct TentativeTextRef {
-    TentativeTextRefKind kind = TentativeTextRefKind::None;
-    TextId text_id = kInvalidText;
-  };
-
-  // Cheap speculative parser state used by lite tentative parsing. This is
-  // the rollback surface that remains safe for syntax-only probes.
-  struct ParserLiteSnapshot {
-    int pos;
-    TentativeTextRef last_resolved_typedef;
-    int template_arg_expr_depth = 0;
-    size_t token_mutation_count = 0;
-  };
-
-  struct ParserSnapshot {
-    ParserLiteSnapshot lite;
-    ParserSymbolTables symbol_tables;
-    std::unordered_set<TextId> non_atom_typedefs;
-    std::unordered_set<TextId> non_atom_user_typedefs;
-    std::unordered_map<TextId, TypeSpec> non_atom_typedef_types;
-    std::unordered_map<TextId, TypeSpec> non_atom_var_types;
-  };
-
-  struct TentativeParseStats {
-    int heavy_enter = 0;
-    int heavy_commit = 0;
-    int heavy_rollback = 0;
-    int lite_enter = 0;
-    int lite_commit = 0;
-    int lite_rollback = 0;
-  };
+  using TentativeParseMode = ParserTentativeParseMode;
+  using TentativeTextRefKind = ParserTentativeTextRefKind;
+  using TentativeTextRef = ParserTentativeTextRef;
+  using ParserLiteSnapshot = c4c::ParserLiteSnapshot;
+  using ParserSnapshot = c4c::ParserSnapshot;
+  using TentativeParseStats = ParserTentativeParseStats;
 
   // RAII guard that saves parser state on construction and restores it on
   // destruction unless commit() has been called.
