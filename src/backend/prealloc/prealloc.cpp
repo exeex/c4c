@@ -692,9 +692,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
                       register_bank_from_class(regalloc_value->register_class);
                 }
               }
-              if (arg_plan.source_encoding == PreparedStorageEncodingKind::None &&
-                  !call->args[arg_index].name.empty() &&
-                  call->args[arg_index].name.front() == '@') {
+              if (!call->args[arg_index].name.empty() && call->args[arg_index].name.front() == '@') {
                 arg_plan.source_encoding = PreparedStorageEncodingKind::SymbolAddress;
                 arg_plan.source_symbol_name = call->args[arg_index].name;
               }

@@ -607,6 +607,158 @@ prepare::PreparedBirModule prepare_memory_return_call_dump_module() {
       options);
 }
 
+prepare::PreparedBirModule prepare_call_argument_source_shape_dump_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.globals.push_back(bir::Global{
+      .name = "extern_data",
+      .type = bir::TypeKind::I32,
+      .is_extern = true,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Function callee;
+  callee.name = "extern_consume_ptr_pair";
+  callee.is_declaration = true;
+  callee.return_type = bir::TypeKind::I32;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "lhs",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "rhs",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "call_argument_source_shape_dump_contract";
+  caller.return_type = bir::TypeKind::I32;
+  caller.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "base.ptr",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  caller.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.ptr",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  caller.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.scratch",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.ptr",
+      .value = bir::Value::named(bir::TypeKind::Ptr, "base.ptr"),
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "loaded.ptr"),
+      .slot_name = "lv.ptr",
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "touch"),
+      .slot_name = "lv.scratch",
+      .align_bytes = 4,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, "loaded.ptr"),
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.ptr",
+      .value = bir::Value::named(bir::TypeKind::Ptr, "derived.seed"),
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "arg.ptr"),
+      .slot_name = "lv.ptr",
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "tmp.call"),
+      .callee = "extern_consume_ptr_pair",
+      .args = {
+          bir::Value::named(bir::TypeKind::Ptr, "@extern_data"),
+          bir::Value::named(bir::TypeKind::Ptr, "arg.ptr"),
+      },
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
+      .arg_abi = {
+          bir::CallArgAbiInfo{
+              .type = bir::TypeKind::Ptr,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .primary_class = bir::AbiValueClass::Integer,
+              .passed_in_register = true,
+          },
+          bir::CallArgAbiInfo{
+              .type = bir::TypeKind::Ptr,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .primary_class = bir::AbiValueClass::Integer,
+              .passed_in_register = true,
+          },
+      },
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "tmp.call")};
+  caller.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(caller));
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      c4c::default_target_profile(c4c::TargetArch::X86_64),
+      options);
+}
+
 bool expect_contains(const std::string& text,
                      const std::string& needle,
                      const char* description) {
@@ -864,6 +1016,39 @@ int main() {
   if (!expect_contains(memory_return_dump,
                        "arg index=1 value_bank=gpr source_encoding=immediate source_literal=13",
                        "memory-return immediate argument detail")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto source_shape_prepared = prepare_call_argument_source_shape_dump_module();
+  const std::string source_shape_dump = prepare::print(source_shape_prepared);
+  if (!expect_contains(source_shape_dump,
+                       "arg0 bank=gpr from=symbol_address:@extern_data",
+                       "symbol-address argument summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(source_shape_dump,
+                       "arg1 bank=gpr from=computed_address:loaded.ptr+4",
+                       "computed-address argument summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(source_shape_dump,
+                       "arg index=0 value_bank=gpr source_encoding=symbol_address",
+                       "symbol-address argument detail encoding")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(source_shape_dump,
+                       "source_symbol=@extern_data",
+                       "symbol-address argument detail payload")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(source_shape_dump,
+                       "arg index=1 value_bank=gpr source_encoding=computed_address",
+                       "computed-address argument detail encoding")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(source_shape_dump,
+                       "source_base=loaded.ptr source_delta=4",
+                       "computed-address argument detail payload")) {
     return EXIT_FAILURE;
   }
 

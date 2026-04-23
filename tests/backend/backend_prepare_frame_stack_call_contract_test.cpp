@@ -453,6 +453,150 @@ bir::Module make_memory_return_call_contract_module() {
   return module;
 }
 
+bir::Module make_call_argument_source_shape_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.globals.push_back(bir::Global{
+      .name = "extern_data",
+      .type = bir::TypeKind::I32,
+      .is_extern = true,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Function callee;
+  callee.name = "extern_consume_ptr_pair";
+  callee.is_declaration = true;
+  callee.return_type = bir::TypeKind::I32;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "lhs",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "rhs",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "call_argument_source_shape_contract";
+  caller.return_type = bir::TypeKind::I32;
+  caller.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "base.ptr",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  caller.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.ptr",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  caller.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.scratch",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.ptr",
+      .value = bir::Value::named(bir::TypeKind::Ptr, "base.ptr"),
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "loaded.ptr"),
+      .slot_name = "lv.ptr",
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "touch"),
+      .slot_name = "lv.scratch",
+      .align_bytes = 4,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, "loaded.ptr"),
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.ptr",
+      .value = bir::Value::named(bir::TypeKind::Ptr, "derived.seed"),
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "arg.ptr"),
+      .slot_name = "lv.ptr",
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "tmp.call"),
+      .callee = "extern_consume_ptr_pair",
+      .args = {
+          bir::Value::named(bir::TypeKind::Ptr, "@extern_data"),
+          bir::Value::named(bir::TypeKind::Ptr, "arg.ptr"),
+      },
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
+      .arg_abi = {
+          bir::CallArgAbiInfo{
+              .type = bir::TypeKind::Ptr,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .primary_class = bir::AbiValueClass::Integer,
+              .passed_in_register = true,
+          },
+          bir::CallArgAbiInfo{
+              .type = bir::TypeKind::Ptr,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .primary_class = bir::AbiValueClass::Integer,
+              .passed_in_register = true,
+          },
+      },
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "tmp.call")};
+  caller.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(caller));
+  return module;
+}
+
 bir::Module make_call_wrapper_kind_contract_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1377,6 +1521,37 @@ int check_call_wrapper_kind_contract() {
   return 0;
 }
 
+int check_call_argument_source_shape_contract() {
+  const auto prepared = prepare_module(make_call_argument_source_shape_module());
+  const auto* call_plans = find_call_plans_function(prepared, "call_argument_source_shape_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 1) {
+    return fail("call-argument source-shape contract: call_plans no longer publish the pointer call");
+  }
+
+  const auto& call_plan = call_plans->calls.front();
+  if (call_plan.arguments.size() != 2 || !call_plan.result.has_value()) {
+    return fail("call-argument source-shape contract: pointer call lost argument or result publication");
+  }
+
+  const auto& symbol_arg = call_plan.arguments[0];
+  if (symbol_arg.source_encoding != prepare::PreparedStorageEncodingKind::SymbolAddress ||
+      !symbol_arg.source_symbol_name.has_value() ||
+      *symbol_arg.source_symbol_name != "@extern_data") {
+    return fail("call-argument source-shape contract: call_plans lost symbol-address authority");
+  }
+
+  const auto& computed_arg = call_plan.arguments[1];
+  if (computed_arg.source_encoding != prepare::PreparedStorageEncodingKind::ComputedAddress ||
+      !computed_arg.source_base_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *computed_arg.source_base_value_name) !=
+          "loaded.ptr" ||
+      computed_arg.source_pointer_byte_delta != std::optional<std::int64_t>{4}) {
+    return fail("call-argument source-shape contract: call_plans lost computed-address authority");
+  }
+
+  return 0;
+}
+
 int check_dynamic_stack_contract() {
   const auto prepared = prepare_module(make_dynamic_stack_module());
   const auto* function = find_function(prepared.module, "dynamic_stack_contract");
@@ -1620,6 +1795,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_call_wrapper_kind_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_call_argument_source_shape_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_dynamic_stack_contract(); rc != 0) {

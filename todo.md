@@ -3,35 +3,35 @@ Source Idea Path: ideas/open/88_prepared_frame_stack_call_authority_completion_f
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Call Boundary Authority Completion
-Plan Review Counter: 4 / 6
+Plan Review Counter: 5 / 6
 # Current Packet
 
 ## Just Finished
 
 Completed another Step 3 "Call Boundary Authority Completion" packet for idea
-88 by publishing literal call-argument authority in `PreparedCallPlan`,
-printing it in prepared dumps, and tightening backend/prealloc tests so
-downstream consumers no longer need to recover immediate call operands from raw
-BIR when the prepared call plan already knows them.
+88 by publishing prepared symbol-address and computed-address call-argument
+authority in `PreparedCallPlan`, printing those non-register source shapes
+truthfully in prepared dumps, and tightening backend/prealloc tests so
+downstream consumers no longer need to recover `@symbol` or base-plus-delta
+pointer operands from raw BIR when the prepared call plan already knows them.
 
 Current packet result:
-- `PreparedCallArgumentPlan` now publishes a richer `source_encoding` plus
-  literal, symbol, and computed-address source detail instead of collapsing
-  non-register/non-stack argument sources to `none`.
-- `populate_call_plans` now snapshots immediate arguments directly from BIR and
-  preserves richer prepared-home detail for rematerializable and pointer-base
-  argument sources at call-plan construction time.
-- Prepared dumps now expose immediate call-argument authority in both the
-  summary callsite view and the `prepared-call-plans` detail section.
-- Backend/prealloc tests now prove immediate argument publication for direct,
-  indirect, and memory-return call contracts.
+- `populate_call_plans` now preserves symbol-address authority for `@symbol`
+  call operands even when regalloc assigned the carrier a register home, so the
+  prepared call plan publishes source shape rather than only storage.
+- Prepared dump summaries now prefer published symbol and computed-address
+  source detail over transient register/stack homes, so callsite summaries show
+  `symbol_address:@...` and `computed_address:<base>+<delta>` when available.
+- Backend/prealloc tests now prove symbol-address and computed-address
+  call-argument authority in both the structured call plan and the prepared
+  printer dump.
 
 ## Suggested Next
 
-Continue Step 3 by proving the newly published non-register argument source
-shapes beyond immediates, with the best next packet likely focused on direct
-symbol-address or computed-address call operands if any target consumer still
-needs to fall back to raw BIR names or pointer arithmetic.
+Continue Step 3 by checking whether any remaining call-boundary consumers still
+recover aggregate, stack-passed, or indirect-callee pointer shapes from raw BIR
+instead of the prepared contract, then publish the next missing prepared
+authority directly in `PreparedCallPlan`.
 
 ## Watchouts
 
@@ -39,9 +39,12 @@ needs to fall back to raw BIR names or pointer arithmetic.
   idea 89.
 - Keep call-boundary authority at the prepared contract boundary; do not turn
   this packet into target-specific call instruction recovery.
-- If later aggregate returns use non-frame-slot or multi-lane storage, publish
-  that shape in `PreparedCallPlan` instead of sending backends back to raw BIR
-  or storage-plan side channels.
+- Symbol-address arguments may still carry a register home for move planning;
+  treat `source_encoding` plus source detail as the authoritative origin and
+  the register/stack fields as transport.
+- If later aggregate returns or stack-passed arguments use non-frame-slot or
+  multi-lane storage, publish that shape in `PreparedCallPlan` instead of
+  sending backends back to raw BIR or storage-plan side channels.
 
 ## Proof
 

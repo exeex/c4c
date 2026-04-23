@@ -157,11 +157,7 @@ void append_call_arg_source_summary(std::ostringstream& out,
                                     const PreparedNameTables& names,
                                     const PreparedCallArgumentPlan& arg) {
   out << storage_encoding_kind_name(arg.source_encoding);
-  if (arg.source_register_name.has_value()) {
-    out << ":" << *arg.source_register_name;
-  } else if (arg.source_stack_offset_bytes.has_value()) {
-    out << ":stack+" << *arg.source_stack_offset_bytes;
-  } else if (arg.source_symbol_name.has_value()) {
+  if (arg.source_symbol_name.has_value()) {
     out << ":" << *arg.source_symbol_name;
   } else if (arg.source_literal.has_value()) {
     out << ":" << render_value(*arg.source_literal);
@@ -170,6 +166,10 @@ void append_call_arg_source_summary(std::ostringstream& out,
     if (arg.source_pointer_byte_delta.has_value()) {
       out << "+" << *arg.source_pointer_byte_delta;
     }
+  } else if (arg.source_register_name.has_value()) {
+    out << ":" << *arg.source_register_name;
+  } else if (arg.source_stack_offset_bytes.has_value()) {
+    out << ":stack+" << *arg.source_stack_offset_bytes;
   }
 }
 
