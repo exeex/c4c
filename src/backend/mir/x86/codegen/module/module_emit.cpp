@@ -1,6 +1,7 @@
 #include "module_emit.hpp"
 #include "../abi/x86_target_abi.hpp"
 #include "../lowering/memory_lowering.hpp"
+#include "../prepared/prepared_compare_entry.hpp"
 #include "../prepared/prepared_query_context.hpp"
 #include "../x86_codegen.hpp"
 #include "module_data_emit.hpp"

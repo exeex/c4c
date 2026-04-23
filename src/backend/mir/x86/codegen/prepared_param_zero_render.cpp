@@ -1,4 +1,5 @@
 #include "x86_codegen.hpp"
+#include "prepared/prepared_compare_entry.hpp"
 #include "prepared/prepared_fast_path_dispatch.hpp"
 #include "lowering/memory_lowering.hpp"
 
