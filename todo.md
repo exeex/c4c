@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implementation_for_phoenix_rebuild.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Rewire Prepared Adapters And Debug Surfaces Over Canonical Seams
-Plan Review Counter: 6 / 6
+Current Step ID: 3.2
+Current Step Title: Rehome Prepared Short-Circuit And Compare-Join Branch Context Assembly
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished

@@ -764,6 +764,83 @@ Completion check:
 - prepared fast paths consume canonical seams instead of owning local copies of
   frame, call-lane, address, or predicate policy
 
+### Step 3.1: Move Prepared Compare And False-Branch Dispatch Helpers Behind The Canonical Seam
+
+Goal: stop prepared compare setup and false-branch opcode selection from
+straddling `prepared_local_slot_render.cpp`,
+`prepared_param_zero_render.cpp`, and ad hoc top-level declarations.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared/prepared_fast_path_dispatch.*`
+- prepared compare/false-branch helper callsites under
+  `src/backend/mir/x86/codegen/`
+
+Actions:
+
+- move prepared compare setup, materialized-compare selection, and
+  false-branch helper families into `prepared_fast_path_dispatch.*`
+- keep local-slot and param-zero renderers as consumers of the canonical seam
+  instead of duplicate helper owners
+- preserve existing compare-driven fast paths without widening into module or
+  debug ownership
+
+Completion check:
+
+- prepared compare setup and false-branch helper ownership lives behind
+  `prepared_fast_path_dispatch.*`, and prepared renderers only consume that
+  seam
+
+### Step 3.2: Rehome Prepared Short-Circuit And Compare-Join Branch Context Assembly
+
+Goal: move the remaining compare-context reconstruction and short-circuit entry
+assembly out of `prepared_local_slot_render.cpp` so prepared branch planning
+stops rebuilding dispatch-owned compare inputs inline.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared/prepared_fast_path_dispatch.*`
+- branch-planning helpers in
+  `src/backend/mir/x86/codegen/prepared_local_slot_render.cpp`
+
+Actions:
+
+- extract short-circuit and compare-join context selection into the canonical
+  prepared dispatch seam one helper family at a time
+- thread current-value and materialized-compare context through the seam rather
+  than reconstructing it locally
+- keep the move bounded away from same-module call dispatch and broader block
+  orchestration rewrites
+
+Completion check:
+
+- prepared short-circuit and compare-join branch context selection delegates to
+  `prepared_fast_path_dispatch.*` instead of remaining inline in
+  `prepared_local_slot_render.cpp`
+
+### Step 3.3: Narrow Prepared Debug And Admission Surfaces To Observational Adapters
+
+Goal: keep route-debug and prepared admission reporting observational while the
+prepared path finishes consuming canonical owners.
+
+Primary targets:
+
+- prepared debug/admission surfaces under `src/backend/mir/x86/codegen/`
+- reviewed `debug/` draft contracts
+
+Actions:
+
+- rewire prepared debug/admission surfaces to report canonical seam decisions
+  instead of re-owning matcher or lowering policy
+- classify any remaining prepared-only debug holdouts explicitly rather than
+  letting them drift into compatibility logic
+- preserve existing debug output contracts while narrowing ownership
+
+Completion check:
+
+- prepared debug and admission surfaces explain canonical seam decisions
+  observationally and do not regain lowering ownership
+
 ## Step 4: Shift Module Entry And Legacy Dispatch To The Replacement Graph
 
 Goal: make the reviewed replacement ownership graph the live path while
