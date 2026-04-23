@@ -1,9 +1,9 @@
 Status: Active
 Source Idea Path: ideas/open/88_prepared_frame_stack_call_authority_completion_for_target_backends.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Call Boundary Authority Completion
-Plan Review Counter: 6 / 6
+Current Step ID: 3.1
+Current Step Title: Argument And Result Source Authority
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
@@ -28,10 +28,10 @@ Current packet result:
 
 ## Suggested Next
 
-Continue Step 3 by checking whether any remaining call-boundary consumers still
-recover aggregate, stack-passed, or indirect-callee pointer shapes from raw BIR
-instead of the prepared contract, then publish the next missing prepared
-authority directly in `PreparedCallPlan`.
+Continue Step 3.1 by checking whether any remaining call-boundary consumers
+still recover aggregate-adjacent scalar, stack-passed, or indirect-callee
+pointer shapes from raw BIR instead of the prepared contract, then publish the
+next missing source-shape authority directly in `PreparedCallPlan`.
 
 ## Watchouts
 

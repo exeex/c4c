@@ -125,7 +125,8 @@ Completion check:
 ## Step 3: Call Boundary Authority Completion
 
 Goal: publish authoritative prepared call plans for argument/result movement,
-save-clobber ownership, and related call-boundary obligations.
+save-clobber ownership, and related call-boundary obligations without leaving
+target backends to recover scalar call semantics from raw BIR.
 
 Primary target:
 
@@ -135,17 +136,95 @@ Primary target:
 
 Actions:
 
-- strengthen `call_plans` publication for before-call and after-call
-  obligations
-- clarify caller-save, callee-save, and call-clobber authority where target
-  backends still infer it
-- cover scalar edge cases such as variadic, byval, indirect, memory-return, or
-  nested dynamic-stack interactions when they expose missing prepared facts
+- execute the numbered substeps below in order
+- keep each packet focused on one missing prepared call-boundary fact family
+- treat grouped-register or bank/span issues as out of scope for this step
 
 Completion check:
 
+- all Step 3 substeps are complete
 - target backends can follow published scalar call-boundary plans directly
 - prepared call records expose authoritative movement and clobber ownership
+
+### Step 3.1: Argument And Result Source Authority
+
+Goal: make prepared call plans publish authoritative scalar argument and result
+source shapes so consumers stop recovering register, stack, symbol, or
+computed-address meaning from raw BIR.
+
+Primary target:
+
+- `src/backend/prealloc/prealloc.hpp`
+- `src/backend/prealloc/prepare.cpp`
+- `src/backend/prealloc/prepared_printer.cpp`
+
+Actions:
+
+- strengthen `call_plans` publication for before-call and after-call movement
+  obligations
+- preserve source-shape authority when transport storage differs from the
+  semantic call operand origin
+- cover remaining scalar argument/result forms such as stack-passed, indirect,
+  byval, memory-return, or aggregate-adjacent scalar cases when prepared facts
+  already know the answer
+
+Completion check:
+
+- prepared call plans publish scalar argument/result source authority directly
+- prepared dumps expose those source shapes clearly enough for backend review
+- target consumers no longer need raw-BIR recovery for covered scalar movement
+
+### Step 3.2: Save, Clobber, And Preservation Authority
+
+Goal: publish caller-save, callee-save, and call-clobber ownership as prepared
+authority so backend consumers do not reconstruct preservation policy locally.
+
+Primary target:
+
+- `src/backend/prealloc/prealloc.hpp`
+- `src/backend/prealloc/prepare.cpp`
+- `src/backend/prealloc/prepared_printer.cpp`
+
+Actions:
+
+- clarify which values must be preserved across the call boundary and why
+- publish call-clobber and save/restore ownership in target-independent terms
+- make the prepared printer expose preservation authority in a reviewable form
+
+Completion check:
+
+- prepared call plans state scalar preservation and clobber authority directly
+- backend consumers can follow published save/clobber facts without ABI
+  re-derivation
+
+### Step 3.3: Edge-Case Integration At Call Boundaries
+
+Goal: finish the remaining scalar call-boundary cases where variadic behavior,
+nested dynamic-stack interactions, or other edge conditions still hide missing
+prepared facts.
+
+Primary target:
+
+- `src/backend/prealloc/prealloc.hpp`
+- `src/backend/prealloc/prepare.cpp`
+- `src/backend/prealloc/prepared_printer.cpp`
+- `tests/backend/`
+
+Actions:
+
+- cover variadic and nested dynamic-stack interactions when they expose a real
+  prepared-contract gap
+- tighten tests and dumps around any remaining scalar call-boundary edge case
+  added in this step
+- stop and split into a new idea instead of absorbing grouped-register or
+  broader backend reconstruction work
+
+Completion check:
+
+- no known scalar call-boundary edge case in scope still depends on hidden
+  target-local reconstruction
+- Step 4 can focus on proof and consumer confirmation rather than new contract
+  discovery
 
 ## Step 4: Proof And Consumer Confirmation
 
