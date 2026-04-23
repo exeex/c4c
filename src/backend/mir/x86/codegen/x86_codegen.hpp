@@ -488,7 +488,6 @@ inline std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_
                                                  prepared_arch);
 }
 
-// Compatibility holdout until the reviewed prepared fast-path operand seam lands.
 std::string render_prepared_stack_memory_operand(std::size_t byte_offset,
                                                  std::string_view size_name);
 
@@ -500,19 +499,6 @@ std::optional<std::string> render_prepared_local_slot_memory_operand_if_supporte
     std::size_t stack_byte_bias,
     std::string_view size_name);
 
-std::optional<std::string> render_prepared_constant_folded_single_block_return_if_supported(
-    const c4c::backend::bir::Function& function,
-    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
-    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    c4c::TargetArch prepared_arch,
-    std::string_view asm_prefix,
-    std::string_view return_register);
-
-std::optional<std::string> render_prepared_constant_folded_single_block_return_if_supported(
-    const PreparedX86FunctionDispatchContext& context);
-
 std::optional<std::string> render_prepared_param_derived_i32_value_if_supported(
     std::string_view return_register,
     const c4c::backend::bir::Value& value,
@@ -521,77 +507,6 @@ std::optional<std::string> render_prepared_param_derived_i32_value_if_supported(
     const c4c::backend::bir::Param& param,
     const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
         minimal_param_register);
-
-std::optional<std::string> render_prepared_minimal_immediate_or_param_return_if_supported(
-    const c4c::backend::bir::Function& function,
-    const c4c::backend::bir::Block& entry,
-    c4c::TargetArch prepared_arch,
-    std::string_view asm_prefix,
-    std::string_view return_register,
-    const std::function<std::optional<std::string>(const c4c::backend::bir::Param&)>&
-        minimal_param_register);
-
-std::optional<std::string> render_prepared_minimal_immediate_or_param_return_if_supported(
-    const PreparedX86FunctionDispatchContext& context);
-
-std::optional<std::string> render_prepared_minimal_local_slot_return_if_supported(
-    const c4c::backend::bir::Function& function,
-    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
-    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    c4c::TargetArch prepared_arch,
-    std::string_view asm_prefix);
-
-std::optional<std::string> render_prepared_minimal_local_slot_return_if_supported(
-    const PreparedX86FunctionDispatchContext& context);
-
-std::optional<std::string> render_prepared_local_i16_arithmetic_guard_if_supported(
-    const c4c::backend::bir::Function& function,
-    const c4c::backend::bir::Block& entry,
-    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
-    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedControlFlowFunction* function_control_flow,
-    c4c::TargetArch prepared_arch,
-    std::string_view asm_prefix,
-    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block);
-
-std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported(
-    const c4c::backend::bir::Function& function,
-    const c4c::backend::bir::Block& entry,
-    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
-    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    c4c::TargetArch prepared_arch,
-    std::string_view asm_prefix);
-
-std::optional<std::string> render_prepared_local_i16_i64_sub_return_if_supported(
-    const PreparedX86FunctionDispatchContext& context);
-
-std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_if_supported(
-    const c4c::backend::bir::Module& module,
-    const c4c::backend::bir::Function& function,
-    const c4c::backend::bir::Block& entry,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    c4c::TargetArch prepared_arch,
-    std::string_view asm_prefix,
-    std::string_view return_register,
-    const std::unordered_set<std::string_view>& bounded_same_module_helper_global_names,
-    const std::function<const c4c::backend::bir::StringConstant*(std::string_view)>&
-        find_string_constant,
-    const std::function<const c4c::backend::bir::Global*(std::string_view)>& find_same_module_global,
-    const std::function<std::string(std::string_view)>& render_private_data_label,
-    const std::function<std::string(std::string_view)>& render_asm_symbol_name,
-    const std::function<std::string(const c4c::backend::bir::StringConstant&)>&
-        emit_string_constant_data,
-    const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
-        emit_same_module_global_data,
-    const std::function<std::string(std::string)>& prepend_bounded_same_module_helpers);
-
-std::optional<std::string> render_prepared_minimal_direct_extern_call_sequence_if_supported(
-    const PreparedX86FunctionDispatchContext& context);
 
 struct PreparedBoundedMultiDefinedCurrentI32Carrier {
   std::string_view value_name;
