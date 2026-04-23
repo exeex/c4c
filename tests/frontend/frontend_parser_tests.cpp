@@ -929,6 +929,35 @@ void test_parser_visible_type_alias_keeps_qualified_target_resolution() {
               "qualified value aliases should still resolve through the existing namespace-visible path");
 }
 
+void test_parser_resolve_typedef_type_chain_uses_local_visible_scope_lookup() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_TYPEDEF;
+  alias_ts.tag = arena.strdup("Target");
+
+  const c4c::TextId target_text = texts.intern("Target");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(target_text, target_ts);
+
+  const c4c::TypeSpec resolved = parser.resolve_typedef_type_chain(alias_ts);
+  expect_true(resolved.base == c4c::TB_INT,
+              "typedef-chain resolution should re-probe local visible typedef targets before flat lookup");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
 void test_parser_using_value_import_keeps_structured_target_key() {
   c4c::Lexer lexer("using ns::Target;\n", c4c::LexProfile::CppSubset);
   const std::vector<c4c::Token> tokens = lexer.scan_all();
@@ -1193,6 +1222,7 @@ int main() {
   test_parser_visible_type_alias_uses_scope_local_typedef_facade();
   test_parser_visible_type_alias_resolves_scope_local_target_type();
   test_parser_visible_type_alias_keeps_qualified_target_resolution();
+  test_parser_resolve_typedef_type_chain_uses_local_visible_scope_lookup();
   test_parser_using_value_import_keeps_structured_target_key();
   test_parser_global_using_value_import_keeps_global_target_resolution();
   test_parser_visible_value_alias_resolves_scope_local_target_type();

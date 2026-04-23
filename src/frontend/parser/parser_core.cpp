@@ -737,12 +737,19 @@ const TypeSpec* Parser::find_visible_typedef_type(TextId name_text_id,
 }
 
 TypeSpec Parser::resolve_typedef_type_chain(TypeSpec ts) const {
+    auto find_chain_typedef = [&](const char* tag) -> const TypeSpec* {
+        if (!tag || !tag[0]) return nullptr;
+        const std::string_view name(tag);
+        return name.find("::") == std::string_view::npos
+                   ? find_visible_typedef_type(name)
+                   : find_typedef_type(name);
+    };
     for (int depth = 0; depth < 16; ++depth) {
         if (ts.base != TB_TYPEDEF || ts.ptr_level > 0 || ts.array_rank > 0) {
             break;
         }
         if (!ts.tag) break;
-        const TypeSpec* next = find_typedef_type(ts.tag);
+        const TypeSpec* next = find_chain_typedef(ts.tag);
         if (!next) break;
         const bool is_const = ts.is_const;
         const bool is_volatile = ts.is_volatile;
@@ -754,9 +761,16 @@ TypeSpec Parser::resolve_typedef_type_chain(TypeSpec ts) const {
 }
 
 TypeSpec Parser::resolve_struct_like_typedef_type(TypeSpec ts) const {
+    auto find_chain_typedef = [&](const char* tag) -> const TypeSpec* {
+        if (!tag || !tag[0]) return nullptr;
+        const std::string_view name(tag);
+        return name.find("::") == std::string_view::npos
+                   ? find_visible_typedef_type(name)
+                   : find_typedef_type(name);
+    };
     ts = resolve_typedef_type_chain(ts);
     if (ts.base == TB_TYPEDEF && ts.tag) {
-        if (const TypeSpec* typedef_type = find_typedef_type(ts.tag)) {
+        if (const TypeSpec* typedef_type = find_chain_typedef(ts.tag)) {
             ts = *typedef_type;
         }
     }
