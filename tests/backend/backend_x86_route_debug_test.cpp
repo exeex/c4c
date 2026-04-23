@@ -1,5 +1,8 @@
+#include "src/backend/backend.hpp"
+#include "src/backend/bir/bir_printer.hpp"
 #include "src/backend/mir/x86/codegen/route_debug.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
+#include "src/backend/prealloc/prepared_printer.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -1295,6 +1298,18 @@ bool expect_contains(const std::string& text,
   return false;
 }
 
+bool expect_equal(const std::string& actual,
+                  const std::string& expected,
+                  const char* description) {
+  if (actual == expected) {
+    return true;
+  }
+  std::cerr << "[FAIL] mismatched " << description << "\n";
+  std::cerr << "--- actual ---\n" << actual << "\n";
+  std::cerr << "--- expected ---\n" << expected << "\n";
+  return false;
+}
+
 }  // namespace
 
 int main() {
@@ -1304,6 +1319,25 @@ int main() {
   const auto multi_param_compare_driven_miss = legalize_multi_param_compare_driven_miss_module();
   const std::string summary = c4c::backend::x86::summarize_prepared_module_routes(prepared);
   const std::string trace = c4c::backend::x86::trace_prepared_module_routes(prepared);
+  const c4c::backend::BackendOptions backend_dump_options{
+      .target_profile = x86_target_profile(),
+  };
+  const std::string backend_semantic_dump = c4c::backend::dump_module(
+      c4c::backend::BackendModuleInput{prepared.module},
+      backend_dump_options,
+      c4c::backend::BackendDumpStage::SemanticBir);
+  const std::string backend_prepared_dump = c4c::backend::dump_module(
+      c4c::backend::BackendModuleInput{prepared.module},
+      backend_dump_options,
+      c4c::backend::BackendDumpStage::PreparedBir);
+  const std::string backend_summary_dump = c4c::backend::dump_module(
+      c4c::backend::BackendModuleInput{prepared.module},
+      backend_dump_options,
+      c4c::backend::BackendDumpStage::MirSummary);
+  const std::string backend_trace_dump = c4c::backend::dump_module(
+      c4c::backend::BackendModuleInput{prepared.module},
+      backend_dump_options,
+      c4c::backend::BackendDumpStage::MirTrace);
   const std::string plain_miss_summary =
       c4c::backend::x86::summarize_prepared_module_routes(plain_miss);
   const std::string plain_miss_trace = c4c::backend::x86::trace_prepared_module_routes(plain_miss);
@@ -1423,7 +1457,21 @@ int main() {
       c4c::backend::x86::trace_prepared_module_routes(
           multi_defined_global_function_pointer_rejection);
 
-  if (!expect_contains(summary, "x86 handoff summary", "summary header") ||
+  if (!expect_equal(backend_semantic_dump,
+                    c4c::backend::bir::print(prepared.module),
+                    "generic semantic backend dump") ||
+      !expect_contains(backend_semantic_dump,
+                       "bir.func @short_circuit_or_prepare_contract() -> i32 {",
+                       "generic semantic backend dump body") ||
+      !expect_equal(backend_prepared_dump,
+                    c4c::backend::prepare::print(prepared),
+                    "generic prepared backend dump") ||
+      !expect_contains(backend_prepared_dump,
+                       "prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared",
+                       "generic prepared backend dump header") ||
+      !expect_equal(backend_summary_dump, summary, "target-local MIR summary backend dump") ||
+      !expect_equal(backend_trace_dump, trace, "target-local MIR trace backend dump") ||
+      !expect_contains(summary, "x86 handoff summary", "summary header") ||
       !expect_contains(summary, "function short_circuit_or_prepare_contract", "function name") ||
       !expect_contains(summary, "- top-level lane:", "summary lane line") ||
       !expect_contains(trace, "x86 handoff trace", "trace header") ||

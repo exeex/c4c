@@ -54,9 +54,13 @@ struct BackendOptions {
 };
 
 enum class BackendDumpStage {
+  // Generic backend semantic BIR text owned by the shared backend dump path.
   SemanticBir,
+  // Generic backend prepared BIR text owned by the shared backend dump path.
   PreparedBir,
+  // Target-local MIR route summary owned by the x86 route_debug surface.
   MirSummary,
+  // Target-local MIR route trace owned by the x86 route_debug surface.
   MirTrace,
 };
 
