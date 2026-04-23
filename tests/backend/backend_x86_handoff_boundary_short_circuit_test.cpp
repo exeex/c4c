@@ -2,6 +2,7 @@
 #include "src/backend/bir/bir_printer.hpp"
 #include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -1355,11 +1356,23 @@ int check_short_circuit_context_prefers_prepared_continuation_branch_condition_i
                  ": prepared short-circuit fixture no longer exposes the authoritative rhs/join compare metadata")
                     .c_str());
   }
+  if (!join_transfer.continuation_true_label.has_value() ||
+      !join_transfer.continuation_false_label.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit join transfer no longer publishes authoritative continuation labels")
+                    .c_str());
+  }
 
   const std::string expected_true_label =
-      std::string(block_label(prepared, rhs_branch_condition->true_label));
+      std::string(block_label(prepared, *join_transfer.continuation_true_label));
   const std::string expected_false_label =
-      std::string(block_label(prepared, rhs_branch_condition->false_label));
+      std::string(block_label(prepared, *join_transfer.continuation_false_label));
+  if (block_label(prepared, rhs_branch_condition->true_label) != expected_true_label ||
+      block_label(prepared, rhs_branch_condition->false_label) != expected_false_label) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer keeps rhs continuation metadata aligned with published join-transfer labels")
+                    .c_str());
+  }
 
   if (use_edge_store_slot_join) {
     if (join_transfer.edge_transfers.size() != 2 ||
@@ -1411,19 +1424,26 @@ int check_short_circuit_context_prefers_prepared_continuation_branch_condition_i
   join_branch_condition->true_label = intern_block_label(prepared, join_block->terminator.true_label);
   join_branch_condition->false_label =
       intern_block_label(prepared, join_block->terminator.false_label);
+  control_flow->branch_conditions.erase(
+      std::remove_if(control_flow->branch_conditions.begin(),
+                     control_flow->branch_conditions.end(),
+                     [&](const prepare::PreparedBranchCondition& branch_condition) {
+                       return block_label(prepared, branch_condition.block_label) != "entry";
+                     }),
+      control_flow->branch_conditions.end());
 
   const auto prepared_context =
       prepare::find_prepared_short_circuit_join_context(
           prepared.names, *control_flow, function, "entry");
   if (!prepared_context.has_value()) {
     return fail((std::string(failure_context) +
-                 ": shared helper no longer recognizes the short-circuit continuation contract when join-branch labels drift")
+                 ": shared helper no longer recognizes the short-circuit continuation contract once non-entry branch metadata is removed")
                     .c_str());
   }
   if (block_label(prepared, prepared_context->continuation_true_label) != expected_true_label ||
       block_label(prepared, prepared_context->continuation_false_label) != expected_false_label) {
     return fail((std::string(failure_context) +
-                 ": shared helper stopped preferring authoritative rhs continuation branch metadata")
+                 ": shared helper stopped preferring published continuation labels over join/rhs recomputation")
                     .c_str());
   }
 
@@ -1434,7 +1454,7 @@ int check_short_circuit_context_prefers_prepared_continuation_branch_condition_i
       block_label(prepared, prepared_compare_join_targets->true_label) != expected_true_label ||
       block_label(prepared, prepared_compare_join_targets->false_label) != expected_false_label) {
     return fail((std::string(failure_context) +
-                 ": shared compare-join helper stopped preferring authoritative rhs continuation targets")
+                 ": shared compare-join helper stopped preferring published continuation labels over join/rhs recomputation")
                     .c_str());
   }
 

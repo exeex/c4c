@@ -2800,11 +2800,8 @@ find_prepared_compare_join_continuation_targets(const PreparedNameTables& names,
       find_authoritative_branch_owned_join_transfer(names, function_cf, source_block_label_id);
   if (authoritative_join_transfer.has_value() &&
       authoritative_join_transfer->join_transfer != nullptr) {
-    if (const auto published_targets = published_prepared_compare_join_continuation_targets(
-            *authoritative_join_transfer->join_transfer);
-        published_targets.has_value()) {
-      return published_targets;
-    }
+    return published_prepared_compare_join_continuation_targets(
+        *authoritative_join_transfer->join_transfer);
   }
 
   if (const auto short_circuit_targets =
@@ -2815,28 +2812,7 @@ find_prepared_compare_join_continuation_targets(const PreparedNameTables& names,
       short_circuit_targets.has_value()) {
     return short_circuit_targets;
   }
-
-  if (!authoritative_join_transfer.has_value() ||
-      authoritative_join_transfer->join_transfer == nullptr) {
-    return std::nullopt;
-  }
-
-  const auto* join_block = find_block_in_function(
-      function,
-      prepared_block_label(names, authoritative_join_transfer->join_transfer->join_block_label));
-  if (join_block == nullptr) {
-    return std::nullopt;
-  }
-
-  const auto* join_branch_condition =
-      find_prepared_branch_condition(function_cf,
-                                     authoritative_join_transfer->join_transfer->join_block_label);
-  if (join_branch_condition == nullptr) {
-    return std::nullopt;
-  }
-
-  return find_prepared_compare_join_continuation_targets(
-      names, *authoritative_join_transfer->join_transfer, *join_block, *join_branch_condition);
+  return std::nullopt;
 }
 
 [[nodiscard]] inline std::optional<PreparedCompareJoinContinuationTargets>

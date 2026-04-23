@@ -429,8 +429,8 @@ int main() {
                      control_flow->branch_conditions.end(),
                      [&](const prepare::PreparedBranchCondition& branch_condition) {
                        return prepare::prepared_block_label(prepared.names,
-                                                            branch_condition.block_label) ==
-                              "logic.rhs.7";
+                                                            branch_condition.block_label) !=
+                              "entry";
                      }),
       control_flow->branch_conditions.end());
 

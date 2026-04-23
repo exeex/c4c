@@ -2,6 +2,7 @@
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/target_profile.hpp"
 
+#include <algorithm>
 #include <iostream>
 
 namespace {
@@ -28,6 +29,22 @@ const prepare::PreparedControlFlowFunction* find_control_flow_function(
   }
   return prepare::find_prepared_control_flow_function(
       prepared.control_flow, function_name_id);
+}
+
+prepare::PreparedControlFlowFunction* find_control_flow_function(
+    prepare::PreparedBirModule& prepared,
+    const char* function_name) {
+  const c4c::FunctionNameId function_name_id =
+      prepared.names.function_names.find(function_name);
+  if (function_name_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  for (auto& function : prepared.control_flow.functions) {
+    if (function.function_name == function_name_id) {
+      return &function;
+    }
+  }
+  return nullptr;
 }
 
 const prepare::PreparedBranchCondition* find_branch_condition(
@@ -353,7 +370,7 @@ int check_authoritative_join_ownership(const prepare::PreparedBirModule& prepare
 
 int check_authoritative_join_continuation_targets() {
   auto prepared = legalize_short_circuit_or_guard_module();
-  const auto* control_flow =
+  auto* control_flow =
       find_control_flow_function(prepared, "short_circuit_or_prepare_contract");
   if (control_flow == nullptr) {
     return fail("expected prepared control-flow publication for continuation target metadata");
@@ -384,6 +401,15 @@ int check_authoritative_join_continuation_targets() {
     return fail("expected prepared short-circuit join block for continuation target authority");
   }
   join_block->insts.clear();
+  control_flow->branch_conditions.erase(
+      std::remove_if(control_flow->branch_conditions.begin(),
+                     control_flow->branch_conditions.end(),
+                     [&](const prepare::PreparedBranchCondition& branch_condition) {
+                       return prepare::prepared_block_label(prepared.names,
+                                                            branch_condition.block_label) !=
+                              "entry";
+                     }),
+      control_flow->branch_conditions.end());
 
   const auto continuation_targets = prepare::find_prepared_compare_join_continuation_targets(
       prepared.names, *control_flow, *function, "entry");

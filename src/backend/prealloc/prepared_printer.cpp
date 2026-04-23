@@ -391,7 +391,8 @@ void append_prepared_control_flow(std::ostringstream& out, const PreparedBirModu
             << ")";
       }
       auto continuation_targets = published_prepared_compare_join_continuation_targets(transfer);
-      if (!continuation_targets.has_value() && function != nullptr) {
+      if (!continuation_targets.has_value() && !transfer.source_branch_block_label.has_value() &&
+          function != nullptr) {
         continuation_targets = find_prepared_compare_join_continuation_targets(
             module.names,
             function_cf,

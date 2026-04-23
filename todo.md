@@ -3,33 +3,30 @@ Source Idea Path: ideas/open/87_out_of_ssa_contract_and_parallel_copy_authority_
 Source Plan Path: plan.md
 Current Step ID: 2
 Current Step Title: Join And Parallel-Copy Authority Completion
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 2 now publishes authoritative continuation targets directly on branch-owned out-of-SSA join
-transfers via `continuation_true_label` and `continuation_false_label`, fills those labels for both
-generic branch-owned joins and short-circuit joins, and switches helper/printer paths to consume
-published labels before recomputing join-block shape. Coverage now locks the contract in two ways:
-`backend_prepare_authoritative_join_ownership_test` verifies published continuation labels survive
-after the join block loses the shape needed for recomputation, and `backend_prepared_printer_test`
-verifies the dump still prints `continuation_targets=(...)` when both join-block shape and rhs
-continuation recomputation are intentionally disabled.
+Step 2 now finishes the authoritative continuation-label handoff for branch-owned joins: the shared
+compare-join helper and prepared-control-flow dump no longer recompute continuation targets for
+authoritative branch-owned joins once `out_of_ssa` has published `continuation_true_label` and
+`continuation_false_label`. Coverage now hardens that contract across helper, printer, and x86
+handoff surfaces by removing join/rhs branch metadata from the authoritative short-circuit fixtures
+and proving the published labels still drive the result.
 
 ## Suggested Next
 
-Step 3: move the remaining branch-target consumers that still rediscover compare-join or
-short-circuit routing onto the published join-transfer continuation labels and parallel-copy
-authority fields, then trim any now-redundant shape-recovery fallback paths that no longer serve as
-compatibility scaffolding.
+Step 3: tighten proof-and-observation coverage around the published join/parallel-copy authority,
+especially any remaining non-authoritative compatibility fallbacks that still recover continuation
+or edge-copy meaning from raw CFG shape.
 
 ## Watchouts
 
-- Keep short-circuit continuation publication authoritative on the join transfer itself; helper
-  fallbacks are now compatibility paths, not the primary contract.
-- The printer test now deliberately sabotages both join-block and rhs-branch recomputation before
-  printing, so future refactors that remove published-label preference will fail fast.
+- Authoritative branch-owned continuation consumers should treat missing published continuation
+  labels as a contract break, not as permission to rediscover labels from join/rhs block shape.
+- The helper/printer tests now strip non-entry branch metadata from authoritative short-circuit
+  fixtures; any future regression back to CFG recomputation should fail immediately.
 - Keep phi elimination and parallel-copy authority in `out_of_ssa`; do not push semantics back into
   `legalize`, and keep grouped-register or frame/stack/call work out of this runbook.
 
