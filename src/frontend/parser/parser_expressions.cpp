@@ -796,7 +796,8 @@ Node* Parser::parse_primary() {
                 visible_type_head_name(
                     *this, qualifier_owner_text_id,
                     parser_text(qualifier_owner_text_id, qualifier_owner));
-            if (has_visible_typedef_type(qualifier_owner) ||
+            if (has_visible_typedef_type(qualifier_owner_text_id,
+                                         qualifier_owner) ||
                 (!resolved_owner.empty() &&
                  (has_visible_typedef_type(resolved_owner) ||
                   resolved_owner == current_tag ||
@@ -1349,7 +1350,8 @@ Node* Parser::parse_primary() {
                                 type_qn.qualifier_segments.front()));
             if (first_qualifier.empty()) return false;
 
-            return has_visible_typedef_type(first_qualifier) ||
+            return has_visible_typedef_type(first_qualifier_text_id,
+                                            first_qualifier) ||
                    template_state_.template_struct_defs.count(first_qualifier) > 0 ||
                    definition_state_.defined_struct_tags.count(first_qualifier) >
                        0;
