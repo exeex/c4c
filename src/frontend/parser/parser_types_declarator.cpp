@@ -626,9 +626,26 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
             resolved = dep_name;
             if (!has_typedef_type(resolved) && !qn.qualifier_segments.empty()) {
                 auto follow_nested_owner =
-                    [&](const std::vector<std::string>& owner_chain,
-                        bool global_qualified) -> const Node* {
-                    if (owner_chain.empty()) return nullptr;
+                    [&](const QualifiedNameRef& owner_name) -> const Node* {
+                    if (owner_name.qualifier_segments.empty()) return nullptr;
+
+                    auto owner_segment_text_id = [&](size_t index) -> TextId {
+                        if (index < owner_name.qualifier_text_ids.size() &&
+                            owner_name.qualifier_text_ids[index] != kInvalidText) {
+                            return owner_name.qualifier_text_ids[index];
+                        }
+                        if (index >= owner_name.qualifier_segments.size()) {
+                            return kInvalidText;
+                        }
+                        return parser_text_id_for_token(
+                            kInvalidText, owner_name.qualifier_segments[index]);
+                    };
+
+                    auto owner_segment_text = [&](size_t index) -> std::string_view {
+                        if (index >= owner_name.qualifier_segments.size()) return {};
+                        return parser_text(owner_segment_text_id(index),
+                                           owner_name.qualifier_segments[index]);
+                    };
 
                     auto qualified_node_name = [&](const Node* node) -> std::string {
                         if (!node) return {};
@@ -665,22 +682,23 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                         return qualified;
                     };
 
-                    for (size_t owner_start = 0; owner_start < owner_chain.size();
+                    for (size_t owner_start = 0;
+                         owner_start < owner_name.qualifier_segments.size();
                          ++owner_start) {
-                        std::string owner_tag = owner_chain[owner_start];
+                        std::string owner_tag(owner_segment_text(owner_start));
                         QualifiedNameRef owner_qn;
-                        owner_qn.is_global_qualified = global_qualified;
-                        owner_qn.qualifier_segments.assign(owner_chain.begin(),
-                                                           owner_chain.begin() + owner_start);
-                        owner_qn.qualifier_text_ids.reserve(
-                            owner_qn.qualifier_segments.size());
-                        for (const std::string& segment : owner_qn.qualifier_segments) {
+                        owner_qn.is_global_qualified =
+                            owner_name.is_global_qualified;
+                        owner_qn.qualifier_segments.assign(
+                            owner_name.qualifier_segments.begin(),
+                            owner_name.qualifier_segments.begin() + owner_start);
+                        owner_qn.qualifier_text_ids.reserve(owner_start);
+                        for (size_t i = 0; i < owner_start; ++i) {
                             owner_qn.qualifier_text_ids.push_back(
-                                parser_text_id_for_token(kInvalidText, segment));
+                                owner_segment_text_id(i));
                         }
                         owner_qn.base_name = owner_tag;
-                        owner_qn.base_text_id =
-                            parser_text_id_for_token(kInvalidText, owner_tag);
+                        owner_qn.base_text_id = owner_segment_text_id(owner_start);
                         const std::string resolved_owner_tag =
                             resolve_qualified_type_name(owner_qn);
                         if (!resolved_owner_tag.empty()) {
@@ -700,24 +718,43 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
 
                         const Node* owner = owner_it->second;
                         bool ok = true;
-                        for (size_t i = owner_start + 1; i < owner_chain.size(); ++i) {
+                        for (size_t i = owner_start + 1;
+                             i < owner_name.qualifier_segments.size(); ++i) {
                             const Node* nested_decl = nullptr;
                             const Node* nested_owner = nullptr;
+                            const TextId segment_text_id = owner_segment_text_id(i);
+                            const std::string_view segment_text =
+                                owner_segment_text(i);
                             auto matches_owner_segment = [&](const Node* candidate) -> bool {
                                 if (!candidate) return false;
-                                const char* candidate_name = candidate->name;
-                                const char* candidate_unqualified =
-                                    candidate->unqualified_name;
-                                if (candidate_name && owner_chain[i] == candidate_name)
-                                    return true;
-                                if (candidate_unqualified &&
-                                    owner_chain[i] == candidate_unqualified) {
+                                const std::string_view candidate_unqualified =
+                                    parser_text(candidate->unqualified_text_id,
+                                                candidate->unqualified_name
+                                                    ? candidate->unqualified_name
+                                                    : "");
+                                if (!candidate_unqualified.empty() &&
+                                    segment_text == candidate_unqualified) {
                                     return true;
                                 }
-                                if (candidate_name) {
-                                    const char* tail = std::strrchr(candidate_name, ':');
-                                    if (tail && tail[1] && owner_chain[i] == (tail + 1))
+                                if (candidate->name && candidate->name[0] &&
+                                    segment_text == candidate->name) {
+                                    return true;
+                                }
+                                if (candidate->n_qualifier_segments > 0 &&
+                                    candidate->qualifier_segments &&
+                                    candidate->unqualified_name &&
+                                    segment_text ==
+                                        parser_text(candidate->unqualified_text_id,
+                                                    candidate->unqualified_name)) {
+                                    return true;
+                                }
+                                if (candidate->name) {
+                                    const char* tail = std::strrchr(candidate->name, ':');
+                                    if (tail && tail[1] &&
+                                        segment_text ==
+                                            parser_text(segment_text_id, tail + 1)) {
                                         return true;
+                                    }
                                 }
                                 return false;
                             };
@@ -774,9 +811,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                 };
 
                 TypeSpec resolved_member{};
-                if (const Node* owner =
-                        follow_nested_owner(qn.qualifier_segments,
-                                            qn.is_global_qualified)) {
+                if (const Node* owner = follow_nested_owner(qn)) {
                     bool found_member = false;
                     if (owner->name && owner->name[0]) {
                         const std::string scoped_name =

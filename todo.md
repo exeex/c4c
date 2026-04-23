@@ -9,23 +9,24 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: kept the `using Alias = ns::box<int>::value_type` owner probe
-  on token-derived `TextId`s while scanning the declaration, so
-  `resolve_qualified_type_name()` and the visible-type fallback stop
-  reconstructing the namespace owner chain from raw strings in that path
-- kept the change inside parser declaration alias-owner resolution and
-  preserved the broader namespace tree / push-pop lookup behavior from the
-  prior Step 2 packets
+- Step 2 packet: kept `parse_dependent_typename_specifier()` on the parsed
+  `QualifiedNameRef` segment identities during nested owner walks, so the
+  owner lookup reuses parser-owned `qualifier_text_ids` instead of rebuilding
+  intermediate owner chains from raw strings before resolving them back into
+  parser state
+- kept the fallback owner/member recovery scoped to dependent typename
+  declarator handling and preserved the existing namespace tree / push-pop
+  lookup behavior
 
 ## Suggested Next
 
 - if Step 2 continues, audit remaining parser helper sites that still rebuild
   `QualifiedNameRef` segment `TextId`s from recovered strings when the source
   path already has parser-owned identity available
-- the nearest candidates are the nested owner walks in
-  `parser_types_declarator.cpp`; keep the route inside qualified namespace/type
-  traversal and avoid widening into unrelated declarator parsing, lexical
-  scope, binding-table, or backend cleanup
+- the remaining candidates now look more like compatibility membership or
+  self-reference checks than primary qualified-owner traversal; verify whether
+  any of those are still on the semantic lookup path before moving Step 2 to
+  canonical-string fallback containment
 
 ## Watchouts
 
