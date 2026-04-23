@@ -246,12 +246,30 @@ namespace {
     const PreparedRegallocFunction* regalloc_function,
     const PreparedValueHome& home,
     bir::TypeKind type) {
+  std::size_t contiguous_width = 1;
+  std::vector<std::string> occupied_register_names;
+  if (home.register_name.has_value()) {
+    occupied_register_names.push_back(*home.register_name);
+  }
+  if (regalloc_function != nullptr) {
+    if (const auto* regalloc_value = find_regalloc_value_by_name(*regalloc_function, home.value_name);
+        regalloc_value != nullptr) {
+      contiguous_width = std::max<std::size_t>(regalloc_value->register_group_width, 1);
+      if (regalloc_value->assigned_register.has_value() &&
+          home.register_name == std::optional<std::string>{regalloc_value->assigned_register->register_name}) {
+        contiguous_width = regalloc_value->assigned_register->contiguous_width;
+        occupied_register_names = regalloc_value->assigned_register->occupied_register_names;
+      }
+    }
+  }
   return PreparedStoragePlanValue{
       .value_id = home.value_id,
       .value_name = home.value_name,
       .encoding = storage_encoding_from_home(home),
       .bank = published_bank_for_value(regalloc_function, home.value_name, type),
+      .contiguous_width = contiguous_width,
       .register_name = home.register_name,
+      .occupied_register_names = std::move(occupied_register_names),
       .slot_id = home.slot_id,
       .stack_offset_bytes = home.offset_bytes,
       .immediate_i32 = home.immediate_i32,
@@ -385,18 +403,42 @@ namespace {
 }
 
 [[nodiscard]] std::vector<PreparedClobberedRegister> build_call_clobber_set(
-    const c4c::TargetProfile& target_profile) {
+    const c4c::TargetProfile& target_profile,
+    const PreparedRegallocFunction* regalloc_function) {
   std::vector<PreparedClobberedRegister> clobbers;
-  for (PreparedRegisterClass reg_class :
-       {PreparedRegisterClass::General, PreparedRegisterClass::Float, PreparedRegisterClass::Vector}) {
+  auto append_spans_for_width = [&](PreparedRegisterClass reg_class, std::size_t contiguous_width) {
     const PreparedRegisterBank bank = register_bank_from_class(reg_class);
-    for (const auto& register_span : caller_saved_register_spans(target_profile, reg_class, 1)) {
+    for (const auto& register_span :
+         caller_saved_register_spans(target_profile, reg_class, contiguous_width)) {
+      const auto duplicate = std::find_if(
+          clobbers.begin(),
+          clobbers.end(),
+          [&](const PreparedClobberedRegister& clobber) {
+            return clobber.bank == bank &&
+                   clobber.occupied_register_names == register_span.occupied_register_names;
+          });
+      if (duplicate != clobbers.end()) {
+        continue;
+      }
       clobbers.push_back(PreparedClobberedRegister{
           .bank = bank,
           .register_name = register_span.register_name,
           .contiguous_width = register_span.contiguous_width,
           .occupied_register_names = register_span.occupied_register_names,
       });
+    }
+  };
+  for (PreparedRegisterClass reg_class :
+       {PreparedRegisterClass::General, PreparedRegisterClass::Float, PreparedRegisterClass::Vector}) {
+    append_spans_for_width(reg_class, 1);
+    if (regalloc_function == nullptr) {
+      continue;
+    }
+    for (const auto& value : regalloc_function->values) {
+      if (value.register_class != reg_class || value.register_group_width <= 1) {
+        continue;
+      }
+      append_spans_for_width(reg_class, value.register_group_width);
     }
   }
   return clobbers;
@@ -753,8 +795,6 @@ void populate_storage_plans(PreparedBirModule& prepared) {
 
 void populate_call_plans(PreparedBirModule& prepared) {
   prepared.call_plans.functions.clear();
-  const std::vector<PreparedClobberedRegister> call_clobbers =
-      build_call_clobber_set(prepared.target_profile);
 
   for (const auto& function : prepared.module.functions) {
     if (function.is_declaration) {
@@ -773,6 +813,8 @@ void populate_call_plans(PreparedBirModule& prepared) {
     const auto* regalloc_function = find_regalloc_function(prepared.regalloc, function_name_id);
     const auto* liveness_function = find_liveness_function(prepared.liveness, function_name_id);
     const auto* value_locations = find_prepared_value_location_function(prepared, function_name_id);
+    const std::vector<PreparedClobberedRegister> call_clobbers =
+        build_call_clobber_set(prepared.target_profile, regalloc_function);
 
     for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
       const auto& block = function.blocks[block_index];

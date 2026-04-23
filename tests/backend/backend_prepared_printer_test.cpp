@@ -1704,6 +1704,12 @@ int main() {
   const auto grouped_cross_call_prepared = prepare_grouped_cross_call_preservation_dump_module();
   const auto* grouped_cross_call_plans = find_call_plans_function(
       grouped_cross_call_prepared, "grouped_cross_call_preservation_dump_contract");
+  const auto* grouped_cross_call_storage = find_storage_plan_function(
+      grouped_cross_call_prepared, "grouped_cross_call_preservation_dump_contract");
+  const auto* grouped_cross_call_carry =
+      grouped_cross_call_storage == nullptr
+          ? nullptr
+          : find_storage_value(grouped_cross_call_prepared, *grouped_cross_call_storage, "carry.pre");
   const auto grouped_cross_call_function_id =
       grouped_cross_call_prepared.names.function_names.find(
           "grouped_cross_call_preservation_dump_contract");
@@ -1713,7 +1719,7 @@ int main() {
           : prepare::find_prepared_frame_plan(grouped_cross_call_prepared,
                                               grouped_cross_call_function_id);
   if (grouped_cross_call_plans == nullptr || grouped_cross_call_plans->calls.size() != 1 ||
-      grouped_cross_call_frame_plan == nullptr) {
+      grouped_cross_call_frame_plan == nullptr || grouped_cross_call_carry == nullptr) {
     std::cerr << "[FAIL] missing grouped cross-call preservation dump fixture\n";
     return EXIT_FAILURE;
   }
@@ -1762,6 +1768,39 @@ int main() {
                            grouped_saved_it->occupied_register_names.front() + "," +
                            grouped_saved_it->occupied_register_names.back(),
                        "grouped cross-call preservation detail")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(grouped_cross_call_dump,
+                       "storage carry.pre value_id=" +
+                           std::to_string(grouped_cross_call_carry->value_id) +
+                           " encoding=register bank=vreg reg=" +
+                           *grouped_cross_call_carry->register_name +
+                           " width=2 units=" +
+                           grouped_cross_call_carry->occupied_register_names.front() + "," +
+                           grouped_cross_call_carry->occupied_register_names.back(),
+                       "grouped storage plan detail")) {
+    return EXIT_FAILURE;
+  }
+  const auto grouped_clobber_it = std::find_if(
+      grouped_cross_call.clobbered_registers.begin(),
+      grouped_cross_call.clobbered_registers.end(),
+      [](const prepare::PreparedClobberedRegister& clobber) {
+        return clobber.bank == prepare::PreparedRegisterBank::Vreg &&
+               clobber.contiguous_width == 2 &&
+               clobber.occupied_register_names.size() == 2;
+      });
+  if (grouped_clobber_it == grouped_cross_call.clobbered_registers.end()) {
+    std::cerr << "[FAIL] missing grouped clobber span authority in dump fixture\n";
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(grouped_cross_call_dump,
+                       clobber_summary(*grouped_clobber_it),
+                       "grouped call clobber summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(grouped_cross_call_dump,
+                       clobber_detail(*grouped_clobber_it),
+                       "grouped call clobber detail")) {
     return EXIT_FAILURE;
   }
 

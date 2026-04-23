@@ -2514,8 +2514,21 @@ int check_grouped_cross_call_preservation_contract() {
     return fail("grouped cross-call preservation contract: frame plan lost grouped saved-register span");
   }
   if (carry->bank != prepare::PreparedRegisterBank::Vreg ||
-      carry->register_name != preserved.register_name) {
+      carry->contiguous_width != 2 ||
+      carry->register_name != preserved.register_name ||
+      carry->occupied_register_names != preserved.occupied_register_names) {
     return fail("grouped cross-call preservation contract: storage plan lost grouped register home");
+  }
+  const auto grouped_clobber_it = std::find_if(
+      call_plan.clobbered_registers.begin(),
+      call_plan.clobbered_registers.end(),
+      [](const prepare::PreparedClobberedRegister& clobber) {
+        return clobber.bank == prepare::PreparedRegisterBank::Vreg &&
+               clobber.contiguous_width == 2 &&
+               clobber.occupied_register_names.size() == 2;
+      });
+  if (grouped_clobber_it == call_plan.clobbered_registers.end()) {
+    return fail("grouped cross-call preservation contract: call_plans lost grouped caller-clobber spans");
   }
 
   return 0;

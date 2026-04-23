@@ -1024,7 +1024,9 @@ struct PreparedStoragePlanValue {
   ValueNameId value_name = kInvalidValueName;
   PreparedStorageEncodingKind encoding = PreparedStorageEncodingKind::None;
   PreparedRegisterBank bank = PreparedRegisterBank::None;
+  std::size_t contiguous_width = 1;
   std::optional<std::string> register_name;
+  std::vector<std::string> occupied_register_names;
   std::optional<PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> stack_offset_bytes;
   std::optional<std::int64_t> immediate_i32;

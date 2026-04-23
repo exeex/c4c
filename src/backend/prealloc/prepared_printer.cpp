@@ -968,6 +968,9 @@ void append_storage_plans(std::ostringstream& out, const PreparedBirModule& modu
       if (value.register_name.has_value()) {
         out << " reg=" << *value.register_name;
       }
+      append_register_occupancy(out,
+                                value.contiguous_width,
+                                value.occupied_register_names);
       if (value.slot_id.has_value()) {
         out << " slot_id=#" << *value.slot_id;
       }
