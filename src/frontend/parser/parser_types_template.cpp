@@ -219,7 +219,7 @@ bool Parser::decode_type_ref_text(const std::string& text, TypeSpec* out) {
     const int saved_pos = pos_;
     auto saved_tokens = std::move(tokens_);
 
-    Lexer lexer(text, lex_profile_from(source_profile_));
+    Lexer lexer(text, lex_profile_from(core_input_state_.source_profile));
     std::vector<Token> injected_toks = lexer.scan_all();
     if (injected_toks.empty()) {
         restore_state(snapshot);

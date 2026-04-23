@@ -1957,7 +1957,8 @@ TypeSpec Parser::parse_base_type() {
                                     if (actual_args[pi].nttp_name &&
                                         std::strncmp(actual_args[pi].nttp_name, "$expr:", 6) == 0) {
                                         std::vector<Token> expr_toks = lex_template_expr_text(
-                                            actual_args[pi].nttp_name + 6, source_profile_);
+                                            actual_args[pi].nttp_name + 6,
+                                            core_input_state_.source_profile);
                                         long long ev = 0;
                                         if (eval_deferred_nttp_expr_tokens(
                                                 tpl_name, expr_toks,
@@ -1988,7 +1989,7 @@ TypeSpec Parser::parse_base_type() {
                                            primary_tpl->template_param_default_exprs[sz]) {
                                     std::vector<Token> expr_toks = lex_template_expr_text(
                                         primary_tpl->template_param_default_exprs[sz],
-                                        source_profile_);
+                                        core_input_state_.source_profile);
                                     if (eval_deferred_nttp_expr_tokens(tpl_name, expr_toks,
                                                                        prelim_tb, prelim_nb, &ev)) {
                                         da.value = ev;
@@ -2047,7 +2048,7 @@ TypeSpec Parser::parse_base_type() {
                                            primary_tpl->template_param_default_exprs[i]) {
                                     std::vector<Token> expr_toks = lex_template_expr_text(
                                         primary_tpl->template_param_default_exprs[i],
-                                        source_profile_);
+                                        core_input_state_.source_profile);
                                     if (eval_deferred_nttp_expr_tokens(tpl_name, expr_toks,
                                                                        type_bindings, nttp_bindings,
                                                                        &eval_val)) {
@@ -2396,7 +2397,9 @@ TypeSpec Parser::parse_base_type() {
                                                             }
                                                         }
                                                     }
-                                                    Lexer expr_lexer(expr_text, lex_profile_from(source_profile_));
+                                                    Lexer expr_lexer(
+                                                        expr_text,
+                                                        lex_profile_from(core_input_state_.source_profile));
                                                     std::vector<Token> expr_toks = expr_lexer.scan_all();
                                                     if (!expr_toks.empty() &&
                                                         expr_toks.back().kind == TokenKind::EndOfFile) {
@@ -2495,7 +2498,7 @@ TypeSpec Parser::parse_base_type() {
                                                                base_primary->template_param_default_exprs[bsz]) {
                                                         std::vector<Token> expr_toks = lex_template_expr_text(
                                                             base_primary->template_param_default_exprs[bsz],
-                                                            source_profile_);
+                                                            core_input_state_.source_profile);
                                                         if (eval_deferred_nttp_expr_tokens(origin, expr_toks,
                                                                                            base_prelim_tb, base_prelim_nb,
                                                                                            &ev)) {

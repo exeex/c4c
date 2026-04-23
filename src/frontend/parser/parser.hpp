@@ -133,8 +133,6 @@ class Parser {
   std::vector<TokenMutation>& token_mutations_ = core_input_state_.token_mutations;
   int& pos_ = core_input_state_.pos;
   Arena& arena_ = core_input_state_.arena;
-  SourceProfile& source_profile_ = core_input_state_.source_profile;
-  std::string& source_file_ = core_input_state_.source_file;
 
   // ── parser-owned shared lookup tables ────────────────────────────────────
   ParserSharedLookupState shared_lookup_state_;
@@ -372,8 +370,8 @@ class Parser {
   void register_known_fn_name(const std::string& name);
   bool is_typedef_name(std::string_view s) const;
   bool is_cpp_mode() const {
-    return source_profile_ == SourceProfile::CppSubset ||
-           source_profile_ == SourceProfile::C4;
+    return core_input_state_.source_profile == SourceProfile::CppSubset ||
+           core_input_state_.source_profile == SourceProfile::C4;
   }
 
   // ── namespace resolution / qualified-name plumbing ───────────────────────

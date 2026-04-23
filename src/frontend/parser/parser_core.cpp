@@ -1363,7 +1363,7 @@ void Parser::dump_parse_debug_trace() const {
     fprintf(stderr, "%s:%d:%d: note: parser debug trace follows\n",
             diagnostic_state_.best_parse_failure.active
                 ? diag_file_at(diagnostic_state_.best_parse_failure.token_index)
-                                       : source_file_.c_str(),
+                                       : core_input_state_.source_file.c_str(),
             diagnostic_state_.best_parse_failure.active
                 ? diagnostic_state_.best_parse_failure.line
                 : 1,
@@ -1401,7 +1401,7 @@ const char* Parser::diag_file_at(int token_index) const {
                 tokens_[token_index].file_id));
         if (!file.empty()) return arena_.strdup(file);
     }
-    return source_file_.c_str();
+    return core_input_state_.source_file.c_str();
 }
 
 void Parser::handle_pragma_gcc_visibility(const std::string& args) {
@@ -1991,7 +1991,7 @@ Node* Parser::make_node(NodeKind k, int line) {
     n->kind = k;
     n->line = line;
     n->column = 1;
-    n->file = arena_.strdup(source_file_);
+    n->file = arena_.strdup(core_input_state_.source_file);
     int loc_index = -1;
     if (pos_ >= 0 && pos_ < static_cast<int>(tokens_.size()) &&
         tokens_[pos_].line == line) {
