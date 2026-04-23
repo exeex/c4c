@@ -79,9 +79,10 @@ bool Parser::is_type_start() const {
     if (k == TokenKind::KwStaticAssert) return false;
     if (k == TokenKind::KwTypename) return true;
     if (k == TokenKind::Identifier) {
-        const std::string name(token_spelling(cur()));
         const TextId name_text_id = cur().text_id;
+        const std::string name(token_spelling(cur()));
         if (is_concept_name(name)) return false;
+        if (find_local_visible_typedef_type(name_text_id)) return true;
         if (starts_with_value_like_template_expr(*this, core_input_state_.tokens,
                                                  core_input_state_.pos)) return false;
         if (match_floatn_keyword_base(name, nullptr)) return true;
@@ -1014,6 +1015,7 @@ TypeSpec Parser::parse_base_type() {
             case TokenKind::KwTypename:
             case TokenKind::Identifier:
                 {
+                    const TextId name_text_id = cur().text_id;
                     const std::string_view name = token_spelling(cur());
                     if (parse_builtin_transform_type(&ts)) {
                         base_set = true;
@@ -1033,7 +1035,6 @@ TypeSpec Parser::parse_base_type() {
                             has_signed || has_unsigned || has_short || long_count > 0 ||
                             has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
                             has_struct || has_union || has_enum || base_set;
-                        const TextId name_text_id = cur().text_id;
                         const bool simple_unqualified_known_type_head =
                             k == TokenKind::Identifier &&
                             !(core_input_state_.pos + 1 <

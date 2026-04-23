@@ -7,18 +7,16 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by retargeting the statement-side `if` condition
-declaration probe and the shared value-like template disambiguation helper to
-keep the current token `TextId` on the first typedef/type-head lookup instead
-of dropping straight to the string-only wrapper path. Added focused parser
-coverage that proves a scope-local typedef alias now parses as an `if`
-condition declaration through the lexical scope facade.
+Advanced `plan.md` step 2 by retargeting `Parser::is_type_start()` so an
+identifier token probes the local visible typedef scope by `TextId` before the
+generic spelling-based type-head fallbacks. Added focused parser coverage that
+calls the helper directly with a scope-local typedef alias.
 
 ## Suggested Next
 Continue `plan.md` step 2 with one narrow packet that audits the remaining
-parser helper sites where an identifier token already carries `TextId` but the
-first type-head or typedef probe still routes through a string-only wrapper or
-recomputed spelling path.
+identifier-token type-head helpers in `parser_types_declarator.cpp` for the
+same local-visible-typedef-first ordering before any broader visible-facade
+fallbacks.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. Do not reopen the
