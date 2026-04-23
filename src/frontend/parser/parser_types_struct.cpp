@@ -1751,7 +1751,11 @@ void Parser::begin_record_body_context(const char* tag,
         return;
 
     register_typedef_name(template_origin_name, false);
-    if (!has_typedef_type(template_origin_name)) {
+    const bool has_existing_template_origin_type =
+        std::strstr(template_origin_name, "::") == nullptr
+            ? has_visible_typedef_type(template_origin_name)
+            : has_typedef_type(template_origin_name);
+    if (!has_existing_template_origin_type) {
         register_tag_type_binding(template_origin_name, TB_STRUCT, tag);
     }
 }

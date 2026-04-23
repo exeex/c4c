@@ -791,6 +791,70 @@ void test_parser_is_typedef_name_uses_local_visible_scope_lookup() {
               "test fixture should balance the local visible typedef scope");
 }
 
+void test_parser_conflicting_user_typedef_binding_uses_local_visible_scope_lookup() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::C);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  c4c::TypeSpec different_ts = alias_ts;
+  different_ts.base = c4c::TB_FLOAT;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+  const c4c::Parser::SymbolId alias_symbol =
+      parser.shared_lookup_state_.parser_name_tables.intern_identifier("Alias");
+  parser.shared_lookup_state_.parser_name_tables.user_typedefs.insert(alias_symbol);
+
+  expect_true(!parser.has_conflicting_user_typedef_binding("Alias", alias_ts),
+              "typedef conflict checks should accept matching scope-local visible typedefs");
+  expect_true(parser.has_conflicting_user_typedef_binding("Alias", different_ts),
+              "typedef conflict checks should reject incompatible scope-local visible typedefs");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_record_body_context_keeps_visible_template_origin_lookup_local() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  expect_true(parser.find_typedef_type("Alias") == nullptr,
+              "local visible typedef fixtures should not populate the flat typedef table");
+
+  std::string saved_struct_tag;
+  std::string struct_source_name;
+  parser.begin_record_body_context("Widget", "Alias", &saved_struct_tag,
+                                   &struct_source_name);
+
+  expect_eq(struct_source_name, "Alias",
+            "record body setup should preserve the template origin spelling");
+  expect_true(parser.find_typedef_type("Alias") == nullptr,
+              "record body setup should not synthesize a flat typedef binding when a visible local alias already exists");
+  const c4c::TypeSpec* visible_alias = parser.find_visible_typedef_type("Alias");
+  expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
+              "record body setup should continue resolving the template origin through the visible typedef facade");
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
 void test_parser_template_member_suffix_probe_uses_token_spelling() {
   c4c::Lexer lexer(
       "template<int N>\n"
@@ -972,6 +1036,8 @@ int main() {
   test_parser_decode_type_ref_text_uses_local_visible_scope_lookup();
   test_parser_dependent_typename_uses_local_visible_owner_alias();
   test_parser_is_typedef_name_uses_local_visible_scope_lookup();
+  test_parser_conflicting_user_typedef_binding_uses_local_visible_scope_lookup();
+  test_parser_record_body_context_keeps_visible_template_origin_lookup_local();
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
   test_parser_alias_template_value_probes_use_token_spelling();

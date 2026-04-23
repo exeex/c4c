@@ -7,21 +7,21 @@ Current Step Title: Move unqualified visible lookup onto the new scope-local pat
 # Current Packet
 
 ## Just Finished
-Completed another Step 4 parser packet by retargeting remaining unqualified
-owner/member typedef reconstruction helpers through the parser-visible scope
-facade instead of direct legacy typedef-table probes. Struct-like member
-typedef lookup in `parse_base_type()`, dependent owner-tag recovery in
-`parse_dependent_typename_specifier(...)`, and template-arg type-ref decoding
-now consult visible typedef lookup first for unqualified aliases, and a parser
-unit regression now proves that `Alias::type` resolves through a scope-local
-owner alias.
+Completed another Step 4 parser packet by retargeting two remaining
+unqualified helper paths away from flat typedef-table probes. Declaration-side
+user-typedef conflict checks now consult the visible typedef facade for
+single-name aliases, and record-body template-origin setup now avoids
+synthesizing a flat typedef binding when an unqualified template-origin name
+is already satisfied by scope-local visible lookup. Parser unit regressions
+now prove both behaviors directly with local visible alias fixtures.
 
 ## Suggested Next
-Continue Step 4 by reviewing the remaining unqualified parser helpers that
-still call `has_typedef_type(...)` or `find_typedef_type(...)` directly
-outside the newly patched member-type reconstruction path, especially record
-and declaration helpers that still probe unqualified aliases through the flat
-typedef tables.
+Continue Step 4 by reviewing the remaining namespace-resolution helpers in
+`parser_core.cpp` that still fall back to direct `has_typedef_type(...)`
+checks for unqualified names during visible type resolution. Keep the next
+packet narrow: only retarget obviously unqualified fallback probes that can
+use the visible facade without changing qualified or namespace-traversal
+behavior.
 
 ## Watchouts
 Do not collapse namespace traversal into lexical lookup. This packet only

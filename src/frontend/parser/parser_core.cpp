@@ -541,7 +541,9 @@ bool Parser::is_user_typedef_name(const std::string& name) const {
 
 bool Parser::has_conflicting_user_typedef_binding(const std::string& name,
                                                   const TypeSpec& type) const {
-    const TypeSpec* existing_typedef = find_typedef_type(name);
+    const TypeSpec* existing_typedef =
+        name.find("::") == std::string::npos ? find_visible_typedef_type(name)
+                                             : find_typedef_type(name);
     return is_user_typedef_name(name) && existing_typedef &&
            !are_types_compatible(*existing_typedef, type);
 }
