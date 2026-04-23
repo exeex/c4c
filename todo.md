@@ -7,17 +7,16 @@ Current Step Title: Reduce compatibility rendering to bridge-only support on tou
 # Current Packet
 
 ## Just Finished
-Updated `lookup_type_in_context(...)` so a structured `QualifiedNameKey` hit now prefers `render_qualified_name(...)` and only falls back to compatibility rendering if the structured render cannot be produced. The touched structured type lookup path no longer treats compatibility rendering as authoritative on the hit branch.
+Completed plan step 4 on the record/enum tag canonicalization seam by making `bridge_name_in_context(...)` structured-first and routing touched parser type-tag paths through it. Forward declarations, record definitions, and enum tags in namespace context now prefer structured rendering before the compatibility bridge.
 
 ## Suggested Next
-Check whether any adjacent structured type lookup helper still prefers compatibility-rendered names on a structured hit, and only then decide whether the remaining bridge fallback can be narrowed further.
+Check the remaining owner/type helper in `parser_types_base.cpp` that still rebuilds `canonical_owner` with `compatibility_namespace_name_in_context(...)` while searching template struct primaries, and only then decide whether another narrow structured-first bridge cleanup is warranted.
 
 ## Watchouts
-`has_var_type(...)` still uses the legacy value tables, so the structured-first probe must stay narrow and should not turn into a repo-wide var-identity migration. The current slice also depends on the shared qualified-name renderer being available through parser headers, so future cleanup should keep that dependency local.
+`has_var_type(...)` and other value-side fallbacks still rely on legacy tables, so the structured-first bridge cleanup should stay on parser type identity paths only. `compatibility_namespace_name_in_context(...)` is still the required bridge fallback when token text or path rendering is unavailable; this slice only demoted it from the primary path on touched record/enum tag flows.
 
 ## Proof
 Passed. Proof run:
 `cmake --build --preset default`
-`ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
-`ctest --test-dir build -j --output-on-failure -R '^cpp_positive_sema_using_global_scope_decl_parse_cpp$'`
+`ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_positive_sema_namespace_struct_type_basic_cpp|cpp_positive_sema_record_member_enum_parse_cpp)$'`
 Log: `test_after.log`

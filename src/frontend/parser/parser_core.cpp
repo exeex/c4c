@@ -2154,8 +2154,8 @@ std::string Parser::compatibility_namespace_name_in_context(
 
 std::string Parser::bridge_name_in_context(int context_id, TextId name_text_id,
                                            std::string_view fallback_name) const {
-    return compatibility_namespace_name_in_context(context_id, name_text_id,
-                                                   fallback_name);
+    return render_lookup_name_in_context(*this, context_id, name_text_id,
+                                         fallback_name);
 }
 
 int Parser::resolve_namespace_context(const QualifiedNameRef& name) const {
