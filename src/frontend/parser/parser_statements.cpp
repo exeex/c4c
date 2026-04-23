@@ -851,10 +851,11 @@ Node* Parser::parse_stmt() {
         };
         auto has_visible_value_binding = [&](const std::string& name) -> bool {
             if (name.empty()) return false;
+            if (find_visible_var_type(name)) return true;
+            if (has_known_fn_name(name)) return true;
             const std::string resolved =
                 resolve_visible_value_name(cur().text_id, name);
-            return has_var_type(name) || has_known_fn_name(name) ||
-                   has_var_type(resolved) || has_known_fn_name(resolved);
+            return !resolved.empty() && has_known_fn_name(resolved);
         };
         if (is_cpp_mode() && check(TokenKind::Identifier) &&
             has_visible_value_binding(std::string(token_spelling(cur()))) &&

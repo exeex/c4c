@@ -1,20 +1,21 @@
 Status: Active
 Source Idea Path: ideas/open/83_parser_scope_textid_binding_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Introduce a unified TextId-first lookup facade
+Current Step ID: 4
+Current Step Title: Move unqualified visible lookup onto the new scope-local path
 
 # Current Packet
 
 ## Just Finished
-Completed plan Step 3 by adding `TextId`-aware visible lookup helpers that
-probe the new lexical typedef/value tables first for unqualified names, then
-fall back to the existing namespace and compatibility bridge paths.
+Started plan Step 4 by moving the remaining unqualified visible probes in
+statement/helper logic onto the local-first lookup facade. The statement-side
+type/value disambiguation now uses the scoped value lookup path, and the helper
+type-head probe now asks the scoped typedef facade before falling back to the
+legacy visible type spelling path.
 
 ## Suggested Next
-Start Step 4 by routing more unqualified visible lookup call sites through the
-new local-first facade so block-local visibility stops depending on the legacy
-flat parser binding tables.
+Continue Step 4 by sweeping the remaining unqualified visible probes in parser
+helper logic for any last manual resolve-plus-flat-table checks.
 
 ## Watchouts
 Do not collapse namespace traversal into lexical lookup. Step 3 only adds the

@@ -274,9 +274,9 @@ bool is_known_simple_type_head(const Parser& parser, const std::string& name) {
     if (match_floatn_keyword_base(name, nullptr)) return true;
     if (parser.is_template_scope_type_param(name)) return true;
     if (parser.is_typedef_name(name)) return true;
+    if (parser.has_visible_typedef_type(name)) return true;
     const std::string resolved = parser.resolve_visible_type_name(name);
-    return parser.has_typedef_type(resolved) ||
-           parser.template_state_.template_struct_defs.count(name) > 0 ||
+    return parser.template_state_.template_struct_defs.count(name) > 0 ||
            parser.template_state_.template_struct_defs.count(resolved) > 0 ||
            parser.definition_state_.defined_struct_tags.count(name) > 0 ||
            parser.definition_state_.defined_struct_tags.count(resolved) > 0;
