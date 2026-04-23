@@ -2095,10 +2095,6 @@ std::string Parser::resolve_visible_concept_name(TextId name_text_id,
         binding_state_.concept_name_text_ids.count(name_text_id) > 0) {
         return std::string(name);
     }
-    if (is_unqualified_lookup_name(name) &&
-        binding_state_.concept_names.count(std::string(name)) > 0) {
-        return std::string(name);
-    }
     const std::string spelled(name);
     return resolve_visible_name_from_namespace_stack(
         namespace_state_.namespace_stack, spelled,
@@ -2123,9 +2119,8 @@ bool Parser::is_concept_name(const std::string& name) const {
         binding_state_.concept_name_text_ids.count(name_text_id) > 0) {
         return true;
     }
-    if (binding_state_.concept_names.count(name) > 0) return true;
     const std::string resolved = resolve_visible_concept_name(name_text_id, name);
-    return resolved != name && binding_state_.concept_names.count(resolved) > 0;
+    return resolved != name;
 }
 
 void Parser::refresh_current_namespace_bridge() {
@@ -2495,11 +2490,6 @@ bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
         *resolved = std::string(name);
         return true;
     }
-    if (context_id == 0 && is_unqualified_lookup_name(name) &&
-        binding_state_.concept_names.count(std::string(name)) > 0) {
-        *resolved = std::string(name);
-        return true;
-    }
     const QualifiedNameKey candidate_key =
         known_fn_name_key_in_context(context_id, name_text_id, name);
     if (has_structured_concept_name(candidate_key)) {
@@ -2507,12 +2497,6 @@ bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
         if (resolved->empty()) {
             *resolved = bridge_name_in_context(context_id, name_text_id, name);
         }
-        return true;
-    }
-    const std::string candidate =
-        bridge_name_in_context(context_id, name_text_id, name);
-    if (binding_state_.concept_names.count(candidate)) {
-        *resolved = candidate;
         return true;
     }
 

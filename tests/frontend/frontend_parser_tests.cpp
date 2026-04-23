@@ -468,9 +468,23 @@ void test_parser_type_start_probes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ConceptName"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
   };
-  parser.binding_state_.concept_names.insert("ConceptName");
+  const c4c::TextId concept_text_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ConceptName");
+  parser.binding_state_.concept_name_text_ids.insert(concept_text_id);
   expect_true(!parser.looks_like_unresolved_identifier_type_head(0),
               "identifier-type probes should use parser-owned spelling when excluding concept names");
+
+  const c4c::TextId ns_text_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
+  const int ns_context_id =
+      parser.ensure_named_namespace_context(0, ns_text_id, "ns");
+  const c4c::TextId qualified_concept_text_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ScopedConcept");
+  parser.register_concept_name_in_context(ns_context_id,
+                                          qualified_concept_text_id,
+                                          "ScopedConcept");
+  expect_true(parser.is_concept_name("ns::ScopedConcept"),
+              "qualified concept lookup should use structured concept keys");
 }
 
 void test_parser_exception_specs_and_attributes_use_token_spelling() {

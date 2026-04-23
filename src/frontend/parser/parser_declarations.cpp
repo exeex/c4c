@@ -249,11 +249,6 @@ bool try_skip_cpp_concept_declaration(Parser& parser) {
     }
     parser.register_concept_name_in_context(
         parser.current_namespace_context_id(), concept_name_text_id, concept_name);
-    const std::string qualified = parser.bridge_name_in_context(
-        parser.current_namespace_context_id(), concept_name_text_id, concept_name);
-    if (qualified != concept_name) {
-        parser.binding_state_.concept_names.insert(qualified);
-    }
     return true;
 }
 
