@@ -22,6 +22,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/prepared_countdown_render.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/prepared_local_slot_render.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/prepared_param_zero_render.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/prepared/prepared_fast_path_dispatch.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/prepared_module_emit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/route_debug.cpp"
     ${C4C_BACKEND_BIR_SOURCES}

@@ -1673,13 +1673,6 @@ std::optional<std::string> render_prepared_compare_driven_entry_if_supported(
     const std::function<std::optional<std::string>(const c4c::backend::bir::Global&)>&
         emit_same_module_global_data);
 
-std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_branch_compare(
-    const c4c::backend::bir::BinaryInst& compare,
-    const std::optional<MaterializedI32Compare>& current_materialized_compare,
-    const std::optional<std::string_view>& current_i32_name,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
-
 std::optional<PreparedI32NamedImmediateCompareSelection>
 select_prepared_i32_named_immediate_compare_if_supported(
     const c4c::backend::bir::Value& lhs,
@@ -1692,21 +1685,6 @@ select_prepared_i32_named_immediate_compare_for_value_if_supported(
     std::string_view compared_value_name);
 
 std::string render_prepared_i32_eax_immediate_compare_setup(std::int64_t compare_immediate);
-
-std::optional<std::pair<std::string, std::string>>
-render_prepared_guard_false_branch_compare_from_condition(
-    const c4c::backend::prepare::PreparedBranchCondition& condition,
-    const std::optional<MaterializedI32Compare>& current_materialized_compare,
-    const std::optional<std::string_view>& current_i32_name,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
-
-std::optional<ShortCircuitEntryCompareContext> build_prepared_guard_compare_context(
-    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
-    const std::optional<MaterializedI32Compare>& current_materialized_compare,
-    const std::optional<std::string_view>& current_i32_name,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
 
 std::optional<c4c::backend::prepare::PreparedShortCircuitJoinContext>
 find_prepared_short_circuit_join_context_if_supported(
