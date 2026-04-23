@@ -775,7 +775,10 @@ long long sizeof_type_spec(const TypeSpec& ts);
 long long alignof_type_spec(const TypeSpec& ts);
 bool eval_const_int(Node* n, long long* out,
                     const std::unordered_map<std::string, Node*>* struct_map = nullptr,
-                    const std::unordered_map<std::string, long long>* named_consts = nullptr);
+                    const std::unordered_map<TextId, long long>* named_consts = nullptr);
+bool eval_const_int(Node* n, long long* out,
+                    const std::unordered_map<std::string, Node*>* struct_map,
+                    const std::unordered_map<std::string, long long>* named_consts);
 
 bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);

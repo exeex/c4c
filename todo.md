@@ -7,13 +7,13 @@ Current Step Title: Replace remaining suitable single-name string tables
 # Current Packet
 
 ## Just Finished
-Advanced Step 5 by migrating parser enum-constant storage and helper lookup to `TextId` for unqualified enumerator identity, updating enum parsing to record `TextId` keys and constant-expression evaluation to resolve enum references through `unqualified_text_id`.
+Advanced Step 5 by migrating parser `const_int_bindings` to `TextId`-keyed unqualified identity, updating global constant binding registration to store declaration `TextId`s and constant-expression evaluation to resolve parser const-int references through unqualified `TextId` lookup only.
 
 ## Suggested Next
 Continue Step 5 with the next narrow single-name parser binding table that still uses `std::string` for semantic identity, keeping qualified and namespace-scoped lookup paths out of scope.
 
 ## Watchouts
-Keep enum work limited to unqualified enumerator identity. Do not fold qualified enum references, namespace traversal, or other spelling-dependent constant tables into the same packet.
+This packet intentionally left qualified const-int name behavior unchanged: parser constant-expression lookup now accepts only truly unqualified variable refs by `unqualified_text_id`. Do not fold namespace-qualified fallback behavior into the same migration.
 
 ## Proof
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`

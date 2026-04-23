@@ -260,6 +260,9 @@ long long alignof_type_spec(const TypeSpec& ts) {
 
 bool eval_const_int(Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* struct_map,
+    const std::unordered_map<TextId, long long>* named_consts);
+bool eval_const_int(Node* n, long long* out,
+    const std::unordered_map<std::string, Node*>* struct_map,
     const std::unordered_map<std::string, long long>* named_consts);
 
 // Forward declaration
@@ -381,6 +384,101 @@ static bool compute_offsetof(const char* tag, const char* field_name,
                 if (f->type.array_dims[d] > 0) sz *= f->type.array_dims[d];
         }
         offset += sz;
+    }
+    return false;
+}
+
+template <typename NamedConstTable>
+static bool lookup_unqualified_const_int_binding(
+    const Node* n, const NamedConstTable* named_consts, long long* out) {
+    if (!n || !named_consts || !out) return false;
+    if (n->is_global_qualified || n->n_qualifier_segments != 0 ||
+        n->unqualified_text_id == kInvalidText) {
+        return false;
+    }
+    const auto it = named_consts->find(n->unqualified_text_id);
+    if (it == named_consts->end()) return false;
+    *out = it->second;
+    return true;
+}
+
+bool eval_const_int(Node* n, long long* out,
+    const std::unordered_map<std::string, Node*>* struct_map,
+    const std::unordered_map<TextId, long long>* named_consts) {
+    if (!n) return false;
+    if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) {
+        *out = n->ival;
+        return true;
+    }
+    if (n->kind == NK_VAR && n->name) {
+        return lookup_unqualified_const_int_binding(n, named_consts, out);
+    }
+    if (n->kind == NK_CAST && n->left) {
+        return eval_const_int(n->left, out, struct_map, named_consts);
+    }
+    if (n->kind == NK_OFFSETOF) {
+        if (n->type.base == TB_STRUCT || n->type.base == TB_UNION) {
+            return compute_offsetof(n->type.tag, n->name, struct_map, out);
+        }
+        return false;
+    }
+    if (n->kind == NK_ALIGNOF_TYPE) {
+        *out = field_align(n->type, struct_map);
+        return true;
+    }
+    if (n->kind == NK_SIZEOF_TYPE) {
+        long long sz = sizeof_type_spec(n->type);
+        if ((n->type.base == TB_STRUCT || n->type.base == TB_UNION) && n->type.tag) {
+            sz = struct_sizeof(n->type.tag, struct_map);
+        }
+        if (n->type.array_rank > 0) {
+            for (int i = 0; i < n->type.array_rank; ++i)
+                if (n->type.array_dims[i] > 0) sz *= n->type.array_dims[i];
+        }
+        *out = sz;
+        return true;
+    }
+    if (n->kind == NK_SIZEOF_EXPR) {
+        return false;
+    }
+    if (n->kind == NK_SIZEOF_PACK) {
+        return false;
+    }
+    if (n->kind == NK_UNARY && n->op && n->left) {
+        long long v;
+        if (!eval_const_int(n->left, &v, struct_map, named_consts)) return false;
+        if (strcmp(n->op, "-") == 0) { *out = -v; return true; }
+        if (strcmp(n->op, "+") == 0) { *out = v; return true; }
+        if (strcmp(n->op, "~") == 0) { *out = ~v; return true; }
+        if (strcmp(n->op, "!") == 0) { *out = !v; return true; }
+    }
+    if (n->kind == NK_BINOP && n->op) {
+        long long l, r;
+        if (!eval_const_int(n->left, &l, struct_map, named_consts)) return false;
+        if (!eval_const_int(n->right, &r, struct_map, named_consts)) return false;
+        if (strcmp(n->op, "+")  == 0) { *out = l + r; return true; }
+        if (strcmp(n->op, "-")  == 0) { *out = l - r; return true; }
+        if (strcmp(n->op, "*")  == 0) { *out = l * r; return true; }
+        if (strcmp(n->op, "/")  == 0 && r != 0) { *out = l / r; return true; }
+        if (strcmp(n->op, "%")  == 0 && r != 0) { *out = l % r; return true; }
+        if (strcmp(n->op, "<<") == 0) { *out = l << r; return true; }
+        if (strcmp(n->op, ">>") == 0) { *out = l >> r; return true; }
+        if (strcmp(n->op, "&")  == 0) { *out = l & r;  return true; }
+        if (strcmp(n->op, "|")  == 0) { *out = l | r;  return true; }
+        if (strcmp(n->op, "^")  == 0) { *out = l ^ r;  return true; }
+        if (strcmp(n->op, "<")  == 0) { *out = l < r;  return true; }
+        if (strcmp(n->op, "<=") == 0) { *out = l <= r; return true; }
+        if (strcmp(n->op, ">")  == 0) { *out = l > r;  return true; }
+        if (strcmp(n->op, ">=") == 0) { *out = l >= r; return true; }
+        if (strcmp(n->op, "==") == 0) { *out = l == r; return true; }
+        if (strcmp(n->op, "!=") == 0) { *out = l != r; return true; }
+        if (strcmp(n->op, "&&") == 0) { *out = (l && r); return true; }
+        if (strcmp(n->op, "||") == 0) { *out = (l || r); return true; }
+    }
+    if (n->kind == NK_TERNARY && n->cond && n->then_ && n->else_) {
+        long long c;
+        if (!eval_const_int(n->cond, &c, struct_map, named_consts)) return false;
+        return eval_const_int(c ? n->then_ : n->else_, out, struct_map, named_consts);
     }
     return false;
 }

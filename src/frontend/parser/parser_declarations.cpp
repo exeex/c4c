@@ -3312,7 +3312,8 @@ top_level_base_ready:
     // Global variable (possibly with initializer and multiple declarators)
     std::vector<Node*> gvars;
 
-    auto make_gvar = [&](TypeSpec gts, const char* gname, const char* source_name, Node* ginit,
+    auto make_gvar = [&](TypeSpec gts, const char* gname, const char* source_name,
+                         TextId source_name_text_id, Node* ginit,
                          Node** fn_ptr_params, int n_fn_ptr_params,
                          bool fn_ptr_variadic,
                          Node** ret_fn_ptr_params = nullptr,
@@ -3359,9 +3360,14 @@ top_level_base_ready:
             long long cv = 0;
             if (eval_const_int(ginit, &cv, &definition_state_.struct_tag_def_map,
                                &binding_state_.const_int_bindings)) {
-                binding_state_.const_int_bindings[gname] = cv;
-                if (source_name && std::strcmp(source_name, gname) != 0)
-                    binding_state_.const_int_bindings[source_name] = cv;
+                const TextId binding_name_text_id =
+                    source_name_text_id != kInvalidText
+                        ? source_name_text_id
+                        : parser_text_id_for_token(
+                              kInvalidText, source_name ? source_name : "");
+                if (binding_name_text_id != kInvalidText) {
+                    binding_state_.const_int_bindings[binding_name_text_id] = cv;
+                }
             }
         }
         return gv;
@@ -3372,7 +3378,8 @@ top_level_base_ready:
         (is_cpp_mode() && check(TokenKind::LBrace))) {
         first_init = parse_initializer();
     }
-    gvars.push_back(make_gvar(ts, scoped_decl_name, decl_name, first_init, decl_fn_ptr_params,
+    gvars.push_back(make_gvar(ts, scoped_decl_name, decl_name, decl_name_text_id,
+                              first_init, decl_fn_ptr_params,
                               decl_n_fn_ptr_params, decl_fn_ptr_variadic,
                               decl_ret_fn_ptr_params, decl_n_ret_fn_ptr_params,
                               decl_ret_fn_ptr_variadic));
@@ -3396,7 +3403,7 @@ top_level_base_ready:
             (is_cpp_mode() && check(TokenKind::LBrace))) init2 = parse_initializer();
         if (n2) {
             const char* scoped_n2 = qualify_name_arena(n2_text_id, n2);
-            gvars.push_back(make_gvar(ts2, scoped_n2, n2, init2,
+            gvars.push_back(make_gvar(ts2, scoped_n2, n2, n2_text_id, init2,
                                           fn_ptr_params2, n_fn_ptr_params2,
                                           fn_ptr_variadic2));
         }
