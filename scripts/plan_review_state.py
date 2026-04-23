@@ -17,10 +17,10 @@ SUMMARY_LINE_RE = re.compile(
 FAILED_LIST_RE = re.compile(r"^\s*\d+\s*-\s*(?P<name>[A-Za-z0-9_.+-]+)\s+\(Failed\)\s+")
 
 
-CURRENT_STEP_ID_RE = re.compile(r"^Current Step ID:\s*(.*?)\s*$", re.MULTILINE)
-CURRENT_STEP_TITLE_RE = re.compile(r"^Current Step Title:\s*(.*?)\s*$", re.MULTILINE)
+CURRENT_STEP_ID_RE = re.compile(r"^Current Step ID:[ \t]*(.*?)[ \t]*$", re.MULTILINE)
+CURRENT_STEP_TITLE_RE = re.compile(r"^Current Step Title:[ \t]*(.*?)[ \t]*$", re.MULTILINE)
 PLAN_REVIEW_COUNTER_RE = re.compile(
-    r"^Plan Review Counter:\s*(\d+)\s*/\s*(\d+)\s*$", re.MULTILINE
+    r"^Plan Review Counter:[ \t]*(\d+)[ \t]*/[ \t]*(\d+)[ \t]*$", re.MULTILINE
 )
 CODE_REVIEW_REMINDER = "你該做code review了"
 BASELINE_SANITY_REMINDER = "你該做baseline sanity check了"
@@ -437,34 +437,12 @@ def cmd_post_commit(args) -> int:
     should_print_code_review = False
     should_print_baseline_sanity = False
     changed_paths = head_commit_paths()
-    has_plan_change = "plan.md" in changed_paths
-    has_todo_change = "todo.md" in changed_paths
     is_lifecycle_commit = head_has_lifecycle_tag()
 
-    if args.todo.exists() and (has_plan_change or has_todo_change):
-        todo = parse_todo(args.todo)
-        next_step_id = todo["current_step_id"]
-        next_step_title = todo["current_step_title"]
-
-        if has_plan_change:
-            state["current_step_id"] = next_step_id
-            state["current_step_title"] = next_step_title
-            state["counter"] = 0
-            state["code_review_pending"] = False
-            state["baseline_sanity_pending"] = False
-        elif (
-            state["current_step_id"] != next_step_id
-            or state["current_step_title"] != next_step_title
-        ):
-            state["current_step_id"] = next_step_id
-            state["current_step_title"] = next_step_title
-            state["counter"] = 0
-            state["code_review_pending"] = False
-            state["baseline_sanity_pending"] = False
-        elif not is_lifecycle_commit:
-            state["counter"] += 1
-            if state["counter"] >= state["review_limit"]:
-                state["code_review_pending"] = True
+    if not is_lifecycle_commit and changed_paths:
+        state["counter"] += 1
+        if state["counter"] >= state["review_limit"]:
+            state["code_review_pending"] = True
 
     if not is_lifecycle_commit:
         state["test_baseline_counter"] += 1
@@ -486,7 +464,7 @@ def cmd_post_commit(args) -> int:
     )
 
     save_state(args.state, state)
-    if args.todo.exists():
+    if args.todo.exists() and (state["code_review_pending"] or state["baseline_sanity_pending"]):
         sync_todo(args.todo, state)
     if should_print_code_review:
         print(CODE_REVIEW_REMINDER)
