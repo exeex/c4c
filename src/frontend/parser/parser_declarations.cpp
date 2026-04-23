@@ -218,6 +218,9 @@ bool try_skip_cpp_concept_declaration(Parser& parser) {
     if (!parser.check(TokenKind::Identifier)) {
         throw std::runtime_error("expected concept name");
     }
+    const TextId concept_name_text_id =
+        parser.parser_text_id_for_token(parser.cur().text_id,
+                                        parser.token_spelling(parser.cur()));
     const std::string concept_name = std::string(parser.token_spelling(parser.cur()));
     parser.consume();  // concept identifier
     parser.expect(TokenKind::Assign);
@@ -226,11 +229,14 @@ bool try_skip_cpp_concept_declaration(Parser& parser) {
     // constraint-expression on the right-hand side of `concept Name = ...;`.
     (void)parser.parse_expr();
     parser.expect(TokenKind::Semi);
-    parser.binding_state_.concept_names.insert(concept_name);
+    if (concept_name_text_id != kInvalidText) {
+        parser.binding_state_.concept_name_text_ids.insert(concept_name_text_id);
+    }
     const std::string qualified = parser.compatibility_namespace_name_in_context(
-        parser.current_namespace_context_id(),
-        parser.find_parser_text_id(concept_name), concept_name);
-    parser.binding_state_.concept_names.insert(qualified);
+        parser.current_namespace_context_id(), concept_name_text_id, concept_name);
+    if (qualified != concept_name) {
+        parser.binding_state_.concept_names.insert(qualified);
+    }
     return true;
 }
 

@@ -170,6 +170,10 @@ bool can_probe_local_binding(TextId name_text_id, std::string_view name) {
            name.find("::") == std::string_view::npos;
 }
 
+bool is_unqualified_lookup_name(std::string_view name) {
+    return !name.empty() && name.find("::") == std::string_view::npos;
+}
+
 int& visible_typedef_fallback_depth_for(const Parser& parser) {
     static thread_local std::unordered_map<const Parser*, int> depths;
     return depths[&parser];
@@ -1695,6 +1699,14 @@ std::string Parser::resolve_visible_type_name(std::string_view name) const {
 
 std::string Parser::resolve_visible_concept_name(TextId name_text_id,
                                                  std::string_view name) const {
+    if (name_text_id != kInvalidText && is_unqualified_lookup_name(name) &&
+        binding_state_.concept_name_text_ids.count(name_text_id) > 0) {
+        return std::string(name);
+    }
+    if (is_unqualified_lookup_name(name) &&
+        binding_state_.concept_names.count(std::string(name)) > 0) {
+        return std::string(name);
+    }
     const std::string spelled(name);
     return resolve_visible_name_from_namespace_stack(
         namespace_state_.namespace_stack, spelled,
@@ -1710,9 +1722,14 @@ std::string Parser::resolve_visible_concept_name(const std::string& name) const 
 
 bool Parser::is_concept_name(const std::string& name) const {
     if (name.empty()) return false;
+    const TextId name_text_id = find_parser_text_id(name);
+    if (name_text_id != kInvalidText && is_unqualified_lookup_name(name) &&
+        binding_state_.concept_name_text_ids.count(name_text_id) > 0) {
+        return true;
+    }
     if (binding_state_.concept_names.count(name) > 0) return true;
-    return binding_state_.concept_names.count(resolve_visible_concept_name(name)) >
-           0;
+    const std::string resolved = resolve_visible_concept_name(name_text_id, name);
+    return resolved != name && binding_state_.concept_names.count(resolved) > 0;
 }
 
 void Parser::refresh_current_namespace_bridge() {
@@ -2030,15 +2047,25 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
 bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
                                        std::string_view name,
                                        std::string* resolved) const {
+    if (!resolved) return false;
+    if (name_text_id == kInvalidText) {
+        name_text_id = find_parser_text_id(name);
+    }
+    if (context_id == 0 && name_text_id != kInvalidText &&
+        is_unqualified_lookup_name(name) &&
+        binding_state_.concept_name_text_ids.count(name_text_id) > 0) {
+        *resolved = std::string(name);
+        return true;
+    }
+    if (context_id == 0 && is_unqualified_lookup_name(name) &&
+        binding_state_.concept_names.count(std::string(name)) > 0) {
+        *resolved = std::string(name);
+        return true;
+    }
     const std::string candidate =
         compatibility_namespace_name_in_context(context_id, name_text_id, name);
     if (binding_state_.concept_names.count(candidate)) {
         *resolved = candidate;
-        return true;
-    }
-    if (context_id == 0 && binding_state_.concept_names.count(
-                               std::string(name))) {
-        *resolved = name;
         return true;
     }
 

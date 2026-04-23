@@ -283,6 +283,7 @@ using ParserEnumConstTable = std::unordered_map<TextId, long long>;
 using ParserConstIntBindingTable = std::unordered_map<TextId, long long>;
 
 struct ParserBindingState {
+  std::unordered_set<TextId> concept_name_text_ids;
   std::set<std::string> concept_names;
   std::unordered_map<TextId, ParserFnPtrTypedefInfo> typedef_fn_ptr_info;
   ParserEnumConstTable enum_consts;

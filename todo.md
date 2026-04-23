@@ -7,13 +7,13 @@ Current Step Title: Replace remaining suitable single-name string tables
 # Current Packet
 
 ## Just Finished
-Advanced Step 5 by migrating parser `const_int_bindings` to `TextId`-keyed unqualified identity, updating global constant binding registration to store declaration `TextId`s and constant-expression evaluation to resolve parser const-int references through unqualified `TextId` lookup only.
+Advanced Step 5 by migrating parser concept-name tracking to a `TextId`-first unqualified identity path: concept declarations now register unqualified `TextId`s in parser binding state, unqualified concept queries resolve through that native table first, and the legacy string set remains only as the namespace-qualified compatibility bridge.
 
 ## Suggested Next
-Continue Step 5 with the next narrow single-name parser binding table that still uses `std::string` for semantic identity, keeping qualified and namespace-scoped lookup paths out of scope.
+Continue Step 5 with the next narrow single-name parser binding table that still uses `std::string` for semantic identity, again separating unqualified semantic storage from any required namespace-qualified bridge behavior.
 
 ## Watchouts
-This packet intentionally left qualified const-int name behavior unchanged: parser constant-expression lookup now accepts only truly unqualified variable refs by `unqualified_text_id`. Do not fold namespace-qualified fallback behavior into the same migration.
+This packet intentionally preserved namespace-qualified concept lookup through `compatibility_namespace_name_in_context(...)` and the legacy string bridge. Do not collapse that bridge until the remaining qualified namespace consumers have a `TextId`-native replacement.
 
 ## Proof
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
