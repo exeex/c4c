@@ -107,6 +107,26 @@ def strip_reminder_lines(text: str) -> str:
     return text
 
 
+def sync_plan_review_counter(text: str, state: dict) -> str:
+    replacement = f"Plan Review Counter: {state['counter']} / {state['review_limit']}"
+    lines = text.splitlines()
+
+    for index, line in enumerate(lines):
+        if PLAN_REVIEW_COUNTER_RE.match(line):
+            lines[index] = replacement
+            return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+
+    for index, line in enumerate(lines):
+        if CURRENT_STEP_TITLE_RE.match(line):
+            insert_at = index + 1
+            lines.insert(insert_at, replacement)
+            if insert_at + 1 >= len(lines) or lines[insert_at + 1].strip():
+                lines.insert(insert_at + 1, "")
+            return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+
+    raise SystemExit("missing 'Current Step Title:' line while syncing todo.md")
+
+
 def sync_todo(path: Path, state: dict) -> None:
     parsed = parse_todo(path)
     text = parsed["text"]
@@ -120,7 +140,7 @@ def sync_todo(path: Path, state: dict) -> None:
         CURRENT_STEP_TITLE_RE,
         f"Current Step Title: {state['current_step_title']}",
     )
-    text = remove_optional_line(text, PLAN_REVIEW_COUNTER_RE)
+    text = sync_plan_review_counter(text, state)
     text = strip_reminder_lines(text)
     if text != parsed["text"]:
         write_text(path, text)

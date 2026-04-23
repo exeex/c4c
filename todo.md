@@ -11,26 +11,27 @@ Plan Review Counter: 0 / 8
 
 ## Just Finished
 
-- switched the active lifecycle state off the parser namespace plan and onto the
-  plan-review metadata sync blocker
-- recorded the blocker as a new open idea and reset the active execution state
-  to start with failure reproduction
+- reproduced the `post-commit` metadata sync failure from step 1: the counter
+  line disappeared when `python3 scripts/plan_review_state.py post-commit` ran
+- repaired `scripts/plan_review_state.py` so the sync path now preserves or
+  inserts `Plan Review Counter` while still updating the active step metadata
+- verified the exact proof command now leaves `Current Step ID`, `Current Step
+  Title`, and `Plan Review Counter` present in `todo.md`
 
 ## Suggested Next
 
-- reproduce the post-commit path that strips `Plan Review Counter` from
-  `todo.md`
-- keep the repair local to `scripts/plan_review_state.py` and the hook-managed
-  metadata sync path
+- hand this packet back for review of the metadata sync repair and then move to
+  the next lifecycle step if no regressions show up
 
 ## Watchouts
 
-- keep the parser namespace plan out of this blocker packet
+- the counter insertion now tolerates a missing blank line between the title
+  and `# Current Packet`
+- keep the fix scoped to the lifecycle tooling and avoid parser-side changes
 - preserve the required metadata block near the top of `todo.md`
-- do not widen the issue into parser implementation work
-- keep `Current Step ID`, `Current Step Title`, and `Plan Review Counter`
-  aligned with the hook state
 
 ## Proof
 
-- none yet
+- `python3 scripts/plan_review_state.py post-commit && rg -n '^(Current Step ID|Current Step Title|Plan Review Counter):' todo.md`
+- sufficient for this slice
+- no `test_after.log` artifact was written for this packet
