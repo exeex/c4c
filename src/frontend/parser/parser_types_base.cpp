@@ -86,9 +86,7 @@ bool Parser::is_type_start() const {
         if (starts_with_value_like_template_expr(*this, core_input_state_.tokens,
                                                  core_input_state_.pos)) return false;
         if (match_floatn_keyword_base(name, nullptr)) return true;
-        if (is_template_scope_type_param(cur().text_id, name)) return true;
-        if (is_typedef_name(name_text_id, name)) return true;
-        if (has_visible_typedef_type(name_text_id, name)) return true;
+        if (is_known_simple_visible_type_head(*this, name_text_id, name)) return true;
         // C++ fallback: identifier followed by < is likely a template type if
         // the name is registered as a template struct, or if we're inside a
         // struct body where namespace-scoped template names may not resolve.
@@ -1041,9 +1039,9 @@ TypeSpec Parser::parse_base_type() {
                                   static_cast<int>(core_input_state_.tokens.size()) &&
                               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
                                   TokenKind::ColonColon) &&
-                            (is_typedef_name(name_text_id, name) ||
-                             is_template_scope_type_param(name_text_id, name) ||
-                             has_visible_typedef_type(name_text_id, name));
+                            is_known_simple_visible_type_head(*this,
+                                                              name_text_id,
+                                                              name);
                         if (!simple_unqualified_known_type_head &&
                             try_parse_cpp_scoped_base_type(already_have_base, &ts)) {
                             has_typedef = true;
@@ -1055,9 +1053,8 @@ TypeSpec Parser::parse_base_type() {
                         done = true;
                         break;
                     }
-                    if (is_typedef_name(cur().text_id, name) ||
-                        is_template_scope_type_param(cur().text_id, name) ||
-                        has_visible_typedef_type(cur().text_id, name)) {
+                    if (is_known_simple_visible_type_head(*this, cur().text_id,
+                                                          name)) {
                         // If we've already seen concrete type specifiers/modifiers,
                         // this identifier is the declarator name (e.g. `int s;` even
                         // when `s` is also a typedef name in outer scope).

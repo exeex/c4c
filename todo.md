@@ -7,18 +7,19 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by retargeting remaining parser-front-end
-type-head probes onto the shared `TextId`-aware simple-type helper. The
-`if`-condition declaration gate in `parser_statements.cpp` and the simple
-template-argument fast path in `parser_types_declarator.cpp` now reuse the
-same local-visible typedef/template/tag lookup path as the earlier local
-declaration ambiguity probes.
+Advanced `plan.md` step 2 by retargeting the remaining unqualified
+identifier-as-type probes in `parser_types_base.cpp` onto a shared
+`TextId`-aware visible-type helper. `is_type_start()` and the
+`parse_base_type()` declaration/type-head gates now reuse one exact
+typedef-or-template-parameter visibility predicate instead of carrying
+separate duplicated checks.
 
 ## Suggested Next
-Continue `plan.md` step 2 by auditing the remaining identifier-as-type
-disambiguation checks in `parser_types_base.cpp` and nearby parser entry
-paths, then retarget the next coherent manual probe to the same helper or to
-the scope-local lookup facade where the helper is no longer sufficient.
+Continue `plan.md` step 2 by auditing the remaining manual type-head
+disambiguation paths that still bypass the shared helper, especially nearby
+parser entry points that resolve unresolved simple identifiers into type
+placeholders. Retarget only the next coherent declaration-side probe; do not
+pull expression lookup or qualified-name traversal into this packet.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. The shared helper

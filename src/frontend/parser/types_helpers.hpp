@@ -303,6 +303,14 @@ bool is_known_simple_type_head(const Parser& parser, TextId name_text_id,
            parser.definition_state_.defined_struct_tags.count(resolved) > 0;
 }
 
+bool is_known_simple_visible_type_head(const Parser& parser,
+                                       TextId name_text_id,
+                                       std::string_view name) {
+    return parser.is_typedef_name(name_text_id, name) ||
+           parser.is_template_scope_type_param(name_text_id, name) ||
+           parser.has_visible_typedef_type(name_text_id, name);
+}
+
 bool starts_with_value_like_template_expr(const Parser& parser,
                                           const std::vector<Token>& tokens,
                                           int pos) {
