@@ -1,6 +1,6 @@
 # Parser Constructor-Init Visible-Head Probe Split
 
-Status: Open
+Status: Closed
 Last Updated: 2026-04-23
 
 ## Goal
@@ -130,3 +130,26 @@ The boundary is deliberate:
 - idea 83: broader lexical-scope lookup migration
 - idea 85: constructor-init visible-head ambiguity decomposition
 
+## Completion Notes
+
+Completed on 2026-04-23.
+
+This idea finished the constructor-init visible-head decomposition by:
+
+- recording the repeated `source(other)` collision as three explicit seams in
+  the active execution notes
+- extracting the visible-head handoff inside
+  `probe_ctor_vs_function_decl()` so the value-vs-type decision is a named
+  boundary before the unresolved grouped starter checks and tentative
+  parameter-list parse
+- adding a dedicated parser regression for that handoff boundary alongside the
+  existing parenthesized and grouped starter seam coverage
+- re-running the focused parser proof with
+  `ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
+
+The work stays intentionally narrow:
+
+- `Box value(source(other));` and the qualified visible-value call shapes stay
+  on the direct-init declaration side
+- visible type-head cases stay on the function-declaration side
+- the broader lexical-scope `TextId` migration remains open under idea 83

@@ -1,29 +1,25 @@
 Status: Active
-Source Idea Path: ideas/open/85_parser_ctor_init_visible_head_probe_split.md
+Source Idea Path: ideas/open/83_parser_scope_textid_binding_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Re-run focused parser proof
+Current Step ID: 1
+Current Step Title: Inventory parser binding tables for lexical lookup migration
 
 # Current Packet
 
 ## Just Finished
-Added the remaining focused parser regression for the visible-head handoff
-boundary. The constructor-init probe suite now names separate checks for the
-parenthesized value path, grouped pointer/reference starters, and the
-visible-head handoff itself.
+Closed `ideas/open/85_parser_ctor_init_visible_head_probe_split.md` after
+finishing the constructor-init visible-head seam split and reactivated the
+broader lexical-scope `TextId` lookup route.
 
 ## Suggested Next
-Re-run the focused parser proof and, if it stays green, treat the active
-runbook as complete and evaluate the source idea for closure.
+Execute step 1 by classifying the remaining parser binding tables into
+`TextId`-native, direct-`TextId`, `LocalNameTable`, and structured-qualified
+holdout buckets, then record the first narrow lexical migration packet here.
 
 ## Watchouts
-Do not let this route drift back into the broader lexical-scope lookup plan.
-The new handoff regression is meant to pin the existing parser split, not to
-license a broader classifier reorder. `Box value(source(other));` and the
-qualified visible-value call shapes must stay on the direct-init declaration
-side while the visible-type cases remain function declarations.
+Keep lexical scope lookup separate from namespace traversal. Do not reopen the
+qualified-owner lookup slice completed under idea 84 while reactivating this
+runbook.
 
 ## Proof
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' | tee test_after.log`
-passed after adding the dedicated visible-head handoff regression. Proof log:
-`test_after.log`.
+Not run. Lifecycle switch after closing idea 85.
