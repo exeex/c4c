@@ -48,4 +48,29 @@ std::optional<ShortCircuitEntryCompareContext> build_prepared_guard_compare_cont
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
 
+std::optional<CompareDrivenBranchRenderPlan>
+build_prepared_short_circuit_cond_branch_render_plan_if_supported(
+    const PreparedX86FunctionDispatchContext& function_context,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& block,
+    c4c::BlockLabelId block_label_id,
+    const c4c::backend::prepare::PreparedShortCircuitJoinContext& join_context,
+    std::size_t compare_index,
+    const std::optional<MaterializedI32Compare>& current_materialized_compare,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::optional<std::string_view>& current_i8_name,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block);
+
+std::optional<CompareDrivenBranchRenderPlan>
+build_prepared_compare_join_fallback_render_plan_if_supported(
+    const PreparedX86BlockDispatchContext& block_context,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& block,
+    const c4c::backend::prepare::PreparedShortCircuitContinuationLabels& continuation,
+    std::size_t compare_index,
+    const std::optional<MaterializedI32Compare>& current_materialized_compare,
+    const std::optional<std::string_view>& current_i32_name,
+    const std::optional<std::string_view>& current_i8_name,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block);
+
 }  // namespace c4c::backend::x86
