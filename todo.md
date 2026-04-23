@@ -5,43 +5,46 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Rewire Prepared Adapters And Debug Surfaces Over Canonical Seams
-Plan Review Counter: 4 / 6
+Plan Review Counter: 5 / 6
 # Current Packet
 
 ## Just Finished
 
-Continued step 3 by moving the shared prepared `I32` operand-selection,
-operand-render, and register-setup templates into
-`prepared/prepared_fast_path_operands.hpp`, then deleting the duplicate local
-copies from `prepared_local_slot_render.cpp` so the canonical prepared operand
-seam now owns both the earlier direct-extern helpers and the non-direct-extern
-`I32` adapter family.
+Continued step 3 by moving the prepared `I32` immediate-compare selection and
+`eax` compare-setup helper family out of
+`prepared_local_slot_render.cpp` and into
+`prepared/prepared_fast_path_dispatch.{hpp,cpp}`, then deleting the duplicate
+local definitions so the canonical prepared dispatch seam now owns both the
+guard-compare adapter entrypoints and the shared immediate-compare queries they
+consume.
 
 ## Suggested Next
 
-Continue step 3 by moving the next bounded prepared operand/query helper group
-that still lives inline in `prepared_local_slot_render.cpp` into the canonical
-prepared seam, ideally the remaining named-`I32` home/query adapters around
-`render_prepared_named_i32_operand_if_supported(...)`, without widening into
-same-module call orchestration, `module_emit.cpp`, or `route_debug.cpp`.
+Continue step 3 by moving the remaining local
+`render_prepared_guard_false_branch_compare_with_current_i8_if_supported(...)`
+wrapper and its branch-opcode selection into
+`prepared/prepared_fast_path_dispatch.cpp` so prepared false-branch compare
+ownership stops straddling the local-slot renderer and the canonical dispatch
+seam, without widening into same-module call orchestration, `module_emit.cpp`,
+or `route_debug.cpp`.
 
 ## Watchouts
 
-- `prepared_fast_path_operands.hpp` now owns float/`f128` operand helpers plus
-  the shared prepared `I32` selection/move templates, so follow-on packets
-  should treat it as the canonical operand seam rather than recreating local
-  helper copies.
-- `prepared_local_slot_render.cpp` still keeps named-`I32` home lookup,
-  compare setup, pointer, and call-orchestration logic inline; keep peeling one
-  coherent helper family at a time instead of trying to flatten the file in a
-  single packet.
+- `prepared_fast_path_dispatch.{hpp,cpp}` now owns the prepared `I32`
+  immediate-compare query/setup helpers in addition to the guard-compare entry
+  points, so follow-on packets should extend that seam instead of recreating
+  compare-selection helpers in `prepared_local_slot_render.cpp`.
+- `prepared_local_slot_render.cpp` still keeps the `current_i8` false-branch
+  compare wrapper plus larger local guard-expression and block-branch planning
+  logic inline; keep peeling one coherent dispatch/helper family at a time
+  instead of flattening the whole file at once.
 - Keep ownership out of same-module call dispatch, `module/module_emit.cpp`,
-  and `route_debug.cpp`; this slice stayed within prepared operand adaptation
-  only.
+  and `route_debug.cpp`; this slice stayed within prepared dispatch/query
+  adaptation only.
 
 ## Proof
 
-Step 3 prepared fast-path operands shared `I32` adapter seam packet on
+Step 3 prepared fast-path dispatch immediate-compare helper seam packet on
 2026-04-23:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`

@@ -11,86 +11,13 @@ std::optional<std::string> render_prepared_named_i32_immediate_compare_setup_if_
     std::int64_t compare_immediate,
     const std::optional<std::string_view>& current_i32_name,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
-  if (current_i32_name.has_value() && *current_i32_name == compared_value_name) {
-    return render_prepared_i32_eax_immediate_compare_setup(compare_immediate);
-  }
-  if (prepared_names == nullptr || function_locations == nullptr) {
-    return std::nullopt;
-  }
-
-  const auto* home = c4c::backend::prepare::find_prepared_value_home(
-      *prepared_names, *function_locations, compared_value_name);
-  if (home == nullptr) {
-    return std::nullopt;
-  }
-
-  std::string setup;
-  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
-      home->register_name.has_value()) {
-    const auto narrowed_register = narrow_i32_register(*home->register_name);
-    if (!narrowed_register.has_value()) {
-      return std::nullopt;
-    }
-    if (*narrowed_register != "eax") {
-      setup += "    mov eax, " + *narrowed_register + "\n";
-    }
-  } else if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-             home->offset_bytes.has_value()) {
-    setup += "    mov eax, " +
-             render_prepared_stack_memory_operand(*home->offset_bytes, "DWORD") + "\n";
-  } else if (home->kind ==
-                 c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
-             home->immediate_i32.has_value()) {
-    setup += "    mov eax, " +
-             std::to_string(static_cast<std::int32_t>(*home->immediate_i32)) + "\n";
-  } else {
-    return std::nullopt;
-  }
-
-  setup += render_prepared_i32_eax_immediate_compare_setup(compare_immediate);
-  return setup;
-}
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
 
 std::optional<std::string> render_prepared_named_i8_immediate_compare_setup_if_supported(
     std::string_view compared_value_name,
     std::int64_t compare_immediate,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
-  if (prepared_names == nullptr || function_locations == nullptr) {
-    return std::nullopt;
-  }
-
-  const auto* home = c4c::backend::prepare::find_prepared_value_home(
-      *prepared_names, *function_locations, compared_value_name);
-  if (home == nullptr) {
-    return std::nullopt;
-  }
-
-  const auto immediate_i8 = static_cast<std::int32_t>(static_cast<std::int8_t>(compare_immediate));
-  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
-      home->register_name.has_value()) {
-    const auto narrowed_register = narrow_i8_register(*home->register_name);
-    if (!narrowed_register.has_value()) {
-      return std::nullopt;
-    }
-    return "    cmp " + *narrowed_register + ", " + std::to_string(immediate_i8) + "\n";
-  }
-  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-      home->offset_bytes.has_value()) {
-    return "    cmp " +
-           render_prepared_stack_memory_operand(*home->offset_bytes, "BYTE") + ", " +
-           std::to_string(immediate_i8) + "\n";
-  }
-  if (home->kind ==
-          c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
-      home->immediate_i32.has_value()) {
-    return "    mov eax, " +
-           std::to_string(static_cast<std::int32_t>(*home->immediate_i32)) +
-           "\n    cmp al, " + std::to_string(immediate_i8) + "\n";
-  }
-  return std::nullopt;
-}
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
 
 }  // namespace
 
@@ -212,7 +139,7 @@ std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_b
     if (branch_opcode == nullptr) {
       return std::nullopt;
     }
-    return std::pair<std::string, std::string>{*compare_setup, branch_opcode};
+    return std::pair<std::string, std::string>{*compare_setup, std::string(branch_opcode)};
   }
   const auto selected_compare =
       select_prepared_i32_named_immediate_compare_if_supported(compare.lhs, compare.rhs);
@@ -252,7 +179,7 @@ std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_b
   if (branch_opcode == nullptr) {
     return std::nullopt;
   }
-  return std::pair<std::string, std::string>{*compare_setup, branch_opcode};
+  return std::pair<std::string, std::string>{*compare_setup, std::string(branch_opcode)};
 }
 
 std::optional<std::pair<std::string, std::string>>
@@ -298,6 +225,162 @@ std::optional<ShortCircuitEntryCompareContext> build_prepared_guard_compare_cont
       .compare_setup = std::move(false_branch_compare->first),
       .false_branch_opcode = std::move(false_branch_compare->second),
   };
+}
+
+std::optional<PreparedI32NamedImmediateCompareSelection>
+select_prepared_i32_named_immediate_compare_if_supported(
+    const c4c::backend::bir::Value& lhs,
+    const c4c::backend::bir::Value& rhs) {
+  const bool lhs_is_value_rhs_is_imm =
+      lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+      rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+      rhs.type == c4c::backend::bir::TypeKind::I32;
+  const bool rhs_is_value_lhs_is_imm =
+      rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+      lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+      lhs.type == c4c::backend::bir::TypeKind::I32;
+  if (!lhs_is_value_rhs_is_imm && !rhs_is_value_lhs_is_imm) {
+    return std::nullopt;
+  }
+  return PreparedI32NamedImmediateCompareSelection{
+      .named_value = lhs_is_value_rhs_is_imm ? &lhs : &rhs,
+      .immediate = lhs_is_value_rhs_is_imm ? rhs.immediate : lhs.immediate,
+  };
+}
+
+std::optional<PreparedI32NamedImmediateCompareSelection>
+select_prepared_i32_named_immediate_compare_for_value_if_supported(
+    const c4c::backend::bir::Value& lhs,
+    const c4c::backend::bir::Value& rhs,
+    std::string_view compared_value_name) {
+  const auto selected_compare =
+      select_prepared_i32_named_immediate_compare_if_supported(lhs, rhs);
+  if (!selected_compare.has_value() ||
+      selected_compare->named_value->name != compared_value_name) {
+    return std::nullopt;
+  }
+  return selected_compare;
+}
+
+namespace {
+
+bool prepared_i32_compare_value_name_matches_any_candidate(
+    std::string_view compared_value_name,
+    const std::vector<std::string_view>& candidate_compare_value_names) {
+  return std::find(candidate_compare_value_names.begin(),
+                   candidate_compare_value_names.end(),
+                   compared_value_name) != candidate_compare_value_names.end();
+}
+
+std::optional<std::string> render_prepared_named_i32_immediate_compare_setup_if_supported(
+    std::string_view compared_value_name,
+    std::int64_t compare_immediate,
+    const std::optional<std::string_view>& current_i32_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  if (current_i32_name.has_value() && *current_i32_name == compared_value_name) {
+    return render_prepared_i32_eax_immediate_compare_setup(compare_immediate);
+  }
+  if (prepared_names == nullptr || function_locations == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* home = c4c::backend::prepare::find_prepared_value_home(
+      *prepared_names, *function_locations, compared_value_name);
+  if (home == nullptr) {
+    return std::nullopt;
+  }
+
+  std::string setup;
+  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+      home->register_name.has_value()) {
+    const auto narrowed_register = narrow_i32_register(*home->register_name);
+    if (!narrowed_register.has_value()) {
+      return std::nullopt;
+    }
+    if (*narrowed_register != "eax") {
+      setup += "    mov eax, " + *narrowed_register + "\n";
+    }
+  } else if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+             home->offset_bytes.has_value()) {
+    setup += "    mov eax, " +
+             render_prepared_stack_memory_operand(*home->offset_bytes, "DWORD") + "\n";
+  } else if (home->kind ==
+                 c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
+             home->immediate_i32.has_value()) {
+    setup += "    mov eax, " +
+             std::to_string(static_cast<std::int32_t>(*home->immediate_i32)) + "\n";
+  } else {
+    return std::nullopt;
+  }
+
+  setup += render_prepared_i32_eax_immediate_compare_setup(compare_immediate);
+  return setup;
+}
+
+std::optional<std::string> render_prepared_named_i8_immediate_compare_setup_if_supported(
+    std::string_view compared_value_name,
+    std::int64_t compare_immediate,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  if (prepared_names == nullptr || function_locations == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* home = c4c::backend::prepare::find_prepared_value_home(
+      *prepared_names, *function_locations, compared_value_name);
+  if (home == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto immediate_i8 = static_cast<std::int32_t>(static_cast<std::int8_t>(compare_immediate));
+  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
+      home->register_name.has_value()) {
+    const auto narrowed_register = narrow_i8_register(*home->register_name);
+    if (!narrowed_register.has_value()) {
+      return std::nullopt;
+    }
+    return "    cmp " + *narrowed_register + ", " + std::to_string(immediate_i8) + "\n";
+  }
+  if (home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
+      home->offset_bytes.has_value()) {
+    return "    cmp " +
+           render_prepared_stack_memory_operand(*home->offset_bytes, "BYTE") + ", " +
+           std::to_string(immediate_i8) + "\n";
+  }
+  if (home->kind ==
+          c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
+      home->immediate_i32.has_value()) {
+    return "    mov eax, " +
+           std::to_string(static_cast<std::int32_t>(*home->immediate_i32)) +
+           "\n    cmp al, " + std::to_string(immediate_i8) + "\n";
+  }
+  return std::nullopt;
+}
+
+}  // namespace
+
+std::optional<PreparedI32NamedImmediateCompareSelection>
+select_prepared_i32_named_immediate_compare_for_candidates_if_supported(
+    const c4c::backend::bir::Value& lhs,
+    const c4c::backend::bir::Value& rhs,
+    const std::vector<std::string_view>& candidate_compare_value_names) {
+  const auto selected_compare =
+      select_prepared_i32_named_immediate_compare_if_supported(lhs, rhs);
+  if (!selected_compare.has_value() ||
+      !prepared_i32_compare_value_name_matches_any_candidate(
+          selected_compare->named_value->name, candidate_compare_value_names)) {
+    return std::nullopt;
+  }
+  return selected_compare;
+}
+
+std::string render_prepared_i32_eax_immediate_compare_setup(std::int64_t compare_immediate) {
+  if (compare_immediate == 0) {
+    return std::string("    test eax, eax\n");
+  }
+  return "    cmp eax, " +
+         std::to_string(static_cast<std::int32_t>(compare_immediate)) + "\n";
 }
 
 }  // namespace c4c::backend::x86
