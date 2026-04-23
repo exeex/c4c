@@ -7,13 +7,13 @@ Current Step Title: Reduce compatibility rendering to bridge-only support on tou
 # Current Packet
 
 ## Just Finished
-Completed another plan step 4 bridge cleanup on the parser type-identity path by replacing the remaining template-owner fallback in `parser_types_base.cpp` with `bridge_name_in_context(...)`. Alias-member template-primary lookup no longer rebuilds the owner through `compatibility_namespace_name_in_context(...)` before probing the template registry on this touched path.
+Completed another plan step 4 bridge cleanup on declaration-side parser lookup by replacing the remaining direct `compatibility_namespace_name_in_context(...)` registrations in `parser_declarations.cpp` with `bridge_name_in_context(...)`. Concept names, namespace-scoped `using` aliases/imports, and template-struct qualified registration on this touched path now go through the structured-first bridge instead of rebuilding canonical owner strings directly.
 
 ## Suggested Next
-Re-scan the remaining declaration/import helpers that still call `compatibility_namespace_name_in_context(...)` and decide whether step 4 should take one more narrow bridge-only cleanup packet there or roll forward to step 5 proof closure.
+Decide whether step 4 is now complete and move to step 5 proof closure, or take one final narrow packet only if a remaining direct semantic hot-path call outside `parser_declarations.cpp` can be demoted to bridge-only support without widening into legacy value-table redesign.
 
 ## Watchouts
-`has_var_type(...)` and other value-side fallbacks still rely on legacy tables, so the structured-first bridge cleanup should stay on parser type identity paths only. `compatibility_namespace_name_in_context(...)` remains the compatibility fallback inside `bridge_name_in_context(...)`; this slice only removed its direct use as the primary owner render on the touched template-member type path.
+`has_var_type(...)`, `lookup_type_in_context(...)`, and other parser-core fallback helpers still rely on legacy string-keyed tables, so the structured-first bridge cleanup should stay on touched registration/lookup paths only. `compatibility_namespace_name_in_context(...)` remains the fallback implementation behind `bridge_name_in_context(...)`; this slice only removed its direct use as the primary declaration-side render path.
 
 ## Proof
 Passed. Proof run:

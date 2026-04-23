@@ -232,7 +232,7 @@ bool try_skip_cpp_concept_declaration(Parser& parser) {
     if (concept_name_text_id != kInvalidText) {
         parser.binding_state_.concept_name_text_ids.insert(concept_name_text_id);
     }
-    const std::string qualified = parser.compatibility_namespace_name_in_context(
+    const std::string qualified = parser.bridge_name_in_context(
         parser.current_namespace_context_id(), concept_name_text_id, concept_name);
     if (qualified != concept_name) {
         parser.binding_state_.concept_names.insert(qualified);
@@ -1437,7 +1437,7 @@ Node* Parser::parse_top_level() {
                 }
                 const TextId alias_name_text_id =
                     parser_text_id_for_token(kInvalidText, first_name);
-                const std::string qualified = compatibility_namespace_name_in_context(
+                const std::string qualified = bridge_name_in_context(
                     using_context_id, alias_name_text_id, first_name);
                 register_structured_typedef_binding_in_context(
                     using_context_id, alias_name_text_id, first_name, alias_ts);
@@ -1470,7 +1470,7 @@ Node* Parser::parse_top_level() {
         if (!imported_type_name.empty()) {
             if (const TypeSpec* imported_typedef =
                     find_typedef_type(imported_type_name)) {
-                const std::string imported_key = compatibility_namespace_name_in_context(
+                const std::string imported_key = bridge_name_in_context(
                     using_context_id, target_name.base_text_id, imported_name);
                 register_structured_typedef_binding_in_context(
                     using_context_id, target_name.base_text_id, imported_name,
@@ -1485,7 +1485,7 @@ Node* Parser::parse_top_level() {
         }
 
         const QualifiedNameKey imported_value_key = qualified_name_key(target_name);
-        const std::string imported_key = compatibility_namespace_name_in_context(
+        const std::string imported_key = bridge_name_in_context(
             using_context_id, target_name.base_text_id, imported_name);
         std::string imported_value_name;
         if (shared_lookup_state_.token_texts) {
@@ -1894,7 +1894,7 @@ Node* Parser::parse_top_level() {
                                           last_sd->name);
                 // If inside a namespace, also register ns::Name so
                 // qualified references like std::vector<int> work.
-                const std::string qn = compatibility_namespace_name_in_context(
+                const std::string qn = bridge_name_in_context(
                     current_namespace_context_id(), find_parser_text_id(last_sd->name),
                     last_sd->name);
                 register_tag_type_binding(qn, TB_STRUCT, last_sd->name);
