@@ -5,34 +5,36 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 4.3
 Current Step Title: Prove The Live Replacement Dispatch Path Before Legacy Retirement
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
 Extended step 4.3 proof so the focused x86 LIR handoff boundary test now
-asserts the generic backend `dump_module(...)` front door matches the same
-semantic-BIR, prepared-BIR, and target-local route-debug outputs produced by
-the canonical x86 lowering and prepared-module path.
+asserts the thin non-x86 `emit_target_lir_module(...)` and
+`assemble_target_lir_module(...)` compatibility wrappers still preserve the
+generic prepared-BIR and bootstrap-assemble contracts while x86 ownership
+stays explicit on the replacement path.
 
 ## Suggested Next
 
-Decide whether the remaining step 4 proof should add a non-x86 compatibility
-assertion around the thin target-wrapper shims, or whether step 5 should take
-over with explicit legacy retirement/classification work.
+Decide whether step 4.3 still needs any front-door proof beyond the current
+x86 emit/assemble/dump and non-x86 compatibility coverage, or whether step 5
+should now start explicit residual legacy classification and broader
+validation.
 
 ## Watchouts
 
 - The generic LIR dump path still uses `preserve_dynamic_alloca = true`, so
   dump proof must continue to compare against that exact lowering contract
   rather than the emit-path lowering defaults.
-- `emit_target_lir_module(...)` and `assemble_target_lir_module(...)` remain
-  compatibility wrappers; follow-on cleanup must preserve honest non-x86
-  behavior while keeping x86 ownership explicit.
+- `emit_target_lir_module(...)` and `assemble_target_lir_module(...)` still
+  owe honest generic behavior for non-x86 targets, so step 5 retirement work
+  must not collapse those wrappers into x86-specific ownership.
 
 ## Proof
 
-Step 4.3 explicit x86 LIR dump-route proof packet on
+Step 4.3 non-x86 compatibility-wrapper proof packet on
 2026-04-23:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`

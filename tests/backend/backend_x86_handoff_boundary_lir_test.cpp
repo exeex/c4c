@@ -23,6 +23,10 @@ c4c::TargetProfile x86_target_profile() {
   return c4c::default_target_profile(c4c::TargetArch::X86_64);
 }
 
+c4c::TargetProfile riscv_target_profile() {
+  return c4c::default_target_profile(c4c::TargetArch::Riscv64);
+}
+
 int fail(const char* message) {
   std::cerr << message << "\n";
   return 1;
@@ -70,6 +74,34 @@ lir::LirModule make_x86_param_add_immediate_lir_module() {
   });
   entry.terminator = lir::LirRet{
       .value_str = std::string("%sum"),
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+lir::LirModule make_riscv_tiny_add_lir_module() {
+  lir::LirModule module;
+  module.target_profile = riscv_target_profile();
+
+  lir::LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirBinOp{
+      .result = lir::LirOperand("%t0"),
+      .opcode = "add",
+      .type_str = "i32",
+      .lhs = lir::LirOperand("2"),
+      .rhs = lir::LirOperand("3"),
+  });
+  entry.terminator = lir::LirRet{
+      .value_str = std::string("%t0"),
       .type_str = "i32",
   };
 
@@ -696,6 +728,53 @@ int check_lir_dump_route_outputs(const lir::LirModule& module, const char* failu
   return 0;
 }
 
+int check_non_x86_lir_compatibility_wrappers(const lir::LirModule& module,
+                                             const char* failure_context) {
+  c4c::backend::BirLoweringOptions lowering_options{};
+  auto lowering = c4c::backend::try_lower_to_bir_with_options(module, lowering_options);
+  if (!lowering.module.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": non-x86 compatibility wrapper fixture no longer lowers to semantic BIR")
+                    .c_str());
+  }
+
+  const auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(*lowering.module, module.target_profile);
+  const auto expected_public_text = c4c::backend::bir::print(prepared.module);
+  const auto backend_options = BackendOptions{.target_profile = riscv_target_profile()};
+
+  const auto public_text = c4c::backend::emit_target_lir_module(module, module.target_profile);
+  if (public_text != expected_public_text) {
+    return fail((std::string(failure_context) +
+                 ": compatibility LIR emit wrapper no longer preserves the generic non-x86 prepared-BIR contract")
+                    .c_str());
+  }
+
+  const auto generic_text = c4c::backend::emit_module(BackendModuleInput{module}, backend_options);
+  if (generic_text != expected_public_text) {
+    return fail((std::string(failure_context) +
+                 ": generic backend LIR emit front door no longer preserves the non-x86 prepared-BIR contract")
+                    .c_str());
+  }
+
+  const std::string output_path = "ignored-by-generic-non-x86-backend-assemble.o";
+  const auto assembled =
+      c4c::backend::assemble_target_lir_module(module, module.target_profile, output_path);
+  if (assembled.staged_text != expected_public_text) {
+    return fail((std::string(failure_context) +
+                 ": compatibility assemble wrapper no longer preserves the generic non-x86 staged-text contract")
+                    .c_str());
+  }
+  if (assembled.output_path != output_path || assembled.object_emitted ||
+      assembled.error != "backend bootstrap mode does not assemble objects yet") {
+    return fail((std::string(failure_context) +
+                 ": compatibility assemble wrapper no longer preserves the generic non-x86 bootstrap assemble contract")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_lir_route_rejection(const lir::LirModule& module,
                               std::string_view expected_message_fragment,
                               const char* failure_context) {
@@ -768,6 +847,12 @@ int run_backend_x86_handoff_boundary_lir_tests() {
   if (const auto status =
           check_lir_route_outputs(make_x86_param_add_immediate_lir_module(),
                                   "minimal i32 parameter add-immediate LIR route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_non_x86_lir_compatibility_wrappers(make_riscv_tiny_add_lir_module(),
+                                                   "thin non-x86 compatibility LIR wrappers");
       status != 0) {
     return status;
   }
