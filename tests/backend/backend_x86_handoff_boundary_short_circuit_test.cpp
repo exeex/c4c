@@ -644,6 +644,62 @@ int check_local_i32_guard_route_rejects_authoritative_join_contract(
   return 0;
 }
 
+int check_short_circuit_route_requires_authoritative_parallel_copy_bundles(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 2 ||
+      control_flow->join_transfers.size() != 1 || control_flow->parallel_copy_bundles.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the short-circuit out-of-SSA handoff contract")
+                    .c_str());
+  }
+  if (!prepare::find_authoritative_branch_owned_join_transfer(
+           prepared.names, *control_flow, "entry")
+           .has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes authoritative short-circuit join ownership before bundle stripping")
+                    .c_str());
+  }
+
+  auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
+  if (mutable_control_flow == nullptr || mutable_control_flow->branch_conditions.size() < 2 ||
+      mutable_control_flow->join_transfers.size() != 1 ||
+      mutable_control_flow->parallel_copy_bundles.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture lost its mutable out-of-SSA handoff contract")
+                    .c_str());
+  }
+
+  mutable_control_flow->parallel_copy_bundles.clear();
+  if (mutable_control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture stopped publishing join transfers while stripping parallel-copy bundles")
+                    .c_str());
+  }
+
+  try {
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted short-circuit phi edge obligations after authoritative parallel-copy publication was removed")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected missing short-circuit parallel-copy publication with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_short_circuit_route_consumes_prepared_control_flow_impl(const bir::Module& module,
                                                                   const char* function_name,
                                                                   const char* failure_context,
@@ -2698,6 +2754,14 @@ int run_backend_x86_handoff_boundary_short_circuit_tests() {
               make_x86_local_i32_short_circuit_or_guard_module(),
               "main",
               "minimal local-slot short-circuit or-guard prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_short_circuit_route_requires_authoritative_parallel_copy_bundles(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit or-guard prepared-control-flow ownership rejects phi-edge obligations when authoritative parallel-copy publication is removed but join metadata remains");
       status != 0) {
     return status;
   }
