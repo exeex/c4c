@@ -1,36 +1,30 @@
 Status: Active
-Source Idea Path: ideas/open/83_parser_scope_textid_binding_lookup.md
+Source Idea Path: ideas/open/85_parser_ctor_init_visible_head_probe_split.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Introduce parser lexical scope state for the simplest local bindings
+Current Step ID: 1
+Current Step Title: Map the constructor-init ambiguity seams
 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by moving the shared visible value/type classifier
-ahead of the constructor-init probe's unresolved `identifier identifier`
-fallback. Safe visible-head cases now decide through
-`classify_visible_value_or_type_head()` before the parser drops into the
-legacy unresolved single-name special-case, which keeps the tentative
-constructor-vs-function-declaration split on the shared lookup path where it
-can.
+Switched the active lifecycle from idea 83 to the new constructor-init visible
+head decomposition idea. The active runbook now targets the repeated
+`source(other)` regression family as its own route.
 
 ## Suggested Next
-Continue `plan.md` step 2 by auditing the remaining local
-declaration/function-declaration ambiguity helpers for unresolved
-single-name parameter-style starters that still need syntax-only
-fallbacks, especially the grouped pointer/reference cases that have not yet
-been folded into the shared visible-head lookup path.
+Map the constructor-init ambiguity seams into the parenthesized local-value
+direct-init, grouped pointer/reference starter, and visible-head handoff
+boundaries before touching the parser probe again.
 
 ## Watchouts
-Keep lexical scope lookup separate from namespace traversal. The shared helper
-is only safe for declaration/type-head probes plus the statement-side tail
-position checks that branch to expression parsing after a value-classified
-head. The constructor-init probe still has a grouped pointer/reference
-syntax fallback, and qualified call-like statement probes still rely on the
-later `classify_visible_value_or_type_starter()` branch when the token after
-the qualified head is `(` or a value-like template call.
+Do not let this route drift back into the broader lexical-scope lookup plan.
+The prior classifier-first reorder still regressed
+`value-expression direct-init forms should stay declarations` on the
+`Box value(source(other));` path, so the visible-head handoff must be
+separated before any retry.
 
 ## Proof
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' | tee test_after.log`
-passed. Proof log: `test_after.log`.
+passed on the restored baseline. The attempted classifier-first reorder failed
+on `value-expression direct-init forms should stay declarations`. Proof log:
+`test_after.log`.
