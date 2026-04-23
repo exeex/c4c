@@ -922,6 +922,27 @@ enum class PreparedCallWrapperKind {
   return "unknown";
 }
 
+enum class PreparedStorageEncodingKind {
+  None,
+  Register,
+  FrameSlot,
+  Immediate,
+  ComputedAddress,
+  SymbolAddress,
+};
+
+struct PreparedIndirectCalleePlan {
+  ValueNameId value_name = kInvalidValueName;
+  PreparedStorageEncodingKind encoding = PreparedStorageEncodingKind::None;
+  PreparedRegisterBank bank = PreparedRegisterBank::None;
+  std::optional<std::string> register_name;
+  std::optional<PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
+  std::optional<std::int64_t> immediate_i32;
+  std::optional<ValueNameId> pointer_base_value_name;
+  std::optional<std::int64_t> pointer_byte_delta;
+};
+
 struct PreparedCallPlan {
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
@@ -929,6 +950,7 @@ struct PreparedCallPlan {
   std::size_t variadic_fpr_arg_register_count = 0;
   bool is_indirect = false;
   std::optional<std::string> direct_callee_name;
+  std::optional<PreparedIndirectCalleePlan> indirect_callee;
   std::vector<PreparedCallArgumentPlan> arguments;
   std::optional<PreparedCallResultPlan> result;
   std::vector<PreparedClobberedRegister> clobbered_registers;
@@ -941,15 +963,6 @@ struct PreparedCallPlansFunction {
 
 struct PreparedCallPlans {
   std::vector<PreparedCallPlansFunction> functions;
-};
-
-enum class PreparedStorageEncodingKind {
-  None,
-  Register,
-  FrameSlot,
-  Immediate,
-  ComputedAddress,
-  SymbolAddress,
 };
 
 struct PreparedStoragePlanValue {

@@ -205,6 +205,79 @@ namespace {
   return PreparedStorageEncodingKind::None;
 }
 
+[[nodiscard]] PreparedRegisterBank published_bank_for_value(
+    const PreparedRegallocFunction* regalloc_function,
+    ValueNameId value_name,
+    bir::TypeKind type) {
+  if (regalloc_function != nullptr) {
+    if (const auto* regalloc_value = find_regalloc_value_by_name(*regalloc_function, value_name);
+        regalloc_value != nullptr) {
+      return register_bank_from_class(regalloc_value->register_class);
+    }
+  }
+  return register_bank_from_type(type);
+}
+
+[[nodiscard]] PreparedStoragePlanValue build_storage_plan_value(
+    const PreparedRegallocFunction* regalloc_function,
+    const PreparedValueHome& home,
+    bir::TypeKind type) {
+  return PreparedStoragePlanValue{
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .encoding = storage_encoding_from_home(home),
+      .bank = published_bank_for_value(regalloc_function, home.value_name, type),
+      .register_name = home.register_name,
+      .slot_id = home.slot_id,
+      .stack_offset_bytes = home.offset_bytes,
+      .immediate_i32 = home.immediate_i32,
+      .symbol_name = std::nullopt,
+  };
+}
+
+[[nodiscard]] std::optional<PreparedIndirectCalleePlan> build_indirect_callee_plan(
+    const PreparedNameTables& names,
+    const PreparedRegallocFunction* regalloc_function,
+    const PreparedValueLocationFunction* value_locations,
+    const bir::CallInst& call) {
+  if (!call.is_indirect || !call.callee_value.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto value_name_id = maybe_named_value_id(names, *call.callee_value);
+  if (!value_name_id.has_value()) {
+    return std::nullopt;
+  }
+
+  PreparedIndirectCalleePlan plan{
+      .value_name = *value_name_id,
+      .encoding = PreparedStorageEncodingKind::None,
+      .bank = published_bank_for_value(regalloc_function, *value_name_id, call.callee_value->type),
+      .register_name = std::nullopt,
+      .slot_id = std::nullopt,
+      .stack_offset_bytes = std::nullopt,
+      .immediate_i32 = std::nullopt,
+      .pointer_base_value_name = std::nullopt,
+      .pointer_byte_delta = std::nullopt,
+  };
+
+  if (value_locations == nullptr) {
+    return plan;
+  }
+
+  if (const auto* home = find_prepared_value_home(*value_locations, *value_name_id); home != nullptr) {
+    plan.encoding = storage_encoding_from_home(*home);
+    plan.register_name = home->register_name;
+    plan.slot_id = home->slot_id;
+    plan.stack_offset_bytes = home->offset_bytes;
+    plan.immediate_i32 = home->immediate_i32;
+    plan.pointer_base_value_name = home->pointer_base_value_name;
+    plan.pointer_byte_delta = home->pointer_byte_delta;
+  }
+
+  return plan;
+}
+
 [[nodiscard]] const PreparedAbiBinding* find_call_abi_binding(
     const PreparedMoveBundle* move_bundle,
     PreparedMoveDestinationKind destination_kind,
@@ -434,25 +507,14 @@ void populate_storage_plans(PreparedBirModule& prepared) {
     const auto* regalloc_function = find_regalloc_function(prepared.regalloc, function_locations.function_name);
     function_plan.values.reserve(function_locations.value_homes.size());
     for (const auto& home : function_locations.value_homes) {
-      PreparedStoragePlanValue value_plan{
-          .value_id = home.value_id,
-          .value_name = home.value_name,
-          .encoding = storage_encoding_from_home(home),
-          .bank = PreparedRegisterBank::None,
-          .register_name = home.register_name,
-          .slot_id = home.slot_id,
-          .stack_offset_bytes = home.offset_bytes,
-          .immediate_i32 = home.immediate_i32,
-          .symbol_name = std::nullopt,
-      };
+      bir::TypeKind type = bir::TypeKind::Void;
       if (regalloc_function != nullptr) {
-        if (const auto* regalloc_value =
-                find_regalloc_value_by_id(*regalloc_function, home.value_id);
+        if (const auto* regalloc_value = find_regalloc_value_by_id(*regalloc_function, home.value_id);
             regalloc_value != nullptr) {
-          value_plan.bank = register_bank_from_class(regalloc_value->register_class);
+          type = regalloc_value->type;
         }
       }
-      function_plan.values.push_back(std::move(value_plan));
+      function_plan.values.push_back(build_storage_plan_value(regalloc_function, home, type));
     }
 
     if (!function_plan.values.empty()) {
@@ -498,6 +560,8 @@ void populate_call_plans(PreparedBirModule& prepared) {
             .is_indirect = call->is_indirect,
             .direct_callee_name = call->is_indirect ? std::nullopt
                                                     : std::optional<std::string>{call->callee},
+            .indirect_callee =
+                build_indirect_callee_plan(prepared.names, regalloc_function, value_locations, *call),
             .arguments = {},
             .result = std::nullopt,
             .clobbered_registers = call_clobbers,

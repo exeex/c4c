@@ -3,46 +3,47 @@ Source Idea Path: ideas/open/88_prepared_frame_stack_call_authority_completion_f
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Call Boundary Authority Completion
-Plan Review Counter: 1 / 6
+Plan Review Counter: 2 / 6
 # Current Packet
 
 ## Just Finished
 
 Completed Plan Step 3 "Call Boundary Authority Completion" for idea 88 by
-publishing explicit variadic floating-register argument count in
+publishing explicit indirect-callee operand and home authority in
 `PreparedCallPlan`, printing it in prepared dumps, and tightening
-backend/prealloc tests so downstream x86 consumers no longer need to recover
-the `%al`-relevant scalar FPR count from raw call ABI metadata.
+backend/prealloc tests so downstream targets no longer need to recover the
+indirect callee operand from raw BIR or a separate storage-plan join.
 
 Current packet result:
-- `PreparedCallPlan` now publishes `variadic_fpr_arg_register_count` alongside
-  existing wrapper and callee identity facts.
-- `populate_call_plans` now counts scalar SSE/FPR arguments passed in registers
-  for variadic calls instead of leaving that call-boundary fact implicit in
-  raw `arg_abi` entries.
-- Prepared dumps now expose the published variadic FPR count in both the
+- `PreparedCallPlan` now publishes an `indirect_callee` authority record for
+  indirect calls, including the callee value identity plus prepared home facts
+  such as encoding, bank, register/slot, and computed-address base+delta when
+  available.
+- `populate_call_plans` now snapshots indirect callee authority from prepared
+  value-location and regalloc state at call-plan publication time instead of
+  leaving target backends to recover the callee operand from raw BIR.
+- Prepared dumps now expose the published indirect callee authority in both the
   summary callsite view and the `prepared-call-plans` detail section.
-- Backend/prealloc tests now prove a direct variadic extern call with one
-  floating-register argument publishes `variadic_fpr_arg_register_count=1`
-  while non-variadic and indirect wrapper cases stay at zero.
+- Backend/prealloc tests now prove indirect-call contracts and wrapper dumps
+  directly from prepared call plans rather than consulting raw BIR to learn
+  which value drives the call target.
 
 ## Suggested Next
 
-Continue Step 3 by auditing whether any remaining scalar variadic call facts
-beyond register-count publication still require target-local recovery, with the
-best next packet likely focused on indirect or memory-return call-boundary
-authority if x86 consumers still cannot follow prepared plans directly.
+Continue Step 3 by auditing whether any remaining call-boundary facts still
+require target-local recovery outside `PreparedCallPlan`, with the best next
+packet likely focused on memory-return/sret or computed-address call-target
+authority if target consumers still need extra joins.
 
 ## Watchouts
 
 - Keep scalar frame/stack/call authority separate from grouped-register work in
   idea 89.
-- The new count is intentionally scalar-only: it tracks SSE/FPR arguments that
-  BIR already classifies as register-passed and should not be stretched into
-  grouped-register semantics owned by idea 89.
-- Do not expand this runbook into target-specific instruction spelling or
-  generic x86 behavior recovery; this packet stayed at the prepared contract
-  boundary only.
+- Keep indirect-callee authority at the prepared contract boundary; do not turn
+  this packet into target-specific call instruction recovery.
+- If later indirect callees arrive as computed addresses, keep publishing the
+  pointer-base and byte-delta facts in call plans instead of sending backends
+  back to raw BIR.
 
 ## Proof
 

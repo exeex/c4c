@@ -1161,23 +1161,6 @@ int check_float_call_contract() {
 
 int check_indirect_call_contract() {
   const auto prepared = prepare_module(make_indirect_call_contract_module());
-  const auto* function = find_function(prepared.module, "indirect_call_contract");
-  if (function == nullptr) {
-    return fail("indirect-call contract: missing caller body");
-  }
-  const auto* call = find_first_call(*function);
-  if (call == nullptr || !call->is_indirect || !call->callee_value.has_value() ||
-      call->arg_abi.size() != 1 || !call->result_abi.has_value()) {
-    return fail("indirect-call contract: missing indirect call ABI surface");
-  }
-  if (call->callee_value->type != bir::TypeKind::Ptr ||
-      call->callee_value->name != "callee.ptr") {
-    return fail("indirect-call contract: callee pointer identity drifted");
-  }
-  if (call->arg_abi.front().primary_class != bir::AbiValueClass::Integer ||
-      call->result_abi->primary_class != bir::AbiValueClass::Integer) {
-    return fail("indirect-call contract: integer ABI classification drifted");
-  }
   const auto* liveness = find_liveness_function(prepared, "indirect_call_contract");
   if (liveness == nullptr || liveness->call_points.size() != 1) {
     return fail("indirect-call contract: prepared liveness no longer records the indirect call point");
@@ -1188,21 +1171,20 @@ int check_indirect_call_contract() {
   }
   const auto& call_plan = call_plans->calls.front();
   if (!call_plan.is_indirect || call_plan.direct_callee_name.has_value() ||
-      call_plan.arguments.size() != 1 || !call_plan.result.has_value()) {
+      !call_plan.indirect_callee.has_value() || call_plan.arguments.size() != 1 ||
+      !call_plan.result.has_value()) {
     return fail("indirect-call contract: call_plans lost indirect-call shape");
   }
   if (call_plan.arguments.front().value_bank != prepare::PreparedRegisterBank::Gpr ||
       call_plan.result->value_bank != prepare::PreparedRegisterBank::Gpr) {
     return fail("indirect-call contract: call_plans lost GPR ownership");
   }
-  const auto* storage_plan = find_storage_plan_function(prepared, "indirect_call_contract");
-  const auto* callee_ptr = storage_plan == nullptr
-                               ? nullptr
-                               : find_storage_value(prepared, *storage_plan, "callee.ptr");
-  if (storage_plan == nullptr || callee_ptr == nullptr ||
-      callee_ptr->encoding != prepare::PreparedStorageEncodingKind::Register ||
-      callee_ptr->bank != prepare::PreparedRegisterBank::Gpr) {
-    return fail("indirect-call contract: storage_plans lost the callee pointer home");
+  const auto& indirect_callee = *call_plan.indirect_callee;
+  if (prepare::prepared_value_name(prepared.names, indirect_callee.value_name) != "callee.ptr" ||
+      indirect_callee.encoding != prepare::PreparedStorageEncodingKind::Register ||
+      indirect_callee.bank != prepare::PreparedRegisterBank::Gpr ||
+      !indirect_callee.register_name.has_value()) {
+    return fail("indirect-call contract: call_plans lost the published indirect callee authority");
   }
   return 0;
 }
@@ -1218,6 +1200,7 @@ int check_call_wrapper_kind_contract() {
   if (same_module_call.wrapper_kind != prepare::PreparedCallWrapperKind::SameModule ||
       same_module_call.variadic_fpr_arg_register_count != 0 || same_module_call.is_indirect ||
       !same_module_call.direct_callee_name.has_value() ||
+      same_module_call.indirect_callee.has_value() ||
       *same_module_call.direct_callee_name != "same_module_i32") {
     return fail("call-wrapper contract: same-module call lost explicit wrapper classification");
   }
@@ -1227,6 +1210,7 @@ int check_call_wrapper_kind_contract() {
           prepare::PreparedCallWrapperKind::DirectExternFixedArity ||
       fixed_extern_call.variadic_fpr_arg_register_count != 0 ||
       fixed_extern_call.is_indirect || !fixed_extern_call.direct_callee_name.has_value() ||
+      fixed_extern_call.indirect_callee.has_value() ||
       *fixed_extern_call.direct_callee_name != "extern_fixed_i32") {
     return fail("call-wrapper contract: direct fixed extern lost explicit wrapper classification");
   }
@@ -1236,6 +1220,7 @@ int check_call_wrapper_kind_contract() {
           prepare::PreparedCallWrapperKind::DirectExternVariadic ||
       variadic_extern_call.variadic_fpr_arg_register_count != 1 ||
       variadic_extern_call.is_indirect || !variadic_extern_call.direct_callee_name.has_value() ||
+      variadic_extern_call.indirect_callee.has_value() ||
       *variadic_extern_call.direct_callee_name != "extern_variadic_i32" ||
       variadic_extern_call.arguments.size() != 2) {
     return fail("call-wrapper contract: direct variadic extern lost explicit wrapper classification or FPR count");
@@ -1244,7 +1229,11 @@ int check_call_wrapper_kind_contract() {
   const auto& indirect_call = call_plans->calls[3];
   if (indirect_call.wrapper_kind != prepare::PreparedCallWrapperKind::Indirect ||
       indirect_call.variadic_fpr_arg_register_count != 0 || !indirect_call.is_indirect ||
-      indirect_call.direct_callee_name.has_value()) {
+      indirect_call.direct_callee_name.has_value() || !indirect_call.indirect_callee.has_value() ||
+      prepare::prepared_value_name(prepared.names, indirect_call.indirect_callee->value_name) !=
+          "callee.ptr" ||
+      indirect_call.indirect_callee->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      indirect_call.indirect_callee->bank != prepare::PreparedRegisterBank::Gpr) {
     return fail("call-wrapper contract: indirect call lost explicit wrapper classification");
   }
 

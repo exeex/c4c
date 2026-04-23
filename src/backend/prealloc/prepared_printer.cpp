@@ -153,6 +153,54 @@ std::string storage_encoding_kind_name(PreparedStorageEncodingKind kind) {
   return "unknown";
 }
 
+void append_indirect_callee_summary(std::ostringstream& out,
+                                    const PreparedNameTables& names,
+                                    const std::optional<PreparedIndirectCalleePlan>& callee) {
+  if (!callee.has_value()) {
+    return;
+  }
+
+  out << " indirect_callee=" << maybe_value_name(names, callee->value_name)
+      << " indirect_home=" << storage_encoding_kind_name(callee->encoding)
+      << " indirect_bank=" << prepared_register_bank_name(callee->bank);
+  if (callee->register_name.has_value()) {
+    out << " indirect_reg=" << *callee->register_name;
+  }
+  if (callee->slot_id.has_value()) {
+    out << " indirect_slot=#" << *callee->slot_id;
+  }
+  if (callee->stack_offset_bytes.has_value()) {
+    out << " indirect_stack_offset=" << *callee->stack_offset_bytes;
+  }
+}
+
+void append_indirect_callee_detail(std::ostringstream& out,
+                                   const PreparedNameTables& names,
+                                   const PreparedIndirectCalleePlan& callee) {
+  out << " indirect_callee=" << maybe_value_name(names, callee.value_name)
+      << " indirect_encoding=" << storage_encoding_kind_name(callee.encoding)
+      << " indirect_bank=" << prepared_register_bank_name(callee.bank);
+  if (callee.register_name.has_value()) {
+    out << " indirect_reg=" << *callee.register_name;
+  }
+  if (callee.slot_id.has_value()) {
+    out << " indirect_slot=#" << *callee.slot_id;
+  }
+  if (callee.stack_offset_bytes.has_value()) {
+    out << " indirect_stack_offset=" << *callee.stack_offset_bytes;
+  }
+  if (callee.immediate_i32.has_value()) {
+    out << " indirect_imm_i32=" << *callee.immediate_i32;
+  }
+  if (callee.pointer_base_value_name.has_value()) {
+    out << " indirect_base="
+        << maybe_value_name(names, *callee.pointer_base_value_name);
+  }
+  if (callee.pointer_byte_delta.has_value()) {
+    out << " indirect_delta=" << *callee.pointer_byte_delta;
+  }
+}
+
 std::string maybe_register_bank(std::optional<PreparedRegisterBank> bank) {
   if (!bank.has_value()) {
     return "none";
@@ -254,6 +302,7 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
         }
         out << " variadic_fpr_args=" << call.variadic_fpr_arg_register_count;
         out << " args=" << call.arguments.size();
+        append_indirect_callee_summary(out, module.names, call.indirect_callee);
         if (call.result.has_value()) {
           out << " result_bank=" << prepared_register_bank_name(call.result->value_bank);
         }
@@ -624,6 +673,9 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
           << " indirect=" << (call.is_indirect ? "yes" : "no");
       if (call.direct_callee_name.has_value()) {
         out << " callee=" << *call.direct_callee_name;
+      }
+      if (call.indirect_callee.has_value()) {
+        append_indirect_callee_detail(out, module.names, *call.indirect_callee);
       }
       out << "\n";
       for (const auto& arg : call.arguments) {
