@@ -8,4 +8,4 @@ if [[ ! -x "$script" ]]; then
   exit 0
 fi
 
-"$script" sync-from-head
+"$script" post-commit
