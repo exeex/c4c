@@ -7,23 +7,23 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by retargeting the shared qualified-type helper in
-`types_helpers.hpp`. The unqualified visible-typedef branch in
-`resolve_qualified_typedef_name(...)` now uses the existing `TextId`-aware
-`visible_type_head_name(...)` path instead of returning the raw base spelling.
+Advanced `plan.md` step 2 by retargeting the constructor-vs-function-decl
+probe in `parser_declarations.cpp`. The unqualified visible-type checks in the
+local declaration ambiguity probe now use the shared `TextId`-aware
+`visible_type_head_name(...)` helper instead of spelling-first visible-type
+resolution.
 
 ## Suggested Next
-Continue `plan.md` step 2 by checking the next shared parser helper that still
-prefers spelling-first visible-type resolution and confirm whether it already
-has a usable `TextId` path.
+Continue `plan.md` step 2 by auditing the remaining unqualified type-discovery
+branches in `parser_declarations.cpp` for any other spelling-first visible-type
+checks that should switch to the shared helper.
 
 ## Watchouts
-Keep lexical scope lookup separate from namespace traversal. Do not reopen the
-qualified-owner lookup slice completed under idea 84, and do not treat
-structured-qualified tables or post-parse enum/name fallbacks as candidates for
-flat `TextId` replacement. The unqualified helper now prefers the shared
-visible-name resolver, so future step-2 packets should preserve that path
-rather than reintroducing spelling-only returns.
+Keep lexical scope lookup separate from namespace traversal. The shared helper
+is only safe because the TU now includes `types_helpers.hpp` behind local
+renames for the conflicting helper bodies, so future edits in this file should
+avoid widening that include surface unless the duplicated helpers are also
+reconciled.
 
 ## Proof
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' | tee test_after.log` passed. Proof log: `test_after.log`.

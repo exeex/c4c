@@ -1,9 +1,24 @@
 #include "parser.hpp"
+#include "lexer.hpp"
 
 #include <climits>
 #include <sstream>
 #include <cstring>
 #include <stdexcept>
+
+#define finalize_pending_operator_name finalize_pending_operator_name_types_helpers
+#define is_cpp20_requires_clause_decl_boundary \
+    is_cpp20_requires_clause_decl_boundary_types_helpers
+#define skip_cpp20_constraint_atom skip_cpp20_constraint_atom_types_helpers
+#define parse_optional_cpp20_requires_clause parse_optional_cpp20_requires_clause_types_helpers
+#define parse_optional_cpp20_trailing_requires_clause \
+    parse_optional_cpp20_trailing_requires_clause_types_helpers
+#include "types_helpers.hpp"
+#undef finalize_pending_operator_name
+#undef is_cpp20_requires_clause_decl_boundary
+#undef skip_cpp20_constraint_atom
+#undef parse_optional_cpp20_requires_clause
+#undef parse_optional_cpp20_trailing_requires_clause
 
 namespace c4c {
 
@@ -753,15 +768,15 @@ Node* Parser::parse_local_decl() {
                     const Token& arg_tok = core_input_state_.tokens[core_input_state_.pos + 1];
                     const TextId arg_text_id = arg_tok.text_id;
                     const std::string arg_name = std::string(token_spelling(arg_tok));
-                    const std::string resolved_type_name =
-                        resolve_visible_type_name(arg_text_id, arg_name);
+                    const std::string visible_type_name =
+                        visible_type_head_name(*this, arg_text_id, arg_name);
                     const bool arg_is_type =
                         is_typedef_name(arg_text_id, arg_name) ||
                         has_visible_typedef_type(arg_text_id, arg_name) ||
                         definition_state_.struct_tag_def_map.count(arg_name) >
                             0 ||
                         definition_state_.struct_tag_def_map.count(
-                            resolved_type_name) > 0;
+                            visible_type_name) > 0;
                     single_value_arg = !arg_is_type;
                 }
                 auto can_use_lite_ctor_init_probe = [&]() -> bool {
@@ -805,8 +820,8 @@ Node* Parser::parse_local_decl() {
                                 core_input_state_.tokens[core_input_state_.pos + 1];
                             const TextId arg_text_id = arg_tok.text_id;
                             const std::string arg_name = std::string(token_spelling(arg_tok));
-                            const std::string resolved_type_name =
-                                resolve_visible_type_name(arg_text_id, arg_name);
+                            const std::string visible_type_name =
+                                visible_type_head_name(*this, arg_text_id, arg_name);
                             const bool arg_is_type =
                                 is_template_scope_type_param(arg_text_id, arg_name) ||
                                 is_typedef_name(arg_text_id, arg_name) ||
@@ -814,7 +829,7 @@ Node* Parser::parse_local_decl() {
                                 definition_state_.struct_tag_def_map.count(
                                     arg_name) > 0 ||
                                 definition_state_.struct_tag_def_map.count(
-                                    resolved_type_name) > 0;
+                                    visible_type_name) > 0;
                             if (arg_is_type) return false;
                             if (single_value_arg) return true;
                             if (core_input_state_.pos + 2 <
