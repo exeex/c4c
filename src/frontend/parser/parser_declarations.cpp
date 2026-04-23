@@ -1485,23 +1485,33 @@ Node* Parser::parse_top_level() {
         }
 
         const QualifiedNameKey imported_value_key = qualified_name_key(target_name);
-        std::string imported_value_name = resolve_qualified_value_name(target_name);
-        if (imported_value_name.empty()) {
-            imported_value_name = qualified_name_text(target_name);
+        const std::string imported_key = compatibility_namespace_name_in_context(
+            using_context_id, target_name.base_text_id, imported_name);
+        std::string imported_value_name;
+        if (shared_lookup_state_.token_texts) {
+            imported_value_name = render_qualified_name(
+                imported_value_key, shared_lookup_state_.parser_name_paths,
+                *shared_lookup_state_.token_texts);
         }
-        if (imported_value_name.empty()) {
-            imported_value_name = compatibility_namespace_name_in_context(
-                using_context_id, target_name.base_text_id, imported_name);
-            if (imported_value_name.rfind("::", 0) == 0) {
-                imported_value_name.erase(0, 2);
+        const TypeSpec* imported_var = nullptr;
+        if (!imported_value_name.empty()) {
+            imported_var = find_var_type(imported_value_name);
+        }
+        if (!imported_var) {
+            imported_value_name = resolve_qualified_value_name(target_name);
+            if (imported_value_name.empty()) {
+                imported_value_name = qualified_name_text(target_name);
             }
+            if (imported_value_name.empty()) {
+                imported_value_name = imported_key;
+                if (imported_value_name.rfind("::", 0) == 0) {
+                    imported_value_name.erase(0, 2);
+                }
+            }
+            imported_var = find_var_type(imported_value_name);
         }
         {
-            const std::string imported_key = compatibility_namespace_name_in_context(
-                using_context_id, target_name.base_text_id, imported_name);
-            if (const TypeSpec* imported_var = find_var_type(imported_value_name)) {
-                register_var_type_binding(imported_key, *imported_var);
-            }
+            if (imported_var) register_var_type_binding(imported_key, *imported_var);
             if (has_known_fn_name(imported_value_key)) {
                 register_known_fn_name(known_fn_name_key_in_context(
                     using_context_id, target_name.base_text_id, imported_name));
