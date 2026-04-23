@@ -2,7 +2,7 @@
 """Phoenix rebuild extractor harness.
 
 Launches one agent process per matched legacy source file and asks it to
-produce a compressed markdown companion under the requested output tree.
+produce a compressed markdown companion beside the source file.
 The extraction prompt is intentionally hardcoded here so stage-1 rebuild work
 uses one stable contract.
 """
@@ -72,11 +72,6 @@ def parse_args() -> argparse.Namespace:
         "patterns",
         nargs="+",
         help="Glob patterns relative to the repo root, for example src/backend/mir/x86/codegen/*.cpp",
-    )
-    parser.add_argument(
-        "--output-root",
-        required=True,
-        help="Directory where extracted markdown companions will be written.",
     )
     parser.add_argument(
         "--cli",
@@ -154,11 +149,14 @@ def validate_header_index_rule(paths: list[Path]) -> None:
     raise SystemExit("\n".join(lines))
 
 
-def build_jobs(paths: list[Path], output_root: Path) -> list[Job]:
+def companion_markdown_path(source_path: Path) -> Path:
+    return source_path.with_name(source_path.name + ".md")
+
+
+def build_jobs(paths: list[Path]) -> list[Job]:
     jobs: list[Job] = []
     for path in paths:
-        relpath = path.relative_to(REPO_ROOT)
-        output_path = output_root / Path(str(relpath) + ".md")
+        output_path = companion_markdown_path(path)
         jobs.append(Job(source_path=path, output_path=output_path))
     return jobs
 
@@ -225,9 +223,6 @@ def run_job(job: Job, cli: str, args: argparse.Namespace, log_dir: Path) -> tupl
 def main() -> int:
     args = parse_args()
     cli = resolve_cli(args.cli)
-    output_root = Path(args.output_root)
-    if not output_root.is_absolute():
-        output_root = (REPO_ROOT / output_root).resolve()
     log_dir = Path(args.log_dir)
     if not log_dir.is_absolute():
         log_dir = (REPO_ROOT / log_dir).resolve()
@@ -238,7 +233,7 @@ def main() -> int:
         return 1
 
     validate_header_index_rule(paths)
-    jobs = build_jobs(paths, output_root)
+    jobs = build_jobs(paths)
 
     failures = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:

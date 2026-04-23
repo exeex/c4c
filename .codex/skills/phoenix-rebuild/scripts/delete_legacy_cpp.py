@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Delete legacy .cpp files after markdown extraction exists."""
+"""Delete legacy .cpp files after in-place markdown extraction exists."""
 
 from __future__ import annotations
 
@@ -23,11 +23,6 @@ def parse_args() -> argparse.Namespace:
         help="Glob patterns relative to the repo root, for example src/backend/mir/x86/codegen/*.cpp",
     )
     parser.add_argument(
-        "--output-root",
-        required=True,
-        help="Markdown extraction root that should contain <relative .cpp path>.md companions.",
-    )
-    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Show which files would be removed without deleting them.",
@@ -44,17 +39,12 @@ def expand_cpp_patterns(patterns: list[str]) -> list[Path]:
     return sorted(matches)
 
 
-def required_markdown_path(source_path: Path, output_root: Path) -> Path:
-    relpath = source_path.relative_to(REPO_ROOT)
-    return output_root / Path(str(relpath) + ".md")
+def required_markdown_path(source_path: Path) -> Path:
+    return source_path.with_name(source_path.name + ".md")
 
 
 def main() -> int:
     args = parse_args()
-    output_root = Path(args.output_root)
-    if not output_root.is_absolute():
-        output_root = (REPO_ROOT / output_root).resolve()
-
     cpp_paths = expand_cpp_patterns(args.patterns)
     if not cpp_paths:
         print("No .cpp files matched the requested glob patterns.", file=sys.stderr)
@@ -62,7 +52,7 @@ def main() -> int:
 
     missing_markdown: list[tuple[Path, Path]] = []
     for cpp_path in cpp_paths:
-        markdown_path = required_markdown_path(cpp_path, output_root)
+        markdown_path = required_markdown_path(cpp_path)
         if not markdown_path.is_file():
             missing_markdown.append((cpp_path, markdown_path))
 

@@ -197,6 +197,93 @@ struct PreparedStackLayout {
   std::size_t frame_alignment_bytes = 0;
 };
 
+enum class PreparedRegisterBank {
+  None,
+  Gpr,
+  Fpr,
+  Vreg,
+  AggregateAddress,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_register_bank_name(
+    PreparedRegisterBank bank) {
+  switch (bank) {
+    case PreparedRegisterBank::None:
+      return "none";
+    case PreparedRegisterBank::Gpr:
+      return "gpr";
+    case PreparedRegisterBank::Fpr:
+      return "fpr";
+    case PreparedRegisterBank::Vreg:
+      return "vreg";
+    case PreparedRegisterBank::AggregateAddress:
+      return "aggregate_address";
+  }
+  return "unknown";
+}
+
+struct PreparedSavedRegister {
+  PreparedRegisterBank bank = PreparedRegisterBank::None;
+  std::string register_name;
+  std::size_t save_index = 0;
+};
+
+struct PreparedFramePlanFunction {
+  FunctionNameId function_name = kInvalidFunctionName;
+  std::size_t frame_size_bytes = 0;
+  std::size_t frame_alignment_bytes = 0;
+  std::vector<PreparedSavedRegister> saved_callee_registers;
+  std::vector<PreparedFrameSlotId> frame_slot_order;
+  bool has_dynamic_stack = false;
+  bool uses_frame_pointer_for_fixed_slots = false;
+};
+
+struct PreparedFramePlan {
+  std::vector<PreparedFramePlanFunction> functions;
+};
+
+enum class PreparedDynamicStackOpKind {
+  StackSave,
+  DynamicAlloca,
+  StackRestore,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_dynamic_stack_op_kind_name(
+    PreparedDynamicStackOpKind kind) {
+  switch (kind) {
+    case PreparedDynamicStackOpKind::StackSave:
+      return "stack_save";
+    case PreparedDynamicStackOpKind::DynamicAlloca:
+      return "dynamic_alloca";
+    case PreparedDynamicStackOpKind::StackRestore:
+      return "stack_restore";
+  }
+  return "unknown";
+}
+
+struct PreparedDynamicStackOp {
+  FunctionNameId function_name = kInvalidFunctionName;
+  BlockLabelId block_label = kInvalidBlockLabel;
+  std::size_t instruction_index = 0;
+  PreparedDynamicStackOpKind kind = PreparedDynamicStackOpKind::StackSave;
+  std::optional<ValueNameId> result_value_name;
+  std::optional<ValueNameId> operand_value_name;
+  std::string allocation_type_text;
+  std::size_t element_size_bytes = 0;
+  std::size_t element_align_bytes = 0;
+};
+
+struct PreparedDynamicStackPlanFunction {
+  FunctionNameId function_name = kInvalidFunctionName;
+  bool requires_stack_save_restore = false;
+  bool uses_frame_pointer_for_fixed_slots = false;
+  std::vector<PreparedDynamicStackOp> operations;
+};
+
+struct PreparedDynamicStackPlan {
+  std::vector<PreparedDynamicStackPlanFunction> functions;
+};
+
 [[nodiscard]] inline const PreparedFrameSlot* find_prepared_frame_slot(
     const PreparedStackLayout& stack_layout,
     PreparedObjectId object_id) {
@@ -754,6 +841,86 @@ struct PreparedValueLocationFunction {
 
 struct PreparedValueLocations {
   std::vector<PreparedValueLocationFunction> functions;
+};
+
+struct PreparedCallArgumentPlan {
+  std::size_t instruction_index = 0;
+  std::size_t arg_index = 0;
+  PreparedRegisterBank value_bank = PreparedRegisterBank::None;
+  PreparedMoveStorageKind source_storage_kind = PreparedMoveStorageKind::None;
+  std::optional<PreparedValueId> source_value_id;
+  std::optional<std::string> source_register_name;
+  std::optional<std::size_t> source_stack_offset_bytes;
+  std::optional<PreparedRegisterBank> source_register_bank;
+  std::optional<std::string> destination_register_name;
+  std::optional<PreparedRegisterBank> destination_register_bank;
+  std::optional<std::size_t> destination_stack_offset_bytes;
+};
+
+struct PreparedCallResultPlan {
+  std::size_t instruction_index = 0;
+  PreparedRegisterBank value_bank = PreparedRegisterBank::None;
+  PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
+  std::optional<PreparedValueId> destination_value_id;
+  std::optional<std::string> source_register_name;
+  std::optional<PreparedRegisterBank> source_register_bank;
+  std::optional<std::string> destination_register_name;
+  std::optional<PreparedRegisterBank> destination_register_bank;
+  std::optional<std::size_t> destination_stack_offset_bytes;
+};
+
+struct PreparedClobberedRegister {
+  PreparedRegisterBank bank = PreparedRegisterBank::None;
+  std::string register_name;
+};
+
+struct PreparedCallPlan {
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+  bool is_indirect = false;
+  std::optional<std::string> direct_callee_name;
+  std::vector<PreparedCallArgumentPlan> arguments;
+  std::optional<PreparedCallResultPlan> result;
+  std::vector<PreparedClobberedRegister> clobbered_registers;
+};
+
+struct PreparedCallPlansFunction {
+  FunctionNameId function_name = kInvalidFunctionName;
+  std::vector<PreparedCallPlan> calls;
+};
+
+struct PreparedCallPlans {
+  std::vector<PreparedCallPlansFunction> functions;
+};
+
+enum class PreparedStorageEncodingKind {
+  None,
+  Register,
+  FrameSlot,
+  Immediate,
+  ComputedAddress,
+  SymbolAddress,
+};
+
+struct PreparedStoragePlanValue {
+  PreparedValueId value_id = 0;
+  ValueNameId value_name = kInvalidValueName;
+  PreparedStorageEncodingKind encoding = PreparedStorageEncodingKind::None;
+  PreparedRegisterBank bank = PreparedRegisterBank::None;
+  std::optional<std::string> register_name;
+  std::optional<PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
+  std::optional<std::int64_t> immediate_i32;
+  std::optional<LinkNameId> symbol_name;
+};
+
+struct PreparedStoragePlanFunction {
+  FunctionNameId function_name = kInvalidFunctionName;
+  std::vector<PreparedStoragePlanValue> values;
+};
+
+struct PreparedStoragePlans {
+  std::vector<PreparedStoragePlanFunction> functions;
 };
 
 enum class PrepareRoute {
@@ -3312,6 +3479,10 @@ struct PreparedBirModule {
   PreparedAddressing addressing;
   PreparedLiveness liveness;
   PreparedRegalloc regalloc;
+  PreparedFramePlan frame_plan;
+  PreparedDynamicStackPlan dynamic_stack_plan;
+  PreparedCallPlans call_plans;
+  PreparedStoragePlans storage_plans;
   std::vector<std::string> completed_phases;
   std::vector<PrepareNote> notes;
 };
@@ -3354,6 +3525,74 @@ struct PreparedBirModule {
     const PreparedBirModule& module,
     std::string_view function_name) {
   return find_prepared_value_location_function(module.names, module.value_locations, function_name);
+}
+
+[[nodiscard]] inline const PreparedFramePlanFunction* find_prepared_frame_plan(
+    const PreparedFramePlan& frame_plan,
+    FunctionNameId function_name) {
+  for (const auto& function_plan : frame_plan.functions) {
+    if (function_plan.function_name == function_name) {
+      return &function_plan;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedFramePlanFunction* find_prepared_frame_plan(
+    const PreparedBirModule& module,
+    FunctionNameId function_name) {
+  return find_prepared_frame_plan(module.frame_plan, function_name);
+}
+
+[[nodiscard]] inline const PreparedDynamicStackPlanFunction* find_prepared_dynamic_stack_plan(
+    const PreparedDynamicStackPlan& dynamic_stack_plan,
+    FunctionNameId function_name) {
+  for (const auto& function_plan : dynamic_stack_plan.functions) {
+    if (function_plan.function_name == function_name) {
+      return &function_plan;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedDynamicStackPlanFunction* find_prepared_dynamic_stack_plan(
+    const PreparedBirModule& module,
+    FunctionNameId function_name) {
+  return find_prepared_dynamic_stack_plan(module.dynamic_stack_plan, function_name);
+}
+
+[[nodiscard]] inline const PreparedCallPlansFunction* find_prepared_call_plans(
+    const PreparedCallPlans& call_plans,
+    FunctionNameId function_name) {
+  for (const auto& function_plan : call_plans.functions) {
+    if (function_plan.function_name == function_name) {
+      return &function_plan;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedCallPlansFunction* find_prepared_call_plans(
+    const PreparedBirModule& module,
+    FunctionNameId function_name) {
+  return find_prepared_call_plans(module.call_plans, function_name);
+}
+
+[[nodiscard]] inline const PreparedStoragePlanFunction* find_prepared_storage_plan(
+    const PreparedStoragePlans& storage_plans,
+    FunctionNameId function_name) {
+  for (const auto& function_plan : storage_plans.functions) {
+    if (function_plan.function_name == function_name) {
+      return &function_plan;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedStoragePlanFunction* find_prepared_storage_plan(
+    const PreparedBirModule& module,
+    FunctionNameId function_name) {
+  return find_prepared_storage_plan(module.storage_plans, function_name);
 }
 
 [[nodiscard]] inline const PreparedValueHome* find_prepared_value_home(

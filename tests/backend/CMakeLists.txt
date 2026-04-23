@@ -2,6 +2,10 @@ set(BACKEND_TEST_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 set(BACKEND_TEST_CMAKE_ROOT "${BACKEND_TEST_ROOT}/cmake")
 set(BACKEND_CASE_ROOT "${BACKEND_TEST_ROOT}/case")
 
+option(C4C_ENABLE_X86_BACKEND_TESTS
+       "Enable x86 emitter and x86 handoff boundary backend tests"
+       OFF)
+
 function(c4c_collect_backend_labels out_var)
   set(labels internal backend)
   foreach(label IN LISTS ARGN)
@@ -16,6 +20,12 @@ endfunction()
 function(c4c_set_backend_test_labels test_name)
   c4c_collect_backend_labels(labels ${ARGN})
   set_tests_properties("${test_name}" PROPERTIES LABELS "${labels}")
+endfunction()
+
+function(c4c_disable_backend_test_when_x86_tests_off test_name)
+  if(NOT C4C_ENABLE_X86_BACKEND_TESTS)
+    set_tests_properties("${test_name}" PROPERTIES DISABLED TRUE)
+  endif()
 endfunction()
 
 function(c4c_add_backend_codegen_route_test test_name)
@@ -239,6 +249,28 @@ set_tests_properties(backend_prepare_stack_layout PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_executable(backend_prepare_frame_stack_call_contract_test
+    "${BACKEND_TEST_ROOT}/backend_prepare_frame_stack_call_contract_test.cpp"
+)
+target_include_directories(backend_prepare_frame_stack_call_contract_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_prepare_frame_stack_call_contract_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_prepare_frame_stack_call_contract_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_prepare_frame_stack_call_contract
+  COMMAND $<TARGET_FILE:backend_prepare_frame_stack_call_contract_test>
+)
+set_tests_properties(backend_prepare_frame_stack_call_contract PROPERTIES
+  LABELS "backend;internal;cpp"
+)
+
 add_executable(backend_prepared_printer_test
     "${BACKEND_TEST_ROOT}/backend_prepared_printer_test.cpp"
 )
@@ -261,27 +293,29 @@ set_tests_properties(backend_prepared_printer PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
-add_executable(backend_x86_route_debug_test
-    "${BACKEND_TEST_ROOT}/backend_x86_route_debug_test.cpp"
-)
-target_include_directories(backend_x86_route_debug_test PRIVATE
-    "${PROJECT_SOURCE_DIR}"
-)
-target_link_libraries(backend_x86_route_debug_test PRIVATE
-    c4c_backend
-)
-set_target_properties(backend_x86_route_debug_test PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
+if(C4C_ENABLE_X86_BACKEND_TESTS)
+  add_executable(backend_x86_route_debug_test
+      "${BACKEND_TEST_ROOT}/backend_x86_route_debug_test.cpp"
+  )
+  target_include_directories(backend_x86_route_debug_test PRIVATE
+      "${PROJECT_SOURCE_DIR}"
+  )
+  target_link_libraries(backend_x86_route_debug_test PRIVATE
+      c4c_backend
+  )
+  set_target_properties(backend_x86_route_debug_test PROPERTIES
+      CXX_STANDARD 17
+      CXX_STANDARD_REQUIRED ON
+  )
 
-add_test(
-  NAME backend_x86_route_debug
-  COMMAND $<TARGET_FILE:backend_x86_route_debug_test>
-)
-set_tests_properties(backend_x86_route_debug PROPERTIES
-  LABELS "backend;internal;cpp"
-)
+  add_test(
+    NAME backend_x86_route_debug
+    COMMAND $<TARGET_FILE:backend_x86_route_debug_test>
+  )
+  set_tests_properties(backend_x86_route_debug PROPERTIES
+    LABELS "backend;internal;cpp"
+  )
+endif()
 
 add_test(
   NAME backend_cli_dump_bir_is_semantic
@@ -325,6 +359,7 @@ add_test(
 set_tests_properties(backend_cli_dump_mir_is_nonfatal_trace_shell PROPERTIES
   LABELS "backend;internal;cli"
 )
+c4c_disable_backend_test_when_x86_tests_off(backend_cli_dump_mir_is_nonfatal_trace_shell)
 
 add_test(
   NAME backend_cli_trace_mir_reports_lane_detail
@@ -339,6 +374,7 @@ add_test(
 set_tests_properties(backend_cli_trace_mir_reports_lane_detail PROPERTIES
   LABELS "backend;internal;cli"
 )
+c4c_disable_backend_test_when_x86_tests_off(backend_cli_trace_mir_reports_lane_detail)
 
 add_test(
   NAME backend_cli_dump_bir_00204_stdarg_semantic_handoff
@@ -545,6 +581,7 @@ add_test(
 set_tests_properties(backend_cli_dump_mir_focus_function_filters_00204 PROPERTIES
   LABELS "backend;internal;cli"
 )
+c4c_disable_backend_test_when_x86_tests_off(backend_cli_dump_mir_focus_function_filters_00204)
 
 add_test(
   NAME backend_cli_trace_mir_focus_function_filters_00204
@@ -561,6 +598,7 @@ add_test(
 set_tests_properties(backend_cli_trace_mir_focus_function_filters_00204 PROPERTIES
   LABELS "backend;internal;cli"
 )
+c4c_disable_backend_test_when_x86_tests_off(backend_cli_trace_mir_focus_function_filters_00204)
 
 add_test(
   NAME backend_cli_dump_mir_focus_block_entry_00204
@@ -577,6 +615,7 @@ add_test(
 set_tests_properties(backend_cli_dump_mir_focus_block_entry_00204 PROPERTIES
   LABELS "backend;internal;cli"
 )
+c4c_disable_backend_test_when_x86_tests_off(backend_cli_dump_mir_focus_block_entry_00204)
 
 add_test(
   NAME backend_cli_trace_mir_focus_block_entry_00204
@@ -593,6 +632,7 @@ add_test(
 set_tests_properties(backend_cli_trace_mir_focus_block_entry_00204 PROPERTIES
   LABELS "backend;internal;cli"
 )
+c4c_disable_backend_test_when_x86_tests_off(backend_cli_trace_mir_focus_block_entry_00204)
 
 add_test(
   NAME backend_cli_dump_mir_focus_block_missing_00204
@@ -609,6 +649,7 @@ add_test(
 set_tests_properties(backend_cli_dump_mir_focus_block_missing_00204 PROPERTIES
   LABELS "backend;internal;cli"
 )
+c4c_disable_backend_test_when_x86_tests_off(backend_cli_dump_mir_focus_block_missing_00204)
 
 add_test(
   NAME backend_cli_trace_mir_focus_block_missing_00204
@@ -625,6 +666,7 @@ add_test(
 set_tests_properties(backend_cli_trace_mir_focus_block_missing_00204 PROPERTIES
   LABELS "backend;internal;cli"
 )
+c4c_disable_backend_test_when_x86_tests_off(backend_cli_trace_mir_focus_block_missing_00204)
 
 add_test(
   NAME backend_cli_dump_mir_focus_value_t1_00204
@@ -641,6 +683,7 @@ add_test(
 set_tests_properties(backend_cli_dump_mir_focus_value_t1_00204 PROPERTIES
   LABELS "backend;internal;cli"
 )
+c4c_disable_backend_test_when_x86_tests_off(backend_cli_dump_mir_focus_value_t1_00204)
 
 add_test(
   NAME backend_cli_dump_mir_focus_value_missing_00204
@@ -657,6 +700,7 @@ add_test(
 set_tests_properties(backend_cli_dump_mir_focus_value_missing_00204 PROPERTIES
   LABELS "backend;internal;cli"
 )
+c4c_disable_backend_test_when_x86_tests_off(backend_cli_dump_mir_focus_value_missing_00204)
 
 add_test(
   NAME backend_cli_trace_mir_focus_value_t1_00204
@@ -673,6 +717,7 @@ add_test(
 set_tests_properties(backend_cli_trace_mir_focus_value_t1_00204 PROPERTIES
   LABELS "backend;internal;cli"
 )
+c4c_disable_backend_test_when_x86_tests_off(backend_cli_trace_mir_focus_value_t1_00204)
 
 add_test(
   NAME backend_cli_trace_mir_focus_value_missing_00204
@@ -689,41 +734,44 @@ add_test(
 set_tests_properties(backend_cli_trace_mir_focus_value_missing_00204 PROPERTIES
   LABELS "backend;internal;cli"
 )
+c4c_disable_backend_test_when_x86_tests_off(backend_cli_trace_mir_focus_value_missing_00204)
 
-add_executable(backend_x86_handoff_boundary_test
-    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_test.cpp"
-    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_compare_branch_test.cpp"
-    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_direct_extern_call_test.cpp"
-    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_i32_guard_chain_test.cpp"
-    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_joined_branch_test.cpp"
-    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_lir_test.cpp"
-    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_local_i16_guard_test.cpp"
-    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_local_i32_guard_test.cpp"
-    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_local_slot_guard_lane_test.cpp"
-    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_multi_defined_call_test.cpp"
-    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_multi_defined_rejection_test.cpp"
-    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_scalar_smoke_test.cpp"
-    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_short_circuit_test.cpp"
-    "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_loop_countdown_test.cpp"
-)
-target_include_directories(backend_x86_handoff_boundary_test PRIVATE
-    "${PROJECT_SOURCE_DIR}"
-)
-target_link_libraries(backend_x86_handoff_boundary_test PRIVATE
-    c4c_backend
-)
-set_target_properties(backend_x86_handoff_boundary_test PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
+if(C4C_ENABLE_X86_BACKEND_TESTS)
+  add_executable(backend_x86_handoff_boundary_test
+      "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_test.cpp"
+      "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_compare_branch_test.cpp"
+      "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_direct_extern_call_test.cpp"
+      "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_i32_guard_chain_test.cpp"
+      "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_joined_branch_test.cpp"
+      "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_lir_test.cpp"
+      "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_local_i16_guard_test.cpp"
+      "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_local_i32_guard_test.cpp"
+      "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_local_slot_guard_lane_test.cpp"
+      "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_multi_defined_call_test.cpp"
+      "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_multi_defined_rejection_test.cpp"
+      "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_scalar_smoke_test.cpp"
+      "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_short_circuit_test.cpp"
+      "${BACKEND_TEST_ROOT}/backend_x86_handoff_boundary_loop_countdown_test.cpp"
+  )
+  target_include_directories(backend_x86_handoff_boundary_test PRIVATE
+      "${PROJECT_SOURCE_DIR}"
+  )
+  target_link_libraries(backend_x86_handoff_boundary_test PRIVATE
+      c4c_backend
+  )
+  set_target_properties(backend_x86_handoff_boundary_test PROPERTIES
+      CXX_STANDARD 17
+      CXX_STANDARD_REQUIRED ON
+  )
 
-add_test(
-  NAME backend_x86_handoff_boundary
-  COMMAND $<TARGET_FILE:backend_x86_handoff_boundary_test>
-)
-set_tests_properties(backend_x86_handoff_boundary PROPERTIES
-  LABELS "backend;internal;cpp"
-)
+  add_test(
+    NAME backend_x86_handoff_boundary
+    COMMAND $<TARGET_FILE:backend_x86_handoff_boundary_test>
+  )
+  set_tests_properties(backend_x86_handoff_boundary PROPERTIES
+    LABELS "backend;internal;cpp"
+  )
+endif()
 
 c4c_add_backend_codegen_route_test(
   backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_observes_semantic_phi

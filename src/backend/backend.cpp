@@ -1,8 +1,8 @@
 #include "backend.hpp"
 
 #include "bir/bir_printer.hpp"
-#include "mir/x86/codegen/api/x86_codegen_api.hpp"
-#include "mir/x86/codegen/route_debug.hpp"
+#include "mir/x86/api/api.hpp"
+#include "mir/x86/x86.hpp"
 #include "prealloc/prepared_printer.hpp"
 
 #include "../codegen/lir/lir_printer.hpp"

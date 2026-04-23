@@ -25,19 +25,20 @@ The extraction stage should be script-driven, not hand-run file by file.
 
 Use:
 
-`python .codex/skills/phoenix-rebuild/scripts/extract_legacy_to_markdown.py --output-root <dir> '<glob>' ...`
+`python .codex/skills/phoenix-rebuild/scripts/extract_legacy_to_markdown.py '<glob>' ...`
 
 Legacy cleanup:
 
-`python .codex/skills/phoenix-rebuild/scripts/delete_legacy_cpp.py --output-root <dir> '<glob>' ...`
+`python .codex/skills/phoenix-rebuild/scripts/delete_legacy_cpp.py '<glob>' ...`
 
 The script hardcodes the extraction prompt, expands the requested glob set,
 and launches one agent process per matched legacy `.cpp` / `.hpp` in parallel.
-Use it as the default stage-1 driver when the task is "translate legacy code
-into compressed markdown evidence."
+Each artifact is written in place beside the source file as `*.cpp.md` or
+`*.hpp.md`. Use it as the default stage-1 driver when the task is "translate
+legacy code into compressed markdown evidence."
 
 The cleanup script is the default way to remove old `.cpp` files after stage-1
-evidence exists. It refuses deletion unless the matching extracted `.md`
+evidence exists. It refuses deletion unless the matching in-place `*.cpp.md`
 already exists, then deletes the original `.cpp` files with `rm`.
 
 Header policy is strict:
