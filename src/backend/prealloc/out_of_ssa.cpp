@@ -1016,7 +1016,36 @@ void build_parallel_copy_bundles(const PreparedNameTables&,
             });
 }
 
+void publish_branch_owned_join_transfer_continuation_labels(
+    const PreparedNameTables& names,
+    const bir::Function& function,
+    const PreparedControlFlowFunction& function_control_flow,
+    PreparedJoinTransfer* transfer) {
+  if (transfer == nullptr || !transfer->source_branch_block_label.has_value()) {
+    return;
+  }
+
+  const auto* join_block =
+      find_block(function, prepared_block_label(names, transfer->join_block_label));
+  const auto* join_branch_condition =
+      find_prepared_branch_condition(function_control_flow, transfer->join_block_label);
+  if (join_block == nullptr || join_branch_condition == nullptr) {
+    return;
+  }
+
+  const auto continuation_targets = find_prepared_compare_join_continuation_targets(
+      names, *transfer, *join_block, *join_branch_condition);
+  if (!continuation_targets.has_value()) {
+    return;
+  }
+
+  transfer->continuation_true_label = continuation_targets->true_label;
+  transfer->continuation_false_label = continuation_targets->false_label;
+}
+
 void annotate_branch_owned_join_transfers(
+    const PreparedNameTables& names,
+    const bir::Function& function,
     const PreparedControlFlowFunction& function_control_flow,
     std::vector<PreparedJoinTransfer>* join_transfers) {
   if (join_transfers == nullptr || function_control_flow.branch_conditions.empty()) {
@@ -1024,60 +1053,63 @@ void annotate_branch_owned_join_transfers(
   }
 
   for (auto& transfer : *join_transfers) {
-    if (transfer.edge_transfers.size() != 2 || transfer.source_true_transfer_index.has_value() ||
-        transfer.source_false_transfer_index.has_value()) {
-      continue;
-    }
-
-    struct CandidateMapping {
-      BlockLabelId source_branch_block_label = kInvalidBlockLabel;
-      std::size_t true_transfer_index = 0;
-      std::size_t false_transfer_index = 0;
-      BlockLabelId true_incoming_label = kInvalidBlockLabel;
-      BlockLabelId false_incoming_label = kInvalidBlockLabel;
-    };
-
-    std::optional<CandidateMapping> candidate;
-    bool ambiguous = false;
-    for (const auto& branch_condition : function_control_flow.branch_conditions) {
-      const auto true_incoming_label = find_prepared_linear_join_predecessor(
-          function_control_flow, branch_condition.true_label, transfer.join_block_label);
-      const auto false_incoming_label = find_prepared_linear_join_predecessor(
-          function_control_flow, branch_condition.false_label, transfer.join_block_label);
-      if (!true_incoming_label.has_value() || !false_incoming_label.has_value() ||
-          *true_incoming_label == *false_incoming_label) {
-        continue;
-      }
-
-      const auto true_transfer_index =
-          find_join_transfer_edge_index_by_predecessor(transfer, *true_incoming_label);
-      const auto false_transfer_index =
-          find_join_transfer_edge_index_by_predecessor(transfer, *false_incoming_label);
-      if (!true_transfer_index.has_value() || !false_transfer_index.has_value() ||
-          *true_transfer_index == *false_transfer_index) {
-        continue;
-      }
-
-      if (candidate.has_value()) {
-        ambiguous = true;
-        break;
-      }
-
-      candidate = CandidateMapping{
-          .source_branch_block_label = branch_condition.block_label,
-          .true_transfer_index = *true_transfer_index,
-          .false_transfer_index = *false_transfer_index,
-          .true_incoming_label = *true_incoming_label,
-          .false_incoming_label = *false_incoming_label,
+    if (transfer.edge_transfers.size() == 2 && !transfer.source_true_transfer_index.has_value() &&
+        !transfer.source_false_transfer_index.has_value()) {
+      struct CandidateMapping {
+        BlockLabelId source_branch_block_label = kInvalidBlockLabel;
+        std::size_t true_transfer_index = 0;
+        std::size_t false_transfer_index = 0;
+        BlockLabelId true_incoming_label = kInvalidBlockLabel;
+        BlockLabelId false_incoming_label = kInvalidBlockLabel;
       };
+
+      std::optional<CandidateMapping> candidate;
+      bool ambiguous = false;
+      for (const auto& branch_condition : function_control_flow.branch_conditions) {
+        const auto true_incoming_label = find_prepared_linear_join_predecessor(
+            function_control_flow, branch_condition.true_label, transfer.join_block_label);
+        const auto false_incoming_label = find_prepared_linear_join_predecessor(
+            function_control_flow, branch_condition.false_label, transfer.join_block_label);
+        if (!true_incoming_label.has_value() || !false_incoming_label.has_value() ||
+            *true_incoming_label == *false_incoming_label) {
+          continue;
+        }
+
+        const auto true_transfer_index =
+            find_join_transfer_edge_index_by_predecessor(transfer, *true_incoming_label);
+        const auto false_transfer_index =
+            find_join_transfer_edge_index_by_predecessor(transfer, *false_incoming_label);
+        if (!true_transfer_index.has_value() || !false_transfer_index.has_value() ||
+            *true_transfer_index == *false_transfer_index) {
+          continue;
+        }
+
+        if (candidate.has_value()) {
+          ambiguous = true;
+          break;
+        }
+
+        candidate = CandidateMapping{
+            .source_branch_block_label = branch_condition.block_label,
+            .true_transfer_index = *true_transfer_index,
+            .false_transfer_index = *false_transfer_index,
+            .true_incoming_label = *true_incoming_label,
+            .false_incoming_label = *false_incoming_label,
+        };
+      }
+
+      if (!ambiguous && candidate.has_value()) {
+        transfer.source_branch_block_label = std::move(candidate->source_branch_block_label);
+        transfer.source_true_transfer_index = candidate->true_transfer_index;
+        transfer.source_false_transfer_index = candidate->false_transfer_index;
+        transfer.source_true_incoming_label = std::move(candidate->true_incoming_label);
+        transfer.source_false_incoming_label = std::move(candidate->false_incoming_label);
+      }
     }
 
-    if (!ambiguous && candidate.has_value()) {
-      transfer.source_branch_block_label = std::move(candidate->source_branch_block_label);
-      transfer.source_true_transfer_index = candidate->true_transfer_index;
-      transfer.source_false_transfer_index = candidate->false_transfer_index;
-      transfer.source_true_incoming_label = std::move(candidate->true_incoming_label);
-      transfer.source_false_incoming_label = std::move(candidate->false_incoming_label);
+    if (transfer.source_branch_block_label.has_value()) {
+      publish_branch_owned_join_transfer_continuation_labels(
+          names, function, function_control_flow, &transfer);
     }
   }
 }
@@ -1124,6 +1156,17 @@ void publish_short_circuit_continuation_branch_conditions(
                                                 *prepared_entry_targets);
     if (!prepared_branch_plan.has_value()) {
       continue;
+    }
+
+    const auto maybe_continuation =
+        prepared_branch_plan->on_compare_true.continuation.has_value()
+            ? prepared_branch_plan->on_compare_true.continuation
+            : prepared_branch_plan->on_compare_false.continuation;
+    if (maybe_continuation.has_value() && short_circuit_join_context->join_transfer != nullptr) {
+      auto* published_join_transfer =
+          const_cast<PreparedJoinTransfer*>(short_circuit_join_context->join_transfer);
+      published_join_transfer->continuation_true_label = maybe_continuation->true_label;
+      published_join_transfer->continuation_false_label = maybe_continuation->false_label;
     }
 
     for (const auto* target :
@@ -1286,7 +1329,9 @@ void out_of_ssa_module(bir::Module& module,
 
     collect_select_materialized_join_transfers(
         names, function, *function_control_flow, &function_control_flow->join_transfers);
-    annotate_branch_owned_join_transfers(*function_control_flow,
+    annotate_branch_owned_join_transfers(names,
+                                         function,
+                                         *function_control_flow,
                                          &function_control_flow->join_transfers);
     build_parallel_copy_bundles(names, function_control_flow);
     publish_short_circuit_continuation_branch_conditions(

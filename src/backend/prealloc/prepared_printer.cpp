@@ -390,16 +390,20 @@ void append_prepared_control_flow(std::ostringstream& out, const PreparedBirModu
                     : std::string("<none>"))
             << ")";
       }
-      if (function != nullptr) {
-        const auto continuation_targets = find_prepared_compare_join_continuation_targets(
-            module.names, function_cf, *function, transfer.source_branch_block_label.value_or(kInvalidBlockLabel));
-        if (continuation_targets.has_value()) {
-          out << " continuation_targets=("
-              << maybe_block_label(module.names, continuation_targets->true_label)
-              << ", "
-              << maybe_block_label(module.names, continuation_targets->false_label)
-              << ")";
-        }
+      auto continuation_targets = published_prepared_compare_join_continuation_targets(transfer);
+      if (!continuation_targets.has_value() && function != nullptr) {
+        continuation_targets = find_prepared_compare_join_continuation_targets(
+            module.names,
+            function_cf,
+            *function,
+            transfer.source_branch_block_label.value_or(kInvalidBlockLabel));
+      }
+      if (continuation_targets.has_value()) {
+        out << " continuation_targets=("
+            << maybe_block_label(module.names, continuation_targets->true_label)
+            << ", "
+            << maybe_block_label(module.names, continuation_targets->false_label)
+            << ")";
       }
       out << "\n";
       for (const auto& incoming : transfer.incomings) {

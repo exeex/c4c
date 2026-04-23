@@ -1,6 +1,7 @@
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/backend/prealloc/prepared_printer.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -332,10 +333,44 @@ bool expect_contains(const std::string& text,
   return false;
 }
 
+prepare::PreparedControlFlowFunction* find_control_flow_function(
+    prepare::PreparedBirModule& prepared,
+    const char* function_name) {
+  const c4c::FunctionNameId function_name_id =
+      prepared.names.function_names.find(function_name);
+  if (function_name_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  for (auto& function : prepared.control_flow.functions) {
+    if (function.function_name == function_name_id) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+bir::Function* find_function(prepare::PreparedBirModule& prepared, const char* function_name) {
+  for (auto& function : prepared.module.functions) {
+    if (function.name == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+bir::Block* find_block(bir::Function& function, const char* block_label) {
+  for (auto& block : function.blocks) {
+    if (block.label == block_label) {
+      return &block;
+    }
+  }
+  return nullptr;
+}
+
 }  // namespace
 
 int main() {
-  const auto prepared = legalize_short_circuit_or_guard_module();
+  auto prepared = legalize_short_circuit_or_guard_module();
   const std::string dump = prepare::print(prepared);
 
   if (!expect_contains(dump, "prepared.module target=riscv64-unknown-linux-gnu",
@@ -373,6 +408,35 @@ int main() {
   }
   if (!expect_contains(dump, "continuation_targets=(block_1, block_2)",
                        "join transfer continuation targets")) {
+    return EXIT_FAILURE;
+  }
+
+  auto* control_flow =
+      find_control_flow_function(prepared, "short_circuit_or_prepare_contract");
+  auto* function = find_function(prepared, "short_circuit_or_prepare_contract");
+  if (control_flow == nullptr || function == nullptr) {
+    std::cerr << "[FAIL] missing prepared short-circuit control-flow fixture\n";
+    return EXIT_FAILURE;
+  }
+  auto* join_block = find_block(*function, "logic.end.10");
+  if (join_block == nullptr) {
+    std::cerr << "[FAIL] missing prepared short-circuit join block fixture\n";
+    return EXIT_FAILURE;
+  }
+  join_block->insts.clear();
+  control_flow->branch_conditions.erase(
+      std::remove_if(control_flow->branch_conditions.begin(),
+                     control_flow->branch_conditions.end(),
+                     [&](const prepare::PreparedBranchCondition& branch_condition) {
+                       return prepare::prepared_block_label(prepared.names,
+                                                            branch_condition.block_label) ==
+                              "logic.rhs.7";
+                     }),
+      control_flow->branch_conditions.end());
+
+  const std::string published_dump = prepare::print(prepared);
+  if (!expect_contains(published_dump, "continuation_targets=(block_1, block_2)",
+                       "published join transfer continuation targets")) {
     return EXIT_FAILURE;
   }
 

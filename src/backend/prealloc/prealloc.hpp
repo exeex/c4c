@@ -1097,6 +1097,8 @@ struct PreparedJoinTransfer {
   std::optional<std::size_t> source_false_transfer_index;
   std::optional<BlockLabelId> source_true_incoming_label;
   std::optional<BlockLabelId> source_false_incoming_label;
+  std::optional<BlockLabelId> continuation_true_label;
+  std::optional<BlockLabelId> continuation_false_label;
 };
 
 [[nodiscard]] constexpr PreparedJoinTransferCarrierKind effective_prepared_join_transfer_carrier_kind(
@@ -1250,6 +1252,19 @@ struct PreparedCompareJoinContinuationTargets {
   BlockLabelId true_label = kInvalidBlockLabel;
   BlockLabelId false_label = kInvalidBlockLabel;
 };
+
+[[nodiscard]] inline std::optional<PreparedCompareJoinContinuationTargets>
+published_prepared_compare_join_continuation_targets(
+    const PreparedJoinTransfer& join_transfer) {
+  if (!join_transfer.continuation_true_label.has_value() ||
+      !join_transfer.continuation_false_label.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedCompareJoinContinuationTargets{
+      .true_label = *join_transfer.continuation_true_label,
+      .false_label = *join_transfer.continuation_false_label,
+  };
+}
 
 struct PreparedBranchTargetLabels {
   BlockLabelId true_label = kInvalidBlockLabel;
@@ -2616,6 +2631,12 @@ find_prepared_compare_join_continuation_targets(
     const PreparedJoinTransfer& join_transfer,
     const bir::Block& join_block,
     const PreparedBranchCondition& join_branch_condition) {
+  if (const auto published_targets =
+          published_prepared_compare_join_continuation_targets(join_transfer);
+      published_targets.has_value()) {
+    return published_targets;
+  }
+
   if (!join_branch_condition.predicate.has_value() ||
       !join_branch_condition.compare_type.has_value() ||
       !join_branch_condition.lhs.has_value() || !join_branch_condition.rhs.has_value() ||
@@ -2775,6 +2796,17 @@ find_prepared_compare_join_continuation_targets(const PreparedNameTables& names,
     return std::nullopt;
   }
 
+  const auto authoritative_join_transfer =
+      find_authoritative_branch_owned_join_transfer(names, function_cf, source_block_label_id);
+  if (authoritative_join_transfer.has_value() &&
+      authoritative_join_transfer->join_transfer != nullptr) {
+    if (const auto published_targets = published_prepared_compare_join_continuation_targets(
+            *authoritative_join_transfer->join_transfer);
+        published_targets.has_value()) {
+      return published_targets;
+    }
+  }
+
   if (const auto short_circuit_targets =
           find_prepared_short_circuit_continuation_targets(names,
                                                            function_cf,
@@ -2784,8 +2816,6 @@ find_prepared_compare_join_continuation_targets(const PreparedNameTables& names,
     return short_circuit_targets;
   }
 
-  const auto authoritative_join_transfer =
-      find_authoritative_branch_owned_join_transfer(names, function_cf, source_block_label_id);
   if (!authoritative_join_transfer.has_value() ||
       authoritative_join_transfer->join_transfer == nullptr) {
     return std::nullopt;

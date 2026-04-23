@@ -42,6 +42,24 @@ const prepare::PreparedBranchCondition* find_branch_condition(
   return prepare::find_prepared_branch_condition(control_flow, *block_label_id);
 }
 
+bir::Function* find_function(prepare::PreparedBirModule& prepared, const char* function_name) {
+  for (auto& function : prepared.module.functions) {
+    if (function.name == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+bir::Block* find_block(bir::Function& function, const char* block_label) {
+  for (auto& block : function.blocks) {
+    if (block.label == block_label) {
+      return &block;
+    }
+  }
+  return nullptr;
+}
+
 prepare::PreparedBirModule legalize_two_way_branch_join_module() {
   bir::Module module;
 
@@ -333,6 +351,53 @@ int check_authoritative_join_ownership(const prepare::PreparedBirModule& prepare
   return 0;
 }
 
+int check_authoritative_join_continuation_targets() {
+  auto prepared = legalize_short_circuit_or_guard_module();
+  const auto* control_flow =
+      find_control_flow_function(prepared, "short_circuit_or_prepare_contract");
+  if (control_flow == nullptr) {
+    return fail("expected prepared control-flow publication for continuation target metadata");
+  }
+
+  const auto authoritative_join = prepare::find_authoritative_branch_owned_join_transfer(
+      prepared.names, *control_flow, "entry");
+  if (!authoritative_join.has_value() || authoritative_join->join_transfer == nullptr) {
+    return fail("expected authoritative short-circuit join transfer for continuation target metadata");
+  }
+
+  const auto& join_transfer = *authoritative_join->join_transfer;
+  if (!join_transfer.continuation_true_label.has_value() ||
+      !join_transfer.continuation_false_label.has_value() ||
+      prepare::prepared_block_label(prepared.names, *join_transfer.continuation_true_label) !=
+          "block_1" ||
+      prepare::prepared_block_label(prepared.names, *join_transfer.continuation_false_label) !=
+          "block_2") {
+    return fail("expected branch-owned join transfer to publish authoritative continuation labels");
+  }
+
+  auto* function = find_function(prepared, "short_circuit_or_prepare_contract");
+  if (function == nullptr) {
+    return fail("expected prepared short-circuit function for continuation target authority");
+  }
+  auto* join_block = find_block(*function, "logic.end.10");
+  if (join_block == nullptr) {
+    return fail("expected prepared short-circuit join block for continuation target authority");
+  }
+  join_block->insts.clear();
+
+  const auto continuation_targets = prepare::find_prepared_compare_join_continuation_targets(
+      prepared.names, *control_flow, *function, "entry");
+  if (!continuation_targets.has_value() ||
+      prepare::prepared_block_label(prepared.names, continuation_targets->true_label) !=
+          "block_1" ||
+      prepare::prepared_block_label(prepared.names, continuation_targets->false_label) !=
+          "block_2") {
+    return fail("expected shared helper to prefer published continuation labels over recomputing join shape");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -355,6 +420,9 @@ int main() {
                                                             "logic.skip.8",
                                                             "logic.rhs.end.9");
       status != 0) {
+    return status;
+  }
+  if (const int status = check_authoritative_join_continuation_targets(); status != 0) {
     return status;
   }
 
