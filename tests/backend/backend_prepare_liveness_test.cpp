@@ -78,6 +78,24 @@ const prepare::PreparedRegallocValue* find_regalloc_value(
   return nullptr;
 }
 
+void set_register_group_override(prepare::PreparedBirModule& prepared,
+                                 std::string_view function_name,
+                                 std::string_view value_name,
+                                 prepare::PreparedRegisterClass register_class,
+                                 std::size_t contiguous_width) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  const auto value_id = prepared.names.value_names.find(value_name);
+  if (function_id == c4c::kInvalidFunctionName || value_id == c4c::kInvalidValueName) {
+    return;
+  }
+  prepared.register_group_overrides.values.push_back(prepare::PreparedRegisterGroupOverride{
+      .function_name = function_id,
+      .value_name = value_id,
+      .register_class = register_class,
+      .contiguous_width = contiguous_width,
+  });
+}
+
 const bir::Function* find_module_function(const prepare::PreparedBirModule& prepared,
                                           std::string_view function_name) {
   for (const auto& function : prepared.module.functions) {
@@ -106,6 +124,27 @@ bool has_interference_edge(const prepare::PreparedRegallocFunction& function,
     if ((edge.lhs_value_id == lhs_value_id && edge.rhs_value_id == rhs_value_id) ||
         (edge.lhs_value_id == rhs_value_id && edge.rhs_value_id == lhs_value_id)) {
       return true;
+    }
+  }
+  return false;
+}
+
+bool contains_register_span(const std::vector<prepare::PreparedRegisterCandidateSpan>& spans,
+                            const std::vector<std::string>& occupied_register_names) {
+  for (const auto& span : spans) {
+    if (span.occupied_register_names == occupied_register_names) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool spans_overlap(const std::vector<std::string>& lhs, const std::vector<std::string>& rhs) {
+  for (const auto& lhs_register : lhs) {
+    for (const auto& rhs_register : rhs) {
+      if (lhs_register == rhs_register) {
+        return true;
+      }
     }
   }
   return false;
@@ -1856,6 +1895,200 @@ prepare::PreparedBirModule prepare_float_linear_scan_module_with_regalloc() {
   return planner.run();
 }
 
+prepare::PreparedBirModule prepare_vector_grouped_linear_scan_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "vector_grouped_linear_scan";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.m2",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.m4",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.m1",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "hot0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.m2"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "p.m4"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "hot1"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "hot0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "p.m2"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "hot2"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "hot1"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "p.m4"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "tail"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "hot2"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "p.m1"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "tail"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  planner.run_stack_layout();
+  planner.run_liveness();
+  auto seeded = std::move(planner.prepared());
+  set_register_group_override(seeded, "vector_grouped_linear_scan", "p.m2",
+                              prepare::PreparedRegisterClass::Vector, 2);
+  set_register_group_override(seeded, "vector_grouped_linear_scan", "p.m4",
+                              prepare::PreparedRegisterClass::Vector, 4);
+  set_register_group_override(seeded, "vector_grouped_linear_scan", "p.m1",
+                              prepare::PreparedRegisterClass::Vector, 1);
+
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = true;
+  prepare::BirPreAlloc regalloc_planner(std::move(seeded), options);
+  regalloc_planner.run_regalloc();
+  return std::move(regalloc_planner.prepared());
+}
+
+prepare::PreparedBirModule prepare_vector_grouped_cross_call_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function decl;
+  decl.name = "vec_sink";
+  decl.is_declaration = true;
+  decl.return_type = bir::TypeKind::Void;
+  decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "arg0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  module.functions.push_back(std::move(decl));
+
+  bir::Function function;
+  function.name = "vector_grouped_cross_call";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.vcarry",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.arg",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.local",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "carry.pre"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.vcarry"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "p.arg"),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "vec_sink",
+      .args = {bir::Value::named(bir::TypeKind::I32, "p.arg")},
+      .arg_types = {bir::TypeKind::I32},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "post.local"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.local"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "p.local"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "out"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "carry.pre"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "post.local"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "out"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  planner.run_stack_layout();
+  planner.run_liveness();
+  auto seeded = std::move(planner.prepared());
+  set_register_group_override(seeded, "vector_grouped_cross_call", "carry.pre",
+                              prepare::PreparedRegisterClass::Vector, 2);
+  set_register_group_override(seeded, "vector_grouped_cross_call", "post.local",
+                              prepare::PreparedRegisterClass::Vector, 1);
+
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = true;
+  prepare::BirPreAlloc regalloc_planner(std::move(seeded), options);
+  regalloc_planner.run_regalloc();
+  return std::move(regalloc_planner.prepared());
+}
+
 int check_phi_predecessor_edge_liveness(const prepare::PreparedBirModule& prepared) {
   if (!prepared.stack_layout.objects.empty()) {
     return fail("expected no stack-layout objects for the phi-only test function");
@@ -3064,9 +3297,98 @@ int check_grouped_contract_occupancy_metadata(const prepare::PreparedBirModule& 
       hot->assigned_register->occupied_register_names != std::vector<std::string>{"ft0"}) {
     return fail("expected width=1 assignments to publish singleton occupied-unit metadata");
   }
+  return 0;
+}
 
-  const auto* call_plan = prepare::find_prepared_call_plans(prepared, prepared.names.function_names.find("float_linear_scan"));
-  (void)call_plan;
+int check_vector_grouped_linear_scan(const prepare::PreparedBirModule& prepared) {
+  const auto* regalloc = find_regalloc_function(prepared, "vector_grouped_linear_scan");
+  if (regalloc == nullptr) {
+    return fail("expected regalloc output for vector_grouped_linear_scan");
+  }
+
+  const auto* m2 = find_regalloc_value(prepared, *regalloc, "p.m2");
+  const auto* m4 = find_regalloc_value(prepared, *regalloc, "p.m4");
+  const auto* m1 = find_regalloc_value(prepared, *regalloc, "p.m1");
+  if (m2 == nullptr || m4 == nullptr || m1 == nullptr) {
+    return fail("expected grouped vector params to appear in regalloc output");
+  }
+  if (m2->register_class != prepare::PreparedRegisterClass::Vector || m2->register_group_width != 2 ||
+      m4->register_class != prepare::PreparedRegisterClass::Vector || m4->register_group_width != 4 ||
+      m1->register_class != prepare::PreparedRegisterClass::Vector || m1->register_group_width != 1) {
+    return fail("expected grouped vector overrides to reach regalloc seeds");
+  }
+  if (!m2->assigned_register.has_value() || !m4->assigned_register.has_value() ||
+      !m1->assigned_register.has_value()) {
+    return fail("expected grouped vector values to receive concrete register spans");
+  }
+
+  const auto caller_m2_spans = prepare::caller_saved_register_spans(
+      prepared.target_profile, prepare::PreparedRegisterClass::Vector, 2);
+  const auto caller_m4_spans = prepare::caller_saved_register_spans(
+      prepared.target_profile, prepare::PreparedRegisterClass::Vector, 4);
+  const auto caller_m1_spans = prepare::caller_saved_register_spans(
+      prepared.target_profile, prepare::PreparedRegisterClass::Vector, 1);
+
+  if (m2->assigned_register->contiguous_width != 2 ||
+      !contains_register_span(caller_m2_spans, m2->assigned_register->occupied_register_names)) {
+    return fail("expected LMUL=2 value to use a legal contiguous caller span");
+  }
+  if (m4->assigned_register->contiguous_width != 4 ||
+      !contains_register_span(caller_m4_spans, m4->assigned_register->occupied_register_names)) {
+    return fail("expected LMUL=4 value to use a legal width-4 caller span");
+  }
+  if (m1->assigned_register->contiguous_width != 1 ||
+      !contains_register_span(caller_m1_spans, m1->assigned_register->occupied_register_names)) {
+    return fail("expected width-1 vector value to stay within the caller pool");
+  }
+  if (spans_overlap(m2->assigned_register->occupied_register_names,
+                    m4->assigned_register->occupied_register_names) ||
+      spans_overlap(m2->assigned_register->occupied_register_names,
+                    m1->assigned_register->occupied_register_names) ||
+      spans_overlap(m4->assigned_register->occupied_register_names,
+                    m1->assigned_register->occupied_register_names)) {
+    return fail("expected grouped vector assignments to avoid occupied units across widths");
+  }
+
+  return 0;
+}
+
+int check_vector_grouped_cross_call(const prepare::PreparedBirModule& prepared) {
+  const auto* regalloc = find_regalloc_function(prepared, "vector_grouped_cross_call");
+  if (regalloc == nullptr) {
+    return fail("expected regalloc output for vector_grouped_cross_call");
+  }
+
+  const auto* vcarry = find_regalloc_value(prepared, *regalloc, "carry.pre");
+  const auto* local = find_regalloc_value(prepared, *regalloc, "post.local");
+  if (vcarry == nullptr || local == nullptr) {
+    return fail("expected vector grouped cross-call values in regalloc output");
+  }
+  if (!vcarry->crosses_call || vcarry->register_group_width != 2 ||
+      !vcarry->assigned_register.has_value()) {
+    return fail("expected call-crossing grouped vector value to keep its published grouped seed");
+  }
+  if (local->crosses_call || !local->assigned_register.has_value()) {
+    return fail("expected non-crossing local vector value to receive a caller-pool assignment");
+  }
+
+  const auto callee_m2_spans = prepare::callee_saved_register_spans(
+      prepared.target_profile, prepare::PreparedRegisterClass::Vector, 2);
+  const auto caller_m1_spans = prepare::caller_saved_register_spans(
+      prepared.target_profile, prepare::PreparedRegisterClass::Vector, 1);
+  if (vcarry->assigned_register->contiguous_width != 2 ||
+      !contains_register_span(callee_m2_spans, vcarry->assigned_register->occupied_register_names)) {
+    return fail("expected call-crossing grouped vector value to use a legal callee span");
+  }
+  if (local->assigned_register->contiguous_width != 1 ||
+      !contains_register_span(caller_m1_spans, local->assigned_register->occupied_register_names)) {
+    return fail("expected non-crossing local vector value to stay in the caller pool");
+  }
+  if (spans_overlap(vcarry->assigned_register->occupied_register_names,
+                    local->assigned_register->occupied_register_names)) {
+    return fail("expected caller and callee grouped vector assignments to stay disjoint");
+  }
+
   return 0;
 }
 
@@ -3240,6 +3562,14 @@ int main() {
     return rc;
   }
   if (const int rc = check_vector_span_candidate_legality(); rc != 0) {
+    return rc;
+  }
+  const auto vector_grouped_prepared = prepare_vector_grouped_linear_scan_module_with_regalloc();
+  if (const int rc = check_vector_grouped_linear_scan(vector_grouped_prepared); rc != 0) {
+    return rc;
+  }
+  const auto vector_grouped_cross_call_prepared = prepare_vector_grouped_cross_call_module_with_regalloc();
+  if (const int rc = check_vector_grouped_cross_call(vector_grouped_cross_call_prepared); rc != 0) {
     return rc;
   }
   return 0;

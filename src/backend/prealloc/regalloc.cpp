@@ -57,6 +57,27 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
   return PreparedRegisterClass::None;
 }
 
+[[nodiscard]] PreparedRegisterClass resolve_register_class(
+    const PreparedBirModule& prepared,
+    const PreparedLivenessValue& value) {
+  if (const auto* override =
+          find_prepared_register_group_override(prepared, value.function_name, value.value_name);
+      override != nullptr && override->register_class != PreparedRegisterClass::None) {
+    return override->register_class;
+  }
+  return classify_register_class(value);
+}
+
+[[nodiscard]] std::size_t resolve_register_group_width(const PreparedBirModule& prepared,
+                                                       const PreparedLivenessValue& value) {
+  if (const auto* override =
+          find_prepared_register_group_override(prepared, value.function_name, value.value_name);
+      override != nullptr) {
+    return std::max<std::size_t>(override->contiguous_width, 1);
+  }
+  return 1;
+}
+
 [[nodiscard]] bool intervals_overlap(const PreparedLiveInterval& lhs,
                                      const PreparedLiveInterval& rhs) {
   return std::max(lhs.start_point, rhs.start_point) <= std::min(lhs.end_point, rhs.end_point);
@@ -1712,7 +1733,9 @@ void BirPreAlloc::run_regalloc() {
         find_bir_function(prepared_.module, prepared_.names, liveness_function.function_name);
 
     for (const auto& liveness_value : liveness_function.values) {
-      const PreparedRegisterClass register_class = classify_register_class(liveness_value);
+      const PreparedRegisterClass register_class = resolve_register_class(prepared_, liveness_value);
+      const std::size_t register_group_width =
+          resolve_register_group_width(prepared_, liveness_value);
       const bool eligible_for_register_seed =
           register_class != PreparedRegisterClass::None &&
           liveness_value.value_kind != PreparedValueKind::StackObject;
@@ -1733,7 +1756,7 @@ void BirPreAlloc::run_regalloc() {
           .type = liveness_value.type,
           .value_kind = liveness_value.value_kind,
           .register_class = register_class,
-          .register_group_width = 1,
+          .register_group_width = register_group_width,
           .allocation_status = PreparedAllocationStatus::Unallocated,
           .spillable = eligible_for_register_seed && !liveness_value.requires_home_slot,
           .requires_home_slot = liveness_value.requires_home_slot,
@@ -1752,7 +1775,7 @@ void BirPreAlloc::run_regalloc() {
       regalloc_function.constraints.push_back(PreparedAllocationConstraint{
           .value_id = liveness_value.value_id,
           .register_class = register_class,
-          .register_group_width = 1,
+          .register_group_width = register_group_width,
           .requires_register = !liveness_value.requires_home_slot,
           .requires_home_slot = liveness_value.requires_home_slot,
           .cannot_cross_call = liveness_value.crosses_call &&

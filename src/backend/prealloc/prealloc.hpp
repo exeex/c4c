@@ -613,6 +613,17 @@ enum class PreparedRegisterClass {
   return "unknown";
 }
 
+struct PreparedRegisterGroupOverride {
+  FunctionNameId function_name = kInvalidFunctionName;
+  ValueNameId value_name = kInvalidValueName;
+  PreparedRegisterClass register_class = PreparedRegisterClass::None;
+  std::size_t contiguous_width = 1;
+};
+
+struct PreparedRegisterGroupOverrides {
+  std::vector<PreparedRegisterGroupOverride> values;
+};
+
 enum class PreparedAllocationStatus {
   Unallocated,
   AssignedRegister,
@@ -3492,6 +3503,7 @@ struct PreparedBirModule {
   PreparedStackLayout stack_layout;
   PreparedAddressing addressing;
   PreparedLiveness liveness;
+  PreparedRegisterGroupOverrides register_group_overrides;
   PreparedRegalloc regalloc;
   PreparedFramePlan frame_plan;
   PreparedDynamicStackPlan dynamic_stack_plan;
@@ -3500,6 +3512,27 @@ struct PreparedBirModule {
   std::vector<std::string> completed_phases;
   std::vector<PrepareNote> notes;
 };
+
+[[nodiscard]] inline const PreparedRegisterGroupOverride* find_prepared_register_group_override(
+    const PreparedRegisterGroupOverrides& overrides,
+    FunctionNameId function_name,
+    ValueNameId value_name) {
+  for (const auto& override : overrides.values) {
+    if (override.function_name == function_name && override.value_name == value_name) {
+      return &override;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedRegisterGroupOverride* find_prepared_register_group_override(
+    const PreparedBirModule& module,
+    FunctionNameId function_name,
+    ValueNameId value_name) {
+  return find_prepared_register_group_override(module.register_group_overrides,
+                                               function_name,
+                                               value_name);
+}
 
 [[nodiscard]] inline const PreparedAddressingFunction* find_prepared_addressing(
     const PreparedBirModule& module,
