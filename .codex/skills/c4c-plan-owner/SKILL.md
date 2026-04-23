@@ -74,7 +74,7 @@ When activation or repair requires writing `plan.md`:
    reset, use the same Markdown section shape the executor updates:
    `# Current Packet`, then `## Just Finished`, `## Suggested Next`,
    `## Watchouts`, and `## Proof`, with execution metadata near the top for
-   `Current Step ID`, `Current Step Title`, and `Plan Review Counter`.
+   `Current Step ID`, `Current Step Title`, and any active reminder lines.
    `Just Finished` should remain an
    overwrite-style latest-packet summary that can name the relevant `plan.md`
    step once execution begins.

@@ -20,9 +20,10 @@ This repo uses a single-plan lifecycle.
   live packet state. Routine progress should mutate `todo.md`, not re-edit the
   higher layers.
 - `todo.md` execution metadata should keep regex-friendly single-line
-  `Current Step ID:`, `Current Step Title:`, and
-  `Plan Review Counter: <counter> / <review_limit>` fields near the top so
-  route-friction decisions do not depend on commit-history guesswork alone.
+  `Current Step ID:` and `Current Step Title:` fields near the top.
+  Plan-review and baseline reminders should be written into `todo.md` only
+  when the hook-managed limit is hit; do not keep a constantly displayed
+  `Plan Review Counter` line there.
   The review limit is controlled by local hook-backed state, not by skill text.
 - Treat `plan.md` exhaustion as separate from source-idea completion. A runbook
   can be blocked, retired, or replaced without the linked idea being complete.
@@ -70,7 +71,7 @@ This repo uses a single-plan lifecycle.
   under `ideas/open/` before more execution.
 - Compares execution against the linked source idea, not only `plan.md`.
 - Uses `todo.md` execution metadata, including `Current Step ID`,
-  `Current Step Title`, and `Plan Review Counter`, when deciding whether a
+  `Current Step Title`, and reminder lines when present, when deciding whether a
   step needs plan review or substep expansion.
 - Checks `git status --short` before delegation and after return.
 - Owns broader validation, canonical regression-log state, and the final

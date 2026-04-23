@@ -97,7 +97,8 @@ Execution state should declare near the top:
 - `Source Plan Path: plan.md`
 - `Current Step ID: <step number from plan.md, or none>`
 - `Current Step Title: <step label from plan.md, or none>`
-- `Plan Review Counter: <accepted-commit count> / <review-limit>`
+- optional reminder lines emitted only when a hook-managed limit is hit:
+  `你該做code review了` and/or `你該做baseline sanity check了`
 
 When lifecycle work creates or resets [`todo.md`](/workspaces/c4c/todo.md), use
 an executor-compatible skeleton instead of a custom format. The mutable packet
@@ -114,12 +115,11 @@ latest completed packet, and should identify which `plan.md` step it advanced.
 
 `Current Step ID` and `Current Step Title` are the supervisor-facing pointer to
 the active runbook step.
-`Plan Review Counter` is a regex-friendly display of accepted-commit count and
-review limit for that same step. Canonical machine state may live in a local
-ignored file maintained by repo scripts, but `todo.md` must mirror it. Lifecycle
-work that creates, repairs, or rewrites the active step should reset the
-counter to `0 / <review-limit>`. The review limit itself should be taken from
-local script-managed state rather than hard-coded in skill text.
+Canonical machine state may live in a local ignored file maintained by repo
+scripts. `todo.md` should mirror only the active step pointer plus reminder
+lines when a review or baseline limit has actually been hit. The review limit
+itself should be taken from local script-managed state rather than hard-coded
+in skill text.
 
 ### `ideas/open/*.md` and `ideas/closed/*.md`
 

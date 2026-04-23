@@ -78,9 +78,11 @@ def default_state() -> dict:
         "current_step_title": "none",
         "counter": 0,
         "review_limit": 5,
+        "code_review_pending": False,
         "test_baseline_counter": 0,
         "test_baseline_limit": DEFAULT_TEST_BASELINE_LIMIT,
         "test_baseline_regex": "",
+        "baseline_sanity_pending": False,
     }
 
 
@@ -98,6 +100,7 @@ def remove_optional_line(text: str, pattern: re.Pattern) -> str:
 def strip_reminder_lines(text: str) -> str:
     text = remove_optional_line(text, CODE_REVIEW_REMINDER_RE)
     text = remove_optional_line(text, BASELINE_SANITY_REMINDER_RE)
+    text = remove_optional_line(text, PLAN_REVIEW_COUNTER_RE)
     text = re.sub(
         r"(Current Step Title:\s*.*)\n{3,}(# Current Packet)",
         r"\1\n\n\2",
@@ -107,24 +110,30 @@ def strip_reminder_lines(text: str) -> str:
     return text
 
 
-def sync_plan_review_counter(text: str, state: dict) -> str:
-    replacement = f"Plan Review Counter: {state['counter']} / {state['review_limit']}"
-    lines = text.splitlines()
+def sync_reminder_lines(text: str, state: dict) -> str:
+    reminder_lines = []
+    if state["code_review_pending"]:
+        reminder_lines.append(CODE_REVIEW_REMINDER)
+    if state["baseline_sanity_pending"]:
+        reminder_lines.append(BASELINE_SANITY_REMINDER)
 
-    for index, line in enumerate(lines):
-        if PLAN_REVIEW_COUNTER_RE.match(line):
-            lines[index] = replacement
-            return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+    if not reminder_lines:
+        return text
+
+    lines = text.splitlines()
+    text_ends_with_newline = text.endswith("\n")
 
     for index, line in enumerate(lines):
         if CURRENT_STEP_TITLE_RE.match(line):
             insert_at = index + 1
-            lines.insert(insert_at, replacement)
-            if insert_at + 1 >= len(lines) or lines[insert_at + 1].strip():
-                lines.insert(insert_at + 1, "")
-            return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+            for offset, reminder in enumerate(reminder_lines):
+                lines.insert(insert_at + offset, reminder)
+            next_line_index = insert_at + len(reminder_lines)
+            if next_line_index >= len(lines) or lines[next_line_index].strip():
+                lines.insert(next_line_index, "")
+            return "\n".join(lines) + ("\n" if text_ends_with_newline else "")
 
-    raise SystemExit("missing 'Current Step Title:' line while syncing todo.md")
+    raise SystemExit("missing 'Current Step Title:' line while syncing reminder lines")
 
 
 def sync_todo(path: Path, state: dict) -> None:
@@ -140,8 +149,8 @@ def sync_todo(path: Path, state: dict) -> None:
         CURRENT_STEP_TITLE_RE,
         f"Current Step Title: {state['current_step_title']}",
     )
-    text = sync_plan_review_counter(text, state)
     text = strip_reminder_lines(text)
+    text = sync_reminder_lines(text, state)
     if text != parsed["text"]:
         write_text(path, text)
 
@@ -165,12 +174,16 @@ def load_state(path: Path) -> dict | None:
     for key in ("current_step_id", "current_step_title", "counter", "review_limit"):
         if key not in data:
             raise SystemExit(f"missing '{key}' in {path}")
+    if "code_review_pending" not in data:
+        data["code_review_pending"] = False
     if "test_baseline_counter" not in data:
         data["test_baseline_counter"] = 0
     if "test_baseline_limit" not in data:
         data["test_baseline_limit"] = DEFAULT_TEST_BASELINE_LIMIT
     if "test_baseline_regex" not in data:
         data["test_baseline_regex"] = ""
+    if "baseline_sanity_pending" not in data:
+        data["baseline_sanity_pending"] = False
     return data
 
 
@@ -180,9 +193,11 @@ def save_state(path: Path, state: dict) -> None:
         "current_step_title": state["current_step_title"],
         "counter": state["counter"],
         "review_limit": state["review_limit"],
+        "code_review_pending": state["code_review_pending"],
         "test_baseline_counter": state["test_baseline_counter"],
         "test_baseline_limit": state["test_baseline_limit"],
         "test_baseline_regex": state["test_baseline_regex"],
+        "baseline_sanity_pending": state["baseline_sanity_pending"],
     }
     write_text(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
@@ -341,6 +356,8 @@ def cmd_reset(args) -> int:
     if args.step_title is not None:
         state["current_step_title"] = args.step_title
     state["counter"] = 0
+    state["code_review_pending"] = False
+    state["baseline_sanity_pending"] = False
     save_state(args.state, state)
     sync_todo(args.todo, state)
     return 0
@@ -356,6 +373,8 @@ def cmd_set_step(args) -> int:
         state["current_step_id"] = args.step_id
         state["current_step_title"] = args.step_title
         state["counter"] = 0
+        state["code_review_pending"] = False
+        state["baseline_sanity_pending"] = False
     save_state(args.state, state)
     sync_todo(args.todo, state)
     return 0
@@ -364,6 +383,8 @@ def cmd_set_step(args) -> int:
 def cmd_increment(args) -> int:
     state = ensure_state(args.todo, args.state)
     state["counter"] += 1
+    if state["counter"] >= state["review_limit"]:
+        state["code_review_pending"] = True
     save_state(args.state, state)
     sync_todo(args.todo, state)
     return 0
@@ -372,6 +393,7 @@ def cmd_increment(args) -> int:
 def cmd_set_limit(args) -> int:
     state = ensure_state(args.todo, args.state)
     state["review_limit"] = args.review_limit
+    state["code_review_pending"] = state["counter"] >= state["review_limit"]
     save_state(args.state, state)
     sync_todo(args.todo, state)
     return 0
@@ -380,6 +402,9 @@ def cmd_set_limit(args) -> int:
 def cmd_set_baseline_limit(args) -> int:
     state = ensure_state(args.todo, args.state)
     state["test_baseline_limit"] = args.test_baseline_limit
+    state["baseline_sanity_pending"] = (
+        state["test_baseline_counter"] >= state["test_baseline_limit"]
+    )
     save_state(args.state, state)
     if args.todo.exists():
         sync_todo(args.todo, state)
@@ -397,8 +422,8 @@ def cmd_set_baseline_regex(args) -> int:
 
 def cmd_post_commit(args) -> int:
     state = ensure_state(args.todo, args.state)
-    previous_counter = state["counter"]
-    previous_test_baseline_counter = state["test_baseline_counter"]
+    previous_code_review_pending = state["code_review_pending"]
+    previous_baseline_sanity_pending = state["baseline_sanity_pending"]
     should_print_code_review = False
     should_print_baseline_sanity = False
     changed_paths = head_commit_paths()
@@ -415,6 +440,8 @@ def cmd_post_commit(args) -> int:
             state["current_step_id"] = next_step_id
             state["current_step_title"] = next_step_title
             state["counter"] = 0
+            state["code_review_pending"] = False
+            state["baseline_sanity_pending"] = False
         elif (
             state["current_step_id"] != next_step_id
             or state["current_step_title"] != next_step_title
@@ -422,12 +449,12 @@ def cmd_post_commit(args) -> int:
             state["current_step_id"] = next_step_id
             state["current_step_title"] = next_step_title
             state["counter"] = 0
+            state["code_review_pending"] = False
+            state["baseline_sanity_pending"] = False
         elif not is_lifecycle_commit:
             state["counter"] += 1
-            should_print_code_review = (
-                previous_counter < state["review_limit"]
-                and state["counter"] >= state["review_limit"]
-            )
+            if state["counter"] >= state["review_limit"]:
+                state["code_review_pending"] = True
 
     if not is_lifecycle_commit:
         state["test_baseline_counter"] += 1
@@ -435,14 +462,18 @@ def cmd_post_commit(args) -> int:
             not args.baseline.exists()
             or state["test_baseline_counter"] >= state["test_baseline_limit"]
         )
-        should_print_baseline_sanity = (
-            args.baseline.exists()
-            and previous_test_baseline_counter < state["test_baseline_limit"]
-            and state["test_baseline_counter"] >= state["test_baseline_limit"]
-        )
+        if state["test_baseline_counter"] >= state["test_baseline_limit"]:
+            state["baseline_sanity_pending"] = True
         if needs_new_baseline:
             refresh_test_baseline(args.baseline, state["test_baseline_regex"])
             state["test_baseline_counter"] = 0
+
+    should_print_code_review = (
+        state["code_review_pending"] and not previous_code_review_pending
+    )
+    should_print_baseline_sanity = (
+        state["baseline_sanity_pending"] and not previous_baseline_sanity_pending
+    )
 
     save_state(args.state, state)
     if args.todo.exists():
