@@ -1,107 +1,162 @@
-# Full X86 Backend Contract-First Replan
+# Out-Of-SSA Contract And Parallel-Copy Authority For Prealloc
 
 Status: Active
-Source Idea: ideas/open/86_full_x86_backend_contract_first_replan.md
-Supersedes: ideas/open/82_extract_full_x86_backend_subsystem_to_markdown_for_phoenix_rebuild.md
-Activated from: ideas/open/86_full_x86_backend_contract_first_replan.md
+Source Idea: ideas/open/87_out_of_ssa_contract_and_parallel_copy_authority_for_prealloc.md
+Activated from: ideas/open/87_out_of_ssa_contract_and_parallel_copy_authority_for_prealloc.md
+Supersedes: ideas/open/86_full_x86_backend_contract_first_replan.md
 
 ## Purpose
 
-Rebuild the active `src/backend/mir/x86/` route around explicit interface
-contracts before further behavior recovery. This runbook treats markdown as
-formal design contract, keeps compatibility seams visibly thin, and isolates
-known BIR gaps into later work instead of smearing workaround policy across the
-x86 tree.
+Make `out_of_ssa` a truthful prealloc phase with clear contract ownership over
+phi elimination, join-transfer publication, and parallel-copy obligations, so
+later backends consume authority instead of reconstructing CFG meaning from raw
+shape or historical legalize leftovers.
 
 ## Goal
 
-Make the x86 backend tree readable, compilable, and ownership-driven:
+Reach a state where:
 
-- root `x86/` describes the whole subsystem honestly
-- `x86/` has stable subsystem seams with live headers/cpps
-- key in-place `*.cpp.md` / `*.hpp.md` record both legacy evidence and new
-  design contract
-- future behavior packets can point at contract sections instead of inventing
-  boundaries while coding
+- `legalize` preserves semantic CFG and phi form
+- `out_of_ssa` is the only owner of phi elimination semantics
+- `join_transfers` and `parallel_copy_bundles` have stable contract meaning
+- dumps and tests expose out-of-SSA authority directly
 
 ## Core Rules
 
-- prefer README and contract markdown to define ownership first
-- keep `backend.cpp` depending only on thin x86 public surfaces
-- keep `assembler/` and `linker/` as explicit subsystem contracts even when
-  live implementation is deferred
-- do not use x86 local patches to hide upstream BIR capability gaps
-- do not accept behavior-recovery work that cannot point to an existing
-  contract section
+- do not push phi or parallel-copy meaning back into `legalize`
+- do not let target backends infer out-of-SSA ownership from raw block shape
+- prefer target-independent contract fields and helpers over x86-specific
+  recovery logic
+- keep behavior-preserving semantics ahead of cleanup-only refactors
 
-## Step 1: Backend/X86 Architecture Contract Pass
+## Read First
 
-Goal: make `src/backend/` and `src/backend/mir/x86/` the canonical
-architecture contracts for the shared backend pipeline and the x86 ownership
-graph.
+- `src/backend/prealloc/prealloc.hpp`
+- `src/backend/prealloc/legalize.cpp`
+- `src/backend/prealloc/out_of_ssa.cpp`
+- `src/backend/prealloc/prepared_printer.cpp`
+- `tests/backend/backend_prepare_phi_materialize_test.cpp`
+- `tests/backend/backend_prepare_authoritative_join_ownership_test.cpp`
 
-Primary targets:
+## Current Targets / Scope
 
-- `src/backend/README.md`
-- `src/backend/mir/x86/README.md`
-- `src/backend/mir/x86/assembler/README.md`
-- `src/backend/mir/x86/linker/README.md`
+- `PreparedJoinTransfer`
+- `PreparedParallelCopyBundle`
+- prepared CFG / continuation ownership around phi elimination
+- out-of-SSA dump coverage and internal proof coverage
 
-Completion check:
+## Non-Goals
 
-- every x86 subsystem has an explicit ownership statement
-- README terminology matches the live tree
-- deferred subsystems are marked as deferred, not silently absent
+- target-specific register copy emission
+- x86-side CFG consumption changes unless a truthful contract bug requires it
+- grouped-register resource modeling
+- generic frame/stack/call authority work unrelated to out-of-SSA
 
-## Step 2: Subsystem Contract Completion Pass
+## Working Model
 
-Goal: promote key in-place markdown companions into formal contract documents.
+- `legalize` owns type/ABI/control-flow legalization and phi preservation
+- `out_of_ssa` owns phi elimination and edge-copy publication
+- `regalloc` and later backends consume published out-of-SSA facts, not raw
+  CFG reinterpretation
 
-Primary targets:
+## Execution Rules
 
-- public or compatibility headers under `src/backend/mir/x86/`
-- key subsystem entrypoints in `abi/`, `module/`, `debug/`, and `lowering/`
+- if a case still depends on slot-backed phi carriers, describe that as an
+  explicit out-of-SSA carrier contract, not an accidental fallback
+- if a missing fact is target-independent continuation or edge-copy meaning,
+  publish it in prealloc instead of inventing an emitter-local rule
+- keep dump and test coverage aligned with every contract change
 
-Completion check:
+## Step 1: Contract Surface Audit
 
-- selected `*.cpp.md` / `*.hpp.md` use fixed sections for `Legacy Evidence`
-  and `Design Contract`
-- each design contract states inputs, outputs, ownership, and deferred gaps
+Goal: define what `out_of_ssa` already publishes, what remains implicit, and
+which records are authoritative versus accidental leftovers.
 
-## Step 3: Live Interface Conformance Pass
+Primary target:
 
-Goal: ensure the live `x86/` tree matches the new ownership graph and
-compiles through thin seams.
+- `src/backend/prealloc/prealloc.hpp`
+- `src/backend/prealloc/out_of_ssa.cpp`
+- `src/backend/prealloc/prepared_printer.cpp`
 
-Primary targets:
+Actions:
 
-- `src/backend/mir/x86/api/`
-- `src/backend/mir/x86/core/`
-- `src/backend/mir/x86/abi/`
-- `src/backend/mir/x86/module/`
-- `src/backend/mir/x86/lowering/`
-- `src/backend/mir/x86/prepared/`
-- `src/backend/mir/x86/debug/`
-
-Completion check:
-
-- `backend.cpp` includes only approved x86 public headers
-- the x86 subsystem subdirectories exist as real live seams
-- `c4c_backend` builds with the contract-first skeleton in place
-
-## Step 4: Behavior Recovery Packets
-
-Goal: refill real x86 behavior behind the contract-defined seams without
-reopening architectural ambiguity.
-
-Primary targets:
-
-- function/module emit bodies
-- ABI/lowering policy
-- prepared fast-path behavior
-- debug route fidelity
+- inventory current `PreparedJoinTransfer` and `PreparedParallelCopyBundle`
+  fields
+- document missing or ambiguous semantics around carriers, edge ownership, and
+  cycle-breaking
+- make the prepared dump expose any missing summary needed for human review
 
 Completion check:
 
-- each packet points to the relevant contract section first
-- no packet mixes new ownership decisions with behavior-only repair
+- the active contract gaps are listed concretely
+- dump output makes current out-of-SSA ownership readable without source dives
+
+## Step 2: Join And Parallel-Copy Authority Completion
+
+Goal: publish target-independent out-of-SSA meaning for join transfers and
+parallel copies so downstream phases consume plans, not topology guesses.
+
+Primary target:
+
+- `src/backend/prealloc/prealloc.hpp`
+- `src/backend/prealloc/out_of_ssa.cpp`
+- `src/backend/prealloc/prepared_printer.cpp`
+
+Actions:
+
+- strengthen join-transfer and parallel-copy semantics where current fields are
+  underspecified
+- make continuation ownership and cycle-breaking policy explicit when needed
+- keep publication generic and target-independent
+
+Completion check:
+
+- join-transfer and parallel-copy records fully explain edge obligations for
+  owned cases
+- no downstream consumer needs legalize-era leftovers or raw CFG guesses
+
+## Step 3: Proof And Observation Tightening
+
+Goal: lock the phase boundary and new authority into tests and dumps.
+
+Primary target:
+
+- `tests/backend/backend_prepare_phi_materialize_test.cpp`
+- `tests/backend/backend_prepare_authoritative_join_ownership_test.cpp`
+- `tests/backend/backend_prepared_printer_test.cpp`
+- relevant CLI dump checks under `tests/backend/`
+
+Actions:
+
+- add or tighten tests for phi preservation in `legalize`
+- add or tighten tests for phi elimination and edge-copy publication in
+  `out_of_ssa`
+- update dump assertions so new contract fields are visible and stable
+
+Completion check:
+
+- phase-boundary tests prove `legalize` preserves phi and `out_of_ssa` removes
+  it
+- dump tests cover the new published authority
+
+## Step 4: Cleanup And Consumer Confirmation
+
+Goal: remove obsolete leftovers and confirm downstream prealloc phases still
+consume the new authority cleanly.
+
+Primary target:
+
+- `src/backend/prealloc/legalize.cpp`
+- `src/backend/prealloc/out_of_ssa.cpp`
+- `src/backend/prealloc/regalloc.cpp`
+
+Actions:
+
+- delete dead pre-out-of-SSA leftovers once coverage is in place
+- confirm `regalloc` and later prepared consumers read the published facts
+  without hidden dependencies on removed helpers
+
+Completion check:
+
+- no duplicate phi-lowering ownership remains
+- build and owned backend/prealloc proofs stay green after cleanup

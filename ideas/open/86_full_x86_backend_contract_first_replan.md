@@ -36,3 +36,14 @@ This idea is complete when the active x86 backend tree has:
 - key markdown companions promoted from raw extraction evidence to design
   contract plus legacy evidence
 - follow-on behavior recovery clearly separated from contract/layout work
+
+## Latest Durable Note
+
+As of 2026-04-23, the contract-first x86 layout pass established the new root
+ownership graph, shrank filenames, enforced one non-helper header per x86
+subdirectory, and kept `c4c_backend` compiling through the thinner public
+surface. The next meaningful gaps discovered during execution were upstream of
+further x86 behavior recovery: `out_of_ssa` phase authority, prepared
+frame/stack/call authority completion, and grouped-register prealloc authority.
+Those follow-on seams now live under ideas 87, 88, and 89 instead of being
+silently absorbed back into the x86 layout runbook.
