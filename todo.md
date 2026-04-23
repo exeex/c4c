@@ -1,34 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/87_out_of_ssa_contract_and_parallel_copy_authority_for_prealloc.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Proof And Observation Tightening
-Plan Review Counter: 4 / 6
+Current Step ID: 4
+Current Step Title: Cleanup And Consumer Confirmation
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 3 now adds the missing short-circuit bundle-strip proof on top of the earlier compare-join and
-loop-countdown coverage: the x86 short-circuit handoff suite strips authoritative
-`parallel_copy_bundles` while preserving published `join_transfers` and confirms the prepared-module
-consumer fails closed instead of accepting phi-edge obligations through a join-only fallback.
+Step 4 audited the remaining pre-out-of-SSA-looking paths in `legalize`/`out_of_ssa`/`regalloc`,
+kept the explicit slot-backed `EdgeStoreSlot` carrier because it is still live published authority
+rather than dead fallback, and added a new regalloc proof that select-materialized joins consume
+published out-of-SSA join metadata through `phi_join_*` move resolution instead of generic
+`consumer_*` reconstruction.
 
 ## Suggested Next
 
-Step 3 follow-up: review whether any remaining prepared handoff family still lacks an isolated
-`parallel_copy_bundles`-removed/`join_transfers`-preserved rejection proof, or hand the runbook
-back for plan review if short-circuit was the last unresolved Step 3 fallback probe.
+Step 4 follow-up: decide whether this runbook is complete enough to close, or hand it back for plan
+review if a final supervisor/reviewer pass still wants broader consumer coverage beyond regalloc.
 
 ## Watchouts
 
-- Authoritative branch-owned continuation consumers must fail closed when
-  `continuation_true_label`/`continuation_false_label` publication is absent; rebuilding them from
-  join or rhs CFG shape is now a contract regression.
-- Compare-join, loop-countdown, and short-circuit now all prove `join_transfers` alone are not
-  enough to keep phi-edge obligations alive after `parallel_copy_bundles` are stripped; treat any
-  future success in any of those shapes as a contract regression.
-- Keep phi elimination and parallel-copy authority in `out_of_ssa`; do not push semantics back into
-  `legalize`, and keep grouped-register or frame/stack/call work out of this runbook.
+- The surviving slot-backed phi path in `out_of_ssa` is still an intentional carrier contract
+  (`EdgeStoreSlot`), not a removable legalize leftover; deleting it would widen this packet into a
+  semantic change instead of cleanup.
+- `regalloc` must keep treating select-materialized joins as published out-of-SSA authority and must
+  not regress into `consumer_*` move synthesis for those results.
+- No Step 4 code cleanup in `legalize.cpp` was justified by this audit; the proof landed as consumer
+  confirmation rather than speculative deletion.
 
 ## Proof
 

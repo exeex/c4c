@@ -1393,6 +1393,9 @@ void append_consumer_move_resolution(const PreparedNameTables& names,
                                      block_index,
                                      instruction_index);
             } else if constexpr (std::is_same_v<Inst, bir::SelectInst>) {
+              // Select-materialized joins are already owned by published out-of-SSA
+              // join-transfer authority. Re-adding them here would regress into
+              // consumer-shaped reconstruction.
               if (is_authoritative_select_materialized_join_result(block, inst)) {
                 return;
               }
