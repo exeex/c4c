@@ -870,6 +870,11 @@ Node* Parser::parse_local_decl() {
                             TokenKind::Identifier) {
                         return false;
                     }
+                    const int qualified_head_kind =
+                        classify_visible_value_or_type_head(
+                            core_input_state_.pos + 1);
+                    if (qualified_head_kind > 0) return false;
+                    if (qualified_head_kind < 0) return true;
                     if (core_input_state_.pos + 2 <
                             static_cast<int>(core_input_state_.tokens.size()) &&
                         core_input_state_.tokens[core_input_state_.pos + 1].kind ==
@@ -880,11 +885,6 @@ Node* Parser::parse_local_decl() {
                             core_input_state_.pos + 1)) {
                         return true;
                     }
-                    const int qualified_head_kind =
-                        classify_visible_value_or_type_head(
-                            core_input_state_.pos + 1);
-                    if (qualified_head_kind > 0) return false;
-                    if (qualified_head_kind < 0) return true;
 
                     std::vector<Node*> probe_params;
                     std::vector<const char*> probe_knr_names;
