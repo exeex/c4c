@@ -284,6 +284,9 @@ void append_preserved_value_summary(std::ostringstream& out,
                                     const PreparedCallPreservedValue& preserved) {
   out << maybe_value_name(names, preserved.value_name) << "#" << preserved.value_id << ":"
       << prepared_call_preservation_route_name(preserved.route);
+  if (preserved.route == PreparedCallPreservationRoute::StackSlot && preserved.slot_id.has_value()) {
+    out << ":slot#" << *preserved.slot_id;
+  }
   if (preserved.register_name.has_value()) {
     out << ":" << *preserved.register_name;
   } else if (preserved.stack_offset_bytes.has_value()) {

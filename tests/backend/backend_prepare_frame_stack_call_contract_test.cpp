@@ -2084,6 +2084,15 @@ int check_stack_cross_call_preservation_contract() {
       preserved->callee_saved_save_index.has_value()) {
     return fail("stack cross-call preservation contract: call_plans lost direct frame-slot authority");
   }
+  const std::string prepared_dump = prepare::print(prepared);
+  const std::string preserved_summary =
+      std::string(prepare::prepared_value_name(prepared.names, preserved->value_name)) +
+      "#" + std::to_string(preserved->value_id) + ":stack_slot:slot#" +
+      std::to_string(*preserved->slot_id) + ":stack+" +
+      std::to_string(*preserved->stack_offset_bytes);
+  if (prepared_dump.find(preserved_summary) == std::string::npos) {
+    return fail("stack cross-call preservation contract: prepared summary no longer publishes frame-slot identity");
+  }
 
   return 0;
 }

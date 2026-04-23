@@ -823,6 +823,111 @@ prepare::PreparedBirModule prepare_cross_call_preservation_dump_module() {
   return prepare::prepare_semantic_bir_module_with_options(module, riscv_target_profile(), options);
 }
 
+prepare::PreparedBirModule prepare_stack_cross_call_preservation_dump_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function decl;
+  decl.name = "stack_boundary_helper";
+  decl.is_declaration = true;
+  decl.return_type = bir::TypeKind::I32;
+  decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "arg0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(decl));
+
+  bir::Function function;
+  function.name = "stack_cross_call_preservation_dump_contract";
+  function.return_type = bir::TypeKind::I32;
+  constexpr int carry_count = 16;
+  for (int index = 0; index < carry_count; ++index) {
+    function.params.push_back(bir::Param{
+        .type = bir::TypeKind::I32,
+        .name = "p" + std::to_string(index),
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .abi = bir::CallArgAbiInfo{
+            .type = bir::TypeKind::I32,
+            .size_bytes = 4,
+            .align_bytes = 4,
+            .primary_class = bir::AbiValueClass::Integer,
+            .passed_in_register = true,
+        },
+    });
+  }
+
+  bir::Block entry;
+  entry.label = "entry";
+  for (int index = 0; index < carry_count; ++index) {
+    entry.insts.push_back(bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Add,
+        .result = bir::Value::named(bir::TypeKind::I32, "carry.stack." + std::to_string(index)),
+        .operand_type = bir::TypeKind::I32,
+        .lhs = bir::Value::named(bir::TypeKind::I32, "p" + std::to_string(index)),
+        .rhs = bir::Value::immediate_i32(index + 2),
+    });
+  }
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "call.stack.out"),
+      .callee = "stack_boundary_helper",
+      .args = {bir::Value::immediate_i32(17)},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "stack.sum.0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "call.stack.out"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "carry.stack.0"),
+  });
+  for (int index = 1; index < carry_count; ++index) {
+    entry.insts.push_back(bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Add,
+        .result = bir::Value::named(bir::TypeKind::I32, "stack.sum." + std::to_string(index)),
+        .operand_type = bir::TypeKind::I32,
+        .lhs = bir::Value::named(bir::TypeKind::I32, "stack.sum." + std::to_string(index - 1)),
+        .rhs = bir::Value::named(bir::TypeKind::I32, "carry.stack." + std::to_string(index)),
+    });
+  }
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "stack.sum." + std::to_string(carry_count - 1))};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      c4c::default_target_profile(c4c::TargetArch::X86_64),
+      options);
+}
+
 prepare::PreparedBirModule prepare_stack_argument_slot_dump_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1417,6 +1522,39 @@ int main() {
                            " route=callee_saved_register save_index=" +
                            std::to_string(cross_call_save_index) + " reg=s1 bank=gpr",
                        "cross-call preservation detail")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto stack_cross_call_prepared = prepare_stack_cross_call_preservation_dump_module();
+  const auto* stack_cross_call_plans =
+      find_call_plans_function(stack_cross_call_prepared, "stack_cross_call_preservation_dump_contract");
+  if (stack_cross_call_plans == nullptr || stack_cross_call_plans->calls.size() != 1) {
+    std::cerr << "[FAIL] missing prepared stack-preservation call fixture for dump\n";
+    return EXIT_FAILURE;
+  }
+  const auto& stack_cross_call = stack_cross_call_plans->calls.front();
+  const auto stack_preserved_it = std::find_if(
+      stack_cross_call.preserved_values.begin(),
+      stack_cross_call.preserved_values.end(),
+      [](const auto& preserved) {
+        return preserved.route == prepare::PreparedCallPreservationRoute::StackSlot;
+      });
+  if (stack_preserved_it == stack_cross_call.preserved_values.end() ||
+      !stack_preserved_it->slot_id.has_value() ||
+      !stack_preserved_it->stack_offset_bytes.has_value()) {
+    std::cerr << "[FAIL] missing stack-slot preservation authority in dump fixture\n";
+    return EXIT_FAILURE;
+  }
+  const std::string stack_cross_call_dump = prepare::print(stack_cross_call_prepared);
+  const std::string stack_preserved_summary =
+      std::string(prepare::prepared_value_name(stack_cross_call_prepared.names,
+                                               stack_preserved_it->value_name)) +
+      "#" + std::to_string(stack_preserved_it->value_id) + ":stack_slot:slot#" +
+      std::to_string(*stack_preserved_it->slot_id) + ":stack+" +
+      std::to_string(*stack_preserved_it->stack_offset_bytes);
+  if (!expect_contains(stack_cross_call_dump,
+                       stack_preserved_summary,
+                       "stack-preserved call-slot summary")) {
     return EXIT_FAILURE;
   }
 
