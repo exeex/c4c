@@ -545,10 +545,17 @@ TypeSpec Parser::parse_base_type() {
             [&](const std::string& tag, const std::string& member,
                 TypeSpec* out) -> bool {
                 if (tag.empty() || member.empty() || !out) return false;
+                auto lookup_typedef_for_name =
+                    [&](std::string_view name) -> const TypeSpec* {
+                        return name.find("::") == std::string_view::npos
+                                   ? find_visible_typedef_type(name)
+                                   : find_typedef_type(name);
+                    };
                 auto resolve_struct_like = [&](TypeSpec ts) -> TypeSpec {
                     ts = resolve_typedef_type_chain(ts);
                     if (ts.base == TB_TYPEDEF && ts.tag) {
-                        if (const TypeSpec* nested = find_typedef_type(ts.tag)) {
+                        if (const TypeSpec* nested =
+                                lookup_typedef_for_name(ts.tag)) {
                             ts = *nested;
                         }
                     }
@@ -711,7 +718,7 @@ TypeSpec Parser::parse_base_type() {
                         return false;
                     };
                 std::string resolved_tag = tag;
-                if (const TypeSpec* typedef_type = find_typedef_type(tag)) {
+                if (const TypeSpec* typedef_type = lookup_typedef_for_name(tag)) {
                     TypeSpec resolved = resolve_struct_like(*typedef_type);
                     if (resolved.tag && resolved.tag[0])
                         resolved_tag = resolved.tag;
@@ -1468,8 +1475,11 @@ TypeSpec Parser::parse_base_type() {
                                             *out = parsed;
                                             return true;
                                         }
-                                        if (const TypeSpec* typedef_type =
-                                                find_typedef_type(ref)) {
+                                        const TypeSpec* typedef_type =
+                                            ref.find("::") == std::string::npos
+                                                ? find_visible_typedef_type(ref)
+                                                : find_typedef_type(ref);
+                                        if (typedef_type) {
                                             parsed.type = *typedef_type;
                                             *out = parsed;
                                             return true;
@@ -1899,6 +1909,30 @@ TypeSpec Parser::parse_base_type() {
                 // registration. Reuse the existing template-struct
                 // instantiation/member-suffix path below.
                 ts.base = TB_STRUCT;
+            }
+            if (is_cpp_mode() && ts.tag && ts.tag[0] &&
+                check(TokenKind::ColonColon) &&
+                core_input_state_.pos + 1 <
+                    static_cast<int>(core_input_state_.tokens.size()) &&
+                core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                    TokenKind::Identifier) {
+                std::string member(
+                    token_spelling(core_input_state_.tokens[core_input_state_.pos + 1]));
+                TypeSpec resolved{};
+                if (lookup_struct_member_typedef_recursive(ts.tag, member, &resolved)) {
+                    consume();  // ::
+                    consume();  // member
+                    bool save_const = ts.is_const, save_vol = ts.is_volatile;
+                    ts = resolved;
+                    ts.is_const |= save_const;
+                    ts.is_volatile |= save_vol;
+                    return ts;
+                } else if (ts.tpl_struct_origin || (ts.tag && ts.tag[0])) {
+                    consume();  // ::
+                    consume();  // member
+                    ts.deferred_member_type_name = arena_.strdup(member.c_str());
+                    return ts;
+                }
             }
             // Dependent template-template parameter application:
                 // template<template<typename...> class Op> using X = Op<int>;

@@ -712,8 +712,12 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                         if (!resolved_owner_tag.empty()) {
                             owner_tag = resolved_owner_tag;
                         }
-                        if (const TypeSpec* owner_typedef =
-                                find_typedef_type(owner_tag)) {
+                        const TypeSpec* owner_typedef =
+                            owner_tag.find("::") == std::string::npos
+                                ? find_visible_typedef_type(owner_qn.base_text_id,
+                                                            owner_tag)
+                                : find_typedef_type(owner_tag);
+                        if (owner_typedef) {
                             TypeSpec owner_ts =
                                 resolve_struct_like_typedef_type(*owner_typedef);
                             if (owner_ts.tag && owner_ts.tag[0]) owner_tag = owner_ts.tag;
