@@ -9,21 +9,17 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: replaced the remaining incomplete-tag/self-reference
-  checks in `parser_declarations.cpp` with a shared `TextId`-aware visible
-  type-name helper so the parser asks namespace lookup to compare the current
-  struct tag against the spelled tag instead of qualifying both spellings by
-  hand
-- kept the change inside parser namespace lookup cleanup and removed the last
-  `qualify_name(current_tag/spelled_tag)`-style comparison path from the two
-  declaration parsers that gate incomplete object-type handling
+- Step 2 packet: updated the frontend parser namespace compatibility test to
+  seed `using_value_aliases` with the interned `TextId` key instead of a raw
+  string so the resolved alias path exercises the `TextId`-keyed lookup again
+- kept the change inside the owned test compatibility slice and preserved the
+  broader parser namespace cleanup from the prior Step 2 packet
 
 ## Suggested Next
 
-- if Step 2 continues, audit the remaining parser namespace compatibility
-  helpers that still synthesize string spellings first, especially any
-  declaration-side name checks that still rely on rendered strings instead of
-  `TextId`-aware visible-type lookup
+- if Step 2 continues, audit any remaining frontend parser namespace tests or
+  compatibility helpers that still write namespace alias state through raw
+  string keys instead of the `TextId` path now used by lookup
 - keep the route inside parser namespace lookup and avoid widening into
   unrelated declarator parsing, lexical-scope, binding-table, or backend
   cleanup
@@ -54,7 +50,6 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Proof
 
-- `cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R 'namespace|namespaced|using_namespace|using_declaration_namespace|using_nested_namespace|bad_namespace_member_without_qualification' | tee test_after.log`
+- command: `cmake --build build -j && ctest --test-dir build -j --output-on-failure -R 'namespace|namespaced|using_namespace|using_declaration_namespace|using_nested_namespace|bad_namespace_member_without_qualification' | tee test_after.log`
 - result: passed, 45/45 focused tests green
 - log: `test_after.log`
-- command: `cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R 'namespace|namespaced|using_namespace|using_declaration_namespace|using_nested_namespace|bad_namespace_member_without_qualification' | tee test_after.log`
