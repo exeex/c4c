@@ -3,39 +3,39 @@ Source Idea Path: ideas/open/88_prepared_frame_stack_call_authority_completion_f
 Source Plan Path: plan.md
 Current Step ID: 3.1.3
 Current Step Title: Result Source Authority Completion
-Plan Review Counter: 1 / 6
+Plan Review Counter: 2 / 6
 # Current Packet
 
 ## Just Finished
 
 Completed Step 3.1.3 "Result Source Authority Completion" packet work for
-idea 88 by publishing explicit result-side ABI source storage shape in
-`PreparedCallResultPlan`, threading the authoritative source storage kind and
-stack-offset carrier facts through prepared call-plan population, and
-extending prepared dumps plus focused contract/printer coverage so consumers do
-not infer register-shaped scalar call-result carriers solely from the
-incidental presence of `source_reg`.
+idea 88 by re-auditing the scalar result-side identity route and proving the
+previous `source_value_id` addition was redundant. For covered scalar results,
+`destination_value_id` is already populated from the call result value itself
+via `find_regalloc_value_by_name(*regalloc_function, value_name_id)`, so it
+already names the direct prepared/regalloc owner rather than a separate
+carrier-only or destination-only identity. Removed the redundant route and
+restored focused proof around the existing field.
 
 Current packet result:
-- `PreparedCallResultPlan` now carries `source_storage_kind` and optional
-  `source_stack_offset_bytes` alongside the existing ABI carrier register and
-  bank fields.
-- `populate_call_plans` now copies the authoritative after-call ABI binding
-  storage shape directly into prepared result plans instead of leaving
-  consumers to infer register shape from `source_reg`.
-- Prepared callsite summaries and detailed call-plan dumps now print scalar
-  result source storage explicitly, including register-vs-stack source shape.
-- Backend contract and printer tests now prove spilled scalar call results
-  still publish a direct register-shaped ABI source while retaining their
-  frame-slot destination home.
+- Removed the redundant `PreparedCallResultPlan::source_value_id` route.
+- Confirmed the existing `destination_value_id` already publishes the direct
+  scalar result owner identity for covered cases, including register-backed,
+  float-register, and spilled-to-slot results.
+- Focused frame-stack/call contract coverage now proves scalar result identity
+  through `destination_value_id` while keeping the independently useful source
+  storage-shape publication (`source_storage_kind`, `source_reg`,
+  `source_stack_offset_bytes`) intact.
+- Prepared call-plan printer coverage now proves stack-backed scalar results
+  still dump direct owner identity through `destination_value_id` next to the
+  published source/destination storage facts.
 
 ## Suggested Next
 
-Continue Step 3.1.3 "Result Source Authority Completion" by auditing whether
-scalar prepared call results still need a direct source identity publication
-that does not force consumers to recover the semantic owner only through
-`destination_value_id` or instruction correlation, then publish that next
-result-side identity fact directly in `PreparedCallPlan`.
+Step 3.1.3 appears complete from the scalar semantic-identity angle; ask the
+supervisor to decide whether to close this substep and advance to the next Step
+3 call-boundary packet, or to request a separate ergonomics-only follow-up such
+as human-readable result owner naming in dumps.
 
 ## Watchouts
 
@@ -44,12 +44,12 @@ result-side identity fact directly in `PreparedCallPlan`.
 - Keep call-boundary authority at the prepared contract boundary; do not turn
   this packet into target-specific call instruction recovery.
 - Treat result source shape and result source identity as separate facts:
-  `source_storage_kind` now answers "what ABI carrier shape produces the
-  scalar result," while any future identity follow-up should answer "which
-  prepared scalar or carrier owner that result semantically comes from."
-- Result-side follow-up should stay inside scalar prepared call authority; do
-  not widen into grouped-register tuple publication or target-specific ABI
-  reconstruction.
+  `source_storage_kind` answers "what ABI carrier shape produces the scalar
+  result," while `destination_value_id` already answers "which prepared scalar
+  owner that result semantically belongs to" for covered cases.
+- If a later follow-up wants a human-readable result owner name in summaries,
+  keep it as dump ergonomics rather than reopening the semantic identity route
+  or duplicating existing ids.
 
 ## Proof
 

@@ -1502,6 +1502,10 @@ int check_call_contract() {
       !tmp_call->register_name.has_value()) {
     return fail("call contract: storage_plans lost the tmp.call register home");
   }
+  if (call_plan.result->destination_value_id !=
+      std::optional<prepare::PreparedValueId>{tmp_call->value_id}) {
+    return fail("call contract: call_plans lost direct integer result source identity");
+  }
   return 0;
 }
 
@@ -1552,6 +1556,10 @@ int check_float_call_contract() {
       tmp_call->bank != prepare::PreparedRegisterBank::Fpr) {
     return fail("float-call contract: storage_plans lost the FPR homes");
   }
+  if (call_plans->calls.front().result->destination_value_id !=
+      std::optional<prepare::PreparedValueId>{tmp_call->value_id}) {
+    return fail("float-call contract: call_plans lost direct float result source identity");
+  }
   return 0;
 }
 
@@ -1587,6 +1595,9 @@ int check_stack_result_slot_contract() {
       result.source_register_bank !=
           std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr}) {
     return fail("stack-result slot contract: call_plans lost call-result ABI source while publishing slot home");
+  }
+  if (result.destination_value_id != std::optional<prepare::PreparedValueId>{spilled_result->value_id}) {
+    return fail("stack-result slot contract: call_plans lost direct spilled-result source identity");
   }
 
   return 0;

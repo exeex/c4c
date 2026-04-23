@@ -1344,6 +1344,11 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(stack_result_dump,
+                       "destination_value_id=" + std::to_string(stack_result_value->value_id),
+                       "stack-backed scalar result direct owner identity")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(stack_result_dump,
                        "destination_slot=#" + std::to_string(*stack_result_value->slot_id),
                        "stack-backed scalar result frame-slot identity")) {
     return EXIT_FAILURE;
