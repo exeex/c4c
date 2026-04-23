@@ -510,6 +510,12 @@ Node* Parser::parse_stmt() {
                             consume(); // consume ':'
                             Node* range_expr = parse_expr();
                             expect(TokenKind::RParen);
+                            LexicalBindingScopeGuard loop_scope(this);
+                            if (decl && decl->name) {
+                                const TextId decl_name_text_id =
+                                    find_parser_text_id(decl->name);
+                                bind_local_value(decl_name_text_id, decl->type);
+                            }
                             Node* bd = parse_stmt();
                             Node* n = make_node(NK_RANGE_FOR, ln);
                             n->init  = decl;       // loop variable declaration
@@ -520,9 +526,29 @@ Node* Parser::parse_stmt() {
                         // Not range-for — TentativeParseGuard restores state
                         // on scope exit since commit() was not called.
                     }
-                    for_init = parse_local_decl();
-                    // parse_local_decl already consumed the ';' — do NOT
-                    // consume another one, or we eat the condition separator.
+                    {
+                        LexicalBindingScopeGuard loop_scope(this);
+                        for_init = parse_local_decl();
+                        // parse_local_decl already consumed the ';' — do NOT
+                        // consume another one, or we eat the condition separator.
+                        Node* for_cond = nullptr;
+                        if (!check(TokenKind::Semi)) {
+                            for_cond = parse_expr();
+                        }
+                        match(TokenKind::Semi);
+                        Node* for_update = nullptr;
+                        if (!check(TokenKind::RParen)) {
+                            for_update = parse_expr();
+                        }
+                        expect(TokenKind::RParen);
+                        Node* bd = parse_stmt();
+                        Node* n = make_node(NK_FOR, ln);
+                        n->init   = for_init;
+                        n->cond   = for_cond;
+                        n->update = for_update;
+                        n->body   = bd;
+                        return n;
+                    }
                 } else {
                     for_init = parse_expr();
                     match(TokenKind::Semi);

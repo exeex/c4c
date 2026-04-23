@@ -1229,6 +1229,78 @@ void test_parser_if_condition_decl_scope_does_not_leak_bindings() {
               "test fixture should balance the local visible typedef scope");
 }
 
+void test_parser_for_init_decl_uses_loop_lifetime_local_scope() {
+  c4c::Lexer lexer("for (Alias value = 0; value < 2; ++value) { value = 1; }\n"
+                   "value = 3;\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  c4c::Node* stmt = parser.parse_stmt();
+  expect_true(stmt != nullptr && stmt->kind == c4c::NK_FOR,
+              "for init declarations should parse as a for-statement node");
+  expect_true(stmt->init != nullptr && stmt->init->kind == c4c::NK_DECL,
+              "for init declarations should materialize a declaration node");
+  expect_true(stmt->body != nullptr && stmt->body->kind == c4c::NK_BLOCK,
+              "for init declarations should keep the loop body attached");
+  expect_true(parser.find_visible_var_type("value") == nullptr,
+              "for init declaration bindings should not leak after the loop");
+
+  c4c::Node* trailing = parser.parse_stmt();
+  expect_true(trailing != nullptr,
+              "parsing should continue after the for init declaration scope ends");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_range_for_decl_uses_loop_lifetime_local_scope() {
+  c4c::Lexer lexer("for (Alias value : items) { value = 1; }\n"
+                   "value = 3;\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  c4c::Node* stmt = parser.parse_stmt();
+  expect_true(stmt != nullptr && stmt->kind == c4c::NK_RANGE_FOR,
+              "range-for declarations should parse as a range-for node");
+  expect_true(stmt->init != nullptr && stmt->init->kind == c4c::NK_DECL,
+              "range-for declarations should materialize a declaration node");
+  expect_true(stmt->body != nullptr && stmt->body->kind == c4c::NK_BLOCK,
+              "range-for declarations should keep the loop body attached");
+  expect_true(parser.find_visible_var_type("value") == nullptr,
+              "range-for declaration bindings should not leak after the loop");
+
+  c4c::Node* trailing = parser.parse_stmt();
+  expect_true(trailing != nullptr,
+              "parsing should continue after the range-for declaration scope ends");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
 void test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback() {
   c4c::Lexer lexer("typedef ForwardDecl Alias;\n",
                    c4c::LexProfile::CppSubset);

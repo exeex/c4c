@@ -7,27 +7,27 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Completed plan step 2's next non-block local-scope packet for `if` condition
-declarations: the parser now opens a dedicated lexical binding scope only for
-successful condition declarations, keeps the declared name visible while the
-then/else arms parse, and drops that scope when the statement finishes instead
-of leaking the binding into the flat parser tables. Added parser regressions
-that prove the synthetic condition block still forms correctly and that the
-condition-declared value no longer remains visible after the `if` statement.
+Completed plan step 2's `for`-statement local-scope packet: the parser now
+opens a lexical binding scope around declaration-bearing `for` forms, keeps
+init-declaration bindings alive through the loop condition/update/body, and
+binds range-for loop variables only for the loop body before popping the scope
+at statement exit. Added parser regressions for both init declarations and
+range-for variables that verify the loop parses and the binding does not leak
+after the statement.
 
 ## Suggested Next
-Continue step 2 by auditing the remaining non-block local declaration forms
-that still bypass `ParserLexicalScopeState`, especially other statement-shaped
-scopes that may need lexical push/pop coverage before moving on to concept-name
-cleanup.
+Continue step 2 by auditing any remaining statement-shaped declaration forms
+that still bypass `ParserLexicalScopeState`, then move on to concept-name
+cleanup once the statement-scope coverage is stable.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. Do not reopen the
 qualified-owner lookup slice completed under idea 84. Condition-declaration
 scope should only stay alive for a successfully parsed declaration; failed
 tentative parses must still unwind cleanly without leaving lexical bindings
-behind. Treat string-backed `concept_names` cleanup as a later packet, not part
-of this scope-lifetime slice.
+behind. Range-for bindings should stay loop-lifetime local and should not leak
+past the closing `)`/body boundary. Treat string-backed `concept_names` cleanup
+as a later packet, not part of this scope-lifetime slice.
 
 ## Proof
 Ran `cmake --build --preset default` and
