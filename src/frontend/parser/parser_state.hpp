@@ -297,6 +297,9 @@ struct ParserDefinitionState {
   Node* last_enum_def = nullptr;
 };
 
+// Template-definition and template-scope state.
+// - template_struct_* tables track primary templates and specializations.
+// - template_scope_stack is the push/pop surface for active template params.
 struct ParserTemplateState {
   std::unordered_map<std::string, Node*> template_struct_defs;
   std::unordered_map<std::string, std::vector<Node*>>
@@ -308,6 +311,8 @@ struct ParserTemplateState {
   std::vector<ParserTemplateScopeFrame> template_scope_stack;
 };
 
+// Transient parser context that moves with lexical/state transitions.
+// These fields are restored by snapshots or cleared by the matching pop path.
 struct ParserActiveContextState {
   std::string last_using_alias_name;
   TextId last_using_alias_name_text_id = kInvalidText;
@@ -321,6 +326,8 @@ struct ParserActiveContextState {
   bool suppress_local_var_bindings = false;
 };
 
+// Namespace resolution stack and cached lookup scopes.
+// namespace_stack is the push/pop chain for nested namespace contexts.
 struct ParserNamespaceState {
   std::string current_namespace;
   std::vector<ParserNamespaceContext> namespace_contexts;
@@ -332,6 +339,7 @@ struct ParserNamespaceState {
   std::unordered_map<int, std::vector<int>> using_namespace_contexts;
 };
 
+// Lite tentative snapshot: cursor plus the minimum rollback-visible context.
 struct ParserLiteSnapshot {
   int pos = 0;
   ParserTentativeTextRef last_resolved_typedef;
@@ -339,6 +347,7 @@ struct ParserLiteSnapshot {
   size_t token_mutation_count = 0;
 };
 
+// Full tentative snapshot: lite snapshot plus bindings that heavy rollback restores.
 struct ParserSnapshot {
   ParserLiteSnapshot lite;
   ParserNameTables symbol_tables;
@@ -348,6 +357,7 @@ struct ParserSnapshot {
   std::unordered_map<TextId, TypeSpec> non_atom_var_types;
 };
 
+// Heavy/lite tentative parse accounting.
 struct ParserTentativeParseStats {
   int heavy_enter = 0;
   int heavy_commit = 0;
@@ -357,6 +367,7 @@ struct ParserTentativeParseStats {
   int lite_rollback = 0;
 };
 
+// Diagnostic trace stack and tentative-parse counters.
 struct ParserDiagnosticState {
   bool had_error = false;
   int parse_error_count = 0;
@@ -375,6 +386,7 @@ struct ParserDiagnosticState {
   std::chrono::steady_clock::time_point parse_debug_last_progress_at{};
 };
 
+// Nested pragma state: each stack mirrors one push/pop pragma scope.
 struct ParserPragmaState {
   int pack_alignment = 0;
   std::vector<int> pack_stack;
@@ -383,12 +395,14 @@ struct ParserPragmaState {
   ExecutionDomain execution_domain = ExecutionDomain::Host;
 };
 
+// Debug parse-context guard: push on construction, pop on destruction.
 struct ParserParseContextGuard {
   Parser* parser = nullptr;
   ParserParseContextGuard(Parser* parser, const char* function_name);
   ~ParserParseContextGuard();
 };
 
+// Heavy tentative parse guard: save full state, restore on rollback.
 struct ParserTentativeParseGuard {
   Parser& parser;
   ParserSnapshot snapshot;
@@ -400,6 +414,7 @@ struct ParserTentativeParseGuard {
   void commit();
 };
 
+// Lite tentative parse guard: save cursor-level state only.
 struct ParserTentativeParseGuardLite {
   Parser& parser;
   ParserLiteSnapshot snapshot;
@@ -411,6 +426,7 @@ struct ParserTentativeParseGuardLite {
   void commit();
 };
 
+// Temporarily suppress local-variable binding while a nested scope is active.
 struct ParserLocalVarBindingSuppressionGuard {
   Parser& parser;
   bool old = false;
@@ -419,6 +435,7 @@ struct ParserLocalVarBindingSuppressionGuard {
   ~ParserLocalVarBindingSuppressionGuard();
 };
 
+// Record prelude guard: inject template params, then unwind on scope exit.
 struct ParserRecordTemplatePreludeGuard {
   Parser* parser = nullptr;
   std::vector<std::string> injected_type_params;
@@ -428,6 +445,7 @@ struct ParserRecordTemplatePreludeGuard {
   ~ParserRecordTemplatePreludeGuard();
 };
 
+// Template-declaration prelude guard: same push/pop shape as record preludes.
 struct ParserTemplateDeclarationPreludeGuard {
   Parser* parser = nullptr;
   std::vector<std::string> injected_type_params;

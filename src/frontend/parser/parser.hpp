@@ -169,6 +169,8 @@ class Parser {
   bool parse_debug_event_visible(const char* kind) const;
   void clear_parse_debug_state();
   void reset_parse_debug_progress();
+
+  // Lexical parse-context stack used for debug traces and failure stacks.
   void push_parse_context(const char* function_name);
   void pop_parse_context();
   void note_parse_debug_event(const char* kind, const char* detail = nullptr);
@@ -334,6 +336,8 @@ class Parser {
   int current_namespace_context_id() const;
   int ensure_named_namespace_context(int parent_id, const std::string& name);
   int create_anonymous_namespace_context(int parent_id);
+
+  // Namespace scope stack: pushes the active lookup frame for nested scopes.
   void push_namespace_context(int context_id);
   void pop_namespace_context();
   std::string canonical_name_in_context(int context_id, const std::string& name) const;
@@ -420,6 +424,8 @@ class Parser {
       const std::vector<TemplateArgParseResult>& args) const;
   bool decode_type_ref_text(const std::string& text, TypeSpec* out);
   TypenameTemplateParamKind classify_typename_template_parameter() const;
+
+  // Template scope stack: tracks active template parameter visibility.
   void push_template_scope(TemplateScopeKind kind,
                            const std::vector<TemplateScopeParam>& params);
   void pop_template_scope();
