@@ -9,19 +9,21 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Just Finished
 
-- completed the Step 2 `parser_declarations.cpp` helper-routing packet by
-  moving read-only token-window probes onto `core_input_state_` access in
-  template default-expression skipping, requires-clause declaration-boundary
-  checks, using-alias recovery scans, local C++11 attribute skipping, and the
-  constructor-vs-function declaration lite probe while leaving real
-  save/restore `pos_` mechanics unchanged for later Step 3 classification
+- completed the Step 2 `parser_expressions.cpp` bundle-routing packet by
+  moving read-only cursor and token-window probes onto `core_input_state_`
+  access for `sizeof...` text capture, delete/new-array operator lookahead,
+  qualified `operator` name probing, balanced-template-id lookahead, GCC
+  type-trait builtin lookahead, and global-qualified `::new` / `::identifier`
+  checks while leaving explicit `pos_` / `tokens_` save-restore mechanics
+  unchanged for later Step 3 classification
 
 ## Suggested Next
 
-- move the next Step 2 bundle-routing packet to the next parser implementation
-  file that still has read-only `pos_`/`tokens_` layout reads, and keep any
-  remaining direct `pos_` save/restore or injected-token mechanics for later
-  Step 3 classification
+- move the next Step 2 bundle-routing packet to another parser implementation
+  file with read-only `pos_` / `tokens_` layout probes, likely
+  `parser_types_struct.cpp` or the remaining read-only windows in
+  `parser_types_base.cpp`, while continuing to leave real save/restore and
+  injected-token mechanics for Step 3
 
 ## Watchouts
 
@@ -35,9 +37,10 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
   explicit token-stream save/restore
 - refresh proof after each bounded bundle-routing packet and keep it captured
   in `test_after.log`
-- the remaining direct `pos_` references in `parser_declarations.cpp` include
-  intentional save/restore and rollback mechanics that should stay in place
-  for this Step 2 slice
+- the remaining direct `pos_` / `tokens_` references in
+  `parser_expressions.cpp` are concentrated in intentional save/restore,
+  rollback, or token-copy sites that should stay in place for this Step 2
+  slice
 
 ## Proof
 
