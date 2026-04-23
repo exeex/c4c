@@ -14,7 +14,8 @@
 namespace c4c {
 
 bool Parser::is_typedef_name(std::string_view s) const {
-    return has_typedef_name(s);
+    if (has_typedef_name(s)) return true;
+    return find_local_visible_typedef_type(find_parser_text_id(s)) != nullptr;
 }
 
 void Parser::push_template_scope(TemplateScopeKind kind,
