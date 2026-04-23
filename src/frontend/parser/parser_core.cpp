@@ -2353,8 +2353,14 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
         struct_typedef_key_in_context(context_id, name_text_id, name);
     if (const auto it = binding_state_.struct_typedefs.find(candidate_key);
         it != binding_state_.struct_typedefs.end()) {
-        *resolved =
-            compatibility_namespace_name_in_context(context_id, name_text_id, name);
+        if (shared_lookup_state_.token_texts) {
+            *resolved = render_qualified_name(
+                candidate_key, shared_lookup_state_.parser_name_paths,
+                *shared_lookup_state_.token_texts);
+        } else {
+            *resolved = compatibility_namespace_name_in_context(
+                context_id, name_text_id, name);
+        }
         return true;
     }
     const std::string candidate =
