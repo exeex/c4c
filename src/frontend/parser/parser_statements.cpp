@@ -424,13 +424,127 @@ Node* Parser::parse_stmt() {
         case TokenKind::KwWhile: {
             consume();
             expect(TokenKind::LParen);
-            Node* cnd = parse_expr();
+            std::unique_ptr<LexicalBindingScopeGuard> condition_scope_guard;
+            auto can_start_while_condition_decl = [&]() -> bool {
+                if (!is_cpp_mode()) return false;
+                TokenKind k = cur().kind;
+                if (is_type_kw(k) || is_qualifier(k) || is_storage_class(k)) return true;
+                if (k == TokenKind::KwConstexpr || k == TokenKind::KwConsteval ||
+                    k == TokenKind::KwAttribute || k == TokenKind::KwAlignas) {
+                    return true;
+                }
+                if (k == TokenKind::KwTypename) return true;
+                if (k != TokenKind::Identifier) return false;
+                return is_known_simple_type_head(*this, cur().text_id,
+                                                 token_spelling(cur()));
+            };
+
+            auto can_use_lite_while_condition_decl = [&]() -> bool {
+                if (!can_start_while_condition_decl()) return false;
+
+                TokenKind k = cur().kind;
+                switch (k) {
+                    case TokenKind::KwStruct:
+                    case TokenKind::KwClass:
+                    case TokenKind::KwUnion:
+                    case TokenKind::KwEnum:
+                    case TokenKind::KwTypename:
+                    case TokenKind::ColonColon:
+                        return false;
+                    case TokenKind::Identifier:
+                        if (core_input_state_.pos + 1 <
+                                static_cast<int>(core_input_state_.tokens.size()) &&
+                            (core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                                 TokenKind::ColonColon ||
+                             core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                                 TokenKind::Less)) {
+                            return false;
+                        }
+                        return true;
+                    default:
+                        return true;
+                }
+            };
+
+            auto parse_while_condition_decl = [&]() -> Node* {
+                if (!can_start_while_condition_decl()) return nullptr;
+
+                auto try_parse_while_condition_decl =
+                    [&](auto& guard,
+                        std::unique_ptr<LexicalBindingScopeGuard>& pending_scope)
+                    -> Node* {
+                        TypeSpec base_ts = parse_base_type();
+                        parse_attributes(&base_ts);
+
+                        TypeSpec ts = base_ts;
+                        ts.array_size_expr = nullptr;
+                        const char* vname = nullptr;
+                        parse_declarator(ts, &vname);
+                        skip_attributes();
+                        skip_asm();
+                        skip_attributes();
+
+                        if (!vname) {
+                            return nullptr;
+                        }
+
+                        Node* init_node = nullptr;
+                        if (match(TokenKind::Assign) ||
+                            (is_cpp_mode() && check(TokenKind::LBrace))) {
+                            init_node = parse_initializer();
+                        }
+
+                        if (!check(TokenKind::RParen)) {
+                            return nullptr;
+                        }
+
+                        Node* decl = make_node(NK_DECL, ln);
+                        decl->type = ts;
+                        decl->name = vname;
+                        decl->init = init_node;
+                        register_var_type_binding(vname, ts);
+                        condition_scope_guard = std::move(pending_scope);
+                        guard.commit();
+                        return decl;
+                    };
+
+                try {
+                    if (can_use_lite_while_condition_decl()) {
+                        TentativeParseGuardLite guard(*this);
+                        auto pending_scope =
+                            std::make_unique<LexicalBindingScopeGuard>(this);
+                        return try_parse_while_condition_decl(guard, pending_scope);
+                    }
+
+                    TentativeParseGuard guard(*this);
+                    auto pending_scope =
+                        std::make_unique<LexicalBindingScopeGuard>(this);
+                    return try_parse_while_condition_decl(guard, pending_scope);
+                } catch (const std::exception&) {
+                    return nullptr;
+                }
+            };
+
+            Node* cond_decl = parse_while_condition_decl();
+            Node* cnd = nullptr;
+            if (cond_decl) {
+                cnd = make_var(cond_decl->name, cond_decl->line);
+            } else {
+                cnd = parse_expr();
+            }
             expect(TokenKind::RParen);
             Node* bd = parse_stmt();
             Node* n = make_node(NK_WHILE, ln);
             n->cond = cnd;
             n->body = bd;
-            return n;
+            if (!cond_decl) return n;
+
+            Node* scoped = make_node(NK_BLOCK, ln);
+            scoped->n_children = 2;
+            scoped->children = arena_.alloc_array<Node*>(2);
+            scoped->children[0] = cond_decl;
+            scoped->children[1] = n;
+            return scoped;
         }
 
         case TokenKind::KwDo: {
@@ -578,13 +692,127 @@ Node* Parser::parse_stmt() {
         case TokenKind::KwSwitch: {
             consume();
             expect(TokenKind::LParen);
-            Node* cnd = parse_expr();
+            std::unique_ptr<LexicalBindingScopeGuard> condition_scope_guard;
+            auto can_start_switch_condition_decl = [&]() -> bool {
+                if (!is_cpp_mode()) return false;
+                TokenKind k = cur().kind;
+                if (is_type_kw(k) || is_qualifier(k) || is_storage_class(k)) return true;
+                if (k == TokenKind::KwConstexpr || k == TokenKind::KwConsteval ||
+                    k == TokenKind::KwAttribute || k == TokenKind::KwAlignas) {
+                    return true;
+                }
+                if (k == TokenKind::KwTypename) return true;
+                if (k != TokenKind::Identifier) return false;
+                return is_known_simple_type_head(*this, cur().text_id,
+                                                 token_spelling(cur()));
+            };
+
+            auto can_use_lite_switch_condition_decl = [&]() -> bool {
+                if (!can_start_switch_condition_decl()) return false;
+
+                TokenKind k = cur().kind;
+                switch (k) {
+                    case TokenKind::KwStruct:
+                    case TokenKind::KwClass:
+                    case TokenKind::KwUnion:
+                    case TokenKind::KwEnum:
+                    case TokenKind::KwTypename:
+                    case TokenKind::ColonColon:
+                        return false;
+                    case TokenKind::Identifier:
+                        if (core_input_state_.pos + 1 <
+                                static_cast<int>(core_input_state_.tokens.size()) &&
+                            (core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                                 TokenKind::ColonColon ||
+                             core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                                 TokenKind::Less)) {
+                            return false;
+                        }
+                        return true;
+                    default:
+                        return true;
+                }
+            };
+
+            auto parse_switch_condition_decl = [&]() -> Node* {
+                if (!can_start_switch_condition_decl()) return nullptr;
+
+                auto try_parse_switch_condition_decl =
+                    [&](auto& guard,
+                        std::unique_ptr<LexicalBindingScopeGuard>& pending_scope)
+                    -> Node* {
+                        TypeSpec base_ts = parse_base_type();
+                        parse_attributes(&base_ts);
+
+                        TypeSpec ts = base_ts;
+                        ts.array_size_expr = nullptr;
+                        const char* vname = nullptr;
+                        parse_declarator(ts, &vname);
+                        skip_attributes();
+                        skip_asm();
+                        skip_attributes();
+
+                        if (!vname) {
+                            return nullptr;
+                        }
+
+                        Node* init_node = nullptr;
+                        if (match(TokenKind::Assign) ||
+                            (is_cpp_mode() && check(TokenKind::LBrace))) {
+                            init_node = parse_initializer();
+                        }
+
+                        if (!check(TokenKind::RParen)) {
+                            return nullptr;
+                        }
+
+                        Node* decl = make_node(NK_DECL, ln);
+                        decl->type = ts;
+                        decl->name = vname;
+                        decl->init = init_node;
+                        register_var_type_binding(vname, ts);
+                        condition_scope_guard = std::move(pending_scope);
+                        guard.commit();
+                        return decl;
+                    };
+
+                try {
+                    if (can_use_lite_switch_condition_decl()) {
+                        TentativeParseGuardLite guard(*this);
+                        auto pending_scope =
+                            std::make_unique<LexicalBindingScopeGuard>(this);
+                        return try_parse_switch_condition_decl(guard, pending_scope);
+                    }
+
+                    TentativeParseGuard guard(*this);
+                    auto pending_scope =
+                        std::make_unique<LexicalBindingScopeGuard>(this);
+                    return try_parse_switch_condition_decl(guard, pending_scope);
+                } catch (const std::exception&) {
+                    return nullptr;
+                }
+            };
+
+            Node* cond_decl = parse_switch_condition_decl();
+            Node* cnd = nullptr;
+            if (cond_decl) {
+                cnd = make_var(cond_decl->name, cond_decl->line);
+            } else {
+                cnd = parse_expr();
+            }
             expect(TokenKind::RParen);
             Node* bd = parse_stmt();
             Node* n = make_node(NK_SWITCH, ln);
             n->cond = cnd;
             n->body = bd;
-            return n;
+            if (!cond_decl) return n;
+
+            Node* scoped = make_node(NK_BLOCK, ln);
+            scoped->n_children = 2;
+            scoped->children = arena_.alloc_array<Node*>(2);
+            scoped->children[0] = cond_decl;
+            scoped->children[1] = n;
+            return scoped;
         }
 
         case TokenKind::KwCase: {

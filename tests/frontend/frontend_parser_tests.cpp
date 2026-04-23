@@ -1265,6 +1265,49 @@ void test_parser_for_init_decl_uses_loop_lifetime_local_scope() {
               "test fixture should balance the local visible typedef scope");
 }
 
+void test_parser_while_condition_decl_uses_loop_lifetime_local_scope() {
+  c4c::Lexer lexer("while (Alias value = 1) { value = 2; }\n"
+                   "value = 3;\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  c4c::Node* stmt = parser.parse_stmt();
+  expect_true(stmt != nullptr && stmt->kind == c4c::NK_BLOCK,
+              "while-condition declarations should parse as a synthetic block");
+  expect_eq_int(stmt->n_children, 2,
+                "while-condition declaration blocks should contain the declaration and the wrapped while statement");
+  expect_true(stmt->children[0] != nullptr &&
+                  stmt->children[0]->kind == c4c::NK_DECL,
+              "while-condition declarations should materialize a declaration node");
+  expect_true(stmt->children[1] != nullptr &&
+                  stmt->children[1]->kind == c4c::NK_WHILE,
+              "while-condition declaration blocks should wrap the parsed while statement");
+  expect_true(stmt->children[1]->body != nullptr &&
+                  stmt->children[1]->body->kind == c4c::NK_BLOCK,
+              "while-condition declarations should keep the loop body attached");
+  expect_true(parser.find_visible_var_type("value") == nullptr,
+              "while-condition declaration bindings should not leak after the loop");
+
+  c4c::Node* trailing = parser.parse_stmt();
+  expect_true(trailing != nullptr,
+              "parsing should continue after the while-condition declaration scope ends");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
 void test_parser_range_for_decl_uses_loop_lifetime_local_scope() {
   c4c::Lexer lexer("for (Alias value : items) { value = 1; }\n"
                    "value = 3;\n",
@@ -1296,6 +1339,49 @@ void test_parser_range_for_decl_uses_loop_lifetime_local_scope() {
   c4c::Node* trailing = parser.parse_stmt();
   expect_true(trailing != nullptr,
               "parsing should continue after the range-for declaration scope ends");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_switch_condition_decl_uses_case_scope_without_leaking() {
+  c4c::Lexer lexer("switch (Alias value = 1) { default: value = 2; }\n"
+                   "value = 3;\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  c4c::Node* stmt = parser.parse_stmt();
+  expect_true(stmt != nullptr && stmt->kind == c4c::NK_BLOCK,
+              "switch-condition declarations should parse as a synthetic block");
+  expect_eq_int(stmt->n_children, 2,
+                "switch-condition declaration blocks should contain the declaration and the wrapped switch statement");
+  expect_true(stmt->children[0] != nullptr &&
+                  stmt->children[0]->kind == c4c::NK_DECL,
+              "switch-condition declarations should materialize a declaration node");
+  expect_true(stmt->children[1] != nullptr &&
+                  stmt->children[1]->kind == c4c::NK_SWITCH,
+              "switch-condition declaration blocks should wrap the parsed switch statement");
+  expect_true(stmt->children[1]->body != nullptr &&
+                  stmt->children[1]->body->kind == c4c::NK_BLOCK,
+              "switch-condition declarations should keep the switch body attached");
+  expect_true(parser.find_visible_var_type("value") == nullptr,
+              "switch-condition declaration bindings should not leak after the statement finishes");
+
+  c4c::Node* trailing = parser.parse_stmt();
+  expect_true(trailing != nullptr,
+              "parsing should continue after the switch-condition declaration scope ends");
 
   expect_true(parser.pop_local_binding_scope(),
               "test fixture should balance the local visible typedef scope");
@@ -2200,6 +2286,10 @@ int main() {
   test_parser_register_local_bindings_keep_flat_tables_empty();
   test_parser_if_condition_decl_uses_local_visible_typedef_scope();
   test_parser_if_condition_decl_scope_does_not_leak_bindings();
+  test_parser_for_init_decl_uses_loop_lifetime_local_scope();
+  test_parser_while_condition_decl_uses_loop_lifetime_local_scope();
+  test_parser_range_for_decl_uses_loop_lifetime_local_scope();
+  test_parser_switch_condition_decl_uses_case_scope_without_leaking();
   test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback();
   test_parser_block_local_bindings_do_not_leak_into_later_ctor_init_probes();
   test_parser_local_ctor_init_probe_balances_unresolved_param_and_value_expr_shapes();
