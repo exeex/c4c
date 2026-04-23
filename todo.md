@@ -9,17 +9,17 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: replaced the nested-owner namespace lookup fallback in
-  `parser_types_declarator.cpp` with a `Node` TextId-backed scoped-name path
-  instead of reconstructing the key through `bridge_name_in_context()`
-- kept the dependent-typename member-owner recovery on the semantic lookup
-  path while preserving the existing namespace-match behavior
+- Step 2 packet: threaded `TextId` through the namespace-qualified
+  value/type/concept lookup helpers in `parser_core.cpp` so recursive namespace
+  traversal reuses the parsed identity instead of re-deriving it from strings
+- kept the qualified value/type resolution path on the semantic lookup route
+  while preserving the existing namespace-match and alias behavior
 
 ## Suggested Next
 
-- if Step 2 continues, audit the remaining `bridge_name_in_context()` lookup
-  sites in the parser namespace family and convert another bounded semantic
-  lookup slice that can already follow stored `TextId` namespace segments
+- if Step 2 continues, audit the remaining parser namespace lookup helpers
+  that still start from string inputs and convert the next bounded visible-name
+  slice that can already carry a `TextId` end to end
 - keep the route inside parser namespace lookup and avoid widening into
   unrelated declarator parsing, lexical-scope, binding-table, or backend cleanup
 
@@ -43,9 +43,13 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 - the remaining parser-family bridge sites are now mostly compatibility
   registration or lookup-table membership checks, not the nested-owner fallback
   path just converted
+- the new lookup helpers now accept `std::string_view` plus `TextId`, so any
+  future callers should pass the parsed identity when available and only rely
+  on the fallback spelling for compatibility edges
 
 ## Proof
 
 - `cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R 'namespace|namespaced|using_namespace|using_declaration_namespace|using_nested_namespace|bad_namespace_member_without_qualification' | tee test_after.log`
 - result: passed, 45/45 focused tests green
 - log: `test_after.log`
+- command: `cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R 'namespace|namespaced|using_namespace|using_declaration_namespace|using_nested_namespace|bad_namespace_member_without_qualification' | tee test_after.log`

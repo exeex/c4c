@@ -1514,6 +1514,7 @@ const char* Parser::qualify_name_arena(const char* name) {
 }
 
 std::string Parser::resolve_visible_value_name(const std::string& name) const {
+    const TextId name_text_id = find_parser_text_id(name);
     return resolve_visible_name_from_namespace_stack(
         namespace_state_.namespace_stack, name,
         [&](int context_id, std::string* resolved) {
@@ -1525,12 +1526,14 @@ std::string Parser::resolve_visible_value_name(const std::string& name) const {
                     return true;
                 }
             }
-            return lookup_value_in_context(context_id, name, resolved);
+            return lookup_value_in_context(context_id, name_text_id, name,
+                                           resolved);
         });
 }
 
 std::string Parser::resolve_visible_type_name(std::string_view name) const {
     const std::string spelled(name);
+    const TextId name_text_id = find_parser_text_id(spelled);
     return resolve_visible_name_from_namespace_stack(
         namespace_state_.namespace_stack, spelled,
         [&](int context_id, std::string* resolved) {
@@ -1543,15 +1546,18 @@ std::string Parser::resolve_visible_type_name(std::string_view name) const {
                     return true;
                 }
             }
-            return lookup_type_in_context(context_id, spelled, resolved);
+            return lookup_type_in_context(context_id, name_text_id, spelled,
+                                          resolved);
         });
 }
 
 std::string Parser::resolve_visible_concept_name(const std::string& name) const {
+    const TextId name_text_id = find_parser_text_id(name);
     return resolve_visible_name_from_namespace_stack(
         namespace_state_.namespace_stack, name,
         [&](int context_id, std::string* resolved) {
-            return lookup_concept_in_context(context_id, name, resolved);
+            return lookup_concept_in_context(context_id, name_text_id, name,
+                                             resolved);
         });
 }
 
@@ -1752,7 +1758,10 @@ std::string Parser::resolve_qualified_value_name(
     }
 
     std::string resolved;
-    if (lookup_value_in_context(context_id, base_name, &resolved)) return resolved;
+    if (lookup_value_in_context(context_id, name.base_text_id, base_name,
+                                &resolved)) {
+        return resolved;
+    }
     return {};
 }
 
@@ -1768,19 +1777,25 @@ std::string Parser::resolve_qualified_type_name(
     const int context_id = resolve_namespace_context(name);
     if (context_id < 0) return {};
     std::string resolved;
-    if (lookup_type_in_context(context_id, base_name, &resolved)) return resolved;
+    if (lookup_type_in_context(context_id, name.base_text_id, base_name,
+                               &resolved)) {
+        return resolved;
+    }
     return {};
 }
 
-bool Parser::lookup_value_in_context(int context_id, const std::string& name,
+bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
+                                     std::string_view name,
                                      std::string* resolved) const {
-    const std::string candidate = bridge_name_in_context(
-        context_id, find_parser_text_id(name), name);
+    const std::string candidate =
+        bridge_name_in_context(context_id, name_text_id, name);
     if (has_var_type(candidate) || has_known_fn_name(candidate)) {
         *resolved = candidate;
         return true;
     }
-    if (context_id == 0 && (has_var_type(name) || has_known_fn_name(name))) {
+    const std::string fallback_name(name);
+    if (context_id == 0 &&
+        (has_var_type(fallback_name) || has_known_fn_name(fallback_name))) {
         *resolved = name;
         return true;
     }
@@ -1788,23 +1803,28 @@ bool Parser::lookup_value_in_context(int context_id, const std::string& name,
     auto anon_it = namespace_state_.anonymous_namespace_children.find(context_id);
     if (anon_it != namespace_state_.anonymous_namespace_children.end()) {
         for (int anon_id : anon_it->second) {
-            if (lookup_value_in_context(anon_id, name, resolved)) return true;
+            if (lookup_value_in_context(anon_id, name_text_id, name, resolved))
+                return true;
         }
     }
 
     auto using_it = namespace_state_.using_namespace_contexts.find(context_id);
     if (using_it != namespace_state_.using_namespace_contexts.end()) {
         for (int imported_id : using_it->second) {
-            if (lookup_value_in_context(imported_id, name, resolved)) return true;
+            if (lookup_value_in_context(imported_id, name_text_id, name,
+                                        resolved)) {
+                return true;
+            }
         }
     }
     return false;
 }
 
-bool Parser::lookup_type_in_context(int context_id, const std::string& name,
+bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
+                                    std::string_view name,
                                     std::string* resolved) const {
-    const std::string candidate = bridge_name_in_context(
-        context_id, find_parser_text_id(name), name);
+    const std::string candidate =
+        bridge_name_in_context(context_id, name_text_id, name);
     if (has_typedef_type(candidate)) {
         *resolved = candidate;
         return true;
@@ -1817,28 +1837,32 @@ bool Parser::lookup_type_in_context(int context_id, const std::string& name,
     auto anon_it = namespace_state_.anonymous_namespace_children.find(context_id);
     if (anon_it != namespace_state_.anonymous_namespace_children.end()) {
         for (int anon_id : anon_it->second) {
-            if (lookup_type_in_context(anon_id, name, resolved)) return true;
+            if (lookup_type_in_context(anon_id, name_text_id, name, resolved))
+                return true;
         }
     }
 
     auto using_it = namespace_state_.using_namespace_contexts.find(context_id);
     if (using_it != namespace_state_.using_namespace_contexts.end()) {
         for (int imported_id : using_it->second) {
-            if (lookup_type_in_context(imported_id, name, resolved)) return true;
+            if (lookup_type_in_context(imported_id, name_text_id, name, resolved))
+                return true;
         }
     }
     return false;
 }
 
-bool Parser::lookup_concept_in_context(int context_id, const std::string& name,
+bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
+                                       std::string_view name,
                                        std::string* resolved) const {
-    const std::string candidate = bridge_name_in_context(
-        context_id, find_parser_text_id(name), name);
+    const std::string candidate =
+        bridge_name_in_context(context_id, name_text_id, name);
     if (binding_state_.concept_names.count(candidate)) {
         *resolved = candidate;
         return true;
     }
-    if (context_id == 0 && binding_state_.concept_names.count(name)) {
+    if (context_id == 0 && binding_state_.concept_names.count(
+                               std::string(name))) {
         *resolved = name;
         return true;
     }
@@ -1846,14 +1870,18 @@ bool Parser::lookup_concept_in_context(int context_id, const std::string& name,
     auto anon_it = namespace_state_.anonymous_namespace_children.find(context_id);
     if (anon_it != namespace_state_.anonymous_namespace_children.end()) {
         for (int anon_id : anon_it->second) {
-            if (lookup_concept_in_context(anon_id, name, resolved)) return true;
+            if (lookup_concept_in_context(anon_id, name_text_id, name, resolved))
+                return true;
         }
     }
 
     auto using_it = namespace_state_.using_namespace_contexts.find(context_id);
     if (using_it != namespace_state_.using_namespace_contexts.end()) {
         for (int imported_id : using_it->second) {
-            if (lookup_concept_in_context(imported_id, name, resolved)) return true;
+            if (lookup_concept_in_context(imported_id, name_text_id, name,
+                                          resolved)) {
+                return true;
+            }
         }
     }
     return false;

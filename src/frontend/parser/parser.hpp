@@ -351,11 +351,14 @@ class Parser {
   int resolve_namespace_name(const QualifiedNameRef& name) const;
   std::string resolve_qualified_value_name(const QualifiedNameRef& name) const;
   std::string resolve_qualified_type_name(const QualifiedNameRef& name) const;
-  bool lookup_value_in_context(int context_id, const std::string& name,
+  bool lookup_value_in_context(int context_id, TextId name_text_id,
+                               std::string_view name,
                                std::string* resolved) const;
-  bool lookup_type_in_context(int context_id, const std::string& name,
+  bool lookup_type_in_context(int context_id, TextId name_text_id,
+                              std::string_view name,
                               std::string* resolved) const;
-  bool lookup_concept_in_context(int context_id, const std::string& name,
+  bool lookup_concept_in_context(int context_id, TextId name_text_id,
+                                 std::string_view name,
                                  std::string* resolved) const;
   std::string qualify_name(const std::string& name) const;
   const char* qualify_name_arena(const char* name);
