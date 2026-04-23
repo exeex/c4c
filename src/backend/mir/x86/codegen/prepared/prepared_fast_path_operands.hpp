@@ -9,6 +9,12 @@ struct PreparedCurrentFloatCarrier {
   std::string register_name;
 };
 
+struct PreparedI32ValueSelection {
+  std::optional<std::int32_t> immediate;
+  std::optional<std::string> operand;
+  bool in_eax = false;
+};
+
 struct PreparedDirectExternNamedI32Source {
   std::optional<std::string> register_name;
   std::optional<std::string> stack_operand;
@@ -108,5 +114,95 @@ bool finalize_prepared_direct_extern_return_if_supported(
     const std::function<std::optional<std::int64_t>(const c4c::backend::bir::Value&)>&
         resolve_i32_constant,
     std::string* body);
+
+template <class ResolveNamedOperand>
+std::optional<PreparedI32ValueSelection> select_prepared_i32_value_if_supported(
+    const c4c::backend::bir::Value& value,
+    const std::optional<std::string_view>& current_i32_name,
+    ResolveNamedOperand&& resolve_named_operand) {
+  if (value.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    return PreparedI32ValueSelection{
+        .immediate = static_cast<std::int32_t>(value.immediate),
+        .operand = std::nullopt,
+        .in_eax = false,
+    };
+  }
+  if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  if (current_i32_name.has_value() && value.name == *current_i32_name) {
+    return PreparedI32ValueSelection{
+        .immediate = std::nullopt,
+        .operand = std::nullopt,
+        .in_eax = true,
+    };
+  }
+  const auto operand = resolve_named_operand(value.name);
+  if (!operand.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedI32ValueSelection{
+      .immediate = std::nullopt,
+      .operand = std::move(*operand),
+      .in_eax = false,
+  };
+}
+
+template <class ResolveNamedOperand>
+std::optional<std::string> render_prepared_i32_operand_if_supported(
+    const c4c::backend::bir::Value& value,
+    const std::optional<std::string_view>& current_i32_name,
+    ResolveNamedOperand&& resolve_named_operand) {
+  const auto selection = select_prepared_i32_value_if_supported(
+      value, current_i32_name, std::forward<ResolveNamedOperand>(resolve_named_operand));
+  if (!selection.has_value()) {
+    return std::nullopt;
+  }
+  if (selection->immediate.has_value()) {
+    return std::to_string(*selection->immediate);
+  }
+  if (selection->in_eax) {
+    return std::string("eax");
+  }
+  if (!selection->operand.has_value()) {
+    return std::nullopt;
+  }
+  return *selection->operand;
+}
+
+template <class ResolveNamedOperand>
+std::optional<std::string> render_prepared_i32_move_to_register_if_supported(
+    const c4c::backend::bir::Value& value,
+    const std::optional<std::string_view>& current_i32_name,
+    std::string_view target_register,
+    ResolveNamedOperand&& resolve_named_operand) {
+  const auto operand = render_prepared_i32_operand_if_supported(
+      value, current_i32_name, std::forward<ResolveNamedOperand>(resolve_named_operand));
+  if (!operand.has_value()) {
+    return std::nullopt;
+  }
+  if (*operand == target_register) {
+    return std::string{};
+  }
+  return "    mov " + std::string(target_register) + ", " + *operand + "\n";
+}
+
+template <class ResolveNamedOperand>
+std::optional<std::string> render_prepared_i32_setup_in_eax_if_supported(
+    const c4c::backend::bir::Value& value,
+    const std::optional<std::string_view>& current_i32_name,
+    ResolveNamedOperand&& resolve_named_operand) {
+  if (value.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    return "    mov eax, " + std::to_string(static_cast<std::int32_t>(value.immediate)) + "\n";
+  }
+  return render_prepared_i32_move_to_register_if_supported(
+      value, current_i32_name, "eax", std::forward<ResolveNamedOperand>(resolve_named_operand));
+}
 
 }  // namespace c4c::backend::x86
