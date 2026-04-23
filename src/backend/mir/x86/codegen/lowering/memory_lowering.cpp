@@ -53,6 +53,8 @@ std::optional<std::string_view> prepared_scalar_memory_operand_size_name(
       return "QWORD";
     case c4c::backend::bir::TypeKind::I8:
       return "BYTE";
+    case c4c::backend::bir::TypeKind::I64:
+      return "QWORD";
     case c4c::backend::bir::TypeKind::I32:
       return "DWORD";
     case c4c::backend::bir::TypeKind::F32:

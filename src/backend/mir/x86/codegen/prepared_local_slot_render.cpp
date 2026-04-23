@@ -1119,6 +1119,343 @@ std::optional<c4c::backend::bir::BinaryOpcode> invert_prepared_compare_opcode_if
   }
 }
 
+struct PreparedNamedI64Source {
+  std::optional<std::string> register_name;
+  std::optional<std::string> stack_operand;
+  std::optional<std::int64_t> immediate_i64;
+};
+
+std::optional<PreparedNamedI64Source> select_prepared_i64_source_if_supported(
+    const c4c::backend::bir::Value& value,
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  if (value.type != c4c::backend::bir::TypeKind::I64) {
+    return std::nullopt;
+  }
+  if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    return PreparedNamedI64Source{
+        .immediate_i64 = static_cast<std::int64_t>(value.immediate),
+    };
+  }
+  if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+
+  const auto home = resolve_prepared_named_home_if_supported(
+      local_layout, prepared_names, function_locations, value.name);
+  if (home.has_value() && home->register_name.has_value()) {
+    return PreparedNamedI64Source{
+        .register_name = *home->register_name,
+    };
+  }
+  if (home.has_value() && home->frame_offset.has_value()) {
+    return PreparedNamedI64Source{
+        .stack_operand = render_prepared_stack_memory_operand(*home->frame_offset, "QWORD"),
+    };
+  }
+
+  const auto* direct_home = find_prepared_named_value_home_if_supported(
+      prepared_names, function_locations, value.name);
+  if (direct_home != nullptr &&
+      direct_home->kind ==
+          c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate &&
+      direct_home->immediate_i32.has_value()) {
+    return PreparedNamedI64Source{
+        .immediate_i64 = static_cast<std::int64_t>(*direct_home->immediate_i32),
+    };
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> render_prepared_i64_operand_from_source_if_supported(
+    const PreparedNamedI64Source& source) {
+  if (source.immediate_i64.has_value()) {
+    return std::to_string(*source.immediate_i64);
+  }
+  if (source.register_name.has_value()) {
+    return *source.register_name;
+  }
+  return source.stack_operand;
+}
+
+bool append_prepared_named_i64_move_into_register_if_supported(
+    std::string* rendered,
+    std::string_view destination_register,
+    const PreparedNamedI64Source& source) {
+  if (rendered == nullptr) {
+    return false;
+  }
+  if (source.immediate_i64.has_value()) {
+    *rendered +=
+        "    mov " + std::string(destination_register) + ", " + std::to_string(*source.immediate_i64) + "\n";
+    return true;
+  }
+  if (source.register_name.has_value()) {
+    if (*source.register_name != destination_register) {
+      *rendered +=
+          "    mov " + std::string(destination_register) + ", " + *source.register_name + "\n";
+    }
+    return true;
+  }
+  if (source.stack_operand.has_value()) {
+    *rendered +=
+        "    mov " + std::string(destination_register) + ", " + *source.stack_operand + "\n";
+    return true;
+  }
+  return false;
+}
+
+std::optional<std::string> render_prepared_named_i64_home_sync_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view value_name,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  const auto home = resolve_prepared_named_home_if_supported(
+      local_layout, prepared_names, function_locations, value_name);
+  if (!home.has_value()) {
+    return std::string{};
+  }
+  if (home->register_name.has_value()) {
+    if (*home->register_name == "rax") {
+      return std::string{};
+    }
+    return "    mov " + *home->register_name + ", rax\n";
+  }
+  if (home->frame_offset.has_value()) {
+    return "    mov " + render_prepared_stack_memory_operand(*home->frame_offset, "QWORD") +
+           ", rax\n";
+  }
+  return std::string{};
+}
+
+std::optional<std::string> render_prepared_local_i64_inst_from_handoff_if_supported(
+    const PreparedX86BlockDispatchContext& block_context,
+    const c4c::backend::bir::Inst& inst,
+    std::size_t inst_index,
+    std::unordered_set<std::string_view>* used_same_module_globals,
+    std::optional<std::string_view>* current_i32_name,
+    std::optional<std::string_view>* previous_i32_name,
+    std::optional<std::string_view>* current_i8_name,
+    std::optional<std::string_view>* current_ptr_name,
+    std::optional<MaterializedI32Compare>* current_materialized_compare) {
+  if (block_context.function_context == nullptr || block_context.local_layout == nullptr ||
+      used_same_module_globals == nullptr || current_i32_name == nullptr ||
+      previous_i32_name == nullptr || current_i8_name == nullptr ||
+      current_ptr_name == nullptr || current_materialized_compare == nullptr) {
+    return std::nullopt;
+  }
+  const auto& function_context = *block_context.function_context;
+  const auto& local_layout = *block_context.local_layout;
+
+  if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
+    if (store->value.type != c4c::backend::bir::TypeKind::I64) {
+      return std::nullopt;
+    }
+    const auto memory = render_prepared_local_slot_memory_operand_from_handoff_if_supported(
+        block_context,
+        inst_index,
+        store->value.type,
+        store->slot_name,
+        store->byte_offset,
+        store->address.has_value(),
+        *current_ptr_name,
+        used_same_module_globals);
+    if (!memory.has_value()) {
+      return std::nullopt;
+    }
+    std::string rendered = memory->setup_asm;
+    if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+      rendered +=
+          "    mov " + memory->memory_operand + ", " + std::to_string(store->value.immediate) + "\n";
+    } else {
+      const auto source = select_prepared_i64_source_if_supported(
+          store->value,
+          local_layout,
+          function_context.prepared_names,
+          function_context.function_locations);
+      if (!source.has_value() ||
+          !append_prepared_named_i64_move_into_register_if_supported(&rendered, "rax", *source)) {
+        return std::nullopt;
+      }
+      rendered += "    mov " + memory->memory_operand + ", rax\n";
+    }
+    *current_materialized_compare = std::nullopt;
+    *current_i32_name = std::nullopt;
+    *previous_i32_name = std::nullopt;
+    *current_i8_name = std::nullopt;
+    *current_ptr_name = std::nullopt;
+    return rendered;
+  }
+
+  const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
+  if (load == nullptr || load->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      load->result.type != c4c::backend::bir::TypeKind::I64) {
+    return std::nullopt;
+  }
+  const auto memory = render_prepared_local_slot_memory_operand_from_handoff_if_supported(
+      block_context,
+      inst_index,
+      load->result.type,
+      load->slot_name,
+      load->byte_offset,
+      load->address.has_value(),
+      *current_ptr_name,
+      used_same_module_globals);
+  if (!memory.has_value()) {
+    return std::nullopt;
+  }
+  const auto rendered_load = render_prepared_named_qword_load_from_memory_if_supported(
+      local_layout,
+      load->result.name,
+      memory->memory_operand,
+      function_context.prepared_names,
+      function_context.function_locations);
+  if (!rendered_load.has_value()) {
+    return std::nullopt;
+  }
+  *current_materialized_compare = std::nullopt;
+  *current_i32_name = std::nullopt;
+  *previous_i32_name = std::nullopt;
+  *current_i8_name = std::nullopt;
+  *current_ptr_name = std::nullopt;
+  return memory->setup_asm + *rendered_load;
+}
+
+std::optional<std::string> render_prepared_i64_binary_inst_if_supported(
+    const c4c::backend::bir::BinaryInst& binary,
+    const PreparedModuleLocalSlotLayout* local_layout,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    std::optional<std::string_view>* current_i32_name,
+    std::optional<std::string_view>* previous_i32_name,
+    std::optional<std::string_view>* current_i8_name,
+    std::optional<std::string_view>* current_ptr_name,
+    std::optional<MaterializedI32Compare>* current_materialized_compare) {
+  if (local_layout == nullptr || current_i32_name == nullptr || previous_i32_name == nullptr ||
+      current_i8_name == nullptr || current_ptr_name == nullptr ||
+      current_materialized_compare == nullptr ||
+      binary.result.kind != c4c::backend::bir::Value::Kind::Named ||
+      binary.operand_type != c4c::backend::bir::TypeKind::I64) {
+    return std::nullopt;
+  }
+
+  const auto lhs_source = select_prepared_i64_source_if_supported(
+      binary.lhs, *local_layout, prepared_names, function_locations);
+  auto rhs_source = select_prepared_i64_source_if_supported(
+      binary.rhs, *local_layout, prepared_names, function_locations);
+  if (!lhs_source.has_value() || !rhs_source.has_value()) {
+    return std::nullopt;
+  }
+
+  std::string rendered;
+  if (rhs_source->register_name.has_value() && *rhs_source->register_name == "rax" &&
+      (!lhs_source->register_name.has_value() || *lhs_source->register_name != "rax")) {
+    const std::string_view rhs_scratch =
+        lhs_source->register_name.has_value() && *lhs_source->register_name == "rcx" ? "rdx" : "rcx";
+    rendered += "    mov " + std::string(rhs_scratch) + ", rax\n";
+    rhs_source->register_name = std::string(rhs_scratch);
+  }
+  if (!append_prepared_named_i64_move_into_register_if_supported(&rendered, "rax", *lhs_source)) {
+    return std::nullopt;
+  }
+
+  const auto rhs_operand = render_prepared_i64_operand_from_source_if_supported(*rhs_source);
+  if (!rhs_operand.has_value()) {
+    return std::nullopt;
+  }
+
+  if (binary.result.type == c4c::backend::bir::TypeKind::I64) {
+    switch (binary.opcode) {
+      case c4c::backend::bir::BinaryOpcode::Add:
+        rendered += "    add rax, " + *rhs_operand + "\n";
+        break;
+      case c4c::backend::bir::BinaryOpcode::Sub:
+        rendered += "    sub rax, " + *rhs_operand + "\n";
+        break;
+      case c4c::backend::bir::BinaryOpcode::And:
+        rendered += "    and rax, " + *rhs_operand + "\n";
+        break;
+      case c4c::backend::bir::BinaryOpcode::Or:
+        rendered += "    or rax, " + *rhs_operand + "\n";
+        break;
+      case c4c::backend::bir::BinaryOpcode::Xor:
+        rendered += "    xor rax, " + *rhs_operand + "\n";
+        break;
+      case c4c::backend::bir::BinaryOpcode::Shl:
+        if (!rhs_source->immediate_i64.has_value()) {
+          return std::nullopt;
+        }
+        rendered += "    shl rax, " + std::to_string(*rhs_source->immediate_i64) + "\n";
+        break;
+      case c4c::backend::bir::BinaryOpcode::LShr:
+        if (!rhs_source->immediate_i64.has_value()) {
+          return std::nullopt;
+        }
+        rendered += "    shr rax, " + std::to_string(*rhs_source->immediate_i64) + "\n";
+        break;
+      case c4c::backend::bir::BinaryOpcode::AShr:
+        if (!rhs_source->immediate_i64.has_value()) {
+          return std::nullopt;
+        }
+        rendered += "    sar rax, " + std::to_string(*rhs_source->immediate_i64) + "\n";
+        break;
+      default:
+        return std::nullopt;
+    }
+    const auto home_sync = render_prepared_named_i64_home_sync_if_supported(
+        *local_layout, binary.result.name, prepared_names, function_locations);
+    if (!home_sync.has_value()) {
+      return std::nullopt;
+    }
+    rendered += *home_sync;
+    *current_materialized_compare = std::nullopt;
+    *current_i32_name = std::nullopt;
+    *previous_i32_name = std::nullopt;
+    *current_i8_name = std::nullopt;
+    *current_ptr_name = std::nullopt;
+    return rendered;
+  }
+
+  const auto setcc_opcode = prepared_i32_setcc_opcode_if_supported(binary.opcode);
+  if (setcc_opcode == nullptr ||
+      (binary.result.type != c4c::backend::bir::TypeKind::I1 &&
+       binary.result.type != c4c::backend::bir::TypeKind::I32)) {
+    return std::nullopt;
+  }
+
+  const std::string compare_setup = rendered + "    cmp rax, " + *rhs_operand + "\n";
+  rendered = compare_setup;
+  if (binary.result.type == c4c::backend::bir::TypeKind::I32) {
+    const auto synced_home = render_prepared_named_i32_home_sync_if_supported(
+        *local_layout, binary.result.name, prepared_names, function_locations);
+    if (!synced_home.has_value()) {
+      return std::nullopt;
+    }
+    rendered += "    " + std::string(setcc_opcode) + " al\n    movzx eax, al\n" + *synced_home;
+    *current_materialized_compare = MaterializedI32Compare{
+        .i1_name = binary.result.name,
+        .i32_name = binary.result.name,
+        .opcode = binary.opcode,
+        .compare_setup = compare_setup,
+    };
+    *current_i32_name = binary.result.name;
+  } else {
+    rendered += "    " + std::string(setcc_opcode) + " al\n";
+    *current_materialized_compare = MaterializedI32Compare{
+        .i1_name = binary.result.name,
+        .i32_name = std::nullopt,
+        .opcode = binary.opcode,
+        .compare_setup = compare_setup,
+    };
+    *current_i32_name = std::nullopt;
+  }
+  *previous_i32_name = std::nullopt;
+  *current_i8_name = std::nullopt;
+  *current_ptr_name = std::nullopt;
+  return rendered;
+}
+
 std::optional<std::string> render_prepared_i32_binary_inst_if_supported(
     const c4c::backend::bir::BinaryInst& binary,
     const PreparedModuleLocalSlotLayout* local_layout,
@@ -4898,8 +5235,19 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
       }
       return std::nullopt;
     }
+    const bool render_trailing_i64_compare_inline =
+        *compare_index < block.insts.size() &&
+        [&]() -> bool {
+          const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&block.insts[*compare_index]);
+          return binary != nullptr &&
+                 binary->operand_type == c4c::backend::bir::TypeKind::I64 &&
+                 (binary->result.type == c4c::backend::bir::TypeKind::I1 ||
+                  binary->result.type == c4c::backend::bir::TypeKind::I32);
+        }();
+    const std::size_t instruction_limit = std::min(
+        block.insts.size(), *compare_index + (render_trailing_i64_compare_inline ? 1u : 0u));
 
-    for (std::size_t index = 0; index < *compare_index; ++index) {
+    for (std::size_t index = 0; index < instruction_limit; ++index) {
       if (const auto rendered_float =
               render_prepared_float_load_or_cast_inst_if_supported(
                   block_context,
@@ -4929,7 +5277,22 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
               &current_ptr_name,
               &current_materialized_compare);
           rendered_f128.has_value()) {
-        body += *rendered_f128;
+          body += *rendered_f128;
+          continue;
+      }
+
+      if (const auto rendered_i64_local = render_prepared_local_i64_inst_from_handoff_if_supported(
+              block_context,
+              block.insts[index],
+              index,
+              &same_module_global_names,
+              &current_i32_name,
+              &previous_i32_name,
+              &current_i8_name,
+              &current_ptr_name,
+              &current_materialized_compare);
+          rendered_i64_local.has_value()) {
+        body += *rendered_i64_local;
         continue;
       }
 
@@ -5010,6 +5373,20 @@ std::optional<std::string> render_prepared_local_slot_guard_chain_if_supported(
             &current_materialized_compare);
         if (rendered_ptr_binary.has_value()) {
           body += *rendered_ptr_binary;
+          continue;
+        }
+        const auto rendered_i64_binary = render_prepared_i64_binary_inst_if_supported(
+            *binary,
+            &*layout,
+            prepared_names,
+            function_locations,
+            &current_i32_name,
+            &previous_i32_name,
+            &current_i8_name,
+            &current_ptr_name,
+            &current_materialized_compare);
+        if (rendered_i64_binary.has_value()) {
+          body += *rendered_i64_binary;
           continue;
         }
         const auto rendered_binary = render_prepared_i32_binary_inst_if_supported(
