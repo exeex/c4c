@@ -9,18 +9,15 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Just Finished
 
-- continued Step 2 by removing the temporary diagnostic/recovery compatibility
-  aliases from `Parser`, routing parser-core and statement recovery code
-  directly through `diagnostic_state_`, updating `c4cll` to read parser
-  errors from the explicit diagnostic bundle, and fixing the remaining
-  `frontend_parser_tests` namespace-alias bundle access found by the broader
-  post-commit build
+- completed Step 2 by removing the pragma-state compatibility aliases from
+  `Parser` and routing the owned parser pragma reads/writes directly through
+  `pragma_state_` in `parser_core.cpp`, `parser_declarations.cpp`, and
+  `parser_types_struct.cpp`
 
 ## Suggested Next
 
-- continue Step 2 by removing the pragma-state compatibility aliases and
-  routing declaration/record visibility, execution-domain, and pack-alignment
-  reads directly through `pragma_state_`
+- continue Step 2 by checking for any remaining parser-bundle alias holdouts
+  in the parser subsystem, then prove the same parser-focused subset again
 
 ## Watchouts
 
@@ -36,6 +33,6 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 ## Proof
 
 - `cmake --build build -j --target c4c_frontend c4cll`
-- `ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_hir_template_alias_deferred_nttp_static_member|cpp_hir_template_inherited_member_typedef_trait)$'`
+- `ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_parse_top_level_pragma_pack_preserves_following_decl_dump|cpp_parse_top_level_pragma_gcc_visibility_preserves_following_decl_dump)$'`
 - Result: passed
 - Log: `test_after.log`

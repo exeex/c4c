@@ -264,14 +264,6 @@ class Parser {
 
   // ── pragma state ─────────────────────────────────────────────────────────
   ParserPragmaState pragma_state_;
-  // #pragma pack state: current packing alignment (0 = default/no packing).
-  int& pack_alignment_ = pragma_state_.pack_alignment;
-  std::vector<int>& pack_stack_ = pragma_state_.pack_stack;  // for #pragma pack(push/pop)
-
-  // #pragma GCC visibility state: 0=default, 1=hidden, 2=protected.
-  uint8_t& visibility_ = pragma_state_.visibility;
-  std::vector<uint8_t>& visibility_stack_ = pragma_state_.visibility_stack;  // for push/pop
-  ExecutionDomain& execution_domain_ = pragma_state_.execution_domain;
 
   // ── pragma helpers ────────────────────────────────────────────────────────
   void handle_pragma_pack(const std::string& args);

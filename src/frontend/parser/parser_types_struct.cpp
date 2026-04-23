@@ -927,7 +927,7 @@ bool Parser::try_parse_record_constructor_member(
     Node* method = make_node(NK_FUNCTION, cur().line);
     method->type.base = TB_VOID;
     method->name = ctor_name;
-    method->execution_domain = execution_domain_;
+    method->execution_domain = pragma_state_.execution_domain;
     method->variadic = variadic;
     method->is_constructor = true;
     method->n_params = static_cast<int>(params.size());
@@ -1028,7 +1028,7 @@ bool Parser::try_parse_record_destructor_member(
     Node* method = make_node(NK_FUNCTION, cur().line);
     method->type.base = TB_VOID;
     method->name = arena_.strdup(mangled.c_str());
-    method->execution_domain = execution_domain_;
+    method->execution_domain = pragma_state_.execution_domain;
     method->is_destructor = true;
     method->n_params = 0;
     if (check(TokenKind::LBrace)) {
@@ -1351,7 +1351,7 @@ bool Parser::try_parse_record_method_or_field_member(
         Node* method = make_node(NK_FUNCTION, cur().line);
         method->type = fts;
         method->name = arena_.strdup(op_mangled);
-        method->execution_domain = execution_domain_;
+        method->execution_domain = pragma_state_.execution_domain;
         method->operator_kind = op_kind;
         method->variadic = variadic;
         method->is_const_method = is_method_const;
@@ -1469,7 +1469,7 @@ bool Parser::try_parse_record_method_or_field_member(
             Node* method = make_node(NK_FUNCTION, cur().line);
             method->type = cur_fts;
             method->name = fname;
-            method->execution_domain = execution_domain_;
+            method->execution_domain = pragma_state_.execution_domain;
             method->variadic = variadic;
             method->is_const_method = is_method_const;
             method->is_lvalue_ref_method = is_method_lvalue_ref;
@@ -1974,7 +1974,7 @@ Node* Parser::build_record_definition_node(
     }
 
     // __attribute__((packed)) => pack_align=1; otherwise use #pragma pack state
-    sd->pack_align = attr_ts.is_packed ? 1 : pack_alignment_;
+    sd->pack_align = attr_ts.is_packed ? 1 : pragma_state_.pack_alignment;
     sd->struct_align = attr_ts.align_bytes;  // __attribute__((aligned(N)))
 
     if (!specialization_args.empty()) {

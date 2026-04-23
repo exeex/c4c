@@ -895,36 +895,36 @@ void Parser::handle_pragma_pack(const std::string& args) {
     // The lexeme has whitespace stripped and contains just the args, e.g. "1", "push,2", "pop", ""
 
     if (args.empty()) {
-        pack_alignment_ = 0;
+        pragma_state_.pack_alignment = 0;
         return;
     }
 
     if (args.substr(0, 4) == "push") {
-        pack_stack_.push_back(pack_alignment_);
+        pragma_state_.pack_stack.push_back(pragma_state_.pack_alignment);
         if (args.size() > 4 && args[4] == ',') {
-            pack_alignment_ = std::stoi(args.substr(5));
+            pragma_state_.pack_alignment = std::stoi(args.substr(5));
         }
     } else if (args.substr(0, 3) == "pop") {
-        if (!pack_stack_.empty()) {
-            pack_alignment_ = pack_stack_.back();
-            pack_stack_.pop_back();
+        if (!pragma_state_.pack_stack.empty()) {
+            pragma_state_.pack_alignment = pragma_state_.pack_stack.back();
+            pragma_state_.pack_stack.pop_back();
         } else {
-            pack_alignment_ = 0;
+            pragma_state_.pack_alignment = 0;
         }
         if (args.size() > 3 && args[3] == ',') {
-            pack_alignment_ = std::stoi(args.substr(4));
+            pragma_state_.pack_alignment = std::stoi(args.substr(4));
         }
     } else {
         // Simple numeric value
-        pack_alignment_ = std::stoi(args);
+        pragma_state_.pack_alignment = std::stoi(args);
     }
 }
 
 void Parser::handle_pragma_exec(const std::string& args) {
     if (args == "host") {
-        execution_domain_ = ExecutionDomain::Host;
+        pragma_state_.execution_domain = ExecutionDomain::Host;
     } else if (args == "device") {
-        execution_domain_ = ExecutionDomain::Device;
+        pragma_state_.execution_domain = ExecutionDomain::Device;
     }
 }
 
@@ -1392,18 +1392,18 @@ const char* Parser::diag_file_at(int token_index) const {
 void Parser::handle_pragma_gcc_visibility(const std::string& args) {
     // Lexeme format: "push,<visibility>" or "pop"
     if (args == "pop") {
-        if (!visibility_stack_.empty()) {
-            visibility_ = visibility_stack_.back();
-            visibility_stack_.pop_back();
+        if (!pragma_state_.visibility_stack.empty()) {
+            pragma_state_.visibility = pragma_state_.visibility_stack.back();
+            pragma_state_.visibility_stack.pop_back();
         } else {
-            visibility_ = 0;  // default
+            pragma_state_.visibility = 0;  // default
         }
     } else if (args.substr(0, 5) == "push,") {
-        visibility_stack_.push_back(visibility_);
+        pragma_state_.visibility_stack.push_back(pragma_state_.visibility);
         const std::string vis = args.substr(5);
-        if (vis == "hidden") visibility_ = 1;
-        else if (vis == "protected") visibility_ = 2;
-        else visibility_ = 0;  // "default" or unknown → default
+        if (vis == "hidden") pragma_state_.visibility = 1;
+        else if (vis == "protected") pragma_state_.visibility = 2;
+        else pragma_state_.visibility = 0;  // "default" or unknown → default
     }
 }
 
