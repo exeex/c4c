@@ -1334,7 +1334,12 @@ int main() {
   }
   const std::string stack_result_dump = prepare::print(stack_result_prepared);
   if (!expect_contains(stack_result_dump,
-                       "result value_bank=gpr destination_storage=stack_slot",
+                       "result bank=gpr from=register:",
+                       "stack-backed scalar result summary source shape")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(stack_result_dump,
+                       "result value_bank=gpr source_storage=register destination_storage=stack_slot",
                        "stack-backed scalar result detail encoding")) {
     return EXIT_FAILURE;
   }

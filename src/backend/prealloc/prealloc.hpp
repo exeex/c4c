@@ -899,10 +899,12 @@ struct PreparedCallArgumentPlan {
 struct PreparedCallResultPlan {
   std::size_t instruction_index = 0;
   PreparedRegisterBank value_bank = PreparedRegisterBank::None;
+  PreparedMoveStorageKind source_storage_kind = PreparedMoveStorageKind::None;
   PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
   std::optional<PreparedValueId> destination_value_id;
   std::optional<std::string> source_register_name;
   std::optional<PreparedRegisterBank> source_register_bank;
+  std::optional<std::size_t> source_stack_offset_bytes;
   std::optional<std::string> destination_register_name;
   std::optional<PreparedRegisterBank> destination_register_bank;
   std::optional<PreparedFrameSlotId> destination_slot_id;

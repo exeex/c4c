@@ -1479,6 +1479,7 @@ int check_call_contract() {
     return fail("call contract: call_plans lost immediate integer argument authority");
   }
   if (call_plan.result->value_bank != prepare::PreparedRegisterBank::Gpr ||
+      call_plan.result->source_storage_kind != prepare::PreparedMoveStorageKind::Register ||
       !call_plan.result->source_register_name.has_value() ||
       call_plan.result->source_register_bank != prepare::PreparedRegisterBank::Gpr) {
     return fail("call contract: call_plans lost integer result ABI source");
@@ -1535,6 +1536,8 @@ int check_float_call_contract() {
       call_plans->calls.front().arguments.front().destination_register_bank !=
           prepare::PreparedRegisterBank::Fpr ||
       call_plans->calls.front().result->value_bank != prepare::PreparedRegisterBank::Fpr ||
+      call_plans->calls.front().result->source_storage_kind !=
+          prepare::PreparedMoveStorageKind::Register ||
       call_plans->calls.front().result->source_register_bank != prepare::PreparedRegisterBank::Fpr) {
     return fail("float-call contract: call_plans lost SSE/FPR bank ownership");
   }
@@ -1574,7 +1577,8 @@ int check_stack_result_slot_contract() {
   }
 
   const auto& result = *call_plan.result;
-  if (result.destination_storage_kind != prepare::PreparedMoveStorageKind::StackSlot ||
+  if (result.source_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      result.destination_storage_kind != prepare::PreparedMoveStorageKind::StackSlot ||
       result.destination_slot_id != spilled_result->slot_id ||
       result.destination_stack_offset_bytes != spilled_result->stack_offset_bytes) {
     return fail("stack-result slot contract: call_plans lost frame-slot identity for spilled result");

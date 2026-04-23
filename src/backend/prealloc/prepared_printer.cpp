@@ -404,11 +404,13 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
         if (call.result.has_value()) {
           const auto& result = *call.result;
           out << "    result bank=" << prepared_register_bank_name(result.value_bank)
-              << " from=";
+              << " from=" << move_storage_kind_name(result.source_storage_kind);
           if (result.source_register_name.has_value()) {
-            out << *result.source_register_name;
+            out << ":" << *result.source_register_name;
+          } else if (result.source_stack_offset_bytes.has_value()) {
+            out << ":stack+" << *result.source_stack_offset_bytes;
           } else {
-            out << "none";
+            out << ":none";
           }
           out << " to=" << move_storage_kind_name(result.destination_storage_kind);
           if (result.destination_register_name.has_value()) {
@@ -801,6 +803,7 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
       if (call.result.has_value()) {
         const auto& result = *call.result;
         out << "    result value_bank=" << prepared_register_bank_name(result.value_bank)
+            << " source_storage=" << move_storage_kind_name(result.source_storage_kind)
             << " destination_storage="
             << move_storage_kind_name(result.destination_storage_kind);
         if (result.destination_value_id.has_value()) {
@@ -808,6 +811,9 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         }
         if (result.source_register_name.has_value()) {
           out << " source_reg=" << *result.source_register_name;
+        }
+        if (result.source_stack_offset_bytes.has_value()) {
+          out << " source_stack_offset=" << *result.source_stack_offset_bytes;
         }
         out << " source_bank=" << maybe_register_bank(result.source_register_bank);
         if (result.destination_register_name.has_value()) {

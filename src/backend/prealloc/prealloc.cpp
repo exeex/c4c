@@ -736,10 +736,12 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .value_bank = call->result_abi.has_value()
                                 ? register_bank_from_result_abi(*call->result_abi)
                                 : register_bank_from_type(call->result->type),
+              .source_storage_kind = PreparedMoveStorageKind::None,
               .destination_storage_kind = PreparedMoveStorageKind::None,
               .destination_value_id = std::nullopt,
               .source_register_name = std::nullopt,
               .source_register_bank = std::nullopt,
+              .source_stack_offset_bytes = std::nullopt,
               .destination_register_name = std::nullopt,
               .destination_register_bank = std::nullopt,
               .destination_slot_id = std::nullopt,
@@ -750,7 +752,9 @@ void populate_call_plans(PreparedBirModule& prepared) {
                                                           PreparedMoveDestinationKind::CallResultAbi,
                                                           std::nullopt);
               binding != nullptr) {
+            result_plan.source_storage_kind = binding->destination_storage_kind;
             result_plan.source_register_name = binding->destination_register_name;
+            result_plan.source_stack_offset_bytes = binding->destination_stack_offset_bytes;
             if (binding->destination_register_name.has_value()) {
               result_plan.source_register_bank = result_plan.value_bank;
             }
