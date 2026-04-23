@@ -16,7 +16,7 @@ Node* Parser::parse_block() {
     auto saved_enum_consts = binding_state_.enum_consts;
     std::vector<Node*> stmts;
     while (!at_end() && !check(TokenKind::RBrace)) {
-        int stmt_start = pos_;
+        int stmt_start = core_input_state_.pos;
         try {
             Node* s = parse_stmt();
             if (s) stmts.push_back(s);
@@ -25,10 +25,17 @@ Node* Parser::parse_block() {
             // produce NK_INVALID_STMT, and continue parsing next statement.
             int err_idx = diagnostic_state_.best_parse_failure.active
                               ? diagnostic_state_.best_parse_failure.token_index
-                              : (!at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1));
+                              : (!at_end() ? core_input_state_.pos
+                                           : (core_input_state_.pos > 0
+                                                  ? core_input_state_.pos - 1
+                                                  : -1));
             int err_line = diagnostic_state_.best_parse_failure.active
                                ? diagnostic_state_.best_parse_failure.line
-                               : ((!at_end()) ? cur().line : (pos_ > 0 ? tokens_[pos_ - 1].line : 1));
+                               : ((!at_end())
+                                      ? cur().line
+                                      : (core_input_state_.pos > 0
+                                             ? core_input_state_.tokens[core_input_state_.pos - 1].line
+                                             : 1));
             int err_col  = diagnostic_state_.best_parse_failure.active
                                ? diagnostic_state_.best_parse_failure.column
                                : ((!at_end()) ? cur().column : 1);
@@ -46,7 +53,7 @@ Node* Parser::parse_block() {
                 break;
             }
             // Advance at least one token to avoid infinite loop.
-            if (pos_ == stmt_start && !at_end()) consume();
+            if (core_input_state_.pos == stmt_start && !at_end()) consume();
             // Skip to next statement boundary (; or }).
             while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace)) {
                 consume();
@@ -135,8 +142,8 @@ Node* Parser::parse_stmt() {
     if (is_cpp_mode() && check(TokenKind::KwUsing)) {
         consume(); // eat 'using'
         if (check(TokenKind::Identifier) &&
-            pos_ + 1 < static_cast<int>(tokens_.size()) &&
-            tokens_[pos_ + 1].kind == TokenKind::Assign) {
+            core_input_state_.pos + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+            core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::Assign) {
             std::string alias_name = std::string(token_spelling(cur()));
             consume(); // eat name
             consume(); // eat '='
@@ -292,9 +299,12 @@ Node* Parser::parse_stmt() {
                     case TokenKind::ColonColon:
                         return false;
                     case TokenKind::Identifier:
-                        if (pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                            (tokens_[pos_ + 1].kind == TokenKind::ColonColon ||
-                             tokens_[pos_ + 1].kind == TokenKind::Less)) {
+                        if (core_input_state_.pos + 1 <
+                                static_cast<int>(core_input_state_.tokens.size()) &&
+                            (core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                                 TokenKind::ColonColon ||
+                             core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                                 TokenKind::Less)) {
                             return false;
                         }
                         return true;
@@ -435,9 +445,12 @@ Node* Parser::parse_stmt() {
                             case TokenKind::ColonColon:
                                 return false;
                             case TokenKind::Identifier:
-                                if (pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                                    (tokens_[pos_ + 1].kind == TokenKind::ColonColon ||
-                                     tokens_[pos_ + 1].kind == TokenKind::Less)) {
+                                if (core_input_state_.pos + 1 <
+                                        static_cast<int>(core_input_state_.tokens.size()) &&
+                                    (core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                                         TokenKind::ColonColon ||
+                                     core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                                         TokenKind::Less)) {
                                     return false;
                                 }
                                 return true;
@@ -795,7 +808,7 @@ Node* Parser::parse_stmt() {
     }
 
     if (is_cpp_mode() &&
-        starts_qualified_member_pointer_type_id(*this, pos_)) {
+        starts_qualified_member_pointer_type_id(*this, core_input_state_.pos)) {
         return parse_local_decl();
     }
 
@@ -805,8 +818,9 @@ Node* Parser::parse_stmt() {
     // a known type, route to expression parsing for qualified calls.
     if (is_type_start()) {
         auto follows_assignment_operator = [&](int pos) -> bool {
-            if (pos < 0 || pos >= static_cast<int>(tokens_.size())) return false;
-            switch (tokens_[pos].kind) {
+            if (pos < 0 ||
+                pos >= static_cast<int>(core_input_state_.tokens.size())) return false;
+            switch (core_input_state_.tokens[pos].kind) {
                 case TokenKind::Assign:
                 case TokenKind::PlusAssign:
                 case TokenKind::MinusAssign:
@@ -831,7 +845,7 @@ Node* Parser::parse_stmt() {
         };
         if (is_cpp_mode() && check(TokenKind::Identifier) &&
             has_visible_value_binding(std::string(token_spelling(cur()))) &&
-            follows_assignment_operator(pos_ + 1)) {
+            follows_assignment_operator(core_input_state_.pos + 1)) {
             goto expr_stmt;
         }
         if (is_cpp_mode() && check(TokenKind::Identifier) &&
@@ -843,9 +857,11 @@ Node* Parser::parse_stmt() {
             }
         }
         if (is_cpp_mode() && check(TokenKind::Identifier) &&
-            pos_ + 2 < static_cast<int>(tokens_.size()) &&
-            tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
-            tokens_[pos_ + 2].kind == TokenKind::KwOperator) {
+            core_input_state_.pos + 2 < static_cast<int>(core_input_state_.tokens.size()) &&
+            core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                TokenKind::ColonColon &&
+            core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                TokenKind::KwOperator) {
             // `Type::operator...(...)` in block scope is an expression
             // statement, not a local declaration. `peek_qualified_name()`
             // only walks identifier segments, so route operator-owned
@@ -853,16 +869,19 @@ Node* Parser::parse_stmt() {
             goto expr_stmt;
         }
         if (is_cpp_mode() && check(TokenKind::Identifier) &&
-            pos_ + 2 < static_cast<int>(tokens_.size()) &&
-            tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
-            tokens_[pos_ + 2].kind == TokenKind::Identifier) {
+            core_input_state_.pos + 2 < static_cast<int>(core_input_state_.tokens.size()) &&
+            core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                TokenKind::ColonColon &&
+            core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                TokenKind::Identifier) {
             // Peek the full qualified name to check if it resolves to a type.
             QualifiedNameRef qn;
             if (peek_qualified_name(&qn, false) && !qn.qualifier_segments.empty()) {
                 const int after_pos =
-                    pos_ + 1 + 2 * static_cast<int>(qn.qualifier_segments.size());
-                if (after_pos < static_cast<int>(tokens_.size()) &&
-                    tokens_[after_pos].kind == TokenKind::LParen &&
+                    core_input_state_.pos + 1 +
+                    2 * static_cast<int>(qn.qualifier_segments.size());
+                if (after_pos < static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[after_pos].kind == TokenKind::LParen &&
                     starts_parenthesized_member_pointer_declarator(*this, after_pos)) {
                     return parse_local_decl();
                 }

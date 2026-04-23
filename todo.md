@@ -9,19 +9,17 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Just Finished
 
-- completed another Step 2 `parser_types_declarator.cpp` bundle-routing packet
-  by moving template-argument expression capture, value-like template probes,
-  and dependent-typename token-window spelling reads onto `core_input_state_`
-  access while leaving the intentional token-stream save/restore rollback
-  sites unchanged
+- completed the Step 2 `parser_statements.cpp` bundle-routing packet by moving
+  read-only cursor and token-window reads onto `core_input_state_` access
+  while leaving the intentional save/restore rollback sites on `pos_`
+  unchanged
 
 ## Suggested Next
 
-- treat the remaining direct `pos_`/`tokens_` use in
-  `parser_types_declarator.cpp` as intentional rollback mechanics for later
-  Step 3 classification work, and move the next Step 2 bundle-routing packet
-  to the next parser implementation file that still performs read-only
-  parser-state layout access
+- move the next Step 2 bundle-routing packet to the next parser implementation
+  file that still has read-only `pos_`/`tokens_` layout reads, and keep any
+  remaining direct `pos_` sites that are true rollback mechanics for later
+  Step 3 classification
 
 ## Watchouts
 
@@ -33,18 +31,14 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 - keep future bundle-routing work behavior-preserving around cursor movement,
   diagnostics, and rollback, especially where tentative parsing still performs
   explicit token-stream save/restore
-- treat the remaining direct `pos_` save/restore sites in
-  `parser_types_declarator.cpp` as intentional rollback mechanics unless a
-  later Step 3 classification packet chooses to rework them
-- keep the dependent-typename injected-token detour intact for this Step 2
-  route; it is not just a read-only probe
 - refresh proof after each bounded bundle-routing packet and keep it captured
   in `test_after.log`
+- the remaining direct `pos_` references in `parser_statements.cpp` are the
+  intentional save/restore mechanics and should stay in place for this Step 2
+  slice
 
 ## Proof
 
 - `cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_parse_top_level_pragma_pack_preserves_following_decl_dump|cpp_parse_top_level_pragma_gcc_visibility_preserves_following_decl_dump)$' | tee test_after.log`
-- Result: passed; `test_before.log` vs `test_after.log` stayed flat at `3 -> 3`
-  passing tests, so `check_monotonic_regression.py` reported its expected
-  strict-no-increase failure even though the subset showed no new failures
+- Result: passed; 3/3 tests passed in the delegated subset
 - Log: `test_after.log`
