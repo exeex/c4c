@@ -23,6 +23,16 @@ This idea owns prealloc/BIR contract gaps where:
 - backend code would otherwise need to infer missing out-of-SSA meaning from
   raw CFG shape or slot-backed leftovers
 
+## Latest Durable Note
+
+As of 2026-04-23, `out_of_ssa` is the sole published owner of phi-elimination
+semantics for the cases covered by this idea, `join_transfers` and
+`parallel_copy_bundles` are exercised as authoritative downstream contracts in
+prepared dumps, x86 prepared-module consumption checks, and regalloc-side
+`phi_join_*` move resolution, and the remaining slot-backed `EdgeStoreSlot`
+path was retained as an explicit carrier contract rather than a legalize-era
+fallback.
+
 ## Scope Notes
 
 Expected repair themes include:
