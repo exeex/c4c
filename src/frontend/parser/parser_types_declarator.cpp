@@ -118,10 +118,7 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
         if (!check(TokenKind::Identifier)) return false;
         const TextId name_text_id = cur().text_id;
         const std::string_view name = token_spelling(cur());
-        if (find_local_visible_typedef_type(name_text_id)) return true;
-        return is_template_scope_type_param(name_text_id, name) ||
-               has_visible_typedef_type(name_text_id, name) ||
-               is_typedef_name(name_text_id, name);
+        return is_known_simple_type_head(*this, name_text_id, name);
     };
 
     if (is_simple_known_template_type_head() &&
