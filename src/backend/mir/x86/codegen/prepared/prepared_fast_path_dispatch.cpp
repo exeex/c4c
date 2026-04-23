@@ -23,10 +23,64 @@ std::optional<std::string> render_prepared_named_i8_immediate_compare_setup_if_s
 
 std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_branch_compare(
     const c4c::backend::bir::BinaryInst& compare,
+    const std::optional<std::string_view>& current_i8_name,
     const std::optional<MaterializedI32Compare>& current_materialized_compare,
     const std::optional<std::string_view>& current_i32_name,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
+  if (current_i8_name.has_value() && compare.operand_type == c4c::backend::bir::TypeKind::I8) {
+    const auto current_i8_compare =
+        [&]() -> std::optional<std::pair<bool, std::int64_t>> {
+      if (compare.lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+          compare.lhs.type == c4c::backend::bir::TypeKind::I8 &&
+          compare.lhs.name == *current_i8_name &&
+          compare.rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+          compare.rhs.type == c4c::backend::bir::TypeKind::I8) {
+        return std::pair<bool, std::int64_t>{true, compare.rhs.immediate};
+      }
+      if (compare.rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+          compare.rhs.type == c4c::backend::bir::TypeKind::I8 &&
+          compare.rhs.name == *current_i8_name &&
+          compare.lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+          compare.lhs.type == c4c::backend::bir::TypeKind::I8) {
+        return std::pair<bool, std::int64_t>{false, compare.lhs.immediate};
+      }
+      return std::nullopt;
+    }();
+    if (current_i8_compare.has_value()) {
+      const auto branch_opcode_for_current_immediate =
+          [&](bool current_is_lhs) -> const char* {
+        switch (compare.opcode) {
+          case c4c::backend::bir::BinaryOpcode::Eq:
+            return "jne";
+          case c4c::backend::bir::BinaryOpcode::Ne:
+            return "je";
+          case c4c::backend::bir::BinaryOpcode::Sgt:
+            return current_is_lhs ? "jle" : "jge";
+          case c4c::backend::bir::BinaryOpcode::Sge:
+            return current_is_lhs ? "jl" : "jg";
+          case c4c::backend::bir::BinaryOpcode::Slt:
+            return current_is_lhs ? "jge" : "jle";
+          case c4c::backend::bir::BinaryOpcode::Sle:
+            return current_is_lhs ? "jg" : "jl";
+          default:
+            return nullptr;
+        }
+      };
+      const char* branch_opcode =
+          branch_opcode_for_current_immediate(current_i8_compare->first);
+      if (branch_opcode != nullptr) {
+        return std::pair<std::string, std::string>{
+            "    cmp al, " +
+                std::to_string(static_cast<std::int32_t>(
+                    static_cast<std::int8_t>(current_i8_compare->second))) +
+                "\n",
+            branch_opcode,
+        };
+      }
+    }
+  }
+
   if (current_materialized_compare.has_value() &&
       current_materialized_compare->i32_name.has_value()) {
     const auto selected_compare =
@@ -185,6 +239,7 @@ std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_b
 std::optional<std::pair<std::string, std::string>>
 render_prepared_guard_false_branch_compare_from_condition(
     const c4c::backend::prepare::PreparedBranchCondition& condition,
+    const std::optional<std::string_view>& current_i8_name,
     const std::optional<MaterializedI32Compare>& current_materialized_compare,
     const std::optional<std::string_view>& current_i32_name,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
@@ -202,17 +257,24 @@ render_prepared_guard_false_branch_compare_from_condition(
       .rhs = *condition.rhs,
   };
   return render_prepared_guard_false_branch_compare(
-      compare, current_materialized_compare, current_i32_name, prepared_names, function_locations);
+      compare,
+      current_i8_name,
+      current_materialized_compare,
+      current_i32_name,
+      prepared_names,
+      function_locations);
 }
 
 std::optional<ShortCircuitEntryCompareContext> build_prepared_guard_compare_context(
     const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const std::optional<std::string_view>& current_i8_name,
     const std::optional<MaterializedI32Compare>& current_materialized_compare,
     const std::optional<std::string_view>& current_i32_name,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
   auto false_branch_compare = render_prepared_guard_false_branch_compare_from_condition(
       branch_condition,
+      current_i8_name,
       current_materialized_compare,
       current_i32_name,
       prepared_names,

@@ -304,6 +304,7 @@ std::optional<CompareDrivenBranchRenderPlan> build_compare_driven_entry_render_p
       branch_condition != nullptr
           ? render_prepared_guard_false_branch_compare_from_condition(
                 *branch_condition,
+                std::nullopt,
                 current_materialized_compare,
                 current_i32_name,
                 &prepared_names,
@@ -315,6 +316,7 @@ std::optional<CompareDrivenBranchRenderPlan> build_compare_driven_entry_render_p
   if (!compare_context.has_value()) {
     compare_context = render_prepared_guard_false_branch_compare(
         compare,
+        std::nullopt,
         current_materialized_compare,
         current_i32_name,
         &prepared_names,
@@ -357,6 +359,7 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_compare_driven_entry
 
   const auto compare_context = build_prepared_guard_compare_context(
       *branch_condition,
+      std::nullopt,
       current_materialized_compare,
       current_i32_name,
       &prepared_names,
@@ -733,6 +736,7 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_short_circuit_entry_
 
   auto compare_context = build_prepared_guard_compare_context(
       *branch_condition,
+      std::nullopt,
       current_materialized_compare,
       current_i32_name,
       &prepared_names,
@@ -745,6 +749,7 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_short_circuit_entry_
     }
     auto false_branch_compare = render_prepared_guard_false_branch_compare(
         *compare,
+        std::nullopt,
         current_materialized_compare,
         current_i32_name,
         &prepared_names,
@@ -820,6 +825,7 @@ std::optional<CompareDrivenBranchRenderPlan> build_prepared_plain_cond_entry_ren
   if (branch_condition != nullptr) {
     const auto compare_context = build_prepared_guard_compare_context(
         *branch_condition,
+        std::nullopt,
         current_materialized_compare,
         current_i32_name,
         &prepared_names,

@@ -1196,6 +1196,7 @@ std::optional<std::string> render_prepared_i32_binary_inst_if_supported(
       prepared_i32_setcc_opcode_if_supported(binary.opcode) != nullptr) {
     const auto compare_context = render_prepared_guard_false_branch_compare(
         binary,
+        *current_i8_name,
         *current_materialized_compare,
         *current_i32_name,
         prepared_names,
@@ -2079,75 +2080,6 @@ struct PreparedBlockBranchRenderSelection {
   const c4c::backend::prepare::PreparedNameTables* prepared_names = nullptr;
 };
 
-std::optional<std::pair<std::string, std::string>>
-render_prepared_guard_false_branch_compare_with_current_i8_if_supported(
-    const c4c::backend::bir::BinaryInst& compare,
-    const std::optional<std::string_view>& current_i8_name,
-    const std::optional<MaterializedI32Compare>& current_materialized_compare,
-    const std::optional<std::string_view>& current_i32_name,
-    const c4c::backend::prepare::PreparedNameTables* prepared_names,
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations) {
-  if (current_i8_name.has_value() && compare.operand_type == c4c::backend::bir::TypeKind::I8) {
-    const auto current_i8_compare =
-        [&]() -> std::optional<std::pair<bool, std::int64_t>> {
-      if (compare.lhs.kind == c4c::backend::bir::Value::Kind::Named &&
-          compare.lhs.type == c4c::backend::bir::TypeKind::I8 &&
-          compare.lhs.name == *current_i8_name &&
-          compare.rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-          compare.rhs.type == c4c::backend::bir::TypeKind::I8) {
-        return std::pair<bool, std::int64_t>{true, compare.rhs.immediate};
-      }
-      if (compare.rhs.kind == c4c::backend::bir::Value::Kind::Named &&
-          compare.rhs.type == c4c::backend::bir::TypeKind::I8 &&
-          compare.rhs.name == *current_i8_name &&
-          compare.lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
-          compare.lhs.type == c4c::backend::bir::TypeKind::I8) {
-        return std::pair<bool, std::int64_t>{false, compare.lhs.immediate};
-      }
-      return std::nullopt;
-    }();
-    if (current_i8_compare.has_value()) {
-      const auto branch_opcode_for_current_immediate =
-          [&](bool current_is_lhs) -> const char* {
-        switch (compare.opcode) {
-          case c4c::backend::bir::BinaryOpcode::Eq:
-            return "jne";
-          case c4c::backend::bir::BinaryOpcode::Ne:
-            return "je";
-          case c4c::backend::bir::BinaryOpcode::Sgt:
-            return current_is_lhs ? "jle" : "jge";
-          case c4c::backend::bir::BinaryOpcode::Sge:
-            return current_is_lhs ? "jl" : "jg";
-          case c4c::backend::bir::BinaryOpcode::Slt:
-            return current_is_lhs ? "jge" : "jle";
-          case c4c::backend::bir::BinaryOpcode::Sle:
-            return current_is_lhs ? "jg" : "jl";
-          default:
-            return nullptr;
-        }
-      };
-      const char* branch_opcode =
-          branch_opcode_for_current_immediate(current_i8_compare->first);
-      if (branch_opcode != nullptr) {
-        return std::pair<std::string, std::string>{
-            "    cmp al, " +
-                std::to_string(static_cast<std::int32_t>(
-                    static_cast<std::int8_t>(current_i8_compare->second))) +
-                "\n",
-            branch_opcode,
-        };
-      }
-    }
-  }
-
-  return c4c::backend::x86::render_prepared_guard_false_branch_compare(
-      compare,
-      current_materialized_compare,
-      current_i32_name,
-      prepared_names,
-      function_locations);
-}
-
 std::optional<PreparedBlockCondBranchRenderSelection>
 select_prepared_short_circuit_cond_branch_render_if_supported(
     const PreparedX86BlockDispatchContext& block_context,
@@ -2230,7 +2162,7 @@ select_prepared_short_circuit_cond_branch_render_if_supported(
     const auto compare_context =
         compare != nullptr && compare->operand_type == c4c::backend::bir::TypeKind::I8 &&
                 source_branch_condition != nullptr
-            ? render_prepared_guard_false_branch_compare_with_current_i8_if_supported(
+            ? render_prepared_guard_false_branch_compare(
                   *compare,
                   current_i8_name,
                   current_materialized_compare,
@@ -2429,7 +2361,7 @@ select_prepared_block_branch_render_if_supported(
               : std::nullopt;
       const auto compare_context =
           authoritative_compare.has_value()
-              ? render_prepared_guard_false_branch_compare_with_current_i8_if_supported(
+              ? render_prepared_guard_false_branch_compare(
                     *authoritative_compare,
                     current_i8_name,
                     current_materialized_compare,
@@ -2439,7 +2371,7 @@ select_prepared_block_branch_render_if_supported(
               : prepared_branch_condition != nullptr
                     ? std::nullopt
                     : compare != nullptr
-                          ? render_prepared_guard_false_branch_compare_with_current_i8_if_supported(
+                          ? render_prepared_guard_false_branch_compare(
                                 *compare,
                                 current_i8_name,
                                 current_materialized_compare,

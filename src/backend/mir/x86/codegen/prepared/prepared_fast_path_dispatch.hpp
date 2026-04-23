@@ -25,6 +25,7 @@ std::string render_prepared_i32_eax_immediate_compare_setup(std::int64_t compare
 
 std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_branch_compare(
     const c4c::backend::bir::BinaryInst& compare,
+    const std::optional<std::string_view>& current_i8_name,
     const std::optional<MaterializedI32Compare>& current_materialized_compare,
     const std::optional<std::string_view>& current_i32_name,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
@@ -33,6 +34,7 @@ std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_b
 std::optional<std::pair<std::string, std::string>>
 render_prepared_guard_false_branch_compare_from_condition(
     const c4c::backend::prepare::PreparedBranchCondition& condition,
+    const std::optional<std::string_view>& current_i8_name,
     const std::optional<MaterializedI32Compare>& current_materialized_compare,
     const std::optional<std::string_view>& current_i32_name,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
@@ -40,6 +42,7 @@ render_prepared_guard_false_branch_compare_from_condition(
 
 std::optional<ShortCircuitEntryCompareContext> build_prepared_guard_compare_context(
     const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const std::optional<std::string_view>& current_i8_name,
     const std::optional<MaterializedI32Compare>& current_materialized_compare,
     const std::optional<std::string_view>& current_i32_name,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
