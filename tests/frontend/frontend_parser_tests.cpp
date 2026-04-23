@@ -657,6 +657,45 @@ void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
             "unresolved identifier fallback should use parser-owned spelling");
 }
 
+void test_parser_local_visible_typedef_cast_uses_scope_lookup() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "1"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+  };
+  parser.pos_ = 0;
+  parser.clear_last_resolved_typedef();
+
+  c4c::Node* expr = parser.parse_unary();
+
+  expect_true(expr != nullptr && expr->kind == c4c::NK_CAST,
+              "local visible typedef casts should parse through the scope-local typedef facade");
+  expect_true(expr->type.base == c4c::TB_INT,
+              "local visible typedef casts should recover the bound typedef type");
+  expect_true(expr->left != nullptr && expr->left->kind == c4c::NK_INT_LIT &&
+                  expr->left->ival == 1,
+              "local visible typedef casts should keep the cast operand intact");
+  expect_eq(parser.active_context_state_.last_resolved_typedef, "Alias",
+            "local visible typedef casts should preserve the visible typedef spelling");
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
 void test_parser_template_member_suffix_probe_uses_token_spelling() {
   c4c::Lexer lexer(
       "template<int N>\n"
@@ -834,6 +873,7 @@ int main() {
   test_parser_exception_specs_and_attributes_use_token_spelling();
   test_parser_typeof_like_probes_use_token_spelling();
   test_parser_parse_base_type_identifier_probes_use_token_spelling();
+  test_parser_local_visible_typedef_cast_uses_scope_lookup();
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
   test_parser_alias_template_value_probes_use_token_spelling();

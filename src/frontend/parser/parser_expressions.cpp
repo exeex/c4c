@@ -791,9 +791,9 @@ Node* Parser::parse_primary() {
             const std::string current_tag(current_struct_tag_text());
             const std::string resolved_owner =
                 visible_type_head_name(*this, qualifier_owner);
-            if (has_typedef_type(qualifier_owner) ||
+            if (has_visible_typedef_type(qualifier_owner) ||
                 (!resolved_owner.empty() &&
-                 (has_typedef_type(resolved_owner) ||
+                 (has_visible_typedef_type(resolved_owner) ||
                   resolved_owner == current_tag ||
                   qualifier_owner == current_tag))) {
                 // Inside a method body, `BaseAlias::operator...(args)` names a
@@ -1280,10 +1280,14 @@ Node* Parser::parse_primary() {
         if (is_cpp_mode() && qn.qualifier_segments.empty() &&
             check(TokenKind::LParen)) {
             const TypeSpec* direct_typedef =
-                find_typedef_type(direct_resolved_type_name);
+                find_visible_typedef_type(qn.base_text_id, qn_base_name);
             if (direct_typedef) {
                 TypeSpec cast_ts = *direct_typedef;
-                set_last_resolved_typedef(direct_resolved_type_name);
+                const std::string visible_typedef_name =
+                    direct_resolved_type_name.empty()
+                        ? std::string(qn_base_name)
+                        : direct_resolved_type_name;
+                set_last_resolved_typedef(visible_typedef_name);
                 consume();
                 std::vector<Node*> args;
                 if (!check(TokenKind::RParen)) {
@@ -1339,7 +1343,7 @@ Node* Parser::parse_primary() {
                                 type_qn.qualifier_segments.front()));
             if (first_qualifier.empty()) return false;
 
-            return has_typedef_type(first_qualifier) ||
+            return has_visible_typedef_type(first_qualifier) ||
                    template_state_.template_struct_defs.count(first_qualifier) > 0 ||
                    definition_state_.defined_struct_tags.count(first_qualifier) >
                        0;

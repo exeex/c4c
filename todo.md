@@ -8,25 +8,26 @@ Current Step Title: Move unqualified visible lookup onto the new scope-local pat
 
 ## Just Finished
 Completed another Step 4 parser packet by moving the remaining unqualified
-template/helper typedef checks in `parser_types_template.cpp` and
-`types_helpers.hpp` onto the scoped visible typedef facade. Template type-ref
-decoding now probes visible typedef bindings before the flat table, and the
-qualified-type helper marks unqualified typedef names as resolved when they
-exist only in parser-local visible scope state while preserving the visible
-typedef spelling instead of leaking the underlying tag.
+expression-side typedef probes in `parser_expressions.cpp` onto the scoped
+visible typedef facade. Unqualified cast detection and alias-qualified
+operator-owner collapse now consult local visible typedef bindings before the
+legacy flat tables, and a parser unit regression now proves that a
+scope-local typedef alias still parses as a cast while preserving the visible
+typedef spelling in `last_resolved_typedef`.
 
 ## Suggested Next
-Review whether any non-template parser helpers outside this packet still use
-unqualified `has_typedef_type(...)` / `find_typedef_type(...)` checks where
-the new local-first visible typedef facade should be consulted instead.
+Review the remaining non-template unqualified typedef probes in
+`parser_types_base.cpp`, `parser_types_struct.cpp`, and
+`parser_declarations.cpp` to decide which ones are true Step 4 local-visible
+lookup cleanups versus intentionally qualified or flat-table-only paths.
 
 ## Watchouts
-Do not collapse namespace traversal into lexical lookup. Step 3 only adds the
-local-first facade; local bindings are still mirrored into the legacy flat
-tables in some paths, so remaining Step 4 cleanup should keep qualified lookup
-and namespace-owned resolution on their separate route. The new helper is only
-for unqualified visible typedef resolution; qualified owner/member traversal
-should keep using its existing namespace and struct-member routes.
+Do not collapse namespace traversal into lexical lookup. This packet only
+switches unqualified expression-side probes to the local-first visible typedef
+facade; qualified owner/member traversal still needs to stay on its existing
+namespace and struct-member routes. Remaining Step 4 work should keep treating
+unqualified visible lookup and qualified namespace traversal as separate
+mechanisms.
 
 ## Proof
 Proof command: `cmake --build --preset default && ctest --test-dir build -j
