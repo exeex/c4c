@@ -344,7 +344,7 @@ void Parser::parse_attributes(TypeSpec* ts) {
                             eval_const_int(
                                 align_expr, &align_val,
                                 &definition_state_.struct_tag_def_map,
-                                &const_int_bindings_) &&
+                                &binding_state_.const_int_bindings) &&
                             align_val > 0) {
                             align = align_val;
                         }
@@ -362,7 +362,7 @@ void Parser::parse_attributes(TypeSpec* ts) {
                     long long sz_val = 0;
                     eval_const_int(sz_expr, &sz_val,
                                    &definition_state_.struct_tag_def_map,
-                                   &const_int_bindings_);
+                                   &binding_state_.const_int_bindings);
                     expect(TokenKind::RParen);
                     apply_vector_size_attr(sz_val);
                 }

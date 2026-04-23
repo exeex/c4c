@@ -468,7 +468,7 @@ void test_parser_type_start_probes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ConceptName"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
   };
-  parser.concept_names_.insert("ConceptName");
+  parser.binding_state_.concept_names.insert("ConceptName");
   expect_true(!parser.looks_like_unresolved_identifier_type_head(0),
               "identifier-type probes should use parser-owned spelling when excluding concept names");
 }

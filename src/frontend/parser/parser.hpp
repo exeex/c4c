@@ -139,36 +139,6 @@ class Parser {
 
   // ── parser name / binding tables ─────────────────────────────────────────
   ParserBindingState binding_state_;
-  // Declared concept names visible to the parser. Kept separate from typedef
-  // tracking so concept-ids do not get mistaken for type names.
-  std::set<std::string>& concept_names_ = binding_state_.concept_names;
-  // Phase C: fn_ptr parameter info for typedef'd function pointer types.
-  std::unordered_map<TextId, FnPtrTypedefInfo>& typedef_fn_ptr_info_ =
-      binding_state_.typedef_fn_ptr_info;
-  // Enum constants: name → value (populated as enums are parsed).
-  // Used to evaluate enum initializers that reference previously-defined constants.
-  std::unordered_map<std::string, long long>& enum_consts_ =
-      binding_state_.enum_consts;
-  // Global const/constexpr integer bindings visible to parser-time constant folding.
-  std::unordered_map<std::string, long long>& const_int_bindings_ =
-      binding_state_.const_int_bindings;
-  // Qualified function names (populated as functions are declared/defined).
-  // Used by lookup_value_in_context for namespace-aware function lookup.
-  std::set<std::string>& known_fn_names_ = binding_state_.known_fn_names;
-  // String-keyed fallback storage for composed or synthesized names that are
-  // not eligible for source-atom SymbolId identity.
-  std::unordered_set<TextId>& non_atom_typedefs_ =
-      binding_state_.non_atom_typedefs;
-  std::unordered_set<TextId>& non_atom_user_typedefs_ =
-      binding_state_.non_atom_user_typedefs;
-  std::unordered_map<TextId, TypeSpec>& non_atom_typedef_types_ =
-      binding_state_.non_atom_typedef_types;
-  std::unordered_map<TextId, TypeSpec>& non_atom_var_types_ =
-      binding_state_.non_atom_var_types;
-  // Struct member typedef scoped names: "StructTag::TypeName" → TypeSpec.
-  // Populated when parsing typedef inside struct bodies.
-  std::unordered_map<std::string, TypeSpec>& struct_typedefs_ =
-      binding_state_.struct_typedefs;
 
   // ── record / enum definition tables ──────────────────────────────────────
   ParserDefinitionState definition_state_;
@@ -303,8 +273,9 @@ class Parser {
   }
   const FnPtrTypedefInfo* find_typedef_fn_ptr_info(TextId text_id) const {
     if (text_id == kInvalidText) return nullptr;
-    const auto it = typedef_fn_ptr_info_.find(text_id);
-    return it == typedef_fn_ptr_info_.end() ? nullptr : &it->second;
+    const auto it = binding_state_.typedef_fn_ptr_info.find(text_id);
+    return it == binding_state_.typedef_fn_ptr_info.end() ? nullptr
+                                                          : &it->second;
   }
   const FnPtrTypedefInfo* find_current_typedef_fn_ptr_info() const {
     return find_typedef_fn_ptr_info(

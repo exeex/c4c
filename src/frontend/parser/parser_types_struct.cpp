@@ -682,7 +682,7 @@ bool Parser::try_parse_record_typedef_member(
             const TextId typedef_name_id =
                 parser_text_id_for_token(kInvalidText, name);
             if (typedef_name_id != kInvalidText) {
-                typedef_fn_ptr_info_[typedef_name_id] = {
+                binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
                     fn_ptr_params, n_fn_ptr_params, fn_ptr_variadic};
             }
         }
@@ -2214,7 +2214,8 @@ Node* Parser::parse_enum() {
     std::vector<const char*> names;
     std::vector<long long>   vals;
     std::unordered_set<std::string> seen_names;
-    std::unordered_map<std::string, long long> local_enum_consts = enum_consts_;
+    std::unordered_map<std::string, long long> local_enum_consts =
+        binding_state_.enum_consts;
     long long cur_val = 0;
 
     while (!at_end() && !check(TokenKind::RBrace)) {
@@ -2233,7 +2234,8 @@ Node* Parser::parse_enum() {
         if (match(TokenKind::Assign)) {
             Node* ve = parse_assign_expr();
             if (!eval_enum_expr(ve, local_enum_consts, &vval)) {
-                if (is_cpp_mode() && is_dependent_enum_expr(ve, enum_consts_)) {
+                if (is_cpp_mode() &&
+                    is_dependent_enum_expr(ve, binding_state_.enum_consts)) {
                     vval = 0;  // Placeholder until template/dependent evaluation exists.
                 } else {
                 throw std::runtime_error("enum initializer is not an integer constant expression");
@@ -2264,7 +2266,8 @@ Node* Parser::parse_enum() {
     }
     if (!is_scoped_enum) {
         for (int i = 0; i < ed->n_enum_variants; ++i)
-            enum_consts_[std::string(ed->enum_names[i])] = ed->enum_vals[i];
+            binding_state_.enum_consts[std::string(ed->enum_names[i])] =
+                ed->enum_vals[i];
     }
     if (active_context_state_.parsing_top_level_context)
         definition_state_.struct_defs.push_back(ed);

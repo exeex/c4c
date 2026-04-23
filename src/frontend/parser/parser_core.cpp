@@ -345,7 +345,8 @@ void Parser::populate_qualified_name_symbol_ids(QualifiedNameRef* name) {
 bool Parser::has_typedef_name(std::string_view name) const {
     if (!uses_symbol_identity(name)) {
         const TextId id = find_parser_text_id(name);
-        return id != kInvalidText && non_atom_typedefs_.count(id) > 0;
+        return id != kInvalidText &&
+               binding_state_.non_atom_typedefs.count(id) > 0;
     }
     return shared_lookup_state_.parser_name_tables.is_typedef(
         shared_lookup_state_.parser_name_tables.find_identifier(name));
@@ -354,7 +355,8 @@ bool Parser::has_typedef_name(std::string_view name) const {
 bool Parser::has_typedef_type(std::string_view name) const {
     if (!uses_symbol_identity(name)) {
         const TextId id = find_parser_text_id(name);
-        return id != kInvalidText && non_atom_typedef_types_.count(id) > 0;
+        return id != kInvalidText &&
+               binding_state_.non_atom_typedef_types.count(id) > 0;
     }
     return shared_lookup_state_.parser_name_tables.has_typedef_type(
         shared_lookup_state_.parser_name_tables.find_identifier(name));
@@ -364,8 +366,9 @@ const TypeSpec* Parser::find_typedef_type(std::string_view name) const {
     if (!uses_symbol_identity(name)) {
         const TextId id = find_parser_text_id(name);
         if (id == kInvalidText) return nullptr;
-        const auto it = non_atom_typedef_types_.find(id);
-        return it == non_atom_typedef_types_.end() ? nullptr : &it->second;
+        const auto it = binding_state_.non_atom_typedef_types.find(id);
+        return it == binding_state_.non_atom_typedef_types.end() ? nullptr
+                                                                 : &it->second;
     }
     return shared_lookup_state_.parser_name_tables.lookup_typedef_type(
         shared_lookup_state_.parser_name_tables.find_identifier(name));
@@ -458,7 +461,8 @@ bool Parser::resolves_to_record_ctor_type(TypeSpec ts) const {
 bool Parser::is_user_typedef_name(const std::string& name) const {
     if (!uses_symbol_identity(name)) {
         const TextId id = find_parser_text_id(name);
-        return id != kInvalidText && non_atom_user_typedefs_.count(id) > 0;
+        return id != kInvalidText &&
+               binding_state_.non_atom_user_typedefs.count(id) > 0;
     }
     const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name);
     return id != kInvalidSymbol &&
@@ -477,8 +481,8 @@ void Parser::register_typedef_name(const std::string& name,
     if (!uses_symbol_identity(name)) {
         const TextId id = parser_text_id_for_token(kInvalidText, name);
         if (id == kInvalidText) return;
-        non_atom_typedefs_.insert(id);
-        if (is_user_typedef) non_atom_user_typedefs_.insert(id);
+        binding_state_.non_atom_typedefs.insert(id);
+        if (is_user_typedef) binding_state_.non_atom_user_typedefs.insert(id);
         return;
     }
     const SymbolId id =
@@ -494,9 +498,9 @@ void Parser::register_typedef_binding(const std::string& name,
     if (!uses_symbol_identity(name)) {
         const TextId id = parser_text_id_for_token(kInvalidText, name);
         if (id == kInvalidText) return;
-        non_atom_typedefs_.insert(id);
-        if (is_user_typedef) non_atom_user_typedefs_.insert(id);
-        non_atom_typedef_types_[id] = type;
+        binding_state_.non_atom_typedefs.insert(id);
+        if (is_user_typedef) binding_state_.non_atom_user_typedefs.insert(id);
+        binding_state_.non_atom_typedef_types[id] = type;
         return;
     }
     const SymbolId id =
@@ -511,9 +515,9 @@ void Parser::unregister_typedef_binding(const std::string& name) {
     if (!uses_symbol_identity(name)) {
         const TextId id = find_parser_text_id(name);
         if (id == kInvalidText) return;
-        non_atom_typedefs_.erase(id);
-        non_atom_user_typedefs_.erase(id);
-        non_atom_typedef_types_.erase(id);
+        binding_state_.non_atom_typedefs.erase(id);
+        binding_state_.non_atom_user_typedefs.erase(id);
+        binding_state_.non_atom_typedef_types.erase(id);
         return;
     }
     const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name);
@@ -555,7 +559,7 @@ void Parser::cache_typedef_type(const std::string& name, const TypeSpec& type) {
     if (!uses_symbol_identity(name)) {
         const TextId id = parser_text_id_for_token(kInvalidText, name);
         if (id == kInvalidText) return;
-        non_atom_typedef_types_[id] = type;
+        binding_state_.non_atom_typedef_types[id] = type;
         return;
     }
     const SymbolId id =
@@ -566,14 +570,15 @@ void Parser::cache_typedef_type(const std::string& name, const TypeSpec& type) {
 
 void Parser::register_struct_member_typedef_binding(
     const std::string& scoped_name, const TypeSpec& type) {
-    struct_typedefs_[scoped_name] = type;
+    binding_state_.struct_typedefs[scoped_name] = type;
     register_typedef_binding(scoped_name, type, false);
 }
 
 bool Parser::has_var_type(const std::string& name) const {
     if (!uses_symbol_identity(name)) {
         const TextId id = find_parser_text_id(name);
-        return id != kInvalidText && non_atom_var_types_.count(id) > 0;
+        return id != kInvalidText &&
+               binding_state_.non_atom_var_types.count(id) > 0;
     }
     const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name);
     return id != kInvalidSymbol &&
@@ -584,8 +589,9 @@ const TypeSpec* Parser::find_var_type(const std::string& name) const {
     if (!uses_symbol_identity(name)) {
         const TextId id = find_parser_text_id(name);
         if (id == kInvalidText) return nullptr;
-        const auto it = non_atom_var_types_.find(id);
-        return it == non_atom_var_types_.end() ? nullptr : &it->second;
+        const auto it = binding_state_.non_atom_var_types.find(id);
+        return it == binding_state_.non_atom_var_types.end() ? nullptr
+                                                             : &it->second;
     }
     const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name);
     if (id == kInvalidSymbol) return nullptr;
@@ -606,7 +612,7 @@ void Parser::register_var_type_binding(const std::string& name,
     if (!uses_symbol_identity(name)) {
         const TextId id = parser_text_id_for_token(kInvalidText, name);
         if (id == kInvalidText) return;
-        non_atom_var_types_[id] = type;
+        binding_state_.non_atom_var_types[id] = type;
         return;
     }
     const SymbolId id =
@@ -616,11 +622,11 @@ void Parser::register_var_type_binding(const std::string& name,
 }
 
 bool Parser::has_known_fn_name(const std::string& name) const {
-    return known_fn_names_.count(name) > 0;
+    return binding_state_.known_fn_names.count(name) > 0;
 }
 
 void Parser::register_known_fn_name(const std::string& name) {
-    known_fn_names_.insert(name);
+    binding_state_.known_fn_names.insert(name);
 }
 
 ParserParseContextGuard::ParserParseContextGuard(
@@ -1527,8 +1533,9 @@ std::string Parser::resolve_visible_concept_name(const std::string& name) const 
 
 bool Parser::is_concept_name(const std::string& name) const {
     if (name.empty()) return false;
-    if (concept_names_.count(name) > 0) return true;
-    return concept_names_.count(resolve_visible_concept_name(name)) > 0;
+    if (binding_state_.concept_names.count(name) > 0) return true;
+    return binding_state_.concept_names.count(resolve_visible_concept_name(name)) >
+           0;
 }
 
 void Parser::refresh_current_namespace_bridge() {
@@ -1694,11 +1701,11 @@ bool Parser::lookup_type_in_context(int context_id, const std::string& name,
 bool Parser::lookup_concept_in_context(int context_id, const std::string& name,
                                        std::string* resolved) const {
     const std::string candidate = canonical_name_in_context(context_id, name);
-    if (concept_names_.count(candidate)) {
+    if (binding_state_.concept_names.count(candidate)) {
         *resolved = candidate;
         return true;
     }
-    if (context_id == 0 && concept_names_.count(name)) {
+    if (context_id == 0 && binding_state_.concept_names.count(name)) {
         *resolved = name;
         return true;
     }

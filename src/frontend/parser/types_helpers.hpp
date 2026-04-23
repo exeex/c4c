@@ -599,12 +599,12 @@ bool parse_alignas_specifier(Parser* parser, TypeSpec* ts, int line) {
             align_node->type = align_ts;
             have_align = eval_const_int(align_node, &align_val,
                                         &parser->definition_state_.struct_tag_def_map,
-                                        &parser->const_int_bindings_);
+                                        &parser->binding_state_.const_int_bindings);
         } else {
             Node* align_expr = parser->parse_assign_expr();
             have_align = eval_const_int(align_expr, &align_val,
                                         &parser->definition_state_.struct_tag_def_map,
-                                        &parser->const_int_bindings_);
+                                        &parser->binding_state_.const_int_bindings);
         }
     }
     parser->expect(TokenKind::RParen);

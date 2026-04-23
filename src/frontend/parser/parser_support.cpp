@@ -51,10 +51,10 @@ Parser::ParserSnapshot Parser::save_state() const {
     snap.lite = save_lite_state();
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
     snap.symbol_tables = parser_symbol_tables();
-    snap.non_atom_typedefs = non_atom_typedefs_;
-    snap.non_atom_user_typedefs = non_atom_user_typedefs_;
-    snap.non_atom_typedef_types = non_atom_typedef_types_;
-    snap.non_atom_var_types = non_atom_var_types_;
+    snap.non_atom_typedefs = binding_state_.non_atom_typedefs;
+    snap.non_atom_user_typedefs = binding_state_.non_atom_user_typedefs;
+    snap.non_atom_typedef_types = binding_state_.non_atom_typedef_types;
+    snap.non_atom_var_types = binding_state_.non_atom_var_types;
 #endif
     return snap;
 }
@@ -65,10 +65,10 @@ void Parser::restore_state(const ParserSnapshot& snap) {
     parser_symbol_tables() = snap.symbol_tables;
     shared_lookup_state_.parser_name_tables.symbols =
         &shared_lookup_state_.parser_symbols;
-    non_atom_typedefs_ = snap.non_atom_typedefs;
-    non_atom_user_typedefs_ = snap.non_atom_user_typedefs;
-    non_atom_typedef_types_ = snap.non_atom_typedef_types;
-    non_atom_var_types_ = snap.non_atom_var_types;
+    binding_state_.non_atom_typedefs = snap.non_atom_typedefs;
+    binding_state_.non_atom_user_typedefs = snap.non_atom_user_typedefs;
+    binding_state_.non_atom_typedef_types = snap.non_atom_typedef_types;
+    binding_state_.non_atom_var_types = snap.non_atom_var_types;
 #endif
 }
 

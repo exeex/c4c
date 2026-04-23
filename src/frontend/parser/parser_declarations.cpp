@@ -203,11 +203,11 @@ bool try_skip_cpp_concept_declaration(Parser& parser) {
     // constraint-expression on the right-hand side of `concept Name = ...;`.
     (void)parser.parse_expr();
     parser.expect(TokenKind::Semi);
-    parser.concept_names_.insert(concept_name);
+    parser.binding_state_.concept_names.insert(concept_name);
     const std::string qualified =
         parser.canonical_name_in_context(parser.current_namespace_context_id(),
                                          concept_name);
-    parser.concept_names_.insert(qualified);
+    parser.binding_state_.concept_names.insert(qualified);
     return true;
 }
 
@@ -628,7 +628,7 @@ Node* Parser::parse_local_decl() {
                 const TextId typedef_name_id =
                     parser_text_id_for_token(kInvalidText, tdname);
                 if (typedef_name_id != kInvalidText) {
-                    typedef_fn_ptr_info_[typedef_name_id] = {
+                    binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
                         td_fn_ptr_params, td_n_fn_ptr_params, td_fn_ptr_variadic};
                 }
             }
@@ -652,7 +652,7 @@ Node* Parser::parse_local_decl() {
                     const TextId typedef_name_id =
                         parser_text_id_for_token(kInvalidText, tdn2);
                     if (typedef_name_id != kInvalidText) {
-                        typedef_fn_ptr_info_[typedef_name_id] = {
+                        binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
                             td2_fn_ptr_params, td2_n_fn_ptr_params, td2_fn_ptr_variadic};
                     }
                 }
@@ -2163,7 +2163,7 @@ Node* Parser::parse_top_level() {
             } else {
                 match(TokenKind::Semi);
             }
-            known_fn_names_.insert(qualified_op_name);
+            binding_state_.known_fn_names.insert(qualified_op_name);
             set_current_struct_tag(saved_tag_op);
             return fn;
         }
@@ -2298,7 +2298,7 @@ Node* Parser::parse_top_level() {
                 } else {
                     match(TokenKind::Semi);
                 }
-                known_fn_names_.insert(qualified_ctor_name);
+                binding_state_.known_fn_names.insert(qualified_ctor_name);
                 set_current_struct_tag(saved_tag_ctor);
                 return fn;
             }
@@ -2437,7 +2437,7 @@ top_level_base_ready:
                 const TextId typedef_name_id =
                     parser_text_id_for_token(kInvalidText, tdname);
                 if (typedef_name_id != kInvalidText) {
-                    typedef_fn_ptr_info_[typedef_name_id] = {
+                    binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
                         td_fn_ptr_params, td_n_fn_ptr_params, td_fn_ptr_variadic};
                 }
             }
@@ -2464,7 +2464,7 @@ top_level_base_ready:
                     const TextId typedef_name_id =
                         parser_text_id_for_token(kInvalidText, tdn2);
                     if (typedef_name_id != kInvalidText) {
-                        typedef_fn_ptr_info_[typedef_name_id] = {
+                        binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
                             td2_fn_ptr_params, td2_n_fn_ptr_params, td2_fn_ptr_variadic};
                     }
                 }
@@ -2906,7 +2906,7 @@ top_level_base_ready:
             fn->ret_fn_ptr_params   = decl_fn_ptr_params;
             fn->n_ret_fn_ptr_params = decl_n_fn_ptr_params;
             fn->ret_fn_ptr_variadic = decl_fn_ptr_variadic;
-            known_fn_names_.insert(scoped_decl_name);
+            binding_state_.known_fn_names.insert(scoped_decl_name);
             restore_owner_scope();
             return fn;
         }
@@ -2935,7 +2935,7 @@ top_level_base_ready:
         fn->ret_fn_ptr_params   = decl_fn_ptr_params;
         fn->n_ret_fn_ptr_params = decl_n_fn_ptr_params;
         fn->ret_fn_ptr_variadic = decl_fn_ptr_variadic;
-        known_fn_names_.insert(scoped_decl_name);
+        binding_state_.known_fn_names.insert(scoped_decl_name);
         restore_owner_scope();
         return fn;
     }
@@ -3115,7 +3115,7 @@ top_level_base_ready:
             }
             propagate_ret_fn_ptr(fn);
             attach_spec_args(fn);
-            known_fn_names_.insert(scoped_decl_name);
+            binding_state_.known_fn_names.insert(scoped_decl_name);
             restore_owner_scope();
             return fn;
         }
@@ -3146,7 +3146,7 @@ top_level_base_ready:
         }
         propagate_ret_fn_ptr(fn);
         attach_spec_args(fn);
-        known_fn_names_.insert(scoped_decl_name);
+        binding_state_.known_fn_names.insert(scoped_decl_name);
         restore_owner_scope();
         return fn;
     }
@@ -3200,10 +3200,10 @@ top_level_base_ready:
             gv->type.ptr_level == 0 && gv->type.array_rank == 0) {
             long long cv = 0;
             if (eval_const_int(ginit, &cv, &definition_state_.struct_tag_def_map,
-                               &const_int_bindings_)) {
-                const_int_bindings_[gname] = cv;
+                               &binding_state_.const_int_bindings)) {
+                binding_state_.const_int_bindings[gname] = cv;
                 if (source_name && std::strcmp(source_name, gname) != 0)
-                    const_int_bindings_[source_name] = cv;
+                    binding_state_.const_int_bindings[source_name] = cv;
             }
         }
         return gv;

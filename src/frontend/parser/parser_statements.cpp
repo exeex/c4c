@@ -13,7 +13,7 @@ Node* Parser::parse_block() {
     int ln = cur().line;
     expect(TokenKind::LBrace);
     // Save enum constant scope — inner block enums must not leak to outer scope.
-    auto saved_enum_consts = enum_consts_;
+    auto saved_enum_consts = binding_state_.enum_consts;
     std::vector<Node*> stmts;
     while (!at_end() && !check(TokenKind::RBrace)) {
         int stmt_start = pos_;
@@ -57,7 +57,7 @@ Node* Parser::parse_block() {
     }
     expect(TokenKind::RBrace);
     // Restore enum constants so inner-block definitions don't leak.
-    enum_consts_ = std::move(saved_enum_consts);
+    binding_state_.enum_consts = std::move(saved_enum_consts);
     return make_block(stmts.empty() ? nullptr : stmts.data(), (int)stmts.size(), ln);
 }
 
