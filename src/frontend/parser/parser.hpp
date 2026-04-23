@@ -343,6 +343,9 @@ class Parser {
   void push_namespace_context(int context_id);
   void pop_namespace_context();
   std::string canonical_name_in_context(int context_id, const std::string& name) const;
+  // Compatibility/debug bridge for legacy string-keyed namespace consumers.
+  std::string compatibility_namespace_name_in_context(
+      int context_id, TextId name_text_id, std::string_view fallback_name) const;
   std::string bridge_name_in_context(int context_id, TextId name_text_id,
                                      std::string_view fallback_name) const;
   std::string qualified_name_text(const QualifiedNameRef& name,

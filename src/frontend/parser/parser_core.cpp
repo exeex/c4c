@@ -1503,7 +1503,7 @@ std::string Parser::qualify_name(TextId name_text_id,
     const int context_id = current_namespace_context_id();
     if (context_id <= 0) return std::string(name);
     if (name.find("::") != std::string::npos) return std::string(name);
-    return bridge_name_in_context(context_id, name_text_id, name);
+    return compatibility_namespace_name_in_context(context_id, name_text_id, name);
 }
 
 std::string Parser::qualify_name(const std::string& name) const {
@@ -1660,8 +1660,8 @@ std::string Parser::canonical_name_in_context(int context_id, const std::string&
     return std::string(ctx.canonical_name) + "::" + name;
 }
 
-std::string Parser::bridge_name_in_context(int context_id, TextId name_text_id,
-                                           std::string_view fallback_name) const {
+std::string Parser::compatibility_namespace_name_in_context(
+    int context_id, TextId name_text_id, std::string_view fallback_name) const {
     std::string name(parser_text(name_text_id, fallback_name));
     if (name.empty() || context_id <= 0) return name;
 
@@ -1692,6 +1692,12 @@ std::string Parser::bridge_name_in_context(int context_id, TextId name_text_id,
     qualified += "::";
     qualified += name;
     return qualified;
+}
+
+std::string Parser::bridge_name_in_context(int context_id, TextId name_text_id,
+                                           std::string_view fallback_name) const {
+    return compatibility_namespace_name_in_context(context_id, name_text_id,
+                                                   fallback_name);
 }
 
 int Parser::resolve_namespace_context(const QualifiedNameRef& name) const {
@@ -1822,7 +1828,7 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
                                      std::string_view name,
                                      std::string* resolved) const {
     const std::string candidate =
-        bridge_name_in_context(context_id, name_text_id, name);
+        compatibility_namespace_name_in_context(context_id, name_text_id, name);
     if (has_var_type(candidate) || has_known_fn_name(candidate)) {
         *resolved = candidate;
         return true;
@@ -1858,7 +1864,7 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
                                     std::string_view name,
                                     std::string* resolved) const {
     const std::string candidate =
-        bridge_name_in_context(context_id, name_text_id, name);
+        compatibility_namespace_name_in_context(context_id, name_text_id, name);
     if (has_typedef_type(candidate)) {
         *resolved = candidate;
         return true;
@@ -1890,7 +1896,7 @@ bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
                                        std::string_view name,
                                        std::string* resolved) const {
     const std::string candidate =
-        bridge_name_in_context(context_id, name_text_id, name);
+        compatibility_namespace_name_in_context(context_id, name_text_id, name);
     if (binding_state_.concept_names.count(candidate)) {
         *resolved = candidate;
         return true;
