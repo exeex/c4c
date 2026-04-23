@@ -1,19 +1,19 @@
 Status: Active
 Source Idea Path: ideas/open/88_prepared_frame_stack_call_authority_completion_for_target_backends.md
 Source Plan Path: plan.md
-Current Step ID: 3.1
-Current Step Title: Argument And Result Source Authority
-Plan Review Counter: 6 / 6
+Current Step ID: 3.1.3
+Current Step Title: Result Source Authority Completion
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3.1 "Argument And Result Source Authority" packet work for idea
-88 by publishing authoritative prepared scalar identity for computed-address
-argument bases in `PreparedCallPlan`, printing that base identity in prepared
-dumps, and tightening focused call-argument source-shape coverage so consumers
-do not have to recover the computed-address base scalar id from storage plans
-or value-location correlation.
+Completed Step 3.1.2 "Argument Identity Authority For Indirect And Computed
+Sources" packet work for idea 88 by publishing authoritative prepared scalar
+identity for computed-address argument bases in `PreparedCallPlan`, printing
+that base identity in prepared dumps, and tightening focused call-argument
+source-shape coverage so consumers do not have to recover the computed-address
+base scalar id from storage plans or value-location correlation.
 
 Current packet result:
 - `PreparedCallArgumentPlan` now carries `source_base_value_id` alongside the
@@ -27,10 +27,11 @@ Current packet result:
 
 ## Suggested Next
 
-Continue Step 3.1 by checking whether any remaining scalar call-boundary
-result-side fact still requires consumers to correlate prepared call plans with
-move bundles indirectly, then publish that next missing result source-shape or
-identity fact directly in `PreparedCallPlan`.
+Continue Step 3.1.3 "Result Source Authority Completion" by checking whether
+any remaining scalar call-boundary result-side fact still requires consumers to
+correlate prepared call plans with move bundles indirectly, then publish that
+next missing result source-shape or identity fact directly in
+`PreparedCallPlan`.
 
 ## Watchouts
 

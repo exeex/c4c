@@ -168,6 +168,98 @@ Actions:
   byval, memory-return, or aggregate-adjacent scalar cases when prepared facts
   already know the answer
 
+Execution note:
+
+- Step 3.1 now runs through the numbered substeps below; prior Step 3.1
+  packets already covered the argument-side publication route, so remaining
+  execution should continue at Step 3.1.3 unless a new gap proves one of the
+  earlier substeps incomplete.
+
+#### Step 3.1.1: Argument Source-Shape Publication
+
+Goal: publish direct scalar argument source shapes for immediate, symbol,
+stack-slot, and memory-return-adjacent cases so prepared call plans expose how
+each argument is formed without backend-side raw-BIR recovery.
+
+Primary target:
+
+- `src/backend/prealloc/prealloc.hpp`
+- `src/backend/prealloc/prepare.cpp`
+- `src/backend/prealloc/prepared_printer.cpp`
+- `tests/backend/`
+
+Actions:
+
+- keep literal, symbol-address, frame-slot, byval, and memory-return-adjacent
+  scalar argument forms explicit in `PreparedCallArgumentPlan`
+- ensure prepared dumps and focused backend/prealloc tests expose those source
+  shapes directly
+- keep transport storage and semantic source shape separate when both matter
+
+Completion check:
+
+- prepared call plans publish the covered scalar argument source shapes
+  directly
+- dumps and focused tests make those shapes reviewable without correlating
+  against raw BIR
+
+#### Step 3.1.2: Argument Identity Authority For Indirect And Computed Sources
+
+Goal: publish the missing scalar identities behind indirect callees and
+computed-address argument bases so consumers do not recover ownership from
+storage plans, move bundles, or value-location correlation.
+
+Primary target:
+
+- `src/backend/prealloc/prealloc.hpp`
+- `src/backend/prealloc/prepare.cpp`
+- `src/backend/prealloc/prepared_printer.cpp`
+- `tests/backend/`
+
+Actions:
+
+- keep indirect-callee value identity explicit in prepared call plans
+- publish computed-address base scalar identity alongside shape and byte-delta
+  authority
+- prove those identities through prepared dumps and focused call-contract tests
+
+Completion check:
+
+- prepared call plans expose the scalar owner for indirect-callee and
+  computed-address argument cases directly
+- backend consumers do not need storage-plan or regalloc correlation to
+  recover those identities
+
+#### Step 3.1.3: Result Source Authority Completion
+
+Goal: publish any remaining scalar result-side source shape or identity facts
+so prepared call plans describe where a call result semantically comes from
+even when the published destination home differs from the ABI carrier.
+
+Primary target:
+
+- `src/backend/prealloc/prealloc.hpp`
+- `src/backend/prealloc/prepare.cpp`
+- `src/backend/prealloc/prepared_printer.cpp`
+- `tests/backend/`
+
+Actions:
+
+- audit `PreparedCallResultPlan` for result-side facts that still require
+  consumers to infer semantic source identity from move bundles or destination
+  storage
+- publish the next missing scalar result source-shape or identity field
+  directly in prepared call plans
+- extend prepared dumps and focused backend/prealloc tests to prove the new
+  result authority explicitly
+
+Completion check:
+
+- prepared call plans publish the remaining scalar result-side source facts
+  directly
+- target consumers no longer need indirect correlation to understand covered
+  scalar result movement
+
 Completion check:
 
 - prepared call plans publish scalar argument/result source authority directly
