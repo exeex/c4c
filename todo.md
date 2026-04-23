@@ -7,18 +7,17 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by teaching typedef-chain helpers to re-probe
-unqualified `ts.tag` names through the visible lexical facade before falling
-back to flat typedef tables. Added focused parser coverage proving
-`resolve_typedef_type_chain` now resolves a local alias target that exists only
-in `ParserLexicalScopeState`.
+Advanced `plan.md` step 2 by teaching single-token template type-argument
+disambiguation to accept visible lexical aliases through the visible typedef
+facade instead of requiring only flat typedef-table membership. Added focused
+parser coverage proving `try_parse_template_type_arg` now accepts a local alias
+that resolves only through `ParserLexicalScopeState` plus visible alias lookup.
 
 ## Suggested Next
-Continue `plan.md` step 2 with one narrow packet that audits other helper-layer
-typedef consumers for unqualified flat-table fallback after visible lookup,
-especially template or struct-like resolution paths that still consult
-`template_state_` or definition maps using resolved spelling without a final
-lexical-scope-aware typedef probe.
+Continue `plan.md` step 2 with one narrow packet that audits other
+template-disambiguation and parse-predicate helpers for unqualified checks that
+still ask only `is_typedef_name(...)` or direct definition-map membership where
+`has_visible_typedef_type(...)` should participate for lexical aliases.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. Do not reopen the

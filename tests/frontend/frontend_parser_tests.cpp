@@ -1093,6 +1093,45 @@ void test_parser_template_type_arg_probes_use_token_spelling() {
   parser.pop_template_scope();
 }
 
+void test_parser_template_type_arg_uses_visible_scope_local_alias() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  const c4c::TextId target_text = texts.intern("Target");
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(target_text, target_ts);
+  parser.namespace_state_.using_value_aliases[0][alias_text] = {
+      parser.intern_semantic_name_key("Target"), "corrupted"};
+
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+  };
+  c4c::Parser::TemplateArgParseResult arg{};
+  expect_true(parser.try_parse_template_type_arg(&arg),
+              "template type-argument probes should treat visible lexical aliases as type heads");
+  expect_true(!arg.is_value,
+              "visible lexical aliases should stay classified as type arguments");
+  expect_true(arg.type.base == c4c::TB_TYPEDEF,
+              "visible lexical aliases should parse as typedef-like type arguments");
+  expect_eq(arg.type.tag, "Alias",
+            "template type-argument parsing should preserve the alias spelling");
+  expect_eq_int(parser.pos_, 1,
+                "visible lexical alias type-argument parsing should stop before the template close");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
 void test_parser_alias_template_value_probes_use_token_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -1228,6 +1267,7 @@ int main() {
   test_parser_visible_value_alias_resolves_scope_local_target_type();
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
+  test_parser_template_type_arg_uses_visible_scope_local_alias();
   test_parser_alias_template_value_probes_use_token_spelling();
   test_parser_typename_template_parameter_probe_uses_token_spelling();
   test_parser_post_pointer_qualifier_probes_use_token_spelling();

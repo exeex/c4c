@@ -156,6 +156,8 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
             const std::string_view start_name =
                 token_spelling(core_input_state_.tokens[start_pos]);
             if (!is_typedef_name(start_name) &&
+                !has_visible_typedef_type(core_input_state_.tokens[start_pos].text_id,
+                                         start_name) &&
                 !is_template_scope_type_param(find_parser_text_id(start_name),
                                              start_name)) {
             return false;
