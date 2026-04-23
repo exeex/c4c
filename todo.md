@@ -4,29 +4,26 @@ Status: Active
 Source Idea Path: ideas/open/82_parser_namespace_textid_context_tree.md
 Source Plan Path: plan.md
 Current Step ID: 2
-Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
+Current Step Title: Resolve Qualified Namespace Traversal Through TextId Segments
+Plan Review Counter: 0 / 8
+
 # Current Packet
 
 ## Just Finished
 
-- Step 2 packet: kept `parse_dependent_typename_specifier()` on the parsed
-  `QualifiedNameRef` segment identities during nested owner walks, so the
-  owner lookup reuses parser-owned `qualifier_text_ids` instead of rebuilding
-  intermediate owner chains from raw strings before resolving them back into
-  parser state
-- kept the fallback owner/member recovery scoped to dependent typename
-  declarator handling and preserved the existing namespace tree / push-pop
-  lookup behavior
+- Step 2 boundary repaired in `plan.md` so the active route now covers direct
+  namespace-segment traversal only, with dependent-typename/member-recovery
+  heuristics and `using` alias fallback pushed into the later containment step
+- reset the local plan-review display to match the rewritten Step 2 title and
+  step boundary
 
 ## Suggested Next
 
-- if Step 2 continues, audit remaining parser helper sites that still rebuild
-  `QualifiedNameRef` segment `TextId`s from recovered strings when the source
-  path already has parser-owned identity available
-- the remaining candidates now look more like compatibility membership or
-  self-reference checks than primary qualified-owner traversal; verify whether
-  any of those are still on the semantic lookup path before moving Step 2 to
-  canonical-string fallback containment
+- keep executor work on direct namespace traversal sites only, and defer
+  dependent-typename/member-recovery heuristics plus `using` declaration alias
+  fallback to Step 3
+- treat canonical string synthesis as a compatibility bridge unless a parser
+  helper is explicitly on the direct namespace traversal path
 
 ## Watchouts
 
@@ -45,12 +42,6 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
   while Step 2 trims parser-family bridge duplication
 - keep declarator-specific operator/template token consumption separate from
   namespace lookup cleanup when auditing remaining Step 2 traversal paths
-- the remaining parser-family bridge sites are now mostly compatibility
-  membership checks or self-reference comparisons, not the `using` alias
-  path or routine declarator registration
-- declarator plumbing now carries a best-effort parsed `TextId`; unqualified
-  identifiers should use that identity when they need namespace bridge names,
-  while qualified/operator spellings can keep the compatibility fallback path
 
 ## Proof
 

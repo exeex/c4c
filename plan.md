@@ -43,6 +43,8 @@ lexical-scope redesign, repo-wide `TextId` migration, or backend/HIR cleanup.
 - no repo-wide `std::string` to `TextId` migration
 - no sema, HIR, or backend identity redesign
 - no testcase-shaped namespace shortcuts
+- no dependent-typename/member-recovery heuristic cleanup in Step 2
+- no using-declaration alias fallback cleanup in Step 2
 
 ## Working Model
 
@@ -101,10 +103,10 @@ Completion check:
 - namespace child registration no longer depends on canonical composed-string
   keys as the primary identity path
 
-## Step 2: Route Qualified Namespace Traversal Through `TextId` Segments
+## Step 2: Resolve Qualified Namespace Traversal Through `TextId` Segments
 
-Goal: resolve qualified namespace names segment-by-segment through the context
-tree.
+Goal: resolve direct namespace-qualified names segment-by-segment through the
+context tree.
 
 Primary targets:
 
@@ -119,11 +121,15 @@ Actions:
   scope instead of rebuilding `"A::B::C"` strings for lookup
 - keep string spelling only as a bridge when diagnostics or existing helpers
   still need rendered names
+- keep this step limited to namespace traversal; do not pull in
+  dependent-typename/member-recovery heuristics or using-declaration alias
+  fallback logic here
 
 Completion check:
 
 - namespace traversal and lookup succeed through structured segment walking
-  instead of canonical-string reconstruction
+  instead of canonical-string reconstruction, and the step remains bounded to
+  direct namespace traversal
 
 ## Step 3: Contain Canonical String Fallbacks To Compatibility Helpers
 
@@ -134,12 +140,15 @@ Primary targets:
 
 - `src/frontend/parser/parser_core.cpp`
 - `src/frontend/parser/parser_state.hpp`
+- `src/frontend/parser/parser_declarations.cpp`
 - nearby parser helper files that still synthesize canonical namespace names
 
 Actions:
 
 - isolate any remaining canonical-name helpers behind explicit compatibility or
   debug-only call sites
+- move `using`-declaration alias registration off the semantic fallback path so
+  canonical-string synthesis is not the primary lookup key
 - confirm parser-visible behavior stays the same while semantic lookup uses the
   namespace tree
 - avoid expanding the packet into unrelated binding-table or lexical-scope work
