@@ -80,13 +80,14 @@ bool Parser::is_type_start() const {
     if (k == TokenKind::KwTypename) return true;
     if (k == TokenKind::Identifier) {
         const std::string name(token_spelling(cur()));
+        const TextId name_text_id = cur().text_id;
         if (is_concept_name(name)) return false;
         if (starts_with_value_like_template_expr(*this, core_input_state_.tokens,
                                                  core_input_state_.pos)) return false;
         if (match_floatn_keyword_base(name, nullptr)) return true;
-        if (is_template_scope_type_param(name)) return true;
-        if (is_typedef_name(name)) return true;
-        if (has_visible_typedef_type(name)) return true;
+        if (is_template_scope_type_param(cur().text_id, name)) return true;
+        if (is_typedef_name(name_text_id, name)) return true;
+        if (has_visible_typedef_type(name_text_id, name)) return true;
         // C++ fallback: identifier followed by < is likely a template type if
         // the name is registered as a template struct, or if we're inside a
         // struct body where namespace-scoped template names may not resolve.
@@ -1032,15 +1033,16 @@ TypeSpec Parser::parse_base_type() {
                             has_signed || has_unsigned || has_short || long_count > 0 ||
                             has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
                             has_struct || has_union || has_enum || base_set;
+                        const TextId name_text_id = cur().text_id;
                         const bool simple_unqualified_known_type_head =
                             k == TokenKind::Identifier &&
                             !(core_input_state_.pos + 1 <
                                   static_cast<int>(core_input_state_.tokens.size()) &&
                               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
                                   TokenKind::ColonColon) &&
-                            (is_typedef_name(name) ||
-                             is_template_scope_type_param(name) ||
-                             has_visible_typedef_type(name));
+                            (is_typedef_name(name_text_id, name) ||
+                             is_template_scope_type_param(name_text_id, name) ||
+                             has_visible_typedef_type(name_text_id, name));
                         if (!simple_unqualified_known_type_head &&
                             try_parse_cpp_scoped_base_type(already_have_base, &ts)) {
                             has_typedef = true;
@@ -1052,9 +1054,9 @@ TypeSpec Parser::parse_base_type() {
                         done = true;
                         break;
                     }
-                    if (is_typedef_name(name) ||
-                        is_template_scope_type_param(name) ||
-                        has_visible_typedef_type(name)) {
+                    if (is_typedef_name(cur().text_id, name) ||
+                        is_template_scope_type_param(cur().text_id, name) ||
+                        has_visible_typedef_type(cur().text_id, name)) {
                         // If we've already seen concrete type specifiers/modifiers,
                         // this identifier is the declarator name (e.g. `int s;` even
                         // when `s` is also a typedef name in outer scope).

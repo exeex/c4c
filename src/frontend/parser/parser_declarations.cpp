@@ -750,13 +750,14 @@ Node* Parser::parse_local_decl() {
                         TokenKind::Identifier &&
                     core_input_state_.tokens[core_input_state_.pos + 2].kind ==
                         TokenKind::RParen) {
-                    const std::string arg_name = std::string(token_spelling(
-                        core_input_state_.tokens[core_input_state_.pos + 1]));
+                    const Token& arg_tok = core_input_state_.tokens[core_input_state_.pos + 1];
+                    const TextId arg_text_id = arg_tok.text_id;
+                    const std::string arg_name = std::string(token_spelling(arg_tok));
                     const std::string resolved_type_name =
                         resolve_visible_type_name(arg_name);
                     const bool arg_is_type =
-                        is_typedef_name(arg_name) ||
-                        has_visible_typedef_type(arg_name) ||
+                        is_typedef_name(arg_text_id, arg_name) ||
+                        has_visible_typedef_type(arg_text_id, arg_name) ||
                         definition_state_.struct_tag_def_map.count(arg_name) >
                             0 ||
                         definition_state_.struct_tag_def_map.count(
@@ -800,14 +801,16 @@ Node* Parser::parse_local_decl() {
                         case TokenKind::RParen:
                             return false;
                         case TokenKind::Identifier: {
-                            const std::string arg_name = std::string(token_spelling(
-                                core_input_state_.tokens[core_input_state_.pos + 1]));
+                            const Token& arg_tok =
+                                core_input_state_.tokens[core_input_state_.pos + 1];
+                            const TextId arg_text_id = arg_tok.text_id;
+                            const std::string arg_name = std::string(token_spelling(arg_tok));
                             const std::string resolved_type_name =
                                 resolve_visible_type_name(arg_name);
                             const bool arg_is_type =
-                                is_template_scope_type_param(arg_name) ||
-                                is_typedef_name(arg_name) ||
-                                has_visible_typedef_type(arg_name) ||
+                                is_template_scope_type_param(arg_text_id, arg_name) ||
+                                is_typedef_name(arg_text_id, arg_name) ||
+                                has_visible_typedef_type(arg_text_id, arg_name) ||
                                 definition_state_.struct_tag_def_map.count(
                                     arg_name) > 0 ||
                                 definition_state_.struct_tag_def_map.count(
@@ -1819,7 +1822,9 @@ Node* Parser::parse_top_level() {
         const std::string_view alias_name = last_using_alias_name_text();
         if (!alias_name.empty() && !template_params.empty()) {
             if (const TypeSpec* aliased_type =
-                    find_visible_typedef_type(alias_name)) {
+                    find_visible_typedef_type(
+                        active_context_state_.last_using_alias_name_text_id,
+                        alias_name)) {
                 ParserAliasTemplateInfo ati;
                 for (size_t i = 0; i < template_params.size(); ++i) {
                     ati.param_names.push_back(template_params[i]);
@@ -2474,7 +2479,7 @@ Node* Parser::parse_top_level() {
         if (is_typedef) {
             if (check(TokenKind::Identifier)) {
                 const std::string spelled = std::string(token_spelling(cur()));
-                if (is_template_scope_type_param(spelled)) {
+                if (is_template_scope_type_param(cur().text_id, spelled)) {
                     base_ts.array_size = -1;
                     base_ts.array_rank = 0;
                     for (int i = 0; i < 8; ++i) base_ts.array_dims[i] = -1;
@@ -2484,7 +2489,7 @@ Node* Parser::parse_top_level() {
                     goto top_level_base_ready;
                 }
                 if (const TypeSpec* typedef_type =
-                        find_visible_typedef_type(spelled)) {
+                        find_visible_typedef_type(cur().text_id, spelled)) {
                     base_ts = *typedef_type;
                     consume();
                     goto top_level_base_ready;

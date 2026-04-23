@@ -7,24 +7,24 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by retargeting the unqualified visible-type probe
-path onto parser-local `TextId` lexical scope state before the legacy visible
-facade fallback. Added focused parser coverage that drives
-`find_visible_typedef_type(TextId, ...)` through a scope-local alias and keeps
-the visible-alias resolution behavior intact.
+Advanced `plan.md` step 2 by retargeting the remaining narrow unqualified
+typedef probe paths in the parser base, declarator, and declaration helpers
+onto parser-local `TextId` lexical scope lookups before the spelling-only
+bridge fallback. Added focused parser coverage that proves `parse_base_type()`
+now resolves a scope-local typedef alias through the lexical scope facade.
 
 ## Suggested Next
 Continue `plan.md` step 2 with one narrow packet that audits the remaining
-token-based visible-name predicates for unqualified type probes that still
-route through bridge helpers instead of the parser-local `TextId` lexical
-scope facade.
+token-spelling-only typedef probes in parser helpers where a current token
+`TextId` is available but the code still falls back to bridge-style string
+checks.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. Do not reopen the
 qualified-owner lookup slice completed under idea 84, and do not treat
-structured-qualified tables as candidates for flat `TextId` replacement.
+structured-qualified tables or post-parse enum/name fallbacks as candidates for
+flat `TextId` replacement.
 
 ## Proof
-Ran `cmake --build --preset default` and
-`ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' | tee test_after.log`.
+Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' | tee test_after.log`.
 Proof log: `test_after.log`.

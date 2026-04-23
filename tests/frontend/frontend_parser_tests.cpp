@@ -645,6 +645,30 @@ void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
   expect_eq(parser.active_context_state_.last_resolved_typedef, "TypeAlias",
             "typedef resolution should preserve the parser-owned identifier spelling");
 
+  c4c::TypeSpec local_alias_ts{};
+  local_alias_ts.array_size = -1;
+  local_alias_ts.inner_rank = -1;
+  local_alias_ts.base = c4c::TB_DOUBLE;
+  const c4c::TextId local_alias_text = texts.intern("LocalAlias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(local_alias_text, local_alias_ts);
+
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "LocalAlias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+  };
+  parser.pos_ = 0;
+  parser.clear_last_resolved_typedef();
+  c4c::TypeSpec local_alias_result = parser.parse_base_type();
+  expect_true(local_alias_result.base == c4c::TB_DOUBLE,
+              "parse_base_type should resolve scope-local typedef names through the lexical scope facade");
+  expect_eq(parser.active_context_state_.last_resolved_typedef, "LocalAlias",
+            "scope-local typedef resolution should preserve the parser-owned identifier spelling");
+  expect_eq(parser.token_spelling(parser.cur()), "value",
+            "scope-local typedef resolution should leave the declarator token in place");
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+
   parser.tokens_ = {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ForwardDecl"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),

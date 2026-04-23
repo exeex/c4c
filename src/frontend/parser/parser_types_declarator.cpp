@@ -14,8 +14,12 @@
 namespace c4c {
 
 bool Parser::is_typedef_name(std::string_view s) const {
+    return is_typedef_name(find_parser_text_id(s), s);
+}
+
+bool Parser::is_typedef_name(TextId name_text_id, std::string_view s) const {
     if (has_typedef_name(s)) return true;
-    return find_local_visible_typedef_type(find_parser_text_id(s)) != nullptr;
+    return find_local_visible_typedef_type(name_text_id) != nullptr;
 }
 
 void Parser::push_template_scope(TemplateScopeKind kind,
@@ -112,10 +116,11 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
             }
         }
         if (!check(TokenKind::Identifier)) return false;
+        const TextId name_text_id = cur().text_id;
         const std::string_view name = token_spelling(cur());
-        return is_typedef_name(name) ||
-               is_template_scope_type_param(find_parser_text_id(name), name) ||
-               has_visible_typedef_type(name);
+        return is_typedef_name(name_text_id, name) ||
+               is_template_scope_type_param(name_text_id, name) ||
+               has_visible_typedef_type(name_text_id, name);
     };
 
     if (is_simple_known_template_type_head() &&
@@ -153,14 +158,13 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
         // where N is not a type. Reject so non-type parsing can handle it.
         if (is_cpp_mode() && core_input_state_.pos == start_pos + 1 &&
             core_input_state_.tokens[start_pos].kind == TokenKind::Identifier) {
+            const TextId start_text_id = core_input_state_.tokens[start_pos].text_id;
             const std::string_view start_name =
                 token_spelling(core_input_state_.tokens[start_pos]);
-            if (!is_typedef_name(start_name) &&
-                !has_visible_typedef_type(core_input_state_.tokens[start_pos].text_id,
-                                         start_name) &&
-                !is_template_scope_type_param(find_parser_text_id(start_name),
-                                             start_name)) {
-            return false;
+            if (!is_typedef_name(start_text_id, start_name) &&
+                !has_visible_typedef_type(start_text_id, start_name) &&
+                !is_template_scope_type_param(start_text_id, start_name)) {
+                return false;
             }
         }
         out_arg->is_value = false;
@@ -583,8 +587,9 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
             (!qn.is_global_qualified && qn.qualifier_segments.empty())
                 ? find_visible_typedef_type(qn.base_text_id, qn.base_name)
                 : nullptr;
-        if (!visible_dep_typedef && !has_visible_typedef_type(dep_name)) {
-            resolved = resolve_visible_type_name(dep_name);
+        if (!visible_dep_typedef &&
+            !has_visible_typedef_type(qn.base_text_id, dep_name)) {
+            resolved = resolve_visible_type_name(qn.base_text_id, dep_name);
         }
         if (!visible_dep_typedef && !has_typedef_type(resolved)) {
             bool preserved_template_owner_member = false;

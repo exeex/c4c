@@ -301,6 +301,7 @@ class Parser {
     return shared_lookup_state_.parser_symbols.spelling(id);
   }
   bool has_typedef_name(std::string_view name) const;
+  bool is_typedef_name(TextId name_text_id, std::string_view name) const;
   bool has_typedef_type(std::string_view name) const;
   const TypeSpec* find_typedef_type(std::string_view name) const;
   bool has_structured_typedef_type(const QualifiedNameKey& key) const;
