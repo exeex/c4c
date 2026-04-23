@@ -1274,7 +1274,7 @@ Node* Parser::parse_primary() {
             parser_text(qn.base_text_id, qn.base_name);
         const std::string direct_resolved_type_name =
             qn.qualifier_segments.empty()
-                ? resolve_visible_type_name(qn_base_name)
+                ? resolve_visible_type_name(qn.base_text_id, qn_base_name)
                 : std::string();
         if (is_cpp_mode() && qn.qualifier_segments.empty() &&
             check(TokenKind::LParen)) {
@@ -1332,6 +1332,7 @@ Node* Parser::parse_primary() {
 
             const std::string first_qualifier =
                 resolve_visible_type_name(
+                    qn.qualifier_text_ids.front(),
                     parser_text(type_qn.qualifier_text_ids.front(),
                                 type_qn.qualifier_segments.front()));
             if (first_qualifier.empty()) return false;

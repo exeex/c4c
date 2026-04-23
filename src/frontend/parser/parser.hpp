@@ -362,8 +362,14 @@ class Parser {
                                  std::string* resolved) const;
   std::string qualify_name(const std::string& name) const;
   const char* qualify_name_arena(const char* name);
+  std::string resolve_visible_value_name(TextId name_text_id,
+                                         std::string_view name) const;
   std::string resolve_visible_value_name(const std::string& name) const;
+  std::string resolve_visible_type_name(TextId name_text_id,
+                                        std::string_view name) const;
   std::string resolve_visible_type_name(std::string_view name) const;
+  std::string resolve_visible_concept_name(TextId name_text_id,
+                                           std::string_view name) const;
   std::string resolve_visible_concept_name(const std::string& name) const;
   bool is_concept_name(const std::string& name) const;
   bool peek_qualified_name(QualifiedNameRef* out, bool allow_global = true) const;

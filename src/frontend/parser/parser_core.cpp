@@ -1513,27 +1513,32 @@ const char* Parser::qualify_name_arena(const char* name) {
     return arena_.strdup(qualified.c_str());
 }
 
-std::string Parser::resolve_visible_value_name(const std::string& name) const {
-    const TextId name_text_id = find_parser_text_id(name);
+std::string Parser::resolve_visible_value_name(TextId name_text_id,
+                                               std::string_view name) const {
+    const std::string spelled(name);
     return resolve_visible_name_from_namespace_stack(
-        namespace_state_.namespace_stack, name,
+        namespace_state_.namespace_stack, spelled,
         [&](int context_id, std::string* resolved) {
             auto alias_it = namespace_state_.using_value_aliases.find(context_id);
             if (alias_it != namespace_state_.using_value_aliases.end()) {
-                auto value_it = alias_it->second.find(name);
+                auto value_it = alias_it->second.find(spelled);
                 if (value_it != alias_it->second.end()) {
                     *resolved = value_it->second;
                     return true;
                 }
             }
-            return lookup_value_in_context(context_id, name_text_id, name,
+            return lookup_value_in_context(context_id, name_text_id, spelled,
                                            resolved);
         });
 }
 
-std::string Parser::resolve_visible_type_name(std::string_view name) const {
+std::string Parser::resolve_visible_value_name(const std::string& name) const {
+    return resolve_visible_value_name(find_parser_text_id(name), name);
+}
+
+std::string Parser::resolve_visible_type_name(TextId name_text_id,
+                                              std::string_view name) const {
     const std::string spelled(name);
-    const TextId name_text_id = find_parser_text_id(spelled);
     return resolve_visible_name_from_namespace_stack(
         namespace_state_.namespace_stack, spelled,
         [&](int context_id, std::string* resolved) {
@@ -1551,14 +1556,23 @@ std::string Parser::resolve_visible_type_name(std::string_view name) const {
         });
 }
 
-std::string Parser::resolve_visible_concept_name(const std::string& name) const {
-    const TextId name_text_id = find_parser_text_id(name);
+std::string Parser::resolve_visible_type_name(std::string_view name) const {
+    return resolve_visible_type_name(find_parser_text_id(name), name);
+}
+
+std::string Parser::resolve_visible_concept_name(TextId name_text_id,
+                                                 std::string_view name) const {
+    const std::string spelled(name);
     return resolve_visible_name_from_namespace_stack(
-        namespace_state_.namespace_stack, name,
+        namespace_state_.namespace_stack, spelled,
         [&](int context_id, std::string* resolved) {
-            return lookup_concept_in_context(context_id, name_text_id, name,
+            return lookup_concept_in_context(context_id, name_text_id, spelled,
                                              resolved);
         });
+}
+
+std::string Parser::resolve_visible_concept_name(const std::string& name) const {
+    return resolve_visible_concept_name(find_parser_text_id(name), name);
 }
 
 bool Parser::is_concept_name(const std::string& name) const {
@@ -1742,8 +1756,9 @@ std::string Parser::resolve_qualified_value_name(
     const std::string base_name =
         std::string(parser_text(name.base_text_id, name.base_name));
     if (name.qualifier_segments.empty()) {
-        return name.is_global_qualified ? base_name
-                                        : resolve_visible_value_name(base_name);
+        return name.is_global_qualified
+                   ? base_name
+                   : resolve_visible_value_name(name.base_text_id, base_name);
     }
 
     const int context_id = resolve_namespace_context(name);
@@ -1770,8 +1785,9 @@ std::string Parser::resolve_qualified_type_name(
     const std::string base_name =
         std::string(parser_text(name.base_text_id, name.base_name));
     if (name.qualifier_segments.empty()) {
-        return name.is_global_qualified ? base_name
-                                        : resolve_visible_type_name(base_name);
+        return name.is_global_qualified
+                   ? base_name
+                   : resolve_visible_type_name(name.base_text_id, base_name);
     }
 
     const int context_id = resolve_namespace_context(name);

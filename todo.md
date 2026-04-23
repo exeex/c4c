@@ -9,17 +9,19 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: threaded `TextId` through the namespace-qualified
-  value/type/concept lookup helpers in `parser_core.cpp` so recursive namespace
-  traversal reuses the parsed identity instead of re-deriving it from strings
-- kept the qualified value/type resolution path on the semantic lookup route
-  while preserving the existing namespace-match and alias behavior
+- Step 2 packet: added `TextId`-aware visible value/type/concept lookup entry
+  points in `parser_core.cpp` so unqualified namespace-visible resolution can
+  reuse parsed token identity instead of re-finding names from strings
+- updated the nearby expression, statement, and qualified-type helper call
+  sites that already carry parser token ids to stay on that `TextId` path
+  while preserving existing namespace alias and fallback behavior
 
 ## Suggested Next
 
-- if Step 2 continues, audit the remaining parser namespace lookup helpers
-  that still start from string inputs and convert the next bounded visible-name
-  slice that can already carry a `TextId` end to end
+- if Step 2 continues, audit the remaining parser namespace compatibility
+  helpers that still synthesize string spellings first, especially the
+  `qualify_name` / bridge-facing registration call sites that may already have
+  a parsed `TextId` available
 - keep the route inside parser namespace lookup and avoid widening into
   unrelated declarator parsing, lexical-scope, binding-table, or backend cleanup
 
@@ -43,9 +45,9 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 - the remaining parser-family bridge sites are now mostly compatibility
   registration or lookup-table membership checks, not the nested-owner fallback
   path just converted
-- the new lookup helpers now accept `std::string_view` plus `TextId`, so any
+- the visible-name helpers now accept `std::string_view` plus `TextId`, so any
   future callers should pass the parsed identity when available and only rely
-  on the fallback spelling for compatibility edges
+  on fallback spelling for compatibility edges
 
 ## Proof
 

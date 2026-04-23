@@ -283,7 +283,8 @@ Node* Parser::parse_stmt() {
                 if (k != TokenKind::Identifier) return false;
                 if (is_template_scope_type_param(token_spelling(cur()))) return true;
                 if (is_typedef_name(token_spelling(cur()))) return true;
-                return has_typedef_type(resolve_visible_type_name(token_spelling(cur())));
+                return has_typedef_type(resolve_visible_type_name(
+                    cur().text_id, token_spelling(cur())));
             };
 
             auto can_use_lite_if_condition_decl = [&]() -> bool {
@@ -839,7 +840,8 @@ Node* Parser::parse_stmt() {
         };
         auto has_visible_value_binding = [&](const std::string& name) -> bool {
             if (name.empty()) return false;
-            const std::string resolved = resolve_visible_value_name(name);
+            const std::string resolved =
+                resolve_visible_value_name(cur().text_id, name);
             return has_var_type(name) || has_known_fn_name(name) ||
                    has_var_type(resolved) || has_known_fn_name(resolved);
         };
@@ -851,7 +853,7 @@ Node* Parser::parse_stmt() {
         if (is_cpp_mode() && check(TokenKind::Identifier) &&
             (peek(1).kind == TokenKind::Dot || peek(1).kind == TokenKind::Arrow)) {
             const std::string visible_value =
-                resolve_visible_value_name(std::string(token_spelling(cur())));
+                resolve_visible_value_name(cur().text_id, token_spelling(cur()));
             if (!visible_value.empty()) {
                 goto expr_stmt;
             }
