@@ -981,11 +981,15 @@ bool Parser::parse_operator_declarator_name(std::string* out_name) {
     return true;
 }
 
-bool Parser::parse_qualified_declarator_name(std::string* out_name) {
+bool Parser::parse_qualified_declarator_name(std::string* out_name,
+                                             TextId* out_name_text_id) {
     if (!out_name) return false;
+    if (out_name_text_id) *out_name_text_id = kInvalidText;
 
     std::string qualified_name;
     bool parsed_qualified = false;
+    bool is_unqualified_identifier = false;
+    TextId name_text_id = kInvalidText;
 
     auto append_scope_sep = [&]() {
         if (!qualified_name.empty() &&
@@ -1001,13 +1005,18 @@ bool Parser::parse_qualified_declarator_name(std::string* out_name) {
     if (check(TokenKind::KwOperator)) {
         parsed_qualified = parse_operator_declarator_name(&qualified_name);
     } else if (check(TokenKind::Identifier)) {
+        name_text_id =
+            parser_text_id_for_token(cur().text_id, token_spelling(cur()));
         qualified_name += token_spelling(cur());
         consume();
         parsed_qualified = true;
+        is_unqualified_identifier = true;
         consume_template_args_before_scope();
     }
 
     while (parsed_qualified && match(TokenKind::ColonColon)) {
+        is_unqualified_identifier = false;
+        name_text_id = kInvalidText;
         append_scope_sep();
         if (check(TokenKind::Identifier)) {
             qualified_name += token_spelling(cur());
@@ -1025,6 +1034,9 @@ bool Parser::parse_qualified_declarator_name(std::string* out_name) {
 
     if (!parsed_qualified) return false;
     *out_name = std::move(qualified_name);
+    if (out_name_text_id && is_unqualified_identifier) {
+        *out_name_text_id = name_text_id;
+    }
     return true;
 }
 
@@ -1178,11 +1190,16 @@ void Parser::parse_declarator_prefix(TypeSpec& ts, bool* out_is_parameter_pack) 
 }
 
 bool Parser::try_parse_grouped_declarator(TypeSpec& ts, const char** out_name,
+                                          TextId* out_name_text_id,
                                           std::vector<long long>* out_dims) {
     if (!is_grouped_declarator_start()) return false;
 
     consume();  // (
     if (out_name && check(TokenKind::Identifier)) {
+        if (out_name_text_id) {
+            *out_name_text_id =
+                parser_text_id_for_token(cur().text_id, token_spelling(cur()));
+        }
         *out_name = arena_.strdup(std::string(token_spelling(cur())));
         consume();
     }
@@ -1193,6 +1210,7 @@ bool Parser::try_parse_grouped_declarator(TypeSpec& ts, const char** out_name,
 }
 
 void Parser::parse_normal_declarator_tail(TypeSpec& ts, const char** out_name,
+                                          TextId* out_name_text_id,
                                           std::vector<long long>* out_dims) {
     parse_attributes(&ts);
 
@@ -1204,7 +1222,7 @@ void Parser::parse_normal_declarator_tail(TypeSpec& ts, const char** out_name,
          check(TokenKind::KwOperator))) {
         TentativeParseGuard guard(*this);
         std::string qualified_name;
-        if (parse_qualified_declarator_name(&qualified_name)) {
+        if (parse_qualified_declarator_name(&qualified_name, out_name_text_id)) {
             *out_name = arena_.strdup(qualified_name.c_str());
             guard.commit();
         }
@@ -1212,6 +1230,10 @@ void Parser::parse_normal_declarator_tail(TypeSpec& ts, const char** out_name,
     }
 
     if (out_name && !*out_name && check(TokenKind::Identifier)) {
+        if (out_name_text_id) {
+            *out_name_text_id =
+                parser_text_id_for_token(cur().text_id, token_spelling(cur()));
+        }
         *out_name = arena_.strdup(std::string(token_spelling(cur())));
         consume();
     }
@@ -1330,9 +1352,13 @@ void Parser::skip_parenthesized_pointer_declarator_array_chunks() {
 }
 
 bool Parser::parse_parenthesized_pointer_declarator_name(
-    const char** out_name) {
+    const char** out_name, TextId* out_name_text_id) {
     if (!out_name || !check(TokenKind::Identifier)) return false;
 
+    if (out_name_text_id) {
+        *out_name_text_id =
+            parser_text_id_for_token(cur().text_id, token_spelling(cur()));
+    }
     *out_name = arena_.strdup(std::string(token_spelling(cur())));
     consume();
     return true;
@@ -1341,23 +1367,25 @@ bool Parser::parse_parenthesized_pointer_declarator_name(
 bool Parser::try_parse_nested_parenthesized_pointer_declarator(
     TypeSpec& ts, const char** out_name,
     Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
-    bool* out_fn_ptr_variadic) {
+    bool* out_fn_ptr_variadic, TextId* out_name_text_id) {
     if (!check(TokenKind::LParen)) return false;
 
     TypeSpec inner_ts = ts;
     inner_ts.ptr_level = 0;
     parse_declarator(inner_ts, out_name,
                      out_fn_ptr_params, out_n_fn_ptr_params,
-                     out_fn_ptr_variadic);
+                     out_fn_ptr_variadic, nullptr, nullptr, nullptr, nullptr,
+                     out_name_text_id);
     return true;
 }
 
 bool Parser::parse_parenthesized_pointer_declarator_inner(
     TypeSpec& ts, const char** out_name,
     Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
-    bool* out_fn_ptr_variadic) {
+    bool* out_fn_ptr_variadic, TextId* out_name_text_id) {
     skip_parenthesized_pointer_declarator_array_chunks();
-    const bool got_name = parse_parenthesized_pointer_declarator_name(out_name);
+    const bool got_name =
+        parse_parenthesized_pointer_declarator_name(out_name, out_name_text_id);
     skip_parenthesized_pointer_declarator_array_chunks();
 
     if (got_name && check(TokenKind::LParen)) {
@@ -1368,7 +1396,7 @@ bool Parser::parse_parenthesized_pointer_declarator_inner(
     return try_parse_nested_parenthesized_pointer_declarator(
         ts, out_name,
         out_fn_ptr_params, out_n_fn_ptr_params,
-        out_fn_ptr_variadic);
+        out_fn_ptr_variadic, out_name_text_id);
 }
 
 void Parser::finalize_parenthesized_pointer_declarator(
@@ -1393,7 +1421,8 @@ void Parser::parse_parenthesized_pointer_declarator(
     Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
     bool* out_fn_ptr_variadic,
     Node*** out_ret_fn_ptr_params, int* out_n_ret_fn_ptr_params,
-    bool* out_ret_fn_ptr_variadic) {
+    bool* out_ret_fn_ptr_variadic,
+    TextId* out_name_text_id) {
     bool is_nested_fn_ptr = false;
     std::vector<long long> decl_dims;
 
@@ -1402,7 +1431,7 @@ void Parser::parse_parenthesized_pointer_declarator(
     is_nested_fn_ptr = parse_parenthesized_pointer_declarator_inner(
         ts, out_name,
         out_fn_ptr_params, out_n_fn_ptr_params,
-        out_fn_ptr_variadic);
+        out_fn_ptr_variadic, out_name_text_id);
 
     finalize_parenthesized_pointer_declarator(
         ts, is_nested_fn_ptr, &decl_dims,
@@ -1414,21 +1443,29 @@ void Parser::parse_parenthesized_pointer_declarator(
 void Parser::parse_non_parenthesized_declarator(TypeSpec& ts,
                                                 const char** out_name) {
     std::vector<long long> decl_dims;
-    parse_non_parenthesized_declarator_suffixes(ts, out_name, &decl_dims);
+    parse_non_parenthesized_declarator_suffixes(ts, out_name, nullptr,
+                                                &decl_dims);
     apply_declarator_array_dims(ts, decl_dims);
 }
 
 void Parser::parse_non_parenthesized_declarator_tail(
     TypeSpec& ts, const char** out_name,
-    bool decay_plain_function_suffix) {
-    parse_non_parenthesized_declarator(ts, out_name);
+    bool decay_plain_function_suffix, TextId* out_name_text_id) {
+    std::vector<long long> decl_dims;
+    parse_non_parenthesized_declarator_suffixes(ts, out_name, out_name_text_id,
+                                                &decl_dims);
+    apply_declarator_array_dims(ts, decl_dims);
     parse_plain_function_declarator_suffix(ts, decay_plain_function_suffix);
 }
 
 void Parser::parse_non_parenthesized_declarator_suffixes(
-    TypeSpec& ts, const char** out_name, std::vector<long long>* out_dims) {
-    if (try_parse_grouped_declarator(ts, out_name, out_dims)) return;
-    parse_normal_declarator_tail(ts, out_name, out_dims);
+    TypeSpec& ts, const char** out_name, TextId* out_name_text_id,
+    std::vector<long long>* out_dims) {
+    if (try_parse_grouped_declarator(ts, out_name, out_name_text_id,
+                                     out_dims)) {
+        return;
+    }
+    parse_normal_declarator_tail(ts, out_name, out_name_text_id, out_dims);
 }
 
 void Parser::parse_plain_function_declarator_suffix(
@@ -1601,8 +1638,10 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
                               bool* out_is_parameter_pack,
                               Node*** out_ret_fn_ptr_params,
                               int* out_n_ret_fn_ptr_params,
-                              bool* out_ret_fn_ptr_variadic) {
+                              bool* out_ret_fn_ptr_variadic,
+                              TextId* out_name_text_id) {
     if (out_name) *out_name = nullptr;
+    if (out_name_text_id) *out_name_text_id = kInvalidText;
     if (out_fn_ptr_params) *out_fn_ptr_params = nullptr;
     if (out_n_fn_ptr_params) *out_n_fn_ptr_params = 0;
     if (out_fn_ptr_variadic) *out_fn_ptr_variadic = false;
@@ -1619,12 +1658,12 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
             ts, out_name,
             out_fn_ptr_params, out_n_fn_ptr_params, out_fn_ptr_variadic,
             out_ret_fn_ptr_params, out_n_ret_fn_ptr_params,
-            out_ret_fn_ptr_variadic);
+            out_ret_fn_ptr_variadic, out_name_text_id);
         return;
     }
 
     parse_non_parenthesized_declarator_tail(
-        ts, out_name, /*decay_plain_function_suffix=*/false);
+        ts, out_name, /*decay_plain_function_suffix=*/false, out_name_text_id);
 }
 
 TypeSpec Parser::parse_type_name() {

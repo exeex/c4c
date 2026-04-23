@@ -633,12 +633,14 @@ Node* Parser::parse_local_decl() {
         // Simple typedef: typedef base_type name[...];
         // Also handles typedef base_type (*fn_name)(...);
         const char* tdname = nullptr;
+        TextId tdname_text_id = kInvalidText;
         TypeSpec ts_copy = base_ts;
         Node** td_fn_ptr_params = nullptr;
         int td_n_fn_ptr_params = 0;
         bool td_fn_ptr_variadic = false;
         parse_declarator(ts_copy, &tdname, &td_fn_ptr_params,
-                         &td_n_fn_ptr_params, &td_fn_ptr_variadic);
+                         &td_n_fn_ptr_params, &td_fn_ptr_variadic, nullptr,
+                         nullptr, nullptr, nullptr, &tdname_text_id);
         if (tdname) {
             if (!is_cpp_mode() && !is_internal_typedef_name(tdname) &&
                 has_conflicting_user_typedef_binding(tdname, ts_copy))
@@ -648,7 +650,9 @@ Node* Parser::parse_local_decl() {
             // Phase C: store fn_ptr param info for typedef'd function pointers.
             if (ts_copy.is_fn_ptr && (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic)) {
                 const TextId typedef_name_id =
-                    parser_text_id_for_token(kInvalidText, tdname);
+                    tdname_text_id != kInvalidText
+                        ? tdname_text_id
+                        : parser_text_id_for_token(kInvalidText, tdname);
                 if (typedef_name_id != kInvalidText) {
                     binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
                         td_fn_ptr_params, td_n_fn_ptr_params, td_fn_ptr_variadic};
@@ -659,11 +663,14 @@ Node* Parser::parse_local_decl() {
         while (match(TokenKind::Comma)) {
             TypeSpec ts2 = base_ts;
             const char* tdn2 = nullptr;
+            TextId tdn2_text_id = kInvalidText;
             Node** td2_fn_ptr_params = nullptr;
             int td2_n_fn_ptr_params = 0;
             bool td2_fn_ptr_variadic = false;
             parse_declarator(ts2, &tdn2, &td2_fn_ptr_params,
-                             &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
+                             &td2_n_fn_ptr_params, &td2_fn_ptr_variadic,
+                             nullptr, nullptr, nullptr, nullptr,
+                             &tdn2_text_id);
             if (tdn2) {
                 if (!is_cpp_mode() && !is_internal_typedef_name(tdn2) &&
                     has_conflicting_user_typedef_binding(tdn2, ts2))
@@ -672,7 +679,9 @@ Node* Parser::parse_local_decl() {
                                          !is_internal_typedef_name(tdn2));
                 if (ts2.is_fn_ptr && (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic)) {
                     const TextId typedef_name_id =
-                        parser_text_id_for_token(kInvalidText, tdn2);
+                        tdn2_text_id != kInvalidText
+                            ? tdn2_text_id
+                            : parser_text_id_for_token(kInvalidText, tdn2);
                     if (typedef_name_id != kInvalidText) {
                         binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
                             td2_fn_ptr_params, td2_n_fn_ptr_params, td2_fn_ptr_variadic};
@@ -2538,14 +2547,17 @@ top_level_base_ready:
     if (is_typedef) {
         // Local typedef
         const char* tdname = nullptr;
+        TextId tdname_text_id = kInvalidText;
         TypeSpec ts_copy = base_ts;
         Node** td_fn_ptr_params = nullptr;
         int td_n_fn_ptr_params = 0;
         bool td_fn_ptr_variadic = false;
         parse_declarator(ts_copy, &tdname, &td_fn_ptr_params,
-                         &td_n_fn_ptr_params, &td_fn_ptr_variadic);
+                         &td_n_fn_ptr_params, &td_fn_ptr_variadic, nullptr,
+                         nullptr, nullptr, nullptr, &tdname_text_id);
         if (tdname) {
-            const char* scoped_tdname = qualify_name_arena(tdname);
+            const char* scoped_tdname =
+                qualify_name_arena(tdname_text_id, tdname);
             if (!is_cpp_mode() && !is_internal_typedef_name(tdname) &&
                 has_conflicting_user_typedef_binding(tdname, ts_copy))
                 throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdname);
@@ -2556,7 +2568,9 @@ top_level_base_ready:
             }
             if (ts_copy.is_fn_ptr && (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic)) {
                 const TextId typedef_name_id =
-                    parser_text_id_for_token(kInvalidText, tdname);
+                    tdname_text_id != kInvalidText
+                        ? tdname_text_id
+                        : parser_text_id_for_token(kInvalidText, tdname);
                 if (typedef_name_id != kInvalidText) {
                     binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
                         td_fn_ptr_params, td_n_fn_ptr_params, td_fn_ptr_variadic};
@@ -2566,13 +2580,17 @@ top_level_base_ready:
         while (match(TokenKind::Comma)) {
             TypeSpec ts2 = base_ts;
             const char* tdn2 = nullptr;
+            TextId tdn2_text_id = kInvalidText;
             Node** td2_fn_ptr_params = nullptr;
             int td2_n_fn_ptr_params = 0;
             bool td2_fn_ptr_variadic = false;
             parse_declarator(ts2, &tdn2, &td2_fn_ptr_params,
-                             &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
+                             &td2_n_fn_ptr_params, &td2_fn_ptr_variadic,
+                             nullptr, nullptr, nullptr, nullptr,
+                             &tdn2_text_id);
             if (tdn2) {
-                const char* scoped_tdn2 = qualify_name_arena(tdn2);
+                const char* scoped_tdn2 =
+                    qualify_name_arena(tdn2_text_id, tdn2);
                 if (!is_cpp_mode() && !is_internal_typedef_name(tdn2) &&
                     has_conflicting_user_typedef_binding(tdn2, ts2))
                     throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdn2);
@@ -2583,7 +2601,9 @@ top_level_base_ready:
                 }
                 if (ts2.is_fn_ptr && (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic)) {
                     const TextId typedef_name_id =
-                        parser_text_id_for_token(kInvalidText, tdn2);
+                        tdn2_text_id != kInvalidText
+                            ? tdn2_text_id
+                            : parser_text_id_for_token(kInvalidText, tdn2);
                     if (typedef_name_id != kInvalidText) {
                         binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
                             td2_fn_ptr_params, td2_n_fn_ptr_params, td2_fn_ptr_variadic};
@@ -2611,6 +2631,7 @@ top_level_base_ready:
     // Preserve typedef array dims: apply_decl_dims prepends declarator dims to base typedef dims.
     ts.array_size_expr = nullptr;
     const char* decl_name = nullptr;
+    TextId decl_name_text_id = kInvalidText;
     Node** decl_fn_ptr_params = nullptr;
     int decl_n_fn_ptr_params = 0;
     bool decl_fn_ptr_variadic = false;
@@ -2641,6 +2662,8 @@ top_level_base_ready:
         }
         skip_attributes();
         if (check(TokenKind::Identifier)) {
+            decl_name_text_id =
+                parser_text_id_for_token(cur().text_id, token_spelling(cur()));
             decl_name = arena_.strdup(std::string(token_spelling(cur())));
             consume();
         }
@@ -2673,6 +2696,8 @@ top_level_base_ready:
                 break;
             }
             if (check(TokenKind::Identifier)) {
+                decl_name_text_id = parser_text_id_for_token(
+                    cur().text_id, token_spelling(cur()));
                 decl_name = arena_.strdup(std::string(token_spelling(cur())));
                 consume();
             }
@@ -2796,7 +2821,8 @@ top_level_base_ready:
     } else {
     parse_declarator(ts, &decl_name, &decl_fn_ptr_params, &decl_n_fn_ptr_params,
                      &decl_fn_ptr_variadic, nullptr, &decl_ret_fn_ptr_params,
-                     &decl_n_ret_fn_ptr_params, &decl_ret_fn_ptr_variadic);
+                     &decl_n_ret_fn_ptr_params, &decl_ret_fn_ptr_variadic,
+                     &decl_name_text_id);
     if (is_incomplete_object_type(ts) && !check(TokenKind::LParen)) {
         throw std::runtime_error(std::string("object has incomplete type: ") + (ts.tag ? ts.tag : "<anonymous>"));
     }
@@ -3004,7 +3030,8 @@ top_level_base_ready:
         return make_node(NK_EMPTY, ln);
     }
 
-    const char* scoped_decl_name = qualify_name_arena(decl_name);
+    const char* scoped_decl_name =
+        qualify_name_arena(decl_name_text_id, decl_name);
 
     // Handle function-returning-fptr: int (* f1(a, b))(c, d) { body }
     // Params were already parsed into fptr_fn_params; now look for { body }.
@@ -3094,7 +3121,8 @@ top_level_base_ready:
             std::string adjusted_name(decl_name);
             finalize_pending_operator_name(adjusted_name, params.size());
             decl_name = arena_.strdup(adjusted_name.c_str());
-            scoped_decl_name = qualify_name_arena(decl_name);
+            decl_name_text_id = kInvalidText;
+            scoped_decl_name = qualify_name_arena(decl_name_text_id, decl_name);
         }
         parse_attributes(&ts);
         skip_asm();
@@ -3357,17 +3385,20 @@ top_level_base_ready:
         // Preserve typedef ptr_level and array dims for each additional declarator.
         ts2.array_size_expr = nullptr;
         const char* n2 = nullptr;
+        TextId n2_text_id = kInvalidText;
         Node** fn_ptr_params2 = nullptr;
         int n_fn_ptr_params2 = 0;
         bool fn_ptr_variadic2 = false;
-        parse_declarator(ts2, &n2, &fn_ptr_params2, &n_fn_ptr_params2, &fn_ptr_variadic2);
+        parse_declarator(ts2, &n2, &fn_ptr_params2, &n_fn_ptr_params2,
+                         &fn_ptr_variadic2, nullptr, nullptr, nullptr, nullptr,
+                         &n2_text_id);
         skip_attributes();
         skip_asm();
         Node* init2 = nullptr;
         if (match(TokenKind::Assign) ||
             (is_cpp_mode() && check(TokenKind::LBrace))) init2 = parse_initializer();
         if (n2) {
-            const char* scoped_n2 = qualify_name_arena(n2);
+            const char* scoped_n2 = qualify_name_arena(n2_text_id, n2);
             gvars.push_back(make_gvar(ts2, scoped_n2, n2, init2,
                                           fn_ptr_params2, n_fn_ptr_params2,
                                           fn_ptr_variadic2));

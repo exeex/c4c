@@ -1497,20 +1497,28 @@ bool Parser::match(TokenKind k) {
     return false;
 }
 
-std::string Parser::qualify_name(const std::string& name) const {
-    if (name.empty()) return name;
+std::string Parser::qualify_name(TextId name_text_id,
+                                 std::string_view name) const {
+    if (name.empty()) return {};
     const int context_id = current_namespace_context_id();
-    if (context_id <= 0) return name;
-    if (name.find("::") != std::string::npos) return name;
-    return bridge_name_in_context(
-        context_id, parser_text_id_for_token(kInvalidText, name), name);
+    if (context_id <= 0) return std::string(name);
+    if (name.find("::") != std::string::npos) return std::string(name);
+    return bridge_name_in_context(context_id, name_text_id, name);
+}
+
+std::string Parser::qualify_name(const std::string& name) const {
+    return qualify_name(parser_text_id_for_token(kInvalidText, name), name);
+}
+
+const char* Parser::qualify_name_arena(TextId name_text_id, const char* name) {
+    if (!name || !name[0]) return name;
+    std::string qualified = qualify_name(name_text_id, name);
+    if (qualified == name) return name;
+    return arena_.strdup(qualified.c_str());
 }
 
 const char* Parser::qualify_name_arena(const char* name) {
-    if (!name || !name[0]) return name;
-    std::string qualified = qualify_name(name);
-    if (qualified == name) return name;
-    return arena_.strdup(qualified.c_str());
+    return qualify_name_arena(parser_text_id_for_token(kInvalidText, name), name);
 }
 
 std::string Parser::resolve_visible_value_name(TextId name_text_id,

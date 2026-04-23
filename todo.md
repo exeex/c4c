@@ -9,21 +9,23 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: switched parser-side `using` alias lookup from spelled-string
-  keys to `TextId` keys so visible value/type resolution and qualified
-  namespace target import reuse the parsed identifier identity instead of
-  probing alias maps by rendered spelling first
-- tightened the `using` declaration registration sites in
-  `parser_declarations.cpp` to keep alias bridge names and imported alias
-  tables aligned with the parsed target `TextId`
+- Step 2 packet: taught parser declarator parsing to surface the parsed
+  declarator `TextId` alongside the spelled name so declaration registration
+  paths can keep namespace identity from the token stream instead of
+  recovering it from rendered strings later
+- threaded that declarator `TextId` through the remaining top-level/local
+  typedef and declaration bridge sites in `parser_declarations.cpp`, so
+  `qualify_name[_arena]` and typedef/function/global registration stop
+  immediately round-tripping simple identifiers through fallback spelling when
+  the parser already has the original token identity
 
 ## Suggested Next
 
 - if Step 2 continues, audit the remaining parser namespace compatibility
   helpers that still synthesize string spellings first, especially the
-  `qualify_name` / bridge-facing registration call sites and any declaration
-  paths that still materialize qualified strings before checking whether a
-  parser `TextId` route already exists
+  `qualify_name` call sites used for incomplete-tag/self-reference checks and
+  any parser declaration paths that still only have spelled strings because no
+  parsed `TextId` is being carried yet
 - keep the route inside parser namespace lookup and avoid widening into
   unrelated declarator parsing, lexical-scope, binding-table, or backend cleanup
 
@@ -45,11 +47,11 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 - keep declarator-specific operator/template token consumption separate from
   namespace lookup cleanup when auditing remaining Step 2 traversal paths
 - the remaining parser-family bridge sites are now mostly compatibility
-  registration or lookup-table membership checks, not the nested-owner fallback
-  path just converted
-- the visible-name helpers now accept `std::string_view` plus `TextId`, so any
-  future callers should pass the parsed identity when available and only rely
-  on fallback spelling for compatibility edges
+  membership checks or self-reference comparisons, not the `using` alias
+  path or routine declarator registration
+- declarator plumbing now carries a best-effort parsed `TextId`; unqualified
+  identifiers should use that identity when they need namespace bridge names,
+  while qualified/operator spellings can keep the compatibility fallback path
 
 ## Proof
 

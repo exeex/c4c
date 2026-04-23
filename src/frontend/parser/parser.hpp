@@ -363,7 +363,9 @@ class Parser {
   bool lookup_concept_in_context(int context_id, TextId name_text_id,
                                  std::string_view name,
                                  std::string* resolved) const;
+  std::string qualify_name(TextId name_text_id, std::string_view name) const;
   std::string qualify_name(const std::string& name) const;
+  const char* qualify_name_arena(TextId name_text_id, const char* name);
   const char* qualify_name_arena(const char* name);
   std::string resolve_visible_value_name(TextId name_text_id,
                                          std::string_view name) const;
@@ -488,9 +490,11 @@ class Parser {
                         bool* out_is_parameter_pack = nullptr,
                         Node*** out_ret_fn_ptr_params = nullptr,
                         int* out_n_ret_fn_ptr_params = nullptr,
-                        bool* out_ret_fn_ptr_variadic = nullptr);
+                        bool* out_ret_fn_ptr_variadic = nullptr,
+                        TextId* out_name_text_id = nullptr);
   bool parse_operator_declarator_name(std::string* out_name);
-  bool parse_qualified_declarator_name(std::string* out_name);
+  bool parse_qualified_declarator_name(std::string* out_name,
+                                       TextId* out_name_text_id = nullptr);
   bool is_grouped_declarator_start() const;
   bool is_parenthesized_pointer_declarator_start();
   void parse_pointer_ref_qualifiers(TypeSpec& ts, TokenKind pointer_tok,
@@ -499,11 +503,14 @@ class Parser {
   void consume_declarator_post_pointer_qualifiers();
   void parse_declarator_prefix(TypeSpec& ts, bool* out_is_parameter_pack);
   bool try_parse_grouped_declarator(TypeSpec& ts, const char** out_name,
+                                    TextId* out_name_text_id,
                                     std::vector<long long>* out_dims);
   void parse_normal_declarator_tail(TypeSpec& ts, const char** out_name,
+                                    TextId* out_name_text_id,
                                     std::vector<long long>* out_dims);
   void parse_non_parenthesized_declarator_suffixes(
-      TypeSpec& ts, const char** out_name, std::vector<long long>* out_dims);
+      TypeSpec& ts, const char** out_name, TextId* out_name_text_id,
+      std::vector<long long>* out_dims);
   void parse_declarator_parameter_list(std::vector<Node*>* out_params,
                                        bool* out_variadic);
   void parse_top_level_parameter_list(
@@ -518,15 +525,16 @@ class Parser {
       bool* out_ret_fn_ptr_variadic);
   void parse_parenthesized_pointer_declarator_prefix(TypeSpec& ts);
   void skip_parenthesized_pointer_declarator_array_chunks();
-  bool parse_parenthesized_pointer_declarator_name(const char** out_name);
+  bool parse_parenthesized_pointer_declarator_name(const char** out_name,
+                                                   TextId* out_name_text_id);
   bool try_parse_nested_parenthesized_pointer_declarator(
       TypeSpec& ts, const char** out_name,
       Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
-      bool* out_fn_ptr_variadic);
+      bool* out_fn_ptr_variadic, TextId* out_name_text_id);
   bool parse_parenthesized_pointer_declarator_inner(
       TypeSpec& ts, const char** out_name,
       Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
-      bool* out_fn_ptr_variadic);
+      bool* out_fn_ptr_variadic, TextId* out_name_text_id);
   void finalize_parenthesized_pointer_declarator(
       TypeSpec& ts, bool is_nested_fn_ptr, std::vector<long long>* decl_dims,
       Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
@@ -538,11 +546,11 @@ class Parser {
       Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
       bool* out_fn_ptr_variadic,
       Node*** out_ret_fn_ptr_params, int* out_n_ret_fn_ptr_params,
-      bool* out_ret_fn_ptr_variadic);
+      bool* out_ret_fn_ptr_variadic, TextId* out_name_text_id);
   void parse_non_parenthesized_declarator(TypeSpec& ts, const char** out_name);
   void parse_non_parenthesized_declarator_tail(
       TypeSpec& ts, const char** out_name,
-      bool decay_plain_function_suffix);
+      bool decay_plain_function_suffix, TextId* out_name_text_id);
   void parse_plain_function_declarator_suffix(TypeSpec& ts,
                                               bool decay_to_function_pointer);
   void store_declarator_function_pointer_params(
