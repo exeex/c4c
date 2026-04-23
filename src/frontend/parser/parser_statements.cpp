@@ -905,6 +905,12 @@ Node* Parser::parse_stmt() {
         int starter_tail_pos = core_input_state_.pos;
         const int starter_kind =
             classify_visible_stmt_starter(core_input_state_.pos, &starter_tail_pos);
+        if (is_cpp_mode() && starter_tail_pos <
+                                 static_cast<int>(core_input_state_.tokens.size()) &&
+            (core_input_state_.tokens[starter_tail_pos].kind == TokenKind::Dot ||
+             core_input_state_.tokens[starter_tail_pos].kind == TokenKind::Arrow)) {
+            goto expr_stmt;
+        }
         if (is_cpp_mode() && starter_kind > 0 &&
             follows_assignment_operator(starter_tail_pos)) {
             goto expr_stmt;

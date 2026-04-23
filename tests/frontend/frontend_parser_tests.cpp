@@ -1742,6 +1742,35 @@ void test_parser_stmt_disambiguates_global_qualified_operator_call_as_expr() {
               "global-qualified operator calls should stay expression statements");
 }
 
+void test_parser_stmt_prefers_expression_for_member_access_after_visible_type_head() {
+  c4c::Lexer lexer("typedef int allocator;\n"
+                   "int main() {\n"
+                   "  allocator.construct(1);\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "member-access after a visible type head should parse as a program");
+  expect_eq_int(program->n_children, 1,
+                "the member-access regression should retain the parsed main function");
+
+  c4c::Node* main_fn = program->children[0];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the member-access regression should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 1,
+                "main should retain the member-access expression statement");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_EXPR_STMT,
+              "member-access after a visible type head should stay an expression statement");
+}
+
 void test_parser_stmt_disambiguates_qualified_visible_value_member_access_as_expr() {
   c4c::Lexer lexer("namespace api {\n"
                    "struct Payload {\n"
@@ -2182,6 +2211,7 @@ int main() {
   test_parser_local_ctor_init_probe_balances_qualified_member_access_value_shapes();
   test_parser_stmt_disambiguates_global_qualified_template_call_as_expr();
   test_parser_stmt_disambiguates_global_qualified_operator_call_as_expr();
+  test_parser_stmt_prefers_expression_for_member_access_after_visible_type_head();
   test_parser_stmt_disambiguates_qualified_visible_value_member_access_as_expr();
   test_parser_stmt_disambiguates_qualified_visible_value_member_access_assignment_as_expr();
   test_parser_template_member_suffix_probe_uses_token_spelling();
