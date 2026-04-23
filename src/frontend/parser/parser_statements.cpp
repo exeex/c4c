@@ -847,26 +847,51 @@ Node* Parser::parse_stmt() {
                     return false;
             }
         };
-        auto has_visible_value_binding = [&](const std::string& name) -> bool {
-            if (name.empty()) return false;
-            if (find_visible_var_type(name)) return true;
-            if (has_known_fn_name(name)) return true;
-            const std::string resolved =
-                resolve_visible_value_name(cur().text_id, name);
-            return !resolved.empty() && has_known_fn_name(resolved);
+        auto classify_visible_stmt_starter = [&](int pos, int* after_pos) -> int {
+            if (after_pos) *after_pos = pos;
+            if (pos < 0 || pos >= static_cast<int>(core_input_state_.tokens.size())) {
+                return 0;
+            }
+
+            const TokenKind first_kind = core_input_state_.tokens[pos].kind;
+            if (first_kind != TokenKind::Identifier &&
+                first_kind != TokenKind::ColonColon) {
+                return 0;
+            }
+
+            const int starter_kind = classify_visible_value_or_type_starter(pos);
+            if (after_pos == nullptr || starter_kind == 0) return starter_kind;
+
+            const int saved_pos = core_input_state_.pos;
+            core_input_state_.pos = pos;
+            QualifiedNameRef qn;
+            const bool parsed_qn =
+                peek_qualified_name(&qn, first_kind == TokenKind::ColonColon);
+            core_input_state_.pos = saved_pos;
+            if (!parsed_qn || (!qn.is_global_qualified &&
+                               qn.qualifier_segments.empty())) {
+                *after_pos = pos + 1;
+                return starter_kind;
+            }
+
+            int tail_pos = pos;
+            if (qn.is_global_qualified) ++tail_pos;
+            tail_pos += 1 + 2 * static_cast<int>(qn.qualifier_segments.size());
+            *after_pos = tail_pos;
+            return starter_kind;
         };
-        if (is_cpp_mode() && check(TokenKind::Identifier) &&
-            has_visible_value_binding(std::string(token_spelling(cur()))) &&
-            follows_assignment_operator(core_input_state_.pos + 1)) {
+        int starter_tail_pos = core_input_state_.pos;
+        const int starter_kind =
+            classify_visible_stmt_starter(core_input_state_.pos, &starter_tail_pos);
+        if (is_cpp_mode() && starter_kind > 0 &&
+            follows_assignment_operator(starter_tail_pos)) {
             goto expr_stmt;
         }
-        if (is_cpp_mode() && check(TokenKind::Identifier) &&
-            (peek(1).kind == TokenKind::Dot || peek(1).kind == TokenKind::Arrow)) {
-            const std::string visible_value =
-                resolve_visible_value_name(cur().text_id, token_spelling(cur()));
-            if (!visible_value.empty()) {
+        if (is_cpp_mode() && starter_kind > 0 &&
+            starter_tail_pos < static_cast<int>(core_input_state_.tokens.size()) &&
+            (core_input_state_.tokens[starter_tail_pos].kind == TokenKind::Dot ||
+             core_input_state_.tokens[starter_tail_pos].kind == TokenKind::Arrow)) {
                 goto expr_stmt;
-            }
         }
         if (is_cpp_mode() && check(TokenKind::Identifier) &&
             core_input_state_.pos + 2 <

@@ -7,18 +7,19 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by promoting the ctor-init starter classifier into a
-shared parser helper and reusing it in block-statement decl-vs-expr routing for
-qualified/global-qualified call-like heads. Global-qualified template calls now
-stay on the expression path, and global/operator-owned qualified calls no
-longer fall back to local-declaration parsing.
+Advanced `plan.md` step 2 by routing block-statement visible-name probes
+through the shared `classify_visible_value_or_type_starter()` helper for
+assignment/member-access disambiguation too, instead of keeping separate local
+value-binding heuristics in `parse_stmt()`. Qualified visible-value member
+access now stays on the expression path under the same lexical/value
+classifier used for call-like heads.
 
 ## Suggested Next
 Continue `plan.md` step 2 by checking whether any remaining local
 declaration/expression ambiguity probes still bypass the shared
 `classify_visible_value_or_type_starter()` path, especially around
-non-global operator-owned or scope-qualified expression heads that still rely
-on token-shape shortcuts.
+template/member-expression heads that still rely on token-shape shortcuts
+instead of the shared visible value/type classifier.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. The shared helper
@@ -36,6 +37,7 @@ lookup.
 ## Proof
 `cmake --build --preset default` passed, and
 `ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' | tee test_after.log`
-passed. Additional direct probes with `build/c4cll --parse-only` now show
-`::api::source<int>(payload);` and `::BaseImpl::operator=(lhs, rhs);` as
-expression statements. Proof log: `test_after.log`.
+passed. Added a focused frontend parser regression that keeps
+`api::payload.value` on the expression path inside `main`, alongside the
+existing global-qualified template-call and operator-call statement
+disambiguation coverage. Proof log: `test_after.log`.
