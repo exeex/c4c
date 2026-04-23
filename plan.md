@@ -50,26 +50,31 @@ Do not collapse namespace traversal and lexical scope lookup into one mechanism.
 
 ## Steps
 1. Inventory parser binding tables.
-   - Classify each table as string-keyed, `TextId`-keyed, or `LocalNameTable`-backed.
+   - Inspect current parser lookup state and classify each table as string-keyed, `TextId`-keyed, sequence/path-keyed, or a candidate for `LocalNameTable`.
+   - Identify the first safe migration targets without widening scope beyond parser lookup plumbing.
    - Completion check: the inventory identifies the first migration targets and the tables that must remain unchanged for now.
 
 2. Add parser lexical scope state for local bindings.
    - Introduce explicit push/pop behavior for lexical visibility separate from namespace state.
+   - Keep the new state narrow enough to support unqualified lookup migration without redesigning namespace traversal.
    - Completion check: the parser can represent scope-local bindings without reusing namespace traversal state.
 
 3. Introduce a unified `TextId`-first lookup facade.
-   - Query new scope-local bindings first, then fall back to legacy bridge paths.
+   - Route unqualified parser-visible lookup through one entry point that checks lexical scope-local bindings first, then falls back to legacy bridge paths where migration still depends on them.
+   - Keep namespace-qualified lookup on the separate namespace path.
    - Completion check: unqualified visible lookup has one entry point that prefers `TextId`-native state.
 
 4. Move unqualified visible lookup onto the new scope-local path.
-   - Keep namespace-qualified lookup on the separate namespace tree.
-   - Completion check: local visibility works through the new path while namespace-qualified lookup still works through the old namespace system.
+   - Migrate the parser call sites that still depend on legacy visible-name bridges for unqualified lookup.
+   - Preserve qualified namespace behavior on the namespace system introduced by idea 82.
+   - Completion check: local visibility works through the new path while namespace-qualified lookup still works through the separate namespace system.
 
 5. Replace remaining suitable single-name string tables.
-   - Switch single-segment semantic identity to `TextId`-based storage where it is safe.
-   - Isolate multi-segment semantic queries to `TextId` sequences or path ids.
+   - Switch safe single-segment semantic identity tables from `std::string` keys to `TextId`-based storage.
+   - Keep multi-segment semantic queries on sequence or path-keyed storage instead of composed strings.
    - Completion check: remaining `std::string` usage is limited to compatibility, diagnostics, or tables that genuinely need spelling.
 
 6. Reduce legacy composed-string lookup to compatibility-only support.
    - Keep bridge-based lookup only where migration still requires it.
+   - Validate the focused parser/frontend surface and escalate to broader checks if the blast radius grows.
    - Completion check: the focused parser/frontend test set passes with the new lookup structure and the legacy bridge is no longer the primary semantic path.
