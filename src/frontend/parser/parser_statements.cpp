@@ -23,23 +23,24 @@ Node* Parser::parse_block() {
         } catch (const std::exception& e) {
             // Statement-level recovery: emit diagnostic, skip to ; or },
             // produce NK_INVALID_STMT, and continue parsing next statement.
-            int err_idx = best_parse_failure_.active
-                              ? best_parse_failure_.token_index
+            int err_idx = diagnostic_state_.best_parse_failure.active
+                              ? diagnostic_state_.best_parse_failure.token_index
                               : (!at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1));
-            int err_line = best_parse_failure_.active
-                               ? best_parse_failure_.line
+            int err_line = diagnostic_state_.best_parse_failure.active
+                               ? diagnostic_state_.best_parse_failure.line
                                : ((!at_end()) ? cur().line : (pos_ > 0 ? tokens_[pos_ - 1].line : 1));
-            int err_col  = best_parse_failure_.active
-                               ? best_parse_failure_.column
+            int err_col  = diagnostic_state_.best_parse_failure.active
+                               ? diagnostic_state_.best_parse_failure.column
                                : ((!at_end()) ? cur().column : 1);
             std::string diag = format_best_parse_failure();
             fprintf(stderr, "%s:%d:%d: error: %s\n",
                     diag_file_at(err_idx), err_line, err_col,
                     diag.empty() ? e.what() : diag.c_str());
             dump_parse_debug_trace();
-            had_error_ = true;
-            ++parse_error_count_;
-            if (parse_error_count_ >= max_parse_errors_) {
+            diagnostic_state_.had_error = true;
+            ++diagnostic_state_.parse_error_count;
+            if (diagnostic_state_.parse_error_count >=
+                diagnostic_state_.max_parse_errors) {
                 fprintf(stderr, "%s:%d:%d: error: too many errors emitted, stopping now\n",
                         diag_file_at(err_idx), err_line, err_col);
                 break;

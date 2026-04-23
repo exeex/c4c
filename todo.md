@@ -9,15 +9,16 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Just Finished
 
-- continued Step 2 by removing the temporary namespace compatibility aliases
-  from `Parser` and routing namespace lookup, namespace stack maintenance, and
-  using-directive handling directly through `namespace_state_`
+- continued Step 2 by removing the temporary diagnostic/recovery compatibility
+  aliases from `Parser`, routing parser-core and statement recovery code
+  directly through `diagnostic_state_`, and updating `c4cll` to read parser
+  errors from the explicit diagnostic bundle
 
 ## Suggested Next
 
-- continue Step 2 by auditing the remaining parser state families for any
-  other temporary compatibility bridges and fold them onto their explicit
-  bundle-backed fields one family at a time
+- continue Step 2 by removing the pragma-state compatibility aliases and
+  routing declaration/record visibility, execution-domain, and pack-alignment
+  reads directly through `pragma_state_`
 
 ## Watchouts
 
@@ -26,6 +27,8 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
   rewrites or grammar changes
 - preserve constructor, snapshot, and rollback behavior while the grouped
   layout is being converted to direct bundle access
+- alias removals can reach non-parser call sites such as `src/apps/c4cll.cpp`,
+  so audit repo-wide member reads before assuming a family is parser-local
 
 ## Proof
 

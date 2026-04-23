@@ -929,53 +929,60 @@ void Parser::handle_pragma_exec(const std::string& args) {
 }
 
 void Parser::set_parser_debug(bool enabled) {
-    parser_debug_channels_ = enabled ? ParseDebugAll : ParseDebugNone;
+    diagnostic_state_.parser_debug_channels =
+        enabled ? ParseDebugAll : ParseDebugNone;
 }
 
 void Parser::set_parser_debug_channels(unsigned channels) {
-    parser_debug_channels_ = channels;
+    diagnostic_state_.parser_debug_channels = channels;
 }
 
 bool Parser::parser_debug_enabled() const {
-    return parser_debug_channels_ != ParseDebugNone;
+    return diagnostic_state_.parser_debug_channels != ParseDebugNone;
 }
 
 bool Parser::parse_debug_event_visible(const char* kind) const {
     if (!parser_debug_enabled()) return false;
-    if (!kind) return (parser_debug_channels_ & ParseDebugGeneral) != 0;
+    if (!kind)
+        return (diagnostic_state_.parser_debug_channels & ParseDebugGeneral) !=
+               0;
     if (std::strncmp(kind, "tentative_", 10) == 0) {
-        return (parser_debug_channels_ & ParseDebugTentative) != 0;
+        return (diagnostic_state_.parser_debug_channels &
+                ParseDebugTentative) != 0;
     }
     if (std::strncmp(kind, "injected_parse_", 15) == 0) {
-        return (parser_debug_channels_ & ParseDebugInjected) != 0;
+        return (diagnostic_state_.parser_debug_channels &
+                ParseDebugInjected) != 0;
     }
-    return (parser_debug_channels_ & ParseDebugGeneral) != 0;
+    return (diagnostic_state_.parser_debug_channels & ParseDebugGeneral) != 0;
 }
 
 void Parser::clear_parse_debug_state() {
-    parse_context_stack_.clear();
-    parse_debug_events_.clear();
-    best_parse_failure_ = ParseFailure{};
-    best_parse_stack_token_index_ = -1;
-    best_parse_stack_trace_.clear();
+    diagnostic_state_.parse_context_stack.clear();
+    diagnostic_state_.parse_debug_events.clear();
+    diagnostic_state_.best_parse_failure = ParseFailure{};
+    diagnostic_state_.best_parse_stack_token_index = -1;
+    diagnostic_state_.best_parse_stack_trace.clear();
 }
 
 void Parser::reset_parse_debug_progress() {
-    parse_debug_started_at_ = {};
-    parse_debug_last_progress_at_ = {};
+    diagnostic_state_.parse_debug_started_at = {};
+    diagnostic_state_.parse_debug_last_progress_at = {};
 }
 
 void Parser::push_parse_context(const char* function_name) {
     ParseContextFrame frame;
     frame.function_name = function_name ? function_name : "";
     frame.token_index = pos_;
-    parse_context_stack_.push_back(std::move(frame));
+    diagnostic_state_.parse_context_stack.push_back(std::move(frame));
     note_parse_debug_event("enter");
 }
 
 void Parser::pop_parse_context() {
     note_parse_debug_event("leave");
-    if (!parse_context_stack_.empty()) parse_context_stack_.pop_back();
+    if (!diagnostic_state_.parse_context_stack.empty()) {
+        diagnostic_state_.parse_context_stack.pop_back();
+    }
 }
 
 void Parser::note_parse_debug_event(const char* kind, const char* detail) {
@@ -988,11 +995,13 @@ void Parser::note_parse_debug_event_for(const char* kind,
     if (!parser_debug_enabled()) return;
 
     const auto now = std::chrono::steady_clock::now();
-    if (parse_debug_started_at_ == std::chrono::steady_clock::time_point{}) {
-        parse_debug_started_at_ = now;
+    if (diagnostic_state_.parse_debug_started_at ==
+        std::chrono::steady_clock::time_point{}) {
+        diagnostic_state_.parse_debug_started_at = now;
     }
-    if (parse_debug_last_progress_at_ == std::chrono::steady_clock::time_point{}) {
-        parse_debug_last_progress_at_ = now;
+    if (diagnostic_state_.parse_debug_last_progress_at ==
+        std::chrono::steady_clock::time_point{}) {
+        diagnostic_state_.parse_debug_last_progress_at = now;
     }
 
     ParseDebugEvent event;
@@ -1003,46 +1012,59 @@ void Parser::note_parse_debug_event_for(const char* kind,
     event.column = !at_end() ? cur().column : 1;
     if (function_name && function_name[0]) {
         event.function_name = function_name;
-    } else if (!parse_context_stack_.empty()) {
-        event.function_name = parse_context_stack_.back().function_name;
+    } else if (!diagnostic_state_.parse_context_stack.empty()) {
+        event.function_name =
+            diagnostic_state_.parse_context_stack.back().function_name;
     }
-    parse_debug_events_.push_back(std::move(event));
-    if (static_cast<int>(parse_debug_events_.size()) > max_parse_debug_events_) {
-        parse_debug_events_.erase(parse_debug_events_.begin());
+    diagnostic_state_.parse_debug_events.push_back(std::move(event));
+    if (static_cast<int>(diagnostic_state_.parse_debug_events.size()) >
+        diagnostic_state_.max_parse_debug_events) {
+        diagnostic_state_.parse_debug_events.erase(
+            diagnostic_state_.parse_debug_events.begin());
     }
     if (kind &&
         (std::strncmp(kind, "tentative_", 10) == 0 ||
          std::strncmp(kind, "injected_parse_", 15) == 0)) {
         return;
     }
-    if (!parse_context_stack_.empty()) {
-        const int token_index = parse_debug_events_.back().token_index;
-        const int token_delta = token_index - best_parse_stack_token_index_;
-        const std::string current_function = parse_context_stack_.back().function_name;
+    if (!diagnostic_state_.parse_context_stack.empty()) {
+        const int token_index =
+            diagnostic_state_.parse_debug_events.back().token_index;
+        const int token_delta =
+            token_index - diagnostic_state_.best_parse_stack_token_index;
+        const std::string current_function =
+            diagnostic_state_.parse_context_stack.back().function_name;
         const bool preserving_wrapper_prefix_snapshot =
             token_delta > 0 &&
-            current_stack_is_prefix_of_best(parse_context_stack_,
-                                            best_parse_stack_trace_);
+            current_stack_is_prefix_of_best(
+                diagnostic_state_.parse_context_stack,
+                diagnostic_state_.best_parse_stack_trace);
         const bool preserving_qualified_type_probe_snapshot =
             token_delta > 0 &&
             (is_top_level_wrapper_failure(current_function) ||
              is_qualified_type_trace_wrapper(current_function)) &&
-            stack_contains_qualified_type_trace(best_parse_stack_trace_);
+            stack_contains_qualified_type_trace(
+                diagnostic_state_.best_parse_stack_trace);
         const bool replace_snapshot =
-            best_parse_stack_token_index_ < 0 ||
+            diagnostic_state_.best_parse_stack_token_index < 0 ||
             (!(preserving_wrapper_prefix_snapshot ||
                preserving_qualified_type_probe_snapshot) &&
              token_delta > 1) ||
             (token_delta > 0 &&
-             parse_context_stack_.size() >= best_parse_stack_trace_.size()) ||
+             diagnostic_state_.parse_context_stack.size() >=
+                 diagnostic_state_.best_parse_stack_trace.size()) ||
             (token_delta == 0 &&
-             parse_context_stack_.size() > best_parse_stack_trace_.size());
+             diagnostic_state_.parse_context_stack.size() >
+                 diagnostic_state_.best_parse_stack_trace.size());
         if (replace_snapshot) {
-            best_parse_stack_token_index_ = token_index;
-            best_parse_stack_trace_.clear();
-            best_parse_stack_trace_.reserve(parse_context_stack_.size());
-            for (const ParseContextFrame& frame : parse_context_stack_) {
-                best_parse_stack_trace_.push_back(frame.function_name);
+            diagnostic_state_.best_parse_stack_token_index = token_index;
+            diagnostic_state_.best_parse_stack_trace.clear();
+            diagnostic_state_.best_parse_stack_trace.reserve(
+                diagnostic_state_.parse_context_stack.size());
+            for (const ParseContextFrame& frame :
+                 diagnostic_state_.parse_context_stack) {
+                diagnostic_state_.best_parse_stack_trace.push_back(
+                    frame.function_name);
             }
         }
     }
@@ -1052,17 +1074,18 @@ void Parser::note_parse_debug_event_for(const char* kind,
 
 void Parser::maybe_emit_parse_debug_progress() {
     if (!parser_debug_enabled()) return;
-    if (parse_debug_events_.empty()) return;
+    if (diagnostic_state_.parse_debug_events.empty()) return;
 
     const auto now = std::chrono::steady_clock::now();
     const auto interval =
-        std::chrono::milliseconds(parse_debug_progress_interval_ms_);
-    if (now - parse_debug_last_progress_at_ < interval) return;
+        std::chrono::milliseconds(
+            diagnostic_state_.parse_debug_progress_interval_ms);
+    if (now - diagnostic_state_.parse_debug_last_progress_at < interval) return;
 
-    const ParseDebugEvent& event = parse_debug_events_.back();
+    const ParseDebugEvent& event = diagnostic_state_.parse_debug_events.back();
     const auto elapsed_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(
-            now - parse_debug_started_at_)
+            now - diagnostic_state_.parse_debug_started_at)
             .count();
     fprintf(stderr,
             "[pdebug] progress elapsed_ms=%lld token_index=%d line=%d col=%d",
@@ -1086,7 +1109,7 @@ void Parser::maybe_emit_parse_debug_progress() {
     fprintf(stderr, "\n");
     fflush(stderr);
 
-    parse_debug_last_progress_at_ = now;
+    diagnostic_state_.parse_debug_last_progress_at = now;
 }
 
 void Parser::note_tentative_parse_event(TentativeParseMode mode,
@@ -1097,19 +1120,21 @@ void Parser::note_tentative_parse_event(TentativeParseMode mode,
     switch (mode) {
         case TentativeParseMode::Heavy:
             if (std::strcmp(kind, "tentative_enter") == 0)
-                counter = &tentative_parse_stats_.heavy_enter;
+                counter = &diagnostic_state_.tentative_parse_stats.heavy_enter;
             else if (std::strcmp(kind, "tentative_commit") == 0)
-                counter = &tentative_parse_stats_.heavy_commit;
+                counter = &diagnostic_state_.tentative_parse_stats.heavy_commit;
             else if (std::strcmp(kind, "tentative_rollback") == 0)
-                counter = &tentative_parse_stats_.heavy_rollback;
+                counter =
+                    &diagnostic_state_.tentative_parse_stats.heavy_rollback;
             break;
         case TentativeParseMode::Lite:
             if (std::strcmp(kind, "tentative_enter") == 0)
-                counter = &tentative_parse_stats_.lite_enter;
+                counter = &diagnostic_state_.tentative_parse_stats.lite_enter;
             else if (std::strcmp(kind, "tentative_commit") == 0)
-                counter = &tentative_parse_stats_.lite_commit;
+                counter = &diagnostic_state_.tentative_parse_stats.lite_commit;
             else if (std::strcmp(kind, "tentative_rollback") == 0)
-                counter = &tentative_parse_stats_.lite_rollback;
+                counter =
+                    &diagnostic_state_.tentative_parse_stats.lite_rollback;
             break;
     }
     if (counter) ++(*counter);
@@ -1132,15 +1157,17 @@ void Parser::note_parse_failure(const char* expected,
     failure.expected = expected ? expected : "";
     failure.got = at_end() ? "<eof>" : token_spelling(cur());
     failure.detail = detail ? detail : "";
-    if (!parse_context_stack_.empty()) {
-        failure.function_name = parse_context_stack_.back().function_name;
+    if (!diagnostic_state_.parse_context_stack.empty()) {
+        failure.function_name =
+            diagnostic_state_.parse_context_stack.back().function_name;
     }
-    for (const ParseContextFrame& frame : parse_context_stack_) {
+    for (const ParseContextFrame& frame : diagnostic_state_.parse_context_stack) {
         failure.stack_trace.push_back(frame.function_name);
     }
 
-    if (should_replace_best_parse_failure(best_parse_failure_, failure)) {
-        best_parse_failure_ = std::move(failure);
+    if (should_replace_best_parse_failure(diagnostic_state_.best_parse_failure,
+                                          failure)) {
+        diagnostic_state_.best_parse_failure = std::move(failure);
     }
 
     note_parse_debug_event(committed ? "fail" : "soft_fail", detail);
@@ -1152,91 +1179,107 @@ void Parser::note_parse_failure_message(const char* detail, bool committed) {
 
 std::vector<std::string> Parser::best_debug_summary_stack() const {
     const bool top_level_wrapper_failure =
-        is_top_level_wrapper_failure(best_parse_failure_.function_name);
+        is_top_level_wrapper_failure(
+            diagnostic_state_.best_parse_failure.function_name);
     std::vector<std::string> summary_stack;
-    if (best_parse_stack_trace_.size() > best_parse_failure_.stack_trace.size() &&
-        (best_parse_stack_token_index_ >= best_parse_failure_.token_index ||
+    if (diagnostic_state_.best_parse_stack_trace.size() >
+            diagnostic_state_.best_parse_failure.stack_trace.size() &&
+        (diagnostic_state_.best_parse_stack_token_index >=
+             diagnostic_state_.best_parse_failure.token_index ||
          top_level_wrapper_failure)) {
-        std::vector<std::string> candidate = best_parse_stack_trace_;
-        if (best_parse_failure_.function_name == "parse_top_level" &&
+        std::vector<std::string> candidate =
+            diagnostic_state_.best_parse_stack_trace;
+        if (diagnostic_state_.best_parse_failure.function_name ==
+                "parse_top_level" &&
             !candidate.empty() &&
             is_qualified_type_trace_leaf(candidate.back())) {
             candidate.pop_back();
         }
         size_t common_prefix = 0;
         while (common_prefix < candidate.size() &&
-               common_prefix < best_parse_failure_.stack_trace.size() &&
+               common_prefix <
+                   diagnostic_state_.best_parse_failure.stack_trace.size() &&
                candidate[common_prefix] ==
-                   best_parse_failure_.stack_trace[common_prefix]) {
+                   diagnostic_state_.best_parse_failure
+                       .stack_trace[common_prefix]) {
             ++common_prefix;
         }
         if (top_level_wrapper_failure && common_prefix > 0 &&
             common_prefix < candidate.size() &&
-            best_parse_failure_.function_name ==
+            diagnostic_state_.best_parse_failure.function_name ==
                 "parse_top_level_parameter_list") {
             std::vector<std::string> merged = candidate;
             merged.insert(merged.end(),
-                          best_parse_failure_.stack_trace.begin() + common_prefix,
-                          best_parse_failure_.stack_trace.end());
+                          diagnostic_state_.best_parse_failure.stack_trace
+                                  .begin() +
+                              common_prefix,
+                          diagnostic_state_.best_parse_failure.stack_trace.end());
             summary_stack = normalize_summary_stack(merged);
-            return merge_leading_top_level_qualified_probe(parse_debug_events_,
-                                                           summary_stack);
+            return merge_leading_top_level_qualified_probe(
+                diagnostic_state_.parse_debug_events, summary_stack);
         }
-        if (!best_parse_failure_.function_name.empty() &&
+        if (!diagnostic_state_.best_parse_failure.function_name.empty() &&
             std::find(candidate.begin(),
                       candidate.end(),
-                      best_parse_failure_.function_name) !=
+                      diagnostic_state_.best_parse_failure.function_name) !=
                 candidate.end()) {
             summary_stack = normalize_summary_stack(candidate);
-            return merge_leading_top_level_qualified_probe(parse_debug_events_,
-                                                           summary_stack);
+            return merge_leading_top_level_qualified_probe(
+                diagnostic_state_.parse_debug_events, summary_stack);
         }
-        if (best_parse_failure_.function_name == "parse_top_level" &&
+        if (diagnostic_state_.best_parse_failure.function_name ==
+                "parse_top_level" &&
             !candidate.empty()) {
             summary_stack = normalize_summary_stack(candidate);
-            return merge_leading_top_level_qualified_probe(parse_debug_events_,
-                                                           summary_stack);
+            return merge_leading_top_level_qualified_probe(
+                diagnostic_state_.parse_debug_events, summary_stack);
         }
     }
-    summary_stack = normalize_summary_stack(best_parse_failure_.stack_trace);
-    return merge_leading_top_level_qualified_probe(parse_debug_events_,
-                                                   summary_stack);
+    summary_stack = normalize_summary_stack(
+        diagnostic_state_.best_parse_failure.stack_trace);
+    return merge_leading_top_level_qualified_probe(
+        diagnostic_state_.parse_debug_events, summary_stack);
 }
 
 std::string Parser::format_best_parse_failure() const {
-    if (!best_parse_failure_.active) return {};
+    if (!diagnostic_state_.best_parse_failure.active) return {};
 
     std::ostringstream oss;
     const std::vector<std::string> summary_stack = best_debug_summary_stack();
     const std::string* summary_leaf =
-        select_best_parse_summary_leaf(summary_stack, best_parse_failure_);
+        select_best_parse_summary_leaf(summary_stack,
+                                       diagnostic_state_.best_parse_failure);
     if (summary_leaf && !summary_leaf->empty()) {
         oss << "parse_fn=" << *summary_leaf;
-    } else if (!best_parse_failure_.function_name.empty()) {
-        oss << "parse_fn=" << best_parse_failure_.function_name;
+    } else if (!diagnostic_state_.best_parse_failure.function_name.empty()) {
+        oss << "parse_fn=" << diagnostic_state_.best_parse_failure.function_name;
     }
-    if (best_parse_failure_.committed) {
+    if (diagnostic_state_.best_parse_failure.committed) {
         if (oss.tellp() > 0) oss << " ";
         oss << "phase=committed";
     }
-    if (!best_parse_failure_.expected.empty()) {
+    if (!diagnostic_state_.best_parse_failure.expected.empty()) {
         if (oss.tellp() > 0) oss << " ";
-        oss << "expected=" << best_parse_failure_.expected;
-        oss << " got='" << best_parse_failure_.got << "'";
+        oss << "expected=" << diagnostic_state_.best_parse_failure.expected;
+        oss << " got='" << diagnostic_state_.best_parse_failure.got << "'";
     } else {
         if (oss.tellp() > 0) oss << " ";
-        oss << "got='" << best_parse_failure_.got << "'";
+        oss << "got='" << diagnostic_state_.best_parse_failure.got << "'";
     }
-    if (!best_parse_failure_.detail.empty()) {
+    if (!diagnostic_state_.best_parse_failure.detail.empty()) {
         if (oss.tellp() > 0) oss << " ";
-        oss << "detail=\"" << best_parse_failure_.detail << "\"";
+        oss << "detail=\"" << diagnostic_state_.best_parse_failure.detail
+            << "\"";
     }
     if (parser_debug_enabled()) {
         if (oss.tellp() > 0) oss << " ";
-        oss << "token_index=" << best_parse_failure_.token_index
-            << " token_kind=" << token_kind_name(best_parse_failure_.token_kind)
+        oss << "token_index=" << diagnostic_state_.best_parse_failure.token_index
+            << " token_kind="
+            << token_kind_name(diagnostic_state_.best_parse_failure.token_kind)
             << " token_window=\""
-            << format_parse_failure_token_window(best_parse_failure_) << "\"";
+            << format_parse_failure_token_window(
+                   diagnostic_state_.best_parse_failure)
+            << "\"";
     }
     return oss.str();
 }
@@ -1275,18 +1318,18 @@ std::string Parser::format_tentative_parse_detail(TentativeParseMode mode,
         int count = 0;
         if (mode == TentativeParseMode::Heavy) {
             if (std::strcmp(kind, "tentative_enter") == 0)
-                count = tentative_parse_stats_.heavy_enter;
+                count = diagnostic_state_.tentative_parse_stats.heavy_enter;
             else if (std::strcmp(kind, "tentative_commit") == 0)
-                count = tentative_parse_stats_.heavy_commit;
+                count = diagnostic_state_.tentative_parse_stats.heavy_commit;
             else if (std::strcmp(kind, "tentative_rollback") == 0)
-                count = tentative_parse_stats_.heavy_rollback;
+                count = diagnostic_state_.tentative_parse_stats.heavy_rollback;
         } else {
             if (std::strcmp(kind, "tentative_enter") == 0)
-                count = tentative_parse_stats_.lite_enter;
+                count = diagnostic_state_.tentative_parse_stats.lite_enter;
             else if (std::strcmp(kind, "tentative_commit") == 0)
-                count = tentative_parse_stats_.lite_commit;
+                count = diagnostic_state_.tentative_parse_stats.lite_commit;
             else if (std::strcmp(kind, "tentative_rollback") == 0)
-                count = tentative_parse_stats_.lite_rollback;
+                count = diagnostic_state_.tentative_parse_stats.lite_rollback;
         }
         if (count > 0) oss << " count=" << count;
     }
@@ -1294,9 +1337,11 @@ std::string Parser::format_tentative_parse_detail(TentativeParseMode mode,
 }
 
 void Parser::dump_parse_debug_trace() const {
-    if (!parser_debug_enabled() || parse_debug_events_.empty()) return;
+    if (!parser_debug_enabled() || diagnostic_state_.parse_debug_events.empty()) {
+        return;
+    }
     bool has_visible_event = false;
-    for (const ParseDebugEvent& event : parse_debug_events_) {
+    for (const ParseDebugEvent& event : diagnostic_state_.parse_debug_events) {
         if (parse_debug_event_visible(event.kind.c_str())) {
             has_visible_event = true;
             break;
@@ -1304,11 +1349,16 @@ void Parser::dump_parse_debug_trace() const {
     }
     if (!has_visible_event) return;
     fprintf(stderr, "%s:%d:%d: note: parser debug trace follows\n",
-            best_parse_failure_.active ? diag_file_at(best_parse_failure_.token_index)
+            diagnostic_state_.best_parse_failure.active
+                ? diag_file_at(diagnostic_state_.best_parse_failure.token_index)
                                        : source_file_.c_str(),
-            best_parse_failure_.active ? best_parse_failure_.line : 1,
-            best_parse_failure_.active ? best_parse_failure_.column : 1);
-    for (const ParseDebugEvent& event : parse_debug_events_) {
+            diagnostic_state_.best_parse_failure.active
+                ? diagnostic_state_.best_parse_failure.line
+                : 1,
+            diagnostic_state_.best_parse_failure.active
+                ? diagnostic_state_.best_parse_failure.column
+                : 1);
+    for (const ParseDebugEvent& event : diagnostic_state_.parse_debug_events) {
         if (!parse_debug_event_visible(event.kind.c_str())) continue;
         fprintf(stderr, "[pdebug] kind=%s",
                 event.kind.c_str());
@@ -1319,7 +1369,7 @@ void Parser::dump_parse_debug_trace() const {
         fprintf(stderr, "\n");
     }
     const std::vector<std::string> summary_stack = best_debug_summary_stack();
-    if (best_parse_failure_.active && !summary_stack.empty()) {
+    if (diagnostic_state_.best_parse_failure.active && !summary_stack.empty()) {
         const std::vector<const std::string*> compact_stack =
             collapse_adjacent_stack_frames(summary_stack);
         fprintf(stderr, "[pdebug] stack:");
@@ -1828,8 +1878,8 @@ void Parser::skip_until(TokenKind k) {
 
 Node* Parser::parse() {
     std::vector<Node*> items;
-    had_error_ = false;
-    parse_error_count_ = 0;
+    diagnostic_state_.had_error = false;
+    diagnostic_state_.parse_error_count = 0;
     int no_progress_steps = 0;
     reset_parse_debug_progress();
 
@@ -1841,23 +1891,24 @@ Node* Parser::parse() {
             item = parse_top_level();
         } catch (const std::exception& e) {
             // Parse error: emit stable diagnostic and try to recover.
-            int err_idx = best_parse_failure_.active
-                              ? best_parse_failure_.token_index
+            int err_idx = diagnostic_state_.best_parse_failure.active
+                              ? diagnostic_state_.best_parse_failure.token_index
                               : (!at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1));
-            int err_line = best_parse_failure_.active
-                               ? best_parse_failure_.line
+            int err_line = diagnostic_state_.best_parse_failure.active
+                               ? diagnostic_state_.best_parse_failure.line
                                : ((!at_end()) ? cur().line : (pos_ > 0 ? tokens_[pos_-1].line : 1));
-            int err_col  = best_parse_failure_.active
-                               ? best_parse_failure_.column
+            int err_col  = diagnostic_state_.best_parse_failure.active
+                               ? diagnostic_state_.best_parse_failure.column
                                : ((!at_end()) ? cur().column : 1);
             std::string diag = format_best_parse_failure();
             fprintf(stderr, "%s:%d:%d: error: %s\n",
                     diag_file_at(err_idx), err_line, err_col,
                     diag.empty() ? e.what() : diag.c_str());
             dump_parse_debug_trace();
-            had_error_ = true;
-            ++parse_error_count_;
-            if (parse_error_count_ >= max_parse_errors_) {
+            diagnostic_state_.had_error = true;
+            ++diagnostic_state_.parse_error_count;
+            if (diagnostic_state_.parse_error_count >=
+                diagnostic_state_.max_parse_errors) {
                 fprintf(stderr, "%s:%d:%d: error: too many errors emitted, stopping now\n",
                         diag_file_at(err_idx), err_line, err_col);
                 break;
@@ -1871,7 +1922,7 @@ Node* Parser::parse() {
             continue;
         }
         if (pos_ == loop_start_pos && !at_end()) {
-            had_error_ = true;
+            diagnostic_state_.had_error = true;
             ++no_progress_steps;
             note_parse_failure_message("unexpected token with no parse progress");
             std::string diag = format_best_parse_failure();
@@ -1885,8 +1936,8 @@ Node* Parser::parse() {
             }
             dump_parse_debug_trace();
             consume();
-            ++parse_error_count_;
-            if (no_progress_steps >= max_no_progress_steps_) {
+            ++diagnostic_state_.parse_error_count;
+            if (no_progress_steps >= diagnostic_state_.max_no_progress_steps) {
                 fprintf(stderr, "%s:%d:%d: error: too many errors emitted, stopping now\n",
                         diag_file_at(!at_end() ? pos_ : static_cast<int>(tokens_.size()) - 1),
                         !at_end() ? cur().line : tokens_.back().line,

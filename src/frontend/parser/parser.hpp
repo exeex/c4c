@@ -261,30 +261,6 @@ class Parser {
 
   // ── diagnostic and recovery state ────────────────────────────────────────
   ParserDiagnosticState diagnostic_state_;
-  // True if parse() encountered any recoverable parse error.
-  bool& had_error_ = diagnostic_state_.had_error;
-  int& parse_error_count_ = diagnostic_state_.parse_error_count;
-  int& max_parse_errors_ = diagnostic_state_.max_parse_errors;
-  int& max_no_progress_steps_ = diagnostic_state_.max_no_progress_steps;
-  unsigned& parser_debug_channels_ = diagnostic_state_.parser_debug_channels;
-  int& max_parse_debug_events_ = diagnostic_state_.max_parse_debug_events;
-  int& parse_debug_progress_interval_ms_ =
-      diagnostic_state_.parse_debug_progress_interval_ms;
-  std::vector<ParseContextFrame>& parse_context_stack_ =
-      diagnostic_state_.parse_context_stack;
-  std::vector<ParseDebugEvent>& parse_debug_events_ =
-      diagnostic_state_.parse_debug_events;
-  ParseFailure& best_parse_failure_ = diagnostic_state_.best_parse_failure;
-  int& best_parse_stack_token_index_ =
-      diagnostic_state_.best_parse_stack_token_index;
-  std::vector<std::string>& best_parse_stack_trace_ =
-      diagnostic_state_.best_parse_stack_trace;
-  TentativeParseStats& tentative_parse_stats_ =
-      diagnostic_state_.tentative_parse_stats;
-  std::chrono::steady_clock::time_point& parse_debug_started_at_ =
-      diagnostic_state_.parse_debug_started_at;
-  std::chrono::steady_clock::time_point& parse_debug_last_progress_at_ =
-      diagnostic_state_.parse_debug_last_progress_at;
 
   // ── pragma state ─────────────────────────────────────────────────────────
   ParserPragmaState pragma_state_;
