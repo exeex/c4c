@@ -1316,14 +1316,18 @@ Node* Parser::parse_top_level() {
                             ++probe;
                         }
                         std::vector<std::string> qualifier_segments;
+                        std::vector<TextId> qualifier_text_ids;
                         int owner_template_arg_start = -1;
                         int owner_template_arg_end = -1;
                         std::string member_name;
                         while (probe < core_input_state_.pos) {
                             if (core_input_state_.tokens[probe].kind != TokenKind::Identifier)
                                 break;
+                            const Token& segment_token = core_input_state_.tokens[probe];
                             const std::string segment =
-                                std::string(token_spelling(core_input_state_.tokens[probe]));
+                                std::string(token_spelling(segment_token));
+                            const TextId segment_text_id =
+                                parser_text_id_for_token(segment_token.text_id, segment);
                             ++probe;
                             if (probe < core_input_state_.pos &&
                                 core_input_state_.tokens[probe].kind == TokenKind::Less) {
@@ -1344,6 +1348,7 @@ Node* Parser::parse_top_level() {
                                     core_input_state_.tokens[probe].kind ==
                                         TokenKind::Identifier) {
                                     qualifier_segments.push_back(segment);
+                                    qualifier_text_ids.push_back(segment_text_id);
                                     continue;
                                 }
                             }
@@ -1360,22 +1365,17 @@ Node* Parser::parse_top_level() {
                             owner_qn.qualifier_segments.assign(
                                 qualifier_segments.begin(),
                                 qualifier_segments.end() - 1);
-                            owner_qn.qualifier_text_ids.reserve(
-                                owner_qn.qualifier_segments.size());
-                            for (const std::string& segment :
-                                 owner_qn.qualifier_segments) {
-                                owner_qn.qualifier_text_ids.push_back(
-                                    parser_text_id_for_token(kInvalidText, segment));
-                            }
+                            owner_qn.qualifier_text_ids.assign(
+                                qualifier_text_ids.begin(),
+                                qualifier_text_ids.end() - 1);
                             owner_qn.base_name = qualifier_segments.back();
-                            owner_qn.base_text_id = parser_text_id_for_token(
-                                kInvalidText, owner_qn.base_name);
+                            owner_qn.base_text_id = qualifier_text_ids.back();
 
                             std::string owner_name =
                                 resolve_qualified_type_name(owner_qn);
                             if (owner_name.empty()) {
                                 owner_name = resolve_visible_type_name(
-                                    qualifier_segments.back());
+                                    owner_qn.base_text_id, owner_qn.base_name);
                             }
 
                             std::string owner_arg_refs;

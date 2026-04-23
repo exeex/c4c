@@ -9,20 +9,23 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: updated the frontend parser namespace compatibility test to
-  seed `using_value_aliases` with the interned `TextId` key instead of a raw
-  string so the resolved alias path exercises the `TextId`-keyed lookup again
-- kept the change inside the owned test compatibility slice and preserved the
-  broader parser namespace cleanup from the prior Step 2 packet
+- Step 2 packet: kept the `using Alias = ns::box<int>::value_type` owner probe
+  on token-derived `TextId`s while scanning the declaration, so
+  `resolve_qualified_type_name()` and the visible-type fallback stop
+  reconstructing the namespace owner chain from raw strings in that path
+- kept the change inside parser declaration alias-owner resolution and
+  preserved the broader namespace tree / push-pop lookup behavior from the
+  prior Step 2 packets
 
 ## Suggested Next
 
-- if Step 2 continues, audit any remaining frontend parser namespace tests or
-  compatibility helpers that still write namespace alias state through raw
-  string keys instead of the `TextId` path now used by lookup
-- keep the route inside parser namespace lookup and avoid widening into
-  unrelated declarator parsing, lexical-scope, binding-table, or backend
-  cleanup
+- if Step 2 continues, audit remaining parser helper sites that still rebuild
+  `QualifiedNameRef` segment `TextId`s from recovered strings when the source
+  path already has parser-owned identity available
+- the nearest candidates are the nested owner walks in
+  `parser_types_declarator.cpp`; keep the route inside qualified namespace/type
+  traversal and avoid widening into unrelated declarator parsing, lexical
+  scope, binding-table, or backend cleanup
 
 ## Watchouts
 
@@ -50,6 +53,6 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Proof
 
-- command: `cmake --build build -j && ctest --test-dir build -j --output-on-failure -R 'namespace|namespaced|using_namespace|using_declaration_namespace|using_nested_namespace|bad_namespace_member_without_qualification' | tee test_after.log`
-- result: passed, 45/45 focused tests green
+- command: `cmake --build build -j && ctest --test-dir build -j --output-on-failure -R 'namespace|namespaced|using_namespace|using_declaration_namespace|using_nested_namespace|bad_namespace_member_without_qualification|c_style_cast_.*alias|template_member_owner' | tee test_after.log`
+- result: passed, 62/62 focused tests green
 - log: `test_after.log`
