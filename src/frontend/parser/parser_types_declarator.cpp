@@ -566,10 +566,14 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
         const std::string spelled_name =
             join_token_lexemes(owner_start, core_input_state_.pos);
         std::string resolved = dep_name;
-        if (!has_visible_typedef_type(dep_name)) {
+        const TypeSpec* visible_dep_typedef =
+            (!qn.is_global_qualified && qn.qualifier_segments.empty())
+                ? find_visible_typedef_type(qn.base_text_id, qn.base_name)
+                : nullptr;
+        if (!visible_dep_typedef && !has_visible_typedef_type(dep_name)) {
             resolved = resolve_visible_type_name(dep_name);
         }
-        if (!has_typedef_type(resolved)) {
+        if (!visible_dep_typedef && !has_typedef_type(resolved)) {
             bool preserved_template_owner_member = false;
             if (spelled_name.find('<') != std::string::npos &&
                 parser_text(qn.base_text_id, qn.base_name) == "type") {

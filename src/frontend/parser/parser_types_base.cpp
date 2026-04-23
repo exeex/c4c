@@ -1166,7 +1166,12 @@ TypeSpec Parser::parse_base_type() {
         // Try to resolve the typedef to its underlying TypeSpec
         const char* tname = ts.tag;
         if (tname) {
-            if (const TypeSpec* typedef_type = find_typedef_type(tname)) {
+            const bool is_unqualified_typedef =
+                std::strstr(tname, "::") == nullptr;
+            const TypeSpec* typedef_type =
+                is_unqualified_typedef ? find_visible_typedef_type(tname)
+                                       : find_typedef_type(tname);
+            if (typedef_type) {
                 // Resolve: use the stored TypeSpec, preserving qualifiers from this context
                 bool save_const = ts.is_const, save_vol = ts.is_volatile;
                 ts = *typedef_type;

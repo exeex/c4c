@@ -8,25 +8,25 @@ Current Step Title: Move unqualified visible lookup onto the new scope-local pat
 
 ## Just Finished
 Completed another Step 4 parser packet by routing the remaining unqualified
-template/struct type-head helper probes through a shared local-first visible
-type helper. `is_type_start`, value-template argument probing, and expression
-owner/type-head checks now consult the scoped visible typedef facade before
-falling back to legacy visible-name resolution.
+typedef/dependent-type resolution points in base-type parsing through the
+scoped visible typedef facade. `parse_base_type()` now resolves unqualified
+typedef tags through local-first visible lookup before the legacy flat table,
+and dependent `typename` parsing no longer falls through when the visible
+binding exists only in parser-local scope state.
 
 ## Suggested Next
-Continue Step 4 by auditing the remaining direct-resolution paths that still
-assume local typedefs are mirrored into legacy flat tables, especially the
-template member lookup fallback in `parser_types_template.cpp` and the
-unqualified typedef resolution paths in `parse_base_type()` and dependent
-typename handling.
+Continue Step 4 by auditing the remaining template/member lookup helpers that
+still read typedef state directly from legacy flat tables, especially the
+fallbacks in `parser_types_template.cpp` that may still miss parser-local
+visible typedef bindings.
 
 ## Watchouts
 Do not collapse namespace traversal into lexical lookup. Step 3 only adds the
 local-first facade; local bindings are still mirrored into the legacy flat
 tables in some paths, so remaining Step 4 cleanup should keep qualified lookup
 and namespace-owned resolution on their separate route. The new helper is only
-for type-head probes; it should not replace places that still need canonical
-typedef names for alias-template or compatibility bookkeeping.
+for unqualified visible typedef resolution; qualified owner/member traversal
+should keep using its existing namespace and struct-member routes.
 
 ## Proof
 Proof command: `cmake --build --preset default && ctest --test-dir build -j
