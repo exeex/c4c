@@ -141,9 +141,10 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
         // fell through to the default TB_INT base with the identifier consumed as
         // a declarator name. This happens for forwarded NTTP names like <N>
         // where N is not a type. Reject so non-type parsing can handle it.
-        if (is_cpp_mode() && pos_ == start_pos + 1 &&
-            tokens_[start_pos].kind == TokenKind::Identifier) {
-            const std::string_view start_name = token_spelling(tokens_[start_pos]);
+        if (is_cpp_mode() && core_input_state_.pos == start_pos + 1 &&
+            core_input_state_.tokens[start_pos].kind == TokenKind::Identifier) {
+            const std::string_view start_name =
+                token_spelling(core_input_state_.tokens[start_pos]);
             if (!is_typedef_name(start_name) &&
                 !is_template_scope_type_param(start_name)) {
             return false;
@@ -163,9 +164,10 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
 
 bool Parser::capture_template_arg_expr(int expr_start, TemplateArgParseResult* out_arg) {
     if (!out_arg) return false;
-    const int expr_end = find_template_arg_expr_end(tokens_, expr_start);
-    const std::string expr_text =
-        capture_template_arg_expr_text(*this, tokens_, expr_start, expr_end);
+    const int expr_end =
+        find_template_arg_expr_end(core_input_state_.tokens, expr_start);
+    const std::string expr_text = capture_template_arg_expr_text(
+        *this, core_input_state_.tokens, expr_start, expr_end);
     if (expr_text.empty()) return false;
     out_arg->is_value = true;
     out_arg->value = 0;
@@ -184,9 +186,10 @@ bool Parser::try_parse_template_non_type_expr(int expr_start,
         ++active_context_state_.template_arg_expr_depth;
         Node* expr = parse_assign_expr();
         --active_context_state_.template_arg_expr_depth;
-        if (pos_ > expr_start && (check(TokenKind::Comma) || check_template_close())) {
-            const std::string expr_text =
-                capture_template_arg_expr_text(*this, tokens_, expr_start, pos_);
+        if (core_input_state_.pos > expr_start &&
+            (check(TokenKind::Comma) || check_template_close())) {
+            const std::string expr_text = capture_template_arg_expr_text(
+                *this, core_input_state_.tokens, expr_start, core_input_state_.pos);
             if (!expr_text.empty()) {
                 out_arg->is_value = true;
                 out_arg->value = 0;
@@ -207,7 +210,7 @@ bool Parser::try_parse_template_non_type_expr(int expr_start,
 
 bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
     if (!out_arg) return false;
-    const int expr_start = pos_;
+    const int expr_start = core_input_state_.pos;
     long long sign = 1;
     if (match(TokenKind::Minus)) sign = -1;
     if (check(TokenKind::KwTrue)) {
@@ -257,7 +260,7 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
             return true;
         }
         // id_guard destructor restores pos_ on scope exit
-    } else if (expr_start != pos_) {
+    } else if (expr_start != core_input_state_.pos) {
         pos_ = expr_start;
     }
 
@@ -291,7 +294,9 @@ bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx,
             return false;
         }
     }
-    if (starts_with_value_like_template_expr(*this, tokens_, pos_)) return true;
+    if (starts_with_value_like_template_expr(
+            *this, core_input_state_.tokens, core_input_state_.pos))
+        return true;
     return expect_value && (
         check(TokenKind::IntLit) || check(TokenKind::CharLit) ||
         check(TokenKind::KwTrue) || check(TokenKind::KwFalse) ||
@@ -534,7 +539,7 @@ void Parser::apply_declarator_pointer_token(TypeSpec& ts, TokenKind pointer_tok,
 
 bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
     ParseContextGuard trace(this, __func__);
-    const int start_pos = pos_;
+    const int start_pos = core_input_state_.pos;
     std::string dep_name;
     QualifiedNameRef qn;
     if (!consume_qualified_type_spelling_with_typename(
@@ -549,24 +554,27 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
         auto join_token_lexemes = [&](int start, int end) -> std::string {
             std::string out;
             for (int i = start; i < end; ++i) {
-                out += token_spelling(tokens_[i]);
+                out += token_spelling(core_input_state_.tokens[i]);
             }
             return out;
         };
         const int owner_start =
-            (start_pos < pos_ && tokens_[start_pos].kind == TokenKind::KwTypename)
+            (start_pos < core_input_state_.pos &&
+             core_input_state_.tokens[start_pos].kind == TokenKind::KwTypename)
                 ? (start_pos + 1)
                 : start_pos;
-        const std::string spelled_name = join_token_lexemes(owner_start, pos_);
+        const std::string spelled_name =
+            join_token_lexemes(owner_start, core_input_state_.pos);
         std::string resolved = resolve_visible_type_name(dep_name);
         if (!has_typedef_type(resolved)) {
             bool preserved_template_owner_member = false;
             if (spelled_name.find('<') != std::string::npos &&
                 parser_text(qn.base_text_id, qn.base_name) == "type") {
                 int final_scope_pos = -1;
-                for (int i = owner_start; i + 1 < pos_; ++i) {
-                    if (tokens_[i].kind == TokenKind::ColonColon &&
-                        tokens_[i + 1].kind == TokenKind::Identifier) {
+                for (int i = owner_start; i + 1 < core_input_state_.pos; ++i) {
+                    if (core_input_state_.tokens[i].kind == TokenKind::ColonColon &&
+                        core_input_state_.tokens[i + 1].kind ==
+                            TokenKind::Identifier) {
                         final_scope_pos = i;
                     }
                 }
@@ -577,11 +585,11 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                     std::vector<Token> inject_toks;
                     inject_toks.reserve(static_cast<size_t>(final_scope_pos - owner_start + 1));
                     for (int i = owner_start; i < final_scope_pos; ++i) {
-                        inject_toks.push_back(tokens_[i]);
+                        inject_toks.push_back(core_input_state_.tokens[i]);
                     }
                     Token sentinel_seed{};
                     if (owner_start < final_scope_pos) {
-                        sentinel_seed = tokens_[owner_start];
+                        sentinel_seed = core_input_state_.tokens[owner_start];
                     }
                     Token sentinel =
                         make_injected_token(sentinel_seed, TokenKind::Semi, ";");
@@ -603,7 +611,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                         (owner_ts.tag && owner_ts.tag[0])) {
                         owner_ts.deferred_member_type_name =
                             arena_.strdup(std::string(token_spelling(
-                                              tokens_[final_scope_pos + 1]))
+                                              core_input_state_.tokens[final_scope_pos + 1]))
                                               .c_str());
                         cache_typedef_type(spelled_name, owner_ts);
                         resolved = spelled_name;

@@ -9,17 +9,19 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Just Finished
 
-- completed the Step 2 `parser_types_declarator.cpp` probe-routing packet by
-  moving the read-only template/declarator lookahead helpers onto
-  `core_input_state_` access while leaving the intentional token-stream
-  save/restore rollback sites unchanged
+- completed another Step 2 `parser_types_declarator.cpp` bundle-routing packet
+  by moving template-argument expression capture, value-like template probes,
+  and dependent-typename token-window spelling reads onto `core_input_state_`
+  access while leaving the intentional token-stream save/restore rollback
+  sites unchanged
 
 ## Suggested Next
 
-- continue Step 2 in `parser_types_declarator.cpp` by routing the remaining
-  read-only cursor probes and token-spelling helpers through
-  `core_input_state_`, while still avoiding the injected-token save/restore
-  path in the dependent-typename flow
+- treat the remaining direct `pos_`/`tokens_` use in
+  `parser_types_declarator.cpp` as intentional rollback mechanics for later
+  Step 3 classification work, and move the next Step 2 bundle-routing packet
+  to the next parser implementation file that still performs read-only
+  parser-state layout access
 
 ## Watchouts
 
@@ -42,5 +44,7 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 ## Proof
 
 - `cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_parse_top_level_pragma_pack_preserves_following_decl_dump|cpp_parse_top_level_pragma_gcc_visibility_preserves_following_decl_dump)$' | tee test_after.log`
-- Result: passed
+- Result: passed; `test_before.log` vs `test_after.log` stayed flat at `3 -> 3`
+  passing tests, so `check_monotonic_regression.py` reported its expected
+  strict-no-increase failure even though the subset showed no new failures
 - Log: `test_after.log`
