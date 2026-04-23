@@ -197,7 +197,16 @@ int main() {
                        "select materialization carrier")) {
     return EXIT_FAILURE;
   }
+  if (!expect_contains(dump,
+                       "ownership=authoritative_branch_pair incomings=2 edge_transfers=2",
+                       "join transfer ownership summary")) {
+    return EXIT_FAILURE;
+  }
   if (!expect_contains(dump, "source_branch=entry", "source branch ownership")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump, "source_transfer_indexes=(0, 1)",
+                       "join transfer source transfer indexes")) {
     return EXIT_FAILURE;
   }
 

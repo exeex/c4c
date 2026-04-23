@@ -3,18 +3,22 @@ Source Idea Path: ideas/open/87_out_of_ssa_contract_and_parallel_copy_authority_
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Contract Surface Audit
-Plan Review Counter: 1 / 6
+Plan Review Counter: 2 / 6
 # Current Packet
 
 ## Just Finished
 
-none
+Step 1 audit found that `PreparedJoinTransfer` already publishes authoritative branch ownership,
+incoming labels, and edge transfers, while `PreparedParallelCopyBundle` already publishes
+cycle-breaking steps. The first bounded packet now makes the prepared dump summarize that
+ownership directly with join-transfer counts/source indexes and parallel-copy resolution/linkage,
+then proves those strings in backend printer coverage.
 
 ## Suggested Next
 
-Step 1: audit the current `out_of_ssa` contract surface in `src/backend/prealloc/prealloc.hpp`,
-`src/backend/prealloc/out_of_ssa.cpp`, and `src/backend/prealloc/prepared_printer.cpp`, then capture the first
-bounded implementation packet from that audit.
+Step 1: finish the contract-surface audit by checking whether any out-of-SSA continuation
+ownership or slot-backed carrier policy is still implicit in helpers/tests rather than visible from
+the published control-flow records and dump output.
 
 ## Watchouts
 
@@ -23,4 +27,5 @@ bounded implementation packet from that audit.
 
 ## Proof
 
-Lifecycle repair only; no build or tests run.
+Pending: `cmake --build --preset default` and
+`ctest --test-dir build -j --output-on-failure -R '^backend_'`.

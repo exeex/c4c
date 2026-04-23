@@ -1,5 +1,6 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
+#include "src/backend/prealloc/prepared_printer.hpp"
 #include "src/target_profile.hpp"
 
 #include <cstdlib>
@@ -20,6 +21,15 @@ c4c::TargetProfile riscv_target_profile() {
 int fail(const char* message) {
   std::cerr << message << "\n";
   return 1;
+}
+
+bool expect_contains(const std::string& text, std::string_view needle) {
+  if (text.find(needle) != std::string::npos) {
+    return true;
+  }
+  std::cerr << "missing dump fragment: " << needle << "\n";
+  std::cerr << "--- dump ---\n" << text << "\n";
+  return false;
 }
 
 bool contains_invariant(const prepare::PreparedBirModule& module,
@@ -2155,6 +2165,31 @@ int main() {
                                              "parallel_copy_prepare_contract");
       status != 0) {
     return status;
+  }
+  const std::string parallel_copy_dump = prepare::print(prepared_parallel_copy_cycle);
+  if (!expect_contains(parallel_copy_dump,
+                       "parallel_copy entry -> loop has_cycle=no resolution=acyclic moves=2 steps=2")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(parallel_copy_dump,
+                       "parallel_copy body -> loop has_cycle=yes resolution=cycle_break moves=2 steps=3")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(parallel_copy_dump,
+                       "move[0] 1 -> a join_transfer_index=0 edge_transfer_index=0")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(parallel_copy_dump,
+                       "move[1] 2 -> b join_transfer_index=1 edge_transfer_index=0")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(parallel_copy_dump,
+                       "move[0] b -> a join_transfer_index=0 edge_transfer_index=1")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(parallel_copy_dump,
+                       "move[1] a -> b join_transfer_index=1 edge_transfer_index=1")) {
+    return EXIT_FAILURE;
   }
 
   const auto prepared_conditional_successor_use = legalize_merge3_conditional_successor_use_module();

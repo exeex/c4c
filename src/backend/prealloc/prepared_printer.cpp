@@ -146,6 +146,20 @@ std::string maybe_register_bank(std::optional<PreparedRegisterBank> bank) {
   return std::string(prepared_register_bank_name(*bank));
 }
 
+std::string prepared_join_transfer_ownership_name(const PreparedJoinTransfer& transfer) {
+  if (transfer.source_branch_block_label.has_value()) {
+    return "authoritative_branch_pair";
+  }
+  if (!transfer.edge_transfers.empty()) {
+    return "per_edge";
+  }
+  return "none";
+}
+
+std::string prepared_parallel_copy_resolution_name(const PreparedParallelCopyBundle& bundle) {
+  return bundle.has_cycle ? "cycle_break" : "acyclic";
+}
+
 void append_register_occupancy(std::ostringstream& out,
                                std::size_t contiguous_width,
                                const std::vector<std::string>& occupied_register_names) {
@@ -328,7 +342,10 @@ void append_prepared_control_flow(std::ostringstream& out, const PreparedBirModu
           << " kind=" << prepared_join_transfer_kind_name(transfer.kind)
           << " carrier="
           << prepared_join_transfer_carrier_kind_name(
-                 effective_prepared_join_transfer_carrier_kind(transfer));
+                 effective_prepared_join_transfer_carrier_kind(transfer))
+          << " ownership=" << prepared_join_transfer_ownership_name(transfer)
+          << " incomings=" << transfer.incomings.size()
+          << " edge_transfers=" << transfer.edge_transfers.size();
       if (transfer.storage_name.has_value()) {
         out << " storage=" << prepared_slot_name(module.names, *transfer.storage_name);
       }
@@ -344,6 +361,18 @@ void append_prepared_control_flow(std::ostringstream& out, const PreparedBirModu
             << ", "
             << maybe_block_label(module.names,
                                  transfer.source_false_incoming_label.value_or(kInvalidBlockLabel))
+            << ")";
+      }
+      if (transfer.source_true_transfer_index.has_value() ||
+          transfer.source_false_transfer_index.has_value()) {
+        out << " source_transfer_indexes=("
+            << (transfer.source_true_transfer_index.has_value()
+                    ? std::to_string(*transfer.source_true_transfer_index)
+                    : std::string("<none>"))
+            << ", "
+            << (transfer.source_false_transfer_index.has_value()
+                    ? std::to_string(*transfer.source_false_transfer_index)
+                    : std::string("<none>"))
             << ")";
       }
       out << "\n";
@@ -368,11 +397,16 @@ void append_prepared_control_flow(std::ostringstream& out, const PreparedBirModu
       out << "  parallel_copy "
           << maybe_block_label(module.names, bundle.predecessor_label)
           << " -> " << maybe_block_label(module.names, bundle.successor_label)
-          << " has_cycle=" << (bundle.has_cycle ? "yes" : "no") << "\n";
+          << " has_cycle=" << (bundle.has_cycle ? "yes" : "no")
+          << " resolution=" << prepared_parallel_copy_resolution_name(bundle)
+          << " moves=" << bundle.moves.size()
+          << " steps=" << bundle.steps.size() << "\n";
       for (std::size_t move_index = 0; move_index < bundle.moves.size(); ++move_index) {
         const auto& move = bundle.moves[move_index];
         out << "    move[" << move_index << "] "
             << render_value(move.source_value) << " -> " << render_value(move.destination_value)
+            << " join_transfer_index=" << move.join_transfer_index
+            << " edge_transfer_index=" << move.edge_transfer_index
             << " carrier="
             << prepared_join_transfer_carrier_kind_name(move.carrier_kind);
         if (move.storage_name.has_value()) {

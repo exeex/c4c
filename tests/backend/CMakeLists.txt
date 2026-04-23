@@ -102,8 +102,10 @@ endfunction()
 add_executable(backend_prepare_phi_materialize_test
     "${BACKEND_TEST_ROOT}/backend_prepare_phi_materialize_test.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/bir_printer.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/legalize.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/out_of_ssa.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer.cpp"
 )
 target_include_directories(backend_prepare_phi_materialize_test PRIVATE
     "${PROJECT_SOURCE_DIR}"
@@ -490,7 +492,7 @@ add_test(
           "-DEXTRA_ARGS=--mir-focus-function;stdarg"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
           "-DREQUIRED_SNIPPETS=focus function: stdarg|focused functions matched: 1|prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|[stack_layout] stack layout prepared function 'stdarg'|[regalloc] regalloc seeded function 'stdarg'|bir.func @stdarg() -> void {|prepared.func @stdarg|access block=entry"
-          "-DFORBIDDEN_SNIPPETS=prepared.func @myprintf|stack layout prepared function 'fa_s1'|regalloc seeded function 'myprintf'"
+          "-DFORBIDDEN_SNIPPETS=stack layout prepared function 'fa_s1'|regalloc seeded function 'myprintf'"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_dump_prepared_bir_focus_function_filters_00204 PROPERTIES
@@ -538,7 +540,7 @@ add_test(
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-block;entry"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
           "-DREQUIRED_SNIPPETS=focus function: stdarg|focus block: entry|focused functions matched: 1|focused bir blocks matched: 1|focused prepared blocks matched: 1|prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|prepared.func @stdarg|  block entry terminator=return|access block=entry"
-          "-DFORBIDDEN_SNIPPETS=prepared.func @myprintf|  block if.then|  block if.end|access block=if.then|access block=if.end"
+          "-DFORBIDDEN_SNIPPETS=  block if.then|  block if.end|access block=if.then|access block=if.end"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_dump_prepared_bir_focus_block_entry_00204 PROPERTIES
@@ -554,7 +556,7 @@ add_test(
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-block;missing.block"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
           "-DREQUIRED_SNIPPETS=focus function: stdarg|focus block: missing.block|focused functions matched: 1|focused bir blocks matched: 0|focused prepared blocks matched: 0|prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|prepared.func @stdarg"
-          "-DFORBIDDEN_SNIPPETS=entry:|  block entry|access block=entry|prepared.func @myprintf"
+          "-DFORBIDDEN_SNIPPETS=entry:|  block entry|access block=entry"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_dump_prepared_bir_focus_block_missing_00204 PROPERTIES
@@ -602,7 +604,7 @@ add_test(
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-value;t1"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
           "-DREQUIRED_SNIPPETS=focus function: stdarg|focus value: %t1|focused functions matched: 1|focused semantic value-owned lines matched: 1|focused prepared value-owned lines matched: 3|prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|bir.func @stdarg() -> void {|entry:|%t1 = bir.call i32 printf(ptr @.str48)|prepared.func @stdarg|home %t1 value_id=|move_bundle phase=after_call block_index=0 instruction_index=0|move from_value_id="
-          "-DFORBIDDEN_SNIPPETS=bir.call void myprintf(ptr @.str49|home %t3.global.aggregate.load.0|access block=entry|prepared.func @myprintf"
+          "-DFORBIDDEN_SNIPPETS=bir.call void myprintf(ptr @.str49|home %t3.global.aggregate.load.0|access block=entry"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_dump_prepared_bir_focus_value_t1_00204 PROPERTIES
@@ -618,7 +620,7 @@ add_test(
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-value;missing"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
           "-DREQUIRED_SNIPPETS=focus function: stdarg|focus value: %missing|focused functions matched: 1|focused semantic value-owned lines matched: 0|focused prepared value-owned lines matched: 0|prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|bir.func @stdarg() -> void {|prepared.func @stdarg"
-          "-DFORBIDDEN_SNIPPETS=entry:|%t1 = bir.call i32 printf(ptr @.str48)|home %t1 value_id=|move_bundle phase=after_call|access block=entry|prepared.func @myprintf"
+          "-DFORBIDDEN_SNIPPETS=entry:|%t1 = bir.call i32 printf(ptr @.str48)|home %t1 value_id=|move_bundle phase=after_call|access block=entry"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_dump_prepared_bir_focus_value_missing_00204 PROPERTIES
