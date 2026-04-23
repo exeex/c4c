@@ -754,7 +754,7 @@ Node* Parser::parse_local_decl() {
                     const TextId arg_text_id = arg_tok.text_id;
                     const std::string arg_name = std::string(token_spelling(arg_tok));
                     const std::string resolved_type_name =
-                        resolve_visible_type_name(arg_name);
+                        resolve_visible_type_name(arg_text_id, arg_name);
                     const bool arg_is_type =
                         is_typedef_name(arg_text_id, arg_name) ||
                         has_visible_typedef_type(arg_text_id, arg_name) ||
@@ -806,7 +806,7 @@ Node* Parser::parse_local_decl() {
                             const TextId arg_text_id = arg_tok.text_id;
                             const std::string arg_name = std::string(token_spelling(arg_tok));
                             const std::string resolved_type_name =
-                                resolve_visible_type_name(arg_name);
+                                resolve_visible_type_name(arg_text_id, arg_name);
                             const bool arg_is_type =
                                 is_template_scope_type_param(arg_text_id, arg_name) ||
                                 is_typedef_name(arg_text_id, arg_name) ||

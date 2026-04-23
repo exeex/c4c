@@ -7,17 +7,18 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by auditing the remaining identifier-head helper
-sites used during template type/value disambiguation and simple type-head
-probing. Retargeted those paths so they keep the current token `TextId` on the
-local-visible-typedef-first lookup route instead of re-finding identifiers by
-spelling before broader fallback logic.
+Advanced `plan.md` step 2 by retargeting the remaining constructor-vs-function
+declaration probes in `parser_declarations.cpp`. Those helper paths now carry
+the candidate argument token `TextId` through `resolve_visible_type_name(...)`
+instead of rebuilding lookup from spelling before checking local visible type
+bindings.
 
 ## Suggested Next
-Continue `plan.md` step 2 with one narrow packet that audits the remaining
-template/declarator helper sites outside `parser_types_declarator.cpp` that
-still rebuild identifier lookups from spelling rather than carrying the token
-`TextId` through the local-visible scope facade.
+Continue `plan.md` step 2 with one narrow packet that audits parser
+expression-side type/value disambiguation helpers for the same pattern,
+especially the remaining `visible_type_head_name(...)` and visible-name
+resolution call sites that still start from spelling when the current token
+already carries a valid `TextId`.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. Do not reopen the
