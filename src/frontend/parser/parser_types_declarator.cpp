@@ -633,15 +633,23 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                     for (size_t owner_start = 0; owner_start < owner_chain.size();
                          ++owner_start) {
                         std::string owner_tag = owner_chain[owner_start];
-                        if (owner_start > 0 || global_qualified) {
-                            QualifiedNameRef ns_qn;
-                            ns_qn.is_global_qualified = global_qualified;
-                            ns_qn.qualifier_segments.assign(owner_chain.begin(),
-                                                            owner_chain.begin() + owner_start);
-                            int context_id = resolve_namespace_context(ns_qn);
-                            if (context_id < 0) continue;
-                            owner_tag =
-                                canonical_name_in_context(context_id, owner_tag);
+                        QualifiedNameRef owner_qn;
+                        owner_qn.is_global_qualified = global_qualified;
+                        owner_qn.qualifier_segments.assign(owner_chain.begin(),
+                                                           owner_chain.begin() + owner_start);
+                        owner_qn.qualifier_text_ids.reserve(
+                            owner_qn.qualifier_segments.size());
+                        for (const std::string& segment : owner_qn.qualifier_segments) {
+                            owner_qn.qualifier_text_ids.push_back(
+                                parser_text_id_for_token(kInvalidText, segment));
+                        }
+                        owner_qn.base_name = owner_tag;
+                        owner_qn.base_text_id =
+                            parser_text_id_for_token(kInvalidText, owner_tag);
+                        const std::string resolved_owner_tag =
+                            resolve_qualified_type_name(owner_qn);
+                        if (!resolved_owner_tag.empty()) {
+                            owner_tag = resolved_owner_tag;
                         }
                         if (const TypeSpec* owner_typedef =
                                 find_typedef_type(owner_tag)) {

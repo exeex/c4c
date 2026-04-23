@@ -7,6 +7,21 @@
 
 namespace c4c {
 
+static std::string qualified_name_spelling(const Parser& parser,
+                                           const Parser::QualifiedNameRef& name) {
+    std::string spelled;
+    if (name.is_global_qualified) spelled += "::";
+    for (size_t i = 0; i < name.qualifier_segments.size(); ++i) {
+        const TextId text_id =
+            i < name.qualifier_text_ids.size() ? name.qualifier_text_ids[i]
+                                               : kInvalidText;
+        spelled += parser.parser_text(text_id, name.qualifier_segments[i]);
+        spelled += "::";
+    }
+    spelled += parser.parser_text(name.base_text_id, name.base_name);
+    return spelled;
+}
+
 static void finalize_pending_operator_name(std::string& name, size_t param_count) {
     if (name.find("operator_star_pending") != std::string::npos) {
         name.replace(name.find("operator_star_pending"),
@@ -1116,12 +1131,14 @@ Node* Parser::parse_top_level() {
         if (!check(TokenKind::Identifier) && !check(TokenKind::ColonColon))
             throw std::runtime_error("expected identifier after 'using'");
 
-        std::string target;
+        QualifiedNameRef target_name;
         if (match(TokenKind::ColonColon)) {
-            target = "::";
+            target_name.is_global_qualified = true;
             if (!check(TokenKind::Identifier))
                 throw std::runtime_error("expected identifier after '::'");
-            target += token_spelling(cur());
+            target_name.base_name = std::string(token_spelling(cur()));
+            target_name.base_text_id =
+                parser_text_id_for_token(cur().text_id, target_name.base_name);
             consume();
         } else {
             std::string first_name = std::string(token_spelling(cur()));
@@ -1295,10 +1312,13 @@ Node* Parser::parse_top_level() {
                         };
 
                         int probe = alias_type_pos + 1;  // skip typename
+                        bool owner_global_qualified = false;
                         if (probe < core_input_state_.pos &&
                             core_input_state_.tokens[probe].kind ==
-                                TokenKind::ColonColon)
+                                TokenKind::ColonColon) {
+                            owner_global_qualified = true;
                             ++probe;
+                        }
                         std::vector<std::string> qualifier_segments;
                         int owner_template_arg_start = -1;
                         int owner_template_arg_end = -1;
@@ -1339,20 +1359,28 @@ Node* Parser::parse_top_level() {
                             owner_template_arg_start >= 0 &&
                             owner_template_arg_end > owner_template_arg_start &&
                             !member_name.empty()) {
-                            std::string owner_name = qualifier_segments.back();
-                            if (qualifier_segments.size() > 1) {
-                                QualifiedNameRef owner_ns_qn;
-                                owner_ns_qn.qualifier_segments.assign(
-                                    qualifier_segments.begin(),
-                                    qualifier_segments.end() - 1);
-                                const int context_id =
-                                    resolve_namespace_context(owner_ns_qn);
-                                if (context_id >= 0) {
-                                    owner_name =
-                                        canonical_name_in_context(context_id, owner_name);
-                                }
+                            QualifiedNameRef owner_qn;
+                            owner_qn.is_global_qualified = owner_global_qualified;
+                            owner_qn.qualifier_segments.assign(
+                                qualifier_segments.begin(),
+                                qualifier_segments.end() - 1);
+                            owner_qn.qualifier_text_ids.reserve(
+                                owner_qn.qualifier_segments.size());
+                            for (const std::string& segment :
+                                 owner_qn.qualifier_segments) {
+                                owner_qn.qualifier_text_ids.push_back(
+                                    parser_text_id_for_token(kInvalidText, segment));
                             }
-                            owner_name = resolve_visible_type_name(owner_name);
+                            owner_qn.base_name = qualifier_segments.back();
+                            owner_qn.base_text_id = parser_text_id_for_token(
+                                kInvalidText, owner_qn.base_name);
+
+                            std::string owner_name =
+                                resolve_qualified_type_name(owner_qn);
+                            if (owner_name.empty()) {
+                                owner_name = resolve_visible_type_name(
+                                    qualifier_segments.back());
+                            }
 
                             std::string owner_arg_refs;
                             const auto owner_ranges = split_template_arg_token_ranges(
@@ -1413,38 +1441,57 @@ Node* Parser::parse_top_level() {
                 set_last_using_alias_name(qualified);
                 return nullptr;
             }
-            target = first_name;
+            target_name.base_name = std::move(first_name);
+            target_name.base_text_id =
+                parser_text_id_for_token(kInvalidText, target_name.base_name);
         }
         while (match(TokenKind::ColonColon)) {
             if (!check(TokenKind::Identifier))
                 throw std::runtime_error("expected identifier after '::'");
-            target += "::";
-            target += token_spelling(cur());
+            target_name.qualifier_segments.push_back(target_name.base_name);
+            target_name.qualifier_text_ids.push_back(target_name.base_text_id);
+            target_name.base_name = std::string(token_spelling(cur()));
+            target_name.base_text_id =
+                parser_text_id_for_token(cur().text_id, target_name.base_name);
             consume();
         }
 
-        const std::string lookup_target =
-            (target.rfind("::", 0) == 0) ? target.substr(2) : target;
-        const size_t last_sep = target.rfind("::");
         const std::string imported_name =
-            (last_sep == std::string::npos) ? target : target.substr(last_sep + 2);
-        if (const TypeSpec* imported_typedef = find_typedef_type(lookup_target)) {
-            const std::string imported_key =
-                canonical_name_in_context(using_context_id, imported_name);
-            register_typedef_binding(imported_key, *imported_typedef, true);
-            if (using_context_id == 0) {
-                register_typedef_binding(imported_name, *imported_typedef, true);
+            std::string(parser_text(target_name.base_text_id, target_name.base_name));
+        const std::string imported_type_name =
+            resolve_qualified_type_name(target_name);
+        if (!imported_type_name.empty()) {
+            if (const TypeSpec* imported_typedef =
+                    find_typedef_type(imported_type_name)) {
+                const std::string imported_key =
+                    canonical_name_in_context(using_context_id, imported_name);
+                register_typedef_binding(imported_key, *imported_typedef, true);
+                if (using_context_id == 0) {
+                    register_typedef_binding(imported_name, *imported_typedef, true);
+                }
+                recover_top_level_decl_terminator_or_boundary(*this, ln);
+                return nullptr;
             }
-        } else {
+        }
+
+        std::string imported_value_name = resolve_qualified_value_name(target_name);
+        if (imported_value_name.empty()) {
+            imported_value_name = qualified_name_spelling(*this, target_name);
+            if (imported_value_name.rfind("::", 0) == 0) {
+                imported_value_name.erase(0, 2);
+            }
+        }
+        {
             const std::string imported_key =
                 canonical_name_in_context(using_context_id, imported_name);
-            if (const TypeSpec* imported_var = find_var_type(lookup_target)) {
+            if (const TypeSpec* imported_var = find_var_type(imported_value_name)) {
                 register_var_type_binding(imported_key, *imported_var);
             }
-            if (has_known_fn_name(lookup_target)) {
+            if (has_known_fn_name(imported_value_name)) {
                 register_known_fn_name(imported_key);
             }
-            namespace_state_.using_value_aliases[using_context_id][imported_name] = lookup_target;
+            namespace_state_.using_value_aliases[using_context_id][imported_name] =
+                imported_value_name;
         }
         recover_top_level_decl_terminator_or_boundary(*this, ln);
         return nullptr;
