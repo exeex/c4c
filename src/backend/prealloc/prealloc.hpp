@@ -904,6 +904,7 @@ struct PreparedCallResultPlan {
   std::optional<PreparedRegisterBank> source_register_bank;
   std::optional<std::string> destination_register_name;
   std::optional<PreparedRegisterBank> destination_register_bank;
+  std::optional<PreparedFrameSlotId> destination_slot_id;
   std::optional<std::size_t> destination_stack_offset_bytes;
 };
 

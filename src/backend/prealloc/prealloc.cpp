@@ -725,6 +725,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .source_register_bank = std::nullopt,
               .destination_register_name = std::nullopt,
               .destination_register_bank = std::nullopt,
+              .destination_slot_id = std::nullopt,
               .destination_stack_offset_bytes = std::nullopt,
           };
 
@@ -744,6 +745,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
                 home != nullptr) {
               result_plan.destination_storage_kind = move_storage_kind_from_home(*home);
               result_plan.destination_register_name = home->register_name;
+              result_plan.destination_slot_id = home->slot_id;
               result_plan.destination_stack_offset_bytes = home->offset_bytes;
               if (home->register_name.has_value()) {
                 result_plan.destination_register_bank = result_plan.value_bank;

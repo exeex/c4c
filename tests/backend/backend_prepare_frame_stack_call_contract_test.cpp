@@ -4,6 +4,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <string>
 #include <string_view>
 
 namespace {
@@ -252,6 +253,94 @@ bir::Module make_call_contract_module() {
       },
   });
   entry.terminator = bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "tmp.call")};
+  caller.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(caller));
+  return module;
+}
+
+bir::Module make_stack_result_slot_contract_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function callee;
+  callee.name = "extern_spill_i32";
+  callee.is_declaration = true;
+  callee.return_type = bir::TypeKind::I32;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "value",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "stack_result_slot_contract";
+  caller.return_type = bir::TypeKind::I32;
+  for (int index = 0; index < 8; ++index) {
+    caller.params.push_back(bir::Param{
+        .type = bir::TypeKind::I32,
+        .name = "p" + std::to_string(index),
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .abi = bir::CallArgAbiInfo{
+            .type = bir::TypeKind::I32,
+            .size_bytes = 4,
+            .align_bytes = 4,
+            .primary_class = bir::AbiValueClass::Integer,
+            .passed_in_register = true,
+        },
+    });
+  }
+
+  bir::Block entry;
+  entry.label = "entry";
+  for (int index = 0; index < 8; ++index) {
+    entry.insts.push_back(bir::CallInst{
+        .result = bir::Value::named(bir::TypeKind::I32, "tmp.call." + std::to_string(index)),
+        .callee = "extern_spill_i32",
+        .args = {bir::Value::named(bir::TypeKind::I32, "p" + std::to_string(index))},
+        .arg_types = {bir::TypeKind::I32},
+        .arg_abi = {bir::CallArgAbiInfo{
+            .type = bir::TypeKind::I32,
+            .size_bytes = 4,
+            .align_bytes = 4,
+            .primary_class = bir::AbiValueClass::Integer,
+            .passed_in_register = true,
+        }},
+        .return_type_name = "i32",
+        .return_type = bir::TypeKind::I32,
+        .result_abi = bir::CallResultAbiInfo{
+            .type = bir::TypeKind::I32,
+            .primary_class = bir::AbiValueClass::Integer,
+        },
+    });
+  }
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "sum.0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "tmp.call.0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "tmp.call.1"),
+  });
+  for (int index = 2; index < 8; ++index) {
+    entry.insts.push_back(bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Add,
+        .result = bir::Value::named(bir::TypeKind::I32, "sum." + std::to_string(index - 1)),
+        .operand_type = bir::TypeKind::I32,
+        .lhs = bir::Value::named(bir::TypeKind::I32, "sum." + std::to_string(index - 2)),
+        .rhs = bir::Value::named(bir::TypeKind::I32, "tmp.call." + std::to_string(index)),
+    });
+  }
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "sum.6")};
   caller.blocks.push_back(std::move(entry));
 
   module.functions.push_back(std::move(caller));
@@ -1463,6 +1552,42 @@ int check_float_call_contract() {
   return 0;
 }
 
+int check_stack_result_slot_contract() {
+  const auto prepared = prepare_module(make_stack_result_slot_contract_module());
+  const auto* call_plans = find_call_plans_function(prepared, "stack_result_slot_contract");
+  const auto* storage_plan = find_storage_plan_function(prepared, "stack_result_slot_contract");
+  const auto* spilled_result = storage_plan == nullptr
+                                   ? nullptr
+                                   : find_storage_value(prepared, *storage_plan, "tmp.call.1");
+  if (call_plans == nullptr || call_plans->calls.size() != 8 || storage_plan == nullptr ||
+      spilled_result == nullptr) {
+    return fail("stack-result slot contract: missing prepared call or storage publication");
+  }
+  if (spilled_result->encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      !spilled_result->slot_id.has_value() || !spilled_result->stack_offset_bytes.has_value()) {
+    return fail("stack-result slot contract: fixture did not produce a frame-slot-backed call result");
+  }
+
+  const auto& call_plan = call_plans->calls[1];
+  if (!call_plan.result.has_value()) {
+    return fail("stack-result slot contract: call_plans lost result publication");
+  }
+
+  const auto& result = *call_plan.result;
+  if (result.destination_storage_kind != prepare::PreparedMoveStorageKind::StackSlot ||
+      result.destination_slot_id != spilled_result->slot_id ||
+      result.destination_stack_offset_bytes != spilled_result->stack_offset_bytes) {
+    return fail("stack-result slot contract: call_plans lost frame-slot identity for spilled result");
+  }
+  if (!result.source_register_name.has_value() ||
+      result.source_register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr}) {
+    return fail("stack-result slot contract: call_plans lost call-result ABI source while publishing slot home");
+  }
+
+  return 0;
+}
+
 int check_indirect_call_contract() {
   const auto prepared = prepare_module(make_indirect_call_contract_module());
   const auto* liveness = find_liveness_function(prepared, "indirect_call_contract");
@@ -1888,6 +2013,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_float_call_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_stack_result_slot_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_indirect_call_contract(); rc != 0) {

@@ -802,6 +802,9 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
           out << " dest_reg=" << *result.destination_register_name;
         }
         out << " dest_bank=" << maybe_register_bank(result.destination_register_bank);
+        if (result.destination_slot_id.has_value()) {
+          out << " destination_slot=#" << *result.destination_slot_id;
+        }
         if (result.destination_stack_offset_bytes.has_value()) {
           out << " dest_stack_offset=" << *result.destination_stack_offset_bytes;
         }

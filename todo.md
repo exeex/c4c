@@ -3,35 +3,35 @@ Source Idea Path: ideas/open/88_prepared_frame_stack_call_authority_completion_f
 Source Plan Path: plan.md
 Current Step ID: 3.1
 Current Step Title: Argument And Result Source Authority
-Plan Review Counter: 3 / 6
+Plan Review Counter: 4 / 6
 # Current Packet
 
 ## Just Finished
 
 Completed Step 3.1 "Argument And Result Source Authority" packet work for idea
-88 by publishing authoritative frame-slot identity for stack-backed call
-arguments in `PreparedCallPlan`, printing that slot identity in prepared dumps,
-and tightening backend/prealloc tests around a byval/home-slot call fixture so
-consumers do not need to recover the backing prepared slot from raw BIR or
-side-channel stack-layout inspection.
+88 by publishing authoritative frame-slot identity for stack-backed scalar call
+results in `PreparedCallPlan`, printing that slot identity in prepared dumps,
+and tightening backend/prealloc tests around a deterministic multi-call spill
+fixture so consumers do not need to recover the prepared result slot from raw
+offsets or target-local stack reasoning.
 
 Current packet result:
-- `PreparedCallArgumentPlan` now carries `source_slot_id` alongside
-  `source_stack_offset_bytes` for frame-slot-backed arguments.
+- `PreparedCallResultPlan` now carries `destination_slot_id` alongside
+  `destination_stack_offset_bytes` for frame-slot-backed scalar call results.
 - `populate_call_plans` now preserves the prepared frame-slot id when a call
-  argument's semantic source is a home slot even if the ABI carrier is a
-  register.
-- Prepared call-plan dumps now print `source_slot=#...` for frame-slot-backed
-  call arguments.
-- Backend contract and printer tests now prove a byval/home-slot call argument
-  publishes both its semantic frame-slot source and its target ABI carrier.
+  result's semantic destination home is a spill/home slot.
+- Prepared call-plan dumps now print `destination_slot=#...` for stack-backed
+  scalar call results.
+- Backend contract and printer tests now prove spilled scalar call results
+  publish both their ABI source register and their prepared frame-slot
+  identity.
 
 ## Suggested Next
 
-Continue Step 3.1 by checking whether stack-backed or spilled scalar call
-results still publish only raw offsets without the corresponding prepared
-frame-slot identity, then publish the next missing result-side slot/source
-authority directly in `PreparedCallPlan`.
+Continue Step 3.1 by checking whether indirect-callee publication or any
+remaining call-boundary scalar authority still exposes only stack offsets or
+register names without the corresponding prepared slot/value identity, then
+publish the next missing fact directly in `PreparedCallPlan`.
 
 ## Watchouts
 
@@ -39,12 +39,13 @@ authority directly in `PreparedCallPlan`.
   idea 89.
 - Keep call-boundary authority at the prepared contract boundary; do not turn
   this packet into target-specific call instruction recovery.
-- Frame-slot-backed call arguments can still travel in registers for ABI
-  transport; treat `source_encoding` plus `source_slot_id`/source detail as the
-  authoritative origin and the destination register/stack fields as transport.
-- `source_slot_id` currently covers call arguments only; if the next packet
-  needs the same authority for call results or indirect-callee storage, add it
-  as a prepared-contract publication rather than asking consumers to infer it.
+- Spilled scalar call results can still report an ABI source register even when
+  their prepared destination home is a frame slot; keep those as separate facts
+  rather than collapsing transport into semantic storage.
+- The new spill fixture depends on sequential scalar call results remaining
+  live long enough to force frame-slot homes; if target register policy changes,
+  preserve the underlying result-home contract rather than weakening the test
+  expectation to raw offsets only.
 
 ## Proof
 

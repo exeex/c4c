@@ -835,11 +835,133 @@ prepare::PreparedBirModule prepare_stack_argument_slot_dump_module() {
       options);
 }
 
+prepare::PreparedBirModule prepare_stack_result_slot_dump_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function callee;
+  callee.name = "extern_spill_i32";
+  callee.is_declaration = true;
+  callee.return_type = bir::TypeKind::I32;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "value",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "stack_result_slot_dump_contract";
+  caller.return_type = bir::TypeKind::I32;
+  for (int index = 0; index < 8; ++index) {
+    caller.params.push_back(bir::Param{
+        .type = bir::TypeKind::I32,
+        .name = "p" + std::to_string(index),
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .abi = bir::CallArgAbiInfo{
+            .type = bir::TypeKind::I32,
+            .size_bytes = 4,
+            .align_bytes = 4,
+            .primary_class = bir::AbiValueClass::Integer,
+            .passed_in_register = true,
+        },
+    });
+  }
+
+  bir::Block entry;
+  entry.label = "entry";
+  for (int index = 0; index < 8; ++index) {
+    entry.insts.push_back(bir::CallInst{
+        .result = bir::Value::named(bir::TypeKind::I32, "tmp.call." + std::to_string(index)),
+        .callee = "extern_spill_i32",
+        .args = {bir::Value::named(bir::TypeKind::I32, "p" + std::to_string(index))},
+        .arg_types = {bir::TypeKind::I32},
+        .arg_abi = {bir::CallArgAbiInfo{
+            .type = bir::TypeKind::I32,
+            .size_bytes = 4,
+            .align_bytes = 4,
+            .primary_class = bir::AbiValueClass::Integer,
+            .passed_in_register = true,
+        }},
+        .return_type_name = "i32",
+        .return_type = bir::TypeKind::I32,
+        .result_abi = bir::CallResultAbiInfo{
+            .type = bir::TypeKind::I32,
+            .primary_class = bir::AbiValueClass::Integer,
+        },
+    });
+  }
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "sum.0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "tmp.call.0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "tmp.call.1"),
+  });
+  for (int index = 2; index < 8; ++index) {
+    entry.insts.push_back(bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Add,
+        .result = bir::Value::named(bir::TypeKind::I32, "sum." + std::to_string(index - 1)),
+        .operand_type = bir::TypeKind::I32,
+        .lhs = bir::Value::named(bir::TypeKind::I32, "sum." + std::to_string(index - 2)),
+        .rhs = bir::Value::named(bir::TypeKind::I32, "tmp.call." + std::to_string(index)),
+    });
+  }
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "sum.6")};
+  caller.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(caller));
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      c4c::default_target_profile(c4c::TargetArch::X86_64),
+      options);
+}
+
 const prepare::PreparedStackObject* find_stack_object(const prepare::PreparedBirModule& prepared,
                                                       const char* object_name) {
   for (const auto& object : prepared.stack_layout.objects) {
     if (prepare::prepared_stack_object_name(prepared.names, object) == object_name) {
       return &object;
+    }
+  }
+  return nullptr;
+}
+
+const prepare::PreparedStoragePlanFunction* find_storage_plan_function(
+    const prepare::PreparedBirModule& prepared,
+    const char* function_name) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  if (function_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  return prepare::find_prepared_storage_plan(prepared, function_id);
+}
+
+const prepare::PreparedStoragePlanValue* find_storage_value(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedStoragePlanFunction& function,
+    const char* value_name) {
+  const auto value_id = prepared.names.value_names.find(value_name);
+  if (value_id == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+  for (const auto& value : function.values) {
+    if (value.value_name == value_id) {
+      return &value;
     }
   }
   return nullptr;
@@ -1175,6 +1297,35 @@ int main() {
   if (!expect_contains(stack_arg_dump,
                        "source_stack_offset=" + std::to_string(stack_arg_slot->offset_bytes),
                        "stack-backed byval argument stack offset")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto stack_result_prepared = prepare_stack_result_slot_dump_module();
+  const auto* stack_result_storage =
+      find_storage_plan_function(stack_result_prepared, "stack_result_slot_dump_contract");
+  const auto* stack_result_value =
+      stack_result_storage == nullptr
+          ? nullptr
+          : find_storage_value(stack_result_prepared, *stack_result_storage, "tmp.call.1");
+  if (stack_result_storage == nullptr || stack_result_value == nullptr ||
+      !stack_result_value->slot_id.has_value() || !stack_result_value->stack_offset_bytes.has_value()) {
+    std::cerr << "[FAIL] missing prepared spilled-result fixture for call result dump\n";
+    return EXIT_FAILURE;
+  }
+  const std::string stack_result_dump = prepare::print(stack_result_prepared);
+  if (!expect_contains(stack_result_dump,
+                       "result value_bank=gpr destination_storage=stack_slot",
+                       "stack-backed scalar result detail encoding")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(stack_result_dump,
+                       "destination_slot=#" + std::to_string(*stack_result_value->slot_id),
+                       "stack-backed scalar result frame-slot identity")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(stack_result_dump,
+                       "dest_stack_offset=" + std::to_string(*stack_result_value->stack_offset_bytes),
+                       "stack-backed scalar result stack offset")) {
     return EXIT_FAILURE;
   }
 
