@@ -1257,20 +1257,16 @@ Node* Parser::parse_primary() {
         QualifiedNameRef qn = parse_qualified_name(true);
         const std::string_view base_name =
             parser_text(qn.base_text_id, qn.base_name);
-        std::string qualified_name(base_name);
+        std::string qualified_name;
         if (!qn.qualifier_segments.empty()) {
             int context_id = resolve_namespace_context(qn);
             if (context_id >= 0) {
                 qualified_name =
                     canonical_name_in_context(context_id, std::string(base_name));
-            } else {
-                qualified_name.clear();
-                for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-                    qualified_name += qn.qualifier_segments[i];
-                    qualified_name += "::";
-                }
-                qualified_name += base_name;
             }
+        }
+        if (qualified_name.empty()) {
+            qualified_name = qn.spelled(true);
         }
         const char* nm = arena_.strdup(qualified_name.c_str());
         Node* var_node = make_node(NK_VAR, ln);
@@ -1449,16 +1445,12 @@ Node* Parser::parse_primary() {
                     qualified_name =
                         canonical_name_in_context(context_id, std::string(qn_base_name));
                 }
-            } else {
-                for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-                    if (i) qualified_name += "::";
-                    qualified_name += qn.qualifier_segments[i];
-                }
-                if (!qualified_name.empty()) qualified_name += "::";
-                qualified_name += qn_base_name;
             }
         } else {
             qualified_name = resolve_visible_value_name(std::string(qn_base_name));
+        }
+        if (qualified_name.empty()) {
+            qualified_name = qn.spelled();
         }
         const char* nm = arena_.strdup(qualified_name.c_str());
         const BuiltinId builtin_id = builtin_id_from_name(nm);
@@ -1692,13 +1684,9 @@ Node* Parser::parse_primary() {
                         if (context_id >= 0) {
                             qualified_name = canonical_name_in_context(
                                 context_id, std::string(operand_base_name));
-                        } else {
-                            for (size_t i = 0; i < operand_name.qualifier_segments.size(); ++i) {
-                                if (i) qualified_name += "::";
-                                qualified_name += operand_name.qualifier_segments[i];
-                            }
-                            if (!qualified_name.empty()) qualified_name += "::";
-                            qualified_name += operand_base_name;
+                        }
+                        if (qualified_name.empty()) {
+                            qualified_name = operand_name.spelled();
                         }
                         const char* nm = arena_.strdup(qualified_name.c_str());
                         arg = make_var(nm, ln);

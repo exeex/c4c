@@ -372,13 +372,9 @@ struct QualifiedTypeProbe {
     std::string spelled_name;
 };
 
-std::string spell_qualified_name_for_lookup(const Parser::QualifiedNameRef& qn) {
-    return qn.spelled();
-}
-
 std::string resolve_qualified_typedef_name(const Parser& parser,
                                            const Parser::QualifiedNameRef& qn) {
-    std::string resolved = spell_qualified_name_for_lookup(qn);
+    std::string resolved = qn.spelled();
     if (!resolved.empty() && parser.has_typedef_type(resolved))
         return resolved;
 
@@ -392,13 +388,15 @@ std::string resolve_qualified_typedef_name(const Parser& parser,
             if (parser.has_typedef_type(canonical))
                 return canonical;
         }
-        return {};
     }
 
     resolved = parser.resolve_visible_type_name(
         parser.parser_text(qn.base_text_id, qn.base_name));
     if (parser.has_typedef_type(resolved))
         return resolved;
+    if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
+        return {};
+    }
     return {};
 }
 
@@ -408,7 +406,7 @@ std::string resolve_qualified_known_type_name(
     std::string resolved = resolve_qualified_typedef_name(parser, qn);
     if (!resolved.empty()) return resolved;
 
-    resolved = spell_qualified_name_for_lookup(qn);
+    resolved = qn.spelled();
     if (!resolved.empty() &&
         (parser.template_state_.template_struct_defs.count(resolved) > 0 ||
          parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {
@@ -428,7 +426,6 @@ std::string resolve_qualified_known_type_name(
                 return canonical;
             }
         }
-        return {};
     }
 
     resolved = parser.resolve_visible_type_name(
@@ -459,7 +456,7 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
     if (qn.qualifier_segments.empty()) return probe;
 
     probe.has_unresolved_qualified_fallback = true;
-    probe.spelled_name = spell_qualified_name_for_lookup(qn);
+    probe.spelled_name = qn.spelled();
     probe.namespace_context_id = parser.resolve_namespace_context(qn);
     return probe;
 }

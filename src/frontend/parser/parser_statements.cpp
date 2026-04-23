@@ -885,20 +885,19 @@ Node* Parser::parse_stmt() {
                     starts_parenthesized_member_pointer_declarator(*this, after_pos)) {
                     return parse_local_decl();
                 }
-                const std::string full_name = qn.spelled();
-                // Check if the full qualified name is a known type
-                bool is_known_type = is_typedef_name(full_name) ||
-                    has_typedef_type(full_name) ||
-                    has_typedef_type(resolve_visible_type_name(full_name));
-                // Also try namespace resolution
+                bool is_known_type = false;
+                const int ctx = resolve_namespace_context(qn);
+                if (ctx >= 0) {
+                    const std::string ns_name = canonical_name_in_context(
+                        ctx, std::string(parser_text(qn.base_text_id, qn.base_name)));
+                    is_known_type = is_typedef_name(ns_name) ||
+                        has_typedef_type(ns_name);
+                }
                 if (!is_known_type) {
-                    int ctx = resolve_namespace_context(qn);
-                    if (ctx >= 0) {
-                        std::string ns_name = canonical_name_in_context(
-                            ctx,
-                            std::string(parser_text(qn.base_text_id, qn.base_name)));
-                        is_known_type = has_typedef_type(ns_name);
-                    }
+                    const std::string full_name = qn.spelled();
+                    is_known_type = is_typedef_name(full_name) ||
+                        has_typedef_type(full_name) ||
+                        has_typedef_type(resolve_visible_type_name(full_name));
                 }
                 if (!is_known_type) {
                     // Likely a qualified call: Type::Method(args)
