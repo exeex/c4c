@@ -170,6 +170,15 @@ bool can_probe_local_binding(TextId name_text_id, std::string_view name) {
            name.find("::") == std::string_view::npos;
 }
 
+std::string render_structured_name(const Parser& parser,
+                                   const QualifiedNameKey& key) {
+    if (key.base_text_id == kInvalidText) return {};
+    const TextTable* texts = parser.shared_lookup_state_.token_texts;
+    if (!texts) return {};
+    return render_qualified_name(key, parser.shared_lookup_state_.parser_name_paths,
+                                 *texts);
+}
+
 bool is_unqualified_lookup_name(std::string_view name) {
     return !name.empty() && name.find("::") == std::string_view::npos;
 }
@@ -964,6 +973,11 @@ QualifiedNameKey Parser::known_fn_name_key(int context_id, TextId name_text_id,
                                            std::string_view name) const {
     return find_known_fn_name_key_from_spelling(*this, context_id, name_text_id,
                                                 name);
+}
+
+QualifiedNameKey Parser::intern_semantic_name_key(std::string_view name) {
+    return intern_known_fn_name_key_from_spelling(
+        *this, 0, parser_text_id_for_token(kInvalidText, name), name);
 }
 
 QualifiedNameKey Parser::known_fn_name_key_in_context(
@@ -2220,29 +2234,44 @@ bool Parser::lookup_using_value_alias(int context_id, TextId name_text_id,
     if (alias_it == namespace_state_.using_value_aliases.end()) return false;
     const auto value_it = alias_it->second.find(name_text_id);
     if (value_it == alias_it->second.end()) return false;
-    *resolved = value_it->second;
+    const ParserNamespaceState::UsingValueAlias& alias = value_it->second;
+    if (const std::string structured = render_structured_name(*this, alias.target_key);
+        !structured.empty()) {
+        *resolved = structured;
+        return true;
+    }
+    *resolved = alias.compatibility_name;
     return true;
 }
 
 bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
                                      std::string_view name,
                                      std::string* resolved) const {
-    const std::string candidate =
-        compatibility_namespace_name_in_context(context_id, name_text_id, name);
     const QualifiedNameKey candidate_key =
         known_fn_name_key_in_context(context_id, name_text_id, name);
-    if (has_var_type(candidate) ||
-        has_known_fn_name(candidate_key)) {
+    if (has_known_fn_name(candidate_key)) {
+        *resolved = render_structured_name(*this, candidate_key);
+        return !resolved->empty();
+    }
+
+    const std::string candidate =
+        compatibility_namespace_name_in_context(context_id, name_text_id, name);
+    if (has_var_type(candidate)) {
         *resolved = candidate;
         return true;
     }
     const std::string fallback_name(name);
-    if (context_id == 0 &&
-        (has_var_type(fallback_name) ||
-         has_known_fn_name(
-             known_fn_name_key_in_context(0, name_text_id, fallback_name)))) {
-        *resolved = name;
-        return true;
+    if (context_id == 0) {
+        const QualifiedNameKey global_key =
+            known_fn_name_key_in_context(0, name_text_id, fallback_name);
+        if (has_known_fn_name(global_key)) {
+            *resolved = render_structured_name(*this, global_key);
+            return !resolved->empty();
+        }
+        if (has_var_type(fallback_name)) {
+            *resolved = name;
+            return true;
+        }
     }
 
     auto anon_it = namespace_state_.anonymous_namespace_children.find(context_id);

@@ -366,13 +366,30 @@ struct ParserActiveContextState {
 // Namespace resolution stack and cached lookup scopes.
 // namespace_stack is the push/pop chain for nested namespace contexts.
 struct ParserNamespaceState {
+  struct UsingValueAlias {
+    QualifiedNameKey target_key;
+    std::string compatibility_name;
+
+    UsingValueAlias() = default;
+    explicit UsingValueAlias(std::string_view name)
+        : compatibility_name(name) {}
+    UsingValueAlias(QualifiedNameKey key, std::string name)
+        : target_key(key), compatibility_name(std::move(name)) {}
+
+    UsingValueAlias& operator=(std::string_view name) {
+      target_key = {};
+      compatibility_name.assign(name);
+      return *this;
+    }
+  };
+
   std::string current_namespace;
   std::vector<ParserNamespaceContext> namespace_contexts;
   std::vector<int> namespace_stack;
   std::unordered_map<int, std::unordered_map<TextId, int>>
       named_namespace_children;
   std::unordered_map<int, std::vector<int>> anonymous_namespace_children;
-  std::unordered_map<int, std::unordered_map<TextId, std::string>>
+  std::unordered_map<int, std::unordered_map<TextId, UsingValueAlias>>
       using_value_aliases;
   std::unordered_map<int, std::vector<int>> using_namespace_contexts;
 };

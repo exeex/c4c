@@ -7,13 +7,13 @@ Current Step Title: Retarget `using` / alias / import lookup paths to structured
 # Current Packet
 
 ## Just Finished
-Retargeted namespace-qualified typedef lookup and `using` type-alias registration to store and probe structured `QualifiedNameKey` entries keyed by namespace context, so the parser can resolve imported aliases and typedefs without relying on rendered `A::B` strings as the primary semantic key.
+Retargeted the remaining `using` value-alias import path to store structured alias targets, probe imported function names through interned `QualifiedNameKey` identity, and render bridge text lazily during lookup instead of keeping rendered qualified names as the authoritative alias payload.
 
 ## Suggested Next
-Continue Step 3 by moving the remaining `using` value-alias import path off rendered-name bridge probes, especially the `using_value_aliases` registration and namespace value lookup fallback that still carry compatibility strings as their authoritative payload.
+Continue Step 3 by isolating the last string-keyed namespace value-variable fallback from the structured function path, especially the anonymous-namespace and `has_var_type(...)` compatibility cases that still require rendered bridge names.
 
 ## Watchouts
-Anonymous namespace contexts still fall back to the legacy rendered bridge when lookup cannot find an interned namespace path, and `using` value aliases still store rendered names directly, so the next slice should keep string fallback isolated rather than expanding it.
+Anonymous namespace contexts and value-variable tables still need compatibility strings on the fallback path, so the next slice should keep bridge rendering narrowly contained instead of widening into a repo-wide var-identity migration.
 
 ## Proof
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`

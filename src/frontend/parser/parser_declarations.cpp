@@ -1491,19 +1491,21 @@ Node* Parser::parse_top_level() {
                 imported_value_name.erase(0, 2);
             }
         }
+        const QualifiedNameKey imported_value_key =
+            intern_semantic_name_key(imported_value_name);
         {
             const std::string imported_key = compatibility_namespace_name_in_context(
                 using_context_id, target_name.base_text_id, imported_name);
             if (const TypeSpec* imported_var = find_var_type(imported_value_name)) {
                 register_var_type_binding(imported_key, *imported_var);
             }
-            if (has_known_fn_name(imported_value_name)) {
+            if (has_known_fn_name(imported_value_key)) {
                 register_known_fn_name(known_fn_name_key_in_context(
                     using_context_id, target_name.base_text_id, imported_name));
             }
             namespace_state_.using_value_aliases[using_context_id]
-                                               [target_name.base_text_id] =
-                imported_value_name;
+                                               [target_name.base_text_id] = {
+                imported_value_key, imported_value_name};
         }
         recover_top_level_decl_terminator_or_boundary(*this, ln);
         return nullptr;

@@ -372,6 +372,7 @@ class Parser {
       int context_id, TextId name_text_id, std::string_view fallback_name) const;
   QualifiedNameKey known_fn_name_key(int context_id, TextId name_text_id,
                                      std::string_view name) const;
+  QualifiedNameKey intern_semantic_name_key(std::string_view name);
   QualifiedNameKey known_fn_name_key_in_context(
       int context_id, TextId name_text_id,
       std::string_view fallback_name) const;
