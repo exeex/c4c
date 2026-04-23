@@ -2299,6 +2299,13 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
         return !resolved->empty();
     }
 
+    const std::string structured_candidate =
+        render_value_binding_name(*this, candidate_key);
+    if (!structured_candidate.empty() && has_var_type(structured_candidate)) {
+        *resolved = structured_candidate;
+        return true;
+    }
+
     const std::string candidate =
         render_lookup_name_in_context(*this, context_id, name_text_id, name);
     if (has_var_type(candidate)) {
