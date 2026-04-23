@@ -9,18 +9,15 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: rewired top-level `using ns::name` imports to keep the parsed
-  `QualifiedNameRef` and resolve typedef/value targets through the namespace
-  context tree before registering the imported binding or alias
-- switched namespace-qualified dependent owner lookup and `using Alias =`
-  template-owner recovery to resolve owner types through `QualifiedNameRef`
-  traversal instead of rebuilding namespace prefixes with local `"A::B"` joins
+- Step 2 packet: removed the remaining helper-side
+  `resolve_namespace_context(qn)` -> `canonical_name_in_context(...)` bridge in
+  qualified typedef/known-type resolution and routed those lookups through
+  `resolve_qualified_type_name(qn)` instead
 
 ## Suggested Next
 
-- continue Step 2 by auditing the remaining parser namespace call sites that
-  still pair `resolve_namespace_context()` with immediate
-  `canonical_name_in_context()` synthesis before typedef/record lookup
+- continue Step 2 by auditing the remaining parser namespace call sites for
+  any last direct namespace-context string joins before typedef/record lookup
 - keep the follow-on packet inside parser namespace lookup and leave broader
   binding-table or lexical-scope cleanup for later work
 

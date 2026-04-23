@@ -379,15 +379,9 @@ std::string resolve_qualified_typedef_name(const Parser& parser,
         return resolved;
 
     if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
-        int context_id = parser.resolve_namespace_context(qn);
-        if (context_id >= 0) {
-            std::string canonical =
-                parser.canonical_name_in_context(
-                    context_id,
-                    std::string(parser.parser_text(qn.base_text_id, qn.base_name)));
-            if (parser.has_typedef_type(canonical))
-                return canonical;
-        }
+        resolved = parser.resolve_qualified_type_name(qn);
+        if (!resolved.empty() && parser.has_typedef_type(resolved))
+            return resolved;
     }
 
     resolved = parser.resolve_visible_type_name(
@@ -414,17 +408,11 @@ std::string resolve_qualified_known_type_name(
     }
 
     if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
-        const int context_id = parser.resolve_namespace_context(qn);
-        if (context_id >= 0) {
-            std::string canonical =
-                parser.canonical_name_in_context(
-                    context_id,
-                    std::string(parser.parser_text(qn.base_text_id, qn.base_name)));
-            if (parser.template_state_.template_struct_defs.count(canonical) > 0 ||
-                parser.definition_state_.defined_struct_tags.count(canonical) >
-                    0) {
-                return canonical;
-            }
+        resolved = parser.resolve_qualified_type_name(qn);
+        if (!resolved.empty() &&
+            (parser.template_state_.template_struct_defs.count(resolved) > 0 ||
+             parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {
+            return resolved;
         }
     }
 
