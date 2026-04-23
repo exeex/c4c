@@ -8,6 +8,9 @@ endif()
 option(ENABLE_HEAVY_TENTATIVE_SNAPSHOT
        "Use full parser-state snapshots in TentativeParseGuard speculative parses"
        ON)
+option(ENABLE_C4C_BACKEND
+       "Build experimental backend and backend-dependent routes"
+       OFF)
 
 find_program(CLANG_EXECUTABLE NAMES clang)
 if(NOT CLANG_EXECUTABLE)
@@ -22,7 +25,9 @@ endif()
 
 add_subdirectory(src/frontend)
 add_subdirectory(src/codegen)
-add_subdirectory(src/backend)
+if(ENABLE_C4C_BACKEND)
+  add_subdirectory(src/backend)
+endif()
 
 add_library(c4c_target_profile STATIC
     "${PROJECT_SOURCE_DIR}/src/target_profile.cpp"
@@ -35,7 +40,11 @@ target_compile_features(c4c_target_profile PUBLIC cxx_std_17)
 add_executable(c4cll
     "${PROJECT_SOURCE_DIR}/src/apps/c4cll.cpp"
 )
-target_link_libraries(c4cll PRIVATE c4c_frontend c4c_codegen c4c_backend)
+target_link_libraries(c4cll PRIVATE c4c_frontend c4c_codegen)
+if(ENABLE_C4C_BACKEND)
+  target_link_libraries(c4cll PRIVATE c4c_backend)
+endif()
+target_compile_definitions(c4cll PRIVATE C4C_ENABLE_BACKEND=$<BOOL:${ENABLE_C4C_BACKEND}>)
 set_target_properties(c4cll PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON

@@ -48,7 +48,7 @@ namespace c4c {
 
 class Parser {
  public:
-  // ── parser-side model types ───────────────────────────────────────────────
+  // ── parser-side table / identity model ───────────────────────────────────
   using SymbolId = uint32_t;
 
   static constexpr SymbolId kInvalidSymbol = 0;
@@ -137,6 +137,13 @@ class Parser {
 
   using ParserSymbolTables = ParserNameTables;
 
+  struct FnPtrTypedefInfo {
+    Node** params = nullptr;
+    int n_params = 0;
+    bool variadic = false;
+  };
+
+  // ── parser-side structural model ─────────────────────────────────────────
   // Namespace tree node used by C++ qualified-name lookup and using-directive
   // visibility tracking.
   struct NamespaceContext {
@@ -452,35 +459,24 @@ class Parser {
   Arena& arena_;
   SourceProfile source_profile_;
   std::string source_file_;  // source path used by diagnostics
+
+  // ── parser-owned shared lookup tables ────────────────────────────────────
   TextTable* token_texts_ = nullptr;
   FileTable* token_files_ = nullptr;
   SymbolTable parser_symbols_{nullptr};
   ParserNameTables parser_name_tables_{&parser_symbols_};
 
-  // ── name / type knowledge accumulated during parsing ─────────────────────
+  // ── parser name / binding tables ─────────────────────────────────────────
   // Declared concept names visible to the parser. Kept separate from typedef
   // tracking so concept-ids do not get mistaken for type names.
   std::set<std::string> concept_names_;
   // Phase C: fn_ptr parameter info for typedef'd function pointer types.
-  // Stores (fn_ptr_params, n_fn_ptr_params, fn_ptr_variadic) for typedefs
-  // whose TypeSpec has is_fn_ptr=true, so the info can be propagated to
-  // declaration nodes that use the typedef.
-  struct FnPtrTypedefInfo {
-    Node** params = nullptr;
-    int n_params = 0;
-    bool variadic = false;
-  };
   std::unordered_map<TextId, FnPtrTypedefInfo> typedef_fn_ptr_info_;
-  // Last resolved typedef name from parse_base_type() (for fn_ptr propagation).
-  std::string last_resolved_typedef_;
-  TextId last_resolved_typedef_text_id_ = kInvalidText;
-
   // Enum constants: name → value (populated as enums are parsed).
   // Used to evaluate enum initializers that reference previously-defined constants.
   std::unordered_map<std::string, long long> enum_consts_;
   // Global const/constexpr integer bindings visible to parser-time constant folding.
   std::unordered_map<std::string, long long> const_int_bindings_;
-  bool suppress_local_var_bindings_ = false;
   // Qualified function names (populated as functions are declared/defined).
   // Used by lookup_value_in_context for namespace-aware function lookup.
   std::set<std::string> known_fn_names_;
@@ -494,6 +490,7 @@ class Parser {
   // Populated when parsing typedef inside struct bodies.
   std::unordered_map<std::string, TypeSpec> struct_typedefs_;
 
+  // ── record / enum definition tables ──────────────────────────────────────
   // ── record / enum definition caches ──────────────────────────────────────
   // Collected struct/enum defs are prepended to the final program node.
   std::vector<Node*> struct_defs_;
@@ -508,7 +505,7 @@ class Parser {
   // Used so declaration-only enum statements (`enum { ... };`) can be retained.
   Node* last_enum_def_;
 
-  // ── template metadata and active template scopes ─────────────────────────
+  // ── template metadata tables and active template scopes ──────────────────
   // Template struct definitions: maps struct tag → NK_STRUCT_DEF node with
   // n_template_params > 0.  Used to instantiate template structs at usage sites.
   std::unordered_map<std::string, Node*> template_struct_defs_;
@@ -537,12 +534,15 @@ class Parser {
   std::unordered_map<std::string, AliasTemplateInfo> alias_template_info_;
   // Template-scope stack: tracks active template parameter visibility.
   std::vector<TemplateScopeFrame> template_scope_stack_;
+
+  // ── active parse context ──────────────────────────────────────────────────
   // Set by the using-alias handler to let the template wrapper detect that
   // a using type alias was defined during `parse_top_level()`.
   std::string last_using_alias_name_;
   TextId last_using_alias_name_text_id_ = kInvalidText;
-
-  // ── active parse context ──────────────────────────────────────────────────
+  // Last resolved typedef name from parse_base_type() (for fn_ptr propagation).
+  std::string last_resolved_typedef_;
+  TextId last_resolved_typedef_text_id_ = kInvalidText;
   // Tag of the struct currently being parsed (empty if not in struct body).
   std::string current_struct_tag_;
   TextId current_struct_tag_text_id_ = kInvalidText;
@@ -554,8 +554,9 @@ class Parser {
   // argument delimiters, so expression parsing does not consume enclosing
   // template-close tokens as operators.
   int template_arg_expr_depth_ = 0;
+  bool suppress_local_var_bindings_ = false;
 
-  // ── namespace / using-directive visibility state ─────────────────────────
+  // ── namespace / using-directive tables ───────────────────────────────────
   // Transitional flattened path kept only as a compatibility bridge.
   std::string current_namespace_;
   std::vector<NamespaceContext> namespace_contexts_;

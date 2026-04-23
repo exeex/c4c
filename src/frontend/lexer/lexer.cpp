@@ -9,7 +9,9 @@
 namespace c4c {
 
 Lexer::Lexer(std::string source, LexProfile profile)
-    : source_(std::move(source)), lex_profile_(profile) {}
+    : source_(std::move(source)),
+      lex_profile_(profile),
+      current_file_id_(intern_file_path(file_table_, "")) {}
 
 std::vector<Token> Lexer::scan_all() {
   std::vector<Token> out;

@@ -69,7 +69,8 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
       )
       set_tests_properties("${test_name}" PROPERTIES LABELS "c_testsuite")
 
-      if(C_TESTSUITE_BACKEND_MODE AND C_TESTSUITE_BACKEND_LABEL AND C_TESTSUITE_BACKEND_TRIPLE)
+      if(ENABLE_C_TESTSUITE_BACKEND_TESTS AND
+         C_TESTSUITE_BACKEND_MODE AND C_TESTSUITE_BACKEND_LABEL AND C_TESTSUITE_BACKEND_TRIPLE)
         set(backend_test_name "c_testsuite_${C_TESTSUITE_BACKEND_ID}_backend_${test_id}")
         add_test(
           NAME "${backend_test_name}"

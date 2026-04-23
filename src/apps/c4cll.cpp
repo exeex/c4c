@@ -14,7 +14,9 @@
 
 #include "arena.hpp"
 #include "ast.hpp"
+#if C4C_ENABLE_BACKEND
 #include "backend.hpp"
+#endif
 #include "hir_to_lir.hpp"
 #include "llvm_codegen.hpp"
 #include "lexer.hpp"
@@ -270,6 +272,7 @@ void print_usage(const char *argv0) {
       << "  --dump-canonical           Print semantic canonical-type information\n"
       << "  --dump-hir                 Print full HIR plus compile-time stats\n"
       << "  --dump-hir-summary         Print compact HIR summary\n"
+#if C4C_ENABLE_BACKEND
       << "  --dump-bir                 Print semantic backend BIR\n"
       << "  --dump-prepared-bir        Print prepared backend BIR plus metadata\n"
       << "  --dump-mir                 Print concise backend MIR-route summary\n"
@@ -277,6 +280,7 @@ void print_usage(const char *argv0) {
       << "  --mir-focus-function <fn>  Limit backend dump/trace output to one function\n"
       << "  --mir-focus-block <label>  Limit focused backend dump/trace output to one block inside the focused function\n"
       << "  --mir-focus-value <name>   Limit focused backend dump/trace output to one value inside the focused function\n"
+#endif
       << "\n"
       << "Parser debug:\n"
       << "  --parser-debug             Enable general parser debug output\n"
@@ -284,11 +288,16 @@ void print_usage(const char *argv0) {
       << "  --parser-debug-injected    Include injected-token parse events\n"
       << "\n"
       << "Code generation:\n"
+#if C4C_ENABLE_BACKEND
       << "  --codegen llvm|asm|compare Select codegen backend path\n"
       << "  --backend-bir-stage prepared|semantic\n"
       << "                            For --codegen asm only, choose prepared\n"
       << "                            backend lowering (default) or semantic\n"
       << "                            BIR before prepare for bounded observation\n"
+#else
+      << "  --codegen llvm             Select LLVM output path\n"
+      << "                            backend-native asm/compare routes are disabled in this build\n"
+#endif
       << "\n"
       << "Preprocessor configuration:\n"
       << "  -D macro[=val]             Define macro\n"
@@ -308,8 +317,10 @@ void print_usage(const char *argv0) {
       << "  " << argv0 << " --parser-debug --parse-only test.cpp\n"
       << "  " << argv0 << " --parser-debug --parser-debug-tentative --parse-only test.cpp\n"
       << "  " << argv0 << " --dump-hir test.cpp\n"
+#if C4C_ENABLE_BACKEND
       << "  " << argv0 << " --dump-bir test.c\n"
       << "  " << argv0 << " --codegen asm --backend-bir-stage semantic test.c\n"
+#endif
       << "\n"
       << "Notes:\n"
       << "  Only one frontend inspection mode may be selected at a time.\n";
@@ -564,6 +575,16 @@ int main(int argc, char **argv) {
       return 2;
     }
 
+#if !C4C_ENABLE_BACKEND
+    if (dump_bir || dump_prepared_bir || dump_mir || trace_mir ||
+        mir_focus_function.has_value() || mir_focus_block.has_value() ||
+        mir_focus_value.has_value() || emit_semantic_bir ||
+        codegen_path != c4c::codegen::llvm_backend::CodegenPath::Llvm) {
+      std::cerr << "backend support is disabled in this build\n";
+      return 2;
+    }
+#endif
+
     // Determine source profile from input file extension.
     auto source_profile = c4c::source_profile_from_extension(input);
     auto lex_profile    = c4c::lex_profile_from(source_profile);
@@ -687,6 +708,7 @@ int main(int argc, char **argv) {
       return 0;
     }
 
+#if C4C_ENABLE_BACKEND
     if (dump_bir) {
       auto lir_mod = c4c::codegen::lir::lower(
           *sema_result.hir_module,
@@ -730,6 +752,7 @@ int main(int argc, char **argv) {
           stage);
       return 0;
     }
+#endif
 
     // Run semantic inline expansion pass (Phase 1: discovery only, no-op for now).
     c4c::hir::run_inline_expansion(
