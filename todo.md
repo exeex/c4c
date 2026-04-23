@@ -9,17 +9,17 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: added `bridge_name_in_context(...)` so parser namespace
-  lookup rebuilds binding-table bridge names from the namespace context tree
-  instead of using stored canonical namespace strings inline in
-  `lookup_value_in_context(...)`, `lookup_type_in_context(...)`,
-  `lookup_concept_in_context(...)`, and `qualify_name(...)`
+- Step 2 packet: replaced the remaining declaration-side
+  `canonical_name_in_context(...)` bridge synthesis in
+  `parser_declarations.cpp` with `bridge_name_in_context(...)` for concept
+  registration, `using` aliases, imported typedef/value bindings, and
+  namespace-scoped template struct registration
 
 ## Suggested Next
 
-- continue Step 2 by auditing remaining declaration-side namespace import /
-  alias helpers that still call `canonical_name_in_context(...)` directly after
-  namespace-context resolution
+- continue Step 2 by checking whether any other declaration-side namespace
+  helpers still synthesize canonical keys directly after namespace-context
+  resolution
 - keep the follow-on packet inside parser namespace lookup and leave broader
   binding-table or lexical-scope cleanup for later work
 
