@@ -26,6 +26,7 @@ Do not collapse lexical scope lookup and namespace traversal into one mechanism.
 - `ParserBindingState::struct_typedefs`
 - `qualified_name_text(...)`
 - `compatibility_namespace_name_in_context(...)`
+- remaining fallback helpers that still bridge back through rendered strings, including `has_typedef_type(...)` and `concept_names`
 
 ## Non-Goals
 - no re-merging lexical scope lookup with namespace traversal
@@ -73,3 +74,11 @@ Do not collapse lexical scope lookup and namespace traversal into one mechanism.
    - Build the parser frontend and run the focused parser test subset that covers qualified name lookup.
    - Escalate to broader checks only if the touched surface expands beyond parser lookup plumbing.
    - Completion check: focused proof passes on the structured qualified-lookup path.
+6. Remove the remaining fallback helpers from the primary qualified-lookup path.
+   - Retire the remaining compatibility-backed lookup surfaces that still probe rendered-string bridges for semantic answers.
+   - Keep fallback rendering available only as bridge or diagnostics support, not as the authoritative lookup substrate.
+   - Completion check: parser qualified lookup no longer depends on fallback helpers such as `has_typedef_type(...)` and `concept_names` for primary semantic resolution.
+7. Re-run focused parser proof and widen only if the blast radius grows.
+   - Build the parser frontend and run the focused parser test subset that covers qualified name lookup.
+   - Escalate to broader checks only if the touched surface expands beyond parser lookup plumbing.
+   - Completion check: focused proof passes on the updated structured qualified-lookup path.
