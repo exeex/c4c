@@ -7,14 +7,13 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Completed plan step 2's parser scope audit packet: `parse_stmt` now routes
-visible local value heads with call-like suffixes down the expression path
-instead of treating them as declarations, keeping lexical-scope-aware
-declaration-vs-expression decisions consistent. Added a parser regression for
-a local value shadowing a typedef and exercising the call-like statement path.
+Completed the remaining step 2 parser statement-scope audit for the simple
+`if` condition declaration probe and the simple `for`/range-for declaration
+probes. Verified the tentative paths keep lexical binding lifetime bounded to
+successful parses and that the targeted parser regressions still pass.
 
 ## Suggested Next
-Continue step 2 by checking the remaining statement-shaped declaration probes
+Continue step 2 by checking any remaining statement-shaped declaration probes
 that still rely on tentative parsing, then move on to concept-name cleanup once
 statement-scope coverage is stable.
 
@@ -32,5 +31,5 @@ regressing the existing qualified-call, member-access, and loop-scope coverage.
 
 ## Proof
 Ran `cmake --build --preset default` and
-`ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_eastl_vector_parse_recipe)$'`
+`ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_positive_sema_for_decl_probe_rollback_parse_cpp|cpp_parser_debug_if_condition_decl_tentative_lite|cpp_parser_debug_range_for_tentative_lite)$'`
 with proof captured in `test_after.log`.
