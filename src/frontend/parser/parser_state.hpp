@@ -12,6 +12,7 @@
 #include "ast.hpp"
 #include "token.hpp"
 #include "source_profile.hpp"
+#include "../../shared/local_name_table.hpp"
 #include "../../shared/text_id_table.hpp"
 
 namespace c4c {
@@ -312,6 +313,33 @@ struct ParserTemplateState {
   std::vector<ParserTemplateScopeFrame> template_scope_stack;
 };
 
+// Explicit parser-local lexical binding scopes. These stay separate from
+// namespace traversal state so block-local visibility can migrate to
+// TextId-native lookup without changing qualified lookup behavior.
+struct ParserLexicalScopeState {
+  using LocalTypeTable = LocalNameTable<LocalNameKey, TypeSpec>;
+
+  void push_scope() {
+    visible_typedef_types.push_scope();
+    visible_value_types.push_scope();
+  }
+
+  bool pop_scope() {
+    const bool popped_types = visible_typedef_types.pop_scope();
+    const bool popped_values = visible_value_types.pop_scope();
+    return popped_types || popped_values;
+  }
+
+  [[nodiscard]] bool empty() const { return visible_typedef_types.empty(); }
+
+  [[nodiscard]] size_t scope_depth() const {
+    return visible_typedef_types.scope_depth();
+  }
+
+  LocalTypeTable visible_typedef_types;
+  LocalTypeTable visible_value_types;
+};
+
 // Transient parser context that moves with lexical/state transitions.
 // These fields are restored by snapshots or cleared by the matching pop path.
 struct ParserActiveContextState {
@@ -357,6 +385,7 @@ struct ParserSnapshot {
   std::unordered_set<TextId> non_atom_user_typedefs;
   std::unordered_map<TextId, TypeSpec> non_atom_typedef_types;
   std::unordered_map<TextId, TypeSpec> non_atom_var_types;
+  ParserLexicalScopeState lexical_scope_state;
 };
 
 // Heavy/lite tentative parse accounting.

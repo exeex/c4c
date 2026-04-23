@@ -1,30 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/83_parser_scope_textid_binding_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory parser binding tables
+Current Step ID: 2
+Current Step Title: Add parser lexical scope state for local bindings
 
 # Current Packet
 
 ## Just Finished
-Completed plan Step 1 by inventorying parser binding tables and classifying the
-main migration targets into `TextId`-native, direct `TextId` replacements,
-scope-local `LocalNameTable` candidates, sequence/path-key cases, and
-namespace-owned tables that must stay separate from lexical lookup.
+Completed plan Step 2 by adding explicit parser-local lexical scope state with
+push/pop behavior on block entry and exit, mirroring local typedef/value
+bindings into a dedicated scope stack that stays separate from namespace
+traversal and legacy visible-name lookup.
 
 ## Suggested Next
-Start Step 2 by adding explicit parser lexical scope state with push/pop
-behavior for the simplest unqualified local bindings, using
-`LocalNameTable`-backed visibility that stays separate from namespace
-traversal state.
+Start Step 3 by introducing a unified `TextId`-first lookup facade that can
+query the new lexical scope tables for unqualified typedef/value visibility
+before falling back to the current bridge-based paths.
 
 ## Watchouts
-Do not collapse namespace traversal into lexical lookup. Keep
-single-segment semantic names on `TextId`, reserve sequence/path ids for
-multi-segment identities, and avoid growing new parser-wide flat tables for
-bindings that should follow lexical scope lifetime.
+Do not collapse namespace traversal into lexical lookup. The new lexical scope
+state currently mirrors block-local typedef/value bindings only; template
+parameters, enum constants, and compatibility bridges still flow through the
+legacy lookup path until Step 3 redirects unqualified lookup.
 
 ## Proof
-No build/test proof for this packet. The completion artifact is the inventory
-captured in `ideas/open/83_parser_scope_textid_binding_lookup.md`; no code
-paths changed and no `test_after.log` was required.
+Proof command: `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^frontend_parser_tests$'`
+Result: passed; proof log at `test_after.log`.

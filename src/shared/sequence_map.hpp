@@ -1,6 +1,5 @@
 #pragma once
 
-#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
@@ -11,21 +10,42 @@
 
 namespace c4c {
 
+template <typename key_t, typename = void>
+struct IsSequenceMapKey : std::false_type {};
+
 template <typename key_t>
-concept KeyConcept =
-    requires(const key_t& key) {
-      { key.data() } -> std::convertible_to<const uint32_t*>;
-      { key.size() } -> std::convertible_to<size_t>;
-    } &&
-    std::same_as<std::remove_cv_t<std::remove_pointer_t<decltype(std::declval<const key_t&>().data())>>,
-                 uint32_t>;
+struct IsSequenceMapKey<
+    key_t,
+    std::void_t<decltype(std::declval<const key_t&>().data()),
+                decltype(std::declval<const key_t&>().size())>>
+    : std::integral_constant<
+          bool,
+          std::is_convertible<
+              decltype(std::declval<const key_t&>().data()),
+              const uint32_t*>::value &&
+              std::is_convertible<
+                  decltype(std::declval<const key_t&>().size()),
+                  size_t>::value &&
+              std::is_same<
+                  typename std::remove_cv<
+                      typename std::remove_pointer<
+                          decltype(std::declval<const key_t&>().data())>::type>::type,
+                  uint32_t>::value> {};
 
 template <typename value_t>
-concept ValueConcept = std::movable<value_t>;
+struct IsSequenceMapValue
+    : std::integral_constant<bool,
+                             std::is_move_constructible<value_t>::value &&
+                                 std::is_move_assignable<value_t>::value> {};
 
-template <KeyConcept key_t, ValueConcept value_t>
+template <typename key_t, typename value_t>
 class SequenceMap {
  public:
+  static_assert(IsSequenceMapKey<key_t>::value,
+                "SequenceMap key must expose uint32_t data() and size().");
+  static_assert(IsSequenceMapValue<value_t>::value,
+                "SequenceMap value must be movable.");
+
   struct View {
     const key_t* key = nullptr;
     const value_t* value = nullptr;

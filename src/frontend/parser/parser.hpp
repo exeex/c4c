@@ -78,6 +78,7 @@ class Parser {
   using TemplateScopeKind = ParserTemplateScopeKind;
   using TemplateScopeParam = ParserTemplateScopeParam;
   using TemplateScopeFrame = ParserTemplateScopeFrame;
+  using LexicalScopeState = ParserLexicalScopeState;
   using RecordBodyState = ParserRecordBodyState;
   using RecordMemberRecoveryResult = ParserRecordMemberRecoveryResult;
   using ParseContextFrame = ParserParseContextFrame;
@@ -144,6 +145,9 @@ class Parser {
 
   // ── template metadata tables and active template scopes ──────────────────
   ParserTemplateState template_state_;
+
+  // ── parser-local lexical binding scopes ──────────────────────────────────
+  ParserLexicalScopeState lexical_scope_state_;
 
   // ── active parse context ──────────────────────────────────────────────────
   ParserActiveContextState active_context_state_;
@@ -301,6 +305,13 @@ class Parser {
   const TypeSpec* find_typedef_type(std::string_view name) const;
   bool has_visible_typedef_type(std::string_view name) const;
   const TypeSpec* find_visible_typedef_type(std::string_view name) const;
+  void push_local_binding_scope();
+  bool pop_local_binding_scope();
+  bool has_local_binding_scope() const;
+  void bind_local_typedef(TextId name_text_id, const TypeSpec& type);
+  void bind_local_value(TextId name_text_id, const TypeSpec& type);
+  const TypeSpec* find_local_visible_typedef_type(TextId name_text_id) const;
+  const TypeSpec* find_local_visible_var_type(TextId name_text_id) const;
   TypeSpec resolve_typedef_type_chain(TypeSpec ts) const;
   TypeSpec resolve_struct_like_typedef_type(TypeSpec ts) const;
   bool are_types_compatible(const TypeSpec& lhs, const TypeSpec& rhs) const;

@@ -54,9 +54,14 @@ struct LocalNameFragmentView {
       make_local_name_fragment_view(suffix_text_ids, suffix_count));
 }
 
-template <KeyConcept key_t, ValueConcept value_t>
+template <typename key_t, typename value_t>
 class LocalNameTable {
  public:
+  static_assert(IsSequenceMapKey<key_t>::value,
+                "LocalNameTable key must expose uint32_t data() and size().");
+  static_assert(IsSequenceMapValue<value_t>::value,
+                "LocalNameTable value must be movable.");
+
   using Key = key_t;
   using Map = SequenceMap<key_t, value_t>;
   using View = typename Map::View;

@@ -12,6 +12,17 @@ Node* Parser::parse_block() {
     ParseContextGuard trace(this, __func__);
     int ln = cur().line;
     expect(TokenKind::LBrace);
+    struct LexicalBindingScopeGuard {
+        Parser* parser = nullptr;
+
+        explicit LexicalBindingScopeGuard(Parser* parser_in) : parser(parser_in) {
+            if (parser) parser->push_local_binding_scope();
+        }
+
+        ~LexicalBindingScopeGuard() {
+            if (parser) parser->pop_local_binding_scope();
+        }
+    } lexical_scope_guard(this);
     // Save enum constant scope — inner block enums must not leak to outer scope.
     auto saved_enum_consts = binding_state_.enum_consts;
     std::vector<Node*> stmts;
