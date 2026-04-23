@@ -305,9 +305,12 @@ bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx,
             primary_tpl->template_param_is_nttp[arg_idx];
     }
     if (check(TokenKind::Identifier)) {
-        const std::string name(token_spelling(cur()));
-        const std::string resolved = visible_type_head_name(*this, name);
-        if (template_state_.alias_template_info.count(name) > 0 ||
+        const TextId name_text_id = cur().text_id;
+        const std::string_view name = token_spelling(cur());
+        const std::string spelled_name(name);
+        const std::string resolved =
+            visible_type_head_name(*this, name_text_id, name);
+        if (template_state_.alias_template_info.count(spelled_name) > 0 ||
             template_state_.alias_template_info.count(resolved) > 0) {
             return false;
         }

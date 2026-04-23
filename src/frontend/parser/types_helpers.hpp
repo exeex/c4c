@@ -293,7 +293,8 @@ bool is_known_simple_type_head(const Parser& parser, TextId name_text_id,
     if (parser.is_template_scope_type_param(name_text_id, name)) return true;
     if (parser.is_typedef_name(name_text_id, name)) return true;
     if (parser.has_visible_typedef_type(name_text_id, name)) return true;
-    const std::string resolved = visible_type_head_name(parser, name);
+    const std::string resolved =
+        visible_type_head_name(parser, name_text_id, name);
     return parser.template_state_.template_struct_defs.count(
                std::string(name)) > 0 ||
            parser.template_state_.template_struct_defs.count(resolved) > 0 ||
