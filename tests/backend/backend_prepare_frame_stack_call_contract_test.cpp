@@ -1,4 +1,5 @@
 #include "src/backend/bir/bir.hpp"
+#include "src/backend/mir/x86/x86.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/backend/prealloc/prepared_printer.hpp"
 #include "src/target_profile.hpp"
@@ -2555,6 +2556,76 @@ int check_branch_restore_dynamic_stack_contract() {
   return 0;
 }
 
+int check_x86_consumer_surface_reads_scalar_call_boundary_authority() {
+  const auto prepared = prepare_module(make_call_contract_module());
+  const auto function_id = prepare::resolve_prepared_function_name_id(prepared.names, "call_contract");
+  if (!function_id.has_value()) {
+    return fail("x86 consumer surface contract: failed to resolve call_contract");
+  }
+
+  const auto consumed = c4c::backend::x86::consume_plans(prepared, "call_contract");
+  if (consumed.frame != prepare::find_prepared_frame_plan(prepared, *function_id) ||
+      consumed.dynamic_stack != prepare::find_prepared_dynamic_stack_plan(prepared, *function_id) ||
+      consumed.calls != prepare::find_prepared_call_plans(prepared, *function_id) ||
+      consumed.storage != prepare::find_prepared_storage_plan(prepared, *function_id)) {
+    return fail(
+        "x86 consumer surface contract: x86 no longer reads scalar call-boundary plans directly from prepared authority");
+  }
+  if (consumed.calls == nullptr || consumed.calls->calls.size() != 1 || consumed.storage == nullptr) {
+    return fail("x86 consumer surface contract: missing call or storage plan for scalar call fixture");
+  }
+  if (consumed.dynamic_stack != nullptr) {
+    return fail("x86 consumer surface contract: plain scalar call fixture unexpectedly reports dynamic-stack authority");
+  }
+  const auto* tmp_call = find_storage_value(prepared, *consumed.storage, "tmp.call");
+  if (tmp_call == nullptr || consumed.calls->calls.front().result->destination_value_id !=
+                                 std::optional<prepare::PreparedValueId>{tmp_call->value_id}) {
+    return fail("x86 consumer surface contract: x86-consumed scalar call plans lost direct result/storage identity");
+  }
+  return 0;
+}
+
+int check_x86_consumer_surface_reads_nested_dynamic_stack_call_boundary_authority() {
+  const auto prepared = prepare_module(make_variadic_nested_dynamic_stack_call_module());
+  const auto function_id = prepare::resolve_prepared_function_name_id(
+      prepared.names, "variadic_nested_dynamic_stack_contract");
+  if (!function_id.has_value()) {
+    return fail("x86 consumer surface contract: failed to resolve variadic_nested_dynamic_stack_contract");
+  }
+
+  const auto consumed =
+      c4c::backend::x86::consume_plans(prepared, "variadic_nested_dynamic_stack_contract");
+  if (consumed.frame != prepare::find_prepared_frame_plan(prepared, *function_id) ||
+      consumed.dynamic_stack != prepare::find_prepared_dynamic_stack_plan(prepared, *function_id) ||
+      consumed.calls != prepare::find_prepared_call_plans(prepared, *function_id) ||
+      consumed.storage != prepare::find_prepared_storage_plan(prepared, *function_id)) {
+    return fail(
+        "x86 consumer surface contract: x86 no longer reads nested dynamic-stack call-boundary plans directly from prepared authority");
+  }
+  const auto* carry = consumed.storage == nullptr ? nullptr : find_storage_value(prepared, *consumed.storage, "carry");
+  if (consumed.frame == nullptr || !consumed.frame->has_dynamic_stack || consumed.dynamic_stack == nullptr ||
+      !consumed.dynamic_stack->requires_stack_save_restore || consumed.dynamic_stack->operations.size() != 6 ||
+      consumed.calls == nullptr || consumed.calls->calls.size() != 7 || consumed.storage == nullptr ||
+      carry == nullptr) {
+    return fail(
+        "x86 consumer surface contract: nested dynamic-stack scalar fixture no longer exposes frame/dynamic-stack/call/storage authority through x86");
+  }
+  const auto variadic_it = std::find_if(
+      consumed.calls->calls.begin(),
+      consumed.calls->calls.end(),
+      [](const prepare::PreparedCallPlan& call_plan) {
+        return call_plan.direct_callee_name == std::optional<std::string>{"extern_variadic_i32"} &&
+               call_plan.wrapper_kind == prepare::PreparedCallWrapperKind::DirectExternVariadic;
+      });
+  if (variadic_it == consumed.calls->calls.end() ||
+      variadic_it->arguments.front().source_value_id !=
+          std::optional<prepare::PreparedValueId>{carry->value_id}) {
+    return fail(
+        "x86 consumer surface contract: nested dynamic-stack variadic call lost direct carry/storage authority");
+  }
+  return 0;
+}
+
 int check_variadic_nested_dynamic_stack_call_contract() {
   const auto prepared = prepare_module(make_variadic_nested_dynamic_stack_call_module());
   const auto* function = find_function(prepared.module, "variadic_nested_dynamic_stack_contract");
@@ -2699,6 +2770,13 @@ int main() {
     return rc;
   }
   if (const int rc = check_branch_restore_dynamic_stack_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_x86_consumer_surface_reads_scalar_call_boundary_authority(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_x86_consumer_surface_reads_nested_dynamic_stack_call_boundary_authority();
+      rc != 0) {
     return rc;
   }
   if (const int rc = check_variadic_nested_dynamic_stack_call_contract(); rc != 0) {

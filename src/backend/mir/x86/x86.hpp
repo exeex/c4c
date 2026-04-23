@@ -1,8 +1,12 @@
 #pragma once
 
+#include "../../prealloc/prealloc.hpp"
 #include "abi/abi.hpp"
 #include "debug/debug.hpp"
 #include "lowering/lowering.hpp"
+
+#include <optional>
+#include <string_view>
 
 namespace c4c::backend::x86 {
 
@@ -23,6 +27,17 @@ struct ConsumedPlans {
       .calls = c4c::backend::prepare::find_prepared_call_plans(module, function_name),
       .storage = c4c::backend::prepare::find_prepared_storage_plan(module, function_name),
   };
+}
+
+[[nodiscard]] inline ConsumedPlans consume_plans(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    std::string_view function_name) {
+  const auto function_name_id =
+      c4c::backend::prepare::resolve_prepared_function_name_id(module.names, function_name);
+  if (!function_name_id.has_value()) {
+    return {};
+  }
+  return consume_plans(module, *function_name_id);
 }
 
 inline std::string summarize_prepared_module_routes(
