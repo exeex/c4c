@@ -589,6 +589,199 @@ std::optional<std::string> render_prepared_local_slot_memory_operand_if_supporte
   return render_prepared_stack_memory_operand(slot_it->second + stack_byte_bias, size_name);
 }
 
+std::optional<PreparedBoundedMultiDefinedCallLaneRender>
+render_prepared_bounded_multi_defined_call_lane_body_if_supported(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::bir::Function& candidate,
+    const std::vector<const c4c::backend::bir::Function*>& defined_functions,
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view return_register,
+    const std::function<bool(std::string_view)>& has_string_constant,
+    const std::function<bool(std::string_view)>& has_same_module_global,
+    const std::function<std::string(std::string_view)>& render_private_data_label,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name) {
+  PreparedBoundedMultiDefinedCallLaneRender rendered{
+      .body = "    sub rsp, " + std::to_string(local_layout.frame_size + 8) + "\n",
+  };
+  std::optional<PreparedBoundedMultiDefinedCurrentI32Carrier> current_i32;
+  std::optional<std::string_view> current_i8;
+
+  for (const auto& inst : candidate.blocks.front().insts) {
+    if (const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst)) {
+      if (call->args.size() != call->arg_types.size() || call->args.size() > 6 ||
+          (call->result.has_value() &&
+           call->result->type != c4c::backend::bir::TypeKind::I32 &&
+           call->result->type != c4c::backend::bir::TypeKind::Void)) {
+        return std::nullopt;
+      }
+      std::string callee_name;
+      if (!call->is_indirect) {
+        if (call->callee.empty() || call->callee_value.has_value()) {
+          return std::nullopt;
+        }
+        callee_name = call->callee;
+      } else {
+        if (!call->callee.empty() || !call->callee_value.has_value() ||
+            call->callee_value->kind != c4c::backend::bir::Value::Kind::Named ||
+            call->callee_value->type != c4c::backend::bir::TypeKind::Ptr ||
+            call->callee_value->name.empty() || call->callee_value->name.front() != '@') {
+          return std::nullopt;
+        }
+        callee_name = std::string(call->callee_value->name.substr(1));
+        bool found_same_module_function = false;
+        for (const auto* available_function : defined_functions) {
+          if (available_function->name == callee_name) {
+            found_same_module_function = true;
+            break;
+          }
+        }
+        if (!found_same_module_function) {
+          return std::nullopt;
+        }
+      }
+
+      const auto instruction_index =
+          static_cast<std::size_t>(&inst - candidate.blocks.front().insts.data());
+      for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
+        if (!append_prepared_bounded_multi_defined_call_argument_if_supported(
+                call->args[arg_index], call->arg_types[arg_index], arg_index,
+                instruction_index, module, function_locations, function_addressing, function_name,
+                local_layout, current_i32, has_string_constant, has_same_module_global,
+                render_private_data_label, render_asm_symbol_name, &rendered.used_string_names,
+                &rendered.used_same_module_global_names, &rendered.body)) {
+          return std::nullopt;
+        }
+      }
+
+      rendered.body += "    xor eax, eax\n";
+      rendered.body += "    call ";
+      rendered.body += render_asm_symbol_name(callee_name);
+      rendered.body += "\n";
+      if (!finalize_prepared_bounded_multi_defined_call_result_if_supported(
+              *call, instruction_index, module, function_locations, &rendered.body, &current_i32)) {
+        return std::nullopt;
+      }
+      current_i8 = std::nullopt;
+      continue;
+    }
+
+    if (const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst)) {
+      if (store->byte_offset != 0 || store->address.has_value()) {
+        return std::nullopt;
+      }
+
+      if (store->value.type == c4c::backend::bir::TypeKind::I32) {
+        const auto memory = render_prepared_local_slot_memory_operand_if_supported(
+            local_layout, store->slot_name, 8, "DWORD");
+        if (!memory.has_value()) {
+          return std::nullopt;
+        }
+        if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+          rendered.body += "    mov " + *memory + ", " +
+                           std::to_string(static_cast<std::int32_t>(store->value.immediate)) +
+                           "\n";
+          current_i32 = std::nullopt;
+          current_i8 = std::nullopt;
+          continue;
+        }
+        if (store->value.kind != c4c::backend::bir::Value::Kind::Named) {
+          return std::nullopt;
+        }
+        const auto source =
+            select_prepared_bounded_multi_defined_named_i32_source_if_supported(
+                module, function_locations, current_i32, store->value.name);
+        if (!source.has_value() ||
+            !append_prepared_bounded_multi_defined_i32_move_into_memory_if_supported(
+                &rendered.body, *memory, *source)) {
+          return std::nullopt;
+        }
+        current_i32 = std::nullopt;
+        current_i8 = std::nullopt;
+        continue;
+      }
+
+      if (store->value.type == c4c::backend::bir::TypeKind::I8) {
+        const auto memory = render_prepared_local_slot_memory_operand_if_supported(
+            local_layout, store->slot_name, 8, "BYTE");
+        if (!memory.has_value()) {
+          return std::nullopt;
+        }
+        const auto rendered_store = render_prepared_i8_store_to_memory_if_supported(
+            store->value,
+            current_i8,
+            *memory,
+            [](const c4c::backend::bir::Value& value,
+               const std::optional<std::string_view>& current_name) -> std::optional<std::string> {
+              if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+                return std::to_string(static_cast<std::int8_t>(value.immediate));
+              }
+              if (value.kind != c4c::backend::bir::Value::Kind::Named ||
+                  !current_name.has_value() || *current_name != value.name) {
+                return std::nullopt;
+              }
+              return "al";
+            });
+        if (!rendered_store.has_value()) {
+          return std::nullopt;
+        }
+        rendered.body += *rendered_store;
+        current_i32 = std::nullopt;
+        current_i8 = store->value.kind == c4c::backend::bir::Value::Kind::Named
+                         ? std::optional<std::string_view>(store->value.name)
+                         : std::nullopt;
+        continue;
+      }
+
+      return std::nullopt;
+    }
+
+    const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
+    if (load == nullptr || load->byte_offset != 0 || load->address.has_value()) {
+      return std::nullopt;
+    }
+
+    if (load->result.type == c4c::backend::bir::TypeKind::I32) {
+      const auto memory = render_prepared_local_slot_memory_operand_if_supported(
+          local_layout, load->slot_name, 8, "DWORD");
+      if (!memory.has_value()) {
+        return std::nullopt;
+      }
+      rendered.body += "    mov eax, " + *memory + "\n";
+      current_i32 = PreparedBoundedMultiDefinedCurrentI32Carrier{
+          .value_name = load->result.name,
+          .register_name = std::string("eax"),
+          .stack_operand = std::nullopt,
+      };
+      current_i8 = std::nullopt;
+      continue;
+    }
+
+    if (load->result.type == c4c::backend::bir::TypeKind::I8) {
+      const auto memory = render_prepared_local_slot_memory_operand_if_supported(
+          local_layout, load->slot_name, 8, "BYTE");
+      if (!memory.has_value()) {
+        return std::nullopt;
+      }
+      rendered.body += "    mov al, " + *memory + "\n";
+      current_i32 = std::nullopt;
+      current_i8 = load->result.name;
+      continue;
+    }
+
+    return std::nullopt;
+  }
+
+  const auto& returned = *candidate.blocks.front().terminator.value;
+  if (!finalize_prepared_bounded_multi_defined_return_if_supported(
+          returned, local_layout, return_register, &rendered.body)) {
+    return std::nullopt;
+  }
+  return rendered;
+}
+
 std::optional<std::string> render_prepared_value_home_stack_address_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,

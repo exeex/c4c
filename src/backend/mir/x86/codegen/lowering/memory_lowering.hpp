@@ -145,6 +145,21 @@ std::optional<std::string> render_prepared_local_slot_memory_operand_if_supporte
     std::size_t stack_byte_bias,
     std::string_view size_name);
 
+std::optional<PreparedBoundedMultiDefinedCallLaneRender>
+render_prepared_bounded_multi_defined_call_lane_body_if_supported(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::FunctionNameId function_name,
+    const c4c::backend::bir::Function& candidate,
+    const std::vector<const c4c::backend::bir::Function*>& defined_functions,
+    const PreparedModuleLocalSlotLayout& local_layout,
+    std::string_view return_register,
+    const std::function<bool(std::string_view)>& has_string_constant,
+    const std::function<bool(std::string_view)>& has_same_module_global,
+    const std::function<std::string(std::string_view)>& render_private_data_label,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name);
+
 std::optional<std::string> render_prepared_value_home_stack_address_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
