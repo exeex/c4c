@@ -1,4 +1,4 @@
 interface:
   display_name: "Phoenix Rebuild"
-  short_description: "Staged rewrite idea generator"
-  default_prompt: "Use $phoenix-rebuild to generate a staged source-idea series for rebuilding a tangled subsystem, then drive markdown extraction, design review, replacement drafts, and only later real implementation."
+  short_description: "Scripted staged rebuild driver"
+  default_prompt: "Use $phoenix-rebuild to drive a scripted staged rebuild: glob legacy .cpp/.hpp files into markdown extraction artifacts with parallel agents, keep one .hpp index per directory, then proceed through review, replacement drafts, and only later real implementation."

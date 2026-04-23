@@ -19,6 +19,37 @@ single bug fix that fits inside the current design.
 Keep this skill self-contained. Do not rely on companion reference markdown
 files. Put the rebuild rules in this file.
 
+## Scripted Entry Point
+
+The extraction stage should be script-driven, not hand-run file by file.
+
+Use:
+
+`python .codex/skills/phoenix-rebuild/scripts/extract_legacy_to_markdown.py --output-root <dir> '<glob>' ...`
+
+Legacy cleanup:
+
+`python .codex/skills/phoenix-rebuild/scripts/delete_legacy_cpp.py --output-root <dir> '<glob>' ...`
+
+The script hardcodes the extraction prompt, expands the requested glob set,
+and launches one agent process per matched legacy `.cpp` / `.hpp` in parallel.
+Use it as the default stage-1 driver when the task is "translate legacy code
+into compressed markdown evidence."
+
+The cleanup script is the default way to remove old `.cpp` files after stage-1
+evidence exists. It refuses deletion unless the matching extracted `.md`
+already exists, then deletes the original `.cpp` files with `rm`.
+
+Header policy is strict:
+
+- one directory gets exactly one non-helper `.hpp` as its formal index surface
+- that non-helper `.hpp` is the only LLM index entry for the directory
+- `helper.hpp` is the only allowed exception and does not count toward the
+  single-index-header limit
+- do not design rebuild layouts around one `.cpp` plus one `.hpp` siblings
+- if a globbed extraction set contains more than one non-helper `.hpp` in a
+  directory, stop and repair the layout before continuing
+
 ## Trigger Conditions
 
 Use this skill when one or more of these are true:
@@ -61,28 +92,31 @@ into more files.
    - `ideas/open/*.md` defines the durable rebuild initiative
    - `plan.md` defines the active execution runbook for one selected idea
    - `todo.md` tracks packet-level execution once a plan is active
-4. Do not mechanically dump whole `.cpp`/`.hpp` files into `.md`; require the
-   executor to keep only
-   the important API and contract surfaces, using short fenced `cpp` blocks for
-   the pieces that matter.
-5. Do not delete the only working implementation before a replacement path
-   exists and has absorbed the target ownership.
-6. Force every fast path or special case into one label:
+4. Do not mechanically dump whole `.cpp`/`.hpp` files into `.md`; use the
+   extraction script and require the agent to keep only the important API and
+   contract surfaces, using short fenced `cpp` blocks for the pieces that
+   matter.
+5. When a phoenix route explicitly chooses teardown, delete legacy `.cpp`
+   through the cleanup script so removal is gated on extracted `.md` evidence.
+6. Do not leave old `.cpp` files parked beside the markdown extraction once
+   the teardown step has been accepted.
+7. Force every fast path or special case into one label:
    - core lowering
    - optional fast path
    - legacy compatibility
    - overfit to reject
-7. Prefer behavior-preserving migration slices over heroic all-at-once rewrites.
-8. Every executor packet must answer: what artifact was produced, what
+8. Prefer behavior-preserving migration slices over heroic all-at-once rewrites.
+9. Every executor packet must answer: what artifact was produced, what
    responsibility moved or was documented, what still remains in legacy code,
    and what proof covers the packet.
-9. The supervisor does not perform extraction, review, draft writing, or code
+10. The supervisor does not perform extraction, review, draft writing, or code
    conversion directly when an executor packet can own it.
-10. Use parallel executor packets when the active stage can be split into
-    disjoint owned outputs without overlap.
-11. Keep write ownership disjoint when parallelizing. Do not assign two agents
+11. Use parallel executor packets when the active stage can be split into
+    disjoint owned outputs without overlap. Stage-1 extraction should normally
+    use the script's one-agent-per-file parallel fanout.
+12. Keep write ownership disjoint when parallelizing. Do not assign two agents
     the same output markdown or source file.
-12. Every migration packet must answer: what responsibility moved, what still
+13. Every migration packet must answer: what responsibility moved, what still
    remains in legacy code, and what proof covers the moved seam.
 
 ## Start Here
@@ -127,6 +161,8 @@ When asking `c4c-plan-owner` to create those ideas, require each idea to state:
 - what it does not own yet
 - what downstream stage it unlocks
 - a concrete close condition in `## Completion Signal`
+- a short "read this first" pointer telling executors/reviewers to consult
+  `.codex/skills/phoenix-rebuild/SKILL.md` before doing phoenix-stage work
 
 Do not allow `Completion Signal` to say vague things like "artifact exists" or
 "review is done". It must say what full artifact set or decision package must
@@ -139,13 +175,19 @@ to idea 78.
 
 Idea 1 must say that it produces:
 
-- one `.md` companion for every in-scope legacy `.cpp` / `.hpp`
+- one `.md` companion for every in-scope legacy `.cpp`
+- one `.md` companion for the single in-scope non-helper directory index
+  `.hpp`
 - one directory-level index `.md` for the whole extracted scope
 
 Idea 1 content must explicitly require:
 
-- one-to-one mapping from each in-scope legacy source file to its markdown
-  artifact
+- script-driven glob expansion over the in-scope legacy source set
+- one markdown artifact for each matched legacy `.cpp`
+- one markdown artifact for the single non-helper `.hpp` index surface in each
+  directory
+- `helper.hpp` may exist beside that index header, but it never replaces the
+  directory index role
 - compressed extraction rather than source dumping
 - important APIs, contracts, dependency directions, hidden dependencies,
   responsibility buckets, and special-case classification
@@ -157,7 +199,12 @@ Idea 1 content must explicitly require:
 
 Idea 1 close condition must explicitly require:
 
-- every in-scope legacy `.cpp` / `.hpp` has its corresponding `.md`
+- every in-scope legacy `.cpp` and the single directory-index `.hpp` have
+  their corresponding `.md`
+- the accepted teardown packet has removed the replaced legacy `.cpp` files
+  with the cleanup script instead of leaving them parked beside the extraction
+- no directory exceeds one non-helper `.hpp`; `helper.hpp` is the only allowed
+  exception
 - the directory-level index points at the full artifact set
 - the extraction is compressed enough to be reviewable
 
@@ -203,7 +250,8 @@ Idea 3 must say that it produces:
 
 - one `.cpp.md` for every planned replacement implementation file declared by
   idea 2
-- one `.hpp.md` for every planned replacement header file declared by idea 2
+- one directory-index non-helper `.hpp.md` for each replacement directory
+  declared by idea 2
 - one directory-level index `.md` for the replacement draft set when needed
 - one review artifact for the replacement draft set
 
@@ -219,8 +267,10 @@ Idea 3 content must explicitly require:
 
 Idea 3 close condition must explicitly require:
 
-- every replacement `.cpp` / `.hpp` declared by idea 2 has its corresponding
-  `.cpp.md` / `.hpp.md`
+- every replacement `.cpp` and each directory-index non-helper `.hpp`
+  declared by idea 2 has its corresponding `.cpp.md` / `.hpp.md`
+- no replacement directory introduces more than one non-helper `.hpp`;
+  `helper.hpp` is the only allowed exception
 - any required replacement index `.md` exists
 - the draft-review artifact exists and says the draft set is coherent enough
   for implementation conversion
