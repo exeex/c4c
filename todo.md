@@ -3,26 +3,29 @@
 Status: Active
 Source Idea Path: ideas/open/82_parser_namespace_textid_context_tree.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Resolve Qualified Namespace Traversal Through TextId Segments
+Current Step ID: 3
+Current Step Title: Contain Canonical String Fallbacks To Compatibility Helpers
 
 # Current Packet
 
 ## Just Finished
 
-- removed the remaining qualified-expression fallback rebuilds in Step 2
-  entry points so unresolved namespace/value lookups keep the qualified
-  metadata and fall back only to the base identifier text
-- kept the change scoped to `parser_expressions.cpp` while preserving the
-  parser namespace lookup helpers already in use
+- removed the remaining string-to-`TextId` synthesis inside
+  `resolve_namespace_context()` and `resolve_namespace_name()` so Step 2
+  namespace traversal now walks only the stored `qualifier_text_ids` and
+  `base_text_id`
+- kept the change scoped to `parser_core.cpp` so the semantic lookup path no
+  longer reconstructs canonical namespace segments during traversal
 
 ## Suggested Next
 
-- continue Step 2 by checking whether any parser helper still rebuilds spelled
-  namespace strings on qualified-value misses and, if so, confine that cleanup
-  to namespace lookup helpers
-- keep the next packet inside parser namespace lookup and avoid widening into
-  broader binding-table or lexical-scope cleanup
+- start Step 3 by auditing the remaining compatibility bridges such as
+  `qualified_name_text()` and `bridge_name_in_context()` call sites, and keep
+  any surviving canonical string synthesis limited to rendering/debug or
+  explicit alias-bridge behavior
+- avoid pulling using-declaration alias fallback cleanup or broader binding
+  table work back into this runbook unless a parser namespace helper still uses
+  canonical strings as the semantic lookup key
 
 ## Watchouts
 

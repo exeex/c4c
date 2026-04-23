@@ -1701,7 +1701,8 @@ int Parser::resolve_namespace_context(const QualifiedNameRef& name) const {
             const TextId segment_text_id =
                 i < name.qualifier_text_ids.size()
                     ? name.qualifier_text_ids[i]
-                    : find_parser_text_id(name.qualifier_segments[i]);
+                    : kInvalidText;
+            if (segment_text_id == kInvalidText) return -1;
             context_id = find_named_namespace_child(context_id, segment_text_id);
             if (context_id < 0) return -1;
         }
@@ -1720,13 +1721,15 @@ int Parser::resolve_namespace_name(const QualifiedNameRef& name) const {
             const TextId segment_text_id =
                 i < name.qualifier_text_ids.size()
                     ? name.qualifier_text_ids[i]
-                    : find_parser_text_id(name.qualifier_segments[i]);
+                    : kInvalidText;
+            if (segment_text_id == kInvalidText) return -1;
             context_id = find_named_namespace_child(context_id, segment_text_id);
             if (context_id < 0) return -1;
         }
         const TextId base_text_id =
             name.base_text_id != kInvalidText ? name.base_text_id
-                                              : find_parser_text_id(name.base_name);
+                                              : kInvalidText;
+        if (base_text_id == kInvalidText) return -1;
         return find_named_namespace_child(context_id, base_text_id);
     };
 
