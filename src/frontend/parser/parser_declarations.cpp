@@ -769,7 +769,7 @@ Node* Parser::parse_local_decl() {
                     const TextId arg_text_id = arg_tok.text_id;
                     const std::string arg_name = std::string(token_spelling(arg_tok));
                     const bool arg_is_type =
-                        is_known_simple_type_head(*this, arg_text_id, arg_name);
+                        is_known_simple_visible_type_head(*this, arg_text_id, arg_name);
                     single_value_arg = !arg_is_type;
                 }
                 auto can_use_lite_ctor_init_probe = [&]() -> bool {
@@ -814,7 +814,7 @@ Node* Parser::parse_local_decl() {
                             const TextId arg_text_id = arg_tok.text_id;
                             const std::string arg_name = std::string(token_spelling(arg_tok));
                             const bool arg_is_type =
-                                is_known_simple_type_head(*this, arg_text_id, arg_name);
+                                is_known_simple_visible_type_head(*this, arg_text_id, arg_name);
                             if (arg_is_type) return false;
                             if (single_value_arg) return true;
                             if (core_input_state_.pos + 2 <

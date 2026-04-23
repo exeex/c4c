@@ -7,27 +7,28 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by retargeting the remaining unqualified
-identifier-as-type probes in `parser_types_base.cpp` onto a shared
-`TextId`-aware visible-type helper. `is_type_start()` and the
-`parse_base_type()` declaration/type-head gates now reuse one exact
-typedef-or-template-parameter visibility predicate instead of carrying
-separate duplicated checks.
+Advanced `plan.md` step 2 by retargeting the declaration-side
+constructor-vs-function probe in `parser_declarations.cpp` onto the same
+`TextId`-aware visible-type helper used by the updated type-head gates.
+The single-argument direct-initialization probe now classifies simple
+identifier arguments through one exact typedef-or-template-parameter
+visibility predicate instead of the broader legacy helper.
 
 ## Suggested Next
-Continue `plan.md` step 2 by auditing the remaining manual type-head
-disambiguation paths that still bypass the shared helper, especially nearby
-parser entry points that resolve unresolved simple identifiers into type
-placeholders. Retarget only the next coherent declaration-side probe; do not
-pull expression lookup or qualified-name traversal into this packet.
+Continue `plan.md` step 2 by auditing the next declaration-side
+identifier-as-type disambiguation path that still bypasses the shared
+visible-type helper, especially nearby parser entry points that turn
+unresolved simple identifiers into placeholder type heads. Keep the packet
+inside declaration parsing and leave expression lookup plus qualified-name
+traversal untouched.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. The shared helper
 is only safe for declaration/type-head probes; expression-side heuristics must
-still distinguish value bindings from type bindings. `parser_declarations.cpp`
-continues to include `types_helpers.hpp` behind local renames for conflicting
-helper bodies, so future retargeting there should avoid widening that include
-surface unless the duplicated helpers are also reconciled.
+still distinguish value bindings from type bindings. The constructor-init
+probe still rejects qualified and template-id starters with local token-shape
+checks, so future retargeting should preserve those guards instead of
+re-expanding the visible helper back into namespace traversal.
 
 ## Proof
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' | tee test_after.log` passed. Proof log: `test_after.log`.
