@@ -11,11 +11,13 @@
 
 #include "ast.hpp"
 #include "token.hpp"
+#include "source_profile.hpp"
 #include "../../shared/text_id_table.hpp"
 
 namespace c4c {
 
 class Parser;
+class Arena;
 
 using ParserSymbolId = uint32_t;
 constexpr ParserSymbolId kInvalidParserSymbol = 0;
@@ -98,6 +100,11 @@ struct ParserNameTables {
   std::unordered_map<ParserSymbolId, TypeSpec> var_types;
 };
 
+struct ParserTokenMutation {
+  int pos = -1;
+  Token token;
+};
+
 struct ParserFnPtrTypedefInfo {
   Node** params = nullptr;
   int n_params = 0;
@@ -144,6 +151,45 @@ struct ParserTemplateArgParseResult {
   long long value = 0;
   const char* nttp_name = nullptr;
   Node* expr = nullptr;
+};
+
+struct ParserCoreInputState {
+  std::vector<Token> tokens;
+  std::vector<ParserTokenMutation> token_mutations;
+  int pos = 0;
+  Arena& arena;
+  SourceProfile source_profile = SourceProfile::C;
+  std::string source_file;
+
+  ParserCoreInputState(std::vector<Token> tokens_in, Arena& arena_in,
+                       SourceProfile source_profile_in,
+                       std::string source_file_in)
+      : tokens(std::move(tokens_in)),
+        arena(arena_in),
+        source_profile(source_profile_in),
+        source_file(std::move(source_file_in)) {}
+};
+
+struct ParserSharedLookupState {
+  TextTable* token_texts = nullptr;
+  FileTable* token_files = nullptr;
+  ParserSymbolTable parser_symbols;
+  ParserNameTables parser_name_tables;
+
+  ParserSharedLookupState(TextTable* token_texts_in = nullptr,
+                          FileTable* token_files_in = nullptr)
+      : token_texts(token_texts_in),
+        token_files(token_files_in),
+        parser_symbols(token_texts_in) {
+    parser_name_tables.symbols = &parser_symbols;
+  }
+
+  void attach_text_table(TextTable* texts) {
+    token_texts = texts;
+    parser_symbols.attach_text_table(texts);
+  }
+
+  void sync_symbol_tables() { parser_name_tables.symbols = &parser_symbols; }
 };
 
 enum class ParserTemplateScopeKind {
@@ -389,11 +435,6 @@ struct ParserTemplateDeclarationPreludeGuard {
 
   explicit ParserTemplateDeclarationPreludeGuard(Parser* p);
   ~ParserTemplateDeclarationPreludeGuard();
-};
-
-struct ParserTokenMutation {
-  int pos = -1;
-  Token token;
 };
 
 }  // namespace c4c

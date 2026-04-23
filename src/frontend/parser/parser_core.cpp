@@ -718,9 +718,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena,
                FileTable* token_files,
                SourceProfile source_profile,
                const std::string& source_file)
-    : tokens_(std::move(tokens)), pos_(0), arena_(arena), source_profile_(source_profile),
-      source_file_(source_file), token_texts_(token_texts), token_files_(token_files) {
-    parser_symbols_.attach_text_table(token_texts_);
+    : core_input_state_(std::move(tokens), arena, source_profile, source_file),
+      shared_lookup_state_(token_texts, token_files) {
     namespace_contexts_.push_back(
         NamespaceContext{0, -1, false, arena_.strdup(""), arena_.strdup("")});
     namespace_stack_.push_back(0);

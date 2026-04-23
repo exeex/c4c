@@ -9,16 +9,17 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Just Finished
 
-- began Step 2 by introducing explicit parser state bundles in
-  `parser_state.hpp` for bindings, definition caches, template metadata,
-  active context, namespace state, diagnostics, and pragma state, then wiring
-  `Parser` to own those bundles while keeping compatibility aliases stable
+- continued Step 2 by bundling the remaining parser core input state
+  (`tokens`, cursor, mutations, arena, source profile, source file) and shared
+  lookup state (`token_texts`, `token_files`, parser symbol/name tables) into
+  explicit structs in `parser_state.hpp`, then wiring `Parser` to own those
+  bundles while keeping the parser-facing aliases stable
 
 ## Suggested Next
 
-- continue Step 2 by deciding whether to bundle the remaining core input and
-  shared lookup members or to remove the temporary compatibility aliases from
-  this new grouped layout in smaller follow-up packets
+- continue Step 2 by removing the temporary compatibility aliases from this
+  grouped layout in a later packet only if the remaining parser state surface
+  still feels cluttered after the current bundle rollout
 
 ## Watchouts
 
@@ -31,4 +32,5 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 ## Proof
 
 - `cmake --build build -j --target c4c_frontend c4cll`
-- `ctest --test-dir build -j --output-on-failure -R 'cpp_hir_template_(alias_deferred_nttp_static_member|inherited_member_typedef_trait)'`
+- `ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_hir_template_alias_deferred_nttp_static_member|cpp_hir_template_inherited_member_typedef_trait)$'`
+- Result: passed

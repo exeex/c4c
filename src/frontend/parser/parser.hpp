@@ -127,20 +127,22 @@ class Parser {
   Node* parse();
 
   // ── core parser state ─────────────────────────────────────────────────────
-  // Token stream + cursor are the parser's single source of truth.
-  std::vector<Token> tokens_;
   using TokenMutation = ParserTokenMutation;
-  std::vector<TokenMutation> token_mutations_;
-  int pos_;
-  Arena& arena_;
-  SourceProfile source_profile_;
-  std::string source_file_;  // source path used by diagnostics
+  ParserCoreInputState core_input_state_;
+  std::vector<Token>& tokens_ = core_input_state_.tokens;
+  std::vector<TokenMutation>& token_mutations_ = core_input_state_.token_mutations;
+  int& pos_ = core_input_state_.pos;
+  Arena& arena_ = core_input_state_.arena;
+  SourceProfile& source_profile_ = core_input_state_.source_profile;
+  std::string& source_file_ = core_input_state_.source_file;
 
   // ── parser-owned shared lookup tables ────────────────────────────────────
-  TextTable* token_texts_ = nullptr;
-  FileTable* token_files_ = nullptr;
-  SymbolTable parser_symbols_{nullptr};
-  ParserNameTables parser_name_tables_{&parser_symbols_};
+  ParserSharedLookupState shared_lookup_state_;
+  TextTable*& token_texts_ = shared_lookup_state_.token_texts;
+  FileTable*& token_files_ = shared_lookup_state_.token_files;
+  SymbolTable& parser_symbols_ = shared_lookup_state_.parser_symbols;
+  ParserNameTables& parser_name_tables_ =
+      shared_lookup_state_.parser_name_tables;
 
   // ── parser name / binding tables ─────────────────────────────────────────
   ParserBindingState binding_state_;
