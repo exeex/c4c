@@ -7,38 +7,39 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by extracting
-`classify_visible_value_or_type_head()` so constructor-style local
-declaration probing can reuse the same visible value/type head classifier for
-qualified names without requiring call-like tails. Local direct-init
-disambiguation now short-circuits qualified visible member-access heads such
-as `ns::payload.value` through the shared lexical/value lookup path instead of
-falling back to a separate token-shape/template shortcut stack.
+Advanced `plan.md` step 2 by teaching the shared visible value/type
+classifier to report the post-head token position to statement-side ambiguity
+probes as well as constructor-init probes. Local statement disambiguation now
+reuses `classify_visible_value_or_type_head()` for qualified visible value
+heads instead of reparsing qualified names just to rediscover the token after
+the shared lexical/value lookup head, and qualified member-access assignment
+forms such as `api::payload.value = 9;` stay on the expression-statement
+path.
 
 ## Suggested Next
-Continue `plan.md` step 2 by checking whether any remaining local
-declaration/expression ambiguity probes still bypass the shared
-visible value/type classification path, especially constructor-init or
-statement probes that still re-parse qualified-name tails locally just to
-recover the post-head token position for `.` / `->` / assignment handling.
+Continue `plan.md` step 2 by auditing the remaining local
+declaration/function-declaration ambiguity helpers for unresolved
+single-name parameter-style starters that still bypass the shared visible
+value/type lookup path, especially the constructor-init tentative parse
+fallbacks that still special-case `identifier identifier` or grouped
+pointer/reference starters before the new lexical scope state owns more of
+that distinction directly.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. The shared helper
-is only safe for declaration/type-head probes; expression-side heuristics must
-still distinguish value bindings from type bindings. The constructor-init
-probe still special-cases unresolved `identifier identifier`,
-`identifier &/* identifier`, simple parenthesized `identifier(...)`, and
-grouped pointer/reference `identifier((...))` starters differently, and it
-now short-circuits both unqualified and qualified value-like starters only
-when the head resolves through visible value, known-function, or visible
-type lookup. Future cleanup should keep that value-vs-type bias local to
-direct-init disambiguation instead of re-expanding it into namespace-qualified
-lookup.
+is only safe for declaration/type-head probes plus the statement-side tail
+position checks that branch to expression parsing after a value-classified
+head. The constructor-init probe still special-cases unresolved
+`identifier identifier`, `identifier &/* identifier`, simple parenthesized
+`identifier(...)`, and grouped pointer/reference `identifier((...))`
+starters differently, and qualified call-like statement probes still rely on
+the later `classify_visible_value_or_type_starter()` branch when the token
+after the qualified head is `(` or a value-like template call.
 
 ## Proof
 `cmake --build --preset default` passed, and
 `ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' | tee test_after.log`
 passed. Added a focused frontend parser regression that keeps
-`Box value(ns::payload.value);` on the direct-init declaration path while the
-paired `Box copy(ns::Value(other));` case still parses as a function
-declaration. Proof log: `test_after.log`.
+`api::payload.value = 9;` on the expression-statement path while the shared
+qualified visible-head classifier now supplies the statement parser with the
+post-head tail position directly. Proof log: `test_after.log`.

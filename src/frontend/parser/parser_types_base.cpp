@@ -277,10 +277,11 @@ int Parser::classify_visible_value_or_type_head(int pos, int* after_pos) {
     return -1;
 }
 
-int Parser::classify_visible_value_or_type_starter(int pos) {
+int Parser::classify_visible_value_or_type_starter(int pos, int* after_pos) {
     int after_name_pos = pos;
     const int head_kind =
         classify_visible_value_or_type_head(pos, &after_name_pos);
+    if (after_pos) *after_pos = after_name_pos;
     if (head_kind == 0) return 0;
 
     const TokenKind first_kind = core_input_state_.tokens[pos].kind;

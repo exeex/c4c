@@ -222,7 +222,7 @@ class Parser {
   bool is_type_start() const;            // can current token start a type?
   bool can_start_parameter_type() const;
   int classify_visible_value_or_type_head(int pos, int* after_pos = nullptr);
-  int classify_visible_value_or_type_starter(int pos);
+  int classify_visible_value_or_type_starter(int pos, int* after_pos = nullptr);
   bool looks_like_unresolved_identifier_type_head(int pos) const;
   bool looks_like_unresolved_parenthesized_parameter_type_head(int pos) const;
   TextId parser_text_id_for_token(TextId token_text_id,

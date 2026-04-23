@@ -859,26 +859,7 @@ Node* Parser::parse_stmt() {
                 return 0;
             }
 
-            const int starter_kind = classify_visible_value_or_type_starter(pos);
-            if (after_pos == nullptr || starter_kind == 0) return starter_kind;
-
-            const int saved_pos = core_input_state_.pos;
-            core_input_state_.pos = pos;
-            QualifiedNameRef qn;
-            const bool parsed_qn =
-                peek_qualified_name(&qn, first_kind == TokenKind::ColonColon);
-            core_input_state_.pos = saved_pos;
-            if (!parsed_qn || (!qn.is_global_qualified &&
-                               qn.qualifier_segments.empty())) {
-                *after_pos = pos + 1;
-                return starter_kind;
-            }
-
-            int tail_pos = pos;
-            if (qn.is_global_qualified) ++tail_pos;
-            tail_pos += 1 + 2 * static_cast<int>(qn.qualifier_segments.size());
-            *after_pos = tail_pos;
-            return starter_kind;
+            return classify_visible_value_or_type_head(pos, after_pos);
         };
         int starter_tail_pos = core_input_state_.pos;
         const int starter_kind =
