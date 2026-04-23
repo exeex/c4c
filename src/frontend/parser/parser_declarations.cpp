@@ -804,7 +804,7 @@ Node* Parser::parse_local_decl() {
                         resolve_visible_value_name(head_tok.text_id, head_name);
                     return !resolved.empty() && has_known_fn_name(resolved);
                 };
-                auto classify_qualified_value_or_type_starter =
+                auto classify_visible_value_or_type_starter =
                     [&](int pos) -> int {
                     if (pos >= static_cast<int>(core_input_state_.tokens.size())) {
                         return 0;
@@ -826,6 +826,28 @@ Node* Parser::parse_local_decl() {
                     if (!parsed_qn ||
                         (!qn.is_global_qualified &&
                          qn.qualifier_segments.empty())) {
+                        const Token& head_tok = core_input_state_.tokens[pos];
+                        const std::string head_name =
+                            std::string(token_spelling(head_tok));
+                        if (find_visible_var_type(head_tok.text_id, head_name)) {
+                            return 1;
+                        }
+                        if (has_known_fn_name(head_name)) return 1;
+
+                        const std::string resolved_value =
+                            resolve_visible_value_name(head_tok.text_id, head_name);
+                        if (!resolved_value.empty() &&
+                            has_known_fn_name(resolved_value)) {
+                            return 1;
+                        }
+
+                        if (is_known_simple_visible_type_head(
+                                *this, head_tok.text_id, head_name)) {
+                            return -1;
+                        }
+                        const std::string resolved_type =
+                            resolve_visible_type_name(head_tok.text_id, head_name);
+                        if (!resolved_type.empty()) return -1;
                         return 0;
                     }
 
@@ -901,7 +923,7 @@ Node* Parser::parse_local_decl() {
                                     core_input_state_.pos + 1)) {
                                 return true;
                             }
-                            if (classify_qualified_value_or_type_starter(
+                            if (classify_visible_value_or_type_starter(
                                     core_input_state_.pos + 1) > 0) {
                                 return true;
                             }
@@ -928,7 +950,7 @@ Node* Parser::parse_local_decl() {
                             return true;
                         }
                         case TokenKind::ColonColon:
-                            return classify_qualified_value_or_type_starter(
+                            return classify_visible_value_or_type_starter(
                                        core_input_state_.pos + 1) > 0;
                         default:
                             return false;
@@ -970,7 +992,7 @@ Node* Parser::parse_local_decl() {
                         return false;
                     }
                     const int qualified_head_kind =
-                        classify_qualified_value_or_type_starter(
+                        classify_visible_value_or_type_starter(
                             core_input_state_.pos + 1);
                     if (qualified_head_kind > 0) return false;
                     if (qualified_head_kind < 0) return true;
