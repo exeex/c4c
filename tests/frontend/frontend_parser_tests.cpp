@@ -1207,6 +1207,45 @@ void test_parser_local_ctor_init_probe_balances_unresolved_param_and_value_expr_
             "value-expression direct-init forms should keep their declarator spelling");
 }
 
+void test_parser_local_ctor_init_probe_balances_parenthesized_param_and_value_call_shapes() {
+  c4c::Lexer lexer("struct Box { Box(int); };\n"
+                   "int main() {\n"
+                   "  int source;\n"
+                   "  Box copy(Value(other));\n"
+                   "  Box value(source(other));\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "parenthesized ctor-init probe regression should parse as a program");
+  expect_eq_int(program->n_children, 2,
+                "the parenthesized regression program should contain the record definition and main");
+
+  c4c::Node* main_fn = program->children[1];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the parenthesized regression program should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 3,
+                "main should retain the local source declaration and both ambiguous declarations");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_DECL,
+              "the local source declaration should remain a declaration");
+  expect_true(main_fn->body->children[1] != nullptr &&
+                  main_fn->body->children[1]->kind == c4c::NK_EMPTY,
+              "parenthesized unresolved named-parameter forms should remain function declarations");
+  expect_true(main_fn->body->children[2] != nullptr &&
+                  main_fn->body->children[2]->kind == c4c::NK_DECL,
+              "known visible value call-like forms should stay declarations");
+  expect_eq(main_fn->body->children[2]->name, "value",
+            "known visible value call-like forms should keep their declarator spelling");
+}
+
 void test_parser_template_member_suffix_probe_uses_token_spelling() {
   c4c::Lexer lexer(
       "template<int N>\n"
@@ -1568,6 +1607,7 @@ int main() {
   test_parser_if_condition_decl_uses_local_visible_typedef_scope();
   test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback();
   test_parser_local_ctor_init_probe_balances_unresolved_param_and_value_expr_shapes();
+  test_parser_local_ctor_init_probe_balances_parenthesized_param_and_value_call_shapes();
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
   test_parser_template_type_arg_uses_visible_scope_local_alias();

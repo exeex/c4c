@@ -825,6 +825,10 @@ Node* Parser::parse_local_decl() {
                                     core_input_state_.pos + 1)) {
                                 return false;
                             }
+                            if (looks_like_unresolved_parenthesized_parameter_type_head(
+                                    core_input_state_.pos + 1)) {
+                                return false;
+                            }
                             if (core_input_state_.pos + 2 <
                                     static_cast<int>(core_input_state_.tokens.size()) &&
                                 (core_input_state_.tokens[core_input_state_.pos + 2].kind ==

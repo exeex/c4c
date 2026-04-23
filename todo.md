@@ -7,26 +7,31 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by tightening the block-scope
-ctor-init/function-declaration probe in `parser_declarations.cpp` so
-unresolved named-parameter forms like `Box copy(Value other);` still classify
-as local function declarations, while unresolved value-expression starters
-like `Box value(source & other);` stay on the direct-initialization path
-instead of being over-classified as parameter declarations.
+Advanced `plan.md` step 2 by teaching the parser's
+parameter-type probe about unresolved parenthesized declarators such as
+`Value(other)` while still biasing known visible values like
+`source(other)` toward direct-initialization expressions. The local
+ctor-init/function-declaration probe now routes unresolved call-like
+starters through the same declaration-first path as other unresolved
+parameter-type shapes instead of treating every `identifier(...)`
+starter as a value expression.
 
 ## Suggested Next
 Continue `plan.md` step 2 by auditing the remaining constructor-init probe
 cases that still rely on local token-shape disambiguation for unresolved
-identifier starters, especially pointer/reference and call-like forms that
-may still diverge from the parser-visible lexical typedef facade.
+identifier starters, especially nested parenthesized pointer/reference
+declarators and any other forms that should consult visible lexical
+type-or-value bindings before falling back to unresolved declaration
+shape heuristics.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. The shared helper
 is only safe for declaration/type-head probes; expression-side heuristics must
 still distinguish value bindings from type bindings. The constructor-init
-probe now special-cases unresolved `identifier identifier` and unresolved
-`identifier &/* identifier` starters differently; future cleanup should keep
-that value-vs-type bias local to direct-init disambiguation instead of
+probe now special-cases unresolved `identifier identifier`,
+`identifier &/* identifier`, and unresolved parenthesized
+`identifier(...)` starters differently; future cleanup should keep that
+value-vs-type bias local to direct-init disambiguation instead of
 re-expanding it into namespace-qualified lookup.
 
 ## Proof

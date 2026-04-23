@@ -174,6 +174,10 @@ bool Parser::can_start_parameter_type() const {
     if (!is_cpp_mode()) return false;
 
     if (looks_like_unresolved_identifier_type_head(core_input_state_.pos)) return true;
+    if (looks_like_unresolved_parenthesized_parameter_type_head(
+            core_input_state_.pos)) {
+        return true;
+    }
 
     if (check(TokenKind::Identifier) &&
         core_input_state_.pos + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
@@ -239,6 +243,42 @@ bool Parser::looks_like_unresolved_identifier_type_head(int pos) const {
     }
 
     return is_qualifier(core_input_state_.tokens[next].kind);
+}
+
+bool Parser::looks_like_unresolved_parenthesized_parameter_type_head(int pos) const {
+    if (!is_cpp_mode()) return false;
+    if (pos < 0 || pos >= static_cast<int>(core_input_state_.tokens.size())) return false;
+    if (core_input_state_.tokens[pos].kind != TokenKind::Identifier) return false;
+
+    const Token& head_tok = core_input_state_.tokens[pos];
+    const TextId head_text_id = head_tok.text_id;
+    const std::string head_name = std::string(token_spelling(head_tok));
+    if (is_concept_name(head_name)) return false;
+    if (is_known_simple_visible_type_head(*this, head_text_id, head_name)) return false;
+    if (find_visible_var_type(head_text_id, head_name)) return false;
+
+    const int lparen = pos + 1;
+    if (lparen >= static_cast<int>(core_input_state_.tokens.size()) ||
+        core_input_state_.tokens[lparen].kind != TokenKind::LParen) {
+        return false;
+    }
+
+    int inner = lparen + 1;
+    if (inner >= static_cast<int>(core_input_state_.tokens.size())) return false;
+
+    if (core_input_state_.tokens[inner].kind == TokenKind::Star ||
+        core_input_state_.tokens[inner].kind == TokenKind::Amp ||
+        core_input_state_.tokens[inner].kind == TokenKind::AmpAmp) {
+        ++inner;
+    }
+
+    if (inner >= static_cast<int>(core_input_state_.tokens.size()) ||
+        core_input_state_.tokens[inner].kind != TokenKind::Identifier) {
+        return false;
+    }
+
+    return inner + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+           core_input_state_.tokens[inner + 1].kind == TokenKind::RParen;
 }
 
 // ── skip helpers ─────────────────────────────────────────────────────────────
