@@ -3,7 +3,6 @@ Source Idea Path: ideas/open/83_parser_scope_textid_binding_lookup.md
 Source Plan Path: plan.md
 Current Step ID: 2
 Current Step Title: Introduce parser lexical scope state for the simplest local bindings
-你該做test baseline review了
 
 # Current Packet
 
