@@ -14,6 +14,8 @@
 
 namespace c4c {
 
+class Parser;
+
 using ParserSymbolId = uint32_t;
 constexpr ParserSymbolId kInvalidParserSymbol = 0;
 
@@ -240,6 +242,75 @@ struct ParserTentativeParseStats {
   int lite_enter = 0;
   int lite_commit = 0;
   int lite_rollback = 0;
+};
+
+struct ParserParseContextGuard {
+  Parser* parser = nullptr;
+  ParserParseContextGuard(Parser* parser, const char* function_name);
+  ~ParserParseContextGuard();
+};
+
+struct ParserTentativeParseGuard {
+  Parser& parser;
+  ParserSnapshot snapshot;
+  int start_pos = -1;
+  bool committed = false;
+
+  explicit ParserTentativeParseGuard(Parser& p);
+  ~ParserTentativeParseGuard();
+  void commit();
+};
+
+struct ParserTentativeParseGuardLite {
+  Parser& parser;
+  ParserLiteSnapshot snapshot;
+  int start_pos = -1;
+  bool committed = false;
+
+  explicit ParserTentativeParseGuardLite(Parser& p);
+  ~ParserTentativeParseGuardLite();
+  void commit();
+};
+
+struct ParserLocalVarBindingSuppressionGuard {
+  Parser& parser;
+  bool old = false;
+
+  explicit ParserLocalVarBindingSuppressionGuard(Parser& p);
+  ~ParserLocalVarBindingSuppressionGuard();
+};
+
+struct ParserRecordTemplatePreludeGuard {
+  Parser* parser = nullptr;
+  std::vector<std::string> injected_type_params;
+  bool pushed_template_scope = false;
+
+  explicit ParserRecordTemplatePreludeGuard(Parser* p);
+  ~ParserRecordTemplatePreludeGuard();
+};
+
+struct ParserTemplateDeclarationPreludeGuard {
+  Parser* parser = nullptr;
+  std::vector<std::string> injected_type_params;
+  bool pushed_template_scope = false;
+
+  explicit ParserTemplateDeclarationPreludeGuard(Parser* p);
+  ~ParserTemplateDeclarationPreludeGuard();
+};
+
+struct ParserTokenMutation {
+  int pos = -1;
+  Token token;
+};
+
+struct ParserAliasTemplateInfo {
+  std::vector<const char*> param_names;
+  std::vector<bool> param_is_nttp;
+  std::vector<bool> param_is_pack;
+  std::vector<bool> param_has_default;
+  std::vector<TypeSpec> param_default_types;
+  std::vector<long long> param_default_values;
+  TypeSpec aliased_type;
 };
 
 }  // namespace c4c

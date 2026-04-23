@@ -616,14 +616,101 @@ void Parser::register_known_fn_name(const std::string& name) {
     known_fn_names_.insert(name);
 }
 
-Parser::ParseContextGuard::ParseContextGuard(
+ParserParseContextGuard::ParserParseContextGuard(
     Parser* parser_in, const char* function_name)
     : parser(parser_in) {
     if (parser) parser->push_parse_context(function_name);
 }
 
-Parser::ParseContextGuard::~ParseContextGuard() {
+ParserParseContextGuard::~ParserParseContextGuard() {
     if (parser) parser->pop_parse_context();
+}
+
+ParserTentativeParseGuard::ParserTentativeParseGuard(Parser& p)
+    : parser(p), snapshot(p.save_state()), start_pos(snapshot.lite.pos) {
+    parser.note_tentative_parse_event(ParserTentativeParseMode::Heavy,
+                                      "tentative_enter", start_pos,
+                                      start_pos);
+}
+
+ParserTentativeParseGuard::~ParserTentativeParseGuard() {
+    if (!committed) {
+        parser.note_tentative_parse_event(ParserTentativeParseMode::Heavy,
+                                          "tentative_rollback", start_pos,
+                                          parser.pos_);
+        parser.restore_state(snapshot);
+    }
+}
+
+void ParserTentativeParseGuard::commit() {
+    if (committed) return;
+    parser.note_tentative_parse_event(ParserTentativeParseMode::Heavy,
+                                      "tentative_commit", start_pos,
+                                      parser.pos_);
+    committed = true;
+}
+
+ParserTentativeParseGuardLite::ParserTentativeParseGuardLite(Parser& p)
+    : parser(p), snapshot(p.save_lite_state()), start_pos(snapshot.pos) {
+    parser.note_tentative_parse_event(ParserTentativeParseMode::Lite,
+                                      "tentative_enter", start_pos,
+                                      start_pos);
+}
+
+ParserTentativeParseGuardLite::~ParserTentativeParseGuardLite() {
+    if (!committed) {
+        parser.note_tentative_parse_event(ParserTentativeParseMode::Lite,
+                                          "tentative_rollback", start_pos,
+                                          parser.pos_);
+        parser.restore_lite_state(snapshot);
+    }
+}
+
+void ParserTentativeParseGuardLite::commit() {
+    if (committed) return;
+    parser.note_tentative_parse_event(ParserTentativeParseMode::Lite,
+                                      "tentative_commit", start_pos,
+                                      parser.pos_);
+    committed = true;
+}
+
+ParserLocalVarBindingSuppressionGuard::ParserLocalVarBindingSuppressionGuard(
+    Parser& p)
+    : parser(p), old(p.suppress_local_var_bindings_) {
+    parser.suppress_local_var_bindings_ = true;
+}
+
+ParserLocalVarBindingSuppressionGuard::
+    ~ParserLocalVarBindingSuppressionGuard() {
+    parser.suppress_local_var_bindings_ = old;
+}
+
+ParserRecordTemplatePreludeGuard::ParserRecordTemplatePreludeGuard(Parser* p)
+    : parser(p) {}
+
+ParserRecordTemplatePreludeGuard::~ParserRecordTemplatePreludeGuard() {
+    if (!parser) return;
+    if (pushed_template_scope && !parser->template_scope_stack_.empty()) {
+        parser->template_scope_stack_.pop_back();
+    }
+    for (const std::string& name : injected_type_params) {
+        parser->unregister_typedef_binding(name);
+    }
+}
+
+ParserTemplateDeclarationPreludeGuard::ParserTemplateDeclarationPreludeGuard(
+    Parser* p)
+    : parser(p) {}
+
+ParserTemplateDeclarationPreludeGuard::
+    ~ParserTemplateDeclarationPreludeGuard() {
+    if (!parser) return;
+    if (pushed_template_scope && !parser->template_scope_stack_.empty()) {
+        parser->template_scope_stack_.pop_back();
+    }
+    for (const std::string& name : injected_type_params) {
+        parser->unregister_typedef_binding(name);
+    }
 }
 
 Parser::Parser(std::vector<Token> tokens, Arena& arena,

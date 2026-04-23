@@ -83,6 +83,7 @@ class Parser {
   using ParseContextFrame = ParserParseContextFrame;
   using ParseFailure = ParserParseFailure;
   using ParseDebugEvent = ParserParseDebugEvent;
+  using ParseContextGuard = ParserParseContextGuard;
 
   enum ParseDebugChannel : unsigned {
     ParseDebugNone = 0,
@@ -92,12 +93,6 @@ class Parser {
     ParseDebugAll = ParseDebugGeneral | ParseDebugTentative | ParseDebugInjected,
   };
 
-  struct ParseContextGuard {
-    Parser* parser = nullptr;
-    ParseContextGuard(Parser* parser, const char* function_name);
-    ~ParseContextGuard();
-  };
-
   // ── tentative parse snapshot / guard ─────────────────────────────────────
   using TentativeParseMode = ParserTentativeParseMode;
   using TentativeTextRefKind = ParserTentativeTextRefKind;
@@ -105,120 +100,13 @@ class Parser {
   using ParserLiteSnapshot = c4c::ParserLiteSnapshot;
   using ParserSnapshot = c4c::ParserSnapshot;
   using TentativeParseStats = ParserTentativeParseStats;
-
-  // RAII guard that saves parser state on construction and restores it on
-  // destruction unless commit() has been called.
-  struct TentativeParseGuard {
-    Parser& parser;
-    ParserSnapshot snapshot;
-    int start_pos = -1;
-    bool committed = false;
-
-    explicit TentativeParseGuard(Parser& p)
-        : parser(p), snapshot(p.save_state()), start_pos(snapshot.lite.pos) {
-      parser.note_tentative_parse_event(TentativeParseMode::Heavy,
-                                        "tentative_enter", start_pos,
-                                        start_pos);
-    }
-
-    ~TentativeParseGuard() {
-      if (!committed) {
-        parser.note_tentative_parse_event(TentativeParseMode::Heavy,
-                                          "tentative_rollback", start_pos,
-                                          parser.pos_);
-        parser.restore_state(snapshot);
-      }
-    }
-
-    void commit() {
-      if (committed) return;
-      parser.note_tentative_parse_event(TentativeParseMode::Heavy,
-                                        "tentative_commit", start_pos,
-                                        parser.pos_);
-      committed = true;
-    }
-  };
-
-  struct TentativeParseGuardLite {
-    Parser& parser;
-    ParserLiteSnapshot snapshot;
-    int start_pos = -1;
-    bool committed = false;
-
-    explicit TentativeParseGuardLite(Parser& p)
-        : parser(p), snapshot(p.save_lite_state()), start_pos(snapshot.pos) {
-      parser.note_tentative_parse_event(TentativeParseMode::Lite,
-                                        "tentative_enter", start_pos,
-                                        start_pos);
-    }
-
-    ~TentativeParseGuardLite() {
-      if (!committed) {
-        parser.note_tentative_parse_event(TentativeParseMode::Lite,
-                                          "tentative_rollback", start_pos,
-                                          parser.pos_);
-        parser.restore_lite_state(snapshot);
-      }
-    }
-
-    void commit() {
-      if (committed) return;
-      parser.note_tentative_parse_event(TentativeParseMode::Lite,
-                                        "tentative_commit", start_pos,
-                                        parser.pos_);
-      committed = true;
-    }
-  };
-
-  struct LocalVarBindingSuppressionGuard {
-    Parser& parser;
-    bool old = false;
-
-    explicit LocalVarBindingSuppressionGuard(Parser& p)
-        : parser(p), old(p.suppress_local_var_bindings_) {
-      parser.suppress_local_var_bindings_ = true;
-    }
-
-    ~LocalVarBindingSuppressionGuard() {
-      parser.suppress_local_var_bindings_ = old;
-    }
-  };
-
-  struct RecordTemplatePreludeGuard {
-    Parser* parser = nullptr;
-    std::vector<std::string> injected_type_params;
-    bool pushed_template_scope = false;
-
-    explicit RecordTemplatePreludeGuard(Parser* p) : parser(p) {}
-
-    ~RecordTemplatePreludeGuard() {
-      if (!parser) return;
-      if (pushed_template_scope && !parser->template_scope_stack_.empty()) {
-        parser->template_scope_stack_.pop_back();
-      }
-      for (const std::string& name : injected_type_params) {
-        parser->unregister_typedef_binding(name);
-      }
-    }
-  };
-
-  struct TemplateDeclarationPreludeGuard {
-    Parser* parser = nullptr;
-    std::vector<std::string> injected_type_params;
-    bool pushed_template_scope = false;
-
-    explicit TemplateDeclarationPreludeGuard(Parser* p) : parser(p) {}
-
-    ~TemplateDeclarationPreludeGuard() {
-      if (!parser) return;
-      if (pushed_template_scope && !parser->template_scope_stack_.empty()) {
-        parser->template_scope_stack_.pop_back();
-      }
-      for (const std::string& name : injected_type_params) {
-        parser->unregister_typedef_binding(name);
-      }
-    }
-  };
+  using TentativeParseGuard = ParserTentativeParseGuard;
+  using TentativeParseGuardLite = ParserTentativeParseGuardLite;
+  using LocalVarBindingSuppressionGuard =
+      ParserLocalVarBindingSuppressionGuard;
+  using RecordTemplatePreludeGuard = ParserRecordTemplatePreludeGuard;
+  using TemplateDeclarationPreludeGuard =
+      ParserTemplateDeclarationPreludeGuard;
 
   ParserLiteSnapshot save_lite_state() const;
   void restore_lite_state(const ParserLiteSnapshot& snap);
@@ -241,10 +129,7 @@ class Parser {
   // ── core parser state ─────────────────────────────────────────────────────
   // Token stream + cursor are the parser's single source of truth.
   std::vector<Token> tokens_;
-  struct TokenMutation {
-    int pos = -1;
-    Token token;
-  };
+  using TokenMutation = ParserTokenMutation;
   std::vector<TokenMutation> token_mutations_;
   int pos_;
   Arena& arena_;
@@ -313,15 +198,7 @@ class Parser {
   // Stores the alias template's parameter info and the aliased TypeSpec so
   // that applying Name<args> can rebuild the aliased template struct with
   // substituted args instead of losing the alias template param mapping.
-  struct AliasTemplateInfo {
-    std::vector<const char*> param_names;
-    std::vector<bool> param_is_nttp;
-    std::vector<bool> param_is_pack;
-    std::vector<bool> param_has_default;
-    std::vector<TypeSpec> param_default_types;
-    std::vector<long long> param_default_values;
-    TypeSpec aliased_type;  // TypeSpec from parse_type_name() (has tpl_struct_origin/arg_refs)
-  };
+  using AliasTemplateInfo = ParserAliasTemplateInfo;
   std::unordered_map<std::string, AliasTemplateInfo> alias_template_info_;
   // Template-scope stack: tracks active template parameter visibility.
   std::vector<TemplateScopeFrame> template_scope_stack_;
