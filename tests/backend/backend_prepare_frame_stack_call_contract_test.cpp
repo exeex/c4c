@@ -135,6 +135,16 @@ const prepare::PreparedCallPlansFunction* find_call_plans_function(
   return prepare::find_prepared_call_plans(prepared, function_id);
 }
 
+const prepare::PreparedFramePlanFunction* find_frame_plan_function(
+    const prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  if (function_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  return prepare::find_prepared_frame_plan(prepared, function_id);
+}
+
 const prepare::PreparedStoragePlanFunction* find_storage_plan_function(
     const prepare::PreparedBirModule& prepared,
     std::string_view function_name) {
@@ -171,6 +181,26 @@ std::string clobber_summary(const prepare::PreparedClobberedRegister& clobber) {
         summary += ",";
       }
       summary += clobber.occupied_register_names[index];
+    }
+    summary += "]";
+  }
+  return summary;
+}
+
+std::string grouped_span_summary(prepare::PreparedRegisterBank bank,
+                                 std::optional<std::string_view> register_name,
+                                 std::size_t contiguous_width,
+                                 const std::vector<std::string>& occupied_register_names) {
+  std::string summary = std::string(prepare::prepared_register_bank_name(bank)) + ":";
+  summary += register_name.has_value() ? std::string(*register_name) : std::string("<none>");
+  summary += "/w" + std::to_string(contiguous_width);
+  if (!occupied_register_names.empty()) {
+    summary += "[";
+    for (std::size_t index = 0; index < occupied_register_names.size(); ++index) {
+      if (index != 0) {
+        summary += ",";
+      }
+      summary += occupied_register_names[index];
     }
     summary += "]";
   }
@@ -2912,6 +2942,132 @@ int check_x86_consumer_surface_reads_grouped_call_boundary_authority() {
   return 0;
 }
 
+int check_x86_route_debug_reads_grouped_call_boundary_authority() {
+  const auto prepared = prepare_grouped_riscv_module_with_overrides(
+      make_grouped_cross_call_preservation_contract_module(),
+      {{"p.vcarry", 2}, {"carry.pre", 2}, {"post.local", 1}});
+  const auto summary = c4c::backend::x86::summarize_prepared_module_routes(
+      prepared, "grouped_cross_call_preservation_contract");
+  const auto trace = c4c::backend::x86::trace_prepared_module_routes(
+      prepared, "grouped_cross_call_preservation_contract");
+
+  const auto* frame = find_frame_plan_function(prepared, "grouped_cross_call_preservation_contract");
+  const auto* calls = find_call_plans_function(prepared, "grouped_cross_call_preservation_contract");
+  const auto* storage =
+      find_storage_plan_function(prepared, "grouped_cross_call_preservation_contract");
+  const auto* carry = storage == nullptr ? nullptr : find_storage_value(prepared, *storage, "carry.pre");
+  if (frame == nullptr || calls == nullptr || calls->calls.size() != 1 || storage == nullptr ||
+      carry == nullptr) {
+    return fail(
+        "x86 route debug contract: grouped fixture no longer exposes frame/call/storage authority");
+  }
+
+  const auto& call_plan = calls->calls.front();
+  const auto preserved_it = std::find_if(
+      call_plan.preserved_values.begin(),
+      call_plan.preserved_values.end(),
+      [carry](const prepare::PreparedCallPreservedValue& preserved) {
+        return preserved.value_id == carry->value_id;
+      });
+  if (preserved_it == call_plan.preserved_values.end()) {
+    return fail("x86 route debug contract: grouped fixture lost preserved-value authority");
+  }
+  const auto saved_it = std::find_if(
+      frame->saved_callee_registers.begin(),
+      frame->saved_callee_registers.end(),
+      [preserved_it](const prepare::PreparedSavedRegister& saved) {
+        return saved.occupied_register_names == preserved_it->occupied_register_names;
+      });
+  if (saved_it == frame->saved_callee_registers.end()) {
+    return fail("x86 route debug contract: grouped fixture lost saved-register authority");
+  }
+  const auto grouped_clobber_it = std::find_if(
+      call_plan.clobbered_registers.begin(),
+      call_plan.clobbered_registers.end(),
+      [](const prepare::PreparedClobberedRegister& clobber) {
+        return clobber.contiguous_width == 2 && clobber.occupied_register_names.size() == 2;
+      });
+  if (grouped_clobber_it == call_plan.clobbered_registers.end()) {
+    return fail("x86 route debug contract: grouped fixture lost clobber authority");
+  }
+
+  const auto is_grouped = [](std::size_t contiguous_width,
+                             const std::vector<std::string>& occupied_register_names) {
+    return contiguous_width > 1 || occupied_register_names.size() > 1;
+  };
+  const auto grouped_saved_count = static_cast<std::size_t>(std::count_if(
+      frame->saved_callee_registers.begin(),
+      frame->saved_callee_registers.end(),
+      [&is_grouped](const prepare::PreparedSavedRegister& saved) {
+        return is_grouped(saved.contiguous_width, saved.occupied_register_names);
+      }));
+  const auto grouped_preserved_count = static_cast<std::size_t>(std::count_if(
+      call_plan.preserved_values.begin(),
+      call_plan.preserved_values.end(),
+      [&is_grouped](const prepare::PreparedCallPreservedValue& preserved) {
+        return is_grouped(preserved.contiguous_width, preserved.occupied_register_names);
+      }));
+  const auto grouped_clobbered_count = static_cast<std::size_t>(std::count_if(
+      call_plan.clobbered_registers.begin(),
+      call_plan.clobbered_registers.end(),
+      [&is_grouped](const prepare::PreparedClobberedRegister& clobber) {
+        return is_grouped(clobber.contiguous_width, clobber.occupied_register_names);
+      }));
+  const auto grouped_storage_count = static_cast<std::size_t>(std::count_if(
+      storage->values.begin(),
+      storage->values.end(),
+      [&is_grouped](const prepare::PreparedStoragePlanValue& value) {
+        return is_grouped(value.contiguous_width, value.occupied_register_names);
+      }));
+  const auto expected_summary =
+      std::string("grouped authority: saved=") + std::to_string(grouped_saved_count) +
+      " preserved=" + std::to_string(grouped_preserved_count) +
+      " clobbered=" + std::to_string(grouped_clobbered_count) +
+      " storage=" + std::to_string(grouped_storage_count);
+  if (summary.find(expected_summary) == std::string::npos) {
+    return fail("x86 route debug contract: summary no longer reports grouped authority counts");
+  }
+
+  const auto expected_saved =
+      std::string("grouped saved save_index=") + std::to_string(saved_it->save_index) + " span=" +
+      grouped_span_summary(saved_it->bank,
+                           std::string_view(saved_it->register_name),
+                           saved_it->contiguous_width,
+                           saved_it->occupied_register_names);
+  const auto expected_preserved =
+      std::string("grouped preserve call#0 value=") +
+      std::string(prepare::prepared_value_name(prepared.names, preserved_it->value_name)) +
+      " route=" + std::string(prepare::prepared_call_preservation_route_name(preserved_it->route)) +
+      " span=" +
+      grouped_span_summary(
+          preserved_it->register_bank.value_or(prepare::PreparedRegisterBank::None),
+          preserved_it->register_name.has_value()
+              ? std::optional<std::string_view>{*preserved_it->register_name}
+              : std::nullopt,
+          preserved_it->contiguous_width,
+          preserved_it->occupied_register_names) +
+      " save_index=" + std::to_string(*preserved_it->callee_saved_save_index);
+  const auto expected_clobber =
+      std::string("grouped clobber call#0 span=") + clobber_summary(*grouped_clobber_it);
+  const auto expected_storage =
+      std::string("grouped storage value=carry.pre span=") +
+      grouped_span_summary(carry->bank,
+                           carry->register_name.has_value()
+                               ? std::optional<std::string_view>{*carry->register_name}
+                               : std::nullopt,
+                           carry->contiguous_width,
+                           carry->occupied_register_names);
+
+  if (trace.find(expected_saved) == std::string::npos ||
+      trace.find(expected_preserved) == std::string::npos ||
+      trace.find(expected_clobber) == std::string::npos ||
+      trace.find(expected_storage) == std::string::npos) {
+    return fail(
+        "x86 route debug contract: trace no longer reads grouped saved/preserved/clobber/storage authority directly");
+  }
+  return 0;
+}
+
 int check_variadic_nested_dynamic_stack_call_contract() {
   const auto prepared = prepare_module(make_variadic_nested_dynamic_stack_call_module());
   const auto* function = find_function(prepared.module, "variadic_nested_dynamic_stack_contract");
@@ -3069,6 +3225,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_x86_consumer_surface_reads_grouped_call_boundary_authority(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_x86_route_debug_reads_grouped_call_boundary_authority(); rc != 0) {
     return rc;
   }
   if (const int rc = check_variadic_nested_dynamic_stack_call_contract(); rc != 0) {
