@@ -5,26 +5,30 @@ Source Idea Path: ideas/open/81_parser_state_convergence_and_scope_rationalizati
 Source Plan Path: plan.md
 Current Step ID: 2
 Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
-Plan Review Counter: 0 / 8
+Plan Review Counter: 1 / 8
 
 # Current Packet
 
 ## Just Finished
 
-- completed Step 1 by moving parser support structs and parser-owned guard
-  declarations out of `parser.hpp` into `parser_state.hpp`, with the guard
-  method bodies moved into `parser_core.cpp`
+- began Step 2 by introducing explicit parser state bundles in
+  `parser_state.hpp` for bindings, definition caches, template metadata,
+  active context, namespace state, diagnostics, and pragma state, then wiring
+  `Parser` to own those bundles while keeping compatibility aliases stable
 
 ## Suggested Next
 
-- begin Step 2 by regrouping the remaining `Parser` member fields in
-  `parser.hpp` into explicit state bundles without changing parser behavior
+- continue Step 2 by deciding whether to bundle the remaining core input and
+  shared lookup members or to remove the temporary compatibility aliases from
+  this new grouped layout in smaller follow-up packets
 
 ## Watchouts
 
 - keep the work inside the parser subsystem
 - keep Step 2 focused on field layout and ownership readability, not helper
   rewrites or grammar changes
+- preserve constructor, snapshot, and rollback behavior while the grouped
+  layout still uses compatibility aliases
 
 ## Proof
 

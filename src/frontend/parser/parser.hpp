@@ -143,125 +143,171 @@ class Parser {
   ParserNameTables parser_name_tables_{&parser_symbols_};
 
   // ── parser name / binding tables ─────────────────────────────────────────
+  ParserBindingState binding_state_;
   // Declared concept names visible to the parser. Kept separate from typedef
   // tracking so concept-ids do not get mistaken for type names.
-  std::set<std::string> concept_names_;
+  std::set<std::string>& concept_names_ = binding_state_.concept_names;
   // Phase C: fn_ptr parameter info for typedef'd function pointer types.
-  std::unordered_map<TextId, FnPtrTypedefInfo> typedef_fn_ptr_info_;
+  std::unordered_map<TextId, FnPtrTypedefInfo>& typedef_fn_ptr_info_ =
+      binding_state_.typedef_fn_ptr_info;
   // Enum constants: name → value (populated as enums are parsed).
   // Used to evaluate enum initializers that reference previously-defined constants.
-  std::unordered_map<std::string, long long> enum_consts_;
+  std::unordered_map<std::string, long long>& enum_consts_ =
+      binding_state_.enum_consts;
   // Global const/constexpr integer bindings visible to parser-time constant folding.
-  std::unordered_map<std::string, long long> const_int_bindings_;
+  std::unordered_map<std::string, long long>& const_int_bindings_ =
+      binding_state_.const_int_bindings;
   // Qualified function names (populated as functions are declared/defined).
   // Used by lookup_value_in_context for namespace-aware function lookup.
-  std::set<std::string> known_fn_names_;
+  std::set<std::string>& known_fn_names_ = binding_state_.known_fn_names;
   // String-keyed fallback storage for composed or synthesized names that are
   // not eligible for source-atom SymbolId identity.
-  std::unordered_set<TextId> non_atom_typedefs_;
-  std::unordered_set<TextId> non_atom_user_typedefs_;
-  std::unordered_map<TextId, TypeSpec> non_atom_typedef_types_;
-  std::unordered_map<TextId, TypeSpec> non_atom_var_types_;
+  std::unordered_set<TextId>& non_atom_typedefs_ =
+      binding_state_.non_atom_typedefs;
+  std::unordered_set<TextId>& non_atom_user_typedefs_ =
+      binding_state_.non_atom_user_typedefs;
+  std::unordered_map<TextId, TypeSpec>& non_atom_typedef_types_ =
+      binding_state_.non_atom_typedef_types;
+  std::unordered_map<TextId, TypeSpec>& non_atom_var_types_ =
+      binding_state_.non_atom_var_types;
   // Struct member typedef scoped names: "StructTag::TypeName" → TypeSpec.
   // Populated when parsing typedef inside struct bodies.
-  std::unordered_map<std::string, TypeSpec> struct_typedefs_;
+  std::unordered_map<std::string, TypeSpec>& struct_typedefs_ =
+      binding_state_.struct_typedefs;
 
   // ── record / enum definition tables ──────────────────────────────────────
+  ParserDefinitionState definition_state_;
   // ── record / enum definition caches ──────────────────────────────────────
   // Collected struct/enum defs are prepended to the final program node.
-  std::vector<Node*> struct_defs_;
-  int anon_counter_;  // counter for anonymous tag names
+  std::vector<Node*>& struct_defs_ = definition_state_.struct_defs;
+  int& anon_counter_ = definition_state_.anon_counter;  // counter for anonymous tag names
   // Struct/union tags that already have a full definition (with body).
   // Used to detect block-scoped redefinitions and generate unique tags.
-  std::set<std::string> defined_struct_tags_;
+  std::set<std::string>& defined_struct_tags_ =
+      definition_state_.defined_struct_tags;
   // Struct/union tag → NK_STRUCT_DEF node (populated when parsing struct bodies).
   // Used by eval_const_int to compute __builtin_offsetof at parse time.
-  std::unordered_map<std::string, Node*> struct_tag_def_map_;
+  std::unordered_map<std::string, Node*>& struct_tag_def_map_ =
+      definition_state_.struct_tag_def_map;
   // Last enum definition node produced by parse_base_type(), if any.
   // Used so declaration-only enum statements (`enum { ... };`) can be retained.
-  Node* last_enum_def_;
+  Node*& last_enum_def_ = definition_state_.last_enum_def;
 
   // ── template metadata tables and active template scopes ──────────────────
+  ParserTemplateState template_state_;
   // Template struct definitions: maps struct tag → NK_STRUCT_DEF node with
   // n_template_params > 0.  Used to instantiate template structs at usage sites.
-  std::unordered_map<std::string, Node*> template_struct_defs_;
+  std::unordered_map<std::string, Node*>& template_struct_defs_ =
+      template_state_.template_struct_defs;
   // Template struct specialization patterns keyed by primary template name.
-  std::unordered_map<std::string, std::vector<Node*>> template_struct_specializations_;
+  std::unordered_map<std::string, std::vector<Node*>>&
+      template_struct_specializations_ =
+          template_state_.template_struct_specializations;
   // Already-instantiated template structs keyed by semantic identity
   // (primary family + canonical args), not by mangled print name.
-  std::set<std::string> instantiated_template_struct_keys_;
+  std::set<std::string>& instantiated_template_struct_keys_ =
+      template_state_.instantiated_template_struct_keys;
   // Deferred NTTP default expression tokens, keyed by "template_tag:param_idx".
   // Used for complex defaults like `arithmetic<T>::value` that can only be
   // evaluated once template type arguments are known.
-  std::unordered_map<std::string, std::vector<Token>> nttp_default_expr_tokens_;
+  std::unordered_map<std::string, std::vector<Token>>&
+      nttp_default_expr_tokens_ = template_state_.nttp_default_expr_tokens;
   // Alias template metadata: template<...> using Name = AliasedType;
   // Stores the alias template's parameter info and the aliased TypeSpec so
   // that applying Name<args> can rebuild the aliased template struct with
   // substituted args instead of losing the alias template param mapping.
   using AliasTemplateInfo = ParserAliasTemplateInfo;
-  std::unordered_map<std::string, AliasTemplateInfo> alias_template_info_;
+  std::unordered_map<std::string, AliasTemplateInfo>& alias_template_info_ =
+      template_state_.alias_template_info;
   // Template-scope stack: tracks active template parameter visibility.
-  std::vector<TemplateScopeFrame> template_scope_stack_;
+  std::vector<TemplateScopeFrame>& template_scope_stack_ =
+      template_state_.template_scope_stack;
 
   // ── active parse context ──────────────────────────────────────────────────
+  ParserActiveContextState active_context_state_;
   // Set by the using-alias handler to let the template wrapper detect that
   // a using type alias was defined during `parse_top_level()`.
-  std::string last_using_alias_name_;
-  TextId last_using_alias_name_text_id_ = kInvalidText;
+  std::string& last_using_alias_name_ =
+      active_context_state_.last_using_alias_name;
+  TextId& last_using_alias_name_text_id_ =
+      active_context_state_.last_using_alias_name_text_id;
   // Last resolved typedef name from parse_base_type() (for fn_ptr propagation).
-  std::string last_resolved_typedef_;
-  TextId last_resolved_typedef_text_id_ = kInvalidText;
+  std::string& last_resolved_typedef_ =
+      active_context_state_.last_resolved_typedef;
+  TextId& last_resolved_typedef_text_id_ =
+      active_context_state_.last_resolved_typedef_text_id;
   // Tag of the struct currently being parsed (empty if not in struct body).
-  std::string current_struct_tag_;
-  TextId current_struct_tag_text_id_ = kInvalidText;
+  std::string& current_struct_tag_ = active_context_state_.current_struct_tag;
+  TextId& current_struct_tag_text_id_ =
+      active_context_state_.current_struct_tag_text_id;
   // True while parsing a file-scope declaration in parse_top_level().
-  bool parsing_top_level_context_;
+  bool& parsing_top_level_context_ =
+      active_context_state_.parsing_top_level_context;
   // True while parsing an explicit template specialization (template<>).
-  bool parsing_explicit_specialization_ = false;
+  bool& parsing_explicit_specialization_ =
+      active_context_state_.parsing_explicit_specialization;
   // Nesting depth for expression parses that are constrained by template
   // argument delimiters, so expression parsing does not consume enclosing
   // template-close tokens as operators.
-  int template_arg_expr_depth_ = 0;
-  bool suppress_local_var_bindings_ = false;
+  int& template_arg_expr_depth_ =
+      active_context_state_.template_arg_expr_depth;
+  bool& suppress_local_var_bindings_ =
+      active_context_state_.suppress_local_var_bindings;
 
   // ── namespace / using-directive tables ───────────────────────────────────
+  ParserNamespaceState namespace_state_;
   // Transitional flattened path kept only as a compatibility bridge.
-  std::string current_namespace_;
-  std::vector<NamespaceContext> namespace_contexts_;
-  std::vector<int> namespace_stack_;
-  std::unordered_map<std::string, int> named_namespace_contexts_;
-  std::unordered_map<int, std::vector<int>> anonymous_namespace_children_;
+  std::string& current_namespace_ = namespace_state_.current_namespace;
+  std::vector<NamespaceContext>& namespace_contexts_ =
+      namespace_state_.namespace_contexts;
+  std::vector<int>& namespace_stack_ = namespace_state_.namespace_stack;
+  std::unordered_map<std::string, int>& named_namespace_contexts_ =
+      namespace_state_.named_namespace_contexts;
+  std::unordered_map<int, std::vector<int>>& anonymous_namespace_children_ =
+      namespace_state_.anonymous_namespace_children;
   // Unqualified visible aliases introduced by using-declarations per namespace context.
-  std::unordered_map<int, std::unordered_map<std::string, std::string>> using_value_aliases_;
-  std::unordered_map<int, std::vector<int>> using_namespace_contexts_;
+  std::unordered_map<int, std::unordered_map<std::string, std::string>>&
+      using_value_aliases_ = namespace_state_.using_value_aliases;
+  std::unordered_map<int, std::vector<int>>& using_namespace_contexts_ =
+      namespace_state_.using_namespace_contexts;
 
   // ── diagnostic and recovery state ────────────────────────────────────────
+  ParserDiagnosticState diagnostic_state_;
   // True if parse() encountered any recoverable parse error.
-  bool had_error_;
-  int parse_error_count_ = 0;
-  int max_parse_errors_ = 20;
-  int max_no_progress_steps_ = 8;
-  unsigned parser_debug_channels_ = ParseDebugNone;
-  int max_parse_debug_events_ = 256;
-  int parse_debug_progress_interval_ms_ = 1000;
-  std::vector<ParseContextFrame> parse_context_stack_;
-  std::vector<ParseDebugEvent> parse_debug_events_;
-  ParseFailure best_parse_failure_;
-  int best_parse_stack_token_index_ = -1;
-  std::vector<std::string> best_parse_stack_trace_;
-  TentativeParseStats tentative_parse_stats_;
-  std::chrono::steady_clock::time_point parse_debug_started_at_{};
-  std::chrono::steady_clock::time_point parse_debug_last_progress_at_{};
+  bool& had_error_ = diagnostic_state_.had_error;
+  int& parse_error_count_ = diagnostic_state_.parse_error_count;
+  int& max_parse_errors_ = diagnostic_state_.max_parse_errors;
+  int& max_no_progress_steps_ = diagnostic_state_.max_no_progress_steps;
+  unsigned& parser_debug_channels_ = diagnostic_state_.parser_debug_channels;
+  int& max_parse_debug_events_ = diagnostic_state_.max_parse_debug_events;
+  int& parse_debug_progress_interval_ms_ =
+      diagnostic_state_.parse_debug_progress_interval_ms;
+  std::vector<ParseContextFrame>& parse_context_stack_ =
+      diagnostic_state_.parse_context_stack;
+  std::vector<ParseDebugEvent>& parse_debug_events_ =
+      diagnostic_state_.parse_debug_events;
+  ParseFailure& best_parse_failure_ = diagnostic_state_.best_parse_failure;
+  int& best_parse_stack_token_index_ =
+      diagnostic_state_.best_parse_stack_token_index;
+  std::vector<std::string>& best_parse_stack_trace_ =
+      diagnostic_state_.best_parse_stack_trace;
+  TentativeParseStats& tentative_parse_stats_ =
+      diagnostic_state_.tentative_parse_stats;
+  std::chrono::steady_clock::time_point& parse_debug_started_at_ =
+      diagnostic_state_.parse_debug_started_at;
+  std::chrono::steady_clock::time_point& parse_debug_last_progress_at_ =
+      diagnostic_state_.parse_debug_last_progress_at;
 
   // ── pragma state ─────────────────────────────────────────────────────────
+  ParserPragmaState pragma_state_;
   // #pragma pack state: current packing alignment (0 = default/no packing).
-  int pack_alignment_ = 0;
-  std::vector<int> pack_stack_;  // for #pragma pack(push/pop)
+  int& pack_alignment_ = pragma_state_.pack_alignment;
+  std::vector<int>& pack_stack_ = pragma_state_.pack_stack;  // for #pragma pack(push/pop)
 
   // #pragma GCC visibility state: 0=default, 1=hidden, 2=protected.
-  uint8_t visibility_ = 0;
-  std::vector<uint8_t> visibility_stack_;  // for push/pop
-  ExecutionDomain execution_domain_ = ExecutionDomain::Host;
+  uint8_t& visibility_ = pragma_state_.visibility;
+  std::vector<uint8_t>& visibility_stack_ = pragma_state_.visibility_stack;  // for push/pop
+  ExecutionDomain& execution_domain_ = pragma_state_.execution_domain;
 
   // ── pragma helpers ────────────────────────────────────────────────────────
   void handle_pragma_pack(const std::string& args);

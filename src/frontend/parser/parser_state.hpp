@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <set>
 #include <string>
@@ -219,6 +220,72 @@ struct ParserTentativeTextRef {
   TextId text_id = kInvalidText;
 };
 
+struct ParserAliasTemplateInfo {
+  std::vector<const char*> param_names;
+  std::vector<bool> param_is_nttp;
+  std::vector<bool> param_is_pack;
+  std::vector<bool> param_has_default;
+  std::vector<TypeSpec> param_default_types;
+  std::vector<long long> param_default_values;
+  TypeSpec aliased_type;
+};
+
+struct ParserBindingState {
+  std::set<std::string> concept_names;
+  std::unordered_map<TextId, ParserFnPtrTypedefInfo> typedef_fn_ptr_info;
+  std::unordered_map<std::string, long long> enum_consts;
+  std::unordered_map<std::string, long long> const_int_bindings;
+  std::set<std::string> known_fn_names;
+  std::unordered_set<TextId> non_atom_typedefs;
+  std::unordered_set<TextId> non_atom_user_typedefs;
+  std::unordered_map<TextId, TypeSpec> non_atom_typedef_types;
+  std::unordered_map<TextId, TypeSpec> non_atom_var_types;
+  std::unordered_map<std::string, TypeSpec> struct_typedefs;
+};
+
+struct ParserDefinitionState {
+  std::vector<Node*> struct_defs;
+  int anon_counter = 0;
+  std::set<std::string> defined_struct_tags;
+  std::unordered_map<std::string, Node*> struct_tag_def_map;
+  Node* last_enum_def = nullptr;
+};
+
+struct ParserTemplateState {
+  std::unordered_map<std::string, Node*> template_struct_defs;
+  std::unordered_map<std::string, std::vector<Node*>>
+      template_struct_specializations;
+  std::set<std::string> instantiated_template_struct_keys;
+  std::unordered_map<std::string, std::vector<Token>>
+      nttp_default_expr_tokens;
+  std::unordered_map<std::string, ParserAliasTemplateInfo> alias_template_info;
+  std::vector<ParserTemplateScopeFrame> template_scope_stack;
+};
+
+struct ParserActiveContextState {
+  std::string last_using_alias_name;
+  TextId last_using_alias_name_text_id = kInvalidText;
+  std::string last_resolved_typedef;
+  TextId last_resolved_typedef_text_id = kInvalidText;
+  std::string current_struct_tag;
+  TextId current_struct_tag_text_id = kInvalidText;
+  bool parsing_top_level_context = false;
+  bool parsing_explicit_specialization = false;
+  int template_arg_expr_depth = 0;
+  bool suppress_local_var_bindings = false;
+};
+
+struct ParserNamespaceState {
+  std::string current_namespace;
+  std::vector<ParserNamespaceContext> namespace_contexts;
+  std::vector<int> namespace_stack;
+  std::unordered_map<std::string, int> named_namespace_contexts;
+  std::unordered_map<int, std::vector<int>> anonymous_namespace_children;
+  std::unordered_map<int, std::unordered_map<std::string, std::string>>
+      using_value_aliases;
+  std::unordered_map<int, std::vector<int>> using_namespace_contexts;
+};
+
 struct ParserLiteSnapshot {
   int pos = 0;
   ParserTentativeTextRef last_resolved_typedef;
@@ -242,6 +309,32 @@ struct ParserTentativeParseStats {
   int lite_enter = 0;
   int lite_commit = 0;
   int lite_rollback = 0;
+};
+
+struct ParserDiagnosticState {
+  bool had_error = false;
+  int parse_error_count = 0;
+  int max_parse_errors = 20;
+  int max_no_progress_steps = 8;
+  unsigned parser_debug_channels = 0;
+  int max_parse_debug_events = 256;
+  int parse_debug_progress_interval_ms = 1000;
+  std::vector<ParserParseContextFrame> parse_context_stack;
+  std::vector<ParserParseDebugEvent> parse_debug_events;
+  ParserParseFailure best_parse_failure;
+  int best_parse_stack_token_index = -1;
+  std::vector<std::string> best_parse_stack_trace;
+  ParserTentativeParseStats tentative_parse_stats;
+  std::chrono::steady_clock::time_point parse_debug_started_at{};
+  std::chrono::steady_clock::time_point parse_debug_last_progress_at{};
+};
+
+struct ParserPragmaState {
+  int pack_alignment = 0;
+  std::vector<int> pack_stack;
+  uint8_t visibility = 0;
+  std::vector<uint8_t> visibility_stack;
+  ExecutionDomain execution_domain = ExecutionDomain::Host;
 };
 
 struct ParserParseContextGuard {
@@ -301,16 +394,6 @@ struct ParserTemplateDeclarationPreludeGuard {
 struct ParserTokenMutation {
   int pos = -1;
   Token token;
-};
-
-struct ParserAliasTemplateInfo {
-  std::vector<const char*> param_names;
-  std::vector<bool> param_is_nttp;
-  std::vector<bool> param_is_pack;
-  std::vector<bool> param_has_default;
-  std::vector<TypeSpec> param_default_types;
-  std::vector<long long> param_default_values;
-  TypeSpec aliased_type;
 };
 
 }  // namespace c4c

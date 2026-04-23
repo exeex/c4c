@@ -719,9 +719,7 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena,
                SourceProfile source_profile,
                const std::string& source_file)
     : tokens_(std::move(tokens)), pos_(0), arena_(arena), source_profile_(source_profile),
-      source_file_(source_file), token_texts_(token_texts), token_files_(token_files),
-      anon_counter_(0), had_error_(false), parsing_top_level_context_(false),
-      last_enum_def_(nullptr) {
+      source_file_(source_file), token_texts_(token_texts), token_files_(token_files) {
     parser_symbols_.attach_text_table(token_texts_);
     namespace_contexts_.push_back(
         NamespaceContext{0, -1, false, arena_.strdup(""), arena_.strdup("")});
