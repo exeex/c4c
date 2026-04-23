@@ -330,6 +330,22 @@ void append_register_occupancy(std::ostringstream& out,
   }
 }
 
+void append_clobbered_register_summary(std::ostringstream& out,
+                                       const PreparedClobberedRegister& clobbered) {
+  out << prepared_register_bank_name(clobbered.bank) << ":" << clobbered.register_name
+      << "/w" << clobbered.contiguous_width;
+  if (!clobbered.occupied_register_names.empty()) {
+    out << "[";
+    for (std::size_t index = 0; index < clobbered.occupied_register_names.size(); ++index) {
+      if (index != 0) {
+        out << ",";
+      }
+      out << clobbered.occupied_register_names[index];
+    }
+    out << "]";
+  }
+}
+
 void append_function_summaries(std::ostringstream& out, const PreparedBirModule& module) {
   out << "--- prepared-function-summaries ---\n";
   for (const auto& function : module.module.functions) {
@@ -407,6 +423,15 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
               out << ",";
             }
             append_preserved_value_summary(out, module.names, call.preserved_values[index]);
+          }
+        }
+        if (!call.clobbered_registers.empty()) {
+          out << " clobbers=";
+          for (std::size_t index = 0; index < call.clobbered_registers.size(); ++index) {
+            if (index != 0) {
+              out << ",";
+            }
+            append_clobbered_register_summary(out, call.clobbered_registers[index]);
           }
         }
         out << "\n";

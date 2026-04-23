@@ -1015,6 +1015,16 @@ const prepare::PreparedStoragePlanFunction* find_storage_plan_function(
   return prepare::find_prepared_storage_plan(prepared, function_id);
 }
 
+const prepare::PreparedCallPlansFunction* find_call_plans_function(
+    const prepare::PreparedBirModule& prepared,
+    const char* function_name) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  if (function_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  return prepare::find_prepared_call_plans(prepared, function_id);
+}
+
 const prepare::PreparedStoragePlanValue* find_storage_value(
     const prepare::PreparedBirModule& prepared,
     const prepare::PreparedStoragePlanFunction& function,
@@ -1029,6 +1039,22 @@ const prepare::PreparedStoragePlanValue* find_storage_value(
     }
   }
   return nullptr;
+}
+
+std::string clobber_summary(const prepare::PreparedClobberedRegister& clobber) {
+  std::string summary = std::string(prepare::prepared_register_bank_name(clobber.bank)) + ":" +
+                        clobber.register_name + "/w" + std::to_string(clobber.contiguous_width);
+  if (!clobber.occupied_register_names.empty()) {
+    summary += "[";
+    for (std::size_t index = 0; index < clobber.occupied_register_names.size(); ++index) {
+      if (index != 0) {
+        summary += ",";
+      }
+      summary += clobber.occupied_register_names[index];
+    }
+    summary += "]";
+  }
+  return summary;
 }
 
 const prepare::PreparedFrameSlot* find_frame_slot(const prepare::PreparedBirModule& prepared,
@@ -1391,6 +1417,21 @@ int main() {
                            " route=callee_saved_register save_index=" +
                            std::to_string(cross_call_save_index) + " reg=s1 bank=gpr",
                        "cross-call preservation detail")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto call_wrapper_call_plans =
+      find_call_plans_function(call_wrapper_prepared, "call_wrapper_dump_contract");
+  if (call_wrapper_call_plans == nullptr || call_wrapper_call_plans->calls.size() < 2 ||
+      call_wrapper_call_plans->calls[1].clobbered_registers.empty()) {
+    std::cerr << "[FAIL] missing prepared clobber fixture for call wrapper dump\n";
+    return EXIT_FAILURE;
+  }
+  const std::string fixed_call_clobber_summary =
+      "clobbers=" + clobber_summary(call_wrapper_call_plans->calls[1].clobbered_registers.front());
+  if (!expect_contains(call_wrapper_dump,
+                       fixed_call_clobber_summary,
+                       "call summary clobber authority")) {
     return EXIT_FAILURE;
   }
 

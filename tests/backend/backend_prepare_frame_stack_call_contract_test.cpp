@@ -1,5 +1,6 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
+#include "src/backend/prealloc/prepared_printer.hpp"
 #include "src/target_profile.hpp"
 
 #include <cstdlib>
@@ -156,6 +157,22 @@ const prepare::PreparedStoragePlanValue* find_storage_value(
     }
   }
   return nullptr;
+}
+
+std::string clobber_summary(const prepare::PreparedClobberedRegister& clobber) {
+  std::string summary = std::string(prepare::prepared_register_bank_name(clobber.bank)) + ":" +
+                        clobber.register_name + "/w" + std::to_string(clobber.contiguous_width);
+  if (!clobber.occupied_register_names.empty()) {
+    summary += "[";
+    for (std::size_t index = 0; index < clobber.occupied_register_names.size(); ++index) {
+      if (index != 0) {
+        summary += ",";
+      }
+      summary += clobber.occupied_register_names[index];
+    }
+    summary += "]";
+  }
+  return summary;
 }
 
 c4c::TargetProfile x86_target_profile() {
@@ -1661,6 +1678,11 @@ int check_call_contract() {
         clobber.occupied_register_names.front() != clobber.register_name) {
       return fail("call contract: clobber metadata no longer publishes singleton occupancy");
     }
+  }
+  const std::string prepared_dump = prepare::print(prepared);
+  if (prepared_dump.find("clobbers=" + clobber_summary(call_plan.clobbered_registers.front())) ==
+      std::string::npos) {
+    return fail("call contract: prepared summary no longer publishes clobber authority");
   }
   const auto* storage_plan = find_storage_plan_function(prepared, "call_contract");
   const auto* tmp_call = storage_plan == nullptr ? nullptr
