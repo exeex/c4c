@@ -9,19 +9,17 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: removed the remaining file-local declarator-side
-  `spelled_qualified_name_from_text_ids()` bridge in
-  `parser_types_declarator.cpp`
-- switched `consume_qualified_type_spelling()` to the shared
-  `Parser::qualified_name_text()` path so parser-family fallback spelling now
-  flows through one implementation
+- Step 2 packet: replaced the nested-owner namespace lookup fallback in
+  `parser_types_declarator.cpp` with a `Node` TextId-backed scoped-name path
+  instead of reconstructing the key through `bridge_name_in_context()`
+- kept the dependent-typename member-owner recovery on the semantic lookup
+  path while preserving the existing namespace-match behavior
 
 ## Suggested Next
 
-- if Step 2 continues, audit remaining qualified namespace traversal sites for
-  canonical-string reconstruction inside parser namespace lookup and either
-  switch them onto `qualifier_text_ids` / `base_text_id` traversal or confirm
-  they are compatibility-only bridges
+- if Step 2 continues, audit the remaining `bridge_name_in_context()` lookup
+  sites in the parser namespace family and convert another bounded semantic
+  lookup slice that can already follow stored `TextId` namespace segments
 - keep the route inside parser namespace lookup and avoid widening into
   unrelated declarator parsing, lexical-scope, binding-table, or backend cleanup
 
@@ -42,6 +40,9 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
   while Step 2 trims parser-family bridge duplication
 - keep declarator-specific operator/template token consumption separate from
   namespace lookup cleanup when auditing remaining Step 2 traversal paths
+- the remaining parser-family bridge sites are now mostly compatibility
+  registration or lookup-table membership checks, not the nested-owner fallback
+  path just converted
 
 ## Proof
 

@@ -630,6 +630,41 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                         bool global_qualified) -> const Node* {
                     if (owner_chain.empty()) return nullptr;
 
+                    auto qualified_node_name = [&](const Node* node) -> std::string {
+                        if (!node) return {};
+
+                        std::string qualified;
+                        for (int i = 0; i < node->n_qualifier_segments; ++i) {
+                            if (!qualified.empty()) qualified += "::";
+                            const TextId segment_text_id =
+                                node->qualifier_text_ids &&
+                                        i < node->n_qualifier_segments
+                                    ? node->qualifier_text_ids[i]
+                                    : kInvalidText;
+                            const char* segment_name =
+                                node->qualifier_segments &&
+                                        node->qualifier_segments[i]
+                                    ? node->qualifier_segments[i]
+                                    : "";
+                            qualified += std::string(
+                                parser_text(segment_text_id, segment_name));
+                        }
+
+                        const char* base_name =
+                            node->unqualified_name && node->unqualified_name[0]
+                                ? node->unqualified_name
+                                : (node->name && node->name[0] ? node->name
+                                                                : node->type.tag);
+                        if (!base_name || !base_name[0]) return qualified;
+                        if (!qualified.empty()) qualified += "::";
+                        const TextId base_text_id =
+                            node->unqualified_text_id != kInvalidText
+                                ? node->unqualified_text_id
+                                : parser_text_id_for_token(kInvalidText, base_name);
+                        qualified += std::string(parser_text(base_text_id, base_name));
+                        return qualified;
+                    };
+
                     for (size_t owner_start = 0; owner_start < owner_chain.size();
                          ++owner_start) {
                         std::string owner_tag = owner_chain[owner_start];
@@ -721,15 +756,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                             if (owner_it ==
                                     definition_state_.struct_tag_def_map.end() ||
                                 !owner_it->second) {
-                                const int nested_context =
-                                    nested_decl->namespace_context_id >= 0
-                                        ? nested_decl->namespace_context_id
-                                        : owner->namespace_context_id;
-                                nested_owner_tag = bridge_name_in_context(
-                                    nested_context,
-                                    parser_text_id_for_token(
-                                        kInvalidText, nested_decl->type.tag),
-                                    nested_decl->type.tag);
+                                nested_owner_tag = qualified_node_name(nested_decl);
                                 owner_it = definition_state_.struct_tag_def_map.find(
                                     nested_owner_tag);
                             }
