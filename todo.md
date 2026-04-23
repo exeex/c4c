@@ -9,21 +9,21 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: promoted TextId-backed qualified-name spelling onto
-  `Parser::qualified_name_text()` and switched the declarations-side
-  `using`-declaration unresolved fallback onto that shared helper
-- rewired the existing parser-family helper bridge in `types_helpers.hpp` plus
-  expression and struct call sites to the shared parser method so qualified-name
-  fallback spelling now flows through one implementation
+- Step 2 packet: removed the remaining file-local declarator-side
+  `spelled_qualified_name_from_text_ids()` bridge in
+  `parser_types_declarator.cpp`
+- switched `consume_qualified_type_spelling()` to the shared
+  `Parser::qualified_name_text()` path so parser-family fallback spelling now
+  flows through one implementation
 
 ## Suggested Next
 
-- if Step 2 continues, inspect `parser_types_declarator.cpp` for the remaining
-  file-local `spelled_qualified_name_from_text_ids()` bridge and decide whether
-  it can collapse onto `Parser::qualified_name_text()` without widening into
-  declarator-specific template parsing
+- if Step 2 continues, audit remaining qualified namespace traversal sites for
+  canonical-string reconstruction inside parser namespace lookup and either
+  switch them onto `qualifier_text_ids` / `base_text_id` traversal or confirm
+  they are compatibility-only bridges
 - keep the route inside parser namespace lookup and avoid widening into
-  unrelated lexical-scope, binding-table, or backend cleanup
+  unrelated declarator parsing, lexical-scope, binding-table, or backend cleanup
 
 ## Watchouts
 
@@ -41,7 +41,7 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 - keep the shared helper behavior spelling-stable for global-qualified names
   while Step 2 trims parser-family bridge duplication
 - keep declarator-specific operator/template token consumption separate from
-  namespace lookup cleanup if the next packet touches `parser_types_declarator.cpp`
+  namespace lookup cleanup when auditing remaining Step 2 traversal paths
 
 ## Proof
 

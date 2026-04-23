@@ -11,24 +11,6 @@
 
 #include "types_helpers.hpp"
 
-static std::string spelled_qualified_name_from_text_ids(
-    const c4c::Parser& parser, const c4c::Parser::QualifiedNameRef& qn,
-    bool include_global_prefix = false) {
-    std::string name;
-    if (include_global_prefix && qn.is_global_qualified) name = "::";
-    for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-        if (!name.empty() && name != "::") name += "::";
-        const c4c::TextId segment_text_id =
-            i < qn.qualifier_text_ids.size() ? qn.qualifier_text_ids[i]
-                                             : c4c::kInvalidText;
-        name += std::string(
-            parser.parser_text(segment_text_id, qn.qualifier_segments[i]));
-    }
-    if (!name.empty() && name != "::") name += "::";
-    name += std::string(parser.parser_text(qn.base_text_id, qn.base_name));
-    return name;
-}
-
 namespace c4c {
 
 bool Parser::is_typedef_name(std::string_view s) const {
@@ -433,7 +415,7 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
     }
 
     if (out_name) {
-        *out_name = spelled_qualified_name_from_text_ids(*this, qn, true);
+        *out_name = qualified_name_text(qn, true);
     }
     populate_qualified_name_symbol_ids(&qn);
     if (out_qn) *out_qn = std::move(qn);
