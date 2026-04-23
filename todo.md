@@ -5,24 +5,23 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 2.5
 Current Step Title: Migrate Atomics And Intrinsics Lowering Families
-Plan Review Counter: 2 / 6
+Plan Review Counter: 3 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed step 2.5's seam-private helper follow-up by localizing the
-atomics/intrinsics-only SSE and float helper routines inside
-`lowering/atomics_intrinsics_lowering.cpp` and removing their declarations
-from the transitional `X86Codegen` surface in `x86_codegen.hpp`. The canonical
-lowering owner still carries the live atomic load/store/RMW/cmpxchg/fence and
-explicit intrinsic lowering entrypoints; only helper leakage through the shared
-header was trimmed.
+Completed step 2.5's remaining shared-surface audit by moving the
+atomics/intrinsics-only enum inventories (`AtomicOrdering`, `AtomicRmwOp`,
+`IntrinsicOp`) out of `x86_codegen.hpp` and into
+`lowering/atomics_intrinsics_lowering.hpp`, leaving the transitional
+`X86Codegen` header with only forward declarations plus the member entrypoints
+that still need those seam-owned types.
 
 ## Suggested Next
 
-Finish auditing step 2.5 for any remaining atomics/intrinsics declarations or
-includes that still live on the transitional shared x86 codegen surface even
-though they are now owned solely by the canonical lowering seam.
+Re-audit step 2.5 for whether the remaining `X86Codegen` member declarations
+for atomics/intrinsics are the irreducible shared dispatch surface or whether a
+later runbook step should move that ownership boundary altogether.
 
 ## Watchouts
 
@@ -32,13 +31,14 @@ though they are now owned solely by the canonical lowering seam.
   family into prepared dispatch or module emission helpers.
 - Preserve the reviewed combined seam shape for now instead of splitting
   atomics and intrinsics into separate ownership buckets mid-step.
-- The active lowering entrypoints still remain declared on `X86Codegen`; only
-  helpers proven seam-private to `atomics_intrinsics_lowering.cpp` were
-  localized in this packet.
+- The active lowering entrypoints still remain declared on `X86Codegen`
+  because C++ still needs those member declarations on the class definition
+  even though the seam now owns the enum inventories and implementations.
 
 ## Proof
 
-Step 2.5 atomics/intrinsics seam-private helper localization on 2026-04-23:
+Step 2.5 atomics/intrinsics shared-surface enum ownership follow-up on
+2026-04-23:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
 Backend subset passed (`106/106`). Canonical log paths: `test_before.log`,
