@@ -303,6 +303,9 @@ class Parser {
   bool has_typedef_name(std::string_view name) const;
   bool has_typedef_type(std::string_view name) const;
   const TypeSpec* find_typedef_type(std::string_view name) const;
+  bool has_structured_typedef_type(const QualifiedNameKey& key) const;
+  const TypeSpec* find_structured_typedef_type(
+      const QualifiedNameKey& key) const;
   bool has_visible_typedef_type(TextId name_text_id, std::string_view name) const;
   bool has_visible_typedef_type(std::string_view name) const;
   const TypeSpec* find_visible_typedef_type(TextId name_text_id,
@@ -349,6 +352,9 @@ class Parser {
   bool has_known_fn_name(const QualifiedNameKey& key) const;
   void register_known_fn_name(const std::string& name);
   void register_known_fn_name(const QualifiedNameKey& key);
+  bool has_structured_concept_name(const QualifiedNameKey& key) const;
+  void register_concept_name_in_context(int context_id, TextId name_text_id,
+                                        std::string_view fallback_name);
   bool is_typedef_name(std::string_view s) const;
   bool is_cpp_mode() const {
     return core_input_state_.source_profile == SourceProfile::CppSubset ||

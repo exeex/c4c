@@ -611,6 +611,11 @@ bool Parser::has_typedef_name(std::string_view name) const {
 }
 
 bool Parser::has_typedef_type(std::string_view name) const {
+    if (name.find("::") != std::string_view::npos) {
+        const QualifiedNameKey key = known_fn_name_key(
+            0, parser_text_id_for_token(kInvalidText, name), name);
+        if (has_structured_typedef_type(key)) return true;
+    }
     if (!uses_symbol_identity(name)) {
         const TextId id = find_parser_text_id(name);
         return id != kInvalidText &&
@@ -621,6 +626,13 @@ bool Parser::has_typedef_type(std::string_view name) const {
 }
 
 const TypeSpec* Parser::find_typedef_type(std::string_view name) const {
+    if (name.find("::") != std::string_view::npos) {
+        const QualifiedNameKey key = known_fn_name_key(
+            0, parser_text_id_for_token(kInvalidText, name), name);
+        if (const TypeSpec* structured = find_structured_typedef_type(key)) {
+            return structured;
+        }
+    }
     if (!uses_symbol_identity(name)) {
         const TextId id = find_parser_text_id(name);
         if (id == kInvalidText) return nullptr;
@@ -630,6 +642,17 @@ const TypeSpec* Parser::find_typedef_type(std::string_view name) const {
     }
     return shared_lookup_state_.parser_name_tables.lookup_typedef_type(
         shared_lookup_state_.parser_name_tables.find_identifier(name));
+}
+
+bool Parser::has_structured_typedef_type(const QualifiedNameKey& key) const {
+    return find_structured_typedef_type(key) != nullptr;
+}
+
+const TypeSpec* Parser::find_structured_typedef_type(
+    const QualifiedNameKey& key) const {
+    if (key.base_text_id == kInvalidText) return nullptr;
+    const auto it = binding_state_.struct_typedefs.find(key);
+    return it == binding_state_.struct_typedefs.end() ? nullptr : &it->second;
 }
 
 void Parser::push_local_binding_scope() {
@@ -1053,6 +1076,19 @@ void Parser::register_known_fn_name(const QualifiedNameKey& key) {
 void Parser::register_known_fn_name(const std::string& name) {
     register_known_fn_name(intern_known_fn_name_key_from_spelling(
         *this, 0, parser_text_id_for_token(kInvalidText, name), name));
+}
+
+bool Parser::has_structured_concept_name(const QualifiedNameKey& key) const {
+    return key.base_text_id != kInvalidText &&
+           binding_state_.concept_qualified_names.count(key) > 0;
+}
+
+void Parser::register_concept_name_in_context(int context_id, TextId name_text_id,
+                                              std::string_view fallback_name) {
+    const QualifiedNameKey key = qualified_key_in_context(
+        *this, context_id, name_text_id, fallback_name, true);
+    if (key.base_text_id == kInvalidText) return;
+    binding_state_.concept_qualified_names.insert(key);
 }
 
 ParserParseContextGuard::ParserParseContextGuard(
@@ -2031,6 +2067,10 @@ std::string Parser::resolve_visible_concept_name(const std::string& name) const 
 bool Parser::is_concept_name(const std::string& name) const {
     if (name.empty()) return false;
     const TextId name_text_id = find_parser_text_id(name);
+    if (name.find("::") != std::string::npos &&
+        has_structured_concept_name(known_fn_name_key(0, name_text_id, name))) {
+        return true;
+    }
     if (name_text_id != kInvalidText && is_unqualified_lookup_name(name) &&
         binding_state_.concept_name_text_ids.count(name_text_id) > 0) {
         return true;
@@ -2351,9 +2391,11 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
                                     std::string* resolved) const {
     const QualifiedNameKey candidate_key =
         struct_typedef_key_in_context(context_id, name_text_id, name);
-    if (const auto it = binding_state_.struct_typedefs.find(candidate_key);
-        it != binding_state_.struct_typedefs.end()) {
-        *resolved = bridge_name_in_context(context_id, name_text_id, name);
+    if (find_structured_typedef_type(candidate_key)) {
+        *resolved = render_structured_name(*this, candidate_key);
+        if (resolved->empty()) {
+            *resolved = bridge_name_in_context(context_id, name_text_id, name);
+        }
         return true;
     }
     const std::string candidate =
@@ -2403,6 +2445,15 @@ bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
     if (context_id == 0 && is_unqualified_lookup_name(name) &&
         binding_state_.concept_names.count(std::string(name)) > 0) {
         *resolved = std::string(name);
+        return true;
+    }
+    const QualifiedNameKey candidate_key =
+        known_fn_name_key_in_context(context_id, name_text_id, name);
+    if (has_structured_concept_name(candidate_key)) {
+        *resolved = render_structured_name(*this, candidate_key);
+        if (resolved->empty()) {
+            *resolved = bridge_name_in_context(context_id, name_text_id, name);
+        }
         return true;
     }
     const std::string candidate =

@@ -232,6 +232,8 @@ bool try_skip_cpp_concept_declaration(Parser& parser) {
     if (concept_name_text_id != kInvalidText) {
         parser.binding_state_.concept_name_text_ids.insert(concept_name_text_id);
     }
+    parser.register_concept_name_in_context(
+        parser.current_namespace_context_id(), concept_name_text_id, concept_name);
     const std::string qualified = parser.bridge_name_in_context(
         parser.current_namespace_context_id(), concept_name_text_id, concept_name);
     if (qualified != concept_name) {

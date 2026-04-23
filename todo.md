@@ -1,25 +1,22 @@
 Status: Active
 Source Idea Path: ideas/open/84_parser_qualified_name_structured_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Remove the remaining fallback helpers from the primary qualified-lookup path
+Current Step ID: 7
+Current Step Title: Re-run focused parser proof and widen only if the blast radius grows
 
 # Current Packet
 
 ## Just Finished
-Ran the close gate for step 5 using the existing canonical before/after logs. The focused parser subset still passes cleanly after the bridge cleanup, but the lifecycle close check did not accept closure.
+Completed step 6 by making qualified typedef and concept lookup probe structured parser keys before the legacy rendered-string fallback surfaces. Re-ran the focused parser subset for step 7 using the canonical before/after logs and it still passes cleanly.
 
 ## Suggested Next
-Continue the active plan with the newly added slice for the remaining compatibility-backed lookup surfaces. The source idea is not complete yet because fallback helpers still sit behind the semantic path, so the next execution should target that bridge cleanup rather than closing.
+Run the lifecycle close review for the active idea. The remaining compatibility string stores are now bridge-only on the touched parser paths, so the next action should be closure or a plan-owner decision if a further follow-on split is still warranted.
 
 ## Watchouts
-Legacy string-keyed parser tables still exist behind fallback helpers such as `has_typedef_type(...)`, `concept_names`, and the compatibility renderer itself, so this slice should be treated as bridge-surface cleanup rather than a full removal of compatibility storage. The repo regression-guard checker reported a non-increase failure on the 3-test before/after pair even though both logs were 3/3 passing with no new failures, which blocks close under the current strict gate.
+Legacy string-keyed compatibility storage still exists for untouched bridge and diagnostics surfaces, but qualified lookup on the touched typedef and concept paths now checks structured parser state first. The repo regression-guard checker previously reported a non-increase failure on the 3-test before/after pair even though both logs were 3/3 passing with no new failures, so close acceptance may still need a lifecycle-side judgment instead of a semantic fix here.
 
 ## Proof
 Passed. Proof run:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_positive_sema_namespace_struct_type_basic_cpp|cpp_positive_sema_record_member_enum_parse_cpp)$'`
 Log: `test_after.log`
-Close gate run:
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
-Result: failed, passed count did not strictly increase
