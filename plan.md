@@ -1,93 +1,181 @@
-# Plan Review Metadata Sync Repair
+# Parser Namespace TextId Context Tree
 
 Status: Active
-Source Idea: ideas/open/83_plan_review_metadata_sync_repair.md
+Source Idea: ideas/open/82_parser_namespace_textid_context_tree.md
 
 ## Purpose
 
-Keep `todo.md`'s plan-review metadata in sync with the hook-managed state so the required `Plan Review Counter` line is not stripped by post-commit processing.
+Replace parser namespace lookup's canonical-string-driven path with a parent /
+child namespace context tree keyed by `TextId` segments.
 
 ## Goal
 
-Repair the plan-review metadata synchronization path and validate that `todo.md` remains machine-readable after hook-backed updates.
+Make namespace ownership and qualified-name traversal operate on structured
+context plus `TextId` segments while preserving the existing namespace
+push/pop registration model.
 
 ## Core Rule
 
-Keep this runbook limited to lifecycle metadata sync and the hook path that rewrites `todo.md`. Do not widen it into parser implementation work.
+Keep the work inside parser namespace lookup. Do not widen this into full
+lexical-scope redesign, repo-wide `TextId` migration, or backend/HIR cleanup.
 
 ## Read First
 
-- ideas/open/83_plan_review_metadata_sync_repair.md
-- `scripts/plan_review_state.py`
-- `todo.md`
-- `.plan_review_state.json`
+- ideas/open/82_parser_namespace_textid_context_tree.md
+- src/frontend/parser/parser.hpp
+- src/frontend/parser/parser_state.hpp
+- src/frontend/parser/parser_core.cpp
+- nearby parser helper files that participate in qualified-name parsing and
+  namespace lookup
 
 ## Scope
 
-- `scripts/plan_review_state.py`
-- `.plan_review_state.json`
-- `todo.md`
+- `src/frontend/parser/parser.hpp`
+- `src/frontend/parser/parser_state.hpp`
+- `src/frontend/parser/parser_core.cpp`
+- nearby parser helper files that participate in namespace registration,
+  qualified-name traversal, and using-directive visibility
 
 ## Non-Goals
 
-- no parser implementation changes
-- no expansion into namespace lookup or frontend compiler work
-- no broad repo-wide lifecycle rewrite
+- no full semantic lexical-scope unification
+- no removal of every canonical-name string bridge in one pass
+- no repo-wide `std::string` to `TextId` migration
+- no sema, HIR, or backend identity redesign
+- no testcase-shaped namespace shortcuts
+- no dependent-typename/member-recovery heuristic cleanup in Step 2
+- no using-declaration alias fallback cleanup in Step 2
 
 ## Working Model
 
-- treat `todo.md` as the canonical rendered lifecycle state for the active plan
-- keep the hook state and the file header aligned
-- preserve the required metadata block near the top of `todo.md`
+- keep namespace push/pop as the ownership and lifetime surface
+- treat qualified names as ordered `TextId` segments first, spelled strings
+  second
+- use parent-context child maps keyed by `TextId` instead of canonical
+  `"A::B"`-style global string keys
+- keep canonical string synthesis only as a compatibility/debug bridge while
+  semantic lookup moves to the namespace tree
 
 ## Execution Rules
 
-- reproduce the metadata-loss path before changing behavior
-- keep the fix local to the plan-review sync path
-- preserve `Current Step ID`, `Current Step Title`, and `Plan Review Counter`
-- validate with the same post-commit path that previously stripped the line
+- prefer small behavior-preserving packets over broad parser rewrites
+- keep namespace registration and lookup changes aligned with the existing
+  parser state bundles
+- preserve diagnostics and rendered spellings while lookup internals move to
+  `TextId` traversal
+- after each structural move, validate with
+  `cmake --build build -j --target c4c_frontend c4cll`
+- run focused parser/frontend tests covering namespace-qualified lookup,
+  nested namespaces, and `using namespace` visibility before broadening
+- escalate to broader `ctest` only when a packet crosses beyond parser
+  namespace lookup or becomes a milestone checkpoint
 
 ## Validation
 
-- `python scripts/plan_review_state.py post-commit`
-- confirm `todo.md` still contains the required metadata lines after the hook path runs
+- `cmake --build build -j --target c4c_frontend c4cll`
+- focused parser/frontend tests covering qualified namespace lookup,
+  `using namespace`, nested namespace definitions, and namespace-qualified
+  type/value references
+- broader `ctest` when namespace lookup changes cross multiple parser
+  subsystems or reach acceptance-ready milestones
 
-## Step 1: Reproduce The Metadata Sync Failure
+## Step 1: Convert Namespace Child Registration To `TextId` Maps
 
-Goal: confirm the post-commit sync path can still strip the `Plan Review Counter` line from `todo.md`.
-
-Primary targets:
-
-- `scripts/plan_review_state.py`
-- `.plan_review_state.json`
-- `todo.md`
-
-Actions:
-
-- inspect the post-commit write path that updates `todo.md`
-- reproduce the state where the counter line disappears
-- capture the exact metadata mismatch the hook creates
-
-Completion check:
-
-- the failure mode is understood well enough to fix without widening the scope
-
-## Step 2: Repair And Validate Metadata Preservation
-
-Goal: keep the required lifecycle metadata block intact after hook-backed updates.
+Goal: store namespace children by parent context plus segment `TextId` rather
+than canonical composed strings.
 
 Primary targets:
 
-- `scripts/plan_review_state.py`
-- `.plan_review_state.json`
-- `todo.md`
+- `src/frontend/parser/parser_state.hpp`
+- `src/frontend/parser/parser_core.cpp`
+- `src/frontend/parser/parser.hpp`
 
 Actions:
 
-- adjust the sync path so required metadata lines remain present
-- make sure the rendered `todo.md` stays aligned with the hook state
-- validate the same post-commit path after the fix
+- extend namespace state so named child lookup is driven by parent-context
+  child maps keyed by `TextId`
+- keep any required spelled/canonical name fields only as bridges for
+  diagnostics and compatibility
+- preserve anonymous-namespace handling and namespace push/pop behavior
 
 Completion check:
 
-- `todo.md` retains the required metadata block after the hook path runs, and the active lifecycle state stays machine-readable
+- namespace child registration no longer depends on canonical composed-string
+  keys as the primary identity path
+
+## Step 2: Resolve Qualified Namespace Traversal Through `TextId` Segments
+
+Goal: resolve direct namespace-qualified names segment-by-segment through the
+context tree.
+
+Primary targets:
+
+- `src/frontend/parser/parser_core.cpp`
+- parser helper files that resolve `QualifiedNameRef` or namespace contexts
+
+Actions:
+
+- make qualified-name resolution consume `qualifier_text_ids` and
+  `base_text_id` as the primary traversal path
+- walk namespace contexts one segment at a time from the correct root/active
+  scope instead of rebuilding `"A::B::C"` strings for lookup
+- keep string spelling only as a bridge when diagnostics or existing helpers
+  still need rendered names
+- keep this step limited to namespace traversal; do not pull in
+  dependent-typename/member-recovery heuristics or using-declaration alias
+  fallback logic here
+
+Completion check:
+
+- namespace traversal and lookup succeed through structured segment walking
+  instead of canonical-string reconstruction, and the step remains bounded to
+  direct namespace traversal
+
+## Step 3: Contain Canonical String Fallbacks To Compatibility Helpers
+
+Goal: demote canonical namespace strings to rendering/debug bridges rather
+than semantic lookup keys.
+
+Primary targets:
+
+- `src/frontend/parser/parser_core.cpp`
+- `src/frontend/parser/parser_state.hpp`
+- `src/frontend/parser/parser_declarations.cpp`
+- nearby parser helper files that still synthesize canonical namespace names
+
+Actions:
+
+- isolate any remaining canonical-name helpers behind explicit compatibility or
+  debug-only call sites
+- move `using`-declaration alias registration off the semantic fallback path so
+  canonical-string synthesis is not the primary lookup key
+- confirm parser-visible behavior stays the same while semantic lookup uses the
+  namespace tree
+- avoid expanding the packet into unrelated binding-table or lexical-scope work
+
+Completion check:
+
+- canonical namespace strings remain available for diagnostics/debugging but
+  are no longer the parser's primary namespace identity path
+
+## Step 4: Lock The Route And Hand Off Later Scope Work Cleanly
+
+Goal: end the runbook with a clear boundary between namespace-tree cleanup and
+later parser scope work.
+
+Primary targets:
+
+- `todo.md`
+- any parser files identified by prior steps as follow-on-only work
+
+Actions:
+
+- record the next narrow follow-on packet once namespace-tree lookup is stable
+- keep later lexical-scope or wider parser binding work out of this runbook
+- document any newly discovered separate initiative under `ideas/open/`
+  instead of stretching this plan
+
+Completion check:
+
+- the runbook ends with namespace-tree lookup stabilized and a clear boundary
+  for any later non-namespace follow-on
