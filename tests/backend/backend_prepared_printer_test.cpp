@@ -333,6 +333,17 @@ bool expect_contains(const std::string& text,
   return false;
 }
 
+bool expect_not_contains(const std::string& text,
+                         const std::string& needle,
+                         const char* description) {
+  if (text.find(needle) == std::string::npos) {
+    return true;
+  }
+  std::cerr << "[FAIL] unexpected " << description << ": " << needle << "\n";
+  std::cerr << "--- dump ---\n" << text << "\n";
+  return false;
+}
+
 prepare::PreparedControlFlowFunction* find_control_flow_function(
     prepare::PreparedBirModule& prepared,
     const char* function_name) {
@@ -437,6 +448,21 @@ int main() {
   const std::string published_dump = prepare::print(prepared);
   if (!expect_contains(published_dump, "continuation_targets=(block_1, block_2)",
                        "published join transfer continuation targets")) {
+    return EXIT_FAILURE;
+  }
+
+  auto* mutable_control_flow =
+      find_control_flow_function(prepared, "short_circuit_or_prepare_contract");
+  if (mutable_control_flow == nullptr || mutable_control_flow->join_transfers.empty()) {
+    std::cerr << "[FAIL] missing mutable authoritative join transfer for printer contract\n";
+    return EXIT_FAILURE;
+  }
+  mutable_control_flow->join_transfers.front().continuation_true_label.reset();
+  mutable_control_flow->join_transfers.front().continuation_false_label.reset();
+
+  const std::string unpublished_dump = prepare::print(prepared);
+  if (!expect_not_contains(unpublished_dump, "continuation_targets=(",
+                           "recomputed continuation targets after removing publication")) {
     return EXIT_FAILURE;
   }
 

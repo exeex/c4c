@@ -390,15 +390,8 @@ void append_prepared_control_flow(std::ostringstream& out, const PreparedBirModu
                     : std::string("<none>"))
             << ")";
       }
-      auto continuation_targets = published_prepared_compare_join_continuation_targets(transfer);
-      if (!continuation_targets.has_value() && !transfer.source_branch_block_label.has_value() &&
-          function != nullptr) {
-        continuation_targets = find_prepared_compare_join_continuation_targets(
-            module.names,
-            function_cf,
-            *function,
-            transfer.source_branch_block_label.value_or(kInvalidBlockLabel));
-      }
+      const auto continuation_targets =
+          published_prepared_compare_join_continuation_targets(transfer);
       if (continuation_targets.has_value()) {
         out << " continuation_targets=("
             << maybe_block_label(module.names, continuation_targets->true_label)

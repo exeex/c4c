@@ -673,6 +673,41 @@ int check_minimal_compare_branch_requires_authoritative_prepared_branch_record(
   return 0;
 }
 
+int check_compare_join_requires_authoritative_join_transfer_record(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the compare-join control-flow contract")
+                    .c_str());
+  }
+
+  control_flow->join_transfers.clear();
+  control_flow->parallel_copy_bundles.clear();
+
+  try {
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly reopened raw compare-join recovery after authoritative out-of-SSA metadata was removed")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the missing compare-join metadata with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_minimal_compare_branch_param_return_requires_authoritative_prepared_return_bundle(
     const bir::Module& module,
     const char* function_name,
@@ -1257,6 +1292,14 @@ int run_backend_x86_handoff_boundary_compare_branch_tests() {
               "branch_join_adjust_then_xor",
               "p.x",
               "scalar-control-flow compare-against-zero compare-join lane rejects reopening local return fallback when the authoritative prepared home is missing");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_compare_join_requires_authoritative_join_transfer_record(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero compare-join lane rejects reopening raw compare-join recovery when authoritative out-of-SSA join metadata is missing");
       status != 0) {
     return status;
   }

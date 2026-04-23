@@ -421,6 +421,30 @@ int check_authoritative_join_continuation_targets() {
     return fail("expected shared helper to prefer published continuation labels over recomputing join shape");
   }
 
+  auto* mutable_control_flow =
+      find_control_flow_function(prepared, "short_circuit_or_prepare_contract");
+  if (mutable_control_flow == nullptr) {
+    return fail("expected mutable prepared short-circuit control flow for continuation target contract");
+  }
+  const auto authoritative_join_without_publication =
+      prepare::find_authoritative_branch_owned_join_transfer(prepared.names,
+                                                             *mutable_control_flow,
+                                                             "entry");
+  if (!authoritative_join_without_publication.has_value() ||
+      authoritative_join_without_publication->join_transfer == nullptr) {
+    return fail("expected authoritative join transfer before removing published continuation labels");
+  }
+  auto* published_join_transfer =
+      const_cast<prepare::PreparedJoinTransfer*>(authoritative_join_without_publication->join_transfer);
+  published_join_transfer->continuation_true_label.reset();
+  published_join_transfer->continuation_false_label.reset();
+
+  const auto unpublished_targets = prepare::find_prepared_compare_join_continuation_targets(
+      prepared.names, *mutable_control_flow, *function, "entry");
+  if (unpublished_targets.has_value()) {
+    return fail("expected shared continuation-target helper to require published labels instead of recomputing authoritative join shape");
+  }
+
   return 0;
 }
 
