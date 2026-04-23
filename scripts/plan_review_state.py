@@ -149,8 +149,18 @@ def sync_todo(path: Path, state: dict) -> None:
         CURRENT_STEP_TITLE_RE,
         f"Current Step Title: {state['current_step_title']}",
     )
-    text = strip_reminder_lines(text)
-    text = sync_reminder_lines(text, state)
+
+    has_stale_reminders = (
+        CODE_REVIEW_REMINDER_RE.search(text) is not None
+        or BASELINE_SANITY_REMINDER_RE.search(text) is not None
+        or PLAN_REVIEW_COUNTER_RE.search(text) is not None
+    )
+    has_pending_reminders = state["code_review_pending"] or state["baseline_sanity_pending"]
+
+    if has_pending_reminders or has_stale_reminders:
+        text = strip_reminder_lines(text)
+        text = sync_reminder_lines(text, state)
+
     if text != parsed["text"]:
         write_text(path, text)
 
