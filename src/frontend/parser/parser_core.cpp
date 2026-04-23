@@ -726,6 +726,13 @@ const TypeSpec* Parser::find_visible_typedef_type(TextId name_text_id,
     if (const TypeSpec* type = find_typedef_type(name)) return type;
     const std::string resolved = resolve_visible_type_name(name_text_id, name);
     if (resolved.empty() || resolved == name) return nullptr;
+    const TextId resolved_text_id = find_parser_text_id(resolved);
+    if (can_probe_local_binding(resolved_text_id, resolved)) {
+        if (const TypeSpec* type =
+                find_local_visible_typedef_type(resolved_text_id)) {
+            return type;
+        }
+    }
     return find_typedef_type(resolved);
 }
 
@@ -995,6 +1002,12 @@ const TypeSpec* Parser::find_visible_var_type(TextId name_text_id,
     if (const TypeSpec* type = find_var_type(std::string(name))) return type;
     const std::string resolved = resolve_visible_value_name(name_text_id, name);
     if (resolved.empty() || resolved == name) return nullptr;
+    const TextId resolved_text_id = find_parser_text_id(resolved);
+    if (can_probe_local_binding(resolved_text_id, resolved)) {
+        if (const TypeSpec* type = find_local_visible_var_type(resolved_text_id)) {
+            return type;
+        }
+    }
     return find_var_type(resolved);
 }
 

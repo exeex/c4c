@@ -880,6 +880,32 @@ void test_parser_visible_type_alias_uses_scope_local_typedef_facade() {
               "test fixture should balance the local visible typedef scope");
 }
 
+void test_parser_visible_type_alias_resolves_scope_local_target_type() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  const c4c::TextId target_text = texts.intern("Target");
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(target_text, target_ts);
+  parser.namespace_state_.using_value_aliases[0][alias_text] = {
+      parser.intern_semantic_name_key("Target"), "corrupted"};
+
+  const c4c::TypeSpec* visible_alias = parser.find_visible_typedef_type("Alias");
+  expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
+              "visible typedef aliases should resolve scope-local target types through the visible facade");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
 void test_parser_visible_type_alias_keeps_qualified_target_resolution() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -953,6 +979,32 @@ void test_parser_global_using_value_import_keeps_global_target_resolution() {
   alias_it->second.compatibility_name = "corrupted";
   expect_eq(parser.resolve_visible_value_name("Target"), "Target",
             "global using-import lookup should keep the global target spelling instead of introducing a leading scope bridge");
+}
+
+void test_parser_visible_value_alias_resolves_scope_local_target_type() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  const c4c::TextId target_text = texts.intern("Target");
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_value(target_text, target_ts);
+  parser.namespace_state_.using_value_aliases[0][alias_text] = {
+      parser.intern_semantic_name_key("Target"), "corrupted"};
+
+  const c4c::TypeSpec* visible_alias = parser.find_visible_var_type("Alias");
+  expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
+              "visible value aliases should resolve scope-local target types through the visible facade");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible value scope");
 }
 
 void test_parser_template_member_suffix_probe_uses_token_spelling() {
@@ -1139,9 +1191,11 @@ int main() {
   test_parser_conflicting_user_typedef_binding_uses_local_visible_scope_lookup();
   test_parser_record_body_context_keeps_visible_template_origin_lookup_local();
   test_parser_visible_type_alias_uses_scope_local_typedef_facade();
+  test_parser_visible_type_alias_resolves_scope_local_target_type();
   test_parser_visible_type_alias_keeps_qualified_target_resolution();
   test_parser_using_value_import_keeps_structured_target_key();
   test_parser_global_using_value_import_keeps_global_target_resolution();
+  test_parser_visible_value_alias_resolves_scope_local_target_type();
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
   test_parser_alias_template_value_probes_use_token_spelling();

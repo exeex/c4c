@@ -7,17 +7,18 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Completed `plan.md` step 1 by reconciling the active source-idea inventory with
-the current parser state: `enum_consts`, `const_int_bindings`, and template
-scope params are already `TextId`-aware; scope-local typedef/value lookup now
-has dedicated `ParserLexicalScopeState` storage; qualified holdouts such as
-`known_fn_names` and `struct_typedefs` remain on their structured path.
+Advanced `plan.md` step 2 by teaching the visible typedef/value facades to
+re-probe scope-local bindings after alias resolution returns an unqualified
+target name. Added focused parser coverage proving `find_visible_typedef_type`
+and `find_visible_var_type` now resolve `using`-alias targets that live only in
+`ParserLexicalScopeState`.
 
 ## Suggested Next
-Execute `plan.md` step 2 with one narrow packet that expands the
-scope-local typedef/value facade to any remaining unqualified parser-visible
-lookup probes that still bypass `find_visible_typedef_type` or
-`find_visible_var_type`, then add focused parser tests for that route.
+Continue `plan.md` step 2 with one narrow packet that audits remaining
+unqualified parser-visible probes for direct flat-table fallback after
+name-resolution, especially any paths that resolve a visible name string and
+then call `find_typedef_type` or `find_var_type` without a final local-scope
+reprobe.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. Do not reopen the
@@ -25,4 +26,5 @@ qualified-owner lookup slice completed under idea 84, and do not treat
 structured-qualified tables as candidates for flat `TextId` replacement.
 
 ## Proof
-Not run. Execution-state update only; no code or lifecycle structure changed.
+Built with `cmake --build --preset default` and proved the packet with
+`ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`.
