@@ -382,20 +382,21 @@ std::string resolve_qualified_typedef_name(const Parser& parser,
                                            const Parser::QualifiedNameRef& qn) {
     const bool is_qualified = !qn.qualifier_segments.empty() ||
                               qn.is_global_qualified;
+    const std::string_view base_name =
+        parser.parser_text(qn.base_text_id, qn.base_name);
     if (is_qualified) {
         std::string resolved = parser.resolve_qualified_type_name(qn);
         if (!resolved.empty() && parser.has_typedef_type(resolved))
             return resolved;
     } else {
-        std::string resolved = std::string(
-            parser.parser_text(qn.base_text_id, qn.base_name));
+        std::string resolved = std::string(base_name);
         if (!resolved.empty() && parser.has_typedef_type(resolved))
             return resolved;
     }
 
-    std::string resolved = parser.resolve_visible_type_name(
-        qn.base_text_id, parser.parser_text(qn.base_text_id, qn.base_name));
-    if (parser.has_typedef_type(resolved))
+    std::string resolved =
+        parser.resolve_visible_type_name(qn.base_text_id, base_name);
+    if (parser.has_visible_typedef_type(qn.base_text_id, base_name))
         return resolved;
     if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
         return {};

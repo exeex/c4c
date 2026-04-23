@@ -8,22 +8,21 @@ Current Step Title: Move unqualified visible lookup onto the new scope-local pat
 
 ## Just Finished
 Completed the Step 4 parser packet by routing the remaining unqualified visible
-typedef probes in declarator/template parsing through the local-first facade.
-The dependent-typename branch now checks the scoped visible typedef path before
-falling back to legacy visible spelling resolution, and the template member
-lookup fallback now consults the scoped visible typedef facade before resolving
-the legacy visible template spelling.
+typedef probes in statement/type helper code through the local-first facade.
+`if`-condition declaration probing now checks the scoped visible typedef path
+directly, and the qualified-type helper now treats unqualified visible typedefs
+as present even when only the lexical scope state knows about them.
 
 ## Suggested Next
-Continue Step 4 by sweeping any remaining parser helper call sites that still
-resolve an unqualified visible name manually before checking the flat typedef
-tables.
+Continue Step 4 by sweeping the remaining parser helper call sites that still
+use `resolve_visible_type_name(...)` as a pre-check for unqualified template or
+struct type heads instead of consulting the scoped visible facade first.
 
 ## Watchouts
 Do not collapse namespace traversal into lexical lookup. Step 3 only adds the
 local-first facade; local bindings are still mirrored into the legacy flat
-tables until Step 4 finishes moving unqualified visibility onto the scoped
-lookup path.
+tables in some paths, so remaining Step 4 cleanup should keep qualified lookup
+and namespace-owned resolution on their separate route.
 
 ## Proof
 Proof command: `cmake --build --preset default && ctest --test-dir build -j

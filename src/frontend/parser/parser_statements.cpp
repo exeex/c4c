@@ -294,8 +294,8 @@ Node* Parser::parse_stmt() {
                 if (k != TokenKind::Identifier) return false;
                 if (is_template_scope_type_param(token_spelling(cur()))) return true;
                 if (is_typedef_name(token_spelling(cur()))) return true;
-                return has_typedef_type(resolve_visible_type_name(
-                    cur().text_id, token_spelling(cur())));
+                return has_visible_typedef_type(cur().text_id,
+                                                token_spelling(cur()));
             };
 
             auto can_use_lite_if_condition_decl = [&]() -> bool {
