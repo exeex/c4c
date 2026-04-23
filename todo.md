@@ -3,7 +3,7 @@ Source Idea Path: ideas/open/89_grouped_register_bank_and_storage_authority_for_
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Publish Grouped Storage, Spill, Reload, And Clobber Semantics
-Plan Review Counter: 4 / 6
+Plan Review Counter: 5 / 6
 # Current Packet
 
 ## Just Finished
