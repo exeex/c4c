@@ -22,8 +22,10 @@ bool Parser::try_parse_record_access_label() {
            (check(TokenKind::Identifier) &&
             (token_spelling(cur()) == "public" || token_spelling(cur()) == "private" ||
              token_spelling(cur()) == "protected"))) &&
-          pos_ + 1 < static_cast<int>(tokens_.size()) &&
-          tokens_[pos_ + 1].kind == TokenKind::Colon)) {
+          core_input_state_.pos + 1 <
+              static_cast<int>(core_input_state_.tokens.size()) &&
+          core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+              TokenKind::Colon)) {
         return false;
     }
 
@@ -527,8 +529,10 @@ void Parser::parse_decl_attrs_for_record(int line, TypeSpec* attr_ts) {
 
     auto skip_cpp11_attrs = [&]() {
         while (check(TokenKind::LBracket) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+               core_input_state_.pos + 1 <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                   TokenKind::LBracket) {
             consume();
             consume();
             int depth = 1;
@@ -638,8 +642,8 @@ bool Parser::try_parse_record_using_member(
 
     consume();
     if (check(TokenKind::Identifier) &&
-        pos_ + 1 < static_cast<int>(tokens_.size()) &&
-        tokens_[pos_ + 1].kind == TokenKind::Assign) {
+        core_input_state_.pos + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::Assign) {
         std::string alias_name = std::string(token_spelling(cur()));
         consume(); // name
         consume(); // '='
@@ -853,24 +857,28 @@ bool Parser::try_parse_record_constructor_member(
     if (!(is_cpp_mode() && !active_context_state_.current_struct_tag.empty()))
         return false;
 
-    int probe = pos_;
-    while (probe < static_cast<int>(tokens_.size())) {
-        if (tokens_[probe].kind == TokenKind::KwConstexpr ||
-            tokens_[probe].kind == TokenKind::KwConsteval ||
-            (tokens_[probe].kind == TokenKind::Identifier &&
-             token_spelling(tokens_[probe]) == "inline")) {
+    int probe = core_input_state_.pos;
+    while (probe < static_cast<int>(core_input_state_.tokens.size())) {
+        if (core_input_state_.tokens[probe].kind == TokenKind::KwConstexpr ||
+            core_input_state_.tokens[probe].kind == TokenKind::KwConsteval ||
+            (core_input_state_.tokens[probe].kind == TokenKind::Identifier &&
+             token_spelling(core_input_state_.tokens[probe]) == "inline")) {
             ++probe;
             continue;
         }
-        if (tokens_[probe].kind == TokenKind::KwExplicit) {
+        if (core_input_state_.tokens[probe].kind == TokenKind::KwExplicit) {
             ++probe;
-            if (probe < static_cast<int>(tokens_.size()) &&
-                tokens_[probe].kind == TokenKind::LParen) {
+            if (probe < static_cast<int>(core_input_state_.tokens.size()) &&
+                core_input_state_.tokens[probe].kind == TokenKind::LParen) {
                 int depth = 1;
                 ++probe;
-                while (probe < static_cast<int>(tokens_.size()) && depth > 0) {
-                    if (tokens_[probe].kind == TokenKind::LParen) ++depth;
-                    else if (tokens_[probe].kind == TokenKind::RParen) --depth;
+                while (probe < static_cast<int>(core_input_state_.tokens.size()) &&
+                       depth > 0) {
+                    if (core_input_state_.tokens[probe].kind == TokenKind::LParen)
+                        ++depth;
+                    else if (core_input_state_.tokens[probe].kind ==
+                             TokenKind::RParen)
+                        --depth;
                     ++probe;
                 }
             }
@@ -878,12 +886,13 @@ bool Parser::try_parse_record_constructor_member(
         }
         break;
     }
-    if (probe < static_cast<int>(tokens_.size()) &&
-        tokens_[probe].kind == TokenKind::Identifier &&
-        is_record_special_member_name(std::string(token_spelling(tokens_[probe])),
+    if (probe < static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[probe].kind == TokenKind::Identifier &&
+        is_record_special_member_name(
+            std::string(token_spelling(core_input_state_.tokens[probe])),
                                       struct_source_name) &&
-        probe + 1 < static_cast<int>(tokens_.size()) &&
-        tokens_[probe + 1].kind == TokenKind::LParen) {
+        probe + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[probe + 1].kind == TokenKind::LParen) {
         while (pos_ < probe) {
             if (check(TokenKind::KwExplicit))
                 consume_optional_cpp_explicit_specifier(this);
@@ -895,8 +904,10 @@ bool Parser::try_parse_record_constructor_member(
     if (!(check(TokenKind::Identifier) &&
           is_record_special_member_name(std::string(token_spelling(cur())),
                                         struct_source_name) &&
-          pos_ + 1 < static_cast<int>(tokens_.size()) &&
-          tokens_[pos_ + 1].kind == TokenKind::LParen)) {
+          core_input_state_.pos + 1 <
+              static_cast<int>(core_input_state_.tokens.size()) &&
+          core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+              TokenKind::LParen)) {
         return false;
     }
 
@@ -987,15 +998,19 @@ bool Parser::try_parse_record_constructor_member(
     if (check(TokenKind::LBrace)) {
         method->body = parse_block();
     } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+               core_input_state_.pos + 1 <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                   TokenKind::KwDelete) {
         consume();  // '='
         consume();  // 'delete'
         method->is_deleted = true;
         match(TokenKind::Semi);
     } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+               core_input_state_.pos + 1 <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                   TokenKind::KwDefault) {
         consume();  // '='
         consume();  // 'default'
         method->is_defaulted = true;
@@ -1012,10 +1027,12 @@ bool Parser::try_parse_record_destructor_member(
     std::vector<Node*>* methods) {
     if (!(is_cpp_mode() && !active_context_state_.current_struct_tag.empty() &&
           check(TokenKind::Tilde) &&
-          pos_ + 1 < static_cast<int>(tokens_.size()) &&
-          tokens_[pos_ + 1].kind == TokenKind::Identifier &&
+          core_input_state_.pos + 1 <
+              static_cast<int>(core_input_state_.tokens.size()) &&
+          core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+              TokenKind::Identifier &&
           is_record_special_member_name(
-              std::string(token_spelling(tokens_[pos_ + 1])),
+              std::string(token_spelling(core_input_state_.tokens[core_input_state_.pos + 1])),
                                         struct_source_name))) {
         return false;
     }
@@ -1037,15 +1054,19 @@ bool Parser::try_parse_record_destructor_member(
     if (check(TokenKind::LBrace)) {
         method->body = parse_block();
     } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+               core_input_state_.pos + 1 <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                   TokenKind::KwDelete) {
         consume();  // '='
         consume();  // 'delete'
         method->is_deleted = true;
         match(TokenKind::Semi);
     } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+               core_input_state_.pos + 1 <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                   TokenKind::KwDefault) {
         consume();  // '='
         consume();  // 'default'
         method->is_defaulted = true;
@@ -1370,15 +1391,19 @@ bool Parser::try_parse_record_method_or_field_member(
         if (check(TokenKind::LBrace)) {
             method->body = parse_block();
         } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                   pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                   tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+                   core_input_state_.pos + 1 <
+                       static_cast<int>(core_input_state_.tokens.size()) &&
+                   core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                       TokenKind::KwDelete) {
             consume(); // '='
             consume(); // 'delete'
             method->is_deleted = true;
             match(TokenKind::Semi);
         } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                   pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                   tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+                   core_input_state_.pos + 1 <
+                       static_cast<int>(core_input_state_.tokens.size()) &&
+                   core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                       TokenKind::KwDefault) {
             consume(); // '='
             consume(); // 'default'
             method->is_defaulted = true;
@@ -1487,15 +1512,19 @@ bool Parser::try_parse_record_method_or_field_member(
             if (check(TokenKind::LBrace)) {
                 method->body = parse_block();
             } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                       tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+                       core_input_state_.pos + 1 <
+                           static_cast<int>(core_input_state_.tokens.size()) &&
+                       core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                           TokenKind::KwDelete) {
                 consume(); // '='
                 consume(); // 'delete'
                 method->is_deleted = true;
                 match(TokenKind::Semi);
             } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                       tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+                       core_input_state_.pos + 1 <
+                           static_cast<int>(core_input_state_.tokens.size()) &&
+                       core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                           TokenKind::KwDefault) {
                 consume(); // '='
                 consume(); // 'default'
                 method->is_defaulted = true;
@@ -1802,18 +1831,19 @@ void Parser::parse_record_definition_prelude(
     parse_decl_attrs_for_record(line, attr_ts);
 
     if (*tag && is_cpp_mode() && check(TokenKind::Less)) {
-        int probe = pos_;
+        int probe = core_input_state_.pos;
         int depth = 0;
         bool balanced = false;
-        while (probe < static_cast<int>(tokens_.size())) {
-            if (tokens_[probe].kind == TokenKind::Less) ++depth;
-            else if (tokens_[probe].kind == TokenKind::Greater) {
+        while (probe < static_cast<int>(core_input_state_.tokens.size())) {
+            if (core_input_state_.tokens[probe].kind == TokenKind::Less) ++depth;
+            else if (core_input_state_.tokens[probe].kind == TokenKind::Greater) {
                 if (--depth <= 0) {
                     ++probe;
                     balanced = true;
                     break;
                 }
-            } else if (tokens_[probe].kind == TokenKind::GreaterGreater) {
+            } else if (core_input_state_.tokens[probe].kind ==
+                       TokenKind::GreaterGreater) {
                 depth -= 2;
                 if (depth <= 0) {
                     ++probe;
@@ -1824,10 +1854,11 @@ void Parser::parse_record_definition_prelude(
             ++probe;
         }
         const bool is_specialization =
-            balanced && probe < static_cast<int>(tokens_.size()) &&
-            (tokens_[probe].kind == TokenKind::LBrace ||
-             tokens_[probe].kind == TokenKind::Colon ||
-             tokens_[probe].kind == TokenKind::Semi);
+            balanced &&
+            probe < static_cast<int>(core_input_state_.tokens.size()) &&
+            (core_input_state_.tokens[probe].kind == TokenKind::LBrace ||
+             core_input_state_.tokens[probe].kind == TokenKind::Colon ||
+             core_input_state_.tokens[probe].kind == TokenKind::Semi);
         if (is_specialization) {
             *template_origin_name = arena_.strdup(*tag);
             bool parse_ok = true;
@@ -2281,23 +2312,29 @@ Node* Parser::parse_param() {
     int ln = cur().line;
     auto skip_cpp11_attrs_only = [&]() {
         while (check(TokenKind::LBracket) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+               core_input_state_.pos + 1 <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                   TokenKind::LBracket) {
             consume();
             consume();
             int depth = 1;
             while (!at_end() && depth > 0) {
                 if (check(TokenKind::LBracket) &&
-                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+                    core_input_state_.pos + 1 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::LBracket) {
                     consume();
                     consume();
                     ++depth;
                     continue;
                 }
                 if (check(TokenKind::RBracket) &&
-                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::RBracket) {
+                    core_input_state_.pos + 1 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::RBracket) {
                     consume();
                     consume();
                     --depth;

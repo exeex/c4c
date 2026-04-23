@@ -9,19 +9,16 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Just Finished
 
-- completed the Step 2 `parser_expressions.cpp` bundle-routing packet by
-  moving read-only cursor and token-window probes onto `core_input_state_`
-  access for `sizeof...` text capture, delete/new-array operator lookahead,
-  qualified `operator` name probing, balanced-template-id lookahead, GCC
-  type-trait builtin lookahead, and global-qualified `::new` / `::identifier`
-  checks while leaving explicit `pos_` / `tokens_` save-restore mechanics
-  unchanged for later Step 3 classification
+- completed the Step 2 `parser_types_struct.cpp` bundle-routing packet by
+  moving the read-only record-access, member-lookahead, constructor/destructor
+  probe, specialization lookahead, and parameter attribute windows onto
+  `core_input_state_` access while leaving the intentional save/restore and
+  rollback paths unchanged
 
 ## Suggested Next
 
-- move the next Step 2 bundle-routing packet to another parser implementation
-  file with read-only `pos_` / `tokens_` layout probes, likely
-  `parser_types_struct.cpp` or the remaining read-only windows in
+- move the next Step 2 bundle-routing packet to the remaining parser
+  implementation file with read-only `pos_` / `tokens_` layout probes, likely
   `parser_types_base.cpp`, while continuing to leave real save/restore and
   injected-token mechanics for Step 3
 
@@ -38,12 +35,11 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 - refresh proof after each bounded bundle-routing packet and keep it captured
   in `test_after.log`
 - the remaining direct `pos_` / `tokens_` references in
-  `parser_expressions.cpp` are concentrated in intentional save/restore,
-  rollback, or token-copy sites that should stay in place for this Step 2
-  slice
+  `parser_types_struct.cpp` are intentional save/restore or rollback sites and
+  should stay in place for this Step 2 slice
 
 ## Proof
 
-- `cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_parse_top_level_pragma_pack_preserves_following_decl_dump|cpp_parse_top_level_pragma_gcc_visibility_preserves_following_decl_dump)$' | tee test_after.log`
-- Result: passed; 3/3 tests passed in the delegated subset
+- `cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_positive_sema_access_labels_parse_cpp|cpp_positive_sema_access_labels_treated_public_runtime_cpp|cpp_positive_sema_friend_access_parse_cpp|cpp_positive_sema_keyword_friend_parse_cpp|cpp_positive_sema_class_specific_new_delete_parse_cpp|cpp_positive_sema_record_body_context_parse_cpp|cpp_positive_sema_record_body_context_teardown_parse_cpp|cpp_positive_sema_record_member_dispatch_parse_cpp|cpp_positive_sema_record_member_entry_parse_cpp|cpp_positive_sema_record_member_method_field_parse_cpp|cpp_positive_sema_record_member_special_dispatch_parse_cpp|cpp_positive_sema_record_member_special_member_parse_cpp|cpp_positive_sema_record_member_type_dispatch_parse_cpp)$' | tee test_after.log`
+- Result: passed; 14/14 tests passed in the delegated subset
 - Log: `test_after.log`
