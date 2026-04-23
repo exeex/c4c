@@ -365,6 +365,186 @@ bir::Module make_indirect_call_contract_module() {
   return module;
 }
 
+bir::Module make_call_wrapper_kind_contract_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function same_module_callee;
+  same_module_callee.name = "same_module_i32";
+  same_module_callee.return_type = bir::TypeKind::I32;
+  same_module_callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "value",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  bir::Block same_module_entry;
+  same_module_entry.label = "entry";
+  same_module_entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "value")};
+  same_module_callee.blocks.push_back(std::move(same_module_entry));
+  module.functions.push_back(std::move(same_module_callee));
+
+  bir::Function fixed_extern;
+  fixed_extern.name = "extern_fixed_i32";
+  fixed_extern.is_declaration = true;
+  fixed_extern.return_type = bir::TypeKind::I32;
+  fixed_extern.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "value",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(fixed_extern));
+
+  bir::Function variadic_extern;
+  variadic_extern.name = "extern_variadic_i32";
+  variadic_extern.is_declaration = true;
+  variadic_extern.is_variadic = true;
+  variadic_extern.return_type = bir::TypeKind::I32;
+  variadic_extern.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "head",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(variadic_extern));
+
+  bir::Function caller;
+  caller.name = "call_wrapper_kind_contract";
+  caller.return_type = bir::TypeKind::I32;
+  caller.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "callee.ptr",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "tmp.same_module"),
+      .callee = "same_module_i32",
+      .args = {bir::Value::immediate_i32(1)},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "tmp.extern_fixed"),
+      .callee = "extern_fixed_i32",
+      .args = {bir::Value::immediate_i32(2)},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "tmp.extern_variadic"),
+      .callee = "extern_variadic_i32",
+      .args = {bir::Value::immediate_i32(3), bir::Value::immediate_i32(4)},
+      .arg_types = {bir::TypeKind::I32, bir::TypeKind::I32},
+      .arg_abi = {
+          bir::CallArgAbiInfo{
+              .type = bir::TypeKind::I32,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .primary_class = bir::AbiValueClass::Integer,
+              .passed_in_register = true,
+          },
+          bir::CallArgAbiInfo{
+              .type = bir::TypeKind::I32,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .primary_class = bir::AbiValueClass::Integer,
+              .passed_in_register = true,
+          },
+      },
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+      .is_variadic = true,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "tmp.indirect_wrapper"),
+      .callee_value = bir::Value::named(bir::TypeKind::Ptr, "callee.ptr"),
+      .args = {bir::Value::immediate_i32(5)},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+      .is_indirect = true,
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "tmp.indirect_wrapper")};
+  caller.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(caller));
+  return module;
+}
+
 bir::Module make_dynamic_stack_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1027,6 +1207,46 @@ int check_indirect_call_contract() {
   return 0;
 }
 
+int check_call_wrapper_kind_contract() {
+  const auto prepared = prepare_module(make_call_wrapper_kind_contract_module());
+  const auto* call_plans = find_call_plans_function(prepared, "call_wrapper_kind_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 4) {
+    return fail("call-wrapper contract: call_plans no longer publish all wrapper shapes");
+  }
+
+  const auto& same_module_call = call_plans->calls[0];
+  if (same_module_call.wrapper_kind != prepare::PreparedCallWrapperKind::SameModule ||
+      same_module_call.is_indirect || !same_module_call.direct_callee_name.has_value() ||
+      *same_module_call.direct_callee_name != "same_module_i32") {
+    return fail("call-wrapper contract: same-module call lost explicit wrapper classification");
+  }
+
+  const auto& fixed_extern_call = call_plans->calls[1];
+  if (fixed_extern_call.wrapper_kind !=
+          prepare::PreparedCallWrapperKind::DirectExternFixedArity ||
+      fixed_extern_call.is_indirect || !fixed_extern_call.direct_callee_name.has_value() ||
+      *fixed_extern_call.direct_callee_name != "extern_fixed_i32") {
+    return fail("call-wrapper contract: direct fixed extern lost explicit wrapper classification");
+  }
+
+  const auto& variadic_extern_call = call_plans->calls[2];
+  if (variadic_extern_call.wrapper_kind !=
+          prepare::PreparedCallWrapperKind::DirectExternVariadic ||
+      variadic_extern_call.is_indirect || !variadic_extern_call.direct_callee_name.has_value() ||
+      *variadic_extern_call.direct_callee_name != "extern_variadic_i32" ||
+      variadic_extern_call.arguments.size() != 2) {
+    return fail("call-wrapper contract: direct variadic extern lost explicit wrapper classification");
+  }
+
+  const auto& indirect_call = call_plans->calls[3];
+  if (indirect_call.wrapper_kind != prepare::PreparedCallWrapperKind::Indirect ||
+      !indirect_call.is_indirect || indirect_call.direct_callee_name.has_value()) {
+    return fail("call-wrapper contract: indirect call lost explicit wrapper classification");
+  }
+
+  return 0;
+}
+
 int check_dynamic_stack_contract() {
   const auto prepared = prepare_module(make_dynamic_stack_module());
   const auto* function = find_function(prepared.module, "dynamic_stack_contract");
@@ -1264,6 +1484,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_indirect_call_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_call_wrapper_kind_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_dynamic_stack_contract(); rc != 0) {

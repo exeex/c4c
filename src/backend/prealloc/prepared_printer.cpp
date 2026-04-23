@@ -248,7 +248,7 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
       for (const auto& call : call_plans->calls) {
         out << "  callsite block=" << call.block_index
             << " inst=" << call.instruction_index
-            << " kind=" << (call.is_indirect ? "indirect" : "direct");
+            << " wrapper=" << prepared_call_wrapper_kind_name(call.wrapper_kind);
         if (call.direct_callee_name.has_value()) {
           out << " callee=" << *call.direct_callee_name;
         }
@@ -618,6 +618,7 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
     for (const auto& call : function_plan.calls) {
       out << "  call block_index=" << call.block_index
           << " inst_index=" << call.instruction_index
+          << " wrapper_kind=" << prepared_call_wrapper_kind_name(call.wrapper_kind)
           << " indirect=" << (call.is_indirect ? "yes" : "no");
       if (call.direct_callee_name.has_value()) {
         out << " callee=" << *call.direct_callee_name;

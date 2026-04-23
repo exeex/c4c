@@ -900,9 +900,32 @@ struct PreparedClobberedRegister {
   std::vector<std::string> occupied_register_names;
 };
 
+enum class PreparedCallWrapperKind {
+  SameModule,
+  DirectExternFixedArity,
+  DirectExternVariadic,
+  Indirect,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_call_wrapper_kind_name(
+    PreparedCallWrapperKind kind) {
+  switch (kind) {
+    case PreparedCallWrapperKind::SameModule:
+      return "same_module";
+    case PreparedCallWrapperKind::DirectExternFixedArity:
+      return "direct_extern_fixed_arity";
+    case PreparedCallWrapperKind::DirectExternVariadic:
+      return "direct_extern_variadic";
+    case PreparedCallWrapperKind::Indirect:
+      return "indirect";
+  }
+  return "unknown";
+}
+
 struct PreparedCallPlan {
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
+  PreparedCallWrapperKind wrapper_kind = PreparedCallWrapperKind::Indirect;
   bool is_indirect = false;
   std::optional<std::string> direct_callee_name;
   std::vector<PreparedCallArgumentPlan> arguments;

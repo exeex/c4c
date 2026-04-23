@@ -1,5 +1,6 @@
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/backend/prealloc/prepared_printer.hpp"
+#include "src/target_profile.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -322,6 +323,194 @@ prepare::PreparedBirModule legalize_parallel_copy_cycle_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_call_wrapper_dump_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function same_module_callee;
+  same_module_callee.name = "same_module_i32";
+  same_module_callee.return_type = bir::TypeKind::I32;
+  same_module_callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "value",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  bir::Block same_module_entry;
+  same_module_entry.label = "entry";
+  same_module_entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "value")};
+  same_module_callee.blocks.push_back(std::move(same_module_entry));
+  module.functions.push_back(std::move(same_module_callee));
+
+  bir::Function fixed_extern;
+  fixed_extern.name = "extern_fixed_i32";
+  fixed_extern.is_declaration = true;
+  fixed_extern.return_type = bir::TypeKind::I32;
+  fixed_extern.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "value",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(fixed_extern));
+
+  bir::Function variadic_extern;
+  variadic_extern.name = "extern_variadic_i32";
+  variadic_extern.is_declaration = true;
+  variadic_extern.is_variadic = true;
+  variadic_extern.return_type = bir::TypeKind::I32;
+  variadic_extern.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "head",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(variadic_extern));
+
+  bir::Function caller;
+  caller.name = "call_wrapper_dump_contract";
+  caller.return_type = bir::TypeKind::I32;
+  caller.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "callee.ptr",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "tmp.same_module"),
+      .callee = "same_module_i32",
+      .args = {bir::Value::immediate_i32(1)},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "tmp.extern_fixed"),
+      .callee = "extern_fixed_i32",
+      .args = {bir::Value::immediate_i32(2)},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "tmp.extern_variadic"),
+      .callee = "extern_variadic_i32",
+      .args = {bir::Value::immediate_i32(3), bir::Value::immediate_i32(4)},
+      .arg_types = {bir::TypeKind::I32, bir::TypeKind::I32},
+      .arg_abi = {
+          bir::CallArgAbiInfo{
+              .type = bir::TypeKind::I32,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .primary_class = bir::AbiValueClass::Integer,
+              .passed_in_register = true,
+          },
+          bir::CallArgAbiInfo{
+              .type = bir::TypeKind::I32,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .primary_class = bir::AbiValueClass::Integer,
+              .passed_in_register = true,
+          },
+      },
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+      .is_variadic = true,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "tmp.indirect_wrapper"),
+      .callee_value = bir::Value::named(bir::TypeKind::Ptr, "callee.ptr"),
+      .args = {bir::Value::immediate_i32(5)},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+      .is_indirect = true,
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "tmp.indirect_wrapper")};
+  caller.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(caller));
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      c4c::default_target_profile(c4c::TargetArch::X86_64),
+      options);
+}
+
 bool expect_contains(const std::string& text,
                      const std::string& needle,
                      const char* description) {
@@ -523,6 +712,39 @@ int main() {
   if (!expect_contains(parallel_copy_dump,
                        "step[2] move move_index=1 uses_cycle_temp_source=yes",
                        "temp-fed move step")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto call_wrapper_prepared = prepare_call_wrapper_dump_module();
+  const std::string call_wrapper_dump = prepare::print(call_wrapper_prepared);
+  if (!expect_contains(call_wrapper_dump,
+                       "callsite block=0 inst=0 wrapper=same_module callee=same_module_i32",
+                       "same-module wrapper summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(call_wrapper_dump,
+                       "callsite block=0 inst=1 wrapper=direct_extern_fixed_arity callee=extern_fixed_i32",
+                       "fixed extern wrapper summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(call_wrapper_dump,
+                       "callsite block=0 inst=2 wrapper=direct_extern_variadic callee=extern_variadic_i32",
+                       "variadic extern wrapper summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(call_wrapper_dump,
+                       "callsite block=0 inst=3 wrapper=indirect args=1",
+                       "indirect wrapper summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(call_wrapper_dump,
+                       "call block_index=0 inst_index=2 wrapper_kind=direct_extern_variadic indirect=no callee=extern_variadic_i32",
+                       "variadic wrapper call-plan detail")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(call_wrapper_dump,
+                       "call block_index=0 inst_index=3 wrapper_kind=indirect indirect=yes",
+                       "indirect wrapper call-plan detail")) {
     return EXIT_FAILURE;
   }
 

@@ -107,6 +107,36 @@ namespace {
   return nullptr;
 }
 
+[[nodiscard]] const bir::Function* find_module_function(const bir::Module& module,
+                                                        std::string_view function_name) {
+  for (const auto& function : module.functions) {
+    if (function.name == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] PreparedCallWrapperKind classify_call_wrapper_kind(const bir::Module& module,
+                                                                 const bir::CallInst& call) {
+  if (call.is_indirect) {
+    return PreparedCallWrapperKind::Indirect;
+  }
+
+  if (const auto* callee = find_module_function(module, call.callee); callee != nullptr) {
+    if (!callee->is_declaration) {
+      return PreparedCallWrapperKind::SameModule;
+    }
+    if (callee->is_variadic || call.is_variadic) {
+      return PreparedCallWrapperKind::DirectExternVariadic;
+    }
+    return PreparedCallWrapperKind::DirectExternFixedArity;
+  }
+
+  return call.is_variadic ? PreparedCallWrapperKind::DirectExternVariadic
+                          : PreparedCallWrapperKind::DirectExternFixedArity;
+}
+
 [[nodiscard]] const PreparedRegallocValue* find_regalloc_value_by_name(
     const PreparedRegallocFunction& function,
     ValueNameId value_name) {
@@ -449,6 +479,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
         PreparedCallPlan call_plan{
             .block_index = block_index,
             .instruction_index = instruction_index,
+            .wrapper_kind = classify_call_wrapper_kind(prepared.module, *call),
             .is_indirect = call->is_indirect,
             .direct_callee_name = call->is_indirect ? std::nullopt
                                                     : std::optional<std::string>{call->callee},
