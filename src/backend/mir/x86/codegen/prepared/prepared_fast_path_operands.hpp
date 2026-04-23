@@ -1,6 +1,8 @@
 #pragma once
 
-#include "../x86_codegen.hpp"
+#include "prepared_query_context.hpp"
+
+#include "../../../../prealloc/prealloc.hpp"
 
 namespace c4c::backend::x86 {
 
@@ -25,6 +27,18 @@ struct PreparedDirectExternCurrentI32Carrier {
   std::string_view value_name;
   std::optional<std::string> register_name;
   std::optional<std::string> stack_operand;
+};
+
+struct PreparedBoundedMultiDefinedCurrentI32Carrier {
+  std::string_view value_name;
+  std::optional<std::string> register_name;
+  std::optional<std::string> stack_operand;
+};
+
+struct PreparedBoundedMultiDefinedNamedI32Source {
+  std::optional<std::string> register_name;
+  std::optional<std::string> stack_operand;
+  std::optional<std::int64_t> immediate_i32;
 };
 
 std::optional<std::string> choose_prepared_float_scratch_register_if_supported(
@@ -114,6 +128,31 @@ bool finalize_prepared_direct_extern_return_if_supported(
     const std::function<std::optional<std::int64_t>(const c4c::backend::bir::Value&)>&
         resolve_i32_constant,
     std::string* body);
+
+std::optional<PreparedBoundedMultiDefinedNamedI32Source>
+select_prepared_bounded_multi_defined_named_i32_source_if_supported(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const std::optional<PreparedBoundedMultiDefinedCurrentI32Carrier>& current_i32,
+    std::string_view value_name);
+
+bool append_prepared_bounded_multi_defined_i32_move_into_register_if_supported(
+    std::string* body,
+    std::string_view destination_register,
+    const PreparedBoundedMultiDefinedNamedI32Source& source);
+
+bool append_prepared_bounded_multi_defined_i32_move_into_memory_if_supported(
+    std::string* body,
+    std::string_view destination_memory,
+    const PreparedBoundedMultiDefinedNamedI32Source& source);
+
+bool finalize_prepared_bounded_multi_defined_call_result_if_supported(
+    const c4c::backend::bir::CallInst& call,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    std::string* body,
+    std::optional<PreparedBoundedMultiDefinedCurrentI32Carrier>* current_i32);
 
 template <class ResolveNamedOperand>
 std::optional<PreparedI32ValueSelection> select_prepared_i32_value_if_supported(
