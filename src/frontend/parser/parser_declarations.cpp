@@ -1058,7 +1058,7 @@ Node* Parser::parse_top_level() {
             if (target_context < 0) {
                 throw std::runtime_error("unknown namespace in using-directive");
             }
-            using_namespace_contexts_[using_context_id].push_back(target_context);
+            namespace_state_.using_namespace_contexts[using_context_id].push_back(target_context);
             recover_top_level_decl_terminator_or_boundary(*this, ln);
             return nullptr;
         }
@@ -1371,7 +1371,7 @@ Node* Parser::parse_top_level() {
             if (has_known_fn_name(lookup_target)) {
                 register_known_fn_name(imported_key);
             }
-            using_value_aliases_[using_context_id][imported_name] = lookup_target;
+            namespace_state_.using_value_aliases[using_context_id][imported_name] = lookup_target;
         }
         recover_top_level_decl_terminator_or_boundary(*this, ln);
         return nullptr;

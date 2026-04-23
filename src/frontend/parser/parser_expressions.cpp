@@ -1404,8 +1404,8 @@ Node* Parser::parse_primary() {
         if (!qn.qualifier_segments.empty()) {
             int context_id = resolve_namespace_context(qn);
             if (context_id >= 0) {
-                auto alias_it = using_value_aliases_.find(context_id);
-                if (alias_it != using_value_aliases_.end()) {
+                auto alias_it = namespace_state_.using_value_aliases.find(context_id);
+                if (alias_it != namespace_state_.using_value_aliases.end()) {
                     auto value_it = alias_it->second.find(std::string(qn_base_name));
                     if (value_it != alias_it->second.end()) {
                         qualified_name = value_it->second;

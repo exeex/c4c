@@ -258,20 +258,6 @@ class Parser {
 
   // ── namespace / using-directive tables ───────────────────────────────────
   ParserNamespaceState namespace_state_;
-  // Transitional flattened path kept only as a compatibility bridge.
-  std::string& current_namespace_ = namespace_state_.current_namespace;
-  std::vector<NamespaceContext>& namespace_contexts_ =
-      namespace_state_.namespace_contexts;
-  std::vector<int>& namespace_stack_ = namespace_state_.namespace_stack;
-  std::unordered_map<std::string, int>& named_namespace_contexts_ =
-      namespace_state_.named_namespace_contexts;
-  std::unordered_map<int, std::vector<int>>& anonymous_namespace_children_ =
-      namespace_state_.anonymous_namespace_children;
-  // Unqualified visible aliases introduced by using-declarations per namespace context.
-  std::unordered_map<int, std::unordered_map<std::string, std::string>>&
-      using_value_aliases_ = namespace_state_.using_value_aliases;
-  std::unordered_map<int, std::vector<int>>& using_namespace_contexts_ =
-      namespace_state_.using_namespace_contexts;
 
   // ── diagnostic and recovery state ────────────────────────────────────────
   ParserDiagnosticState diagnostic_state_;
