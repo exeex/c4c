@@ -186,17 +186,17 @@ bool function_contains_phi(const bir::Function& function) {
 
 int check_prepare_phi_invariant(const prepare::PreparedBirModule& prepared) {
   if (!contains_invariant(prepared, prepare::PreparedBirInvariant::NoPhiNodes)) {
-    return fail("expected prepare legalize to publish the no-phi-nodes invariant");
+    return fail("expected out_of_ssa to publish the no-phi-nodes invariant");
   }
-  if (prepared.invariants.empty() ||
-      prepare::prepared_bir_invariant_name(prepared.invariants.front()) != "no_phi_nodes") {
+  if (prepare::prepared_bir_invariant_name(prepare::PreparedBirInvariant::NoPhiNodes) !=
+      "no_phi_nodes") {
     return fail("expected stable name for the no-phi-nodes invariant");
   }
   if (prepared.module.functions.size() != 1) {
     return fail("expected exactly one function when checking the phi legality invariant");
   }
   if (function_contains_phi(prepared.module.functions.front())) {
-    return fail("expected legalize to remove phi nodes from prepared semantic BIR");
+    return fail("expected out_of_ssa to remove phi nodes from prepared semantic BIR");
   }
   return 0;
 }
@@ -632,6 +632,7 @@ prepare::PreparedBirModule legalize_call_abi_module() {
   options.run_regalloc = false;
   prepare::BirPreAlloc planner(std::move(prepared), options);
   planner.run_legalize();
+  planner.run_out_of_ssa();
   return std::move(planner.prepared());
 }
 
@@ -722,6 +723,7 @@ prepare::PreparedBirModule legalize_two_way_branch_join_module() {
   options.run_regalloc = false;
   prepare::BirPreAlloc planner(std::move(prepared), options);
   planner.run_legalize();
+  planner.run_out_of_ssa();
   return std::move(planner.prepared());
 }
 
@@ -866,6 +868,7 @@ prepare::PreparedBirModule legalize_short_circuit_or_guard_module() {
   options.run_regalloc = false;
   prepare::BirPreAlloc planner(std::move(prepared), options);
   planner.run_legalize();
+  planner.run_out_of_ssa();
   return std::move(planner.prepared());
 }
 
@@ -943,6 +946,7 @@ prepare::PreparedBirModule legalize_loop_countdown_module() {
   options.run_regalloc = false;
   prepare::BirPreAlloc planner(std::move(prepared), options);
   planner.run_legalize();
+  planner.run_out_of_ssa();
   return std::move(planner.prepared());
 }
 
@@ -1026,6 +1030,7 @@ prepare::PreparedBirModule legalize_parallel_copy_cycle_module() {
   options.run_regalloc = false;
   prepare::BirPreAlloc planner(std::move(prepared), options);
   planner.run_legalize();
+  planner.run_out_of_ssa();
   return std::move(planner.prepared());
 }
 
@@ -1132,6 +1137,7 @@ prepare::PreparedBirModule legalize_memory_access_module() {
   options.run_regalloc = false;
   prepare::BirPreAlloc planner(std::move(prepared), options);
   planner.run_legalize();
+  planner.run_out_of_ssa();
   return std::move(planner.prepared());
 }
 
@@ -1220,6 +1226,7 @@ prepare::PreparedBirModule legalize_merge3_module(bool add_trailing_use) {
   options.run_regalloc = false;
   prepare::BirPreAlloc planner(std::move(prepared), options);
   planner.run_legalize();
+  planner.run_out_of_ssa();
   return std::move(planner.prepared());
 }
 
@@ -1308,6 +1315,7 @@ prepare::PreparedBirModule legalize_merge3_successor_use_module() {
   options.run_regalloc = false;
   prepare::BirPreAlloc planner(std::move(prepared), options);
   planner.run_legalize();
+  planner.run_out_of_ssa();
   return std::move(planner.prepared());
 }
 
@@ -1405,6 +1413,7 @@ prepare::PreparedBirModule legalize_merge3_forwarded_successor_use_module() {
   options.run_regalloc = false;
   prepare::BirPreAlloc planner(std::move(prepared), options);
   planner.run_legalize();
+  planner.run_out_of_ssa();
   return std::move(planner.prepared());
 }
 
@@ -1513,6 +1522,7 @@ prepare::PreparedBirModule legalize_merge3_conditional_successor_use_module() {
   options.run_regalloc = false;
   prepare::BirPreAlloc planner(std::move(prepared), options);
   planner.run_legalize();
+  planner.run_out_of_ssa();
   return std::move(planner.prepared());
 }
 

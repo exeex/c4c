@@ -592,6 +592,7 @@ PreparedBirModule BirPreAlloc::run() {
   run_legalize();
   run_stack_layout();
   run_liveness();
+  run_out_of_ssa();
   run_regalloc();
   publish_contract_plans();
   return std::move(prepared_);

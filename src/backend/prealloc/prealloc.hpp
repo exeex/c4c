@@ -28,6 +28,7 @@ struct PrepareOptions {
   bool run_legalize = true;
   bool run_stack_layout = true;
   bool run_liveness = true;
+  bool run_out_of_ssa = true;
   bool run_regalloc = true;
 };
 
@@ -3733,6 +3734,7 @@ class BirPreAlloc {
   void run_legalize();
   void run_stack_layout();
   void run_liveness();
+  void run_out_of_ssa();
   void run_regalloc();
 
   PreparedBirModule& prepared() { return prepared_; }

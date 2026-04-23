@@ -155,6 +155,7 @@ prepare::PreparedBirModule legalize_short_circuit_or_guard_module() {
   options.run_regalloc = false;
   prepare::BirPreAlloc planner(std::move(prepared), options);
   planner.run_legalize();
+  planner.run_out_of_ssa();
   return std::move(planner.prepared());
 }
 

@@ -1478,7 +1478,6 @@ void legalize_module(const c4c::TargetProfile& target_profile,
     PreparedControlFlowFunction function_control_flow{
         .function_name = function_name_id,
     };
-    lower_phi_nodes(&function, names, &function_control_flow.join_transfers);
     legalize_sized_type(
         target_profile, function.return_type, function.return_size_bytes, function.return_align_bytes);
     if (!function.return_abi.has_value()) {
@@ -1618,16 +1617,6 @@ void legalize_module(const c4c::TargetProfile& target_profile,
             make_branch_condition(names, function_name_id, block));
       }
     }
-    collect_select_materialized_join_transfers(
-        names,
-        function,
-        function_control_flow,
-        &function_control_flow.join_transfers);
-    annotate_branch_owned_join_transfers(function_control_flow,
-                                         &function_control_flow.join_transfers);
-    build_parallel_copy_bundles(names, &function_control_flow);
-    publish_short_circuit_continuation_branch_conditions(
-        names, function, &function_control_flow);
 
     if (control_flow != nullptr &&
         (!function_control_flow.blocks.empty() ||
@@ -1639,6 +1628,51 @@ void legalize_module(const c4c::TargetProfile& target_profile,
   }
 }
 
+PreparedControlFlowFunction* find_mutable_control_flow_function(PreparedControlFlow& control_flow,
+                                                                FunctionNameId function_name) {
+  for (auto& function : control_flow.functions) {
+    if (function.function_name == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+void out_of_ssa_module(bir::Module& module,
+                       PreparedNameTables& names,
+                       PreparedControlFlow* control_flow) {
+  for (auto& function : module.functions) {
+    const FunctionNameId function_name_id = names.function_names.intern(function.name);
+    PreparedControlFlowFunction* function_control_flow = nullptr;
+    if (control_flow != nullptr) {
+      function_control_flow = find_mutable_control_flow_function(*control_flow, function_name_id);
+      if (function_control_flow == nullptr) {
+        control_flow->functions.push_back(PreparedControlFlowFunction{
+            .function_name = function_name_id,
+        });
+        function_control_flow = &control_flow->functions.back();
+      }
+      function_control_flow->join_transfers.clear();
+      function_control_flow->parallel_copy_bundles.clear();
+    }
+
+    lower_phi_nodes(function_control_flow != nullptr ? &function : &function,
+                    names,
+                    function_control_flow != nullptr ? &function_control_flow->join_transfers
+                                                    : nullptr);
+    if (function_control_flow == nullptr) {
+      continue;
+    }
+    collect_select_materialized_join_transfers(
+        names, function, *function_control_flow, &function_control_flow->join_transfers);
+    annotate_branch_owned_join_transfers(*function_control_flow,
+                                         &function_control_flow->join_transfers);
+    build_parallel_copy_bundles(names, function_control_flow);
+    publish_short_circuit_continuation_branch_conditions(
+        names, function, function_control_flow);
+  }
+}
+
 }  // namespace
 
 void BirPreAlloc::run_legalize() {
@@ -1646,7 +1680,6 @@ void BirPreAlloc::run_legalize() {
   prepared_.control_flow.functions.clear();
   legalize_module(
       prepared_.target_profile, prepared_.module, prepared_.names, &prepared_.control_flow);
-  prepared_.invariants.push_back(PreparedBirInvariant::NoPhiNodes);
   if (should_promote_i1(prepared_.target_profile)) {
     prepared_.invariants.push_back(PreparedBirInvariant::NoTargetFacingI1);
   }
@@ -1654,10 +1687,21 @@ void BirPreAlloc::run_legalize() {
   prepared_.notes.push_back(PrepareNote{
       .phase = "legalize",
       .message =
-          "bootstrap BIR legalize removed phi nodes and promoted i1 values plus function "
-          "signature/storage bookkeeping, memory-address/load-store bookkeeping, call ABI "
-          "metadata, call return type text to i32 for x86/i686/aarch64/riscv64, and explicit "
-          "prepared branch-condition/join-transfer/parallel-copy control-flow records",
+          "bootstrap BIR legalize kept semantic CFG and phi form intact while promoting i1 "
+          "values plus function signature/storage bookkeeping, memory-address/load-store "
+          "bookkeeping, and call ABI metadata",
+  });
+}
+
+void BirPreAlloc::run_out_of_ssa() {
+  prepared_.completed_phases.push_back("out_of_ssa");
+  out_of_ssa_module(prepared_.module, prepared_.names, &prepared_.control_flow);
+  prepared_.invariants.push_back(PreparedBirInvariant::NoPhiNodes);
+  prepared_.notes.push_back(PrepareNote{
+      .phase = "out_of_ssa",
+      .message =
+          "out_of_ssa removed phi nodes from live prepared BIR and published authoritative "
+          "join-transfer plus parallel-copy obligations",
   });
 }
 
