@@ -817,6 +817,14 @@ Node* Parser::parse_local_decl() {
                                 is_known_simple_visible_type_head(*this, arg_text_id, arg_name);
                             if (arg_is_type) return false;
                             if (single_value_arg) return true;
+                            // If the first argument already has unresolved
+                            // parameter-type shape, use the heavy tentative
+                            // parse so any parser-side scope/bookkeeping
+                            // mutations roll back cleanly on a ctor-init path.
+                            if (looks_like_unresolved_identifier_type_head(
+                                    core_input_state_.pos + 1)) {
+                                return false;
+                            }
                             if (core_input_state_.pos + 2 <
                                     static_cast<int>(core_input_state_.tokens.size()) &&
                                 (core_input_state_.tokens[core_input_state_.pos + 2].kind ==
@@ -833,6 +841,36 @@ Node* Parser::parse_local_decl() {
                 };
 
                 auto probe_ctor_vs_function_decl = [&]() -> bool {
+                    if (core_input_state_.pos + 3 <
+                            static_cast<int>(core_input_state_.tokens.size()) &&
+                        core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                            TokenKind::Identifier &&
+                        !is_known_simple_visible_type_head(
+                            *this,
+                            core_input_state_.tokens[core_input_state_.pos + 1].text_id,
+                            token_spelling(
+                                core_input_state_.tokens[core_input_state_.pos + 1])) &&
+                        (core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                             TokenKind::Amp ||
+                         core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                             TokenKind::AmpAmp ||
+                         core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                             TokenKind::Star) &&
+                        core_input_state_.tokens[core_input_state_.pos + 3].kind ==
+                            TokenKind::Identifier) {
+                        return false;
+                    }
+                    if (core_input_state_.pos + 2 <
+                            static_cast<int>(core_input_state_.tokens.size()) &&
+                        core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                            TokenKind::Identifier &&
+                        core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                            TokenKind::Identifier &&
+                        looks_like_unresolved_identifier_type_head(
+                            core_input_state_.pos + 1)) {
+                        return true;
+                    }
+
                     std::vector<Node*> probe_params;
                     std::vector<const char*> probe_knr_names;
                     bool probe_variadic = false;

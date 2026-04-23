@@ -1172,6 +1172,41 @@ void test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback
             "registered top-level typedef aliases should keep the unresolved placeholder base");
 }
 
+void test_parser_local_ctor_init_probe_balances_unresolved_param_and_value_expr_shapes() {
+  c4c::Lexer lexer("struct Box { Box(int); };\n"
+                   "int main() {\n"
+                   "  Box copy(Value other);\n"
+                   "  Box value(source & other);\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "balanced ctor-init probe regression should parse as a program");
+  expect_eq_int(program->n_children, 2,
+                "the regression program should contain the record definition and main");
+
+  c4c::Node* main_fn = program->children[1];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the regression program should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 2,
+                "main should retain both ambiguous local declarations");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_EMPTY,
+              "unresolved named-parameter forms should remain function declarations");
+  expect_true(main_fn->body->children[1] != nullptr &&
+                  main_fn->body->children[1]->kind == c4c::NK_DECL,
+              "value-expression direct-init forms should stay declarations");
+  expect_eq(main_fn->body->children[1]->name, "value",
+            "value-expression direct-init forms should keep their declarator spelling");
+}
+
 void test_parser_template_member_suffix_probe_uses_token_spelling() {
   c4c::Lexer lexer(
       "template<int N>\n"
@@ -1532,6 +1567,7 @@ int main() {
   test_parser_visible_value_alias_resolves_scope_local_target_type();
   test_parser_if_condition_decl_uses_local_visible_typedef_scope();
   test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback();
+  test_parser_local_ctor_init_probe_balances_unresolved_param_and_value_expr_shapes();
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
   test_parser_template_type_arg_uses_visible_scope_local_alias();
