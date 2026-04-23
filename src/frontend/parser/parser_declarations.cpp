@@ -1493,7 +1493,8 @@ Node* Parser::parse_top_level() {
                 register_var_type_binding(imported_key, *imported_var);
             }
             if (has_known_fn_name(imported_value_name)) {
-                register_known_fn_name(imported_key);
+                register_known_fn_name(known_fn_name_key_in_context(
+                    using_context_id, target_name.base_text_id, imported_name));
             }
             namespace_state_.using_value_aliases[using_context_id]
                                                [target_name.base_text_id] =
