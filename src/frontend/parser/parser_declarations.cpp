@@ -601,8 +601,8 @@ Node* Parser::parse_local_decl() {
                 resolve_visible_type_name(spelled_tag) == qualified_current_tag)
                 return false;
         }
-        auto it = struct_tag_def_map_.find(ts.tag);
-        if (it == struct_tag_def_map_.end()) return true;
+        auto it = definition_state_.struct_tag_def_map.find(ts.tag);
+        if (it == definition_state_.struct_tag_def_map.end()) return true;
         Node* def = it->second;
         return !def || def->n_fields < 0;
     };
@@ -661,7 +661,8 @@ Node* Parser::parse_local_decl() {
         match(TokenKind::Semi);
         // Keep enum definition nodes for `typedef enum { ... } T;` so
         // downstream semantic passes can bind enumerator constants.
-        if (base_ts.base == TB_ENUM && last_enum_def_) return last_enum_def_;
+        if (base_ts.base == TB_ENUM && definition_state_.last_enum_def)
+            return definition_state_.last_enum_def;
         return make_node(NK_EMPTY, ln);
     }
 
@@ -670,8 +671,8 @@ Node* Parser::parse_local_decl() {
         (base_ts.base == TB_STRUCT || base_ts.base == TB_UNION ||
          base_ts.base == TB_ENUM)) {
         consume();  // consume ;
-        if (base_ts.base == TB_ENUM && last_enum_def_) {
-            return last_enum_def_;
+        if (base_ts.base == TB_ENUM && definition_state_.last_enum_def) {
+            return definition_state_.last_enum_def;
         }
         return make_node(NK_EMPTY, ln);
     }
@@ -711,8 +712,10 @@ Node* Parser::parse_local_decl() {
                     const bool arg_is_type =
                         is_typedef_name(arg_name) ||
                         has_visible_typedef_type(arg_name) ||
-                        struct_tag_def_map_.count(arg_name) > 0 ||
-                        struct_tag_def_map_.count(resolved_type_name) > 0;
+                        definition_state_.struct_tag_def_map.count(arg_name) >
+                            0 ||
+                        definition_state_.struct_tag_def_map.count(
+                            resolved_type_name) > 0;
                     single_value_arg = !arg_is_type;
                 }
                 auto can_use_lite_ctor_init_probe = [&]() -> bool {
@@ -756,8 +759,10 @@ Node* Parser::parse_local_decl() {
                                 is_template_scope_type_param(arg_name) ||
                                 is_typedef_name(arg_name) ||
                                 has_visible_typedef_type(arg_name) ||
-                                struct_tag_def_map_.count(arg_name) > 0 ||
-                                struct_tag_def_map_.count(resolved_type_name) > 0;
+                                definition_state_.struct_tag_def_map.count(
+                                    arg_name) > 0 ||
+                                definition_state_.struct_tag_def_map.count(
+                                    resolved_type_name) > 0;
                             if (arg_is_type) return false;
                             if (single_value_arg) return true;
                             if (pos_ + 2 < static_cast<int>(tokens_.size()) &&
@@ -1387,11 +1392,11 @@ Node* Parser::parse_top_level() {
             bool saved_spec =
                 active_context_state_.parsing_explicit_specialization;
             active_context_state_.parsing_explicit_specialization = true;
-            size_t struct_defs_before = struct_defs_.size();
+            size_t struct_defs_before = definition_state_.struct_defs.size();
             Node* spec = parse_top_level();
             active_context_state_.parsing_explicit_specialization = saved_spec;
-            if (struct_defs_.size() > struct_defs_before) {
-                Node* last_sd = struct_defs_.back();
+            if (definition_state_.struct_defs.size() > struct_defs_before) {
+                Node* last_sd = definition_state_.struct_defs.back();
                 if (last_sd && last_sd->kind == NK_STRUCT_DEF &&
                     last_sd->template_origin_name && last_sd->n_template_args > 0) {
                     register_template_struct_specialization(
@@ -1660,7 +1665,7 @@ Node* Parser::parse_top_level() {
             template_prelude_guard.pushed_template_scope = true;
         }
 
-        size_t struct_defs_before = struct_defs_.size();
+        size_t struct_defs_before = definition_state_.struct_defs.size();
         clear_last_using_alias_name();
         Node* templated = parse_top_level();
         // If parse_top_level() registered a using-alias, record alias template
@@ -1721,12 +1726,13 @@ Node* Parser::parse_top_level() {
             attach_template_params(templated);
         }
         // Template struct definitions: struct Pair { ... } was parsed inside the
-        // recursive parse_top_level() call and stored in struct_defs_, while
+        // recursive parse_top_level() call and stored in
+        // definition_state_.struct_defs, while
         // `templated` is NK_EMPTY (struct-only declaration).  Find the struct
         // def and attach template params to it.  Only consider structs that were
         // added during THIS template parse (not pre-existing instantiated structs).
-        if (struct_defs_.size() > struct_defs_before) {
-            Node* last_sd = struct_defs_.back();
+        if (definition_state_.struct_defs.size() > struct_defs_before) {
+            Node* last_sd = definition_state_.struct_defs.back();
             if (last_sd && last_sd->kind == NK_STRUCT_DEF &&
                 last_sd->template_origin_name && last_sd->n_template_args > 0) {
                 if (!template_params.empty() && last_sd->n_template_params == 0)
@@ -2403,8 +2409,8 @@ top_level_base_ready:
                 resolve_visible_type_name(spelled_tag) == qualified_current_tag)
                 return false;
         }
-        auto it = struct_tag_def_map_.find(ts.tag);
-        if (it == struct_tag_def_map_.end()) return true;
+        auto it = definition_state_.struct_tag_def_map.find(ts.tag);
+        if (it == definition_state_.struct_tag_def_map.end()) return true;
         Node* def = it->second;
         return !def || def->n_fields < 0;
     };
@@ -3193,7 +3199,8 @@ top_level_base_ready:
             !gv->type.is_lvalue_ref && !gv->type.is_rvalue_ref &&
             gv->type.ptr_level == 0 && gv->type.array_rank == 0) {
             long long cv = 0;
-            if (eval_const_int(ginit, &cv, &struct_tag_def_map_, &const_int_bindings_)) {
+            if (eval_const_int(ginit, &cv, &definition_state_.struct_tag_def_map,
+                               &const_int_bindings_)) {
                 const_int_bindings_[gname] = cv;
                 if (source_name && std::strcmp(source_name, gname) != 0)
                     const_int_bindings_[source_name] = cv;

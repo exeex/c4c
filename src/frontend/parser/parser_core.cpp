@@ -448,7 +448,7 @@ bool Parser::are_types_compatible(const TypeSpec& lhs,
 bool Parser::resolves_to_record_ctor_type(TypeSpec ts) const {
     ts = resolve_struct_like_typedef_type(ts);
     if (ts.base == TB_TYPEDEF && ts.tag &&
-        (defined_struct_tags_.count(ts.tag) > 0 ||
+        (definition_state_.defined_struct_tags.count(ts.tag) > 0 ||
          template_state_.template_struct_defs.count(ts.tag) > 0)) {
         return true;
     }
@@ -1566,7 +1566,8 @@ int Parser::ensure_named_namespace_context(int parent_id, const std::string& nam
 int Parser::create_anonymous_namespace_context(int parent_id) {
     const NamespaceContext& parent = namespace_state_.namespace_contexts[parent_id];
     std::string canonical = build_canonical_namespace_name(
-        parent.canonical_name, "__anon_ns_" + std::to_string(anon_counter_++));
+        parent.canonical_name,
+        "__anon_ns_" + std::to_string(definition_state_.anon_counter++));
 
     const int id = static_cast<int>(namespace_state_.namespace_contexts.size());
     namespace_state_.namespace_contexts.push_back(
@@ -1971,7 +1972,7 @@ Node* Parser::parse() {
 
     // Prepend collected struct/enum definitions (so IR builder sees them first)
     std::vector<Node*> all;
-    for (Node* sd : struct_defs_) all.push_back(sd);
+    for (Node* sd : definition_state_.struct_defs) all.push_back(sd);
     for (Node* it : items)        all.push_back(it);
 
     Node* prog = make_node(NK_PROGRAM, 0);

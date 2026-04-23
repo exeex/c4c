@@ -10,14 +10,14 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 ## Just Finished
 
 - completed the Step 2 alias-removal packet by deleting the `Parser`
-  `source_profile_` and `source_file_` compatibility aliases and routing the
-  affected parser reads directly through `core_input_state_`
+  record/enum definition compatibility aliases and routing the affected
+  parser reads directly through `definition_state_`
 
 ## Suggested Next
 
-- continue Step 2 with the next parser bundle alias-removal family, keeping
-  the broader build awareness from this packet while staying inside the
-  parser state-convergence slice
+- continue Step 2 with the next parser bundle alias-removal family, with the
+  binding-state aliases as the next narrow candidate now that
+  `definition_state_` is used directly
 
 ## Watchouts
 
@@ -26,10 +26,10 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
   rewrites or grammar changes
 - preserve constructor, snapshot, and rollback behavior while the grouped
   layout is being converted to direct bundle access
-- the core-input aliases are now gone from the owned parser files; if the
-  next packet needs the same treatment elsewhere, search for the remaining
-  bundle aliases before editing
-- the delegated proof passed and is captured in `test_after.log`
+- the definition-state aliases are now gone from the owned parser files; if
+  the next packet continues alias removal, search for the remaining bundle
+  aliases before editing
+- the proof passed and is captured in `test_after.log`
 
 ## Proof
 

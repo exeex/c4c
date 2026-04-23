@@ -278,8 +278,8 @@ bool is_known_simple_type_head(const Parser& parser, const std::string& name) {
     return parser.has_typedef_type(resolved) ||
            parser.template_state_.template_struct_defs.count(name) > 0 ||
            parser.template_state_.template_struct_defs.count(resolved) > 0 ||
-           parser.defined_struct_tags_.count(name) > 0 ||
-           parser.defined_struct_tags_.count(resolved) > 0;
+           parser.definition_state_.defined_struct_tags.count(name) > 0 ||
+           parser.definition_state_.defined_struct_tags.count(resolved) > 0;
 }
 
 bool starts_with_value_like_template_expr(const Parser& parser,
@@ -411,7 +411,7 @@ std::string resolve_qualified_known_type_name(
     resolved = spell_qualified_name_for_lookup(qn);
     if (!resolved.empty() &&
         (parser.template_state_.template_struct_defs.count(resolved) > 0 ||
-         parser.defined_struct_tags_.count(resolved) > 0)) {
+         parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {
         return resolved;
     }
 
@@ -423,7 +423,8 @@ std::string resolve_qualified_known_type_name(
                     context_id,
                     std::string(parser.parser_text(qn.base_text_id, qn.base_name)));
             if (parser.template_state_.template_struct_defs.count(canonical) > 0 ||
-                parser.defined_struct_tags_.count(canonical) > 0) {
+                parser.definition_state_.defined_struct_tags.count(canonical) >
+                    0) {
                 return canonical;
             }
         }
@@ -433,7 +434,7 @@ std::string resolve_qualified_known_type_name(
     resolved = parser.resolve_visible_type_name(
         parser.parser_text(qn.base_text_id, qn.base_name));
     if (parser.template_state_.template_struct_defs.count(resolved) > 0 ||
-        parser.defined_struct_tags_.count(resolved) > 0) {
+        parser.definition_state_.defined_struct_tags.count(resolved) > 0) {
         return resolved;
     }
     return {};
@@ -449,7 +450,8 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
     }
     if (parser.template_state_.template_struct_defs.count(
             probe.resolved_typedef_name) > 0 ||
-        parser.defined_struct_tags_.count(probe.resolved_typedef_name) > 0) {
+        parser.definition_state_.defined_struct_tags.count(
+            probe.resolved_typedef_name) > 0) {
         probe.has_resolved_typedef = true;
         return probe;
     }
@@ -596,12 +598,12 @@ bool parse_alignas_specifier(Parser* parser, TypeSpec* ts, int line) {
             Node* align_node = parser->make_node(NK_ALIGNOF_TYPE, line);
             align_node->type = align_ts;
             have_align = eval_const_int(align_node, &align_val,
-                                        &parser->struct_tag_def_map_,
+                                        &parser->definition_state_.struct_tag_def_map,
                                         &parser->const_int_bindings_);
         } else {
             Node* align_expr = parser->parse_assign_expr();
             have_align = eval_const_int(align_expr, &align_val,
-                                        &parser->struct_tag_def_map_,
+                                        &parser->definition_state_.struct_tag_def_map,
                                         &parser->const_int_bindings_);
         }
     }

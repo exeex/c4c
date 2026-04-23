@@ -91,9 +91,10 @@ bool Parser::ensure_template_struct_instantiated_from_args(
     // rebuilding tokens and reparsing the instantiation spelling.
     if (selected != primary_tpl && selected->n_template_params == 0 &&
         selected->name && selected->name[0]) {
-        if (!struct_tag_def_map_.count(*out_mangled)) {
-            struct_tag_def_map_[*out_mangled] = const_cast<Node*>(selected);
-            defined_struct_tags_.insert(*out_mangled);
+        if (!definition_state_.struct_tag_def_map.count(*out_mangled)) {
+            definition_state_.struct_tag_def_map[*out_mangled] =
+                const_cast<Node*>(selected);
+            definition_state_.defined_struct_tags.insert(*out_mangled);
         }
         if (out_resolved) {
             *out_resolved = {};
@@ -105,9 +106,9 @@ bool Parser::ensure_template_struct_instantiated_from_args(
         return true;
     }
 
-    if (!struct_tag_def_map_.count(*out_mangled)) {
+    if (!definition_state_.struct_tag_def_map.count(*out_mangled)) {
         if (!template_state_.instantiated_template_struct_keys.count(instance_key) ||
-            !struct_tag_def_map_.count(*out_mangled)) {
+            !definition_state_.struct_tag_def_map.count(*out_mangled)) {
             if (!instantiate_template_struct_via_injected_parse(
                     *this, template_name, args, line, debug_reason,
                     out_resolved)) {
@@ -117,14 +118,14 @@ bool Parser::ensure_template_struct_instantiated_from_args(
     }
 
     if (out_resolved && !out_resolved->tag &&
-        struct_tag_def_map_.count(*out_mangled)) {
+        definition_state_.struct_tag_def_map.count(*out_mangled)) {
         *out_resolved = {};
         out_resolved->array_size = -1;
         out_resolved->inner_rank = -1;
         out_resolved->base = TB_STRUCT;
         out_resolved->tag = arena_.strdup(out_mangled->c_str());
     }
-    return struct_tag_def_map_.count(*out_mangled) > 0;
+    return definition_state_.struct_tag_def_map.count(*out_mangled) > 0;
 }
 
 std::string Parser::build_template_struct_mangled_name(
@@ -594,8 +595,11 @@ bool Parser::eval_deferred_nttp_expr_tokens(
             return false;
         }
 
-        auto sdef_it = struct_tag_def_map_.find(ref_mangled);
-        if (sdef_it == struct_tag_def_map_.end()) { ti = saved_ti; return false; }
+        auto sdef_it = definition_state_.struct_tag_def_map.find(ref_mangled);
+        if (sdef_it == definition_state_.struct_tag_def_map.end()) {
+            ti = saved_ti;
+            return false;
+        }
         const Node* sdef = sdef_it->second;
 
         std::function<bool(const Node*)> lookup_static_member_recursive =
@@ -607,7 +611,11 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                     if (!f->name || member_name != f->name) continue;
                     if (f->init) {
                         long long v = 0;
-                        if (eval_const_int(f->init, &v, &struct_tag_def_map_)) { *val = v; return true; }
+                        if (eval_const_int(
+                                f->init, &v, &definition_state_.struct_tag_def_map)) {
+                            *val = v;
+                            return true;
+                        }
                     }
                     if (f->ival >= 0) { *val = f->ival; return true; }
                 }
@@ -617,14 +625,19 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                     if (!child->name || member_name != child->name) continue;
                     if (child->init) {
                         long long v = 0;
-                        if (eval_const_int(child->init, &v, &struct_tag_def_map_)) { *val = v; return true; }
+                        if (eval_const_int(
+                                child->init, &v,
+                                &definition_state_.struct_tag_def_map)) {
+                            *val = v;
+                            return true;
+                        }
                     }
                 }
                 for (int bi = 0; bi < cur->n_bases; ++bi) {
                     const TypeSpec& base_ts = cur->base_types[bi];
                     if (!base_ts.tag || !base_ts.tag[0]) continue;
-                    auto bit = struct_tag_def_map_.find(base_ts.tag);
-                    if (bit != struct_tag_def_map_.end() &&
+                    auto bit = definition_state_.struct_tag_def_map.find(base_ts.tag);
+                    if (bit != definition_state_.struct_tag_def_map.end() &&
                         lookup_static_member_recursive(bit->second))
                         return true;
                 }

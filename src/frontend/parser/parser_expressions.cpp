@@ -1327,7 +1327,8 @@ Node* Parser::parse_primary() {
 
             return has_typedef_type(first_qualifier) ||
                    template_state_.template_struct_defs.count(first_qualifier) > 0 ||
-                   defined_struct_tags_.count(first_qualifier) > 0;
+                   definition_state_.defined_struct_tags.count(first_qualifier) >
+                       0;
         };
         if (is_cpp_mode() && (check(TokenKind::Less) || check(TokenKind::LParen))) {
             const QualifiedTypeProbe type_probe = probe_qualified_type(*this, qn);
@@ -1460,7 +1461,8 @@ Node* Parser::parse_primary() {
             off->type = base_ts;
             off->name = arena_.strdup(field_path);
             long long cv = 0;
-            if (eval_const_int(off, &cv, &struct_tag_def_map_)) return make_int_lit(cv, ln);
+            if (eval_const_int(off, &cv, &definition_state_.struct_tag_def_map))
+                return make_int_lit(cv, ln);
             return off;
         }
         // __builtin_types_compatible_p(type1, type2) — evaluate at parse time

@@ -341,8 +341,10 @@ void Parser::parse_attributes(TypeSpec* ts) {
                         Node* align_expr = parse_assign_expr();
                         long long align_val = 0;
                         if (align_expr &&
-                            eval_const_int(align_expr, &align_val, &struct_tag_def_map_,
-                                           &const_int_bindings_) &&
+                            eval_const_int(
+                                align_expr, &align_val,
+                                &definition_state_.struct_tag_def_map,
+                                &const_int_bindings_) &&
                             align_val > 0) {
                             align = align_val;
                         }
@@ -358,7 +360,8 @@ void Parser::parse_attributes(TypeSpec* ts) {
                     consume();
                     Node* sz_expr = parse_assign_expr();
                     long long sz_val = 0;
-                    eval_const_int(sz_expr, &sz_val, &struct_tag_def_map_,
+                    eval_const_int(sz_expr, &sz_val,
+                                   &definition_state_.struct_tag_def_map,
                                    &const_int_bindings_);
                     expect(TokenKind::RParen);
                     apply_vector_size_attr(sz_val);
@@ -401,7 +404,7 @@ void Parser::skip_asm() {
 // ── type parsing ──────────────────────────────────────────────────────────────
 
 TypeSpec Parser::parse_base_type() {
-    last_enum_def_ = nullptr;
+    definition_state_.last_enum_def = nullptr;
     TypeSpec ts{};
     ts.array_size = -1;
     ts.array_rank = 0;
@@ -698,8 +701,10 @@ TypeSpec Parser::parse_base_type() {
                     if (resolved.tag && resolved.tag[0])
                         resolved_tag = resolved.tag;
                 }
-                auto def_it = struct_tag_def_map_.find(resolved_tag);
-                if (def_it == struct_tag_def_map_.end() || !def_it->second) return false;
+                auto def_it = definition_state_.struct_tag_def_map.find(resolved_tag);
+                if (def_it == definition_state_.struct_tag_def_map.end() ||
+                    !def_it->second)
+                    return false;
                 const Node* sdef = def_it->second;
                 if (try_selected_specialization_member_typedefs(sdef))
                     return true;
@@ -1109,7 +1114,7 @@ TypeSpec Parser::parse_base_type() {
     }
     if (has_enum) {
         Node* ed = parse_enum();
-        last_enum_def_ = ed;
+        definition_state_.last_enum_def = ed;
         if (ed && ed->name) {
             if (const TypeSpec* typedef_type = find_typedef_type(ed->name)) {
                 ts = *typedef_type;
@@ -2311,7 +2316,8 @@ TypeSpec Parser::parse_base_type() {
                                                         "template_base_instantiation",
                                                         &inst->base_types[bi])) {
                                                     if (!inst->base_types[bi].tag &&
-                                                        struct_tag_def_map_.count(base_mangled)) {
+                                                        definition_state_.struct_tag_def_map.count(
+                                                            base_mangled)) {
                                                         inst->base_types[bi] = TypeSpec{};
                                                         inst->base_types[bi].array_size = -1;
                                                         inst->base_types[bi].inner_rank = -1;
@@ -2529,7 +2535,8 @@ TypeSpec Parser::parse_base_type() {
                                                 "template_base_instantiation",
                                                 &inst->base_types[bi])) {
                                             if (!inst->base_types[bi].tag &&
-                                                struct_tag_def_map_.count(base_mangled)) {
+                                                definition_state_.struct_tag_def_map.count(
+                                                    base_mangled)) {
                                                 inst->base_types[bi] = TypeSpec{};
                                                 inst->base_types[bi].array_size = -1;
                                                 inst->base_types[bi].inner_rank = -1;
@@ -2537,7 +2544,8 @@ TypeSpec Parser::parse_base_type() {
                                                 inst->base_types[bi].tag =
                                                     arena_.strdup(base_mangled.c_str());
                                             }
-                                        } else if (struct_tag_def_map_.count(base_mangled)) {
+                                        } else if (definition_state_.struct_tag_def_map.count(
+                                                       base_mangled)) {
                                             inst->base_types[bi] = TypeSpec{};
                                             inst->base_types[bi].array_size = -1;
                                             inst->base_types[bi].inner_rank = -1;
@@ -2783,9 +2791,9 @@ TypeSpec Parser::parse_base_type() {
                                 inst->children[mi] = new_m;
                             }
                         }
-                        struct_defs_.push_back(inst);
-                        struct_tag_def_map_[mangled] = inst;
-                        defined_struct_tags_.insert(mangled);
+                        definition_state_.struct_defs.push_back(inst);
+                        definition_state_.struct_tag_def_map[mangled] = inst;
+                        definition_state_.defined_struct_tags.insert(mangled);
                     }
                     ts.tag = arena_.strdup(mangled.c_str());
                 }
@@ -2835,8 +2843,11 @@ TypeSpec Parser::parse_base_type() {
                         // The resolved typedef's tag might be the template name, not the instantiation.
                         // If the resolved type is the same template origin, use the instantiation tag.
                         if (resolved.base == TB_STRUCT && resolved.tag) {
-                            auto inst_it = struct_tag_def_map_.find(ts.tag);
-                            if (inst_it != struct_tag_def_map_.end() && inst_it->second &&
+                            auto inst_it =
+                                definition_state_.struct_tag_def_map.find(ts.tag);
+                            if (inst_it !=
+                                    definition_state_.struct_tag_def_map.end() &&
+                                inst_it->second &&
                                 inst_it->second->template_origin_name &&
                                 std::string(resolved.tag) == inst_it->second->template_origin_name) {
                                 resolved.tag = ts.tag;

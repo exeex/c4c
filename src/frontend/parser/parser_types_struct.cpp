@@ -733,7 +733,7 @@ bool Parser::try_parse_nested_record_member(
     bool inner_union = (cur().kind == TokenKind::KwUnion);
     consume();
     Node* inner = parse_struct_or_union(inner_union);
-    if (inner) struct_defs_.push_back(inner);
+    if (inner) definition_state_.struct_defs.push_back(inner);
 
     TypeSpec anon_fts{};
     anon_fts.array_size = -1;
@@ -795,7 +795,7 @@ bool Parser::try_parse_record_enum_member(
     consume();
     Node* ed = parse_enum();
     if (ed && active_context_state_.parsing_top_level_context)
-        struct_defs_.push_back(ed);
+        definition_state_.struct_defs.push_back(ed);
     // After the enum body, there may be one or more field declarators:
     // e.g.  enum { X } x;   or   enum E { A, B } kind;
     // If the next token starts a declarator (not ; or }), parse it.
@@ -821,7 +821,9 @@ bool Parser::try_parse_record_enum_member(
             if (check(TokenKind::Colon)) {
                 consume();
                 Node* bfw = parse_assign_expr();
-                if (bfw) eval_const_int(bfw, &bf_width, &struct_tag_def_map_);
+                if (bfw)
+                    eval_const_int(
+                        bfw, &bf_width, &definition_state_.struct_tag_def_map);
             }
             if (fname) {
                 Node* f = make_node(NK_DECL, cur().line);
@@ -1510,7 +1512,9 @@ bool Parser::try_parse_record_method_or_field_member(
         if (check(TokenKind::Colon)) {
             consume();
             Node* bfw = parse_assign_expr();
-            if (bfw) eval_const_int(bfw, &bf_width, &struct_tag_def_map_);
+            if (bfw)
+                eval_const_int(
+                    bfw, &bf_width, &definition_state_.struct_tag_def_map);
         }
 
         Node* field_init_expr = nullptr;
@@ -1863,7 +1867,7 @@ void Parser::parse_record_definition_prelude(
             (void)parse_ok;
             std::string mangled(*tag);
             mangled += "__spec_";
-            mangled += std::to_string(anon_counter_++);
+            mangled += std::to_string(definition_state_.anon_counter++);
             *tag = arena_.strdup(mangled.c_str());
         }
     }
@@ -1887,7 +1891,8 @@ Node* Parser::parse_record_tag_setup(int line,
         const char* resolved_tag = tag ? *tag : nullptr;
         if (!resolved_tag) {
             char buf[32];
-            snprintf(buf, sizeof(buf), "_anon_%d", anon_counter_++);
+            snprintf(buf, sizeof(buf), "_anon_%d",
+                     definition_state_.anon_counter++);
             resolved_tag = arena_.strdup(buf);
         } else {
             const std::string qtag =
@@ -1919,14 +1924,15 @@ Node* Parser::parse_record_tag_setup(int line,
                                       resolved_tag);
         }
         if (is_cpp_mode() && active_context_state_.parsing_top_level_context)
-            struct_defs_.push_back(ref);
+            definition_state_.struct_defs.push_back(ref);
         return ref;
     }
 
     const char* resolved_tag = tag ? *tag : nullptr;
     if (!resolved_tag) {
         char buf[32];
-        snprintf(buf, sizeof(buf), "_anon_%d", anon_counter_++);
+        snprintf(buf, sizeof(buf), "_anon_%d",
+                 definition_state_.anon_counter++);
         resolved_tag = arena_.strdup(buf);
     } else {
         const std::string qtag =
@@ -1934,7 +1940,7 @@ Node* Parser::parse_record_tag_setup(int line,
                 ? std::string(resolved_tag)
                 : canonical_name_in_context(current_namespace_context_id(),
                                             resolved_tag);
-        if (defined_struct_tags_.count(qtag)) {
+        if (definition_state_.defined_struct_tags.count(qtag)) {
             if (active_context_state_.parsing_top_level_context &&
                 !is_cpp_mode()) {
                 throw std::runtime_error(std::string("redefinition of ") +
@@ -1943,10 +1949,10 @@ Node* Parser::parse_record_tag_setup(int line,
             }
             char buf[64];
             snprintf(buf, sizeof(buf), "%s.__shadow_%d", resolved_tag,
-                     anon_counter_++);
+                     definition_state_.anon_counter++);
             resolved_tag = arena_.strdup(buf);
         }
-        defined_struct_tags_.insert(qtag);
+        definition_state_.defined_struct_tags.insert(qtag);
     }
 
     if (tag)
@@ -2078,8 +2084,8 @@ void Parser::register_record_definition(Node* sd,
                                         source_tag);
     sd->name = arena_.strdup(canonical.c_str());
     apply_decl_namespace(sd, current_namespace_context_id(), source_tag);
-    struct_tag_def_map_[source_tag] = sd;
-    struct_tag_def_map_[sd->name] = sd;
+    definition_state_.struct_tag_def_map[source_tag] = sd;
+    definition_state_.struct_tag_def_map[sd->name] = sd;
 
     if (!is_cpp_mode() || !(sd->name && sd->name[0]))
         return;
@@ -2100,7 +2106,7 @@ void Parser::finalize_record_definition(
     apply_record_trailing_type_attributes(sd);
     store_record_body_members(sd, body_state);
     register_record_definition(sd, is_union, source_tag);
-    struct_defs_.push_back(sd);
+    definition_state_.struct_defs.push_back(sd);
 }
 
 void Parser::parse_record_definition_body(Node* sd,
@@ -2177,7 +2183,8 @@ Node* Parser::parse_enum() {
     if (!check(TokenKind::LBrace)) {
         if (!tag) {
             char buf[32];
-            snprintf(buf, sizeof(buf), "_anon_enum_%d", anon_counter_++);
+            snprintf(buf, sizeof(buf), "_anon_enum_%d",
+                     definition_state_.anon_counter++);
             tag = arena_.strdup(buf);
         }
         Node* ref = make_node(NK_ENUM_DEF, ln);
@@ -2191,7 +2198,8 @@ Node* Parser::parse_enum() {
 
     if (!tag) {
         char buf[32];
-        snprintf(buf, sizeof(buf), "_anon_enum_%d", anon_counter_++);
+        snprintf(buf, sizeof(buf), "_anon_enum_%d",
+                 definition_state_.anon_counter++);
         tag = arena_.strdup(buf);
     }
 
@@ -2259,7 +2267,7 @@ Node* Parser::parse_enum() {
             enum_consts_[std::string(ed->enum_names[i])] = ed->enum_vals[i];
     }
     if (active_context_state_.parsing_top_level_context)
-        struct_defs_.push_back(ed);
+        definition_state_.struct_defs.push_back(ed);
     return ed;
 }
 

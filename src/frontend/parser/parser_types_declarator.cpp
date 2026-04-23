@@ -641,8 +641,10 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                                 resolve_struct_like_typedef_type(*owner_typedef);
                             if (owner_ts.tag && owner_ts.tag[0]) owner_tag = owner_ts.tag;
                         }
-                        auto owner_it = struct_tag_def_map_.find(owner_tag);
-                        if (owner_it == struct_tag_def_map_.end() || !owner_it->second)
+                        auto owner_it =
+                            definition_state_.struct_tag_def_map.find(owner_tag);
+                        if (owner_it == definition_state_.struct_tag_def_map.end() ||
+                            !owner_it->second)
                             continue;
 
                         const Node* owner = owner_it->second;
@@ -698,8 +700,10 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                                 break;
                             }
                             std::string nested_owner_tag = nested_decl->type.tag;
-                            owner_it = struct_tag_def_map_.find(nested_owner_tag);
-                            if (owner_it == struct_tag_def_map_.end() ||
+                            owner_it = definition_state_.struct_tag_def_map.find(
+                                nested_owner_tag);
+                            if (owner_it ==
+                                    definition_state_.struct_tag_def_map.end() ||
                                 !owner_it->second) {
                                 const int nested_context =
                                     nested_decl->namespace_context_id >= 0
@@ -707,9 +711,11 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                                         : owner->namespace_context_id;
                                 nested_owner_tag = canonical_name_in_context(
                                     nested_context, nested_decl->type.tag);
-                                owner_it = struct_tag_def_map_.find(nested_owner_tag);
+                                owner_it = definition_state_.struct_tag_def_map.find(
+                                    nested_owner_tag);
                             }
-                            if (owner_it == struct_tag_def_map_.end() ||
+                            if (owner_it ==
+                                    definition_state_.struct_tag_def_map.end() ||
                                 !owner_it->second) {
                                 ok = false;
                                 break;
@@ -1453,7 +1459,9 @@ long long Parser::parse_one_declarator_array_dim(TypeSpec& ts) {
         Node* sz = parse_assign_expr();
         ts.array_size_expr = sz;
         long long cv = 0;
-        if (sz && eval_const_int(sz, &cv, &struct_tag_def_map_) && cv > 0) {
+        if (sz &&
+            eval_const_int(sz, &cv, &definition_state_.struct_tag_def_map) &&
+            cv > 0) {
             dim = cv;
         } else if (sz && sz->kind == NK_INT_LIT) {
             dim = sz->ival;

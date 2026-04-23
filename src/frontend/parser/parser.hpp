@@ -172,21 +172,6 @@ class Parser {
 
   // ── record / enum definition tables ──────────────────────────────────────
   ParserDefinitionState definition_state_;
-  // ── record / enum definition caches ──────────────────────────────────────
-  // Collected struct/enum defs are prepended to the final program node.
-  std::vector<Node*>& struct_defs_ = definition_state_.struct_defs;
-  int& anon_counter_ = definition_state_.anon_counter;  // counter for anonymous tag names
-  // Struct/union tags that already have a full definition (with body).
-  // Used to detect block-scoped redefinitions and generate unique tags.
-  std::set<std::string>& defined_struct_tags_ =
-      definition_state_.defined_struct_tags;
-  // Struct/union tag → NK_STRUCT_DEF node (populated when parsing struct bodies).
-  // Used by eval_const_int to compute __builtin_offsetof at parse time.
-  std::unordered_map<std::string, Node*>& struct_tag_def_map_ =
-      definition_state_.struct_tag_def_map;
-  // Last enum definition node produced by parse_base_type(), if any.
-  // Used so declaration-only enum statements (`enum { ... };`) can be retained.
-  Node*& last_enum_def_ = definition_state_.last_enum_def;
 
   // ── template metadata tables and active template scopes ──────────────────
   ParserTemplateState template_state_;
