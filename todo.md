@@ -1,20 +1,19 @@
 Status: Active
-Source Idea Path: ideas/open/83_parser_scope_textid_binding_lookup.md
+Source Idea Path: ideas/open/84_parser_qualified_name_structured_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Replace remaining suitable single-name string tables
+Current Step ID: 1
+Current Step Title: Inventory remaining qualified parser binding tables
 
 # Current Packet
 
 ## Just Finished
-Advanced Step 5 by migrating parser concept-name tracking to a `TextId`-first unqualified identity path: concept declarations now register unqualified `TextId`s in parser binding state, unqualified concept queries resolve through that native table first, and the legacy string set remains only as the namespace-qualified compatibility bridge.
+Switched the active lifecycle from idea 83 to idea 84 so the remaining qualified/owner-scoped lookup work is tracked separately from unqualified lexical-scope migration.
 
 ## Suggested Next
-Continue Step 5 with the next narrow single-name parser binding table that still uses `std::string` for semantic identity, again separating unqualified semantic storage from any required namespace-qualified bridge behavior.
+Inventory the remaining qualified parser binding tables and classify which ones should move to structured keys versus remain compatibility-only for now.
 
 ## Watchouts
-This packet intentionally preserved namespace-qualified concept lookup through `compatibility_namespace_name_in_context(...)` and the legacy string bridge. Do not collapse that bridge until the remaining qualified namespace consumers have a `TextId`-native replacement.
+Do not pull unqualified lexical-scope migration back into this plan. The remaining scope here is qualified/owner-scoped lookup only.
 
 ## Proof
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
-Passed; proof log: `test_after.log`
+No code changes in this lifecycle packet.

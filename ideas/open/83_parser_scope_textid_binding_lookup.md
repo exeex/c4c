@@ -253,6 +253,9 @@ Migration rule:
 
 - if semantic identity is multi-segment, use `TextId` sequence or path-id key
 - do not rebuild `"A::B"` strings as the primary semantic lookup key
+- qualified or owner-scoped tables such as `ParserBindingState::known_fn_names`
+  and `ParserBindingState::struct_typedefs` are intentionally deferred to
+  idea 84 rather than extended further in this idea
 
 ### E. Namespace-Side Tables That Should Stay Separate From Lexical Scope
 
