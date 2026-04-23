@@ -1255,16 +1255,7 @@ Node* Parser::parse_primary() {
         core_input_state_.tokens[core_input_state_.pos + 1].kind ==
             TokenKind::Identifier) {
         QualifiedNameRef qn = parse_qualified_name(true);
-        const std::string_view base_name =
-            parser_text(qn.base_text_id, qn.base_name);
-        std::string qualified_name;
-        if (!qn.qualifier_segments.empty()) {
-            int context_id = resolve_namespace_context(qn);
-            if (context_id >= 0) {
-                qualified_name =
-                    canonical_name_in_context(context_id, std::string(base_name));
-            }
-        }
+        std::string qualified_name = resolve_qualified_value_name(qn);
         if (qualified_name.empty()) {
             qualified_name = qn.spelled(true);
         }
@@ -1430,25 +1421,7 @@ Node* Parser::parse_primary() {
                 qn = parse_qualified_name(false);
             }
         }
-        std::string qualified_name;
-        if (!qn.qualifier_segments.empty()) {
-            int context_id = resolve_namespace_context(qn);
-            if (context_id >= 0) {
-                auto alias_it = namespace_state_.using_value_aliases.find(context_id);
-                if (alias_it != namespace_state_.using_value_aliases.end()) {
-                    auto value_it = alias_it->second.find(std::string(qn_base_name));
-                    if (value_it != alias_it->second.end()) {
-                        qualified_name = value_it->second;
-                    }
-                }
-                if (qualified_name.empty()) {
-                    qualified_name =
-                        canonical_name_in_context(context_id, std::string(qn_base_name));
-                }
-            }
-        } else {
-            qualified_name = resolve_visible_value_name(std::string(qn_base_name));
-        }
+        std::string qualified_name = resolve_qualified_value_name(qn);
         if (qualified_name.empty()) {
             qualified_name = qn.spelled();
         }
@@ -1676,15 +1649,8 @@ Node* Parser::parse_primary() {
                         !(pos_ + 3 < static_cast<int>(tokens_.size()) &&
                           tokens_[pos_ + 3].kind == TokenKind::Less)) {
                         QualifiedNameRef operand_name = parse_qualified_name(false);
-                        const std::string_view operand_base_name =
-                            parser_text(operand_name.base_text_id,
-                                        operand_name.base_name);
-                        std::string qualified_name;
-                        int context_id = resolve_namespace_context(operand_name);
-                        if (context_id >= 0) {
-                            qualified_name = canonical_name_in_context(
-                                context_id, std::string(operand_base_name));
-                        }
+                        std::string qualified_name =
+                            resolve_qualified_value_name(operand_name);
                         if (qualified_name.empty()) {
                             qualified_name = operand_name.spelled();
                         }

@@ -1680,6 +1680,43 @@ int Parser::resolve_namespace_name(const QualifiedNameRef& name) const {
                                            follow_name);
 }
 
+std::string Parser::resolve_qualified_value_name(
+    const QualifiedNameRef& name) const {
+    const std::string base_name =
+        std::string(parser_text(name.base_text_id, name.base_name));
+    if (name.qualifier_segments.empty()) {
+        return name.is_global_qualified ? base_name
+                                        : resolve_visible_value_name(base_name);
+    }
+
+    const int context_id = resolve_namespace_context(name);
+    if (context_id < 0) return {};
+
+    auto alias_it = namespace_state_.using_value_aliases.find(context_id);
+    if (alias_it != namespace_state_.using_value_aliases.end()) {
+        auto value_it = alias_it->second.find(base_name);
+        if (value_it != alias_it->second.end()) {
+            return value_it->second;
+        }
+    }
+
+    return canonical_name_in_context(context_id, base_name);
+}
+
+std::string Parser::resolve_qualified_type_name(
+    const QualifiedNameRef& name) const {
+    const std::string base_name =
+        std::string(parser_text(name.base_text_id, name.base_name));
+    if (name.qualifier_segments.empty()) {
+        return name.is_global_qualified ? base_name
+                                        : resolve_visible_type_name(base_name);
+    }
+
+    const int context_id = resolve_namespace_context(name);
+    if (context_id < 0) return {};
+    return canonical_name_in_context(context_id, base_name);
+}
+
 bool Parser::lookup_value_in_context(int context_id, const std::string& name,
                                      std::string* resolved) const {
     const std::string candidate = canonical_name_in_context(context_id, name);

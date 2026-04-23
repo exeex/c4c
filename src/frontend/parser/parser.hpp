@@ -345,6 +345,8 @@ class Parser {
   std::string canonical_name_in_context(int context_id, const std::string& name) const;
   int resolve_namespace_context(const QualifiedNameRef& name) const;
   int resolve_namespace_name(const QualifiedNameRef& name) const;
+  std::string resolve_qualified_value_name(const QualifiedNameRef& name) const;
+  std::string resolve_qualified_type_name(const QualifiedNameRef& name) const;
   bool lookup_value_in_context(int context_id, const std::string& name,
                                std::string* resolved) const;
   bool lookup_type_in_context(int context_id, const std::string& name,

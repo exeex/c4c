@@ -9,24 +9,21 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: removed the remaining parser helper that re-spelled qualified
-  names for lookup and switched the owned expression/statement type-discovery
-  paths to prefer `QualifiedNameRef` namespace-context traversal before falling
-  back to spelled names as compatibility output
-- simplified qualified expression-name construction so global and nested
-  namespace references now keep canonical strings as output/fallback values
-  rather than as the primary traversal route
-- tightened the qualified-statement type probe to resolve namespace context
-  first, then use the spelled name only if the TextId/context path does not
-  identify a known type
+- Step 2 packet: added shared parser helpers for resolving qualified value/type
+  names from `QualifiedNameRef` through the namespace context tree, then routed
+  the remaining expression and statement probes through those helpers instead
+  of hand-rolling local canonical-name reconstruction
+- kept canonical strings as output/fallback bridges only after the TextId-based
+  namespace walk decides the owning context for global and nested qualified
+  references
 
 ## Suggested Next
 
-- continue Step 2 by auditing the remaining parser namespace walk sites for any
-  last string-first fallbacks that still influence lookup instead of just
-  compatibility output
-- keep canonical namespace strings limited to diagnostics/debug bridges while
-  leaving broader binding-table cleanup out of this runbook
+- continue Step 2 by auditing top-level `using` declaration import paths and
+  remaining declarator/type-owner lookups that still assemble `"A::B"` strings
+  before consulting parser bindings
+- keep the follow-on packet inside parser namespace lookup and avoid widening
+  into broader binding-table or lexical-scope cleanup
 
 ## Watchouts
 
@@ -36,7 +33,8 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
   lookup moves to `TextId` segments
 - avoid widening the packet into full lexical-scope or binding-table cleanup
 - capture each executor proof in `test_after.log`
-- the current proof subset passed cleanly after the parser updates
+- the current proof subset passed cleanly after the shared qualified-name
+  helper move
 
 ## Proof
 
