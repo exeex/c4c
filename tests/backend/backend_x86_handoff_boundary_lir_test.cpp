@@ -595,9 +595,9 @@ int check_lir_route_outputs(const lir::LirModule& module, const char* failure_co
 
   const auto generic_asm = c4c::backend::emit_module(
       BackendModuleInput{module}, BackendOptions{.target_profile = x86_target_profile()});
-  if (generic_asm != public_asm) {
+  if (generic_asm != explicit_x86_asm) {
     return fail((std::string(failure_context) +
-                 ": generic backend emit path no longer routes x86 LIR input through emit_target_lir_module")
+                 ": generic backend emit path no longer routes x86 LIR input through emit_x86_lir_module_entry")
                     .c_str());
   }
 

@@ -1206,6 +1206,10 @@ std::string emit_module(const BackendModuleInput& input,
   const auto& lir_module = input.lir_module();
   const auto target_profile = resolve_public_lir_target_profile(lir_module, options.target_profile);
 
+  if (!options.emit_semantic_bir && is_x86_target(target_profile)) {
+    return emit_x86_lir_module_entry(lir_module, target_profile);
+  }
+
   c4c::backend::BirLoweringOptions lowering_options{};
   lowering_options.preserve_dynamic_alloca = true;
   auto lowering = c4c::backend::try_lower_to_bir_with_options(lir_module, lowering_options);
@@ -1215,13 +1219,7 @@ std::string emit_module(const BackendModuleInput& input,
       return c4c::backend::bir::print(*lowering.module);
     }
     const auto prepared_bir = prepare_semantic_bir_pipeline(*lowering.module, target_profile);
-    if (is_x86_target(target_profile)) {
-      return c4c::backend::x86::api::emit_prepared_module(prepared_bir);
-    }
     return render_prepared_bir_text(prepared_bir.module);
-  }
-  if (is_x86_target(target_profile)) {
-    throw std::invalid_argument(make_x86_lir_handoff_failure_message(lowering));
   }
   return emit_bootstrap_lir_module(lir_module, target_profile);
 }

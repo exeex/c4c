@@ -5,38 +5,37 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 4.1
 Current Step Title: Rewire X86-Only Backend Entry Surfaces To Explicit Replacement Owners
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed a step 4 backend-front-door classification packet by splitting the
-x86 BIR public handoff into an explicit `emit_x86_bir_module_entry(...)`
-surface while keeping `emit_target_bir_module(...)` as the compatibility
-wrapper for non-x86 prepared-BIR callers. Updated the focused x86
-handoff-boundary tests so the generic backend emit path now proves it delegates
-through the explicit x86 BIR entry instead of the legacy generic name.
+Completed step 4.1 by rewiring the generic x86 LIR backend emit route in
+`emit_module(...)` to call the explicit
+`emit_x86_lir_module_entry(...)` replacement-owned surface instead of lowering
+inline and bypassing the x86 owner. Updated the focused x86 LIR handoff
+boundary proof so the generic backend emit assertion now checks the explicit
+x86 LIR entry directly.
 
 ## Suggested Next
 
-Audit the remaining step 4 public entrypoints and downstream target shims for
-generic names that still hide x86-only ownership, especially any
-`emit_target_bir_module(...)` compatibility call sites in backend-facing target
-wrappers that can now move to the explicit x86 BIR entry surface.
+Audit the remaining step 4 x86-only backend entrypoints and compatibility
+wrappers for any generic names that still bypass explicit replacement-owned
+surfaces, especially around assemble and dump front doors.
 
 ## Watchouts
 
-- `emit_target_bir_module(...)` still exists as the shared compatibility
-  wrapper, so any follow-on packet that rewires downstream x86 callers has to
-  keep the non-x86 prepared-BIR contract intact.
-- `src/backend/mir/aarch64/codegen/emit.cpp` still calls the compatibility
-  `emit_target_bir_module(...)` surface; step 4 cleanup should distinguish
-  honest non-x86 compatibility use from x86-only ownership that can now route
-  through `emit_x86_bir_module_entry(...)`.
+- The generic LIR `emit_module(...)` path still keeps the
+  `preserve_dynamic_alloca = true` lowering path for semantic-BIR output and
+  non-x86 fallback routes; only the x86 final-emission lane moved to the
+  explicit owner surface.
+- `emit_target_lir_module(...)` remains the compatibility wrapper, so follow-on
+  cleanup should preserve honest non-x86 behavior while continuing to expose
+  explicit x86 ownership at the public boundary.
 
 ## Proof
 
-Step 4 backend-front-door x86 BIR entry classification packet on
+Step 4.1 explicit x86 LIR entry-routing packet on
 2026-04-23:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
