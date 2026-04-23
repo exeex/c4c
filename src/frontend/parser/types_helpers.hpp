@@ -411,9 +411,7 @@ std::string resolve_qualified_typedef_name(const Parser& parser,
         if (!resolved.empty() && parser.has_typedef_type(resolved))
             return resolved;
     } else {
-        if (parser.find_visible_typedef_type(qn.base_text_id, base_name)) {
-            return std::string(base_name);
-        }
+        return visible_type_head_name(parser, qn.base_text_id, base_name);
     }
 
     std::string resolved =
