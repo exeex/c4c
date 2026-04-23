@@ -9,16 +9,15 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Just Finished
 
-- completed the Step 2 alias-removal packet by deleting the `Parser`
-  `token_mutations_` compatibility alias and routing the affected template
-  token-splitting helpers directly through `core_input_state_`
+- completed the Step 2 `parser_types_template.cpp` packet by routing its
+  remaining `tokens_`, `pos_`, and `arena_` reads directly through
+  `core_input_state_`
 
 ## Suggested Next
 
-- continue Step 2 with the next parser bundle alias-removal family, with the
-  remaining core-input aliases (`tokens_`, `pos_`, and `arena_`) as the next
-  narrow candidate now that token mutation rollback uses `core_input_state_`
-  directly
+- continue Step 2 with the next narrow core-input alias-removal family in
+  `parser_core.cpp`, starting with the token cursor helpers and nearby
+  file/position diagnostics that still read `tokens_` and `pos_` directly
 
 ## Watchouts
 
@@ -27,9 +26,9 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
   rewrites or grammar changes
 - preserve constructor, snapshot, and rollback behavior while the grouped
   layout is being converted to direct bundle access
-- the token-mutation rollback path now uses `core_input_state_`; if the next
-  packet continues core-input alias removal, keep tentative and token-splitting
-  behavior identical while moving `tokens_`, `pos_`, or `arena_` reads
+- the injected-template parse helper now swaps `core_input_state_.tokens` and
+  `core_input_state_.pos` directly; keep future core-input alias removals
+  behavior-preserving around cursor movement, diagnostics, and rollback
 - the proof passed and is captured in `test_after.log`
 
 ## Proof

@@ -101,7 +101,7 @@ bool Parser::ensure_template_struct_instantiated_from_args(
             out_resolved->array_size = -1;
             out_resolved->inner_rank = -1;
             out_resolved->base = TB_STRUCT;
-            out_resolved->tag = arena_.strdup(out_mangled->c_str());
+            out_resolved->tag = core_input_state_.arena.strdup(out_mangled->c_str());
         }
         return true;
     }
@@ -123,7 +123,7 @@ bool Parser::ensure_template_struct_instantiated_from_args(
         out_resolved->array_size = -1;
         out_resolved->inner_rank = -1;
         out_resolved->base = TB_STRUCT;
-        out_resolved->tag = arena_.strdup(out_mangled->c_str());
+        out_resolved->tag = core_input_state_.arena.strdup(out_mangled->c_str());
     }
     return definition_state_.struct_tag_def_map.count(*out_mangled) > 0;
 }
@@ -200,7 +200,7 @@ bool Parser::decode_type_ref_text(const std::string& text, TypeSpec* out) {
         out->array_size = -1;
         out->inner_rank = -1;
         out->base = base;
-        out->tag = arena_.strdup(text.substr(prefix_len).c_str());
+        out->tag = core_input_state_.arena.strdup(text.substr(prefix_len).c_str());
         out->array_rank = 0;
     };
     if (text.rfind("struct_", 0) == 0) {
@@ -217,33 +217,34 @@ bool Parser::decode_type_ref_text(const std::string& text, TypeSpec* out) {
     }
 
     ParserSnapshot snapshot = save_state();
-    const int saved_pos = pos_;
-    auto saved_tokens = std::move(tokens_);
+    const int saved_pos = core_input_state_.pos;
+    auto saved_tokens = std::move(core_input_state_.tokens);
 
     Lexer lexer(text, lex_profile_from(core_input_state_.source_profile));
     std::vector<Token> injected_toks = lexer.scan_all();
     if (injected_toks.empty()) {
         restore_state(snapshot);
-        tokens_ = std::move(saved_tokens);
-        pos_ = saved_pos;
+        core_input_state_.tokens = std::move(saved_tokens);
+        core_input_state_.pos = saved_pos;
         return false;
     }
-    tokens_ = std::move(injected_toks);
-    pos_ = 0;
+    core_input_state_.tokens = std::move(injected_toks);
+    core_input_state_.pos = 0;
 
     bool ok = false;
     try {
         *out = parse_type_name();
         *out = resolve_typedef_type_chain(*out);
-        ok = pos_ > 0 &&
-             pos_ >= static_cast<int>(tokens_.size()) - 1;
+        ok = core_input_state_.pos > 0 &&
+             core_input_state_.pos >=
+                 static_cast<int>(core_input_state_.tokens.size()) - 1;
     } catch (...) {
         ok = false;
     }
 
     restore_state(snapshot);
-    tokens_ = std::move(saved_tokens);
-    pos_ = saved_pos;
+    core_input_state_.tokens = std::move(saved_tokens);
+    core_input_state_.pos = saved_pos;
     if (ok) return true;
     return parse_builtin_typespec_text(text, out);
 }
