@@ -758,6 +758,7 @@ Node* Parser::parse_primary() {
         TentativeParseGuard guard(*this);
         std::string qualified_name;
         std::string qualifier_owner;
+        TextId qualifier_owner_text_id = kInvalidText;
 
         if (match(TokenKind::ColonColon))
             qualified_name = "::";
@@ -765,8 +766,10 @@ Node* Parser::parse_primary() {
         while (check(TokenKind::Identifier) &&
                core_input_state_.pos + 1 <
                    static_cast<int>(core_input_state_.tokens.size()) &&
-               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                core_input_state_.tokens[core_input_state_.pos + 1].kind ==
                    TokenKind::ColonColon) {
+            if (qualifier_owner.empty())
+                qualifier_owner_text_id = cur().text_id;
             if (qualifier_owner.empty())
                 qualifier_owner = token_spelling(cur());
             if (!qualified_name.empty() &&
@@ -790,7 +793,9 @@ Node* Parser::parse_primary() {
             check(TokenKind::LParen)) {
             const std::string current_tag(current_struct_tag_text());
             const std::string resolved_owner =
-                visible_type_head_name(*this, qualifier_owner);
+                visible_type_head_name(
+                    *this, qualifier_owner_text_id,
+                    parser_text(qualifier_owner_text_id, qualifier_owner));
             if (has_visible_typedef_type(qualifier_owner) ||
                 (!resolved_owner.empty() &&
                  (has_visible_typedef_type(resolved_owner) ||
@@ -1335,11 +1340,12 @@ Node* Parser::parse_primary() {
             [&](const QualifiedNameRef& type_qn) -> bool {
             if (type_qn.qualifier_segments.empty()) return false;
 
+            const TextId first_qualifier_text_id =
+                type_qn.qualifier_text_ids.front();
             const std::string first_qualifier =
                 visible_type_head_name(
-                    *this,
-                    qn.qualifier_text_ids.front(),
-                    parser_text(type_qn.qualifier_text_ids.front(),
+                    *this, first_qualifier_text_id,
+                    parser_text(first_qualifier_text_id,
                                 type_qn.qualifier_segments.front()));
             if (first_qualifier.empty()) return false;
 

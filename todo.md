@@ -7,18 +7,16 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by retargeting the remaining constructor-vs-function
-declaration probes in `parser_declarations.cpp`. Those helper paths now carry
-the candidate argument token `TextId` through `resolve_visible_type_name(...)`
-instead of rebuilding lookup from spelling before checking local visible type
-bindings.
+Advanced `plan.md` step 2 by retargeting expression-side type/value
+disambiguation in `parser_expressions.cpp`. The operator-function reference
+probe now carries the first qualifier token `TextId` into
+`visible_type_head_name(...)`, and the qualified-type-owner probe now uses the
+probe's own qualifier `TextId` instead of the outer spelling-derived name.
 
 ## Suggested Next
-Continue `plan.md` step 2 with one narrow packet that audits parser
-expression-side type/value disambiguation helpers for the same pattern,
-especially the remaining `visible_type_head_name(...)` and visible-name
-resolution call sites that still start from spelling when the current token
-already carries a valid `TextId`.
+Continue `plan.md` step 2 with one narrow packet that audits the remaining
+parser expression helpers for any other spelling-first visible-type lookup
+paths where the current token or probe already carries a valid `TextId`.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. Do not reopen the
@@ -28,4 +26,5 @@ flat `TextId` replacement.
 
 ## Proof
 Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' | tee test_after.log`.
+Result: passed.
 Proof log: `test_after.log`.
