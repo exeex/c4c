@@ -10,14 +10,15 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 ## Just Finished
 
 - completed the Step 2 alias-removal packet by deleting the `Parser`
-  binding-state compatibility aliases and routing the affected parser reads
-  directly through `binding_state_`
+  `token_mutations_` compatibility alias and routing the affected template
+  token-splitting helpers directly through `core_input_state_`
 
 ## Suggested Next
 
 - continue Step 2 with the next parser bundle alias-removal family, with the
-  core-input aliases as the next narrow candidate now that `binding_state_`
-  is used directly
+  remaining core-input aliases (`tokens_`, `pos_`, and `arena_`) as the next
+  narrow candidate now that token mutation rollback uses `core_input_state_`
+  directly
 
 ## Watchouts
 
@@ -26,9 +27,9 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
   rewrites or grammar changes
 - preserve constructor, snapshot, and rollback behavior while the grouped
   layout is being converted to direct bundle access
-- the binding-state aliases are now gone from the owned parser files; if the
-  next packet continues alias removal, search for the remaining bundle
-  aliases before editing
+- the token-mutation rollback path now uses `core_input_state_`; if the next
+  packet continues core-input alias removal, keep tentative and token-splitting
+  behavior identical while moving `tokens_`, `pos_`, or `arena_` reads
 - the proof passed and is captured in `test_after.log`
 
 ## Proof

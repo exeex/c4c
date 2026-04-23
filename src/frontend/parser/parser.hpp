@@ -130,7 +130,6 @@ class Parser {
   using TokenMutation = ParserTokenMutation;
   ParserCoreInputState core_input_state_;
   std::vector<Token>& tokens_ = core_input_state_.tokens;
-  std::vector<TokenMutation>& token_mutations_ = core_input_state_.token_mutations;
   int& pos_ = core_input_state_.pos;
   Arena& arena_ = core_input_state_.arena;
 

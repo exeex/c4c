@@ -24,7 +24,7 @@ Parser::ParserLiteSnapshot Parser::save_lite_state() const {
             active_context_state_.last_resolved_typedef_text_id;
     }
     snap.template_arg_expr_depth = active_context_state_.template_arg_expr_depth;
-    snap.token_mutation_count = token_mutations_.size();
+    snap.token_mutation_count = core_input_state_.token_mutations.size();
     return snap;
 }
 
@@ -39,10 +39,11 @@ void Parser::restore_lite_state(const ParserLiteSnapshot& snap) {
     }
     active_context_state_.template_arg_expr_depth =
         snap.template_arg_expr_depth;
-    while (token_mutations_.size() > snap.token_mutation_count) {
-        const TokenMutation& mutation = token_mutations_.back();
+    while (core_input_state_.token_mutations.size() > snap.token_mutation_count) {
+        const TokenMutation& mutation =
+            core_input_state_.token_mutations.back();
         tokens_[mutation.pos] = mutation.token;
-        token_mutations_.pop_back();
+        core_input_state_.token_mutations.pop_back();
     }
 }
 
