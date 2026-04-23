@@ -2,7 +2,7 @@
 
 Status: Open
 Created: 2026-04-22
-Last-Updated: 2026-04-22
+Last-Updated: 2026-04-23
 Parent Idea: [57_x86_backend_c_testsuite_capability_families.md](/workspaces/c4c/ideas/open/57_x86_backend_c_testsuite_capability_families.md)
 
 ## Intent
@@ -41,15 +41,18 @@ forced back into idea 59, 60, or 61.
 
 ## Latest Durable Note
 
-As of 2026-04-22, the accepted pointer-add/local-slot consumption repair in
-`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` cleared the old
-authoritative prepared local-slot `instruction` handoff blocker for
-`c_testsuite_x86_backend_src_00204_c`. Fresh route proof now shows
-`myprintf` matching the `local-slot-guard-chain` lane and the top-level case
-graduating downstream into idea 61's bounded multi-function prepared-module
-restriction from `src/backend/mir/x86/codegen/prepared_module_emit.cpp`.
-Idea 68 stays open for future authoritative prepared local-slot handoff cases,
-but `00204.c` is no longer an owned failure.
+As of 2026-04-23, the accepted pointer-add/local-slot consumption repair in
+`src/backend/mir/x86/codegen/prepared_local_slot_render.cpp` still keeps
+`c_testsuite_x86_backend_src_00204_c` out of this leaf, but the broader
+phoenix-rebuild proof
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure > test_after.log`
+re-exposed this family across the full backend suite. The sampled log shows
+repeated
+`error: x86 backend emitter requires the authoritative prepared local-slot ... handoff through the canonical prepared-module handoff`
+diagnostics again, making this leaf the strongest immediate follow-on route
+once the stage-4 phoenix runbook parks. Re-triage the current named cases from
+`test_after.log` before implementation so this idea's owned inventory matches
+the latest suite state instead of the old `00204.c`-only history.
 
 ## Scope Notes
 

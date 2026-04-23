@@ -58,9 +58,11 @@ struct RegAllocIntegrationResult;
 
 namespace c4c::backend::x86 {
 
-// Transitional x86 codegen surface.
-// The intent is that sibling translation units in this directory depend on this
-// header instead of on emit.cpp-local declarations.
+// Residual step-5 compatibility umbrella for target-local x86 codegen helpers.
+// Canonical ownership now lives in the reviewed subdirectories under
+// src/backend/mir/x86/codegen/, but sibling translation units still include
+// this header while the remaining broad helper surface is classified instead of
+// silently re-expanded through emit.cpp-local declarations.
 
 struct Value {
   std::uint32_t raw = 0;

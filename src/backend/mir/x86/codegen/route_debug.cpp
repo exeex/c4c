@@ -3,6 +3,8 @@
 
 namespace c4c::backend::x86 {
 
+// Step-5 classification: keep the top-level route-debug symbols as thin
+// forwarding adapters while the debug/ subtree remains the canonical owner.
 std::string summarize_prepared_module_routes(
     const c4c::backend::prepare::PreparedBirModule& module,
     std::optional<std::string_view> focus_function,

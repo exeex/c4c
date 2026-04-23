@@ -2,7 +2,7 @@
 
 Status: Open
 Created: 2026-04-22
-Last-Updated: 2026-04-22
+Last-Updated: 2026-04-23
 Parent Idea: [80_draft_replacement_x86_codegen_interfaces_for_phoenix_rebuild.md](/workspaces/c4c/ideas/open/80_draft_replacement_x86_codegen_interfaces_for_phoenix_rebuild.md)
 
 ## Intent
@@ -48,6 +48,21 @@ legacy route.
 
 Keep the old route available until the reviewed replacement seams actually own
 the migrated behavior.
+
+## Latest Durable Note
+
+As of 2026-04-23, the active phoenix-rebuild runbook reached its final
+step-5 structural checkpoint: the residual top-level compatibility surface was
+explicitly classified, and the broader proof command
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure > test_after.log`
+held the repo at the same total as `test_before.log`
+(`3187 passed / 107 failed / 3294 total`), so the rebuild work did not
+introduce a new regression. The remaining failures in that proof plateau are
+still owned by separate backend capability ideas, led by repeated
+authoritative prepared local-slot and guard-chain handoff families plus a
+small remaining load-local-memory family. Park this stage-4 implementation
+idea until those downstream leaves advance enough for a fresh broader
+milestone proof to support closure.
 
 ## Completion Signal
 

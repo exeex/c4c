@@ -13,6 +13,10 @@ namespace c4c::backend::x86 {
 
 namespace {
 
+// Residual compatibility bucket for target-local helper definitions that are
+// still shared by legacy top-level translation units. Step 5 classifies this
+// file as supporting glue around the rebuilt owners rather than as the place
+// where canonical lowering ownership should grow again.
 [[maybe_unused]] constexpr std::string_view kCodegenModuleOverview =
     "Mechanical translation of ref/claudes-c-compiler/src/backend/x86/codegen";
 constexpr std::int64_t kX86StackProbePageSize = 4096;
@@ -666,8 +670,9 @@ std::string emit_global_symbol_prelude(std::string_view target_triple,
 }
 
 void x86_codegen_module_anchor() {
-  // The real implementation is split across alu/calls/memory/comparison and
-  // the other target-local translation units in this directory.
+  // Step-5 classification: this anchor exists only so the residual
+  // compatibility bucket continues to link while real lowering ownership stays
+  // distributed across the rebuilt target-local translation units.
 }
 
 }  // namespace c4c::backend::x86
