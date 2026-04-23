@@ -86,6 +86,7 @@ struct StringIdTable {
 
     const size_t offset = bytes_.size();
     bytes_.insert(bytes_.end(), text.begin(), text.end());
+    bytes_.push_back('\0');
     slices_by_id_.push_back(Slice{offset, text.size()});
 
     const Id id = static_cast<Id>(slices_by_id_.size());
@@ -97,6 +98,12 @@ struct StringIdTable {
     if (id == InvalidId || id > slices_by_id_.size()) return {};
     const Slice& slice = slices_by_id_[id - 1];
     return std::string_view(bytes_.data() + slice.offset, slice.len);
+  }
+
+  const char* c_str(Id id) const {
+    if (id == InvalidId || id > slices_by_id_.size()) return "";
+    const Slice& slice = slices_by_id_[id - 1];
+    return bytes_.data() + slice.offset;
   }
 
   size_t size() const { return slices_by_id_.size(); }
