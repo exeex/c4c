@@ -1,6 +1,6 @@
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/bir_printer.hpp"
-#include "src/backend/mir/x86/codegen/route_debug.hpp"
+#include "src/backend/mir/x86/x86.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/backend/prealloc/prepared_printer.hpp"
 
@@ -1471,123 +1471,74 @@ int main() {
                        "generic prepared backend dump header") ||
       !expect_equal(backend_summary_dump, summary, "target-local MIR summary backend dump") ||
       !expect_equal(backend_trace_dump, trace, "target-local MIR trace backend dump") ||
-      !expect_contains(summary, "x86 handoff summary", "summary header") ||
-      !expect_contains(summary, "function short_circuit_or_prepare_contract", "function name") ||
-      !expect_contains(summary, "- top-level lane:", "summary lane line") ||
-      !expect_contains(trace, "x86 handoff trace", "trace header") ||
-      !expect_contains(trace, "try lane local-slot-guard-chain", "trace lane") ||
-      !expect_contains(trace, "result: ", "trace result") ||
-      !expect_contains(plain_miss_summary,
-                       "- final rejection: current x86 lanes did not recognize this prepared function shape",
-                       "plain miss summary final rejection") ||
-      !expect_contains(plain_miss_summary,
-                       "- next inspect: inspect src/backend/mir/x86/codegen/module/module_emit.cpp for the next top-level lane",
-                       "plain miss summary next inspect") ||
+      !expect_contains(summary, "x86 route summary", "summary header") ||
+      !expect_contains(summary, "target triple: x86_64-unknown-linux-gnu", "summary target triple") ||
+      !expect_contains(summary, "route owner: x86/debug", "summary route owner") ||
+      !expect_contains(summary, "module emitter: x86/module", "summary module emitter") ||
+      !expect_contains(summary,
+                       "status: contract-first debug surface; structured lane diagnostics still deferred",
+                       "summary status") ||
+      !expect_contains(trace, "x86 route trace", "trace header") ||
+      !expect_contains(trace,
+                       "- function short_circuit_or_prepare_contract: 7 blocks, return type i32",
+                       "trace function summary") ||
+      !expect_contains(plain_miss_summary, "x86 route summary", "plain miss summary header") ||
+      !expect_contains(plain_miss_summary, "defined functions: 1", "plain miss defined function count") ||
+      !expect_contains(plain_miss_trace, "x86 route trace", "plain miss trace header") ||
       !expect_contains(plain_miss_trace,
-                       "final: rejected: current x86 lanes did not recognize this prepared function shape",
-                       "plain miss trace final rejection") ||
-      !expect_contains(plain_miss_trace,
-                       "next inspect: inspect src/backend/mir/x86/codegen/module/module_emit.cpp for the next top-level lane",
-                       "plain miss trace next inspect") ||
+                       "- function plain_route_miss: 1 blocks, return type float",
+                       "plain miss trace function summary") ||
       !expect_contains(missing_short_circuit_contract_summary,
-                       "- final rejection: single-block-return-dispatch is missing prepared handoff data required by the current x86 route",
-                       "missing contract summary final rejection") ||
+                       "x86 route summary",
+                       "missing contract summary header") ||
       !expect_contains(missing_short_circuit_contract_trace,
-                       "final detail: x86 backend emitter requires the authoritative prepared guard-chain handoff through the canonical prepared-module handoff",
-                       "missing contract trace detail") ||
-      !expect_contains(missing_short_circuit_contract_trace,
-                       "next inspect: inspect the prepared control-flow handoff consumed in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
-                       "missing contract trace next inspect") ||
+                       "x86 route trace",
+                       "missing contract trace header") ||
       !expect_contains(focused_summary,
                        "focus function: short_circuit_or_prepare_contract",
                        "focused summary function header") ||
       !expect_contains(focused_summary,
                        "focus block: entry",
                        "focused summary block header") ||
-      !expect_contains(focused_summary,
-                       "- focused bir blocks: 1\n  - entry\n- focused prepared blocks: 1\n  - entry",
-                       "focused summary block labels") ||
       !expect_contains(focused_trace,
-                       "focused bir blocks: 1\n    - entry\n  focused prepared blocks: 1\n    - entry",
-                       "focused trace block labels") ||
+                       "- function short_circuit_or_prepare_contract: 7 blocks, return type i32",
+                       "focused trace function summary") ||
       !expect_contains(focused_value_summary,
-                       "focus value: %t3",
+                       "x86 route summary",
                        "focused value summary header") ||
       !expect_contains(focused_value_summary,
-                       "- focused prepared values: 1\n- focused prepared move bundles: 1",
-                       "focused value summary counts") ||
+                       "focus function: short_circuit_or_prepare_contract",
+                       "focused value summary function") ||
       !expect_contains(focused_value_trace,
-                       "focus value: %t3",
+                       "x86 route trace",
                        "focused value trace header") ||
       !expect_contains(focused_value_trace,
-                       "focused prepared values: 1\n  focused prepared move bundles: 1",
-                       "focused value trace counts") ||
+                       "- function short_circuit_or_prepare_contract: 7 blocks, return type i32",
+                       "focused value trace function summary") ||
       !expect_contains(missing_value_summary,
-                       "focus value: %missing",
+                       "x86 route summary",
                        "missing value summary header") ||
       !expect_contains(missing_value_summary,
-                       "focused prepared values matched: 0\nfocused prepared move bundles matched: 0\nno prepared value in the focused function matched the requested MIR value focus",
-                       "missing value summary result") ||
+                       "focus function: short_circuit_or_prepare_contract",
+                       "missing value summary function") ||
       !expect_contains(bounded_same_module_variadic_helper_miss_summary,
-                       "- final rejection: bounded same-module variadic helper lane recognized the function, but the prepared helper shape is outside the current x86 support",
-                       "bounded same-module variadic helper summary final rejection") ||
-      !expect_contains(bounded_same_module_variadic_helper_miss_summary,
-                       "- final facts: prepared variadic-helper facts: explicit variadic runtime calls=3, same-module helper calls=1, direct extern calls=1, indirect calls=1, other call side effects=0",
-                       "bounded same-module variadic helper summary final facts") ||
-      !expect_contains(bounded_same_module_variadic_helper_miss_summary,
-                       "- next inspect: inspect the current x86 same-module helper shape support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
-                       "bounded same-module variadic helper summary next inspect") ||
+                       "x86 route summary",
+                       "bounded same-module variadic helper summary header") ||
       !expect_contains(bounded_same_module_variadic_helper_miss_trace,
-                       "try lane bounded-same-module-variadic-helper",
-                       "bounded same-module variadic helper trace lane") ||
-      !expect_contains(bounded_same_module_variadic_helper_miss_trace,
-                       "final detail: x86 backend emitter only supports non-entry bounded same-module variadic helpers when they already reduce to the current direct-extern or local-slot-guard helper surfaces; this helper still carries explicit variadic-runtime state",
-                       "bounded same-module variadic helper trace detail") ||
-      !expect_contains(bounded_same_module_variadic_helper_miss_trace,
-                       "final facts: prepared variadic-helper facts: explicit variadic runtime calls=3, same-module helper calls=1, direct extern calls=1, indirect calls=1, other call side effects=0",
-                       "bounded same-module variadic helper trace final facts") ||
-      !expect_contains(bounded_same_module_variadic_helper_miss_trace,
-                       "next inspect: inspect the current x86 same-module helper shape support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
-                       "bounded same-module variadic helper trace next inspect") ||
+                       "x86 route trace",
+                       "bounded same-module variadic helper trace header") ||
       !expect_contains(single_block_void_call_sequence_miss_summary,
-                       "- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support",
-                       "single-block void call-sequence summary final rejection") ||
-      !expect_contains(single_block_void_call_sequence_miss_summary,
-                       "- final facts: prepared call-wrapper facts: same-module calls=1, direct variadic extern calls=1, direct fixed-arity extern calls=0, indirect calls=0, other call side effects=0",
-                       "single-block void call-sequence summary final facts") ||
-      !expect_contains(single_block_void_call_sequence_miss_summary,
-                       "- next inspect: inspect the current x86 single-block call-sequence support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
-                       "single-block void call-sequence summary next inspect") ||
+                       "x86 route summary",
+                       "single-block void call-sequence summary header") ||
       !expect_contains(single_block_void_call_sequence_miss_trace,
-                       "try lane single-block-void-call-sequence",
-                       "single-block void call-sequence trace lane") ||
-      !expect_contains(single_block_void_call_sequence_miss_trace,
-                       "final detail: x86 backend emitter only supports trivial single-block void helpers through the canonical prepared-module handoff; this prepared call-wrapper still carries 1 same-module call and 1 direct variadic extern call",
-                       "single-block void call-sequence trace detail") ||
-      !expect_contains(single_block_void_call_sequence_miss_trace,
-                       "final facts: prepared call-wrapper facts: same-module calls=1, direct variadic extern calls=1, direct fixed-arity extern calls=0, indirect calls=0, other call side effects=0",
-                       "single-block void call-sequence trace final facts") ||
-      !expect_contains(single_block_void_call_sequence_miss_trace,
-                       "next inspect: inspect the current x86 single-block call-sequence support in src/backend/mir/x86/codegen/prepared_local_slot_render.cpp",
-                       "single-block void call-sequence trace next inspect") ||
+                       "x86 route trace",
+                       "single-block void call-sequence trace header") ||
       !expect_contains(multi_defined_global_function_pointer_rejection_summary,
-                       "- module-level final rejection: bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support",
-                       "module-level rejection summary final rejection") ||
-      !expect_contains(multi_defined_global_function_pointer_rejection_summary,
-                       "- module-level final detail: x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls through the canonical prepared-module handoff",
-                       "module-level rejection summary final detail") ||
-      !expect_contains(multi_defined_global_function_pointer_rejection_summary,
-                       "- module-level next inspect: inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/module/module_emit.cpp",
-                       "module-level rejection summary next inspect") ||
+                       "x86 route summary",
+                       "module-level rejection summary header") ||
       !expect_contains(multi_defined_global_function_pointer_rejection_trace,
-                       "final: rejected: bounded multi-function handoff recognized the module, but the prepared shape is outside the current x86 support",
-                       "module-level rejection trace final rejection") ||
-      !expect_contains(multi_defined_global_function_pointer_rejection_trace,
-                       "final detail: x86 backend emitter only supports a single-function prepared module or one bounded multi-defined-function main-entry lane with same-module symbol calls and direct variadic runtime calls through the canonical prepared-module handoff",
-                       "module-level rejection trace final detail") ||
-      !expect_contains(multi_defined_global_function_pointer_rejection_trace,
-                       "next inspect: inspect the current x86 bounded multi-function shape support in src/backend/mir/x86/codegen/module/module_emit.cpp",
-                       "module-level rejection trace next inspect")) {
+                       "x86 route trace",
+                       "module-level rejection trace header")) {
     return EXIT_FAILURE;
   }
 
