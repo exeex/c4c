@@ -9,17 +9,18 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: redirected the qualified type probe path in
-  `types_helpers.hpp` so structured `resolve_qualified_type_name(qn)` probes
-  run before spelled-name fallback for qualified/global-qualified type
-  resolution
+- Step 2 packet: removed the remaining `qn.spelled()` lookups from the
+  qualified type helper path in `types_helpers.hpp`, keeping qualified/global
+  resolution on `resolve_qualified_type_name(qn)` and TextId-backed segment
+  reconstruction for unresolved fallback spelling only
 
 ## Suggested Next
 
-- continue Step 2 by checking whether any remaining parser namespace lookup
-  helpers still depend on bridge/canonical synthesis after context resolution
-- keep the follow-on packet inside parser namespace lookup and leave broader
-  binding-table or lexical-scope cleanup for later work
+- continue Step 2 by checking the remaining parser type/expression entry points
+  that consume `QualifiedTypeProbe` and trim any last bridge-name assumptions
+  now that helper lookup no longer falls back through `qn.spelled()`
+- keep the next packet inside parser namespace lookup helpers and avoid
+  widening into `parser_core.cpp` or broader binding-table cleanup
 
 ## Watchouts
 
@@ -32,7 +33,8 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 - preserve current `using` declaration behavior for typedefs, values, and
   namespace-scoped aliases while the lookup internals move to `TextId` paths
 - keep raw `::`-qualified spellings stable when they already bypass bridge
-  synthesis
+  synthesis; unresolved fallback spelling now comes from TextId-backed segment
+  joins instead of `qn.spelled()`
 - keep `parser_core.cpp` at the restored baseline for this redirected packet;
   do not add new behavior there
 

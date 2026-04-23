@@ -372,6 +372,23 @@ struct QualifiedTypeProbe {
     std::string spelled_name;
 };
 
+std::string qualified_name_text(const Parser& parser,
+                                const Parser::QualifiedNameRef& qn,
+                                bool include_global_prefix = true) {
+    std::string name;
+    if (include_global_prefix && qn.is_global_qualified) name = "::";
+    for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
+        if (!name.empty() && name != "::") name += "::";
+        const TextId text_id =
+            i < qn.qualifier_text_ids.size() ? qn.qualifier_text_ids[i]
+                                             : kInvalidText;
+        name += parser.parser_text(text_id, qn.qualifier_segments[i]);
+    }
+    if (!name.empty() && name != "::") name += "::";
+    name += parser.parser_text(qn.base_text_id, qn.base_name);
+    return name;
+}
+
 std::string resolve_qualified_typedef_name(const Parser& parser,
                                            const Parser::QualifiedNameRef& qn) {
     const bool is_qualified = !qn.qualifier_segments.empty() ||
@@ -380,11 +397,9 @@ std::string resolve_qualified_typedef_name(const Parser& parser,
         std::string resolved = parser.resolve_qualified_type_name(qn);
         if (!resolved.empty() && parser.has_typedef_type(resolved))
             return resolved;
-        resolved = qn.spelled();
-        if (!resolved.empty() && parser.has_typedef_type(resolved))
-            return resolved;
     } else {
-        std::string resolved = qn.spelled();
+        std::string resolved = std::string(
+            parser.parser_text(qn.base_text_id, qn.base_name));
         if (!resolved.empty() && parser.has_typedef_type(resolved))
             return resolved;
     }
@@ -414,14 +429,8 @@ std::string resolve_qualified_known_type_name(
              parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {
             return resolved;
         }
-        resolved = qn.spelled();
-        if (!resolved.empty() &&
-            (parser.template_state_.template_struct_defs.count(resolved) > 0 ||
-             parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {
-            return resolved;
-        }
     } else {
-        resolved = qn.spelled();
+        resolved = std::string(parser.parser_text(qn.base_text_id, qn.base_name));
         if (!resolved.empty() &&
             (parser.template_state_.template_struct_defs.count(resolved) > 0 ||
              parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {
@@ -454,10 +463,10 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
         return probe;
     }
 
-    if (qn.qualifier_segments.empty()) return probe;
+    if (qn.qualifier_segments.empty() && !qn.is_global_qualified) return probe;
 
     probe.has_unresolved_qualified_fallback = true;
-    probe.spelled_name = qn.spelled();
+    probe.spelled_name = qualified_name_text(parser, qn);
     probe.namespace_context_id = parser.resolve_namespace_context(qn);
     return probe;
 }
