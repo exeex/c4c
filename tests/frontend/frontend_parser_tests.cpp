@@ -855,6 +855,52 @@ void test_parser_record_body_context_keeps_visible_template_origin_lookup_local(
               "test fixture should balance the local visible typedef scope");
 }
 
+void test_parser_visible_type_alias_uses_scope_local_typedef_facade() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  const c4c::TextId target_text = texts.intern("Target");
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(target_text, target_ts);
+  parser.namespace_state_.using_value_aliases[0][alias_text] = "Target";
+
+  expect_eq(parser.resolve_visible_type_name("Alias"), "Target",
+            "unqualified value aliases should resolve through the visible typedef facade when the target is scope-local");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_visible_type_alias_keeps_qualified_target_resolution() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.register_typedef_binding("ns::Target", target_ts, true);
+  parser.namespace_state_.using_value_aliases[0][alias_text] = "ns::Target";
+
+  expect_eq(parser.resolve_visible_type_name("Alias"), "ns::Target",
+            "qualified value aliases should keep namespace-qualified typedef resolution intact");
+  const c4c::TypeSpec* visible_alias = parser.find_visible_typedef_type("Alias");
+  expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
+              "qualified value aliases should still resolve through the existing namespace-visible path");
+}
+
 void test_parser_template_member_suffix_probe_uses_token_spelling() {
   c4c::Lexer lexer(
       "template<int N>\n"
@@ -1038,6 +1084,8 @@ int main() {
   test_parser_is_typedef_name_uses_local_visible_scope_lookup();
   test_parser_conflicting_user_typedef_binding_uses_local_visible_scope_lookup();
   test_parser_record_body_context_keeps_visible_template_origin_lookup_local();
+  test_parser_visible_type_alias_uses_scope_local_typedef_facade();
+  test_parser_visible_type_alias_keeps_qualified_target_resolution();
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
   test_parser_alias_template_value_probes_use_token_spelling();

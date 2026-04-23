@@ -7,29 +7,25 @@ Current Step Title: Move unqualified visible lookup onto the new scope-local pat
 # Current Packet
 
 ## Just Finished
-Completed another Step 4 parser packet by retargeting two remaining
-unqualified helper paths away from flat typedef-table probes. Declaration-side
-user-typedef conflict checks now consult the visible typedef facade for
-single-name aliases, and record-body template-origin setup now avoids
-synthesizing a flat typedef binding when an unqualified template-origin name
-is already satisfied by scope-local visible lookup. Parser unit regressions
-now prove both behaviors directly with local visible alias fixtures.
+Completed the Step 4 packet by retargeting the remaining unqualified visible
+type fallback probes in `parser_core.cpp` away from direct flat
+`has_typedef_type(...)` checks. Unqualified value-alias resolution now probes
+the scope-local visible typedef path before falling back, while qualified
+alias targets keep the existing namespace-qualified route. Parser regressions
+now prove both the scope-local case and the qualified boundary case.
 
 ## Suggested Next
-Continue Step 4 by reviewing the remaining namespace-resolution helpers in
-`parser_core.cpp` that still fall back to direct `has_typedef_type(...)`
-checks for unqualified names during visible type resolution. Keep the next
-packet narrow: only retarget obviously unqualified fallback probes that can
-use the visible facade without changing qualified or namespace-traversal
-behavior.
+Continue Step 4 by reviewing the remaining parser helpers that still rely on
+flat typedef-table probes for unqualified visible lookup. Keep the next packet
+narrow: only retarget checks that can use the visible facade without changing
+qualified lookup or namespace traversal.
 
 ## Watchouts
 Do not collapse namespace traversal into lexical lookup. This packet only
-retargets obviously unqualified typedef probes to the visible-scope facade;
-qualified names, owner/member traversal, and composed namespace lookup still
-need to stay on their existing routes. Remaining Step 4 work should keep
-using the visible facade only when the semantic name is truly unqualified and
-leave `A::B`-style lookups on the namespace/qualified path.
+retargets unqualified visible-type probes to the scope-local facade; qualified
+names, owner/member traversal, and composed namespace lookup still need to
+stay on their existing routes. Keep `A::B`-style lookups on the
+namespace/qualified path.
 
 ## Proof
 Proof command: `cmake --build --preset default && ctest --test-dir build -j

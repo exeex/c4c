@@ -170,6 +170,26 @@ bool can_probe_local_binding(TextId name_text_id, std::string_view name) {
            name.find("::") == std::string_view::npos;
 }
 
+int& visible_typedef_fallback_depth_for(const Parser& parser) {
+    static thread_local std::unordered_map<const Parser*, int> depths;
+    return depths[&parser];
+}
+
+struct VisibleTypedefFallbackGuard {
+    explicit VisibleTypedefFallbackGuard(int& depth) : depth_(depth) {
+        ++depth_;
+    }
+    ~VisibleTypedefFallbackGuard() { --depth_; }
+
+    int& depth_;
+};
+
+bool probe_visible_typedef_name(const Parser& parser, TextId name_text_id,
+                                std::string_view name) {
+    VisibleTypedefFallbackGuard guard(visible_typedef_fallback_depth_for(parser));
+    return parser.has_visible_typedef_type(name_text_id, name);
+}
+
 std::vector<std::string> merge_leading_top_level_qualified_probe(
     const std::vector<Parser::ParseDebugEvent>& parse_debug_events,
     const std::vector<std::string>& summary_stack) {
@@ -1653,9 +1673,16 @@ std::string Parser::resolve_visible_type_name(TextId name_text_id,
         namespace_state_.namespace_stack, spelled,
         [&](int context_id, std::string* resolved) {
             if (lookup_using_value_alias(context_id, name_text_id, spelled,
-                                         resolved) &&
-                has_typedef_type(*resolved)) {
-                return true;
+                                         resolved)) {
+                if (resolved->find("::") == std::string::npos) {
+                    if (probe_visible_typedef_name(*this,
+                                                    find_parser_text_id(*resolved),
+                                                    *resolved)) {
+                        return true;
+                    }
+                } else if (has_typedef_type(*resolved)) {
+                    return true;
+                }
             }
             return lookup_type_in_context(context_id, name_text_id, spelled,
                                           resolved);
@@ -1975,7 +2002,9 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
         *resolved = candidate;
         return true;
     }
-    if (context_id == 0 && has_typedef_type(name)) {
+    if (context_id == 0 && name.find("::") == std::string_view::npos &&
+        visible_typedef_fallback_depth_for(*this) == 0 &&
+        probe_visible_typedef_name(*this, name_text_id, name)) {
         *resolved = name;
         return true;
     }
