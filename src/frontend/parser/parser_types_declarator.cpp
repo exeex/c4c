@@ -288,7 +288,7 @@ bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx,
     }
     if (check(TokenKind::Identifier)) {
         const std::string name(token_spelling(cur()));
-        const std::string resolved = resolve_visible_type_name(name);
+        const std::string resolved = visible_type_head_name(*this, name);
         if (template_state_.alias_template_info.count(name) > 0 ||
             template_state_.alias_template_info.count(resolved) > 0) {
             return false;

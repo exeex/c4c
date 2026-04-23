@@ -7,22 +7,26 @@ Current Step Title: Move unqualified visible lookup onto the new scope-local pat
 # Current Packet
 
 ## Just Finished
-Completed the Step 4 parser packet by routing the remaining unqualified visible
-typedef probes in statement/type helper code through the local-first facade.
-`if`-condition declaration probing now checks the scoped visible typedef path
-directly, and the qualified-type helper now treats unqualified visible typedefs
-as present even when only the lexical scope state knows about them.
+Completed another Step 4 parser packet by routing the remaining unqualified
+template/struct type-head helper probes through a shared local-first visible
+type helper. `is_type_start`, value-template argument probing, and expression
+owner/type-head checks now consult the scoped visible typedef facade before
+falling back to legacy visible-name resolution.
 
 ## Suggested Next
-Continue Step 4 by sweeping the remaining parser helper call sites that still
-use `resolve_visible_type_name(...)` as a pre-check for unqualified template or
-struct type heads instead of consulting the scoped visible facade first.
+Continue Step 4 by auditing the remaining direct-resolution paths that still
+assume local typedefs are mirrored into legacy flat tables, especially the
+template member lookup fallback in `parser_types_template.cpp` and the
+unqualified typedef resolution paths in `parse_base_type()` and dependent
+typename handling.
 
 ## Watchouts
 Do not collapse namespace traversal into lexical lookup. Step 3 only adds the
 local-first facade; local bindings are still mirrored into the legacy flat
 tables in some paths, so remaining Step 4 cleanup should keep qualified lookup
-and namespace-owned resolution on their separate route.
+and namespace-owned resolution on their separate route. The new helper is only
+for type-head probes; it should not replace places that still need canonical
+typedef names for alias-template or compatibility bookkeeping.
 
 ## Proof
 Proof command: `cmake --build --preset default && ctest --test-dir build -j

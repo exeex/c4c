@@ -105,6 +105,23 @@ bool token_can_follow_value_like_template_arg(TokenKind kind) {
     }
 }
 
+std::string visible_type_head_name(const Parser& parser,
+                                   TextId name_text_id,
+                                   std::string_view name) {
+    if (const TypeSpec* visible_type =
+            parser.find_visible_typedef_type(name_text_id, name)) {
+        if (visible_type->tag && visible_type->tag[0]) {
+            return visible_type->tag;
+        }
+    }
+    return parser.resolve_visible_type_name(name_text_id, name);
+}
+
+std::string visible_type_head_name(const Parser& parser,
+                                   std::string_view name) {
+    return visible_type_head_name(parser, parser.find_parser_text_id(name), name);
+}
+
 void append_qualified_name_tokens(Parser& parser,
                                   std::vector<Token>* out,
                                   const Token& seed,
@@ -275,7 +292,7 @@ bool is_known_simple_type_head(const Parser& parser, const std::string& name) {
     if (parser.is_template_scope_type_param(name)) return true;
     if (parser.is_typedef_name(name)) return true;
     if (parser.has_visible_typedef_type(name)) return true;
-    const std::string resolved = parser.resolve_visible_type_name(name);
+    const std::string resolved = visible_type_head_name(parser, name);
     return parser.template_state_.template_struct_defs.count(name) > 0 ||
            parser.template_state_.template_struct_defs.count(resolved) > 0 ||
            parser.definition_state_.defined_struct_tags.count(name) > 0 ||

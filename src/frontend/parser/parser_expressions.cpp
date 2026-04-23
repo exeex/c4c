@@ -790,7 +790,7 @@ Node* Parser::parse_primary() {
             check(TokenKind::LParen)) {
             const std::string current_tag(current_struct_tag_text());
             const std::string resolved_owner =
-                resolve_visible_type_name(qualifier_owner);
+                visible_type_head_name(*this, qualifier_owner);
             if (has_typedef_type(qualifier_owner) ||
                 (!resolved_owner.empty() &&
                  (has_typedef_type(resolved_owner) ||
@@ -1332,7 +1332,8 @@ Node* Parser::parse_primary() {
             if (type_qn.qualifier_segments.empty()) return false;
 
             const std::string first_qualifier =
-                resolve_visible_type_name(
+                visible_type_head_name(
+                    *this,
                     qn.qualifier_text_ids.front(),
                     parser_text(type_qn.qualifier_text_ids.front(),
                                 type_qn.qualifier_segments.front()));
