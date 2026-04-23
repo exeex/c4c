@@ -708,6 +708,49 @@ int check_compare_join_requires_authoritative_join_transfer_record(
   return 0;
 }
 
+int check_compare_join_requires_authoritative_parallel_copy_bundles(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.empty() || control_flow->parallel_copy_bundles.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the compare-join out-of-SSA handoff contract")
+                    .c_str());
+  }
+
+  auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
+  if (mutable_control_flow == nullptr || mutable_control_flow->branch_conditions.size() != 1 ||
+      mutable_control_flow->join_transfers.empty() ||
+      mutable_control_flow->parallel_copy_bundles.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture lost its mutable out-of-SSA handoff contract")
+                    .c_str());
+  }
+
+  mutable_control_flow->parallel_copy_bundles.clear();
+
+  try {
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted compare-join phi edge obligations after authoritative parallel-copy publication was removed")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected missing compare-join parallel-copy publication with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_minimal_compare_branch_param_return_requires_authoritative_prepared_return_bundle(
     const bir::Module& module,
     const char* function_name,
@@ -1300,6 +1343,14 @@ int run_backend_x86_handoff_boundary_compare_branch_tests() {
               make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
               "branch_join_adjust_then_xor",
               "scalar-control-flow compare-against-zero compare-join lane rejects reopening raw compare-join recovery when authoritative out-of-SSA join metadata is missing");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_compare_join_requires_authoritative_parallel_copy_bundles(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero compare-join lane rejects reopening phi-edge fallback when authoritative parallel-copy publication is missing but join transfers remain");
       status != 0) {
     return status;
   }
