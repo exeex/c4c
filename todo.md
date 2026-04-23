@@ -7,13 +7,13 @@ Current Step Title: Introduce structured qualified-name keys for parser-owned lo
 # Current Packet
 
 ## Just Finished
-Migrated parser-owned `known_fn_names` tracking to structured qualified-name keys and routed the parser lookup/registration paths through the new structured helper instead of direct flat-string set access.
+Migrated parser-owned `struct_typedefs` storage to structured qualified-name keys and routed the record-member registration paths through the structured owner/member helper instead of flat scoped-string keys.
 
 ## Suggested Next
-Migrate `ParserBindingState::struct_typedefs` to the same structured qualified-name key pattern so the remaining owner-scoped parser table stops relying on rendered strings.
+Continue Step 2 with the next remaining parser-owned owner-scoped table, if one is still using a flat rendered-string fallback.
 
 ## Watchouts
-The structured key currently preserves existing behavior by keying off qualified spelling rather than namespace-context identity.
+The structured key preserves existing behavior by retaining the qualified owner spelling while still separating owner identity from the member name.
 
 ## Proof
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`

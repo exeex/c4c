@@ -331,6 +331,9 @@ class Parser {
                                  const char* tag,
                                  TypeBase enum_underlying_base = TB_VOID);
   void cache_typedef_type(const std::string& name, const TypeSpec& type);
+  void register_struct_member_typedef_binding(std::string_view owner_name,
+                                              std::string_view member_name,
+                                              const TypeSpec& type);
   void register_struct_member_typedef_binding(const std::string& scoped_name,
                                               const TypeSpec& type);
   bool has_var_type(const std::string& name) const;

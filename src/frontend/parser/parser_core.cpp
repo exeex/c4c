@@ -174,6 +174,48 @@ bool is_unqualified_lookup_name(std::string_view name) {
     return !name.empty() && name.find("::") == std::string_view::npos;
 }
 
+QualifiedNameKey make_struct_member_typedef_key(Parser& parser,
+                                                std::string_view owner_name,
+                                                std::string_view member_name) {
+    QualifiedNameKey key;
+    if (member_name.empty()) return key;
+
+    key.context_id = owner_name.find("::") == std::string_view::npos
+                         ? parser.current_namespace_context_id()
+                         : 0;
+    key.is_global_qualified = owner_name.rfind("::", 0) == 0;
+
+    std::vector<TextId> qualifier_text_ids;
+    size_t segment_start = key.is_global_qualified ? 2 : 0;
+    while (segment_start < owner_name.size()) {
+        const size_t sep = owner_name.find("::", segment_start);
+        if (sep == std::string_view::npos) {
+            const std::string_view segment =
+                owner_name.substr(segment_start);
+            if (!segment.empty()) {
+                qualifier_text_ids.push_back(
+                    parser.parser_text_id_for_token(kInvalidText, segment));
+            }
+            break;
+        }
+        const std::string_view segment =
+            owner_name.substr(segment_start, sep - segment_start);
+        if (!segment.empty()) {
+            qualifier_text_ids.push_back(
+                parser.parser_text_id_for_token(kInvalidText, segment));
+        }
+        segment_start = sep + 2;
+    }
+
+    if (!qualifier_text_ids.empty()) {
+        key.qualifier_path_id =
+            parser.shared_lookup_state_.parser_name_paths.intern(
+                qualifier_text_ids);
+    }
+    key.base_text_id = parser.parser_text_id_for_token(kInvalidText, member_name);
+    return key;
+}
+
 QualifiedNameKey find_known_fn_name_key_from_spelling(
     const Parser& parser, int context_id, TextId name_text_id,
     std::string_view name) {
@@ -745,9 +787,33 @@ void Parser::cache_typedef_type(const std::string& name, const TypeSpec& type) {
 }
 
 void Parser::register_struct_member_typedef_binding(
-    const std::string& scoped_name, const TypeSpec& type) {
-    binding_state_.struct_typedefs[scoped_name] = type;
+    std::string_view owner_name, std::string_view member_name,
+    const TypeSpec& type) {
+    const QualifiedNameKey key =
+        make_struct_member_typedef_key(*this, owner_name, member_name);
+    binding_state_.struct_typedefs[key] = type;
+    std::string scoped_name;
+    if (!owner_name.empty()) {
+        scoped_name.assign(owner_name);
+        scoped_name += "::";
+    }
+    scoped_name.append(member_name);
     register_typedef_binding(scoped_name, type, false);
+}
+
+void Parser::register_struct_member_typedef_binding(
+    const std::string& scoped_name, const TypeSpec& type) {
+    const size_t sep = scoped_name.rfind("::");
+    if (sep == std::string::npos) {
+        register_struct_member_typedef_binding(std::string_view{}, scoped_name,
+                                               type);
+        return;
+    }
+    register_struct_member_typedef_binding(
+        std::string_view(scoped_name.data(), sep),
+        std::string_view(scoped_name.data() + sep + 2,
+                         scoped_name.size() - sep - 2),
+        type);
 }
 
 bool Parser::has_var_type(const std::string& name) const {

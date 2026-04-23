@@ -2737,10 +2737,9 @@ TypeSpec Parser::parse_base_type() {
                                 inst->member_typedef_types[ti] = member_ts;
                                 if (inst->member_typedef_names[ti] &&
                                     inst->member_typedef_names[ti][0]) {
-                                    std::string scoped =
-                                        mangled + "::" + inst->member_typedef_names[ti];
                                     register_struct_member_typedef_binding(
-                                        scoped, member_ts);
+                                        mangled, inst->member_typedef_names[ti],
+                                        member_ts);
                                 }
                             }
                         }

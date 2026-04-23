@@ -655,8 +655,8 @@ bool Parser::try_parse_record_using_member(
         member_typedef_names->push_back(arena_.strdup(alias_name.c_str()));
         member_typedef_types->push_back(alias_ts);
         if (!active_context_state_.current_struct_tag.empty()) {
-            std::string scoped = std::string(current_struct_tag_text()) + "::" + alias_name;
-            register_struct_member_typedef_binding(scoped, alias_ts);
+            register_struct_member_typedef_binding(current_struct_tag_text(),
+                                                   alias_name, alias_ts);
         }
         return true;
     }
@@ -694,8 +694,8 @@ bool Parser::try_parse_record_typedef_member(
         member_typedef_names->push_back(name);
         member_typedef_types->push_back(type);
         if (!active_context_state_.current_struct_tag.empty()) {
-            std::string scoped = std::string(current_struct_tag_text()) + "::" + name;
-            register_struct_member_typedef_binding(scoped, type);
+            register_struct_member_typedef_binding(current_struct_tag_text(),
+                                                   name, type);
         }
     };
 
