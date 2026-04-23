@@ -246,27 +246,37 @@ namespace {
     const PreparedRegallocFunction* regalloc_function,
     const PreparedValueHome& home,
     bir::TypeKind type) {
+  const auto* regalloc_value =
+      regalloc_function == nullptr ? nullptr : find_regalloc_value_by_name(*regalloc_function, home.value_name);
+  const bool home_is_assigned_register =
+      regalloc_value != nullptr && regalloc_value->assigned_register.has_value() &&
+      home.register_name ==
+          std::optional<std::string>{regalloc_value->assigned_register->register_name};
+
   std::size_t contiguous_width = 1;
+  PreparedRegisterBank bank = register_bank_from_type(type);
   std::vector<std::string> occupied_register_names;
   if (home.register_name.has_value()) {
     occupied_register_names.push_back(*home.register_name);
   }
-  if (regalloc_function != nullptr) {
-    if (const auto* regalloc_value = find_regalloc_value_by_name(*regalloc_function, home.value_name);
-        regalloc_value != nullptr) {
+  if (regalloc_value != nullptr) {
+    if (!home.register_name.has_value() || home_is_assigned_register) {
       contiguous_width = std::max<std::size_t>(regalloc_value->register_group_width, 1);
-      if (regalloc_value->assigned_register.has_value() &&
-          home.register_name == std::optional<std::string>{regalloc_value->assigned_register->register_name}) {
-        contiguous_width = regalloc_value->assigned_register->contiguous_width;
-        occupied_register_names = regalloc_value->assigned_register->occupied_register_names;
-      }
+      bank = register_bank_from_class(regalloc_value->register_class);
+    }
+    if (home_is_assigned_register) {
+      contiguous_width = regalloc_value->assigned_register->contiguous_width;
+      occupied_register_names = regalloc_value->assigned_register->occupied_register_names;
+    } else if (home.kind != PreparedValueHomeKind::Register) {
+      contiguous_width = std::max<std::size_t>(regalloc_value->register_group_width, 1);
+      bank = register_bank_from_class(regalloc_value->register_class);
     }
   }
   return PreparedStoragePlanValue{
       .value_id = home.value_id,
       .value_name = home.value_name,
       .encoding = storage_encoding_from_home(home),
-      .bank = published_bank_for_value(regalloc_function, home.value_name, type),
+      .bank = bank,
       .contiguous_width = contiguous_width,
       .register_name = home.register_name,
       .occupied_register_names = std::move(occupied_register_names),

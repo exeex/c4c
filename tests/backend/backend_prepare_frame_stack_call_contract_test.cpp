@@ -2462,7 +2462,7 @@ int check_stack_cross_call_preservation_contract() {
 int check_grouped_cross_call_preservation_contract() {
   const auto prepared = prepare_grouped_riscv_module_with_overrides(
       make_grouped_cross_call_preservation_contract_module(),
-      {{"carry.pre", 2}, {"post.local", 1}});
+      {{"p.vcarry", 2}, {"carry.pre", 2}, {"post.local", 1}});
   const auto function_id =
       prepared.names.function_names.find("grouped_cross_call_preservation_contract");
   const auto* call_plans =
@@ -2472,11 +2472,21 @@ int check_grouped_cross_call_preservation_contract() {
                                : prepare::find_prepared_frame_plan(prepared, function_id);
   const auto* storage_plan =
       find_storage_plan_function(prepared, "grouped_cross_call_preservation_contract");
+  const auto* param_carry =
+      storage_plan == nullptr ? nullptr : find_storage_value(prepared, *storage_plan, "p.vcarry");
   const auto* carry =
       storage_plan == nullptr ? nullptr : find_storage_value(prepared, *storage_plan, "carry.pre");
   if (call_plans == nullptr || call_plans->calls.size() != 1 || frame_plan == nullptr ||
-      storage_plan == nullptr || carry == nullptr) {
+      storage_plan == nullptr || param_carry == nullptr || carry == nullptr) {
     return fail("grouped cross-call preservation contract: missing grouped publication surfaces");
+  }
+
+  if (param_carry->bank != prepare::PreparedRegisterBank::Gpr ||
+      param_carry->contiguous_width != 1 ||
+      !param_carry->register_name.has_value() ||
+      param_carry->occupied_register_names != std::vector<std::string>{*param_carry->register_name}) {
+    return fail(
+        "grouped cross-call preservation contract: storage plan published grouped span metadata onto the ABI-home parameter register");
   }
 
   const auto& call_plan = call_plans->calls.front();
