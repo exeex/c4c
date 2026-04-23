@@ -23,12 +23,12 @@ PLAN_REVIEW_COUNTER_RE = re.compile(
     r"^Plan Review Counter:[ \t]*(\d+)[ \t]*/[ \t]*(\d+)[ \t]*$", re.MULTILINE
 )
 CODE_REVIEW_REMINDER = "你該做code review了"
-BASELINE_SANITY_REMINDER = "你該做baseline sanity check了"
+BASELINE_REVIEW_REMINDER = "你該做test baseline review了"
 CODE_REVIEW_REMINDER_RE = re.compile(
     rf"^{re.escape(CODE_REVIEW_REMINDER)}\s*$", re.MULTILINE
 )
-BASELINE_SANITY_REMINDER_RE = re.compile(
-    rf"^{re.escape(BASELINE_SANITY_REMINDER)}\s*$", re.MULTILINE
+BASELINE_REVIEW_REMINDER_RE = re.compile(
+    rf"^{re.escape(BASELINE_REVIEW_REMINDER)}\s*$", re.MULTILINE
 )
 LEGACY_CURRENT_STEP_RE = re.compile(r"^Step\s+([0-9.]+)\s+(.*?)\s*$")
 LIFECYCLE_TAG_PREFIX_RE = re.compile(
@@ -82,7 +82,7 @@ def default_state() -> dict:
         "test_baseline_counter": 0,
         "test_baseline_limit": DEFAULT_TEST_BASELINE_LIMIT,
         "test_baseline_regex": "",
-        "baseline_sanity_pending": False,
+        "baseline_review_pending": False,
     }
 
 
@@ -99,7 +99,7 @@ def remove_optional_line(text: str, pattern: re.Pattern) -> str:
 
 def strip_reminder_lines(text: str) -> str:
     text = remove_optional_line(text, CODE_REVIEW_REMINDER_RE)
-    text = remove_optional_line(text, BASELINE_SANITY_REMINDER_RE)
+    text = remove_optional_line(text, BASELINE_REVIEW_REMINDER_RE)
     text = remove_optional_line(text, PLAN_REVIEW_COUNTER_RE)
     text = re.sub(
         r"(Current Step Title:\s*.*)\n{3,}(# Current Packet)",
@@ -114,8 +114,8 @@ def sync_reminder_lines(text: str, state: dict) -> str:
     reminder_lines = []
     if state["code_review_pending"]:
         reminder_lines.append(CODE_REVIEW_REMINDER)
-    if state["baseline_sanity_pending"]:
-        reminder_lines.append(BASELINE_SANITY_REMINDER)
+    if state["baseline_review_pending"]:
+        reminder_lines.append(BASELINE_REVIEW_REMINDER)
 
     if not reminder_lines:
         return text
@@ -152,10 +152,10 @@ def sync_todo(path: Path, state: dict) -> None:
 
     has_stale_reminders = (
         CODE_REVIEW_REMINDER_RE.search(text) is not None
-        or BASELINE_SANITY_REMINDER_RE.search(text) is not None
+        or BASELINE_REVIEW_REMINDER_RE.search(text) is not None
         or PLAN_REVIEW_COUNTER_RE.search(text) is not None
     )
-    has_pending_reminders = state["code_review_pending"] or state["baseline_sanity_pending"]
+    has_pending_reminders = state["code_review_pending"] or state["baseline_review_pending"]
 
     if has_pending_reminders or has_stale_reminders:
         text = strip_reminder_lines(text)
@@ -192,8 +192,8 @@ def load_state(path: Path) -> dict | None:
         data["test_baseline_limit"] = DEFAULT_TEST_BASELINE_LIMIT
     if "test_baseline_regex" not in data:
         data["test_baseline_regex"] = ""
-    if "baseline_sanity_pending" not in data:
-        data["baseline_sanity_pending"] = False
+    if "baseline_review_pending" not in data:
+        data["baseline_review_pending"] = data.get("baseline_sanity_pending", False)
     return data
 
 
@@ -207,7 +207,7 @@ def save_state(path: Path, state: dict) -> None:
         "test_baseline_counter": state["test_baseline_counter"],
         "test_baseline_limit": state["test_baseline_limit"],
         "test_baseline_regex": state["test_baseline_regex"],
-        "baseline_sanity_pending": state["baseline_sanity_pending"],
+        "baseline_review_pending": state["baseline_review_pending"],
     }
     write_text(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
@@ -313,6 +313,10 @@ def baseline_has_not_regressed(previous_path: Path, candidate_path: Path) -> boo
     return True
 
 
+def baseline_candidate_path(baseline_path: Path) -> Path:
+    return baseline_path.with_name("test_baseline.new.log")
+
+
 def run_command(command: list[str], *, check: bool) -> subprocess.CompletedProcess:
     return subprocess.run(
         command,
@@ -323,10 +327,10 @@ def run_command(command: list[str], *, check: bool) -> subprocess.CompletedProce
     )
 
 
-def refresh_test_baseline(baseline_path: Path, baseline_regex: str) -> None:
+def refresh_test_baseline_candidate(baseline_path: Path, baseline_regex: str) -> Path:
     root = repo_root()
     build_dir = root / "build"
-    candidate_path = baseline_path.with_name("test_baseline.new.log")
+    candidate_path = baseline_candidate_path(baseline_path)
 
     if not (build_dir / "CMakeCache.txt").exists():
         run_command(["cmake", "-S", str(root), "-B", str(build_dir)], check=True)
@@ -341,16 +345,7 @@ def refresh_test_baseline(baseline_path: Path, baseline_regex: str) -> None:
         combined = combined + ("\n" if combined and not combined.endswith("\n") else "") + ctest.stderr
     summary = capture_ctest_summary(combined)
     write_text(candidate_path, format_baseline_log(summary, baseline_regex))
-
-    if not baseline_path.exists():
-        replace_file(candidate_path, baseline_path)
-        return
-
-    if baseline_has_not_regressed(baseline_path, candidate_path):
-        replace_file(candidate_path, baseline_path)
-        return
-
-    candidate_path.unlink(missing_ok=True)
+    return candidate_path
 
 
 def cmd_show(args) -> int:
@@ -367,7 +362,7 @@ def cmd_reset(args) -> int:
         state["current_step_title"] = args.step_title
     state["counter"] = 0
     state["code_review_pending"] = False
-    state["baseline_sanity_pending"] = False
+    state["baseline_review_pending"] = False
     save_state(args.state, state)
     sync_todo(args.todo, state)
     return 0
@@ -384,7 +379,7 @@ def cmd_set_step(args) -> int:
         state["current_step_title"] = args.step_title
         state["counter"] = 0
         state["code_review_pending"] = False
-        state["baseline_sanity_pending"] = False
+        state["baseline_review_pending"] = False
     save_state(args.state, state)
     sync_todo(args.todo, state)
     return 0
@@ -412,7 +407,7 @@ def cmd_set_limit(args) -> int:
 def cmd_set_baseline_limit(args) -> int:
     state = ensure_state(args.todo, args.state)
     state["test_baseline_limit"] = args.test_baseline_limit
-    state["baseline_sanity_pending"] = (
+    state["baseline_review_pending"] = (
         state["test_baseline_counter"] >= state["test_baseline_limit"]
     )
     save_state(args.state, state)
@@ -430,12 +425,43 @@ def cmd_set_baseline_regex(args) -> int:
     return 0
 
 
+def cmd_accept_baseline(args) -> int:
+    state = ensure_state(args.todo, args.state)
+    candidate_path = baseline_candidate_path(args.baseline)
+    if not candidate_path.exists():
+        raise SystemExit(f"missing baseline candidate: {candidate_path}")
+    if args.baseline.exists() and not baseline_has_not_regressed(
+        args.baseline, candidate_path
+    ):
+        raise SystemExit(
+            "baseline candidate regressed; refusing to accept test_baseline.new.log"
+        )
+
+    replace_file(candidate_path, args.baseline)
+    state["baseline_review_pending"] = False
+    save_state(args.state, state)
+    if args.todo.exists():
+        sync_todo(args.todo, state)
+    return 0
+
+
+def cmd_reject_baseline(args) -> int:
+    state = ensure_state(args.todo, args.state)
+    if args.delete_candidate:
+        baseline_candidate_path(args.baseline).unlink(missing_ok=True)
+    state["baseline_review_pending"] = False
+    save_state(args.state, state)
+    if args.todo.exists():
+        sync_todo(args.todo, state)
+    return 0
+
+
 def cmd_post_commit(args) -> int:
     state = ensure_state(args.todo, args.state)
     previous_code_review_pending = state["code_review_pending"]
-    previous_baseline_sanity_pending = state["baseline_sanity_pending"]
+    previous_baseline_review_pending = state["baseline_review_pending"]
     should_print_code_review = False
-    should_print_baseline_sanity = False
+    should_print_baseline_review = False
     changed_paths = head_commit_paths()
     is_lifecycle_commit = head_has_lifecycle_tag()
 
@@ -450,26 +476,27 @@ def cmd_post_commit(args) -> int:
             not args.baseline.exists()
             or state["test_baseline_counter"] >= state["test_baseline_limit"]
         )
-        if state["test_baseline_counter"] >= state["test_baseline_limit"]:
-            state["baseline_sanity_pending"] = True
         if needs_new_baseline:
-            refresh_test_baseline(args.baseline, state["test_baseline_regex"])
+            refresh_test_baseline_candidate(
+                args.baseline, state["test_baseline_regex"]
+            )
             state["test_baseline_counter"] = 0
+            state["baseline_review_pending"] = True
 
     should_print_code_review = (
         state["code_review_pending"] and not previous_code_review_pending
     )
-    should_print_baseline_sanity = (
-        state["baseline_sanity_pending"] and not previous_baseline_sanity_pending
+    should_print_baseline_review = (
+        state["baseline_review_pending"] and not previous_baseline_review_pending
     )
 
     save_state(args.state, state)
-    if args.todo.exists() and (state["code_review_pending"] or state["baseline_sanity_pending"]):
+    if args.todo.exists() and (state["code_review_pending"] or state["baseline_review_pending"]):
         sync_todo(args.todo, state)
     if should_print_code_review:
         print(CODE_REVIEW_REMINDER)
-    if should_print_baseline_sanity:
-        print(BASELINE_SANITY_REMINDER)
+    if should_print_baseline_review:
+        print(BASELINE_REVIEW_REMINDER)
     return 0
 
 
@@ -509,6 +536,13 @@ def build_parser() -> argparse.ArgumentParser:
     set_baseline_regex = subparsers.add_parser("set-baseline-regex")
     set_baseline_regex.add_argument("--test-baseline-regex", required=True)
     set_baseline_regex.set_defaults(func=cmd_set_baseline_regex)
+
+    accept_baseline = subparsers.add_parser("accept-baseline")
+    accept_baseline.set_defaults(func=cmd_accept_baseline)
+
+    reject_baseline = subparsers.add_parser("reject-baseline")
+    reject_baseline.add_argument("--delete-candidate", action="store_true")
+    reject_baseline.set_defaults(func=cmd_reject_baseline)
 
     post_commit = subparsers.add_parser("post-commit")
     post_commit.set_defaults(func=cmd_post_commit)

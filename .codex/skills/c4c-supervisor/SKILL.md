@@ -19,7 +19,7 @@ state, and creates the final commit. It does not own lifecycle rewrites or imple
    metadata there and use `scripts/plan_review_state.py show` when you need the
    local `.plan_review_state.json` state directly.
    Also scan the top of `todo.md` for reminder lines:
-   `你該做code review了` and `你該做baseline sanity check了`.
+   `你該做code review了` and `你該做test baseline review了`.
 4. If `plan.md` exists, read the linked source idea before making route,
    review, or acceptance decisions.
 5. When preparing a code packet, read
@@ -49,6 +49,8 @@ state, and creates the final commit. It does not own lifecycle rewrites or imple
   from stable state instead of chat-only judgment
 - treat `todo.md` reminder keywords as explicit post-commit triggers for
   supervisor-owned follow-up validation
+- own acceptance of `test_baseline.new.log` into `test_baseline.log`; hooks
+  may produce baseline candidates but do not auto-accept them
 
 ## Hard Boundaries
 
@@ -173,9 +175,9 @@ Choose the next specialist with these rules:
   run a route-quality/code-review pass before delegating another execution
   packet; prefer `c4c-reviewer` when the diff is non-trivial or route risk is
   unclear
-- if `todo.md` contains `你該做baseline sanity check了` after a commit:
-  run a supervisor-owned baseline sanity check before delegating another
-  execution packet
+- if `todo.md` contains `你該做test baseline review了` after a commit:
+  review `test_baseline.new.log` against `test_baseline.log` before
+  delegating another execution packet
 - if `todo.md` contains `你該做code review了` and the current route still
   looks oversized after review:
   call `c4c-plan-owner` to review whether that step should split into numbered
@@ -209,10 +211,23 @@ Oversized-step trigger:
   source of truth for post-commit follow-up
 - if `todo.md` contains `你該做code review了`, perform the code-review /
   route-review follow-up
-- if `todo.md` contains `你該做baseline sanity check了`, perform the baseline
-  sanity-check follow-up
+- if `todo.md` contains `你該做test baseline review了`, perform the baseline
+  review follow-up
 - default to handling those reminder lines before sending the next executor
   packet
+
+Baseline review follow-up:
+
+- treat `test_baseline.new.log` as hook-produced candidate evidence, not an
+  already accepted baseline
+- compare `test_baseline.new.log` to `test_baseline.log`
+- if the candidate is monotonic, accept it with
+  `scripts/plan_review_state.py accept-baseline`
+- if the candidate regresses or is otherwise suspicious, keep the candidate for
+  diagnosis and clear or retain the reminder explicitly with
+  `scripts/plan_review_state.py reject-baseline`
+- do not move `test_baseline.new.log` to `test_baseline.log` by hand outside
+  the supervisor-owned acceptance path
 
 Treat these as overfit-warning signals that normally require reviewer scrutiny
 before acceptance and often require rejection:
@@ -257,7 +272,7 @@ After a specialist returns:
 8. use `todo.md` review metadata plus local `.plan_review_state.json` state as
    the quick oversized-step / route-friction check
    If `todo.md` contains `你該做code review了` or
-   `你該做baseline sanity check了`, treat those as blocking reminders for this
+   `你該做test baseline review了`, treat those as blocking reminders for this
    loop and satisfy them before dispatching another execution packet.
 9. inspect deeper git history only if that state or the diff suggests real
    route risk
