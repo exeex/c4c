@@ -1290,6 +1290,47 @@ void test_parser_local_ctor_init_probe_balances_grouped_pointer_param_and_value_
             "known visible value grouped-call forms should keep their declarator spelling");
 }
 
+void test_parser_local_ctor_init_probe_balances_template_param_and_value_call_shapes() {
+  c4c::Lexer lexer("struct Box { Box(int); };\n"
+                   "template<typename T>\n"
+                   "int source(T value) { return value; }\n"
+                   "int main() {\n"
+                   "  int payload = 7;\n"
+                   "  Box copy(Value<int>(other));\n"
+                   "  Box value(source<int>(payload));\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "template ctor-init probe regression should parse as a program");
+  expect_eq_int(program->n_children, 3,
+                "the template regression program should contain the record, helper, and main");
+
+  c4c::Node* main_fn = program->children[2];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the template regression program should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 3,
+                "main should retain the payload declaration and both ambiguous declarations");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_DECL,
+              "the payload declaration should remain a declaration");
+  expect_true(main_fn->body->children[1] != nullptr &&
+                  main_fn->body->children[1]->kind == c4c::NK_EMPTY,
+              "template-headed unresolved named-parameter forms should remain function declarations");
+  expect_true(main_fn->body->children[2] != nullptr &&
+                  main_fn->body->children[2]->kind == c4c::NK_DECL,
+              "known visible value template-call forms should stay declarations");
+  expect_eq(main_fn->body->children[2]->name, "value",
+            "known visible value template-call forms should keep their declarator spelling");
+}
+
 void test_parser_template_member_suffix_probe_uses_token_spelling() {
   c4c::Lexer lexer(
       "template<int N>\n"
@@ -1653,6 +1694,7 @@ int main() {
   test_parser_local_ctor_init_probe_balances_unresolved_param_and_value_expr_shapes();
   test_parser_local_ctor_init_probe_balances_parenthesized_param_and_value_call_shapes();
   test_parser_local_ctor_init_probe_balances_grouped_pointer_param_and_value_call_shapes();
+  test_parser_local_ctor_init_probe_balances_template_param_and_value_call_shapes();
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
   test_parser_template_type_arg_uses_visible_scope_local_alias();
