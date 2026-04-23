@@ -758,6 +758,12 @@ Node* Parser::parse_local_decl() {
         if (check(TokenKind::LParen)) {
             bool parsed_as_function_decl = false;
             if (is_cpp_mode() && vname) {
+                enum class CtorInitVisibleHeadHandoff {
+                    None,
+                    PreferCtorInit,
+                    PreferFunctionDecl,
+                };
+
                 bool single_value_arg = false;
                 if (core_input_state_.pos + 2 <
                         static_cast<int>(core_input_state_.tokens.size()) &&
@@ -850,6 +856,20 @@ Node* Parser::parse_local_decl() {
                     }
                 };
 
+                auto classify_ctor_init_visible_head_handoff =
+                    [&]() -> CtorInitVisibleHeadHandoff {
+                    const int visible_head_kind =
+                        classify_visible_value_or_type_head(
+                            core_input_state_.pos + 1);
+                    if (visible_head_kind > 0) {
+                        return CtorInitVisibleHeadHandoff::PreferCtorInit;
+                    }
+                    if (visible_head_kind < 0) {
+                        return CtorInitVisibleHeadHandoff::PreferFunctionDecl;
+                    }
+                    return CtorInitVisibleHeadHandoff::None;
+                };
+
                 auto probe_ctor_vs_function_decl = [&]() -> bool {
                     if (core_input_state_.pos + 3 <
                             static_cast<int>(core_input_state_.tokens.size()) &&
@@ -870,11 +890,16 @@ Node* Parser::parse_local_decl() {
                             TokenKind::Identifier) {
                         return false;
                     }
-                    const int qualified_head_kind =
-                        classify_visible_value_or_type_head(
-                            core_input_state_.pos + 1);
-                    if (qualified_head_kind > 0) return false;
-                    if (qualified_head_kind < 0) return true;
+                    const CtorInitVisibleHeadHandoff visible_head_handoff =
+                        classify_ctor_init_visible_head_handoff();
+                    if (visible_head_handoff ==
+                        CtorInitVisibleHeadHandoff::PreferCtorInit) {
+                        return false;
+                    }
+                    if (visible_head_handoff ==
+                        CtorInitVisibleHeadHandoff::PreferFunctionDecl) {
+                        return true;
+                    }
                     if (core_input_state_.pos + 2 <
                             static_cast<int>(core_input_state_.tokens.size()) &&
                         core_input_state_.tokens[core_input_state_.pos + 1].kind ==
