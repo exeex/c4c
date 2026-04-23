@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../x86_codegen.hpp"
+#include "call_abi_queries.hpp"
 
 namespace c4c::backend::x86 {
 

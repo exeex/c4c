@@ -6,6 +6,7 @@
 #include "../../../bir/lir_to_bir.hpp"
 #include "../../../prealloc/prealloc.hpp"
 #include "../../../prealloc/target_register_profile.hpp"
+#include "lowering/call_abi_queries.hpp"
 #include "prepared/prepared_query_context.hpp"
 
 #include <array>
@@ -151,16 +152,6 @@ enum class PreparedParamZeroCompareShape : unsigned {
   SelfTest,
 };
 
-struct PreparedI32CallResultAbiSelection {
-  const c4c::backend::prepare::PreparedMoveResolution* move = nullptr;
-  std::string abi_register;
-};
-
-struct PreparedCallResultAbiSelection {
-  const c4c::backend::prepare::PreparedMoveResolution* move = nullptr;
-  std::string abi_register;
-};
-
 struct DirectBranchTargets {
   const c4c::backend::bir::Block* true_block = nullptr;
   const c4c::backend::bir::Block* false_block = nullptr;
@@ -208,68 +199,6 @@ inline std::optional<std::string> narrow_i8_register(std::string_view wide_regis
   if (wide_register == "r15") return std::string("r15b");
   return std::string(wide_register);
 }
-
-// Compatibility holdout until the reviewed prepared call-bundle render seam
-// lands in step 3. Keep these selectors live here rather than reviving
-// dormant `shared_call_support.cpp` or `mod.cpp` ownership.
-std::optional<std::string> select_prepared_call_argument_abi_register_if_supported(
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    std::size_t block_index,
-    std::size_t instruction_index,
-    std::size_t arg_index);
-
-std::optional<std::size_t> select_prepared_call_argument_abi_stack_offset_if_supported(
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    std::size_t block_index,
-    std::size_t instruction_index,
-    std::size_t arg_index);
-
-std::optional<std::string> select_prepared_call_argument_abi_register_if_supported(
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    std::size_t instruction_index,
-    std::size_t arg_index);
-
-std::optional<std::size_t> select_prepared_call_argument_abi_stack_offset_if_supported(
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    std::size_t instruction_index,
-    std::size_t arg_index);
-
-std::optional<std::string> select_prepared_i32_call_argument_abi_register_if_supported(
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    std::size_t block_index,
-    std::size_t instruction_index,
-    std::size_t arg_index);
-
-std::optional<std::string> select_prepared_i32_call_argument_abi_register_if_supported(
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    std::size_t instruction_index,
-    std::size_t arg_index);
-
-std::optional<PreparedCallResultAbiSelection>
-select_prepared_call_result_abi_if_supported(
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    std::size_t block_index,
-    std::size_t instruction_index,
-    const c4c::backend::prepare::PreparedValueHome* result_home);
-
-std::optional<PreparedCallResultAbiSelection>
-select_prepared_call_result_abi_if_supported(
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    std::size_t instruction_index,
-    const c4c::backend::prepare::PreparedValueHome* result_home);
-
-std::optional<PreparedI32CallResultAbiSelection>
-select_prepared_i32_call_result_abi_if_supported(
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    std::size_t block_index,
-    std::size_t instruction_index,
-    const c4c::backend::prepare::PreparedValueHome* result_home);
-
-std::optional<PreparedI32CallResultAbiSelection>
-select_prepared_i32_call_result_abi_if_supported(
-    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
-    std::size_t instruction_index,
-    const c4c::backend::prepare::PreparedValueHome* result_home);
 
 template <typename RenderMoveToEaxFn, typename RenderI32OperandFn>
 inline std::optional<std::string> render_prepared_i32_binary_in_eax_if_supported(
