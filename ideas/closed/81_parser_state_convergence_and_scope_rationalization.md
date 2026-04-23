@@ -1,6 +1,6 @@
 # Parser State Convergence And Scope Rationalization
 
-Status: Open
+Status: Closed
 Last Updated: 2026-04-23
 
 ## Goal
@@ -106,3 +106,12 @@ At minimum:
    debug context, tentative rollback.
 4. Use that classification to define the next narrower follow-on slice for
    semantic scope convergence and later `TextId` cleanup.
+
+## Completion Notes
+
+- completed by extracting parser-owned state bundles into
+  `src/frontend/parser/parser_state.hpp`, keeping `src/frontend/parser/parser.hpp`
+  as the parser entry/index surface, and documenting the distinct parser
+  transition families
+- the next bounded follow-on slice is tracked separately in
+  `ideas/open/82_parser_namespace_textid_context_tree.md`

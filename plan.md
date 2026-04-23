@@ -1,171 +1,172 @@
-# Parser State Convergence And Scope Rationalization
+# Parser Namespace TextId Context Tree
 
 Status: Active
-Source Idea: ideas/open/81_parser_state_convergence_and_scope_rationalization.md
+Source Idea: ideas/open/82_parser_namespace_textid_context_tree.md
 
 ## Purpose
 
-Make parser-owned mutable state easier to read and reason about before later
-semantic-scope and `TextId` cleanup.
+Replace parser namespace lookup's canonical-string-driven path with a parent /
+child namespace context tree keyed by `TextId` segments.
 
 ## Goal
 
-Regroup parser state into named bundles with explicit lifetime boundaries so
-future parser changes can distinguish semantic scope from namespace, pragma,
-debug, and tentative rollback state.
+Make namespace ownership and qualified-name traversal operate on structured
+context plus `TextId` segments while preserving the existing namespace
+push/pop registration model.
 
 ## Core Rule
 
-Do not broaden this into a general parser rewrite or a repo-wide identity
-migration; keep every change inside the parser subsystem and preserve behavior
-unless a structural move forces a correctness fix.
+Keep the work inside parser namespace lookup. Do not widen this into full
+lexical-scope redesign, repo-wide `TextId` migration, or backend/HIR cleanup.
 
 ## Read First
 
-- ideas/open/81_parser_state_convergence_and_scope_rationalization.md
+- ideas/open/82_parser_namespace_textid_context_tree.md
 - src/frontend/parser/parser.hpp
 - src/frontend/parser/parser_state.hpp
-- parser implementation files that manipulate parser-owned mutable state
+- src/frontend/parser/parser_core.cpp
+- nearby parser helper files that participate in qualified-name parsing and
+  namespace lookup
 
 ## Scope
 
 - `src/frontend/parser/parser.hpp`
 - `src/frontend/parser/parser_state.hpp`
-- parser implementation files that directly depend on parser-owned mutable
-  state layout
+- `src/frontend/parser/parser_core.cpp`
+- nearby parser helper files that participate in namespace registration,
+  qualified-name traversal, and using-directive visibility
 
 ## Non-Goals
 
-- no immediate replacement of every parser string path with `TextId`
-- no backend or HIR work
-- no grammar changes unless required by a structural move
-- no testcase-shaped narrowing of the route
+- no full semantic lexical-scope unification
+- no removal of every canonical-name string bridge in one pass
+- no repo-wide `std::string` to `TextId` migration
+- no sema, HIR, or backend identity redesign
+- no testcase-shaped namespace shortcuts
 
 ## Working Model
 
-- treat parser state layout as the primary seam, not the lexical grammar itself
-- separate semantic lexical scope from namespace, template, pragma, debug, and
-  tentative rollback mechanisms
-- keep parser entry surface in `parser.hpp` and move state-bearing support types
-  to `parser_state.hpp`
-- use the regrouped state layout to expose clear ownership before any later
-  shared-helper or `TextId` follow-up
+- keep namespace push/pop as the ownership and lifetime surface
+- treat qualified names as ordered `TextId` segments first, spelled strings
+  second
+- use parent-context child maps keyed by `TextId` instead of canonical
+  `"A::B"`-style global string keys
+- keep canonical string synthesis only as a compatibility/debug bridge while
+  semantic lookup moves to the namespace tree
 
 ## Execution Rules
 
-- prefer small behavior-preserving moves over mixed refactors
-- keep `parser.hpp` focused on API and method index, not snapshot or bundle
-  internals
-- do not promote execution churn back into the idea file unless durable intent
-  changes
+- prefer small behavior-preserving packets over broad parser rewrites
+- keep namespace registration and lookup changes aligned with the existing
+  parser state bundles
+- preserve diagnostics and rendered spellings while lookup internals move to
+  `TextId` traversal
 - after each structural move, validate with
   `cmake --build build -j --target c4c_frontend c4cll`
-- run focused parser/frontend tests that cover tentative parsing and
-  scope-heavy paths before broadening
-- escalate to broader `ctest` only when a step crosses multiple parser
-  subsystems
-- use `todo.md` for packet state and route checkpoints; rewrite `plan.md` only
-  when the active contract changes
+- run focused parser/frontend tests covering namespace-qualified lookup,
+  nested namespaces, and `using namespace` visibility before broadening
+- escalate to broader `ctest` only when a packet crosses beyond parser
+  namespace lookup or becomes a milestone checkpoint
 
 ## Validation
 
 - `cmake --build build -j --target c4c_frontend c4cll`
-- focused parser/frontend tests covering tentative parsing and scope-heavy
-  paths
-- broader `ctest` only if a step crosses multiple parser subsystems
+- focused parser/frontend tests covering qualified namespace lookup,
+  `using namespace`, nested namespace definitions, and namespace-qualified
+  type/value references
+- broader `ctest` when namespace lookup changes cross multiple parser
+  subsystems or reach acceptance-ready milestones
 
-## Step 1: Consolidate State-Bearing Structs Into `parser_state.hpp`
+## Step 1: Convert Namespace Child Registration To `TextId` Maps
 
-Goal: move parser state support types out of `parser.hpp` without changing
-parser behavior.
+Goal: store namespace children by parent context plus segment `TextId` rather
+than canonical composed strings.
 
 Primary targets:
 
-- `src/frontend/parser/parser.hpp`
 - `src/frontend/parser/parser_state.hpp`
-- parser implementation files that still define or include state support types
-
-Actions:
-
-- identify state-bearing structs, snapshots, and other support types still
-  embedded in `parser.hpp`
-- move types that are not part of the true parser entry surface into
-  `parser_state.hpp`
-- keep `parser.hpp` limited to parser API, method declarations, and
-  entry-facing declarations
-- preserve include dependencies so existing parser implementation files
-  continue to compile
-
-Completion check:
-
-- `parser_state.hpp` owns the extracted state support types and `parser.hpp`
-  no longer carries them
-
-## Step 2: Regroup Parser Member Fields Into Explicit Bundles
-
-Goal: make the parser's mutable ownership boundaries readable by clustering
-fields into named bundles.
-
-Primary targets:
-
+- `src/frontend/parser/parser_core.cpp`
 - `src/frontend/parser/parser.hpp`
-- `src/frontend/parser/parser_state.hpp`
-- parser implementation files that initialize or snapshot parser-owned state
 
 Actions:
 
-- regroup related members into explicit bundles such as input, bindings,
-  record/enum definitions, namespace, template, pragma, diagnostics, and
-  tentative rollback
-- keep behavior unchanged while moving fields
-- ensure rollback and push/pop helpers still restore the same semantic surface
+- extend namespace state so named child lookup is driven by parent-context
+  child maps keyed by `TextId`
+- keep any required spelled/canonical name fields only as bridges for
+  diagnostics and compatibility
+- preserve anonymous-namespace handling and namespace push/pop behavior
 
 Completion check:
 
-- parser member layout matches explicit ownership bundles and no field lost its
-  lifecycle coverage
+- namespace child registration no longer depends on canonical composed-string
+  keys as the primary identity path
 
-## Step 3: Classify Push/Pop And Rollback Paths By Kind
+## Step 2: Route Qualified Namespace Traversal Through `TextId` Segments
 
-Goal: separate real semantic scope from other parser context machines.
+Goal: resolve qualified namespace names segment-by-segment through the context
+tree.
 
 Primary targets:
 
-- parser implementation files that implement push/pop, save/restore, or
-  tentative parse guards
+- `src/frontend/parser/parser_core.cpp`
+- parser helper files that resolve `QualifiedNameRef` or namespace contexts
 
 Actions:
 
-- classify each mechanism as semantic lexical scope, namespace context,
-  template scope, pragma stack, debug context, or tentative rollback
-- note where helpers can be shared and where the mechanism must stay distinct
-- confirm the classification explains current lifetime boundaries without
-  changing grammar behavior
+- make qualified-name resolution consume `qualifier_text_ids` and
+  `base_text_id` as the primary traversal path
+- walk namespace contexts one segment at a time from the correct root/active
+  scope instead of rebuilding `"A::B::C"` strings for lookup
+- keep string spelling only as a bridge when diagnostics or existing helpers
+  still need rendered names
 
 Completion check:
 
-- the parser's state transitions are documented and grouped by mechanism
-  instead of being treated as one flat stack
+- namespace traversal and lookup succeed through structured segment walking
+  instead of canonical-string reconstruction
 
-## Step 4: Define The Next Follow-On Slice For Scope Convergence
+## Step 3: Contain Canonical String Fallbacks To Compatibility Helpers
 
-Goal: turn the regrouped parser state layout into the next bounded execution
-slice.
+Goal: demote canonical namespace strings to rendering/debug bridges rather
+than semantic lookup keys.
+
+Primary targets:
+
+- `src/frontend/parser/parser_core.cpp`
+- `src/frontend/parser/parser_state.hpp`
+- nearby parser helper files that still synthesize canonical namespace names
+
+Actions:
+
+- isolate any remaining canonical-name helpers behind explicit compatibility or
+  debug-only call sites
+- confirm parser-visible behavior stays the same while semantic lookup uses the
+  namespace tree
+- avoid expanding the packet into unrelated binding-table or lexical-scope work
+
+Completion check:
+
+- canonical namespace strings remain available for diagnostics/debugging but
+  are no longer the parser's primary namespace identity path
+
+## Step 4: Lock The Route And Hand Off Later Scope Work Cleanly
+
+Goal: end the runbook with a clear boundary between namespace-tree cleanup and
+later parser scope work.
 
 Primary targets:
 
 - `todo.md`
-- parser files identified by the prior step as the next narrow follow-on
+- any parser files identified by prior steps as follow-on-only work
 
 Actions:
 
-- record the next narrow slice needed to continue semantic scope convergence
-- keep later `TextId` cleanup explicitly out of this runbook until the state
-  layout is stable
-- document any cross-subsystem dependency that now needs its own idea file
-  instead of expanding this one
+- record the next narrow follow-on packet once namespace-tree lookup is stable
+- keep later lexical-scope or wider parser binding work out of this runbook
+- document any newly discovered separate initiative under `ideas/open/`
+  instead of stretching this plan
 
 Completion check:
 
-- the active runbook ends with a concrete next slice and a clear boundary for
-  later `TextId` work
+- the runbook ends with namespace-tree lookup stabilized and a clear boundary
+  for any later non-namespace follow-on
