@@ -7,16 +7,15 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by retargeting the constructor-vs-function-decl
-probe in `parser_declarations.cpp`. The unqualified visible-type checks in the
-local declaration ambiguity probe now use the shared `TextId`-aware
-`visible_type_head_name(...)` helper instead of spelling-first visible-type
-resolution.
+Advanced `plan.md` step 2 by auditing the remaining local declaration
+ambiguity probes in `parser_declarations.cpp`. The constructor-vs-function
+paths now use the shared `TextId`-aware simple-type helper instead of the
+remaining spelling-first visible-type/tag checks.
 
 ## Suggested Next
-Continue `plan.md` step 2 by auditing the remaining unqualified type-discovery
-branches in `parser_declarations.cpp` for any other spelling-first visible-type
-checks that should switch to the shared helper.
+Continue `plan.md` step 2 by checking whether any other local declaration
+branches in `parser_declarations.cpp` still need the same shared helper
+retargeting.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. The shared helper

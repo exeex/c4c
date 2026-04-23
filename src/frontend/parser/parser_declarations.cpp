@@ -768,15 +768,8 @@ Node* Parser::parse_local_decl() {
                     const Token& arg_tok = core_input_state_.tokens[core_input_state_.pos + 1];
                     const TextId arg_text_id = arg_tok.text_id;
                     const std::string arg_name = std::string(token_spelling(arg_tok));
-                    const std::string visible_type_name =
-                        visible_type_head_name(*this, arg_text_id, arg_name);
                     const bool arg_is_type =
-                        is_typedef_name(arg_text_id, arg_name) ||
-                        has_visible_typedef_type(arg_text_id, arg_name) ||
-                        definition_state_.struct_tag_def_map.count(arg_name) >
-                            0 ||
-                        definition_state_.struct_tag_def_map.count(
-                            visible_type_name) > 0;
+                        is_known_simple_type_head(*this, arg_text_id, arg_name);
                     single_value_arg = !arg_is_type;
                 }
                 auto can_use_lite_ctor_init_probe = [&]() -> bool {
@@ -820,16 +813,8 @@ Node* Parser::parse_local_decl() {
                                 core_input_state_.tokens[core_input_state_.pos + 1];
                             const TextId arg_text_id = arg_tok.text_id;
                             const std::string arg_name = std::string(token_spelling(arg_tok));
-                            const std::string visible_type_name =
-                                visible_type_head_name(*this, arg_text_id, arg_name);
                             const bool arg_is_type =
-                                is_template_scope_type_param(arg_text_id, arg_name) ||
-                                is_typedef_name(arg_text_id, arg_name) ||
-                                has_visible_typedef_type(arg_text_id, arg_name) ||
-                                definition_state_.struct_tag_def_map.count(
-                                    arg_name) > 0 ||
-                                definition_state_.struct_tag_def_map.count(
-                                    visible_type_name) > 0;
+                                is_known_simple_type_head(*this, arg_text_id, arg_name);
                             if (arg_is_type) return false;
                             if (single_value_arg) return true;
                             if (core_input_state_.pos + 2 <
