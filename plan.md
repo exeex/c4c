@@ -1,175 +1,182 @@
-# CFG Contract Consumption For Short-Circuit And Guard-Chain
+# Extract Full X86 Backend Subsystem To Markdown For Phoenix Rebuild
 
 Status: Active
-Source Idea: ideas/open/59_cfg_contract_consumption_for_short_circuit_and_guard_chain.md
-Supersedes: ideas/open/68_prepared_local_slot_handoff_consumption_for_x86_backend.md
+Source Idea: ideas/open/82_extract_full_x86_backend_subsystem_to_markdown_for_phoenix_rebuild.md
+Supersedes: ideas/open/59_cfg_contract_consumption_for_short_circuit_and_guard_chain.md
+Activated from: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implementation_for_phoenix_rebuild.md
 
 ## Purpose
 
-Make the x86 prepared emitter consume authoritative prepared control-flow
-contracts for guard-chain and short-circuit families as a normal backend
-capability instead of rejecting routes that already cleared upstream local-slot
-and prepared-module ownership.
+Create the missing stage-1 Phoenix evidence for the full
+`src/backend/mir/x86/` subsystem so future teardown and replacement work can
+cover the root dispatcher, assembler, linker, and accepted codegen rebuild as
+one explicit ownership graph.
 
 ## Goal
 
-Replace authoritative prepared guard-chain or short-circuit handoff rejection
-with one generic prepared CFG consumption path that the x86 backend can render
-without reconstructing raw topology or testcase shape.
+Replace ad hoc live-tree deletion and codegen-only Phoenix assumptions with one
+reviewable extraction package for the whole `x86` subsystem.
 
 ## Core Rule
 
-Fix this by consuming or extending the prepared CFG contract, not by adding one
-more x86-local branch matcher for a named failing case.
+Do not count deletion or restructuring under `src/backend/mir/x86/` as Phoenix
+progress until the matching legacy behavior has a compressed markdown evidence
+artifact.
 
 ## Read First
 
-- `ideas/open/59_cfg_contract_consumption_for_short_circuit_and_guard_chain.md`
-- `ideas/open/60_scalar_expression_and_terminator_selection_for_x86_backend.md`
-- `ideas/open/61_call_bundle_and_multi_function_prepared_module_consumption.md`
-- `ideas/open/68_prepared_local_slot_handoff_consumption_for_x86_backend.md`
-- `test_after.log`
+- `ideas/open/82_extract_full_x86_backend_subsystem_to_markdown_for_phoenix_rebuild.md`
+- `.codex/skills/phoenix-rebuild/SKILL.md`
+- `docs/backend/x86_codegen_legacy/index.md`
+- `docs/backend/x86_codegen_rebuild/index.md`
+- `docs/backend/x86_codegen_rebuild_handoff.md`
 
 ## Scope
 
-- authoritative prepared guard-chain handoff failures in the x86 backend
-- authoritative prepared short-circuit handoff failures in the x86 backend
-- shared prepared CFG helpers or contract surfaces only when the current stored
-  CFG contract is insufficient for one generic render plan
+- `src/backend/mir/x86/mod.cpp`
+- `src/backend/mir/x86/assembler/`
+- `src/backend/mir/x86/linker/`
+- accepted prior Phoenix evidence for `src/backend/mir/x86/codegen/`
 
 ## Non-Goals
 
-- local-slot handoff routes that still stop in idea 68's authoritative prepared
-  local-slot family
-- scalar expression or terminator selection leaves that still belong to idea 60
-- prepared-module or call-bundle traversal work that still belongs to idea 61
-- testcase-shaped x86 fast paths for one named failure
-- runtime correctness follow-ons after codegen already succeeds
+- redefining the replacement architecture before stage 2
+- converting replacement drafts into live implementation
+- counting the already-open codegen stage-4 idea as sufficient evidence for the
+  rest of `src/backend/mir/x86/`
+- deleting more live legacy code before matching extraction artifacts exist
 
 ## Working Model
 
-- treat repeated authoritative prepared guard-chain or short-circuit failures as
-  family work, not isolated testcase repairs
-- keep cases that have already graduated out of idea 68 under idea 59 instead
-  of counting them as local-slot progress
-- prefer `build -> focused backend subset -> broader x86 backend recheck`
-  whenever a packet changes shared prepared CFG consumers
+- treat the existing `docs/backend/x86_codegen_legacy/` package as accepted
+  stage-1 evidence for the codegen subtree
+- treat the missing root, assembler, and linker extraction as the blocker for a
+  whole-subsystem Phoenix route
+- keep one accepted non-helper directory index header per directory:
+  `x86_codegen.hpp`, `assembler/mod.hpp`, `assembler/encoder/mod.hpp`, and
+  `linker/mod.hpp`
+- treat `parser.hpp` and similar local headers as helper or compatibility
+  content, not as second directory indexes
 
 ## Execution Rules
 
-- start each packet by confirming the active subset still stops in idea 59's
-  authoritative prepared guard-chain or short-circuit diagnostic families
-- keep x86-side work focused on rendering from authoritative prepared branch,
-  block, join-transfer, and parallel-copy facts rather than reopening raw CFG
-  inspection
-- if the stored CFG contract is insufficient, extend shared prepared helpers or
-  contract structs before growing emitter-local branching
-- graduate cases out of this idea as soon as their top-level blocker moves to
-  idea 60, 61, a runtime leaf, or successful emission
-- preserve `todo.md` as the packet log; only rewrite this runbook when the
-  route itself changes
+- use compressed extraction rather than source dumps
+- keep short fenced `cpp` blocks only for essential surfaces
+- classify each notable responsibility seam and special case as `core
+  lowering`, `optional fast path`, `legacy compatibility`, or `overfit to
+  reject`
+- if a deleted legacy `.cpp` lacks a matching extraction artifact, restore it
+  or stop the teardown route before later stages proceed
+- preserve `todo.md` as the packet log; do not rewrite this runbook for routine
+  extraction progress
 
-## Step 1: Re-establish The Current Owned Guard-Chain And Short-Circuit Inventory
+## Step 1: Freeze The Whole-Subsystem Extraction Inventory
 
-Goal: confirm which current `c_testsuite x86_backend` failures still stop in
-idea 59's authoritative prepared CFG families before taking a new repair
-packet.
+Goal: confirm the exact in-scope legacy source list, accepted directory-index
+headers, and already-satisfied codegen evidence before extracting anything new.
 
 Primary targets:
 
-- `test_after.log`
-- focused `c_testsuite x86_backend` cases that currently report the
-  authoritative prepared guard-chain or short-circuit diagnostics
-- the re-homed subset `00081.c`, `00082.c`, and `00104.c`
+- `src/backend/mir/x86/mod.cpp`
+- `src/backend/mir/x86/assembler/`
+- `src/backend/mir/x86/linker/`
+- `docs/backend/x86_codegen_legacy/index.md`
 
 Actions:
 
-- collect the current named cases that fail in the authoritative prepared
-  guard-chain and short-circuit families from `test_after.log`
-- confirm that `00081.c`, `00082.c`, and `00104.c` now belong here because
-  their top-level blocker moved downstream from idea 68's local-slot handoff
-- separate out nearby scalar, prepared-module, or runtime cases that should
-  stay with ideas 60, 61, or later leaves
-- choose one coherent same-family subset whose failing route shares one guard-
-  chain or short-circuit contract seam
+- enumerate every in-scope legacy `.cpp` that still needs a new companion under
+  `docs/backend/x86_subsystem_legacy/`
+- confirm the accepted directory-index headers for each directory and record
+  why any extra header is helper or compatibility-only rather than a second
+  index
+- confirm the existing `docs/backend/x86_codegen_legacy/` package is the
+  accepted evidence for the codegen subtree and does not need regeneration in
+  this step
+- record any live-tree deletions that currently lack matching extraction
+  evidence
 
 Completion check:
 
-- the active subset is explicitly owned by idea 59 and does not mix in cases
-  whose top-level blocker belongs to idea 68, 60, 61, or a later runtime leaf
+- the stage-1 artifact map is explicit, directory-index ownership is explicit,
+  and every currently deleted in-scope legacy `.cpp` is either scheduled for
+  extraction from legacy evidence or flagged as a blocker
 
-## Step 2: Normalize The Needed Prepared CFG Contract
+## Step 2: Extract The Missing Root, Assembler, And Linker Legacy Sources
 
-Goal: identify the minimal authoritative prepared CFG facts required to render
-the owned subset generically.
+Goal: create the missing per-file evidence for the non-codegen parts of the
+`x86` subsystem.
 
 Primary targets:
 
-- shared prepared CFG helpers and structs consumed by x86 codegen
-- x86 guard-chain or short-circuit rendering entry points that still reopen raw
-  CFG shape
+- `docs/backend/x86_subsystem_legacy/mod.cpp.md`
+- `docs/backend/x86_subsystem_legacy/assembler/*.md`
+- `docs/backend/x86_subsystem_legacy/assembler/encoder/*.md`
+- `docs/backend/x86_subsystem_legacy/linker/*.md`
 
 Actions:
 
-- trace the owned route to the point where x86 still re-derives branch,
-  continuation, or join meaning from raw block shape or compare carriers
-- map the missing meaning onto existing prepared branch-condition, block,
-  join-transfer, and parallel-copy facts when possible
-- if the stored contract is genuinely insufficient, define the missing shared
-  prepared CFG helper or struct extension before changing x86 rendering logic
+- write one markdown companion for every in-scope legacy `.cpp` in the root,
+  assembler, assembler encoder, and linker directories
+- write one markdown companion for each accepted directory-index header:
+  `assembler/mod.hpp`, `assembler/encoder/mod.hpp`, and `linker/mod.hpp`
+- capture the real entry points, hidden dependencies, state handoff, and
+  special-case buckets for each file
+- avoid mechanically copying the source; summarize non-essential internals in
+  prose
 
 Completion check:
 
-- there is one explicit generic prepared CFG render plan or a clearly bounded
-  shared-contract addition that explains the owned failure subset
+- every missing non-codegen legacy `.cpp` and accepted directory-index header
+  has a reviewable companion artifact under `docs/backend/x86_subsystem_legacy/`
 
-## Step 3: Rewire X86 CFG Rendering To Consume The Generic Plan
+## Step 3: Build The Top-Level Whole-X86 Extraction Index
 
-Goal: make the x86 backend render from the normalized prepared CFG plan
-instead of rejecting the owned guard-chain or short-circuit route.
+Goal: make one top-level index point at the complete whole-subsystem Phoenix
+evidence package.
 
 Primary targets:
 
-- x86 codegen surfaces that currently throw the authoritative prepared
-  guard-chain or short-circuit handoff diagnostics
-- any shared prepared CFG helper or contract consumer introduced in step 2
+- `docs/backend/x86_subsystem_legacy/index.md`
+- `docs/backend/x86_codegen_legacy/index.md`
 
 Actions:
 
-- move the owned decision-making behind the normalized prepared CFG plan
-- keep x86-side logic focused on rendering from authoritative prepared facts
-  instead of reopening raw topology or compare recovery
-- preserve clean boundaries with idea 68 local-slot ownership and ideas 60 and
-  61 downstream leaves
+- summarize the current subsystem ownership graph across root dispatch,
+  assembler, linker, and codegen
+- point the top-level index at every new root/assembler/linker artifact plus
+  the accepted `docs/backend/x86_codegen_legacy/` package
+- call out the major responsibility overlaps and cross-directory dependency
+  directions that later stages must redesign
+- explicitly classify the remaining live compatibility surface that the stage-4
+  codegen rebuild does not yet cover
 
 Completion check:
 
-- the owned subset emits through the generic prepared CFG plan without regrowing
-  branch-shaped or testcase-shaped special cases in x86 codegen
+- `docs/backend/x86_subsystem_legacy/index.md` acts as the canonical entry
+  point for the full extraction package and makes the whole-subsystem rebuild
+  pressure reviewable at a glance
 
-## Step 4: Prove The Family And Re-route Graduated Cases Honestly
+## Step 4: Reconcile Teardown State With The Extraction Evidence
 
-Goal: show the repaired idea-59 family moves forward and record any cases that
-now belong to a downstream leaf instead of keeping them here.
+Goal: ensure the current live-tree deletions under `src/backend/mir/x86/`
+comply with the Phoenix teardown rule before later stages proceed.
 
 Primary targets:
 
-- the focused owned subset from step 1
-- broader `c_testsuite x86_backend` coverage when the packet blast radius
-  justifies it
+- current worktree deletions in `src/backend/mir/x86/mod.cpp`
+- current worktree deletions under `src/backend/mir/x86/assembler/`
+- current worktree deletions under `src/backend/mir/x86/linker/`
 
 Actions:
 
-- run build proof plus the chosen focused backend subset for the repaired
-  guard-chain or short-circuit family
-- rerun a broader backend check when the packet advances more than one CFG lane
-  or changes shared prepared contract
-- update `todo.md` so graduated cases are routed to idea 60, 61, a runtime
-  leaf, or success instead of being counted as idea-59 wins after the blocker
-  moves
+- verify every deleted legacy `.cpp` now has matching extraction evidence
+- if any deletion still lacks evidence, restore it or explicitly stop the
+  teardown route instead of silently keeping the file removed
+- update `todo.md` with the coverage state, blockers, and which directories are
+  now extraction-complete
 
 Completion check:
 
-- the packet proves real progress for the authoritative prepared CFG family,
-  and any downstream blockers are explicitly re-homed instead of being absorbed
-  into this idea
+- no in-scope deleted legacy `.cpp` remains unsupported by stage-1 extraction
+  evidence, and the whole-subsystem Phoenix route can advance honestly to stage
+  2

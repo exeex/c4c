@@ -271,3 +271,16 @@ reach prepared emission.
 
 This idea is complete when the owned short-circuit and guard-chain c-testsuite
 families no longer fail due to missing authoritative prepared CFG handoff.
+
+## Latest Durable Note
+
+As of 2026-04-23, the last accepted execution packet on this idea repaired the
+single-function short-circuit join-value lane for `00109.c` and `00183.c` by
+separating immediate edge-carried materialization from join-defined incoming
+select materialization and by publishing local `i32` loads into authoritative
+register homes before cross-block use. The focused proof
+`ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_x86_backend_src_00109_c|c_testsuite_x86_backend_src_00183_c)$'`
+passed, and the broader `^c_testsuite_x86_backend_` rerun still showed the
+next likely idea-59 packet in the wider duplicate-function / duplicate-label
+family led by `00033.c`. Execution is parked here because the user explicitly
+prioritized a full-`src/backend/mir/x86/` Phoenix rebuild initiative.
