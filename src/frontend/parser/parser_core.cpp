@@ -649,8 +649,8 @@ ParserTentativeParseGuard::ParserTentativeParseGuard(Parser& p)
 ParserTentativeParseGuard::~ParserTentativeParseGuard() {
     if (!committed) {
         parser.note_tentative_parse_event(ParserTentativeParseMode::Heavy,
-                                          "tentative_rollback", start_pos,
-                                          parser.pos_);
+                                      "tentative_rollback", start_pos,
+                                          parser.core_input_state_.pos);
         parser.restore_state(snapshot);
     }
 }
@@ -659,7 +659,7 @@ void ParserTentativeParseGuard::commit() {
     if (committed) return;
     parser.note_tentative_parse_event(ParserTentativeParseMode::Heavy,
                                       "tentative_commit", start_pos,
-                                      parser.pos_);
+                                      parser.core_input_state_.pos);
     committed = true;
 }
 
@@ -674,7 +674,7 @@ ParserTentativeParseGuardLite::~ParserTentativeParseGuardLite() {
     if (!committed) {
         parser.note_tentative_parse_event(ParserTentativeParseMode::Lite,
                                           "tentative_rollback", start_pos,
-                                          parser.pos_);
+                                          parser.core_input_state_.pos);
         parser.restore_lite_state(snapshot);
     }
 }
@@ -683,7 +683,7 @@ void ParserTentativeParseGuardLite::commit() {
     if (committed) return;
     parser.note_tentative_parse_event(ParserTentativeParseMode::Lite,
                                       "tentative_commit", start_pos,
-                                      parser.pos_);
+                                      parser.core_input_state_.pos);
     committed = true;
 }
 
@@ -988,7 +988,7 @@ void Parser::reset_parse_debug_progress() {
 void Parser::push_parse_context(const char* function_name) {
     ParseContextFrame frame;
     frame.function_name = function_name ? function_name : "";
-    frame.token_index = pos_;
+    frame.token_index = core_input_state_.pos;
     diagnostic_state_.parse_context_stack.push_back(std::move(frame));
     note_parse_debug_event("enter");
 }
@@ -1022,8 +1022,16 @@ void Parser::note_parse_debug_event_for(const char* kind,
     ParseDebugEvent event;
     event.kind = kind ? kind : "";
     event.detail = detail ? detail : "";
-    event.token_index = !at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1);
-    event.line = !at_end() ? cur().line : (pos_ > 0 ? tokens_[pos_ - 1].line : 1);
+    event.token_index = !at_end()
+                            ? core_input_state_.pos
+                            : (core_input_state_.pos > 0
+                                   ? core_input_state_.pos - 1
+                                   : -1);
+    event.line = !at_end()
+                     ? cur().line
+                     : (core_input_state_.pos > 0
+                            ? core_input_state_.tokens[core_input_state_.pos - 1].line
+                            : 1);
     event.column = !at_end() ? cur().column : 1;
     if (function_name && function_name[0]) {
         event.function_name = function_name;
@@ -1107,22 +1115,23 @@ void Parser::maybe_emit_parse_debug_progress() {
             static_cast<long long>(elapsed_ms), event.token_index, event.line,
             event.column);
     if (event.token_index >= 0 &&
-        event.token_index < static_cast<int>(tokens_.size()) &&
+        event.token_index < static_cast<int>(core_input_state_.tokens.size()) &&
         shared_lookup_state_.token_files &&
-        tokens_[event.token_index].file_id != kInvalidFile) {
+        core_input_state_.tokens[event.token_index].file_id != kInvalidFile) {
         fprintf(stderr, " file=%s",
                 std::string(shared_lookup_state_.token_files->lookup(
-                                tokens_[event.token_index].file_id))
+                                core_input_state_.tokens[event.token_index].file_id))
                     .c_str());
     }
     if (!event.function_name.empty()) {
         fprintf(stderr, " fn=%s", event.function_name.c_str());
     }
     if (event.token_index >= 0 &&
-        event.token_index < static_cast<int>(tokens_.size())) {
+        event.token_index < static_cast<int>(core_input_state_.tokens.size())) {
         fprintf(stderr, " token_kind=%s token='%s'",
-                token_kind_name(tokens_[event.token_index].kind),
-                std::string(token_spelling(tokens_[event.token_index])).c_str());
+                token_kind_name(core_input_state_.tokens[event.token_index].kind),
+                std::string(token_spelling(
+                    core_input_state_.tokens[event.token_index])).c_str());
     }
     fprintf(stderr, "\n");
     fflush(stderr);
@@ -1168,9 +1177,17 @@ void Parser::note_parse_failure(const char* expected,
     ParseFailure failure;
     failure.active = true;
     failure.committed = committed;
-    failure.token_index = !at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1);
+    failure.token_index = !at_end()
+                              ? core_input_state_.pos
+                              : (core_input_state_.pos > 0
+                                     ? core_input_state_.pos - 1
+                                     : -1);
     failure.token_kind = !at_end() ? cur().kind : TokenKind::EndOfFile;
-    failure.line = !at_end() ? cur().line : (pos_ > 0 ? tokens_[pos_ - 1].line : 1);
+    failure.line = !at_end()
+                       ? cur().line
+                       : (core_input_state_.pos > 0
+                              ? core_input_state_.tokens[core_input_state_.pos - 1].line
+                              : 1);
     failure.column = !at_end() ? cur().column : 1;
     failure.expected = expected ? expected : "";
     failure.got = at_end() ? "<eof>" : token_spelling(cur());
@@ -1304,20 +1321,22 @@ std::string Parser::format_best_parse_failure() const {
 
 std::string Parser::format_parse_failure_token_window(
     const ParseFailure& failure) const {
-    if (tokens_.empty()) return {};
+    if (core_input_state_.tokens.empty()) return {};
 
     const int center =
         failure.token_index >= 0
-            ? std::min(failure.token_index, static_cast<int>(tokens_.size()) - 1)
-            : static_cast<int>(tokens_.size()) - 1;
+            ? std::min(failure.token_index,
+                       static_cast<int>(core_input_state_.tokens.size()) - 1)
+            : static_cast<int>(core_input_state_.tokens.size()) - 1;
     const int start = std::max(0, center - 2);
     const int end =
-        std::min(static_cast<int>(tokens_.size()) - 1, center + 2);
+        std::min(static_cast<int>(core_input_state_.tokens.size()) - 1, center + 2);
 
     std::ostringstream oss;
     for (int i = start; i <= end; ++i) {
         if (i > start) oss << " | ";
-        oss << format_debug_token_entry(tokens_[i], token_spelling(tokens_[i]),
+        oss << format_debug_token_entry(core_input_state_.tokens[i],
+                                        token_spelling(core_input_state_.tokens[i]),
                                         i, i == center);
     }
     return oss.str();
@@ -1399,12 +1418,13 @@ void Parser::dump_parse_debug_trace() const {
 }
 
 const char* Parser::diag_file_at(int token_index) const {
-    if (token_index >= 0 && token_index < static_cast<int>(tokens_.size()) &&
+    if (token_index >= 0 &&
+        token_index < static_cast<int>(core_input_state_.tokens.size()) &&
         shared_lookup_state_.token_files &&
-        tokens_[token_index].file_id != kInvalidFile) {
+        core_input_state_.tokens[token_index].file_id != kInvalidFile) {
         const std::string file = std::string(
             shared_lookup_state_.token_files->lookup(
-                tokens_[token_index].file_id));
+                core_input_state_.tokens[token_index].file_id));
         if (!file.empty()) return arena_.strdup(file);
     }
     return core_input_state_.source_file.c_str();
@@ -1431,12 +1451,12 @@ void Parser::handle_pragma_gcc_visibility(const std::string& args) {
 // ── token cursor helpers ──────────────────────────────────────────────────────
 
 const Token& Parser::cur() const {
-    return tokens_[pos_];
+    return core_input_state_.tokens[core_input_state_.pos];
 }
 
 const Token& Parser::peek(int offset) const {
-    int idx = pos_ + offset;
-    if (idx < 0 || idx >= (int)tokens_.size()) {
+    int idx = core_input_state_.pos + offset;
+    if (idx < 0 || idx >= (int)core_input_state_.tokens.size()) {
         static Token eof = [] {
             Token token{};
             token.kind = TokenKind::EndOfFile;
@@ -1444,29 +1464,35 @@ const Token& Parser::peek(int offset) const {
         }();
         return eof;
     }
-    return tokens_[idx];
+    return core_input_state_.tokens[idx];
 }
 
 const Token& Parser::consume() {
-    const Token& t = tokens_[pos_];
-    if (pos_ + 1 < (int)tokens_.size()) ++pos_;
+    const Token& t = core_input_state_.tokens[core_input_state_.pos];
+    if (core_input_state_.pos + 1 < (int)core_input_state_.tokens.size())
+        ++core_input_state_.pos;
     return t;
 }
 
 bool Parser::at_end() const {
-    if (pos_ < 0 || pos_ >= static_cast<int>(tokens_.size())) return true;
-    return tokens_[pos_].kind == TokenKind::EndOfFile;
+    if (core_input_state_.pos < 0 ||
+        core_input_state_.pos >= static_cast<int>(core_input_state_.tokens.size()))
+        return true;
+    return core_input_state_.tokens[core_input_state_.pos].kind ==
+           TokenKind::EndOfFile;
 }
 
 bool Parser::check(TokenKind k) const {
-    if (pos_ < 0 || pos_ >= static_cast<int>(tokens_.size())) return false;
-    return tokens_[pos_].kind == k;
+    if (core_input_state_.pos < 0 ||
+        core_input_state_.pos >= static_cast<int>(core_input_state_.tokens.size()))
+        return false;
+    return core_input_state_.tokens[core_input_state_.pos].kind == k;
 }
 
 bool Parser::peek_next_is(TokenKind k) const {
-    int idx = pos_ + 1;
-    if (idx >= (int)tokens_.size()) return false;
-    return tokens_[idx].kind == k;
+    int idx = core_input_state_.pos + 1;
+    if (idx >= (int)core_input_state_.tokens.size()) return false;
+    return core_input_state_.tokens[idx].kind == k;
 }
 
 bool Parser::match(TokenKind k) {
@@ -1912,7 +1938,7 @@ Node* Parser::parse() {
 
     while (!at_end()) {
         Node* item = nullptr;
-        int loop_start_pos = pos_;
+        int loop_start_pos = core_input_state_.pos;
         clear_parse_debug_state();
         try {
             item = parse_top_level();
@@ -1920,10 +1946,18 @@ Node* Parser::parse() {
             // Parse error: emit stable diagnostic and try to recover.
             int err_idx = diagnostic_state_.best_parse_failure.active
                               ? diagnostic_state_.best_parse_failure.token_index
-                              : (!at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1));
+                              : (!at_end()
+                                     ? core_input_state_.pos
+                                     : (core_input_state_.pos > 0
+                                            ? core_input_state_.pos - 1
+                                            : -1));
             int err_line = diagnostic_state_.best_parse_failure.active
                                ? diagnostic_state_.best_parse_failure.line
-                               : ((!at_end()) ? cur().line : (pos_ > 0 ? tokens_[pos_-1].line : 1));
+                               : ((!at_end())
+                                      ? cur().line
+                                      : (core_input_state_.pos > 0
+                                             ? core_input_state_.tokens[core_input_state_.pos - 1].line
+                                             : 1));
             int err_col  = diagnostic_state_.best_parse_failure.active
                                ? diagnostic_state_.best_parse_failure.column
                                : ((!at_end()) ? cur().column : 1);
@@ -1940,7 +1974,7 @@ Node* Parser::parse() {
                         diag_file_at(err_idx), err_line, err_col);
                 break;
             }
-            if (pos_ == loop_start_pos && !at_end()) consume();
+            if (core_input_state_.pos == loop_start_pos && !at_end()) consume();
             while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace)) {
                 consume();
             }
@@ -1948,17 +1982,17 @@ Node* Parser::parse() {
             no_progress_steps = 0;
             continue;
         }
-        if (pos_ == loop_start_pos && !at_end()) {
+        if (core_input_state_.pos == loop_start_pos && !at_end()) {
             diagnostic_state_.had_error = true;
             ++no_progress_steps;
             note_parse_failure_message("unexpected token with no parse progress");
             std::string diag = format_best_parse_failure();
             fprintf(stderr, "%s:%d:%d: error: unexpected token '%s'\n",
-                    diag_file_at(pos_), cur().line, cur().column,
+                    diag_file_at(core_input_state_.pos), cur().line, cur().column,
                     std::string(token_spelling(cur())).c_str());
             if (!diag.empty()) {
                 fprintf(stderr, "%s:%d:%d: note: %s\n",
-                        diag_file_at(pos_), cur().line, cur().column,
+                        diag_file_at(core_input_state_.pos), cur().line, cur().column,
                         diag.c_str());
             }
             dump_parse_debug_trace();
@@ -1966,8 +2000,9 @@ Node* Parser::parse() {
             ++diagnostic_state_.parse_error_count;
             if (no_progress_steps >= diagnostic_state_.max_no_progress_steps) {
                 fprintf(stderr, "%s:%d:%d: error: too many errors emitted, stopping now\n",
-                        diag_file_at(!at_end() ? pos_ : static_cast<int>(tokens_.size()) - 1),
-                        !at_end() ? cur().line : tokens_.back().line,
+                        diag_file_at(!at_end() ? core_input_state_.pos
+                                               : static_cast<int>(core_input_state_.tokens.size()) - 1),
+                        !at_end() ? cur().line : core_input_state_.tokens.back().line,
                         !at_end() ? cur().column : 1);
                 break;
             }
@@ -2001,24 +2036,28 @@ Node* Parser::make_node(NodeKind k, int line) {
     n->column = 1;
     n->file = arena_.strdup(core_input_state_.source_file);
     int loc_index = -1;
-    if (pos_ >= 0 && pos_ < static_cast<int>(tokens_.size()) &&
-        tokens_[pos_].line == line) {
-        loc_index = pos_;
-    } else if (pos_ > 0 && pos_ - 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ - 1].line == line) {
-        loc_index = pos_ - 1;
-    } else if (pos_ >= 0 && pos_ < static_cast<int>(tokens_.size())) {
-        loc_index = pos_;
-    } else if (!tokens_.empty()) {
-        loc_index = static_cast<int>(tokens_.size()) - 1;
+    if (core_input_state_.pos >= 0 &&
+        core_input_state_.pos < static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[core_input_state_.pos].line == line) {
+        loc_index = core_input_state_.pos;
+    } else if (core_input_state_.pos > 0 &&
+               core_input_state_.pos - 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos - 1].line == line) {
+        loc_index = core_input_state_.pos - 1;
+    } else if (core_input_state_.pos >= 0 &&
+               core_input_state_.pos < static_cast<int>(core_input_state_.tokens.size())) {
+        loc_index = core_input_state_.pos;
+    } else if (!core_input_state_.tokens.empty()) {
+        loc_index = static_cast<int>(core_input_state_.tokens.size()) - 1;
     }
-    if (loc_index >= 0 && loc_index < static_cast<int>(tokens_.size())) {
-        n->column = tokens_[loc_index].column;
+    if (loc_index >= 0 &&
+        loc_index < static_cast<int>(core_input_state_.tokens.size())) {
+        n->column = core_input_state_.tokens[loc_index].column;
         if (shared_lookup_state_.token_files &&
-            tokens_[loc_index].file_id != kInvalidFile) {
+            core_input_state_.tokens[loc_index].file_id != kInvalidFile) {
             const std::string file = std::string(
                 shared_lookup_state_.token_files->lookup(
-                    tokens_[loc_index].file_id));
+                    core_input_state_.tokens[loc_index].file_id));
             if (!file.empty()) n->file = arena_.strdup(file);
         }
     }

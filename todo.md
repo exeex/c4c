@@ -9,15 +9,14 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Just Finished
 
-- completed the Step 2 `parser_types_template.cpp` packet by routing its
-  remaining `tokens_`, `pos_`, and `arena_` reads directly through
-  `core_input_state_`
+- completed the Step 2 `parser_core.cpp` packet by routing the token cursor
+  helpers, tentative-parse debug hooks, and nearby diagnostic formatting paths
+  through `core_input_state_` instead of the direct `tokens_`/`pos_` aliases
 
 ## Suggested Next
 
-- continue Step 2 with the next narrow core-input alias-removal family in
-  `parser_core.cpp`, starting with the token cursor helpers and nearby
-  file/position diagnostics that still read `tokens_` and `pos_` directly
+- continue Step 2 in `parser_core.cpp` with the remaining qualified-name and
+  token-mutation helper reads that still touch `tokens_` and `pos_` directly
 
 ## Watchouts
 
@@ -29,10 +28,13 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 - the injected-template parse helper now swaps `core_input_state_.tokens` and
   `core_input_state_.pos` directly; keep future core-input alias removals
   behavior-preserving around cursor movement, diagnostics, and rollback
+- the remaining `parser_core.cpp` hits are in the qualified-name helper and
+  token-mutation paths; keep them as the next bounded packet instead of
+  pulling in broader parser logic
 - the proof passed and is captured in `test_after.log`
 
 ## Proof
 
-- `cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_parse_top_level_pragma_pack_preserves_following_decl_dump|cpp_parse_top_level_pragma_gcc_visibility_preserves_following_decl_dump)$'`
+- `cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_parse_top_level_pragma_pack_preserves_following_decl_dump|cpp_parse_top_level_pragma_gcc_visibility_preserves_following_decl_dump)$' | tee test_after.log`
 - Result: passed
 - Log: `test_after.log`
