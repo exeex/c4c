@@ -882,6 +882,7 @@ struct PreparedCallArgumentPlan {
   PreparedRegisterBank value_bank = PreparedRegisterBank::None;
   PreparedStorageEncodingKind source_encoding = PreparedStorageEncodingKind::None;
   std::optional<PreparedValueId> source_value_id;
+  std::optional<PreparedValueId> source_base_value_id;
   std::optional<bir::Value> source_literal;
   std::optional<std::string> source_symbol_name;
   std::optional<std::string> source_register_name;

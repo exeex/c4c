@@ -1727,6 +1727,10 @@ int check_call_wrapper_kind_contract() {
 int check_call_argument_source_shape_contract() {
   const auto prepared = prepare_module(make_call_argument_source_shape_module());
   const auto* call_plans = find_call_plans_function(prepared, "call_argument_source_shape_contract");
+  const auto* storage_plan =
+      find_storage_plan_function(prepared, "call_argument_source_shape_contract");
+  const auto* loaded_ptr =
+      storage_plan == nullptr ? nullptr : find_storage_value(prepared, *storage_plan, "loaded.ptr");
   if (call_plans == nullptr || call_plans->calls.size() != 1) {
     return fail("call-argument source-shape contract: call_plans no longer publish the pointer call");
   }
@@ -1745,11 +1749,14 @@ int check_call_argument_source_shape_contract() {
 
   const auto& computed_arg = call_plan.arguments[1];
   if (computed_arg.source_encoding != prepare::PreparedStorageEncodingKind::ComputedAddress ||
+      !computed_arg.source_base_value_id.has_value() ||
+      loaded_ptr == nullptr || *computed_arg.source_base_value_id != loaded_ptr->value_id ||
       !computed_arg.source_base_value_name.has_value() ||
       prepare::prepared_value_name(prepared.names, *computed_arg.source_base_value_name) !=
           "loaded.ptr" ||
       computed_arg.source_pointer_byte_delta != std::optional<std::int64_t>{4}) {
-    return fail("call-argument source-shape contract: call_plans lost computed-address authority");
+    return fail(
+        "call-argument source-shape contract: call_plans lost computed-address base identity authority");
   }
 
   return 0;

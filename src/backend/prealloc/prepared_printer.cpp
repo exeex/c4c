@@ -163,6 +163,9 @@ void append_call_arg_source_summary(std::ostringstream& out,
     out << ":" << render_value(*arg.source_literal);
   } else if (arg.source_base_value_name.has_value()) {
     out << ":" << maybe_value_name(names, *arg.source_base_value_name);
+    if (arg.source_base_value_id.has_value()) {
+      out << "#" << *arg.source_base_value_id;
+    }
     if (arg.source_pointer_byte_delta.has_value()) {
       out << "+" << *arg.source_pointer_byte_delta;
     }
@@ -759,6 +762,9 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
             << " source_encoding=" << storage_encoding_kind_name(arg.source_encoding);
         if (arg.source_value_id.has_value()) {
           out << " source_value_id=" << *arg.source_value_id;
+        }
+        if (arg.source_base_value_id.has_value()) {
+          out << " source_base_value_id=" << *arg.source_base_value_id;
         }
         if (arg.source_literal.has_value()) {
           out << " source_literal=" << render_value(*arg.source_literal);

@@ -648,6 +648,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
                                 : register_bank_from_type(call->arg_types[arg_index]),
               .source_encoding = PreparedStorageEncodingKind::None,
               .source_value_id = std::nullopt,
+              .source_base_value_id = std::nullopt,
               .source_literal = std::nullopt,
               .source_symbol_name = std::nullopt,
               .source_register_name = std::nullopt,
@@ -686,6 +687,20 @@ void populate_call_plans(PreparedBirModule& prepared) {
                 }
                 arg_plan.source_base_value_name = home->pointer_base_value_name;
                 arg_plan.source_pointer_byte_delta = home->pointer_byte_delta;
+                if (home->pointer_base_value_name.has_value()) {
+                  if (const auto* base_home =
+                          find_prepared_value_home(*value_locations, *home->pointer_base_value_name);
+                      base_home != nullptr) {
+                    arg_plan.source_base_value_id = base_home->value_id;
+                  } else if (regalloc_function != nullptr) {
+                    if (const auto* base_regalloc_value =
+                            find_regalloc_value_by_name(*regalloc_function,
+                                                        *home->pointer_base_value_name);
+                        base_regalloc_value != nullptr) {
+                      arg_plan.source_base_value_id = base_regalloc_value->value_id;
+                    }
+                  }
+                }
               }
               if (regalloc_function != nullptr) {
                 if (const auto* regalloc_value =

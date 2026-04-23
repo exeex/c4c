@@ -1239,13 +1239,28 @@ int main() {
 
   const auto source_shape_prepared = prepare_call_argument_source_shape_dump_module();
   const std::string source_shape_dump = prepare::print(source_shape_prepared);
+  const auto* source_shape_storage =
+      find_storage_plan_function(source_shape_prepared, "call_argument_source_shape_dump_contract");
+  const auto* loaded_ptr =
+      source_shape_storage == nullptr
+          ? nullptr
+          : find_storage_value(source_shape_prepared, *source_shape_storage, "loaded.ptr");
+  if (loaded_ptr == nullptr) {
+    std::cerr << "missing loaded.ptr storage publication\n";
+    return EXIT_FAILURE;
+  }
+  const std::string computed_summary =
+      "arg1 bank=gpr from=computed_address:loaded.ptr#" + std::to_string(loaded_ptr->value_id) + "+4";
+  const std::string computed_detail_id =
+      "source_base_value_id=" + std::to_string(loaded_ptr->value_id);
+  const std::string computed_detail_shape = "source_base=loaded.ptr source_delta=4";
   if (!expect_contains(source_shape_dump,
                        "arg0 bank=gpr from=symbol_address:@extern_data",
                        "symbol-address argument summary")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(source_shape_dump,
-                       "arg1 bank=gpr from=computed_address:loaded.ptr+4",
+                       computed_summary,
                        "computed-address argument summary")) {
     return EXIT_FAILURE;
   }
@@ -1265,7 +1280,12 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(source_shape_dump,
-                       "source_base=loaded.ptr source_delta=4",
+                       computed_detail_id,
+                       "computed-address argument detail id")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(source_shape_dump,
+                       computed_detail_shape,
                        "computed-address argument detail payload")) {
     return EXIT_FAILURE;
   }
