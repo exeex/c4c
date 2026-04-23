@@ -9,16 +9,15 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Just Finished
 
-- completed the Step 2 `parser_types_struct.cpp` bundle-routing packet by
-  moving the read-only record-access, member-lookahead, constructor/destructor
-  probe, specialization lookahead, and parameter attribute windows onto
-  `core_input_state_` access while leaving the intentional save/restore and
-  rollback paths unchanged
+- completed the Step 2 `parser_declarations.cpp` bundle-routing packet by
+  moving the read-only parser-input lookahead windows onto `core_input_state_`
+  access while leaving the intentional save/restore, owner rewind, and token
+  snapshot paths unchanged
 
 ## Suggested Next
 
-- move the next Step 2 bundle-routing packet to the remaining parser
-  implementation file with read-only `pos_` / `tokens_` layout probes, likely
+- continue Step 2 bundle-routing in the remaining parser implementation file
+  with read-only `pos_` / `tokens_` layout probes, likely
   `parser_types_base.cpp`, while continuing to leave real save/restore and
   injected-token mechanics for Step 3
 
@@ -40,6 +39,6 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Proof
 
-- `cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_positive_sema_access_labels_parse_cpp|cpp_positive_sema_access_labels_treated_public_runtime_cpp|cpp_positive_sema_friend_access_parse_cpp|cpp_positive_sema_keyword_friend_parse_cpp|cpp_positive_sema_class_specific_new_delete_parse_cpp|cpp_positive_sema_record_body_context_parse_cpp|cpp_positive_sema_record_body_context_teardown_parse_cpp|cpp_positive_sema_record_member_dispatch_parse_cpp|cpp_positive_sema_record_member_entry_parse_cpp|cpp_positive_sema_record_member_method_field_parse_cpp|cpp_positive_sema_record_member_special_dispatch_parse_cpp|cpp_positive_sema_record_member_special_member_parse_cpp|cpp_positive_sema_record_member_type_dispatch_parse_cpp)$' | tee test_after.log`
-- Result: passed; 14/14 tests passed in the delegated subset
+- `cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_positive_sema_cpp11_attr_template_decl_parse_cpp|cpp_positive_sema_qualified_namespaced_out_of_class_method_context_frontend_cpp|cpp_positive_sema_out_of_class_member_owner_scope_parse_cpp|cpp_positive_sema_operator_decl_shift_qualified_parse_cpp|cpp_positive_sema_qualified_record_partial_specialization_parse_cpp|cpp_positive_sema_record_decl_attrs_prelude_parse_cpp|cpp_positive_sema_record_definition_setup_parse_cpp|cpp_positive_sema_record_forward_specialization_decl_parse_cpp|cpp_positive_sema_record_tag_setup_parse_cpp|cpp_positive_sema_class_specific_new_delete_parse_cpp|cpp_positive_sema_constructor_basic_cpp|cpp_positive_sema_default_ctor_basic_cpp|cpp_positive_sema_destructor_basic_cpp|cpp_positive_sema_destructor_member_basic_cpp)$' | tee test_after.log`
+- Result: passed; 15/15 tests passed in the delegated subset
 - Log: `test_after.log`

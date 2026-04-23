@@ -1003,24 +1003,30 @@ Node* Parser::parse_top_level() {
     auto skip_cpp11_attrs_only = [&]() -> bool {
         bool consumed_any = false;
         while (check(TokenKind::LBracket) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+               core_input_state_.pos + 1 <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                   TokenKind::LBracket) {
             consumed_any = true;
             consume();
             consume();
             int depth = 1;
             while (!at_end() && depth > 0) {
                 if (check(TokenKind::LBracket) &&
-                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+                    core_input_state_.pos + 1 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::LBracket) {
                     consume();
                     consume();
                     ++depth;
                     continue;
                 }
                 if (check(TokenKind::RBracket) &&
-                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::RBracket) {
+                    core_input_state_.pos + 1 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::RBracket) {
                     consume();
                     consume();
                     --depth;
@@ -1121,16 +1127,20 @@ Node* Parser::parse_top_level() {
                 try {
                     alias_ts = parse_type_name();
                     if (!alias_ts.tpl_struct_origin &&
-                        alias_type_pos < pos_ &&
-                        tokens_[alias_type_pos].kind == TokenKind::KwTypename) {
+                        alias_type_pos < core_input_state_.pos &&
+                        core_input_state_.tokens[alias_type_pos].kind ==
+                            TokenKind::KwTypename) {
                         auto skip_balanced_template_args = [&](int* pos) -> bool {
-                            if (!pos || *pos < 0 || *pos >= static_cast<int>(tokens_.size()) ||
-                                tokens_[*pos].kind != TokenKind::Less) {
+                            if (!pos ||
+                                *pos < 0 ||
+                                *pos >=
+                                    static_cast<int>(core_input_state_.tokens.size()) ||
+                                core_input_state_.tokens[*pos].kind != TokenKind::Less) {
                                 return false;
                             }
                             int depth = 0;
-                            while (*pos < static_cast<int>(tokens_.size())) {
-                                const TokenKind kind = tokens_[*pos].kind;
+                            while (*pos < static_cast<int>(core_input_state_.tokens.size())) {
+                                const TokenKind kind = core_input_state_.tokens[*pos].kind;
                                 if (kind == TokenKind::Less) {
                                     ++depth;
                                     ++(*pos);
@@ -1154,7 +1164,9 @@ Node* Parser::parse_top_level() {
                         };
                         auto join_token_lexemes = [&](int start, int end) -> std::string {
                             std::string out;
-                            for (int i = start; i < end; ++i) out += token_spelling(tokens_[i]);
+                            for (int i = start; i < end; ++i) {
+                                out += token_spelling(core_input_state_.tokens[i]);
+                            }
                             return out;
                         };
                         auto split_template_arg_token_ranges =
@@ -1166,7 +1178,7 @@ Node* Parser::parse_top_level() {
                             int bracket_depth = 0;
                             int brace_depth = 0;
                             for (int i = start; i < end; ++i) {
-                                switch (tokens_[i].kind) {
+                                switch (core_input_state_.tokens[i].kind) {
                                     case TokenKind::Less: ++angle_depth; break;
                                     case TokenKind::Greater:
                                         if (angle_depth > 0) --angle_depth;
@@ -1203,14 +1215,16 @@ Node* Parser::parse_top_level() {
                         std::function<std::string(int, int)> encode_template_arg_ref_tokens =
                             [&](int start, int end) -> std::string {
                             while (start < end &&
-                                   (tokens_[start].kind == TokenKind::KwTypename ||
-                                    tokens_[start].kind == TokenKind::KwClass)) {
+                                   (core_input_state_.tokens[start].kind ==
+                                        TokenKind::KwTypename ||
+                                    core_input_state_.tokens[start].kind ==
+                                        TokenKind::KwClass)) {
                                 ++start;
                             }
                             if (start >= end) return {};
 
                             for (int i = start; i < end; ++i) {
-                                if (tokens_[i].kind != TokenKind::Less) continue;
+                                if (core_input_state_.tokens[i].kind != TokenKind::Less) continue;
                                 int probe = i;
                                 if (!skip_balanced_template_args(&probe) || probe > end) {
                                     break;
@@ -1230,68 +1244,83 @@ Node* Parser::parse_top_level() {
                                 return "@" + owner + ":" + inner_refs;
                             }
 
-                            if (tokens_[start].kind == TokenKind::IntLit ||
-                                tokens_[start].kind == TokenKind::FloatLit ||
-                                tokens_[start].kind == TokenKind::CharLit ||
-                                tokens_[start].kind == TokenKind::KwTrue ||
-                                tokens_[start].kind == TokenKind::KwFalse) {
+                            if (core_input_state_.tokens[start].kind == TokenKind::IntLit ||
+                                core_input_state_.tokens[start].kind == TokenKind::FloatLit ||
+                                core_input_state_.tokens[start].kind == TokenKind::CharLit ||
+                                core_input_state_.tokens[start].kind == TokenKind::KwTrue ||
+                                core_input_state_.tokens[start].kind == TokenKind::KwFalse) {
                                 return join_token_lexemes(start, end);
                             }
 
                             std::string prefix;
                             while (start < end &&
-                                   (tokens_[start].kind == TokenKind::KwConst ||
-                                    tokens_[start].kind == TokenKind::KwVolatile)) {
-                                if (tokens_[start].kind == TokenKind::KwConst)
+                                   (core_input_state_.tokens[start].kind == TokenKind::KwConst ||
+                                    core_input_state_.tokens[start].kind ==
+                                        TokenKind::KwVolatile)) {
+                                if (core_input_state_.tokens[start].kind == TokenKind::KwConst)
                                     prefix += "const_";
-                                if (tokens_[start].kind == TokenKind::KwVolatile)
+                                if (core_input_state_.tokens[start].kind ==
+                                    TokenKind::KwVolatile)
                                     prefix += "volatile_";
                                 ++start;
                             }
 
                             std::string base;
                             while (start < end &&
-                                   (tokens_[start].kind == TokenKind::Identifier ||
-                                    tokens_[start].kind == TokenKind::ColonColon)) {
-                                base += token_spelling(tokens_[start]);
+                                   (core_input_state_.tokens[start].kind ==
+                                        TokenKind::Identifier ||
+                                    core_input_state_.tokens[start].kind ==
+                                        TokenKind::ColonColon)) {
+                                base += token_spelling(core_input_state_.tokens[start]);
                                 ++start;
                             }
                             if (base.empty()) return join_token_lexemes(start, end);
 
                             std::string suffix;
                             for (int i = start; i < end; ++i) {
-                                if (tokens_[i].kind == TokenKind::Star) suffix += "_ptr";
-                                if (tokens_[i].kind == TokenKind::Amp) suffix += "_ref";
-                                if (tokens_[i].kind == TokenKind::AmpAmp) suffix += "_rref";
+                                if (core_input_state_.tokens[i].kind == TokenKind::Star)
+                                    suffix += "_ptr";
+                                if (core_input_state_.tokens[i].kind == TokenKind::Amp)
+                                    suffix += "_ref";
+                                if (core_input_state_.tokens[i].kind == TokenKind::AmpAmp)
+                                    suffix += "_rref";
                             }
                             return prefix + base + suffix;
                         };
 
                         int probe = alias_type_pos + 1;  // skip typename
-                        if (probe < pos_ && tokens_[probe].kind == TokenKind::ColonColon)
+                        if (probe < core_input_state_.pos &&
+                            core_input_state_.tokens[probe].kind ==
+                                TokenKind::ColonColon)
                             ++probe;
                         std::vector<std::string> qualifier_segments;
                         int owner_template_arg_start = -1;
                         int owner_template_arg_end = -1;
                         std::string member_name;
-                        while (probe < pos_) {
-                            if (tokens_[probe].kind != TokenKind::Identifier) break;
+                        while (probe < core_input_state_.pos) {
+                            if (core_input_state_.tokens[probe].kind != TokenKind::Identifier)
+                                break;
                             const std::string segment =
-                                std::string(token_spelling(tokens_[probe]));
+                                std::string(token_spelling(core_input_state_.tokens[probe]));
                             ++probe;
-                            if (probe < pos_ && tokens_[probe].kind == TokenKind::Less) {
+                            if (probe < core_input_state_.pos &&
+                                core_input_state_.tokens[probe].kind == TokenKind::Less) {
                                 owner_template_arg_start = probe;
                                 if (!skip_balanced_template_args(&probe)) break;
                                 owner_template_arg_end = probe;
                             }
-                            if (probe < pos_ && tokens_[probe].kind == TokenKind::ColonColon) {
+                            if (probe < core_input_state_.pos &&
+                                core_input_state_.tokens[probe].kind ==
+                                    TokenKind::ColonColon) {
                                 ++probe;
-                                if (probe < pos_ &&
-                                    tokens_[probe].kind == TokenKind::KwTemplate) {
+                                if (probe < core_input_state_.pos &&
+                                    core_input_state_.tokens[probe].kind ==
+                                        TokenKind::KwTemplate) {
                                     ++probe;
                                 }
-                                if (probe < pos_ &&
-                                    tokens_[probe].kind == TokenKind::Identifier) {
+                                if (probe < core_input_state_.pos &&
+                                    core_input_state_.tokens[probe].kind ==
+                                        TokenKind::Identifier) {
                                     qualifier_segments.push_back(segment);
                                     continue;
                                 }
@@ -1923,14 +1952,15 @@ Node* Parser::parse_top_level() {
 
         auto probe_skip_optional_template_id = [&](int* probe_pos) -> bool {
             if (!probe_pos) return false;
-            if (*probe_pos >= static_cast<int>(tokens_.size()) ||
-                tokens_[*probe_pos].kind != TokenKind::Less) {
+            if (*probe_pos >= static_cast<int>(core_input_state_.tokens.size()) ||
+                core_input_state_.tokens[*probe_pos].kind != TokenKind::Less) {
                 return true;
             }
             int depth = 1;
             ++(*probe_pos);
-            while (*probe_pos < static_cast<int>(tokens_.size()) && depth > 0) {
-                const TokenKind kind = tokens_[*probe_pos].kind;
+            while (*probe_pos < static_cast<int>(core_input_state_.tokens.size()) &&
+                   depth > 0) {
+                const TokenKind kind = core_input_state_.tokens[*probe_pos].kind;
                 if (kind == TokenKind::Less) {
                     ++depth;
                     ++(*probe_pos);
@@ -1970,27 +2000,28 @@ Node* Parser::parse_top_level() {
                 if (out_is_ctor) *out_is_ctor = false;
 
                 int probe = saved_special_member_pos;
-                if (probe < static_cast<int>(tokens_.size()) &&
-                    tokens_[probe].kind == TokenKind::ColonColon) {
+                if (probe < static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[probe].kind == TokenKind::ColonColon) {
                     ++probe;
                 }
-                if (probe >= static_cast<int>(tokens_.size()) ||
-                    tokens_[probe].kind != TokenKind::Identifier) {
+                if (probe >= static_cast<int>(core_input_state_.tokens.size()) ||
+                    core_input_state_.tokens[probe].kind != TokenKind::Identifier) {
                     return false;
                 }
 
                 std::string owner;
                 while (true) {
                     const std::string seg =
-                        std::string(token_spelling(tokens_[probe]));
+                        std::string(token_spelling(core_input_state_.tokens[probe]));
                     ++probe;
                     if (!probe_skip_optional_template_id(&probe)) {
                         return false;
                     }
 
-                    if (probe + 1 < static_cast<int>(tokens_.size()) &&
-                        tokens_[probe].kind == TokenKind::ColonColon &&
-                        tokens_[probe + 1].kind == TokenKind::KwOperator) {
+                    if (probe + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+                        core_input_state_.tokens[probe].kind == TokenKind::ColonColon &&
+                        core_input_state_.tokens[probe + 1].kind ==
+                            TokenKind::KwOperator) {
                         if (!owner.empty()) owner += "::";
                         owner += seg;
                         if (out_owner) *out_owner = owner;
@@ -1999,15 +2030,19 @@ Node* Parser::parse_top_level() {
                         return true;
                     }
 
-                    if (probe + 1 < static_cast<int>(tokens_.size()) &&
-                        tokens_[probe].kind == TokenKind::ColonColon &&
-                        tokens_[probe + 1].kind == TokenKind::Identifier) {
+                    if (probe + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+                        core_input_state_.tokens[probe].kind == TokenKind::ColonColon &&
+                        core_input_state_.tokens[probe + 1].kind ==
+                            TokenKind::Identifier) {
                         const std::string next_name =
-                            std::string(token_spelling(tokens_[probe + 1]));
+                            std::string(
+                                token_spelling(core_input_state_.tokens[probe + 1]));
                         int terminal_probe = probe + 2;
                         if (next_name == seg &&
-                            terminal_probe < static_cast<int>(tokens_.size()) &&
-                            tokens_[terminal_probe].kind == TokenKind::LParen) {
+                            terminal_probe <
+                                static_cast<int>(core_input_state_.tokens.size()) &&
+                            core_input_state_.tokens[terminal_probe].kind ==
+                                TokenKind::LParen) {
                             if (!owner.empty()) owner += "::";
                             owner += seg;
                             if (out_owner) *out_owner = owner;
@@ -2047,8 +2082,10 @@ Node* Parser::parse_top_level() {
                         check(TokenKind::ColonColon) &&
                         peek(1).kind == TokenKind::Identifier &&
                         token_spelling(peek(1)) == seg &&
-                        pos_ + 2 < static_cast<int>(tokens_.size()) &&
-                        tokens_[pos_ + 2].kind == TokenKind::LParen) {
+                        core_input_state_.pos + 2 <
+                            static_cast<int>(core_input_state_.tokens.size()) &&
+                        core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                            TokenKind::LParen) {
                         return true;
                     }
 
@@ -2180,15 +2217,19 @@ Node* Parser::parse_top_level() {
                 fn->body = parse_block();
                 active_context_state_.parsing_top_level_context = saved_top;
             } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                       tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+                       core_input_state_.pos + 1 <
+                           static_cast<int>(core_input_state_.tokens.size()) &&
+                       core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                           TokenKind::KwDelete) {
                 consume();
                 consume();
                 fn->is_deleted = true;
                 match(TokenKind::Semi);
             } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                       tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+                       core_input_state_.pos + 1 <
+                           static_cast<int>(core_input_state_.tokens.size()) &&
+                       core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                           TokenKind::KwDefault) {
                 consume();
                 consume();
                 fn->is_defaulted = true;
@@ -2315,15 +2356,19 @@ Node* Parser::parse_top_level() {
                     fn->body = parse_block();
                     active_context_state_.parsing_top_level_context = saved_top;
                 } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                           pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                           tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+                           core_input_state_.pos + 1 <
+                               static_cast<int>(core_input_state_.tokens.size()) &&
+                           core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                               TokenKind::KwDelete) {
                     consume();
                     consume();
                     fn->is_deleted = true;
                     match(TokenKind::Semi);
                 } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                           pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                           tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+                           core_input_state_.pos + 1 <
+                               static_cast<int>(core_input_state_.tokens.size()) &&
+                           core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                               TokenKind::KwDefault) {
                     consume();
                     consume();
                     fn->is_defaulted = true;
@@ -2769,9 +2814,13 @@ top_level_base_ready:
             } else if (check(TokenKind::IntLit) || check(TokenKind::CharLit) ||
                        (is_cpp_mode() &&
                         (check(TokenKind::KwTrue) || check(TokenKind::KwFalse))) ||
-                       (check(TokenKind::Minus) && pos_ + 1 < (int)tokens_.size() &&
-                        (tokens_[pos_ + 1].kind == TokenKind::IntLit ||
-                         tokens_[pos_ + 1].kind == TokenKind::CharLit))) {
+                       (check(TokenKind::Minus) &&
+                        core_input_state_.pos + 1 <
+                            static_cast<int>(core_input_state_.tokens.size()) &&
+                        (core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                             TokenKind::IntLit ||
+                         core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                             TokenKind::CharLit))) {
                 // NTTP value
                 long long sign = 1;
                 if (match(TokenKind::Minus)) sign = -1;
@@ -2813,35 +2862,40 @@ top_level_base_ready:
         auto tail_is_attr_or_asm_only = [&](int begin, int end) -> bool {
             int i = begin;
             auto skip_parens = [&](int start) -> int {
-                if (start >= end || tokens_[start].kind != TokenKind::LParen) return -1;
+                if (start >= end ||
+                    core_input_state_.tokens[start].kind != TokenKind::LParen) {
+                    return -1;
+                }
                 int depth = 0;
                 int j = start;
                 while (j < end) {
-                    if (tokens_[j].kind == TokenKind::LParen) ++depth;
-                    else if (tokens_[j].kind == TokenKind::RParen && --depth == 0) return j + 1;
+                    if (core_input_state_.tokens[j].kind == TokenKind::LParen) ++depth;
+                    else if (core_input_state_.tokens[j].kind == TokenKind::RParen &&
+                             --depth == 0)
+                        return j + 1;
                     ++j;
                 }
                 return -1;
             };
             auto skip_cpp11_attrs = [&](int start) -> int {
                 if (start + 1 >= end ||
-                    tokens_[start].kind != TokenKind::LBracket ||
-                    tokens_[start + 1].kind != TokenKind::LBracket) {
+                    core_input_state_.tokens[start].kind != TokenKind::LBracket ||
+                    core_input_state_.tokens[start + 1].kind != TokenKind::LBracket) {
                     return -1;
                 }
                 int depth = 1;
                 int j = start + 2;
                 while (j < end) {
                     if (j + 1 < end &&
-                        tokens_[j].kind == TokenKind::LBracket &&
-                        tokens_[j + 1].kind == TokenKind::LBracket) {
+                        core_input_state_.tokens[j].kind == TokenKind::LBracket &&
+                        core_input_state_.tokens[j + 1].kind == TokenKind::LBracket) {
                         ++depth;
                         j += 2;
                         continue;
                     }
                     if (j + 1 < end &&
-                        tokens_[j].kind == TokenKind::RBracket &&
-                        tokens_[j + 1].kind == TokenKind::RBracket) {
+                        core_input_state_.tokens[j].kind == TokenKind::RBracket &&
+                        core_input_state_.tokens[j + 1].kind == TokenKind::RBracket) {
                         --depth;
                         j += 2;
                         if (depth == 0) return j;
@@ -2853,33 +2907,36 @@ top_level_base_ready:
             };
 
             while (i < end) {
-                if (tokens_[i].kind == TokenKind::KwAttribute) {
+                if (core_input_state_.tokens[i].kind == TokenKind::KwAttribute) {
                     ++i;
                     i = skip_parens(i);
-                    if (i < 0 || i >= end || tokens_[i].kind != TokenKind::LParen) return false;
+                    if (i < 0 || i >= end ||
+                        core_input_state_.tokens[i].kind != TokenKind::LParen) {
+                        return false;
+                    }
                     i = skip_parens(i);
                     if (i < 0) return false;
                     continue;
                 }
-                if (tokens_[i].kind == TokenKind::LBracket) {
+                if (core_input_state_.tokens[i].kind == TokenKind::LBracket) {
                     i = skip_cpp11_attrs(i);
                     if (i < 0) return false;
                     continue;
                 }
-                if (tokens_[i].kind == TokenKind::KwAsm) {
+                if (core_input_state_.tokens[i].kind == TokenKind::KwAsm) {
                     ++i;
                     while (i < end &&
-                           (tokens_[i].kind == TokenKind::KwVolatile ||
-                            tokens_[i].kind == TokenKind::KwInline ||
-                            tokens_[i].kind == TokenKind::KwGoto)) {
+                           (core_input_state_.tokens[i].kind == TokenKind::KwVolatile ||
+                            core_input_state_.tokens[i].kind == TokenKind::KwInline ||
+                            core_input_state_.tokens[i].kind == TokenKind::KwGoto)) {
                         ++i;
                     }
                     i = skip_parens(i);
                     if (i < 0) return false;
                     continue;
                 }
-                if (tokens_[i].kind == TokenKind::KwExtension ||
-                    tokens_[i].kind == TokenKind::KwNoreturn) {
+                if (core_input_state_.tokens[i].kind == TokenKind::KwExtension ||
+                    core_input_state_.tokens[i].kind == TokenKind::KwNoreturn) {
                     ++i;
                     continue;
                 }
