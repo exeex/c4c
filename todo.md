@@ -9,25 +9,24 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: taught parser declarator parsing to surface the parsed
-  declarator `TextId` alongside the spelled name so declaration registration
-  paths can keep namespace identity from the token stream instead of
-  recovering it from rendered strings later
-- threaded that declarator `TextId` through the remaining top-level/local
-  typedef and declaration bridge sites in `parser_declarations.cpp`, so
-  `qualify_name[_arena]` and typedef/function/global registration stop
-  immediately round-tripping simple identifiers through fallback spelling when
-  the parser already has the original token identity
+- Step 2 packet: replaced the remaining incomplete-tag/self-reference
+  checks in `parser_declarations.cpp` with a shared `TextId`-aware visible
+  type-name helper so the parser asks namespace lookup to compare the current
+  struct tag against the spelled tag instead of qualifying both spellings by
+  hand
+- kept the change inside parser namespace lookup cleanup and removed the last
+  `qualify_name(current_tag/spelled_tag)`-style comparison path from the two
+  declaration parsers that gate incomplete object-type handling
 
 ## Suggested Next
 
 - if Step 2 continues, audit the remaining parser namespace compatibility
-  helpers that still synthesize string spellings first, especially the
-  `qualify_name` call sites used for incomplete-tag/self-reference checks and
-  any parser declaration paths that still only have spelled strings because no
-  parsed `TextId` is being carried yet
+  helpers that still synthesize string spellings first, especially any
+  declaration-side name checks that still rely on rendered strings instead of
+  `TextId`-aware visible-type lookup
 - keep the route inside parser namespace lookup and avoid widening into
-  unrelated declarator parsing, lexical-scope, binding-table, or backend cleanup
+  unrelated declarator parsing, lexical-scope, binding-table, or backend
+  cleanup
 
 ## Watchouts
 

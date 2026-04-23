@@ -152,6 +152,15 @@ bool is_internal_typedef_name(const char* name) {
     return name && name[0] == '_' && name[1] == '_';
 }
 
+bool is_same_visible_type_name(Parser& parser, TextId lhs_text_id,
+                               std::string_view lhs, TextId rhs_text_id,
+                               std::string_view rhs) {
+    if (lhs.empty() || rhs.empty()) return false;
+    if (lhs == rhs) return true;
+    return parser.resolve_visible_type_name(lhs_text_id, lhs) ==
+           parser.resolve_visible_type_name(rhs_text_id, rhs);
+}
+
 bool is_cpp20_requires_clause_record_decl_boundary(TokenKind kind) {
     switch (kind) {
         case TokenKind::KwStruct:
@@ -610,17 +619,10 @@ Node* Parser::parse_local_decl() {
         if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
         if (!ts.tag) return true;
         if (is_cpp_mode() && !active_context_state_.current_struct_tag.empty()) {
-            const std::string current_tag(current_struct_tag_text());
-            const std::string qualified_current_tag = qualify_name(current_tag);
-            const std::string spelled_tag = ts.tag;
-            const std::string qualified_spelled_tag = qualify_name(spelled_tag);
-            if (current_tag == spelled_tag ||
-                current_tag == qualified_spelled_tag ||
-                qualified_current_tag == spelled_tag ||
-                qualified_current_tag == qualified_spelled_tag)
-                return false;
-            if (resolve_visible_type_name(spelled_tag) == current_tag ||
-                resolve_visible_type_name(spelled_tag) == qualified_current_tag)
+            if (is_same_visible_type_name(
+                    *this, active_context_state_.current_struct_tag_text_id,
+                    current_struct_tag_text(), find_parser_text_id(ts.tag),
+                    ts.tag))
                 return false;
         }
         auto it = definition_state_.struct_tag_def_map.find(ts.tag);
@@ -2526,17 +2528,10 @@ top_level_base_ready:
         if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
         if (!ts.tag) return true;
         if (is_cpp_mode() && !active_context_state_.current_struct_tag.empty()) {
-            const std::string current_tag(current_struct_tag_text());
-            const std::string qualified_current_tag = qualify_name(current_tag);
-            const std::string spelled_tag = ts.tag;
-            const std::string qualified_spelled_tag = qualify_name(spelled_tag);
-            if (current_tag == spelled_tag ||
-                current_tag == qualified_spelled_tag ||
-                qualified_current_tag == spelled_tag ||
-                qualified_current_tag == qualified_spelled_tag)
-                return false;
-            if (resolve_visible_type_name(spelled_tag) == current_tag ||
-                resolve_visible_type_name(spelled_tag) == qualified_current_tag)
+            if (is_same_visible_type_name(
+                    *this, active_context_state_.current_struct_tag_text_id,
+                    current_struct_tag_text(), find_parser_text_id(ts.tag),
+                    ts.tag))
                 return false;
         }
         auto it = definition_state_.struct_tag_def_map.find(ts.tag);
