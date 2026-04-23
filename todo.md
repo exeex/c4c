@@ -3,41 +3,39 @@
 Status: Active
 Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implementation_for_phoenix_rebuild.md
 Source Plan Path: plan.md
-Current Step ID: 3.3.2
-Current Step Title: Rehome Prepared Bounded Multi-Defined Debug Helpers Behind Owned Adapters
-Plan Review Counter: 3 / 6
+Current Step ID: 3.3.3
+Current Step Title: Finish The Remaining Stack And Local-Slot Observational Holdouts
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed step 3.3.2 by moving the remaining bounded multi-defined pointer and
-name bookkeeping helper cluster out of `x86_codegen.hpp` and into the owning
-`prepared/prepared_fast_path_operands.*` seam, including the symbol-name
-tracking helper, the bounded frame-offset lookup wrapper, the pointer-argument
-lowering path, and the last bounded value-home lookup helper used by the
-multi-defined call-lane renderer.
+Completed step 3.3.3 for the authoritative named stack-offset query path used
+by `prepared_fast_path_operands.cpp` by moving
+`find_prepared_authoritative_named_stack_offset_if_supported` out of
+`x86_codegen.hpp` and into `lowering/frame_lowering.*`, leaving only a forward
+declaration in the transitional header for its remaining inline caller.
 
 ## Suggested Next
 
-If step 3.3.2 remains open, trim the remaining `prepared_fast_path_operands.cpp`
-back-edge to `x86_codegen.hpp` by isolating the still-shared ABI/register or
-authoritative-stack-offset utilities behind a smaller prepared-facing surface;
-otherwise advance to the next planned 3.3.x packet.
+Continue step 3.3.3 by moving the next stack/local-slot observational holdout
+behind lowering-owned seams, likely the remaining prepared named stack-address
+query/render path that still keeps `x86_codegen.hpp` in the include chain for
+prepared fast-path helpers.
 
 ## Watchouts
 
-- `x86_codegen.hpp` no longer owns the bounded-specific pointer/name bookkeeping
-  helpers, but `prepared_fast_path_operands.cpp` still includes it for shared
-  generic helpers such as `find_prepared_authoritative_named_stack_offset_if_supported`,
-  ABI register selection, register narrowing, and the canonical call-bundle
-  handoff message.
-- `find_prepared_authoritative_named_stack_offset_if_supported` is still shared
-  with `lowering/frame_lowering.cpp`, so shrinking the remaining include edge
-  further is a shared-surface cleanup, not another bounded-helper extraction.
+- `prepared_fast_path_operands.cpp` still includes `x86_codegen.hpp` for other
+  shared helpers such as ABI register selection, register narrowing, prepared
+  stack-address rendering, and the canonical call-bundle handoff message.
+- `x86_codegen.hpp` still carries a forward declaration for the moved resolver
+  because an inline prepared stack-address helper there still calls it; fully
+  removing that declaration will require moving or re-seaming that inline path
+  as a follow-on 3.3.3 packet.
 
 ## Proof
 
-Step 3.3.2 bounded multi-defined pointer/name helper extraction packet on
+Step 3.3.3 authoritative named stack-offset seam packet on
 2026-04-23:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`

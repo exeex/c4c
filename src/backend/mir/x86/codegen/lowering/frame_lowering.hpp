@@ -9,6 +9,16 @@ struct PreparedNamedHomeSelection {
   std::optional<std::size_t> frame_offset;
 };
 
+std::optional<std::size_t> find_prepared_authoritative_named_stack_offset_if_supported(
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
+    c4c::FunctionNameId function_name,
+    std::string_view value_name,
+    std::unordered_set<std::string_view>* visited_names);
+
 std::optional<std::size_t> find_prepared_authoritative_value_stack_offset_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,

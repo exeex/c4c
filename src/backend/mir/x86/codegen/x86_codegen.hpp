@@ -493,7 +493,7 @@ inline std::optional<std::size_t> find_prepared_fixed_permanent_named_stack_offs
   return best_frame_offset;
 }
 
-inline std::optional<std::size_t> find_prepared_authoritative_named_stack_offset_if_supported(
+std::optional<std::size_t> find_prepared_authoritative_named_stack_offset_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
@@ -501,139 +501,7 @@ inline std::optional<std::size_t> find_prepared_authoritative_named_stack_offset
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     c4c::FunctionNameId function_name,
     std::string_view value_name,
-    std::unordered_set<std::string_view>* visited_names = nullptr) {
-  if (prepared_names == nullptr || value_name.empty()) {
-    return std::nullopt;
-  }
-
-  std::unordered_set<std::string_view> local_visited_names;
-  if (visited_names == nullptr) {
-    visited_names = &local_visited_names;
-  }
-  if (!visited_names->insert(value_name).second) {
-    return std::nullopt;
-  }
-
-  if (stack_layout != nullptr && function_name != c4c::kInvalidFunctionName) {
-    if (const auto permanent_home_offset =
-            find_prepared_fixed_permanent_named_stack_offset_if_supported(
-                *stack_layout, *prepared_names, function_name, value_name);
-        permanent_home_offset.has_value()) {
-      return permanent_home_offset;
-    }
-  }
-
-  if (const auto local_slot_it = local_layout.offsets.find(value_name);
-      local_slot_it != local_layout.offsets.end()) {
-    return local_slot_it->second;
-  }
-  if (!c4c::backend::prepare::parse_prepared_slot_slice_name(value_name).has_value()) {
-    std::optional<std::size_t> best_frame_offset;
-    std::optional<std::size_t> best_slice_offset;
-    for (const auto& [slot_name, slot_offset] : local_layout.offsets) {
-      const auto candidate_slice =
-          c4c::backend::prepare::parse_prepared_slot_slice_name(slot_name);
-      if (!candidate_slice.has_value() || candidate_slice->first != value_name ||
-          candidate_slice->second != 0) {
-        continue;
-      }
-      if (best_slice_offset.has_value() && candidate_slice->second >= *best_slice_offset) {
-        continue;
-      }
-      best_slice_offset = candidate_slice->second;
-      best_frame_offset = slot_offset;
-    }
-    if (best_frame_offset.has_value()) {
-      return best_frame_offset;
-    }
-  }
-
-  if (stack_layout != nullptr && function_name != c4c::kInvalidFunctionName) {
-    if (const auto stack_offset =
-            c4c::backend::prepare::find_prepared_stack_frame_offset_by_name(
-                *prepared_names, *stack_layout, function_name, value_name);
-        stack_offset.has_value()) {
-      return stack_offset;
-    }
-  }
-
-  if (const auto* home =
-          function_locations == nullptr
-              ? nullptr
-              : c4c::backend::prepare::find_prepared_value_home(
-                    *prepared_names, *function_locations, value_name);
-      home != nullptr &&
-      home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot) {
-    if (home->slot_id.has_value()) {
-      const auto frame_slot_it = local_layout.frame_slot_offsets.find(*home->slot_id);
-      if (frame_slot_it != local_layout.frame_slot_offsets.end()) {
-        return frame_slot_it->second;
-      }
-    }
-    if (home->offset_bytes.has_value()) {
-      return *home->offset_bytes;
-    }
-  }
-
-  if (function_addressing == nullptr) {
-    return std::nullopt;
-  }
-  const auto* prepared_access = c4c::backend::prepare::find_prepared_memory_access_by_result_name(
-      *prepared_names, *function_addressing, value_name);
-  if (prepared_access == nullptr) {
-    return std::nullopt;
-  }
-
-  switch (prepared_access->address.base_kind) {
-    case c4c::backend::prepare::PreparedAddressBaseKind::FrameSlot: {
-      if (!prepared_access->address.frame_slot_id.has_value()) {
-        return std::nullopt;
-      }
-      const auto frame_slot_it =
-          local_layout.frame_slot_offsets.find(*prepared_access->address.frame_slot_id);
-      if (frame_slot_it == local_layout.frame_slot_offsets.end()) {
-        return std::nullopt;
-      }
-      const auto signed_offset =
-          static_cast<std::int64_t>(frame_slot_it->second) + prepared_access->address.byte_offset;
-      if (signed_offset < 0) {
-        return std::nullopt;
-      }
-      return static_cast<std::size_t>(signed_offset);
-    }
-    case c4c::backend::prepare::PreparedAddressBaseKind::PointerValue: {
-      if (!prepared_access->address.pointer_value_name.has_value() ||
-          !prepared_access->address.can_use_base_plus_offset) {
-        return std::nullopt;
-      }
-      const auto pointer_name = c4c::backend::prepare::prepared_value_name(
-          *prepared_names, *prepared_access->address.pointer_value_name);
-      if (pointer_name.empty()) {
-        return std::nullopt;
-      }
-      const auto base_offset = find_prepared_authoritative_named_stack_offset_if_supported(
-          local_layout,
-          stack_layout,
-          function_addressing,
-          prepared_names,
-          function_locations,
-          function_name,
-          pointer_name,
-          visited_names);
-      if (!base_offset.has_value()) {
-        return std::nullopt;
-      }
-      const auto signed_offset =
-          static_cast<std::int64_t>(*base_offset) + prepared_access->address.byte_offset;
-      if (signed_offset < 0) {
-        return std::nullopt;
-      }
-      return static_cast<std::size_t>(signed_offset);
-    }
-    default:
-      return std::nullopt;
-  }
-}
+    std::unordered_set<std::string_view>* visited_names = nullptr);
 
 inline bool finalize_prepared_bounded_multi_defined_return_if_supported(
     const c4c::backend::bir::Value& returned,
