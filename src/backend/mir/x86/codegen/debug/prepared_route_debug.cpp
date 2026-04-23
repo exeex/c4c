@@ -1,6 +1,7 @@
 #include "prepared_route_debug.hpp"
-#include "../x86_codegen.hpp"  // Prepared compatibility holdouts pending reviewed prepared/* seams.
 #include "../abi/x86_target_abi.hpp"
+#include "../prepared/prepared_query_context.hpp"
+#include "../../../../prealloc/target_register_profile.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -207,6 +208,26 @@ std::string summarize_single_block_void_call_sequence_facts(
                                    "other call side effects"));
   }
   return join_fact_labels(labels);
+}
+
+std::optional<std::string> narrow_i32_register_name(std::string_view wide_register) {
+  if (wide_register == "rax") return std::string("eax");
+  if (wide_register == "rbx") return std::string("ebx");
+  if (wide_register == "rcx") return std::string("ecx");
+  if (wide_register == "rdx") return std::string("edx");
+  if (wide_register == "rdi") return std::string("edi");
+  if (wide_register == "rsi") return std::string("esi");
+  if (wide_register == "rbp") return std::string("ebp");
+  if (wide_register == "rsp") return std::string("esp");
+  if (wide_register == "r8") return std::string("r8d");
+  if (wide_register == "r9") return std::string("r9d");
+  if (wide_register == "r10") return std::string("r10d");
+  if (wide_register == "r11") return std::string("r11d");
+  if (wide_register == "r12") return std::string("r12d");
+  if (wide_register == "r13") return std::string("r13d");
+  if (wide_register == "r14") return std::string("r14d");
+  if (wide_register == "r15") return std::string("r15d");
+  return std::string(wide_register);
 }
 
 std::string render_bounded_same_module_variadic_helper_facts(
@@ -1537,7 +1558,7 @@ std::string render_route_report(const c4c::backend::prepare::PreparedBirModule& 
     if (!wide_register.has_value()) {
       return std::nullopt;
     }
-    return narrow_i32_register(*wide_register);
+    return narrow_i32_register_name(*wide_register);
   };
   const auto render_asm_symbol_name = [&](std::string_view logical_name) -> std::string {
     return c4c::backend::x86::abi::render_asm_symbol_name(target_triple, logical_name);

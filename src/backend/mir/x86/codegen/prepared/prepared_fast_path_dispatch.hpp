@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../x86_codegen.hpp"
+#include "prepared_query_context.hpp"
 
 namespace c4c::backend::x86 {
 
