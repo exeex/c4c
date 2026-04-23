@@ -8,7 +8,7 @@ namespace c4c::backend::x86 {
 
 namespace {
 
-const c4c::TargetProfile& resolve_direct_bir_target_profile(
+const c4c::TargetProfile& resolve_legacy_direct_bir_target_profile(
     const c4c::backend::bir::Module& module,
     c4c::TargetProfile& storage) {
   storage = c4c::target_profile_from_triple(
@@ -20,7 +20,7 @@ const c4c::TargetProfile& resolve_direct_bir_target_profile(
   return storage;
 }
 
-const c4c::TargetProfile& resolve_direct_lir_target_profile(
+const c4c::TargetProfile& resolve_legacy_direct_lir_target_profile(
     const c4c::codegen::lir::LirModule& module,
     c4c::TargetProfile& storage) {
   storage = module.target_profile.arch != c4c::TargetArch::Unknown
@@ -40,18 +40,22 @@ const c4c::TargetProfile& resolve_direct_lir_target_profile(
 
 }  // namespace
 
-
+// Legacy public entry shim: direct BIR callers still resolve a concrete target
+// profile here, then hand off immediately into the reviewed api/ seam.
 std::string emit_module(const c4c::backend::bir::Module& module) {
   c4c::TargetProfile target_profile;
   return c4c::backend::x86::api::emit_module(
-      module, resolve_direct_bir_target_profile(module, target_profile));
+      module, resolve_legacy_direct_bir_target_profile(module, target_profile));
 }
 
+// Legacy public entry shim: direct LIR callers still bounce through the api/
+// seam, with the rewrite-in-progress remap kept here as an explicit
+// compatibility behavior instead of regrowing local lowering ownership.
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   c4c::TargetProfile target_profile;
   try {
     return c4c::backend::x86::api::emit_module(
-        module, resolve_direct_lir_target_profile(module, target_profile));
+        module, resolve_legacy_direct_lir_target_profile(module, target_profile));
   } catch (const std::invalid_argument& error) {
     if (std::string_view{error.what()}.find("lir_to_bir lowering") != std::string_view::npos) {
       throw_x86_rewrite_in_progress();
@@ -60,11 +64,13 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   }
 }
 
+// Legacy assembly entry shim: keep the historic public symbol alive while the
+// reviewed api/ owner handles staged emission and object-file assembly.
 assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,
                                           const std::string& output_path) {
   c4c::TargetProfile target_profile;
   const auto assembled = c4c::backend::x86::api::assemble_module(
-      module, resolve_direct_lir_target_profile(module, target_profile), output_path);
+      module, resolve_legacy_direct_lir_target_profile(module, target_profile), output_path);
   return assembler::AssembleResult{
       .staged_text = std::move(assembled.staged_text),
       .output_path = std::move(assembled.output_path),
