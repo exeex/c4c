@@ -95,18 +95,16 @@ def remove_optional_line(text: str, pattern: re.Pattern) -> str:
     return pattern.sub("", text)
 
 
-def ensure_reminder_lines(text: str, should_add: bool) -> str:
+def strip_reminder_lines(text: str) -> str:
     text = remove_optional_line(text, CODE_REVIEW_REMINDER_RE)
     text = remove_optional_line(text, BASELINE_SANITY_REMINDER_RE)
-    if not should_add:
-        return text
-
-    title_match = CURRENT_STEP_TITLE_RE.search(text)
-    if title_match is None:
-        raise SystemExit("missing 'Current Step Title:' line while inserting reminders")
-    insert_at = title_match.end()
-    reminder_block = f"\n{CODE_REVIEW_REMINDER}\n{BASELINE_SANITY_REMINDER}"
-    return text[:insert_at] + reminder_block + text[insert_at:]
+    text = re.sub(
+        r"(Current Step Title:\s*.*)\n{3,}(# Current Packet)",
+        r"\1\n\n\2",
+        text,
+        count=1,
+    )
+    return text
 
 
 def sync_todo(path: Path, state: dict) -> None:
@@ -123,8 +121,9 @@ def sync_todo(path: Path, state: dict) -> None:
         f"Current Step Title: {state['current_step_title']}",
     )
     text = remove_optional_line(text, PLAN_REVIEW_COUNTER_RE)
-    text = ensure_reminder_lines(text, state["counter"] >= state["review_limit"])
-    write_text(path, text)
+    text = strip_reminder_lines(text)
+    if text != parsed["text"]:
+        write_text(path, text)
 
 
 def load_state(path: Path) -> dict | None:
@@ -378,6 +377,10 @@ def cmd_set_baseline_regex(args) -> int:
 
 def cmd_post_commit(args) -> int:
     state = ensure_state(args.todo, args.state)
+    previous_counter = state["counter"]
+    previous_test_baseline_counter = state["test_baseline_counter"]
+    should_print_code_review = False
+    should_print_baseline_sanity = False
     changed_paths = head_commit_paths()
     has_plan_change = "plan.md" in changed_paths
     has_todo_change = "todo.md" in changed_paths
@@ -401,12 +404,21 @@ def cmd_post_commit(args) -> int:
             state["counter"] = 0
         elif not is_lifecycle_commit:
             state["counter"] += 1
+            should_print_code_review = (
+                previous_counter < state["review_limit"]
+                and state["counter"] >= state["review_limit"]
+            )
 
     if not is_lifecycle_commit:
         state["test_baseline_counter"] += 1
         needs_new_baseline = (
             not args.baseline.exists()
             or state["test_baseline_counter"] >= state["test_baseline_limit"]
+        )
+        should_print_baseline_sanity = (
+            args.baseline.exists()
+            and previous_test_baseline_counter < state["test_baseline_limit"]
+            and state["test_baseline_counter"] >= state["test_baseline_limit"]
         )
         if needs_new_baseline:
             refresh_test_baseline(args.baseline, state["test_baseline_regex"])
@@ -415,6 +427,10 @@ def cmd_post_commit(args) -> int:
     save_state(args.state, state)
     if args.todo.exists():
         sync_todo(args.todo, state)
+    if should_print_code_review:
+        print(CODE_REVIEW_REMINDER)
+    if should_print_baseline_sanity:
+        print(BASELINE_SANITY_REMINDER)
     return 0
 
 
