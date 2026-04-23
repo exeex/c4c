@@ -40,24 +40,6 @@ static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& t
     if (ts.is_rvalue_ref) out += "_rref";
 }
 
-static std::string spelled_qualified_name_from_text_ids(
-    const Parser& parser, const Parser::QualifiedNameRef& qn,
-    bool include_global_prefix = false) {
-    std::string name;
-    if (include_global_prefix && qn.is_global_qualified) name = "::";
-    for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-        if (!name.empty() && name != "::") name += "::";
-        const TextId segment_text_id =
-            i < qn.qualifier_text_ids.size() ? qn.qualifier_text_ids[i]
-                                             : kInvalidText;
-        name += std::string(
-            parser.parser_text(segment_text_id, qn.qualifier_segments[i]));
-    }
-    if (!name.empty() && name != "::") name += "::";
-    name += std::string(parser.parser_text(qn.base_text_id, qn.base_name));
-    return name;
-}
-
 int Parser::bin_prec(TokenKind k) {
     switch (k) {
         case TokenKind::PipePipe:       return 4;
@@ -1275,7 +1257,7 @@ Node* Parser::parse_primary() {
         QualifiedNameRef qn = parse_qualified_name(true);
         std::string qualified_name = resolve_qualified_value_name(qn);
         if (qualified_name.empty()) {
-            qualified_name = spelled_qualified_name_from_text_ids(*this, qn, true);
+            qualified_name = qualified_name_text(*this, qn, true);
         }
         const char* nm = arena_.strdup(qualified_name.c_str());
         Node* var_node = make_node(NK_VAR, ln);
@@ -1441,7 +1423,7 @@ Node* Parser::parse_primary() {
         }
         std::string qualified_name = resolve_qualified_value_name(qn);
         if (qualified_name.empty()) {
-            qualified_name = spelled_qualified_name_from_text_ids(*this, qn);
+            qualified_name = qualified_name_text(*this, qn);
         }
         const char* nm = arena_.strdup(qualified_name.c_str());
         const BuiltinId builtin_id = builtin_id_from_name(nm);
@@ -1670,8 +1652,8 @@ Node* Parser::parse_primary() {
                         std::string qualified_name =
                             resolve_qualified_value_name(operand_name);
                         if (qualified_name.empty()) {
-                            qualified_name = spelled_qualified_name_from_text_ids(
-                                *this, operand_name);
+                            qualified_name =
+                                qualified_name_text(*this, operand_name);
                         }
                         const char* nm = arena_.strdup(qualified_name.c_str());
                         arg = make_var(nm, ln);

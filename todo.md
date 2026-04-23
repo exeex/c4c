@@ -9,20 +9,19 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: switched `parser_types_struct.cpp` record-definition prelude
-  to use the shared TextId-backed `qualified_name_text()` helper when turning a
-  parsed qualified tag name into the stored record tag spelling
-- kept the record-tag spelling bridge aligned with the same qualified-name
-  segment path already used by Step 2 lookup/traversal work, without widening
-  the packet into `parser_core.cpp` or other parser families
+- Step 2 packet: switched `parser_expressions.cpp` qualified-value fallback
+  spellings to the shared TextId-backed `qualified_name_text()` helper and
+  removed the file-local duplicate qualified-name spelling helper
+- kept expression-side unresolved qualified-name fallback on the same segment
+  path already used by Step 2 traversal work, without widening the packet into
+  `parser_core.cpp` or unrelated binding-table cleanup
 
 ## Suggested Next
 
-- if Step 2 continues, inspect the next parser-family qualified-name spelling
-  bridge outside `parser_core.cpp` and move it onto the shared TextId-backed
-  helper instead of hand-joining raw segment strings
+- if Step 2 continues, inspect the next parser-family duplicate qualified-name
+  spelling bridge and consolidate it onto the shared TextId-backed helper
 - keep the route inside parser namespace lookup and avoid widening into
-  unrelated binding-table or lexical-scope cleanup
+  unrelated lexical-scope, binding-table, or backend cleanup
 
 ## Watchouts
 
@@ -39,8 +38,8 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
   joins instead of `qn.spelled()`
 - keep `parser_core.cpp` at the restored baseline; do not add new behavior
   there while Step 2 is still trimming parser entry-point bridge assumptions
-- keep record tag spelling stable for nested names while shifting parser-family
-  consumers onto shared TextId-backed qualified-name helpers
+- keep expression-side unresolved qualified-name fallback stable while shifting
+  parser-family consumers onto shared TextId-backed qualified-name helpers
 
 ## Proof
 
