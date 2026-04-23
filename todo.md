@@ -9,16 +9,18 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Just Finished
 
-- completed the Step 2 `parser_statements.cpp` bundle-routing packet by moving
-  read-only cursor and token-window reads onto `core_input_state_` access
-  while leaving the intentional save/restore rollback sites on `pos_`
-  unchanged
+- completed the Step 2 `parser_declarations.cpp` helper-routing packet by
+  moving read-only token-window probes onto `core_input_state_` access in
+  template default-expression skipping, requires-clause declaration-boundary
+  checks, using-alias recovery scans, local C++11 attribute skipping, and the
+  constructor-vs-function declaration lite probe while leaving real
+  save/restore `pos_` mechanics unchanged for later Step 3 classification
 
 ## Suggested Next
 
 - move the next Step 2 bundle-routing packet to the next parser implementation
   file that still has read-only `pos_`/`tokens_` layout reads, and keep any
-  remaining direct `pos_` sites that are true rollback mechanics for later
+  remaining direct `pos_` save/restore or injected-token mechanics for later
   Step 3 classification
 
 ## Watchouts
@@ -33,9 +35,9 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
   explicit token-stream save/restore
 - refresh proof after each bounded bundle-routing packet and keep it captured
   in `test_after.log`
-- the remaining direct `pos_` references in `parser_statements.cpp` are the
-  intentional save/restore mechanics and should stay in place for this Step 2
-  slice
+- the remaining direct `pos_` references in `parser_declarations.cpp` include
+  intentional save/restore and rollback mechanics that should stay in place
+  for this Step 2 slice
 
 ## Proof
 

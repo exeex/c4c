@@ -75,11 +75,12 @@ static bool template_param_expr_continues_after_greater(TokenKind k) {
 static void skip_template_param_default_expr(Parser& parser,
                                              bool track_brackets_and_braces,
                                              int* out_start_pos = nullptr) {
-    if (out_start_pos) *out_start_pos = parser.pos_;
+    if (out_start_pos) *out_start_pos = parser.core_input_state_.pos;
 
     auto is_expr_continuation = [&](int p) -> bool {
-        if (p >= static_cast<int>(parser.tokens_.size())) return false;
-        return template_param_expr_continues_after_greater(parser.tokens_[p].kind);
+        if (p >= static_cast<int>(parser.core_input_state_.tokens.size())) return false;
+        return template_param_expr_continues_after_greater(
+            parser.core_input_state_.tokens[p].kind);
     };
 
     int depth = 0;
@@ -90,7 +91,10 @@ static void skip_template_param_default_expr(Parser& parser,
             ++depth;
         } else if (parser.check(TokenKind::Greater)) {
             if (depth == 0) {
-                if (is_expr_continuation(parser.pos_ + 1)) { parser.consume(); continue; }
+                if (is_expr_continuation(parser.core_input_state_.pos + 1)) {
+                    parser.consume();
+                    continue;
+                }
                 break;
             }
             --depth;
@@ -100,11 +104,18 @@ static void skip_template_param_default_expr(Parser& parser,
             if (depth > 0) --depth;
         } else if (parser.check(TokenKind::GreaterGreater)) {
             if (depth == 0) {
-                if (is_expr_continuation(parser.pos_ + 1)) { parser.consume(); continue; }
+                if (is_expr_continuation(parser.core_input_state_.pos + 1)) {
+                    parser.consume();
+                    continue;
+                }
                 break;
             }
             if (depth == 1) {
-                if (is_expr_continuation(parser.pos_ + 1)) { depth = 0; parser.consume(); continue; }
+                if (is_expr_continuation(parser.core_input_state_.pos + 1)) {
+                    depth = 0;
+                    parser.consume();
+                    continue;
+                }
                 parser.parse_greater_than_in_template_list(false);
                 break;
             }
@@ -157,12 +168,15 @@ bool is_cpp20_requires_clause_decl_boundary(Parser& parser) {
     if (parser.at_end()) return true;
     TokenKind kind = parser.cur().kind;
     if (kind == TokenKind::Identifier) {
-        if (parser.pos_ > 0 &&
-            parser.tokens_[parser.pos_ - 1].kind == TokenKind::ColonColon) {
+        if (parser.core_input_state_.pos > 0 &&
+            parser.core_input_state_.tokens[parser.core_input_state_.pos - 1].kind ==
+                TokenKind::ColonColon) {
             return false;
         }
-        if (parser.pos_ + 1 < static_cast<int>(parser.tokens_.size()) &&
-            parser.tokens_[parser.pos_ + 1].kind == TokenKind::Less) {
+        if (parser.core_input_state_.pos + 1 <
+                static_cast<int>(parser.core_input_state_.tokens.size()) &&
+            parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
+                TokenKind::Less) {
             return false;
         }
         return true;
@@ -308,15 +322,16 @@ bool using_alias_consumed_following_declaration(Parser& parser,
 
     const int last_token_pos = alias_type_end_pos - 1;
     if (last_token_pos < alias_type_pos ||
-        parser.tokens_[last_token_pos].kind != TokenKind::Identifier ||
-        parser.tokens_[last_token_pos].line == recovery_line) {
+        parser.core_input_state_.tokens[last_token_pos].kind !=
+            TokenKind::Identifier ||
+        parser.core_input_state_.tokens[last_token_pos].line == recovery_line) {
         return false;
     }
 
     int depth = 0;
-    const int candidate_line = parser.tokens_[last_token_pos].line;
+    const int candidate_line = parser.core_input_state_.tokens[last_token_pos].line;
     for (int i = alias_type_pos; i < last_token_pos; ++i) {
-        TokenKind kind = parser.tokens_[i].kind;
+        TokenKind kind = parser.core_input_state_.tokens[i].kind;
         if (kind == TokenKind::Less || kind == TokenKind::LParen ||
             kind == TokenKind::LBracket) {
             ++depth;
@@ -334,10 +349,11 @@ bool using_alias_consumed_following_declaration(Parser& parser,
         }
         if (depth == 0 &&
             i > alias_type_pos &&
-            parser.tokens_[i - 1].kind == TokenKind::ColonColon) {
+            parser.core_input_state_.tokens[i - 1].kind == TokenKind::ColonColon) {
             continue;
         }
-        if (depth == 0 && parser.tokens_[i].line == candidate_line &&
+        if (depth == 0 &&
+            parser.core_input_state_.tokens[i].line == candidate_line &&
             is_top_level_decl_recovery_boundary(kind)) {
             return true;
         }
@@ -521,23 +537,29 @@ Node* Parser::parse_local_decl() {
     int ln = cur().line;
     auto skip_cpp11_attrs_only = [&]() {
         while (check(TokenKind::LBracket) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+               core_input_state_.pos + 1 <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                   TokenKind::LBracket) {
             consume();
             consume();
             int depth = 1;
             while (!at_end() && depth > 0) {
                 if (check(TokenKind::LBracket) &&
-                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+                    core_input_state_.pos + 1 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::LBracket) {
                     consume();
                     consume();
                     ++depth;
                     continue;
                 }
                 if (check(TokenKind::RBracket) &&
-                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::RBracket) {
+                    core_input_state_.pos + 1 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::RBracket) {
                     consume();
                     consume();
                     --depth;
@@ -703,10 +725,14 @@ Node* Parser::parse_local_decl() {
             bool parsed_as_function_decl = false;
             if (is_cpp_mode() && vname) {
                 bool single_value_arg = false;
-                if (pos_ + 2 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::Identifier &&
-                    tokens_[pos_ + 2].kind == TokenKind::RParen) {
-                    const std::string arg_name = std::string(token_spelling(tokens_[pos_ + 1]));
+                if (core_input_state_.pos + 2 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::Identifier &&
+                    core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                        TokenKind::RParen) {
+                    const std::string arg_name = std::string(token_spelling(
+                        core_input_state_.tokens[core_input_state_.pos + 1]));
                     const std::string resolved_type_name =
                         resolve_visible_type_name(arg_name);
                     const bool arg_is_type =
@@ -719,9 +745,12 @@ Node* Parser::parse_local_decl() {
                     single_value_arg = !arg_is_type;
                 }
                 auto can_use_lite_ctor_init_probe = [&]() -> bool {
-                    if (pos_ + 1 >= static_cast<int>(tokens_.size())) return false;
+                    if (core_input_state_.pos + 1 >=
+                        static_cast<int>(core_input_state_.tokens.size())) {
+                        return false;
+                    }
 
-                    switch (tokens_[pos_ + 1].kind) {
+                    switch (core_input_state_.tokens[core_input_state_.pos + 1].kind) {
                         case TokenKind::IntLit:
                         case TokenKind::FloatLit:
                         case TokenKind::CharLit:
@@ -752,7 +781,8 @@ Node* Parser::parse_local_decl() {
                         case TokenKind::RParen:
                             return false;
                         case TokenKind::Identifier: {
-                            const std::string arg_name = std::string(token_spelling(tokens_[pos_ + 1]));
+                            const std::string arg_name = std::string(token_spelling(
+                                core_input_state_.tokens[core_input_state_.pos + 1]));
                             const std::string resolved_type_name =
                                 resolve_visible_type_name(arg_name);
                             const bool arg_is_type =
@@ -765,9 +795,12 @@ Node* Parser::parse_local_decl() {
                                     resolved_type_name) > 0;
                             if (arg_is_type) return false;
                             if (single_value_arg) return true;
-                            if (pos_ + 2 < static_cast<int>(tokens_.size()) &&
-                                (tokens_[pos_ + 2].kind == TokenKind::ColonColon ||
-                                 tokens_[pos_ + 2].kind == TokenKind::Less)) {
+                            if (core_input_state_.pos + 2 <
+                                    static_cast<int>(core_input_state_.tokens.size()) &&
+                                (core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                                     TokenKind::ColonColon ||
+                                 core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                                     TokenKind::Less)) {
                                 return false;
                             }
                             return true;
