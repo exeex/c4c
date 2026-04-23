@@ -3,32 +3,32 @@ Source Idea Path: ideas/open/88_prepared_frame_stack_call_authority_completion_f
 Source Plan Path: plan.md
 Current Step ID: 3.2
 Current Step Title: Save, Clobber, And Preservation Authority
-Plan Review Counter: 5 / 6
+Plan Review Counter: 6 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed the next Step 3.2 "Save, Clobber, And Preservation Authority"
-packet for idea 88 by publishing stack-preserved frame-slot identity on the
-prepared function-summary surface instead of forcing readers down into only
-the detailed `call_plans` records.
+Completed another bounded Step 3.2 "Save, Clobber, And Preservation
+Authority" packet for idea 88 by auditing the remaining scalar prepared
+save/clobber/preservation surface and tightening proof around the existing
+direct call-clobber publication instead of widening into grouped-register
+work.
 
 Current packet result:
-- stack-preserved `preserves=` summary entries now publish the prepared
-  frame-slot id alongside the stack offset so consumers can follow one direct
-  callsite summary surface for stack-preserved scalars
-- focused Step 3.2 contract and printer coverage now prove the summary string
-  is derived from existing prepared preservation authority rather than a
-  printer-only guess
-- register-preserved summary and detail surfaces remain unchanged, so this
-  packet closes the remaining stack-slot summary gap without widening Step 3.2
-  into grouped-register work
+- audited the owned scalar Step 3.2 surface and did not find another truthful
+  prepared field to add without crossing into grouped-register scope
+- focused printer coverage now proves the direct prepared call-clobber detail
+  line publishes bank/register/width/unit occupancy authority, not just the
+  summary token
+- the scalar save/clobber/preservation contract remains unchanged in code, and
+  this slice makes the current Step 3.2 publication boundary explicit in proof
 
 ## Suggested Next
 
-Continue Step 3.2 by checking whether any remaining scalar call-boundary facts
-still require consumers to correlate summary lines against detailed call-plan
-records instead of following one direct prepared authority surface.
+Ask the supervisor whether Step 3.2 should now hand off for reviewer scrutiny
+or plan-owner routing, because the remaining obvious expansion path is
+grouped-register authority from idea 89 rather than another bounded scalar
+prepared-surface gap.
 
 ## Watchouts
 
@@ -38,11 +38,10 @@ records instead of following one direct prepared authority surface.
   this packet into target-specific call instruction recovery.
 - Keep Step 3.2 focused on scalar preservation and clobber facts already known
   to prepared frame/regalloc state; do not widen into grouped-register routes.
-- Keep the summary surface compact and reviewable; do not duplicate the full
-  detailed call-plan payload into the summary line.
-- Treat the new stack-slot summary token as a publication of prepared
-  frame-slot authority, not as permission to infer additional save/restore
-  policy beyond the published prepared facts.
+- Treat proof hardening as confirmation of the current scalar boundary, not as
+  permission to backfill grouped-register banks/spans under Step 3.2.
+- If a follow-up packet claims a new scalar gap remains, make it name the
+  missing direct prepared fact concretely before editing contract fields.
 
 ## Proof
 

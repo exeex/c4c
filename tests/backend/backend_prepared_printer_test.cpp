@@ -1162,6 +1162,23 @@ std::string clobber_summary(const prepare::PreparedClobberedRegister& clobber) {
   return summary;
 }
 
+std::string clobber_detail(const prepare::PreparedClobberedRegister& clobber) {
+  std::string detail = "clobber bank=" +
+                       std::string(prepare::prepared_register_bank_name(clobber.bank)) +
+                       " reg=" + clobber.register_name + " width=" +
+                       std::to_string(clobber.contiguous_width);
+  if (!clobber.occupied_register_names.empty()) {
+    detail += " units=";
+    for (std::size_t index = 0; index < clobber.occupied_register_names.size(); ++index) {
+      if (index != 0) {
+        detail += ",";
+      }
+      detail += clobber.occupied_register_names[index];
+    }
+  }
+  return detail;
+}
+
 const prepare::PreparedFrameSlot* find_frame_slot(const prepare::PreparedBirModule& prepared,
                                                   prepare::PreparedObjectId object_id) {
   for (const auto& slot : prepared.stack_layout.frame_slots) {
@@ -1570,6 +1587,13 @@ int main() {
   if (!expect_contains(call_wrapper_dump,
                        fixed_call_clobber_summary,
                        "call summary clobber authority")) {
+    return EXIT_FAILURE;
+  }
+  const std::string fixed_call_clobber_detail =
+      clobber_detail(call_wrapper_call_plans->calls[1].clobbered_registers.front());
+  if (!expect_contains(call_wrapper_dump,
+                       fixed_call_clobber_detail,
+                       "call detail clobber authority")) {
     return EXIT_FAILURE;
   }
 
