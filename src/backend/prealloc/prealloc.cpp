@@ -644,11 +644,15 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .value_bank = arg_index < call->arg_abi.size()
                                 ? register_bank_from_arg_abi(call->arg_abi[arg_index])
                                 : register_bank_from_type(call->arg_types[arg_index]),
-              .source_storage_kind = PreparedMoveStorageKind::None,
+              .source_encoding = PreparedStorageEncodingKind::None,
               .source_value_id = std::nullopt,
+              .source_literal = std::nullopt,
+              .source_symbol_name = std::nullopt,
               .source_register_name = std::nullopt,
               .source_stack_offset_bytes = std::nullopt,
               .source_register_bank = std::nullopt,
+              .source_base_value_name = std::nullopt,
+              .source_pointer_byte_delta = std::nullopt,
               .destination_register_name = std::nullopt,
               .destination_register_bank = std::nullopt,
               .destination_stack_offset_bytes = std::nullopt,
@@ -670,9 +674,14 @@ void populate_call_plans(PreparedBirModule& prepared) {
                 value_name_id.has_value() && value_locations != nullptr) {
               if (const auto* home = find_prepared_value_home(*value_locations, *value_name_id);
                   home != nullptr) {
-                arg_plan.source_storage_kind = move_storage_kind_from_home(*home);
+                arg_plan.source_encoding = storage_encoding_from_home(*home);
                 arg_plan.source_register_name = home->register_name;
                 arg_plan.source_stack_offset_bytes = home->offset_bytes;
+                if (home->immediate_i32.has_value()) {
+                  arg_plan.source_literal = bir::Value::immediate_i32(*home->immediate_i32);
+                }
+                arg_plan.source_base_value_name = home->pointer_base_value_name;
+                arg_plan.source_pointer_byte_delta = home->pointer_byte_delta;
               }
               if (regalloc_function != nullptr) {
                 if (const auto* regalloc_value =
@@ -683,6 +692,20 @@ void populate_call_plans(PreparedBirModule& prepared) {
                       register_bank_from_class(regalloc_value->register_class);
                 }
               }
+              if (arg_plan.source_encoding == PreparedStorageEncodingKind::None &&
+                  !call->args[arg_index].name.empty() &&
+                  call->args[arg_index].name.front() == '@') {
+                arg_plan.source_encoding = PreparedStorageEncodingKind::SymbolAddress;
+                arg_plan.source_symbol_name = call->args[arg_index].name;
+              }
+            } else if (call->args[arg_index].kind == bir::Value::Kind::Named &&
+                       !call->args[arg_index].name.empty() &&
+                       call->args[arg_index].name.front() == '@') {
+              arg_plan.source_encoding = PreparedStorageEncodingKind::SymbolAddress;
+              arg_plan.source_symbol_name = call->args[arg_index].name;
+            } else if (call->args[arg_index].kind != bir::Value::Kind::Named) {
+              arg_plan.source_encoding = PreparedStorageEncodingKind::Immediate;
+              arg_plan.source_literal = call->args[arg_index];
             }
           }
 

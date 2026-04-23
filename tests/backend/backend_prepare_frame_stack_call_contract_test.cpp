@@ -1169,9 +1169,13 @@ int check_call_contract() {
     return fail("call contract: call_plans lost direct-call ownership details");
   }
   if (call_plan.arguments.front().value_bank != prepare::PreparedRegisterBank::Gpr ||
+      call_plan.arguments.front().source_encoding !=
+          prepare::PreparedStorageEncodingKind::Immediate ||
+      !call_plan.arguments.front().source_literal.has_value() ||
+      call_plan.arguments.front().source_literal->immediate != 7 ||
       !call_plan.arguments.front().destination_register_name.has_value() ||
       call_plan.arguments.front().destination_register_bank != prepare::PreparedRegisterBank::Gpr) {
-    return fail("call contract: call_plans lost integer argument ABI destination");
+    return fail("call contract: call_plans lost immediate integer argument authority");
   }
   if (call_plan.result->value_bank != prepare::PreparedRegisterBank::Gpr ||
       !call_plan.result->source_register_name.has_value() ||
@@ -1289,6 +1293,11 @@ int check_memory_return_call_contract() {
       call_plan.arguments.size() != 2) {
     return fail("memory-return contract: call_plans lost explicit memory-return publication");
   }
+  if (call_plan.arguments[1].source_encoding != prepare::PreparedStorageEncodingKind::Immediate ||
+      !call_plan.arguments[1].source_literal.has_value() ||
+      call_plan.arguments[1].source_literal->immediate != 13) {
+    return fail("memory-return contract: call_plans lost the scalar immediate argument authority");
+  }
 
   const auto* storage_object = find_stack_object(prepared, "lv.call.sret.storage");
   const auto* frame_slot =
@@ -1356,7 +1365,12 @@ int check_call_wrapper_kind_contract() {
       prepare::prepared_value_name(prepared.names, indirect_call.indirect_callee->value_name) !=
           "callee.ptr" ||
       indirect_call.indirect_callee->encoding != prepare::PreparedStorageEncodingKind::Register ||
-      indirect_call.indirect_callee->bank != prepare::PreparedRegisterBank::Gpr) {
+      indirect_call.indirect_callee->bank != prepare::PreparedRegisterBank::Gpr ||
+      indirect_call.arguments.size() != 1 ||
+      indirect_call.arguments.front().source_encoding !=
+          prepare::PreparedStorageEncodingKind::Immediate ||
+      !indirect_call.arguments.front().source_literal.has_value() ||
+      indirect_call.arguments.front().source_literal->immediate != 5) {
     return fail("call-wrapper contract: indirect call lost explicit wrapper classification");
   }
 

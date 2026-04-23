@@ -3,36 +3,35 @@ Source Idea Path: ideas/open/88_prepared_frame_stack_call_authority_completion_f
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Call Boundary Authority Completion
-Plan Review Counter: 3 / 6
+Plan Review Counter: 4 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed Plan Step 3 "Call Boundary Authority Completion" for idea 88 by
-publishing explicit memory-return/sret authority in `PreparedCallPlan`,
+Completed another Step 3 "Call Boundary Authority Completion" packet for idea
+88 by publishing literal call-argument authority in `PreparedCallPlan`,
 printing it in prepared dumps, and tightening backend/prealloc tests so
-downstream targets no longer need to recover aggregate-return destination
-ownership from raw BIR `sret_storage_name` or a separate stack-layout join.
+downstream consumers no longer need to recover immediate call operands from raw
+BIR when the prepared call plan already knows them.
 
 Current packet result:
-- `PreparedCallPlan` now publishes a `memory_return` authority record for calls
-  whose `result_abi` returns in memory, including the sret ABI-argument index,
-  destination slot identity, prepared frame-slot publication, and size/alignment.
-- `populate_call_plans` now snapshots aggregate-return destination ownership
-  from `sret_storage_name` plus prepared stack-layout publication at call-plan
-  construction time instead of leaving target backends to rejoin raw BIR and
-  frame-slot state later.
-- Prepared dumps now expose the published memory-return authority in both the
+- `PreparedCallArgumentPlan` now publishes a richer `source_encoding` plus
+  literal, symbol, and computed-address source detail instead of collapsing
+  non-register/non-stack argument sources to `none`.
+- `populate_call_plans` now snapshots immediate arguments directly from BIR and
+  preserves richer prepared-home detail for rematerializable and pointer-base
+  argument sources at call-plan construction time.
+- Prepared dumps now expose immediate call-argument authority in both the
   summary callsite view and the `prepared-call-plans` detail section.
-- Backend/prealloc tests now prove aggregate-return call contracts and printer
-  dumps directly from prepared call plans.
+- Backend/prealloc tests now prove immediate argument publication for direct,
+  indirect, and memory-return call contracts.
 
 ## Suggested Next
 
-Continue Step 3 by auditing whether any remaining call-boundary facts still
-require target-local recovery outside `PreparedCallPlan`, with the best next
-packet likely focused on any still-unpublished computed-address or multi-lane
-aggregate call authorities if target consumers still need extra joins.
+Continue Step 3 by proving the newly published non-register argument source
+shapes beyond immediates, with the best next packet likely focused on direct
+symbol-address or computed-address call operands if any target consumer still
+needs to fall back to raw BIR names or pointer arithmetic.
 
 ## Watchouts
 

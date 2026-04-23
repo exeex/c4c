@@ -843,6 +843,11 @@ int main() {
                        "indirect wrapper call-plan detail")) {
     return EXIT_FAILURE;
   }
+  if (!expect_contains(call_wrapper_dump,
+                       "arg index=0 value_bank=gpr source_encoding=immediate source_literal=5",
+                       "indirect wrapper immediate argument detail")) {
+    return EXIT_FAILURE;
+  }
 
   const auto memory_return_prepared = prepare_memory_return_call_dump_module();
   const std::string memory_return_dump = prepare::print(memory_return_prepared);
@@ -854,6 +859,11 @@ int main() {
   if (!expect_contains(memory_return_dump,
                        "call block_index=0 inst_index=0 wrapper_kind=direct_extern_fixed_arity variadic_fpr_arg_register_count=0 indirect=no callee=extern_make_pair memory_return=lv.call.sret.storage memory_encoding=frame_slot sret_arg_index=0",
                        "memory-return call-plan detail")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(memory_return_dump,
+                       "arg index=1 value_bank=gpr source_encoding=immediate source_literal=13",
+                       "memory-return immediate argument detail")) {
     return EXIT_FAILURE;
   }
 

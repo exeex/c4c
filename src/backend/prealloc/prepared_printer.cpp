@@ -153,6 +153,26 @@ std::string storage_encoding_kind_name(PreparedStorageEncodingKind kind) {
   return "unknown";
 }
 
+void append_call_arg_source_summary(std::ostringstream& out,
+                                    const PreparedNameTables& names,
+                                    const PreparedCallArgumentPlan& arg) {
+  out << storage_encoding_kind_name(arg.source_encoding);
+  if (arg.source_register_name.has_value()) {
+    out << ":" << *arg.source_register_name;
+  } else if (arg.source_stack_offset_bytes.has_value()) {
+    out << ":stack+" << *arg.source_stack_offset_bytes;
+  } else if (arg.source_symbol_name.has_value()) {
+    out << ":" << *arg.source_symbol_name;
+  } else if (arg.source_literal.has_value()) {
+    out << ":" << render_value(*arg.source_literal);
+  } else if (arg.source_base_value_name.has_value()) {
+    out << ":" << maybe_value_name(names, *arg.source_base_value_name);
+    if (arg.source_pointer_byte_delta.has_value()) {
+      out << "+" << *arg.source_pointer_byte_delta;
+    }
+  }
+}
+
 void append_indirect_callee_summary(std::ostringstream& out,
                                     const PreparedNameTables& names,
                                     const std::optional<PreparedIndirectCalleePlan>& callee) {
@@ -360,12 +380,8 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
         for (const auto& arg : call.arguments) {
           out << "    arg" << arg.arg_index
               << " bank=" << prepared_register_bank_name(arg.value_bank)
-              << " from=" << move_storage_kind_name(arg.source_storage_kind);
-          if (arg.source_register_name.has_value()) {
-            out << ":" << *arg.source_register_name;
-          } else if (arg.source_stack_offset_bytes.has_value()) {
-            out << ":stack+" << *arg.source_stack_offset_bytes;
-          }
+              << " from=";
+          append_call_arg_source_summary(out, module.names, arg);
           out << " to=";
           if (arg.destination_register_name.has_value()) {
             out << *arg.destination_register_name;
@@ -734,9 +750,15 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
       for (const auto& arg : call.arguments) {
         out << "    arg index=" << arg.arg_index
             << " value_bank=" << prepared_register_bank_name(arg.value_bank)
-            << " source_storage=" << move_storage_kind_name(arg.source_storage_kind);
+            << " source_encoding=" << storage_encoding_kind_name(arg.source_encoding);
         if (arg.source_value_id.has_value()) {
           out << " source_value_id=" << *arg.source_value_id;
+        }
+        if (arg.source_literal.has_value()) {
+          out << " source_literal=" << render_value(*arg.source_literal);
+        }
+        if (arg.source_symbol_name.has_value()) {
+          out << " source_symbol=" << *arg.source_symbol_name;
         }
         if (arg.source_register_name.has_value()) {
           out << " source_reg=" << *arg.source_register_name;
@@ -745,6 +767,13 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
           out << " source_stack_offset=" << *arg.source_stack_offset_bytes;
         }
         out << " source_bank=" << maybe_register_bank(arg.source_register_bank);
+        if (arg.source_base_value_name.has_value()) {
+          out << " source_base="
+              << maybe_value_name(module.names, *arg.source_base_value_name);
+        }
+        if (arg.source_pointer_byte_delta.has_value()) {
+          out << " source_delta=" << *arg.source_pointer_byte_delta;
+        }
         if (arg.destination_register_name.has_value()) {
           out << " dest_reg=" << *arg.destination_register_name;
         }

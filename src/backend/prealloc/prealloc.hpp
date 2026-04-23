@@ -867,15 +867,28 @@ struct PreparedValueLocations {
   std::vector<PreparedValueLocationFunction> functions;
 };
 
+enum class PreparedStorageEncodingKind {
+  None,
+  Register,
+  FrameSlot,
+  Immediate,
+  ComputedAddress,
+  SymbolAddress,
+};
+
 struct PreparedCallArgumentPlan {
   std::size_t instruction_index = 0;
   std::size_t arg_index = 0;
   PreparedRegisterBank value_bank = PreparedRegisterBank::None;
-  PreparedMoveStorageKind source_storage_kind = PreparedMoveStorageKind::None;
+  PreparedStorageEncodingKind source_encoding = PreparedStorageEncodingKind::None;
   std::optional<PreparedValueId> source_value_id;
+  std::optional<bir::Value> source_literal;
+  std::optional<std::string> source_symbol_name;
   std::optional<std::string> source_register_name;
   std::optional<std::size_t> source_stack_offset_bytes;
   std::optional<PreparedRegisterBank> source_register_bank;
+  std::optional<ValueNameId> source_base_value_name;
+  std::optional<std::int64_t> source_pointer_byte_delta;
   std::optional<std::string> destination_register_name;
   std::optional<PreparedRegisterBank> destination_register_bank;
   std::optional<std::size_t> destination_stack_offset_bytes;
@@ -921,15 +934,6 @@ enum class PreparedCallWrapperKind {
   }
   return "unknown";
 }
-
-enum class PreparedStorageEncodingKind {
-  None,
-  Register,
-  FrameSlot,
-  Immediate,
-  ComputedAddress,
-  SymbolAddress,
-};
 
 struct PreparedIndirectCalleePlan {
   ValueNameId value_name = kInvalidValueName;
