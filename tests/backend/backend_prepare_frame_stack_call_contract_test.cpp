@@ -25,6 +25,41 @@ const bir::Function* find_function(const bir::Module& module, std::string_view f
   return nullptr;
 }
 
+const bir::CallInst* find_first_call(const bir::Function& function) {
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* call = std::get_if<bir::CallInst>(&inst); call != nullptr) {
+        return call;
+      }
+    }
+  }
+  return nullptr;
+}
+
+int count_calls_to(const bir::Function& function, std::string_view callee) {
+  int count = 0;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* call = std::get_if<bir::CallInst>(&inst);
+          call != nullptr && call->callee == callee) {
+        ++count;
+      }
+    }
+  }
+  return count;
+}
+
+int count_block_calls_to(const bir::Block& block, std::string_view callee) {
+  int count = 0;
+  for (const auto& inst : block.insts) {
+    if (const auto* call = std::get_if<bir::CallInst>(&inst);
+        call != nullptr && call->callee == callee) {
+      ++count;
+    }
+  }
+  return count;
+}
+
 const prepare::PreparedLivenessFunction* find_liveness_function(
     const prepare::PreparedBirModule& prepared,
     std::string_view function_name) {
@@ -55,6 +90,68 @@ const prepare::PreparedFrameSlot* find_frame_slot(const prepare::PreparedBirModu
   for (const auto& slot : prepared.stack_layout.frame_slots) {
     if (slot.object_id == object_id) {
       return &slot;
+    }
+  }
+  return nullptr;
+}
+
+const prepare::PreparedControlFlowFunction* find_control_flow_function(
+    const prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  if (function_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  return prepare::find_prepared_control_flow_function(prepared.control_flow, function_id);
+}
+
+const prepare::PreparedControlFlowBlock* find_control_flow_block(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedControlFlowFunction& function,
+    std::string_view block_label) {
+  const auto label_id = prepared.names.block_labels.find(block_label);
+  if (label_id == c4c::kInvalidBlockLabel) {
+    return nullptr;
+  }
+  for (const auto& block : function.blocks) {
+    if (block.block_label == label_id) {
+      return &block;
+    }
+  }
+  return nullptr;
+}
+
+const prepare::PreparedCallPlansFunction* find_call_plans_function(
+    const prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  if (function_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  return prepare::find_prepared_call_plans(prepared, function_id);
+}
+
+const prepare::PreparedStoragePlanFunction* find_storage_plan_function(
+    const prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  if (function_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  return prepare::find_prepared_storage_plan(prepared, function_id);
+}
+
+const prepare::PreparedStoragePlanValue* find_storage_value(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedStoragePlanFunction& function,
+    std::string_view value_name) {
+  const auto value_id = prepared.names.value_names.find(value_name);
+  if (value_id == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+  for (const auto& value : function.values) {
+    if (value.value_name == value_id) {
+      return &value;
     }
   }
   return nullptr;
@@ -161,6 +258,113 @@ bir::Module make_call_contract_module() {
   return module;
 }
 
+bir::Module make_float_call_contract_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function callee;
+  callee.name = "extern_f32";
+  callee.is_declaration = true;
+  callee.return_type = bir::TypeKind::F32;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::F32,
+      .name = "value",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::F32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Sse,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "float_call_contract";
+  caller.return_type = bir::TypeKind::F32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::F32, "tmp.float.call"),
+      .callee = "extern_f32",
+      .args = {bir::Value::named(bir::TypeKind::F32, "arg.float")},
+      .arg_types = {bir::TypeKind::F32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::F32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Sse,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "f32",
+      .return_type = bir::TypeKind::F32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::F32,
+          .primary_class = bir::AbiValueClass::Sse,
+      },
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::F32, "tmp.float.call")};
+  caller.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(caller));
+  return module;
+}
+
+bir::Module make_indirect_call_contract_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function caller;
+  caller.name = "indirect_call_contract";
+  caller.return_type = bir::TypeKind::I64;
+  caller.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "callee.ptr",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I64, "tmp.indirect.call"),
+      .callee_value = bir::Value::named(bir::TypeKind::Ptr, "callee.ptr"),
+      .args = {bir::Value::immediate_i64(11)},
+      .arg_types = {bir::TypeKind::I64},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "i64",
+      .return_type = bir::TypeKind::I64,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I64,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+      .is_indirect = true,
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I64, "tmp.indirect.call")};
+  caller.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(caller));
+  return module;
+}
+
 bir::Module make_dynamic_stack_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -234,6 +438,406 @@ bir::Module make_dynamic_stack_module() {
   return module;
 }
 
+bir::Module make_cross_block_dynamic_stack_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "cross_block_dynamic_stack_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I64,
+      .name = "n",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.total",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.xs",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "saved.sp"),
+      .callee = "llvm.stacksave",
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.total",
+      .value = bir::Value::immediate_i32(0),
+      .align_bytes = 4,
+  });
+  entry.terminator = bir::BranchTerminator{.target_label = "loop"};
+
+  bir::Block loop;
+  loop.label = "loop";
+  loop.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "loop.buf"),
+      .callee = "llvm.dynamic_alloca.i32",
+      .args = {bir::Value::named(bir::TypeKind::I64, "n")},
+      .arg_types = {bir::TypeKind::I64},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  loop.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.xs",
+      .value = bir::Value::named(bir::TypeKind::Ptr, "loop.buf"),
+      .align_bytes = 8,
+  });
+  loop.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.total",
+      .value = bir::Value::immediate_i32(9),
+      .align_bytes = 4,
+  });
+  loop.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "cond.keep_looping"),
+      .true_label = "restore_then_loop",
+      .false_label = "exit",
+  };
+
+  bir::Block restore_then_loop;
+  restore_then_loop.label = "restore_then_loop";
+  restore_then_loop.insts.push_back(bir::CallInst{
+      .callee = "llvm.stackrestore",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "saved.sp")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  restore_then_loop.terminator = bir::BranchTerminator{.target_label = "loop"};
+
+  bir::Block exit;
+  exit.label = "exit";
+  exit.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "total.out"),
+      .slot_name = "lv.total",
+      .align_bytes = 4,
+  });
+  exit.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "total.out")};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(loop));
+  function.blocks.push_back(std::move(restore_then_loop));
+  function.blocks.push_back(std::move(exit));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+bir::Module make_nested_dynamic_stack_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "nested_dynamic_stack_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I64,
+      .name = "n",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.fixed",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.outer.ptr",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.inner.ptr",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "saved.outer"),
+      .callee = "llvm.stacksave",
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "outer.buf"),
+      .callee = "llvm.dynamic_alloca.i32",
+      .args = {bir::Value::named(bir::TypeKind::I64, "n")},
+      .arg_types = {bir::TypeKind::I64},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.outer.ptr",
+      .value = bir::Value::named(bir::TypeKind::Ptr, "outer.buf"),
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.fixed",
+      .value = bir::Value::immediate_i32(5),
+      .align_bytes = 4,
+  });
+  entry.terminator = bir::BranchTerminator{.target_label = "inner"};
+
+  bir::Block inner;
+  inner.label = "inner";
+  inner.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "saved.inner"),
+      .callee = "llvm.stacksave",
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  inner.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "inner.buf"),
+      .callee = "llvm.dynamic_alloca.i32",
+      .args = {bir::Value::named(bir::TypeKind::I64, "n")},
+      .arg_types = {bir::TypeKind::I64},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  inner.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.inner.ptr",
+      .value = bir::Value::named(bir::TypeKind::Ptr, "inner.buf"),
+      .align_bytes = 8,
+  });
+  inner.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "cond.inner"),
+      .true_label = "restore_inner",
+      .false_label = "restore_outer",
+  };
+
+  bir::Block restore_inner;
+  restore_inner.label = "restore_inner";
+  restore_inner.insts.push_back(bir::CallInst{
+      .callee = "llvm.stackrestore",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "saved.inner")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  restore_inner.terminator = bir::BranchTerminator{.target_label = "restore_outer"};
+
+  bir::Block restore_outer;
+  restore_outer.label = "restore_outer";
+  restore_outer.insts.push_back(bir::CallInst{
+      .callee = "llvm.stackrestore",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "saved.outer")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  restore_outer.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "fixed.out"),
+      .slot_name = "lv.fixed",
+      .align_bytes = 4,
+  });
+  restore_outer.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "fixed.out")};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(inner));
+  function.blocks.push_back(std::move(restore_inner));
+  function.blocks.push_back(std::move(restore_outer));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+bir::Module make_branch_restore_dynamic_stack_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "branch_restore_dynamic_stack_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I64,
+      .name = "n",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "saved.sp"),
+      .callee = "llvm.stacksave",
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "buf"),
+      .callee = "llvm.dynamic_alloca.i32",
+      .args = {bir::Value::named(bir::TypeKind::I64, "n")},
+      .arg_types = {bir::TypeKind::I64},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "cond.branch"),
+      .true_label = "restore_true",
+      .false_label = "restore_false",
+  };
+
+  bir::Block restore_true;
+  restore_true.label = "restore_true";
+  restore_true.insts.push_back(bir::CallInst{
+      .callee = "llvm.stackrestore",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "saved.sp")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  restore_true.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(1)};
+
+  bir::Block restore_false;
+  restore_false.label = "restore_false";
+  restore_false.insts.push_back(bir::CallInst{
+      .callee = "llvm.stackrestore",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "saved.sp")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  restore_false.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(restore_true));
+  function.blocks.push_back(std::move(restore_false));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 int check_fixed_frame_contract() {
   const auto prepared = prepare_module(make_fixed_frame_module());
   const auto* object = find_stack_object(prepared, "lv.fixed");
@@ -250,6 +854,14 @@ int check_fixed_frame_contract() {
   }
   if (slot->size_bytes != 4 || slot->align_bytes != 4) {
     return fail("fixed-frame contract: lv.fixed lost its slot size/alignment");
+  }
+  const auto function_id = prepared.names.function_names.find("fixed_frame_contract");
+  const auto* frame_plan = prepare::find_prepared_frame_plan(prepared, function_id);
+  if (frame_plan == nullptr || frame_plan->frame_size_bytes != 4 ||
+      frame_plan->frame_alignment_bytes != 4 || frame_plan->has_dynamic_stack ||
+      frame_plan->uses_frame_pointer_for_fixed_slots ||
+      frame_plan->frame_slot_order.size() != 1) {
+    return fail("fixed-frame contract: frame_plan no longer publishes the fixed frame correctly");
   }
   return 0;
 }
@@ -278,6 +890,131 @@ int check_call_contract() {
   if (liveness == nullptr || liveness->call_points.size() != 1) {
     return fail("call contract: prepared liveness no longer records the call point");
   }
+  const auto* call_plans = find_call_plans_function(prepared, "call_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 1) {
+    return fail("call contract: call_plans no longer publish the direct call");
+  }
+  const auto& call_plan = call_plans->calls.front();
+  if (call_plan.is_indirect || !call_plan.direct_callee_name.has_value() ||
+      *call_plan.direct_callee_name != "extern_i32" || call_plan.arguments.size() != 1 ||
+      !call_plan.result.has_value()) {
+    return fail("call contract: call_plans lost direct-call ownership details");
+  }
+  if (call_plan.arguments.front().value_bank != prepare::PreparedRegisterBank::Gpr ||
+      !call_plan.arguments.front().destination_register_name.has_value() ||
+      call_plan.arguments.front().destination_register_bank != prepare::PreparedRegisterBank::Gpr) {
+    return fail("call contract: call_plans lost integer argument ABI destination");
+  }
+  if (call_plan.result->value_bank != prepare::PreparedRegisterBank::Gpr ||
+      !call_plan.result->source_register_name.has_value() ||
+      call_plan.result->source_register_bank != prepare::PreparedRegisterBank::Gpr) {
+    return fail("call contract: call_plans lost integer result ABI source");
+  }
+  const auto* storage_plan = find_storage_plan_function(prepared, "call_contract");
+  const auto* tmp_call = storage_plan == nullptr ? nullptr
+                                                 : find_storage_value(prepared, *storage_plan, "tmp.call");
+  if (storage_plan == nullptr || tmp_call == nullptr ||
+      tmp_call->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      tmp_call->bank != prepare::PreparedRegisterBank::Gpr ||
+      !tmp_call->register_name.has_value()) {
+    return fail("call contract: storage_plans lost the tmp.call register home");
+  }
+  return 0;
+}
+
+int check_float_call_contract() {
+  const auto prepared = prepare_module(make_float_call_contract_module());
+  const auto* function = find_function(prepared.module, "float_call_contract");
+  if (function == nullptr) {
+    return fail("float-call contract: missing caller body");
+  }
+  const auto* call = find_first_call(*function);
+  if (call == nullptr || call->callee != "extern_f32" || call->arg_abi.size() != 1 ||
+      !call->result_abi.has_value()) {
+    return fail("float-call contract: missing float call ABI surface");
+  }
+  if (call->arg_abi.front().primary_class != bir::AbiValueClass::Sse ||
+      !call->arg_abi.front().passed_in_register) {
+    return fail("float-call contract: float arg lost SSE register ABI classification");
+  }
+  if (call->result_abi->primary_class != bir::AbiValueClass::Sse) {
+    return fail("float-call contract: float result lost SSE ABI classification");
+  }
+  const auto* liveness = find_liveness_function(prepared, "float_call_contract");
+  if (liveness == nullptr || liveness->call_points.size() != 1) {
+    return fail("float-call contract: prepared liveness no longer records the float call point");
+  }
+  const auto* call_plans = find_call_plans_function(prepared, "float_call_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 1 ||
+      call_plans->calls.front().arguments.size() != 1 || !call_plans->calls.front().result.has_value()) {
+    return fail("float-call contract: call_plans no longer publish the float call");
+  }
+  if (call_plans->calls.front().arguments.front().value_bank != prepare::PreparedRegisterBank::Fpr ||
+      call_plans->calls.front().arguments.front().destination_register_bank !=
+          prepare::PreparedRegisterBank::Fpr ||
+      call_plans->calls.front().result->value_bank != prepare::PreparedRegisterBank::Fpr ||
+      call_plans->calls.front().result->source_register_bank != prepare::PreparedRegisterBank::Fpr) {
+    return fail("float-call contract: call_plans lost SSE/FPR bank ownership");
+  }
+  const auto* storage_plan = find_storage_plan_function(prepared, "float_call_contract");
+  const auto* arg_float =
+      storage_plan == nullptr ? nullptr : find_storage_value(prepared, *storage_plan, "arg.float");
+  const auto* tmp_call = storage_plan == nullptr
+                             ? nullptr
+                             : find_storage_value(prepared, *storage_plan, "tmp.float.call");
+  if (storage_plan == nullptr || arg_float == nullptr || tmp_call == nullptr ||
+      arg_float->bank != prepare::PreparedRegisterBank::Fpr ||
+      tmp_call->bank != prepare::PreparedRegisterBank::Fpr) {
+    return fail("float-call contract: storage_plans lost the FPR homes");
+  }
+  return 0;
+}
+
+int check_indirect_call_contract() {
+  const auto prepared = prepare_module(make_indirect_call_contract_module());
+  const auto* function = find_function(prepared.module, "indirect_call_contract");
+  if (function == nullptr) {
+    return fail("indirect-call contract: missing caller body");
+  }
+  const auto* call = find_first_call(*function);
+  if (call == nullptr || !call->is_indirect || !call->callee_value.has_value() ||
+      call->arg_abi.size() != 1 || !call->result_abi.has_value()) {
+    return fail("indirect-call contract: missing indirect call ABI surface");
+  }
+  if (call->callee_value->type != bir::TypeKind::Ptr ||
+      call->callee_value->name != "callee.ptr") {
+    return fail("indirect-call contract: callee pointer identity drifted");
+  }
+  if (call->arg_abi.front().primary_class != bir::AbiValueClass::Integer ||
+      call->result_abi->primary_class != bir::AbiValueClass::Integer) {
+    return fail("indirect-call contract: integer ABI classification drifted");
+  }
+  const auto* liveness = find_liveness_function(prepared, "indirect_call_contract");
+  if (liveness == nullptr || liveness->call_points.size() != 1) {
+    return fail("indirect-call contract: prepared liveness no longer records the indirect call point");
+  }
+  const auto* call_plans = find_call_plans_function(prepared, "indirect_call_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 1) {
+    return fail("indirect-call contract: call_plans no longer publish the indirect call");
+  }
+  const auto& call_plan = call_plans->calls.front();
+  if (!call_plan.is_indirect || call_plan.direct_callee_name.has_value() ||
+      call_plan.arguments.size() != 1 || !call_plan.result.has_value()) {
+    return fail("indirect-call contract: call_plans lost indirect-call shape");
+  }
+  if (call_plan.arguments.front().value_bank != prepare::PreparedRegisterBank::Gpr ||
+      call_plan.result->value_bank != prepare::PreparedRegisterBank::Gpr) {
+    return fail("indirect-call contract: call_plans lost GPR ownership");
+  }
+  const auto* storage_plan = find_storage_plan_function(prepared, "indirect_call_contract");
+  const auto* callee_ptr = storage_plan == nullptr
+                               ? nullptr
+                               : find_storage_value(prepared, *storage_plan, "callee.ptr");
+  if (storage_plan == nullptr || callee_ptr == nullptr ||
+      callee_ptr->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      callee_ptr->bank != prepare::PreparedRegisterBank::Gpr) {
+    return fail("indirect-call contract: storage_plans lost the callee pointer home");
+  }
   return 0;
 }
 
@@ -299,12 +1036,208 @@ int check_dynamic_stack_contract() {
       stack_restore->callee != "llvm.stackrestore") {
     return fail("dynamic-stack contract: canonical stack-save/alloca/restore calls drifted");
   }
+  if (!stack_restore->arg_abi.empty() &&
+      (stack_restore->arg_abi.front().type != bir::TypeKind::Ptr ||
+       stack_restore->arg_abi.front().primary_class != bir::AbiValueClass::Integer ||
+       !stack_restore->arg_abi.front().passed_in_register)) {
+    return fail("dynamic-stack contract: stackrestore pointer ABI metadata drifted");
+  }
   if (find_stack_object(prepared, "vla.buf") != nullptr) {
     return fail("dynamic-stack contract: dynamic alloca unexpectedly became a fixed stack object");
   }
   const auto* liveness = find_liveness_function(prepared, "dynamic_stack_contract");
   if (liveness == nullptr || liveness->call_points.size() != 3) {
     return fail("dynamic-stack contract: prepared liveness no longer records stack-state calls");
+  }
+  const auto function_id = prepared.names.function_names.find("dynamic_stack_contract");
+  const auto* frame_plan = prepare::find_prepared_frame_plan(prepared, function_id);
+  const auto* dynamic_plan = prepare::find_prepared_dynamic_stack_plan(prepared, function_id);
+  if (frame_plan == nullptr || !frame_plan->has_dynamic_stack ||
+      frame_plan->uses_frame_pointer_for_fixed_slots) {
+    return fail(
+        "dynamic-stack contract: frame_plan no longer marks dynamic stack correctly for a no-fixed-slot function");
+  }
+  if (dynamic_plan == nullptr || !dynamic_plan->requires_stack_save_restore ||
+      dynamic_plan->uses_frame_pointer_for_fixed_slots ||
+      dynamic_plan->operations.size() != 3) {
+    return fail("dynamic-stack contract: dynamic_stack_plan no longer publishes the stack-state operations");
+  }
+  const auto* call_plans = find_call_plans_function(prepared, "dynamic_stack_contract");
+  const auto* storage_plan = find_storage_plan_function(prepared, "dynamic_stack_contract");
+  const auto* saved_sp =
+      storage_plan == nullptr ? nullptr : find_storage_value(prepared, *storage_plan, "saved.sp");
+  const auto* vla_buf =
+      storage_plan == nullptr ? nullptr : find_storage_value(prepared, *storage_plan, "vla.buf");
+  if (call_plans == nullptr || call_plans->calls.size() != 3) {
+    return fail("dynamic-stack contract: call_plans lost the stack-state calls");
+  }
+  if (storage_plan == nullptr || saved_sp == nullptr || vla_buf == nullptr ||
+      saved_sp->bank != prepare::PreparedRegisterBank::Gpr ||
+      vla_buf->bank != prepare::PreparedRegisterBank::Gpr) {
+    return fail("dynamic-stack contract: storage_plans lost dynamic-stack pointer homes");
+  }
+  return 0;
+}
+
+int check_cross_block_dynamic_stack_cfg_contract() {
+  const auto prepared = prepare_module(make_cross_block_dynamic_stack_module());
+  const auto* function = find_function(prepared.module, "cross_block_dynamic_stack_contract");
+  if (function == nullptr || function->blocks.size() != 4) {
+    return fail("cross-block dynamic-stack contract: expected four semantic BIR blocks");
+  }
+
+  const auto* control_flow =
+      find_control_flow_function(prepared, "cross_block_dynamic_stack_contract");
+  if (control_flow == nullptr || control_flow->blocks.size() != 4) {
+    return fail("cross-block dynamic-stack contract: prepared control-flow lost the loop topology");
+  }
+
+  const auto* entry = find_control_flow_block(prepared, *control_flow, "entry");
+  const auto* loop = find_control_flow_block(prepared, *control_flow, "loop");
+  const auto* restore = find_control_flow_block(prepared, *control_flow, "restore_then_loop");
+  const auto* exit = find_control_flow_block(prepared, *control_flow, "exit");
+  if (entry == nullptr || loop == nullptr || restore == nullptr || exit == nullptr) {
+    return fail("cross-block dynamic-stack contract: missing prepared CFG blocks");
+  }
+  if (entry->terminator_kind != bir::TerminatorKind::Branch ||
+      loop->terminator_kind != bir::TerminatorKind::CondBranch ||
+      restore->terminator_kind != bir::TerminatorKind::Branch ||
+      exit->terminator_kind != bir::TerminatorKind::Return) {
+    return fail("cross-block dynamic-stack contract: prepared CFG terminators drifted");
+  }
+
+  const auto* liveness = find_liveness_function(prepared, "cross_block_dynamic_stack_contract");
+  if (liveness == nullptr || liveness->call_points.size() != 3) {
+    return fail(
+        "cross-block dynamic-stack contract: expected stacksave, dynamic_alloca, and stackrestore call points");
+  }
+  const auto* xs_slot = find_stack_object(prepared, "lv.xs");
+  if (xs_slot == nullptr) {
+    return fail("cross-block dynamic-stack contract: fixed pointer slot for dynamic allocation handle disappeared");
+  }
+  if (find_stack_object(prepared, "loop.buf") != nullptr) {
+    return fail("cross-block dynamic-stack contract: loop dynamic alloca became a fixed stack object");
+  }
+  const auto function_id = prepared.names.function_names.find("cross_block_dynamic_stack_contract");
+  const auto* frame_plan = prepare::find_prepared_frame_plan(prepared, function_id);
+  const auto* dynamic_plan = prepare::find_prepared_dynamic_stack_plan(prepared, function_id);
+  if (frame_plan == nullptr || !frame_plan->has_dynamic_stack ||
+      !frame_plan->uses_frame_pointer_for_fixed_slots) {
+    return fail("cross-block dynamic-stack contract: frame_plan lost cross-block dynamic-stack ownership");
+  }
+  if (dynamic_plan == nullptr || !dynamic_plan->requires_stack_save_restore ||
+      dynamic_plan->operations.size() != 3) {
+    return fail("cross-block dynamic-stack contract: dynamic_stack_plan lost cross-block stack-state operations");
+  }
+  return 0;
+}
+
+int check_nested_dynamic_stack_contract() {
+  const auto prepared = prepare_module(make_nested_dynamic_stack_module());
+  const auto* function = find_function(prepared.module, "nested_dynamic_stack_contract");
+  if (function == nullptr || function->blocks.size() != 4) {
+    return fail("nested dynamic-stack contract: expected four semantic BIR blocks");
+  }
+  if (count_calls_to(*function, "llvm.stacksave") != 2 ||
+      count_calls_to(*function, "llvm.dynamic_alloca.i32") != 2 ||
+      count_calls_to(*function, "llvm.stackrestore") != 2) {
+    return fail(
+        "nested dynamic-stack contract: expected two nested stacksave/alloca/restore operations");
+  }
+
+  const auto* control_flow = find_control_flow_function(prepared, "nested_dynamic_stack_contract");
+  if (control_flow == nullptr || control_flow->blocks.size() != 4) {
+    return fail("nested dynamic-stack contract: prepared CFG lost nested stack topology");
+  }
+  const auto* inner = find_control_flow_block(prepared, *control_flow, "inner");
+  const auto* restore_inner = find_control_flow_block(prepared, *control_flow, "restore_inner");
+  const auto* restore_outer = find_control_flow_block(prepared, *control_flow, "restore_outer");
+  if (inner == nullptr || restore_inner == nullptr || restore_outer == nullptr) {
+    return fail("nested dynamic-stack contract: missing nested stack CFG blocks");
+  }
+  if (inner->terminator_kind != bir::TerminatorKind::CondBranch ||
+      restore_inner->terminator_kind != bir::TerminatorKind::Branch ||
+      restore_outer->terminator_kind != bir::TerminatorKind::Return) {
+    return fail("nested dynamic-stack contract: nested restore CFG terminators drifted");
+  }
+  if (find_stack_object(prepared, "lv.fixed") == nullptr) {
+    return fail("nested dynamic-stack contract: fixed local disappeared while dynamic stack was active");
+  }
+  if (find_stack_object(prepared, "outer.buf") != nullptr ||
+      find_stack_object(prepared, "inner.buf") != nullptr) {
+    return fail("nested dynamic-stack contract: nested dynamic allocas became fixed stack objects");
+  }
+  const auto* liveness = find_liveness_function(prepared, "nested_dynamic_stack_contract");
+  if (liveness == nullptr || liveness->call_points.size() != 6) {
+    return fail(
+        "nested dynamic-stack contract: expected two stacksaves, two dynamic allocas, and two stackrestores as call points");
+  }
+  const auto function_id = prepared.names.function_names.find("nested_dynamic_stack_contract");
+  const auto* frame_plan = prepare::find_prepared_frame_plan(prepared, function_id);
+  const auto* dynamic_plan = prepare::find_prepared_dynamic_stack_plan(prepared, function_id);
+  if (frame_plan == nullptr || !frame_plan->has_dynamic_stack ||
+      !frame_plan->uses_frame_pointer_for_fixed_slots) {
+    return fail("nested dynamic-stack contract: frame_plan lost nested dynamic-stack anchoring");
+  }
+  if (dynamic_plan == nullptr || !dynamic_plan->requires_stack_save_restore ||
+      dynamic_plan->operations.size() != 6) {
+    return fail("nested dynamic-stack contract: dynamic_stack_plan lost nested stack-state operations");
+  }
+  return 0;
+}
+
+int check_branch_restore_dynamic_stack_contract() {
+  const auto prepared = prepare_module(make_branch_restore_dynamic_stack_module());
+  const auto* function = find_function(prepared.module, "branch_restore_dynamic_stack_contract");
+  if (function == nullptr || function->blocks.size() != 3) {
+    return fail("branch-restore dynamic-stack contract: expected three semantic BIR blocks");
+  }
+
+  const auto& restore_true = function->blocks[1];
+  const auto& restore_false = function->blocks[2];
+  if (count_block_calls_to(restore_true, "llvm.stackrestore") != 1 ||
+      count_block_calls_to(restore_false, "llvm.stackrestore") != 1) {
+    return fail("branch-restore dynamic-stack contract: each restore branch must restore exactly once");
+  }
+  const auto* true_restore_call = std::get_if<bir::CallInst>(&restore_true.insts.front());
+  const auto* false_restore_call = std::get_if<bir::CallInst>(&restore_false.insts.front());
+  if (true_restore_call == nullptr || false_restore_call == nullptr ||
+      true_restore_call->args.size() != 1 || false_restore_call->args.size() != 1 ||
+      true_restore_call->args.front().name != "saved.sp" ||
+      false_restore_call->args.front().name != "saved.sp") {
+    return fail("branch-restore dynamic-stack contract: restore branches no longer pair to the published saved stack pointer");
+  }
+
+  const auto* control_flow =
+      find_control_flow_function(prepared, "branch_restore_dynamic_stack_contract");
+  if (control_flow == nullptr || control_flow->blocks.size() != 3) {
+    return fail("branch-restore dynamic-stack contract: prepared CFG lost branch restore topology");
+  }
+  const auto* entry = find_control_flow_block(prepared, *control_flow, "entry");
+  const auto* true_block = find_control_flow_block(prepared, *control_flow, "restore_true");
+  const auto* false_block = find_control_flow_block(prepared, *control_flow, "restore_false");
+  if (entry == nullptr || true_block == nullptr || false_block == nullptr) {
+    return fail("branch-restore dynamic-stack contract: missing prepared CFG restore blocks");
+  }
+  if (entry->terminator_kind != bir::TerminatorKind::CondBranch ||
+      true_block->terminator_kind != bir::TerminatorKind::Return ||
+      false_block->terminator_kind != bir::TerminatorKind::Return) {
+    return fail("branch-restore dynamic-stack contract: prepared CFG restore terminators drifted");
+  }
+  const auto* liveness = find_liveness_function(prepared, "branch_restore_dynamic_stack_contract");
+  if (liveness == nullptr || liveness->call_points.size() != 4) {
+    return fail(
+        "branch-restore dynamic-stack contract: expected stacksave, dynamic_alloca, and one restore per branch as call points");
+  }
+  const auto function_id = prepared.names.function_names.find("branch_restore_dynamic_stack_contract");
+  const auto* frame_plan = prepare::find_prepared_frame_plan(prepared, function_id);
+  const auto* dynamic_plan = prepare::find_prepared_dynamic_stack_plan(prepared, function_id);
+  if (frame_plan == nullptr || !frame_plan->has_dynamic_stack) {
+    return fail("branch-restore dynamic-stack contract: frame_plan lost branch restore dynamic-stack ownership");
+  }
+  if (dynamic_plan == nullptr || !dynamic_plan->requires_stack_save_restore ||
+      dynamic_plan->operations.size() != 4) {
+    return fail("branch-restore dynamic-stack contract: dynamic_stack_plan lost per-branch restore operations");
   }
   return 0;
 }
@@ -318,7 +1251,22 @@ int main() {
   if (const int rc = check_call_contract(); rc != 0) {
     return rc;
   }
+  if (const int rc = check_float_call_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_indirect_call_contract(); rc != 0) {
+    return rc;
+  }
   if (const int rc = check_dynamic_stack_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_cross_block_dynamic_stack_cfg_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_nested_dynamic_stack_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_branch_restore_dynamic_stack_contract(); rc != 0) {
     return rc;
   }
   return EXIT_SUCCESS;

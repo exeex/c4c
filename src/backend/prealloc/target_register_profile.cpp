@@ -70,6 +70,126 @@ template <std::size_t N>
   return std::nullopt;
 }
 
+[[nodiscard]] std::vector<std::string_view> x86_caller_saved_pool(PreparedRegisterClass reg_class) {
+  switch (reg_class) {
+    case PreparedRegisterClass::General:
+      return {"r11"};
+    case PreparedRegisterClass::Float:
+      return {"xmm8"};
+    case PreparedRegisterClass::Vector:
+      return {"ymm8"};
+    case PreparedRegisterClass::AggregateAddress:
+    case PreparedRegisterClass::None:
+      return {};
+  }
+  return {};
+}
+
+[[nodiscard]] std::vector<std::string_view> x86_callee_saved_pool(PreparedRegisterClass reg_class) {
+  switch (reg_class) {
+    case PreparedRegisterClass::General:
+      return {"rbx", "r12"};
+    case PreparedRegisterClass::Float:
+      return {"xmm12", "xmm13"};
+    case PreparedRegisterClass::Vector:
+      return {"ymm12", "ymm13"};
+    case PreparedRegisterClass::AggregateAddress:
+    case PreparedRegisterClass::None:
+      return {};
+  }
+  return {};
+}
+
+[[nodiscard]] std::vector<std::string_view> i686_caller_saved_pool(PreparedRegisterClass reg_class) {
+  switch (reg_class) {
+    case PreparedRegisterClass::General:
+      return {"ecx"};
+    case PreparedRegisterClass::Float:
+      return {"xmm1"};
+    case PreparedRegisterClass::Vector:
+      return {"ymm1"};
+    case PreparedRegisterClass::AggregateAddress:
+    case PreparedRegisterClass::None:
+      return {};
+  }
+  return {};
+}
+
+[[nodiscard]] std::vector<std::string_view> i686_callee_saved_pool(PreparedRegisterClass reg_class) {
+  switch (reg_class) {
+    case PreparedRegisterClass::General:
+      return {"ebx", "esi"};
+    case PreparedRegisterClass::Float:
+      return {"xmm6", "xmm7"};
+    case PreparedRegisterClass::Vector:
+      return {"ymm6", "ymm7"};
+    case PreparedRegisterClass::AggregateAddress:
+    case PreparedRegisterClass::None:
+      return {};
+  }
+  return {};
+}
+
+[[nodiscard]] std::vector<std::string_view> aarch64_caller_saved_pool(PreparedRegisterClass reg_class) {
+  switch (reg_class) {
+    case PreparedRegisterClass::General:
+      return {"x13"};
+    case PreparedRegisterClass::Float:
+      return {"d13"};
+    case PreparedRegisterClass::Vector:
+      return {"v13"};
+    case PreparedRegisterClass::AggregateAddress:
+    case PreparedRegisterClass::None:
+      return {};
+  }
+  return {};
+}
+
+[[nodiscard]] std::vector<std::string_view> aarch64_callee_saved_pool(PreparedRegisterClass reg_class) {
+  switch (reg_class) {
+    case PreparedRegisterClass::General:
+      return {"x20", "x21"};
+    case PreparedRegisterClass::Float:
+      return {"d20", "d21"};
+    case PreparedRegisterClass::Vector:
+      return {"v20", "v21"};
+    case PreparedRegisterClass::AggregateAddress:
+    case PreparedRegisterClass::None:
+      return {};
+  }
+  return {};
+}
+
+[[nodiscard]] std::vector<std::string_view> riscv_caller_saved_pool(PreparedRegisterClass reg_class) {
+  switch (reg_class) {
+    case PreparedRegisterClass::General:
+      return {"t0"};
+    case PreparedRegisterClass::Float:
+      return {"ft0"};
+    case PreparedRegisterClass::Vector:
+      return {"v0"};
+    case PreparedRegisterClass::AggregateAddress:
+    case PreparedRegisterClass::None:
+      return {};
+  }
+  return {};
+}
+
+[[nodiscard]] std::vector<std::string_view> riscv_callee_saved_pool(PreparedRegisterClass reg_class) {
+  switch (reg_class) {
+    case PreparedRegisterClass::General:
+      return {"s1", "s2"};
+    case PreparedRegisterClass::Float:
+      return {"fs1", "fs2"};
+    case PreparedRegisterClass::Vector:
+      return {"v8", "v9"};
+    case PreparedRegisterClass::AggregateAddress:
+    case PreparedRegisterClass::None:
+      return {};
+  }
+  return {};
+}
+
 }  // namespace
 
 std::optional<std::string> call_arg_destination_register_name(
@@ -156,18 +276,15 @@ std::optional<std::string> call_result_destination_register_name(
 std::vector<std::string_view> caller_saved_registers(
     const c4c::TargetProfile& target_profile,
     PreparedRegisterClass reg_class) {
-  if (reg_class != PreparedRegisterClass::General) {
-    return {};
-  }
   switch (target_profile.arch) {
     case c4c::TargetArch::X86_64:
-      return {"r11"};
+      return x86_caller_saved_pool(reg_class);
     case c4c::TargetArch::I686:
-      return {"ecx"};
+      return i686_caller_saved_pool(reg_class);
     case c4c::TargetArch::Aarch64:
-      return {"x13"};
+      return aarch64_caller_saved_pool(reg_class);
     case c4c::TargetArch::Riscv64:
-      return {"t0"};
+      return riscv_caller_saved_pool(reg_class);
     case c4c::TargetArch::Unknown:
       return {};
   }
@@ -177,18 +294,15 @@ std::vector<std::string_view> caller_saved_registers(
 std::vector<std::string_view> callee_saved_registers(
     const c4c::TargetProfile& target_profile,
     PreparedRegisterClass reg_class) {
-  if (reg_class != PreparedRegisterClass::General) {
-    return {};
-  }
   switch (target_profile.arch) {
     case c4c::TargetArch::X86_64:
-      return {"rbx", "r12"};
+      return x86_callee_saved_pool(reg_class);
     case c4c::TargetArch::I686:
-      return {"ebx", "esi"};
+      return i686_callee_saved_pool(reg_class);
     case c4c::TargetArch::Aarch64:
-      return {"x20", "x21"};
+      return aarch64_callee_saved_pool(reg_class);
     case c4c::TargetArch::Riscv64:
-      return {"s1", "s2"};
+      return riscv_callee_saved_pool(reg_class);
     case c4c::TargetArch::Unknown:
       return {};
   }

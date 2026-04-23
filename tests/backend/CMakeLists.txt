@@ -353,10 +353,54 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DDUMP_FLAG=--dump-prepared-bir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c
-          "-DREQUIRED_SNIPPETS=prepared.module target=x86_64-unknown-linux-gnu|--- prepared-bir ---|--- prepared-control-flow ---|--- prepared-value-locations ---|--- prepared-stack-layout ---|--- prepared-frame-plan ---|--- prepared-dynamic-stack-plan ---|--- prepared-call-plans ---|--- prepared-storage-plans ---|--- prepared-addressing ---"
+          "-DREQUIRED_SNIPPETS=prepared.module target=x86_64-unknown-linux-gnu|--- prepared-bir ---|--- prepared-function-summaries ---|--- prepared-control-flow ---|--- prepared-value-locations ---|--- prepared-stack-layout ---|--- prepared-frame-plan ---|--- prepared-dynamic-stack-plan ---|--- prepared-call-plans ---|--- prepared-storage-plans ---|--- prepared-addressing ---"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_dump_prepared_bir_exposes_contract_sections PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_dump_bir_vla_goto_stackrestore_cfg
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-bir
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/backend/case/vla_goto_stackrestore.c
+          "-DREQUIRED_SNIPPETS=bir.func @accumulate_vla(i32 %p.n) -> i32 {|entry:|ulbl_loop:|block_1:|block_2:|block_3:|%t0 = bir.call ptr llvm.stacksave()|%t3 = bir.call ptr llvm.dynamic_alloca.i32(i64 %t2)|bir.call void llvm.stackrestore(ptr %t0)|bir.cond_br i1 %t17, block_2, block_3|bir.br block_1"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_bir_vla_goto_stackrestore_cfg PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_dump_prepared_bir_vla_goto_stackrestore_cfg
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-prepared-bir
+          "-DEXTRA_ARGS=--mir-focus-function;accumulate_vla"
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/backend/case/vla_goto_stackrestore.c
+          "-DREQUIRED_SNIPPETS=prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|--- prepared-function-summaries ---|prepared.summary @accumulate_vla stable_base=fp frame_size=24 frame_alignment=8 has_dynamic_stack=yes|dynamic_stack block=entry inst=1 kind=stack_save result=%t0|dynamic_stack block=block_1 inst=2 kind=dynamic_alloca result=%t3 operand=%t2|--- prepared-control-flow ---|prepared.func @accumulate_vla|block entry terminator=branch target=ulbl_loop|block ulbl_loop terminator=branch target=block_1|block block_1 terminator=cond_branch true=block_2 false=block_3|block block_2 terminator=branch target=block_1|block block_3 terminator=return|--- prepared-frame-plan ---|prepared.func @accumulate_vla frame_size=24 frame_alignment=8 has_dynamic_stack=yes fixed_slots_use_fp=yes|--- prepared-dynamic-stack-plan ---|prepared.func @accumulate_vla requires_stack_save_restore=yes fixed_slots_use_fp=yes|dynamic_stack_op block=entry inst_index=1 kind=stack_save result=%t0|dynamic_stack_op block=block_1 inst_index=2 kind=dynamic_alloca result=%t3 operand=%t2 alloc_type=i32|dynamic_stack_op block=block_2 inst_index=0 kind=stack_restore operand=%t0|--- prepared-addressing ---|prepared.func @accumulate_vla frame_size="
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_prepared_bir_vla_goto_stackrestore_cfg PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
+  NAME backend_cli_dump_prepared_bir_local_arg_call_contract
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-prepared-bir
+          "-DEXTRA_ARGS=--mir-focus-function;main"
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/backend/case/local_arg_call.c
+          "-DREQUIRED_SNIPPETS=--- prepared-function-summaries ---|prepared.summary @main stable_base=rsp frame_size=4 frame_alignment=4 has_dynamic_stack=no|callsite block=0 inst=2 kind=direct callee=add_one args=1 result_bank=gpr|arg0 bank=gpr from=register:r11 to=rdi|result bank=gpr from=rax to=register:rbx|storage %t0 register bank=gpr reg=r11|storage %t1 register bank=gpr reg=rbx|--- prepared-call-plans ---|prepared.func @main|call block_index=0 inst_index=2 indirect=no callee=add_one|--- prepared-storage-plans ---|storage %t0 value_id=2 encoding=register bank=gpr reg=r11|storage %t1 value_id=3 encoding=register bank=gpr reg=rbx"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_prepared_bir_local_arg_call_contract PROPERTIES
   LABELS "backend;internal;cli"
 )
 

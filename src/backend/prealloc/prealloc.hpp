@@ -3694,6 +3694,7 @@ class BirPreAlloc {
 
  private:
   void note(std::string_view message);
+  void publish_contract_plans();
 
   PrepareOptions options_;
   PreparedBirModule prepared_;

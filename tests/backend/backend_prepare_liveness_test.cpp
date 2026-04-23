@@ -1592,6 +1592,269 @@ prepare::PreparedBirModule prepare_loop_weighted_priority_module_with_regalloc()
   return planner.run();
 }
 
+prepare::PreparedBirModule prepare_cross_call_boundary_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function decl;
+  decl.name = "boundary_helper";
+  decl.is_declaration = true;
+  decl.return_type = bir::TypeKind::I32;
+  decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "arg0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  module.functions.push_back(std::move(decl));
+
+  bir::Function function;
+  function.name = "cross_call_boundary";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "pre.only"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "carry"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(3),
+      .rhs = bir::Value::immediate_i32(4),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "call.out"),
+      .callee = "boundary_helper",
+      .args = {bir::Value::named(bir::TypeKind::I32, "pre.only")},
+      .arg_types = {bir::TypeKind::I32},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "after"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "carry"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "call.out"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "after"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
+prepare::PreparedBirModule prepare_same_start_priority_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "same_start_priority";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.hot",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.mid0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.mid1",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.low",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "hot0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.hot"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "p.mid0"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "hot1"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "hot0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "p.hot"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "mid.sum"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.mid0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "p.mid1"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "tail0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "hot1"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "p.low"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "tail1"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "tail0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "mid.sum"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "tail2"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "tail1"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "p.hot"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "tail2"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
+prepare::PreparedBirModule prepare_float_linear_scan_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "float_linear_scan";
+  function.return_type = bir::TypeKind::F32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F32,
+      .name = "p.hot",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F32,
+      .name = "p.mid0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F32,
+      .name = "p.mid1",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F32,
+      .name = "p.low",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "hot0"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "p.hot"),
+      .rhs = bir::Value::named(bir::TypeKind::F32, "p.mid0"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "hot1"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "hot0"),
+      .rhs = bir::Value::named(bir::TypeKind::F32, "p.hot"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "mid.sum"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "p.mid0"),
+      .rhs = bir::Value::named(bir::TypeKind::F32, "p.mid1"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "tail0"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "hot1"),
+      .rhs = bir::Value::named(bir::TypeKind::F32, "p.low"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "tail1"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "tail0"),
+      .rhs = bir::Value::named(bir::TypeKind::F32, "mid.sum"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "tail2"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "tail1"),
+      .rhs = bir::Value::named(bir::TypeKind::F32, "p.hot"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::F32, "tail2"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
 int check_phi_predecessor_edge_liveness(const prepare::PreparedBirModule& prepared) {
   if (!prepared.stack_layout.objects.empty()) {
     return fail("expected no stack-layout objects for the phi-only test function");
@@ -2624,6 +2887,136 @@ int check_loop_weighted_priority(const prepare::PreparedBirModule& prepared) {
   return 0;
 }
 
+int check_cross_call_boundary_classification(const prepare::PreparedBirModule& prepared) {
+  const auto* liveness = find_liveness_function(prepared, "cross_call_boundary");
+  const auto* regalloc = find_regalloc_function(prepared, "cross_call_boundary");
+  if (liveness == nullptr || regalloc == nullptr) {
+    return fail("expected liveness and regalloc output for cross_call_boundary");
+  }
+
+  const auto* pre_only_live = find_liveness_value(prepared, *liveness, "pre.only");
+  const auto* carry_live = find_liveness_value(prepared, *liveness, "carry");
+  const auto* call_out_live = find_liveness_value(prepared, *liveness, "call.out");
+  const auto* pre_only_reg = find_regalloc_value(prepared, *regalloc, "pre.only");
+  const auto* carry_reg = find_regalloc_value(prepared, *regalloc, "carry");
+  const auto* call_out_reg = find_regalloc_value(prepared, *regalloc, "call.out");
+  if (pre_only_live == nullptr || carry_live == nullptr || call_out_live == nullptr ||
+      pre_only_reg == nullptr || carry_reg == nullptr || call_out_reg == nullptr) {
+    return fail("expected cross_call_boundary values to appear in both liveness and regalloc output");
+  }
+
+  if (pre_only_live->crosses_call || pre_only_reg->crosses_call) {
+    return fail("expected pre.only to die at the call boundary rather than count as call-crossing");
+  }
+  if (!carry_live->crosses_call || !carry_reg->crosses_call) {
+    return fail("expected carry to stay live across the call boundary");
+  }
+  if (call_out_live->crosses_call || call_out_reg->crosses_call) {
+    return fail("expected call.out to start after the call boundary rather than count as call-crossing");
+  }
+  if (!carry_reg->assigned_register.has_value() || carry_reg->assigned_register->register_name != "s1") {
+    return fail("expected the true call-crossing carry value to take the protected callee-saved register");
+  }
+
+  return 0;
+}
+
+int check_same_start_priority_ordering(const prepare::PreparedBirModule& prepared) {
+  const auto* regalloc = find_regalloc_function(prepared, "same_start_priority");
+  if (regalloc == nullptr) {
+    return fail("expected regalloc output for same_start_priority");
+  }
+
+  const auto* hot = find_regalloc_value(prepared, *regalloc, "p.hot");
+  const auto* mid0 = find_regalloc_value(prepared, *regalloc, "p.mid0");
+  const auto* mid1 = find_regalloc_value(prepared, *regalloc, "p.mid1");
+  const auto* low = find_regalloc_value(prepared, *regalloc, "p.low");
+  if (hot == nullptr || mid0 == nullptr || mid1 == nullptr || low == nullptr) {
+    return fail("expected same_start_priority params to appear in regalloc output");
+  }
+
+  if (hot->priority <= mid0->priority || hot->priority <= mid1->priority ||
+      hot->priority <= low->priority) {
+    return fail("expected p.hot to publish the strongest same-start linear-scan priority");
+  }
+  if (!hot->assigned_register.has_value() || hot->assigned_register->register_name != "t0") {
+    return fail("expected same-start linear scan to give the hottest value the caller-saved seed first");
+  }
+
+  int callee_saved_count = 0;
+  int stack_count = 0;
+  for (const prepare::PreparedRegallocValue* value : {mid0, mid1, low}) {
+    if (value->assigned_register.has_value() &&
+        (value->assigned_register->register_name == "s1" ||
+         value->assigned_register->register_name == "s2")) {
+      ++callee_saved_count;
+      continue;
+    }
+    if (value->allocation_status == prepare::PreparedAllocationStatus::AssignedStackSlot &&
+        value->assigned_stack_slot.has_value() && !value->assigned_register.has_value()) {
+      ++stack_count;
+      continue;
+    }
+    return fail("expected same-start priority followers to fall into callee-saved spillover or stack");
+  }
+  if (callee_saved_count != 2 || stack_count != 1) {
+    return fail("expected same-start linear scan to consume s1/s2 before stacking the weakest value");
+  }
+  if (low->allocation_status != prepare::PreparedAllocationStatus::AssignedStackSlot ||
+      !low->assigned_stack_slot.has_value()) {
+    return fail("expected the weakest same-start value to become the stack-backed fallback");
+  }
+
+  return 0;
+}
+
+int check_float_linear_scan_pooling(const prepare::PreparedBirModule& prepared) {
+  const auto* regalloc = find_regalloc_function(prepared, "float_linear_scan");
+  if (regalloc == nullptr) {
+    return fail("expected regalloc output for float_linear_scan");
+  }
+
+  const auto* hot = find_regalloc_value(prepared, *regalloc, "p.hot");
+  const auto* mid0 = find_regalloc_value(prepared, *regalloc, "p.mid0");
+  const auto* mid1 = find_regalloc_value(prepared, *regalloc, "p.mid1");
+  const auto* low = find_regalloc_value(prepared, *regalloc, "p.low");
+  if (hot == nullptr || mid0 == nullptr || mid1 == nullptr || low == nullptr) {
+    return fail("expected float_linear_scan params to appear in regalloc output");
+  }
+
+  if (hot->register_class != prepare::PreparedRegisterClass::Float ||
+      mid0->register_class != prepare::PreparedRegisterClass::Float ||
+      mid1->register_class != prepare::PreparedRegisterClass::Float ||
+      low->register_class != prepare::PreparedRegisterClass::Float) {
+    return fail("expected float_linear_scan values to classify into the float register bank");
+  }
+  if (!hot->assigned_register.has_value() || hot->assigned_register->register_name != "ft0") {
+    return fail("expected float linear scan to use the float caller-saved seed first");
+  }
+
+  int callee_saved_count = 0;
+  int stack_count = 0;
+  for (const prepare::PreparedRegallocValue* value : {mid0, mid1, low}) {
+    if (value->assigned_register.has_value() &&
+        (value->assigned_register->register_name == "fs1" ||
+         value->assigned_register->register_name == "fs2")) {
+      ++callee_saved_count;
+      continue;
+    }
+    if (value->allocation_status == prepare::PreparedAllocationStatus::AssignedStackSlot &&
+        value->assigned_stack_slot.has_value() && !value->assigned_register.has_value()) {
+      ++stack_count;
+      continue;
+    }
+    return fail("expected float linear scan followers to use float spillover or stack fallback");
+  }
+  if (callee_saved_count != 2 || stack_count != 1) {
+    return fail("expected float linear scan to mirror the temporary GPR-style pool policy");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -2773,6 +3166,21 @@ int main() {
 
   const auto loop_weighted_prepared = prepare_loop_weighted_priority_module_with_regalloc();
   if (const int rc = check_loop_weighted_priority(loop_weighted_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto cross_call_boundary_prepared = prepare_cross_call_boundary_module_with_regalloc();
+  if (const int rc = check_cross_call_boundary_classification(cross_call_boundary_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto same_start_priority_prepared = prepare_same_start_priority_module_with_regalloc();
+  if (const int rc = check_same_start_priority_ordering(same_start_priority_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto float_linear_scan_prepared = prepare_float_linear_scan_module_with_regalloc();
+  if (const int rc = check_float_linear_scan_pooling(float_linear_scan_prepared); rc != 0) {
     return rc;
   }
   return 0;
