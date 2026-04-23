@@ -926,6 +926,7 @@ struct PreparedCallPlan {
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
   PreparedCallWrapperKind wrapper_kind = PreparedCallWrapperKind::Indirect;
+  std::size_t variadic_fpr_arg_register_count = 0;
   bool is_indirect = false;
   std::optional<std::string> direct_callee_name;
   std::vector<PreparedCallArgumentPlan> arguments;

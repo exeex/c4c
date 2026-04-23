@@ -449,8 +449,8 @@ prepare::PreparedBirModule prepare_call_wrapper_dump_module() {
   entry.insts.push_back(bir::CallInst{
       .result = bir::Value::named(bir::TypeKind::I32, "tmp.extern_variadic"),
       .callee = "extern_variadic_i32",
-      .args = {bir::Value::immediate_i32(3), bir::Value::immediate_i32(4)},
-      .arg_types = {bir::TypeKind::I32, bir::TypeKind::I32},
+      .args = {bir::Value::immediate_i32(3), bir::Value::immediate_f32_bits(0x40800000)},
+      .arg_types = {bir::TypeKind::I32, bir::TypeKind::F32},
       .arg_abi = {
           bir::CallArgAbiInfo{
               .type = bir::TypeKind::I32,
@@ -460,10 +460,10 @@ prepare::PreparedBirModule prepare_call_wrapper_dump_module() {
               .passed_in_register = true,
           },
           bir::CallArgAbiInfo{
-              .type = bir::TypeKind::I32,
+              .type = bir::TypeKind::F32,
               .size_bytes = 4,
               .align_bytes = 4,
-              .primary_class = bir::AbiValueClass::Integer,
+              .primary_class = bir::AbiValueClass::Sse,
               .passed_in_register = true,
           },
       },
@@ -718,32 +718,32 @@ int main() {
   const auto call_wrapper_prepared = prepare_call_wrapper_dump_module();
   const std::string call_wrapper_dump = prepare::print(call_wrapper_prepared);
   if (!expect_contains(call_wrapper_dump,
-                       "callsite block=0 inst=0 wrapper=same_module callee=same_module_i32",
+                       "callsite block=0 inst=0 wrapper=same_module callee=same_module_i32 variadic_fpr_args=0",
                        "same-module wrapper summary")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(call_wrapper_dump,
-                       "callsite block=0 inst=1 wrapper=direct_extern_fixed_arity callee=extern_fixed_i32",
+                       "callsite block=0 inst=1 wrapper=direct_extern_fixed_arity callee=extern_fixed_i32 variadic_fpr_args=0",
                        "fixed extern wrapper summary")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(call_wrapper_dump,
-                       "callsite block=0 inst=2 wrapper=direct_extern_variadic callee=extern_variadic_i32",
+                       "callsite block=0 inst=2 wrapper=direct_extern_variadic callee=extern_variadic_i32 variadic_fpr_args=1",
                        "variadic extern wrapper summary")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(call_wrapper_dump,
-                       "callsite block=0 inst=3 wrapper=indirect args=1",
+                       "callsite block=0 inst=3 wrapper=indirect variadic_fpr_args=0 args=1",
                        "indirect wrapper summary")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(call_wrapper_dump,
-                       "call block_index=0 inst_index=2 wrapper_kind=direct_extern_variadic indirect=no callee=extern_variadic_i32",
+                       "call block_index=0 inst_index=2 wrapper_kind=direct_extern_variadic variadic_fpr_arg_register_count=1 indirect=no callee=extern_variadic_i32",
                        "variadic wrapper call-plan detail")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(call_wrapper_dump,
-                       "call block_index=0 inst_index=3 wrapper_kind=indirect indirect=yes",
+                       "call block_index=0 inst_index=3 wrapper_kind=indirect variadic_fpr_arg_register_count=0 indirect=yes",
                        "indirect wrapper call-plan detail")) {
     return EXIT_FAILURE;
   }

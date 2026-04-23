@@ -252,6 +252,7 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
         if (call.direct_callee_name.has_value()) {
           out << " callee=" << *call.direct_callee_name;
         }
+        out << " variadic_fpr_args=" << call.variadic_fpr_arg_register_count;
         out << " args=" << call.arguments.size();
         if (call.result.has_value()) {
           out << " result_bank=" << prepared_register_bank_name(call.result->value_bank);
@@ -619,6 +620,7 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
       out << "  call block_index=" << call.block_index
           << " inst_index=" << call.instruction_index
           << " wrapper_kind=" << prepared_call_wrapper_kind_name(call.wrapper_kind)
+          << " variadic_fpr_arg_register_count=" << call.variadic_fpr_arg_register_count
           << " indirect=" << (call.is_indirect ? "yes" : "no");
       if (call.direct_callee_name.has_value()) {
         out << " callee=" << *call.direct_callee_name;

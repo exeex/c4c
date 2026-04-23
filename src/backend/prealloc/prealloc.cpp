@@ -137,6 +137,20 @@ namespace {
                           : PreparedCallWrapperKind::DirectExternFixedArity;
 }
 
+[[nodiscard]] std::size_t variadic_fpr_arg_register_count(const bir::CallInst& call) {
+  if (!call.is_variadic) {
+    return 0;
+  }
+
+  std::size_t count = 0;
+  for (const auto& arg_abi : call.arg_abi) {
+    if (arg_abi.passed_in_register && arg_abi.primary_class == bir::AbiValueClass::Sse) {
+      ++count;
+    }
+  }
+  return count;
+}
+
 [[nodiscard]] const PreparedRegallocValue* find_regalloc_value_by_name(
     const PreparedRegallocFunction& function,
     ValueNameId value_name) {
@@ -480,6 +494,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
             .block_index = block_index,
             .instruction_index = instruction_index,
             .wrapper_kind = classify_call_wrapper_kind(prepared.module, *call),
+            .variadic_fpr_arg_register_count = variadic_fpr_arg_register_count(*call),
             .is_indirect = call->is_indirect,
             .direct_callee_name = call->is_indirect ? std::nullopt
                                                     : std::optional<std::string>{call->callee},

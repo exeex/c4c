@@ -491,8 +491,8 @@ bir::Module make_call_wrapper_kind_contract_module() {
   entry.insts.push_back(bir::CallInst{
       .result = bir::Value::named(bir::TypeKind::I32, "tmp.extern_variadic"),
       .callee = "extern_variadic_i32",
-      .args = {bir::Value::immediate_i32(3), bir::Value::immediate_i32(4)},
-      .arg_types = {bir::TypeKind::I32, bir::TypeKind::I32},
+      .args = {bir::Value::immediate_i32(3), bir::Value::immediate_f32_bits(0x40800000)},
+      .arg_types = {bir::TypeKind::I32, bir::TypeKind::F32},
       .arg_abi = {
           bir::CallArgAbiInfo{
               .type = bir::TypeKind::I32,
@@ -502,10 +502,10 @@ bir::Module make_call_wrapper_kind_contract_module() {
               .passed_in_register = true,
           },
           bir::CallArgAbiInfo{
-              .type = bir::TypeKind::I32,
+              .type = bir::TypeKind::F32,
               .size_bytes = 4,
               .align_bytes = 4,
-              .primary_class = bir::AbiValueClass::Integer,
+              .primary_class = bir::AbiValueClass::Sse,
               .passed_in_register = true,
           },
       },
@@ -1216,7 +1216,8 @@ int check_call_wrapper_kind_contract() {
 
   const auto& same_module_call = call_plans->calls[0];
   if (same_module_call.wrapper_kind != prepare::PreparedCallWrapperKind::SameModule ||
-      same_module_call.is_indirect || !same_module_call.direct_callee_name.has_value() ||
+      same_module_call.variadic_fpr_arg_register_count != 0 || same_module_call.is_indirect ||
+      !same_module_call.direct_callee_name.has_value() ||
       *same_module_call.direct_callee_name != "same_module_i32") {
     return fail("call-wrapper contract: same-module call lost explicit wrapper classification");
   }
@@ -1224,6 +1225,7 @@ int check_call_wrapper_kind_contract() {
   const auto& fixed_extern_call = call_plans->calls[1];
   if (fixed_extern_call.wrapper_kind !=
           prepare::PreparedCallWrapperKind::DirectExternFixedArity ||
+      fixed_extern_call.variadic_fpr_arg_register_count != 0 ||
       fixed_extern_call.is_indirect || !fixed_extern_call.direct_callee_name.has_value() ||
       *fixed_extern_call.direct_callee_name != "extern_fixed_i32") {
     return fail("call-wrapper contract: direct fixed extern lost explicit wrapper classification");
@@ -1232,15 +1234,17 @@ int check_call_wrapper_kind_contract() {
   const auto& variadic_extern_call = call_plans->calls[2];
   if (variadic_extern_call.wrapper_kind !=
           prepare::PreparedCallWrapperKind::DirectExternVariadic ||
+      variadic_extern_call.variadic_fpr_arg_register_count != 1 ||
       variadic_extern_call.is_indirect || !variadic_extern_call.direct_callee_name.has_value() ||
       *variadic_extern_call.direct_callee_name != "extern_variadic_i32" ||
       variadic_extern_call.arguments.size() != 2) {
-    return fail("call-wrapper contract: direct variadic extern lost explicit wrapper classification");
+    return fail("call-wrapper contract: direct variadic extern lost explicit wrapper classification or FPR count");
   }
 
   const auto& indirect_call = call_plans->calls[3];
   if (indirect_call.wrapper_kind != prepare::PreparedCallWrapperKind::Indirect ||
-      !indirect_call.is_indirect || indirect_call.direct_callee_name.has_value()) {
+      indirect_call.variadic_fpr_arg_register_count != 0 || !indirect_call.is_indirect ||
+      indirect_call.direct_callee_name.has_value()) {
     return fail("call-wrapper contract: indirect call lost explicit wrapper classification");
   }
 
