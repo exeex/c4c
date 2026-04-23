@@ -1249,6 +1249,47 @@ void test_parser_template_type_arg_uses_visible_scope_local_alias() {
               "test fixture should balance the local visible typedef scope");
 }
 
+void test_parser_template_type_arg_prefers_local_visible_typedef_text_id() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  c4c::TypeSpec global_alias_ts{};
+  global_alias_ts.array_size = -1;
+  global_alias_ts.inner_rank = -1;
+  global_alias_ts.base = c4c::TB_CHAR;
+  parser.register_typedef_binding("Alias", global_alias_ts, true);
+
+  c4c::TypeSpec local_alias_ts{};
+  local_alias_ts.array_size = -1;
+  local_alias_ts.inner_rank = -1;
+  local_alias_ts.base = c4c::TB_DOUBLE;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, local_alias_ts);
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+  };
+  parser.pos_ = 0;
+
+  c4c::Parser::TemplateArgParseResult arg{};
+  expect_true(parser.try_parse_template_type_arg(&arg),
+              "template type-argument probes should prefer the local visible typedef TextId path before spelling-based fallback");
+  expect_true(!arg.is_value,
+              "local visible typedef template arguments should stay classified as type arguments");
+  expect_true(arg.type.base == c4c::TB_DOUBLE,
+              "local visible typedef template arguments should resolve to the local binding");
+  expect_eq_int(parser.pos_, 1,
+                "local visible typedef template arguments should stop before the template close");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
 void test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -1474,6 +1515,7 @@ int main() {
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
   test_parser_template_type_arg_uses_visible_scope_local_alias();
+  test_parser_template_type_arg_prefers_local_visible_typedef_text_id();
   test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias();
   test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases();
   test_parser_alias_template_value_probes_use_token_spelling();

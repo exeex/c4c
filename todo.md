@@ -7,10 +7,10 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by retargeting `Parser::is_type_start()` so an
-identifier token probes the local visible typedef scope by `TextId` before the
-generic spelling-based type-head fallbacks. Added focused parser coverage that
-calls the helper directly with a scope-local typedef alias.
+Advanced `plan.md` step 2 by retargeting the template-argument identifier-token
+helper in `parser_types_declarator.cpp` so it checks the local visible typedef
+scope by `TextId` before the broader spelling-based fallback. Added focused
+parser coverage for the local-visible-typedef-first template-argument path.
 
 ## Suggested Next
 Continue `plan.md` step 2 with one narrow packet that audits the remaining
