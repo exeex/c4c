@@ -5,8 +5,6 @@ Source Idea Path: ideas/open/81_parser_state_convergence_and_scope_rationalizati
 Source Plan Path: plan.md
 Current Step ID: 2
 Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
-
-
 # Current Packet
 
 ## Just Finished
