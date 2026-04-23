@@ -3,9 +3,9 @@
 Status: Active
 Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implementation_for_phoenix_rebuild.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Shift Module Entry And Legacy Dispatch To The Replacement Graph
-Plan Review Counter: 8 / 6
+Current Step ID: 4.1
+Current Step Title: Rewire X86-Only Backend Entry Surfaces To Explicit Replacement Owners
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished

@@ -948,6 +948,82 @@ Completion check:
 - the reviewed replacement graph is the live dispatch path for the migrated
   capability families and leftover legacy roles are explicit
 
+### Step 4.1: Rewire X86-Only Backend Entry Surfaces To Explicit Replacement Owners
+
+Goal: finish separating x86-only backend entrypoints from shared compatibility
+names so the live x86 route is visible in the reviewed `api` and `module`
+surfaces.
+
+Primary targets:
+
+- public x86-facing entrypoints under `src/backend/mir/x86/codegen/`
+- backend-facing x86 target wrappers that still route through generic
+  compatibility names
+
+Actions:
+
+- audit the remaining x86-only backend entrypoints for generic names that hide
+  replacement ownership
+- rewire x86-only callers to explicit replacement-owned entry surfaces such as
+  `emit_x86_bir_module_entry(...)` where that ownership is already live
+- preserve honest non-x86 compatibility call sites instead of pretending they
+  are x86-specific dispatch
+
+Completion check:
+
+- x86-only backend entry surfaces route through explicit replacement owners,
+  while shared compatibility names remain only where cross-target contracts
+  still require them
+
+### Step 4.2: Classify Residual Target Shims And Legacy Forwarding Roles
+
+Goal: make the remaining target shims and legacy x86 forwarding paths explicit
+so step 4 stops accumulating ambiguous compatibility behavior.
+
+Primary targets:
+
+- target-wrapper shims adjacent to x86 backend dispatch
+- residual forwarding files under `src/backend/mir/x86/codegen/`
+
+Actions:
+
+- classify the leftover target shims as replacement-owned dispatch,
+  compatibility forwarding, or later retirement candidates
+- keep generic wrapper surfaces thin instead of letting x86 orchestration drift
+  back into shared names
+- record any intentional holdouts through explicit classification rather than
+  silent mixed ownership
+
+Completion check:
+
+- the remaining target shims and legacy forwarding files have explicit roles,
+  and compatibility wrappers stay thin instead of regaining live x86 ownership
+
+### Step 4.3: Prove The Live Replacement Dispatch Path Before Legacy Retirement
+
+Goal: confirm that the active backend route really flows through the reviewed
+replacement graph before step 5 starts deleting or retiring residual legacy
+shape.
+
+Primary targets:
+
+- backend/front-door proof coverage for x86 dispatch ownership
+- module-entry and target-wrapper flows touched by step 4 rewiring
+
+Actions:
+
+- extend or tighten backend proof where needed so the active x86 route is
+  observed through the explicit replacement entry surfaces
+- verify the narrowed compatibility wrappers still preserve honest non-x86
+  contracts
+- leave step-4 proof artifacts ready for the broader validation expected in
+  step 5
+
+Completion check:
+
+- backend proof shows the live x86 dispatch path flowing through the reviewed
+  replacement owners, and remaining compatibility use is explicit before step 5
+
 ## Step 5: Retire Or Classify Residual Legacy Shape And Run Broader Validation
 
 Goal: clean up the remaining legacy surface honestly and confirm the migrated
