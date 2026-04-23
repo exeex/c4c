@@ -1,8 +1,9 @@
 # Full X86 Backend Contract-First Replan
 
-Status: Open
+Status: Closed
 Created: 2026-04-23
 Last-Updated: 2026-04-23
+Closed: 2026-04-23
 Supersedes: [82_extract_full_x86_backend_subsystem_to_markdown_for_phoenix_rebuild.md](/workspaces/c4c/ideas/open/82_extract_full_x86_backend_subsystem_to_markdown_for_phoenix_rebuild.md)
 
 ## Intent
@@ -47,3 +48,13 @@ further x86 behavior recovery: `out_of_ssa` phase authority, prepared
 frame/stack/call authority completion, and grouped-register prealloc authority.
 Those follow-on seams now live under ideas 87, 88, and 89 instead of being
 silently absorbed back into the x86 layout runbook.
+
+## Closure Notes
+
+The contract/layout success signal is now met. The root backend and x86
+ownership docs are authoritative, key public seams compile through the thinner
+contract-first surface, and the important markdown companions were promoted out
+of extraction-only status into durable interface notes. Step 3 finished with
+clean build plus focused `^backend_` proof, and Step 4 confirmed that the only
+adjacent leftovers were behavior-recovery themes already split and completed
+under ideas 87, 88, and 89 rather than remaining scope for idea 86.
