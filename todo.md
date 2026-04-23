@@ -9,16 +9,21 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: removed the remaining `qn.spelled()` lookups from the
-  qualified type helper path in `types_helpers.hpp`, keeping qualified/global
-  resolution on `resolve_qualified_type_name(qn)` and TextId-backed segment
-  reconstruction for unresolved fallback spelling only
+- Step 2 packet: switched the block-scope qualified declaration heuristic in
+  `parser_statements.cpp` from canonical-string rechecks to
+  `probe_qualified_type(*this, qn)`, so `ns::Type local;` now stays on the
+  TextId-backed qualified-type path instead of falling back through
+  `qn.spelled()`
+- added `namespace_qualified_local_decl_statement_probe_parse.cpp` so the
+  namespace parse-only subset proves `ns::Type local;` still parses as a local
+  declaration while `ns::value();` remains an expression statement
 
 ## Suggested Next
 
-- continue Step 2 by checking the remaining parser type/expression entry points
-  that consume `QualifiedTypeProbe` and trim any last bridge-name assumptions
-  now that helper lookup no longer falls back through `qn.spelled()`
+- continue Step 2 by checking the remaining qualified expression entry points
+  that still fall back to rendered bridge names after namespace/value lookup
+  misses, especially the `parse_primary` `::name` and qualified identifier
+  paths in `parser_expressions.cpp`
 - keep the next packet inside parser namespace lookup helpers and avoid
   widening into `parser_core.cpp` or broader binding-table cleanup
 
@@ -35,11 +40,11 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 - keep raw `::`-qualified spellings stable when they already bypass bridge
   synthesis; unresolved fallback spelling now comes from TextId-backed segment
   joins instead of `qn.spelled()`
-- keep `parser_core.cpp` at the restored baseline for this redirected packet;
-  do not add new behavior there
+- keep `parser_core.cpp` at the restored baseline; do not add new behavior
+  there while Step 2 is still trimming parser entry-point bridge assumptions
 
 ## Proof
 
 - `cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R 'namespace|namespaced|using_namespace|using_declaration_namespace|using_nested_namespace|bad_namespace_member_without_qualification' | tee test_after.log`
-- result: passed, 44/44 focused tests green
+- result: passed, 45/45 focused tests green
 - log: `test_after.log`

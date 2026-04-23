@@ -885,19 +885,8 @@ Node* Parser::parse_stmt() {
                     starts_parenthesized_member_pointer_declarator(*this, after_pos)) {
                     return parse_local_decl();
                 }
-                bool is_known_type = false;
-                const std::string ns_name = resolve_qualified_type_name(qn);
-                if (!ns_name.empty()) {
-                    is_known_type = is_typedef_name(ns_name) ||
-                        has_typedef_type(ns_name);
-                }
-                if (!is_known_type) {
-                    const std::string full_name = qn.spelled();
-                    is_known_type = is_typedef_name(full_name) ||
-                        has_typedef_type(full_name) ||
-                        has_typedef_type(resolve_visible_type_name(full_name));
-                }
-                if (!is_known_type) {
+                const QualifiedTypeProbe probe = probe_qualified_type(*this, qn);
+                if (!probe.has_resolved_typedef) {
                     // Likely a qualified call: Type::Method(args)
                     goto expr_stmt;
                 }
