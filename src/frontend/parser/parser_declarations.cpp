@@ -772,38 +772,6 @@ Node* Parser::parse_local_decl() {
                         is_known_simple_visible_type_head(*this, arg_text_id, arg_name);
                     single_value_arg = !arg_is_type;
                 }
-                auto starts_with_visible_value_template_expr =
-                    [&](int pos) -> bool {
-                    if (!starts_with_value_like_template_expr(
-                            *this, core_input_state_.tokens, pos)) {
-                        return false;
-                    }
-
-                    int head_pos = pos;
-                    if (head_pos < static_cast<int>(core_input_state_.tokens.size()) &&
-                        core_input_state_.tokens[head_pos].kind ==
-                            TokenKind::ColonColon) {
-                        ++head_pos;
-                    }
-                    if (head_pos >=
-                            static_cast<int>(core_input_state_.tokens.size()) ||
-                        core_input_state_.tokens[head_pos].kind !=
-                            TokenKind::Identifier) {
-                        return false;
-                    }
-
-                    const Token& head_tok = core_input_state_.tokens[head_pos];
-                    const std::string head_name =
-                        std::string(token_spelling(head_tok));
-                    if (find_visible_var_type(head_tok.text_id, head_name)) {
-                        return true;
-                    }
-                    if (has_known_fn_name(head_name)) return true;
-
-                    const std::string resolved =
-                        resolve_visible_value_name(head_tok.text_id, head_name);
-                    return !resolved.empty() && has_known_fn_name(resolved);
-                };
                 auto can_use_lite_ctor_init_probe = [&]() -> bool {
                     if (core_input_state_.pos + 1 >=
                         static_cast<int>(core_input_state_.tokens.size())) {
@@ -848,11 +816,7 @@ Node* Parser::parse_local_decl() {
                                 is_known_simple_visible_type_head(*this, arg_text_id, arg_name);
                             if (arg_is_type) return false;
                             if (single_value_arg) return true;
-                            if (starts_with_visible_value_template_expr(
-                                    core_input_state_.pos + 1)) {
-                                return true;
-                            }
-                            if (classify_visible_value_or_type_starter(
+                            if (classify_visible_value_or_type_head(
                                     core_input_state_.pos + 1) > 0) {
                                 return true;
                             }
@@ -879,7 +843,7 @@ Node* Parser::parse_local_decl() {
                             return true;
                         }
                         case TokenKind::ColonColon:
-                            return classify_visible_value_or_type_starter(
+                            return classify_visible_value_or_type_head(
                                        core_input_state_.pos + 1) > 0;
                         default:
                             return false;
@@ -916,12 +880,8 @@ Node* Parser::parse_local_decl() {
                             core_input_state_.pos + 1)) {
                         return true;
                     }
-                    if (starts_with_visible_value_template_expr(
-                            core_input_state_.pos + 1)) {
-                        return false;
-                    }
                     const int qualified_head_kind =
-                        classify_visible_value_or_type_starter(
+                        classify_visible_value_or_type_head(
                             core_input_state_.pos + 1);
                     if (qualified_head_kind > 0) return false;
                     if (qualified_head_kind < 0) return true;

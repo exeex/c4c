@@ -219,7 +219,8 @@ bool Parser::can_start_parameter_type() const {
              starts_parenthesized_member_pointer_declarator(*this, after_pos)));
 }
 
-int Parser::classify_visible_value_or_type_starter(int pos) {
+int Parser::classify_visible_value_or_type_head(int pos, int* after_pos) {
+    if (after_pos) *after_pos = pos;
     if (pos < 0 || pos >= static_cast<int>(core_input_state_.tokens.size())) {
         return 0;
     }
@@ -240,6 +241,7 @@ int Parser::classify_visible_value_or_type_starter(int pos) {
     if (!parsed_qn || (!qn.is_global_qualified &&
                        qn.qualifier_segments.empty())) {
         if (first_kind != TokenKind::Identifier) return 0;
+        if (after_pos) *after_pos = pos + 1;
 
         const Token& head_tok = core_input_state_.tokens[pos];
         const std::string head_name = std::string(token_spelling(head_tok));
@@ -266,6 +268,26 @@ int Parser::classify_visible_value_or_type_starter(int pos) {
     int after_name_pos = pos;
     if (qn.is_global_qualified) ++after_name_pos;
     after_name_pos += 1 + 2 * static_cast<int>(qn.qualifier_segments.size());
+    if (after_pos) *after_pos = after_name_pos;
+
+    if (!resolve_qualified_value_name(qn).empty()) return 1;
+    if (!resolve_qualified_type_name(qn).empty()) return -1;
+    // Declaration-side probes keep unresolved qualified heads on the type side
+    // unless structured value lookup proves they are expression-like.
+    return -1;
+}
+
+int Parser::classify_visible_value_or_type_starter(int pos) {
+    int after_name_pos = pos;
+    const int head_kind =
+        classify_visible_value_or_type_head(pos, &after_name_pos);
+    if (head_kind == 0) return 0;
+
+    const TokenKind first_kind = core_input_state_.tokens[pos].kind;
+    const bool has_qualified_head =
+        first_kind == TokenKind::ColonColon || after_name_pos != pos + 1;
+    if (!has_qualified_head) return head_kind;
+
     if (after_name_pos >= static_cast<int>(core_input_state_.tokens.size())) {
         return 0;
     }
@@ -278,11 +300,7 @@ int Parser::classify_visible_value_or_type_starter(int pos) {
         return 0;
     }
 
-    if (!resolve_qualified_value_name(qn).empty()) return 1;
-    if (!resolve_qualified_type_name(qn).empty()) return -1;
-    // Declaration-side probes keep unresolved qualified heads on the type side
-    // unless structured value lookup proves they are expression-like.
-    return -1;
+    return head_kind;
 }
 
 bool Parser::looks_like_unresolved_identifier_type_head(int pos) const {

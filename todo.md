@@ -7,19 +7,20 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by routing block-statement visible-name probes
-through the shared `classify_visible_value_or_type_starter()` helper for
-assignment/member-access disambiguation too, instead of keeping separate local
-value-binding heuristics in `parse_stmt()`. Qualified visible-value member
-access now stays on the expression path under the same lexical/value
-classifier used for call-like heads.
+Advanced `plan.md` step 2 by extracting
+`classify_visible_value_or_type_head()` so constructor-style local
+declaration probing can reuse the same visible value/type head classifier for
+qualified names without requiring call-like tails. Local direct-init
+disambiguation now short-circuits qualified visible member-access heads such
+as `ns::payload.value` through the shared lexical/value lookup path instead of
+falling back to a separate token-shape/template shortcut stack.
 
 ## Suggested Next
 Continue `plan.md` step 2 by checking whether any remaining local
 declaration/expression ambiguity probes still bypass the shared
-`classify_visible_value_or_type_starter()` path, especially around
-template/member-expression heads that still rely on token-shape shortcuts
-instead of the shared visible value/type classifier.
+visible value/type classification path, especially constructor-init or
+statement probes that still re-parse qualified-name tails locally just to
+recover the post-head token position for `.` / `->` / assignment handling.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. The shared helper
@@ -38,6 +39,6 @@ lookup.
 `cmake --build --preset default` passed, and
 `ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' | tee test_after.log`
 passed. Added a focused frontend parser regression that keeps
-`api::payload.value` on the expression path inside `main`, alongside the
-existing global-qualified template-call and operator-call statement
-disambiguation coverage. Proof log: `test_after.log`.
+`Box value(ns::payload.value);` on the direct-init declaration path while the
+paired `Box copy(ns::Value(other));` case still parses as a function
+declaration. Proof log: `test_after.log`.

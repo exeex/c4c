@@ -1385,6 +1385,47 @@ void test_parser_local_ctor_init_probe_balances_qualified_param_and_value_call_s
             "qualified visible value template-call forms should keep their declarator spelling");
 }
 
+void test_parser_local_ctor_init_probe_balances_qualified_member_access_value_shapes() {
+  c4c::Lexer lexer("struct Box { Box(int); };\n"
+                   "namespace ns {\n"
+                   "struct Payload {\n"
+                   "  int value;\n"
+                   "};\n"
+                   "Payload payload;\n"
+                   "}\n"
+                   "int main() {\n"
+                   "  Box copy(ns::Value(other));\n"
+                   "  Box value(ns::payload.value);\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "qualified member-access ctor-init regression should parse as a program");
+  expect_eq_int(program->n_children, 4,
+                "the qualified member-access regression should contain the record, namespace payload items, and main");
+
+  c4c::Node* main_fn = program->children[3];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the qualified member-access regression should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 2,
+                "main should retain both ambiguous qualified constructor-style declarations");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_EMPTY,
+              "qualified unresolved named-parameter forms should remain function declarations");
+  expect_true(main_fn->body->children[1] != nullptr &&
+                  main_fn->body->children[1]->kind == c4c::NK_DECL,
+              "qualified visible member-access forms should stay declarations");
+  expect_eq(main_fn->body->children[1]->name, "value",
+            "qualified visible member-access forms should keep their declarator spelling");
+}
+
 void test_parser_stmt_disambiguates_global_qualified_template_call_as_expr() {
   c4c::Lexer lexer("namespace api {\n"
                    "template<typename T>\n"
@@ -1859,6 +1900,7 @@ int main() {
   test_parser_local_ctor_init_probe_balances_grouped_pointer_param_and_value_call_shapes();
   test_parser_local_ctor_init_probe_balances_template_param_and_value_call_shapes();
   test_parser_local_ctor_init_probe_balances_qualified_param_and_value_call_shapes();
+  test_parser_local_ctor_init_probe_balances_qualified_member_access_value_shapes();
   test_parser_stmt_disambiguates_global_qualified_template_call_as_expr();
   test_parser_stmt_disambiguates_global_qualified_operator_call_as_expr();
   test_parser_stmt_disambiguates_qualified_visible_value_member_access_as_expr();
