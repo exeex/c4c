@@ -1,6 +1,9 @@
 #include "src/backend/backend.hpp"
+#include "src/backend/bir/bir_printer.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
+#include "src/backend/mir/x86/codegen/route_debug.hpp"
+#include "src/backend/prealloc/prepared_printer.hpp"
 #include "src/codegen/lir/ir.hpp"
 
 #include <iostream>
@@ -644,6 +647,55 @@ int check_lir_assemble_route_outputs(const lir::LirModule& module, const char* f
   return 0;
 }
 
+int check_lir_dump_route_outputs(const lir::LirModule& module, const char* failure_context) {
+  c4c::backend::BirLoweringOptions lowering_options{};
+  lowering_options.preserve_dynamic_alloca = true;
+  auto lowering = c4c::backend::try_lower_to_bir_with_options(module, lowering_options);
+  if (!lowering.module.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": dump route no longer produces semantic lir_to_bir output for x86 LIR input")
+                    .c_str());
+  }
+
+  const auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(*lowering.module, module.target_profile);
+  const auto backend_options = BackendOptions{.target_profile = x86_target_profile()};
+
+  const auto semantic_dump = c4c::backend::dump_module(
+      BackendModuleInput{module}, backend_options, c4c::backend::BackendDumpStage::SemanticBir);
+  if (semantic_dump != c4c::backend::bir::print(*lowering.module)) {
+    return fail((std::string(failure_context) +
+                 ": generic backend semantic dump no longer matches x86 LIR lowering output")
+                    .c_str());
+  }
+
+  const auto prepared_dump = c4c::backend::dump_module(
+      BackendModuleInput{module}, backend_options, c4c::backend::BackendDumpStage::PreparedBir);
+  if (prepared_dump != c4c::backend::prepare::print(prepared)) {
+    return fail((std::string(failure_context) +
+                 ": generic backend prepared dump no longer matches the canonical prepared-module handoff")
+                    .c_str());
+  }
+
+  const auto summary_dump = c4c::backend::dump_module(
+      BackendModuleInput{module}, backend_options, c4c::backend::BackendDumpStage::MirSummary);
+  if (summary_dump != c4c::backend::x86::summarize_prepared_module_routes(prepared)) {
+    return fail((std::string(failure_context) +
+                 ": generic backend MIR summary dump no longer routes x86 LIR input through target-local route debug")
+                    .c_str());
+  }
+
+  const auto trace_dump = c4c::backend::dump_module(
+      BackendModuleInput{module}, backend_options, c4c::backend::BackendDumpStage::MirTrace);
+  if (trace_dump != c4c::backend::x86::trace_prepared_module_routes(prepared)) {
+    return fail((std::string(failure_context) +
+                 ": generic backend MIR trace dump no longer routes x86 LIR input through target-local route debug")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_lir_route_rejection(const lir::LirModule& module,
                               std::string_view expected_message_fragment,
                               const char* failure_context) {
@@ -704,6 +756,12 @@ int run_backend_x86_handoff_boundary_lir_tests() {
   if (const auto status =
           check_lir_assemble_route_outputs(make_x86_return_constant_lir_module(),
                                            "minimal immediate return x86 assemble route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_lir_dump_route_outputs(make_x86_return_constant_lir_module(),
+                                       "minimal immediate return x86 dump route");
       status != 0) {
     return status;
   }
