@@ -1,49 +1,35 @@
 # Execution State
 
 Status: Active
-Source Idea Path: ideas/open/68_prepared_local_slot_handoff_consumption_for_x86_backend.md
+Source Idea Path: ideas/open/59_cfg_contract_consumption_for_short_circuit_and_guard_chain.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Normalize The Needed Local-Slot Handoff Contract
+Current Step ID: 1
+Current Step Title: Re-establish The Current Owned Guard-Chain And Short-Circuit Inventory
 Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
 
-- Step 2 normalized the local-slot contract for the owned same-family subset by
-  teaching `prepared_local_slot_render.cpp` to consume generic prepared i64
-  local-slot load/store, arithmetic, and compare facts in multi-block guarded
-  functions instead of throwing the authoritative local-slot instruction
-  handoff diagnostic.
-- the same packet required one minimal shared-contract extension outside the
-  owned seam: `prepared_scalar_memory_operand_size_name()` now maps `I64` to
-  `QWORD`, which lets the prepared local-slot renderer reuse the canonical
-  memory-operand contract for the new generic i64 route.
-- `00081.c`, `00082.c`, and `00104.c` now advance past the authoritative
-  prepared local-slot handoff and stop at the downstream
-  `authoritative prepared guard-chain handoff` diagnostic instead.
+- none yet; lifecycle switch re-homed the active packet from idea 68 after
+  `00081.c`, `00082.c`, and `00104.c` moved to the downstream authoritative
+  prepared guard-chain handoff family
 
 ## Suggested Next
 
-Re-home `00081.c`, `00082.c`, and `00104.c` out of idea 68 and into the
-guard-chain/short-circuit owner, then take the next packet from that leaf
-instead of continuing to count these cases as local-slot work.
+- refresh the current idea-59 inventory from `test_after.log`, confirm the
+  re-homed subset still shares one guard-chain seam, and choose the first owned
+  same-family packet from that leaf
 
 ## Watchouts
 
-- this packet cleared the idea-68 blocker but did not repair the downstream
-  guard-chain route; keeping these cases under idea 68 now would drift the
-  source idea boundary.
-- the new i64 path is generic local-slot consumption, not testcase-shaped
-  matching: it relies on prepared homes plus the canonical local-slot memory
-  operand contract, so future follow-up should preserve that boundary instead
-  of reopening helper topology in the x86 renderer.
+- do not keep counting `00081.c`, `00082.c`, or `00104.c` as local-slot work;
+  the authoritative blocker is now the guard-chain handoff
+- keep the next packet contract-first: if x86 still has to infer CFG meaning
+  from raw shape, extend the shared prepared CFG contract before adding emitter
+  branching
 
 ## Proof
 
-Ran the delegated proof on 2026-04-23:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_x86_backend_src_(00081|00082|00104)_c)$' > test_after.log`
-The build succeeded. The focused subset still fails, but all three cases now
-fail with the downstream guard-chain handoff diagnostic rather than the owned
-local-slot handoff diagnostic.
-Proof log path: `test_after.log`.
+- no new proof run for this lifecycle switch; carry forward the latest executor
+  result in `test_after.log` and re-establish the current owned subset before
+  implementation

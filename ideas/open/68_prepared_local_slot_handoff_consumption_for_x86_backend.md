@@ -54,6 +54,14 @@ once the stage-4 phoenix runbook parks. Re-triage the current named cases from
 `test_after.log` before implementation so this idea's owned inventory matches
 the latest suite state instead of the old `00204.c`-only history.
 
+On 2026-04-23, `c_testsuite_x86_backend_src_00081_c`,
+`c_testsuite_x86_backend_src_00082_c`, and
+`c_testsuite_x86_backend_src_00104_c` were explicitly graduated out of this
+leaf. The accepted local-slot packet moved all three past the authoritative
+prepared local-slot handoff and into the downstream authoritative prepared
+guard-chain handoff diagnostic, so active follow-on ownership for that subset
+now belongs to idea 59 rather than this leaf.
+
 ## Scope Notes
 
 Expected repair themes include:
