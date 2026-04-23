@@ -5,7 +5,6 @@ Source Idea Path: ideas/open/82_parser_namespace_textid_context_tree.md
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Convert Namespace Child Registration To TextId Maps
-Plan Review Counter: 0 / 8
 
 # Current Packet
 
