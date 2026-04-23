@@ -1885,14 +1885,19 @@ int check_stack_argument_slot_contract() {
 
 int check_cross_call_preservation_contract() {
   const auto prepared = prepare_riscv_module(make_cross_call_preservation_contract_module());
+  const auto function_id = prepared.names.function_names.find("cross_call_preservation_contract");
   const auto* liveness = find_liveness_function(prepared, "cross_call_preservation_contract");
   const auto* call_plans = find_call_plans_function(prepared, "cross_call_preservation_contract");
+  const auto* frame_plan = function_id == c4c::kInvalidFunctionName
+                               ? nullptr
+                               : prepare::find_prepared_frame_plan(prepared, function_id);
   const auto* storage_plan =
       find_storage_plan_function(prepared, "cross_call_preservation_contract");
   const auto* carry =
       storage_plan == nullptr ? nullptr : find_storage_value(prepared, *storage_plan, "carry");
   if (liveness == nullptr || liveness->call_points.size() != 1 || call_plans == nullptr ||
-      call_plans->calls.size() != 1 || storage_plan == nullptr || carry == nullptr) {
+      call_plans->calls.size() != 1 || frame_plan == nullptr || storage_plan == nullptr ||
+      carry == nullptr) {
     return fail("cross-call preservation contract: missing liveness, call-plan, or carry storage publication");
   }
 
@@ -1902,9 +1907,19 @@ int check_cross_call_preservation_contract() {
   }
 
   const auto& preserved = call_plan.preserved_values.front();
+  const auto saved_it = std::find_if(frame_plan->saved_callee_registers.begin(),
+                                     frame_plan->saved_callee_registers.end(),
+                                     [&](const auto& saved) {
+                                       return saved.register_name == "s1";
+                                     });
+  if (saved_it == frame_plan->saved_callee_registers.end()) {
+    return fail("cross-call preservation contract: missing saved-register authority for s1");
+  }
   if (preserved.value_id != carry->value_id ||
       prepare::prepared_value_name(prepared.names, preserved.value_name) != "carry" ||
       preserved.route != prepare::PreparedCallPreservationRoute::CalleeSavedRegister ||
+      preserved.callee_saved_save_index !=
+          std::optional<std::size_t>{saved_it->save_index} ||
       preserved.register_name != std::optional<std::string>{"s1"} ||
       preserved.register_bank !=
           std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr}) {

@@ -416,8 +416,27 @@ namespace {
   return false;
 }
 
+[[nodiscard]] std::optional<std::size_t> find_saved_callee_save_index(
+    const PreparedFramePlanFunction* frame_plan,
+    const PreparedRegallocValue& value) {
+  if (frame_plan == nullptr || !value.assigned_register.has_value()) {
+    return std::nullopt;
+  }
+  for (const auto& saved : frame_plan->saved_callee_registers) {
+    if (saved.occupied_register_names == value.assigned_register->occupied_register_names &&
+        !saved.occupied_register_names.empty()) {
+      return saved.save_index;
+    }
+    if (saved.register_name == value.assigned_register->register_name) {
+      return saved.save_index;
+    }
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] std::vector<PreparedCallPreservedValue> build_call_preserved_values(
     const PreparedBirModule& prepared,
+    const PreparedFramePlanFunction* frame_plan,
     const PreparedLivenessFunction* liveness_function,
     const PreparedRegallocFunction* regalloc_function,
     std::size_t block_index,
@@ -447,6 +466,7 @@ namespace {
         .value_id = value.value_id,
         .value_name = value.value_name,
         .route = PreparedCallPreservationRoute::Unknown,
+        .callee_saved_save_index = std::nullopt,
         .register_name = std::nullopt,
         .register_bank = std::nullopt,
         .slot_id = std::nullopt,
@@ -462,6 +482,7 @@ namespace {
       preserved.register_bank = register_bank_from_class(value.register_class);
       if (is_callee_saved_register_assignment(prepared.target_profile, value)) {
         preserved.route = PreparedCallPreservationRoute::CalleeSavedRegister;
+        preserved.callee_saved_save_index = find_saved_callee_save_index(frame_plan, value);
       }
     }
 
@@ -698,6 +719,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
         .function_name = function_name_id,
         .calls = {},
     };
+    const auto* frame_plan = find_prepared_frame_plan(prepared, function_name_id);
     const auto* regalloc_function = find_regalloc_function(prepared.regalloc, function_name_id);
     const auto* liveness_function = find_liveness_function(prepared.liveness, function_name_id);
     const auto* value_locations = find_prepared_value_location_function(prepared, function_name_id);
@@ -725,7 +747,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
             .arguments = {},
             .result = std::nullopt,
             .preserved_values = build_call_preserved_values(
-                prepared, liveness_function, regalloc_function, block_index, instruction_index),
+                prepared, frame_plan, liveness_function, regalloc_function, block_index, instruction_index),
             .clobbered_registers = call_clobbers,
         };
 

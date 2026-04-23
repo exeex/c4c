@@ -289,6 +289,9 @@ void append_preserved_value_summary(std::ostringstream& out,
   } else if (preserved.stack_offset_bytes.has_value()) {
     out << ":stack+" << *preserved.stack_offset_bytes;
   }
+  if (preserved.callee_saved_save_index.has_value()) {
+    out << ":save" << *preserved.callee_saved_save_index;
+  }
 }
 
 std::string maybe_register_bank(std::optional<PreparedRegisterBank> bank) {
@@ -445,6 +448,9 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
           out << "    preserve value=" << maybe_value_name(module.names, preserved.value_name)
               << " value_id=" << preserved.value_id
               << " route=" << prepared_call_preservation_route_name(preserved.route);
+          if (preserved.callee_saved_save_index.has_value()) {
+            out << " save_index=" << *preserved.callee_saved_save_index;
+          }
           if (preserved.register_name.has_value()) {
             out << " reg=" << *preserved.register_name;
           }
@@ -869,6 +875,9 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         out << "    preserve value=" << maybe_value_name(module.names, preserved.value_name)
             << " value_id=" << preserved.value_id
             << " route=" << prepared_call_preservation_route_name(preserved.route);
+        if (preserved.callee_saved_save_index.has_value()) {
+          out << " save_index=" << *preserved.callee_saved_save_index;
+        }
         if (preserved.register_name.has_value()) {
           out << " reg=" << *preserved.register_name;
         }

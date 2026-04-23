@@ -1359,20 +1359,37 @@ int main() {
       find_storage_plan_function(cross_call_prepared, "cross_call_preservation_dump_contract");
   const auto* cross_call_carry =
       cross_call_storage == nullptr ? nullptr : find_storage_value(cross_call_prepared, *cross_call_storage, "carry");
-  if (cross_call_storage == nullptr || cross_call_carry == nullptr) {
+  const auto cross_call_function_id =
+      cross_call_prepared.names.function_names.find("cross_call_preservation_dump_contract");
+  const auto* cross_call_frame_plan =
+      cross_call_function_id == c4c::kInvalidFunctionName
+          ? nullptr
+          : prepare::find_prepared_frame_plan(cross_call_prepared, cross_call_function_id);
+  if (cross_call_storage == nullptr || cross_call_carry == nullptr || cross_call_frame_plan == nullptr) {
     std::cerr << "[FAIL] missing prepared carry storage fixture for cross-call preservation dump\n";
     return EXIT_FAILURE;
   }
+  const auto cross_call_saved_it = std::find_if(cross_call_frame_plan->saved_callee_registers.begin(),
+                                                cross_call_frame_plan->saved_callee_registers.end(),
+                                                [](const auto& saved) {
+                                                  return saved.register_name == "s1";
+                                                });
+  if (cross_call_saved_it == cross_call_frame_plan->saved_callee_registers.end()) {
+    std::cerr << "[FAIL] missing published save authority for s1 in cross-call dump fixture\n";
+    return EXIT_FAILURE;
+  }
+  const std::size_t cross_call_save_index = cross_call_saved_it->save_index;
   const std::string cross_call_dump = prepare::print(cross_call_prepared);
   if (!expect_contains(cross_call_dump,
                        "preserves=carry#" + std::to_string(cross_call_carry->value_id) +
-                           ":callee_saved_register:s1",
+                           ":callee_saved_register:s1:save" + std::to_string(cross_call_save_index),
                        "cross-call preservation summary")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(cross_call_dump,
                        "preserve value=carry value_id=" + std::to_string(cross_call_carry->value_id) +
-                           " route=callee_saved_register reg=s1 bank=gpr",
+                           " route=callee_saved_register save_index=" +
+                           std::to_string(cross_call_save_index) + " reg=s1 bank=gpr",
                        "cross-call preservation detail")) {
     return EXIT_FAILURE;
   }

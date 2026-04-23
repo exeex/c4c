@@ -3,42 +3,34 @@ Source Idea Path: ideas/open/88_prepared_frame_stack_call_authority_completion_f
 Source Plan Path: plan.md
 Current Step ID: 3.2
 Current Step Title: Save, Clobber, And Preservation Authority
-Plan Review Counter: 1 / 6
+Plan Review Counter: 2 / 6
 # Current Packet
 
 ## Just Finished
 
 Completed Step 3.2 "Save, Clobber, And Preservation Authority" packet work
-for idea 88 by auditing the current prepared call clobber publication and
-confirming the next real scalar gap was per-call preservation authority:
-`clobbered_registers` already published the ABI destroy set, but `call_plans`
-still did not publish which scalar prepared values actually survive a given
-call boundary and by what preservation route. Added direct per-call preserved
-scalar publication for live-across-call scalar values.
+for idea 88 by wiring per-call callee-saved preservation entries directly to
+the matching function-level save/restore authority instead of leaving backend
+consumers to correlate `call_plans` against `saved_callee_registers` by
+register name alone.
 
 Current packet result:
-- `PreparedCallPlan` now carries `preserved_values`, a direct prepared list of
-  scalar values that remain live across that specific call boundary.
-- Each preserved scalar now publishes its value identity plus the preservation
-  route currently keeping it safe across the call: callee-saved register,
-  stack slot, or `unknown` when the packet cannot yet classify a more precise
-  route.
-- `populate_call_plans` now derives preserved scalar entries from existing
-  liveness/regalloc cross-call facts instead of leaving consumers to correlate
-  `call_plans` against regalloc and live-interval state manually.
-- Prepared summaries and detailed call-plan dumps now expose preserved scalar
-  values in a reviewable form.
-- Focused contract and printer coverage now prove a single call-crossing
-  scalar carry value is published directly with its callee-saved GPR
-  preservation route.
+- `PreparedCallPreservedValue` now publishes `callee_saved_save_index` when a
+  preserved scalar survives the call in a callee-saved register.
+- `populate_call_plans` now resolves that index against the function's
+  published `saved_callee_registers`, so the call-plan entry points at the
+  same save/restore authority record that owns the prologue/epilogue work.
+- Prepared summaries and detailed call-plan dumps now expose that save
+  ownership directly as part of the preserved-value publication.
+- Focused contract and printer coverage now prove the call-crossing `carry`
+  value references the matching frame-plan save authority for `s1`.
 
 ## Suggested Next
 
-Continue Step 3.2 by auditing whether scalar stack-preserved and
-unclassified-route cases need more explicit route detail than the current
-`preserved_values` publication, or whether the next honest packet is broader
-save/restore ownership linkage between per-call preserved values and
-function-level saved-callee-register publication.
+Continue Step 3.2 by auditing whether stack-preserved or currently `unknown`
+cross-call scalar values need similarly direct function-level preservation
+ownership, or whether the remaining honest work shifts to another explicit
+save/restore authority gap within the same step.
 
 ## Watchouts
 
@@ -47,13 +39,12 @@ function-level saved-callee-register publication.
 - Keep call-boundary authority at the prepared contract boundary; do not turn
   this packet into target-specific call instruction recovery.
 - Keep Step 3.2 focused on scalar preservation facts already known to prepared
-  liveness/regalloc; do not widen into grouped-register preservation routes.
-- Treat `clobbered_registers` and `preserved_values` as complementary facts:
-  one publishes what the call may destroy, the other publishes which scalar
-  prepared values survive that boundary and the current route keeping them
-  safe.
-- `unknown` preservation routes are honest bounded publication, not a license
-  to guess target-specific save/restore policy in later consumers.
+  frame/regalloc state; do not widen into grouped-register preservation routes.
+- Treat `callee_saved_save_index` as a reference into function-local frame-plan
+  authority, not as a replacement for the existing published register/bank
+  facts.
+- `unknown` preservation routes are still honest bounded publication, not a
+  license to guess target-specific save/restore policy in later consumers.
 
 ## Proof
 

@@ -941,6 +941,7 @@ struct PreparedCallPreservedValue {
   PreparedValueId value_id = 0;
   ValueNameId value_name = kInvalidValueName;
   PreparedCallPreservationRoute route = PreparedCallPreservationRoute::Unknown;
+  std::optional<std::size_t> callee_saved_save_index;
   std::optional<std::string> register_name;
   std::optional<PreparedRegisterBank> register_bank;
   std::optional<PreparedFrameSlotId> slot_id;
