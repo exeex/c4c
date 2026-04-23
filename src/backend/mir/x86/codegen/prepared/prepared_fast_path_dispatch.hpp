@@ -48,6 +48,14 @@ std::optional<ShortCircuitEntryCompareContext> build_prepared_guard_compare_cont
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
 
+bool prepared_short_circuit_continuation_is_admissible(
+    const PreparedX86FunctionDispatchContext& function_context,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& block,
+    c4c::BlockLabelId block_label_id,
+    const c4c::backend::prepare::PreparedShortCircuitJoinContext& join_context,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block);
+
 std::optional<CompareDrivenBranchRenderPlan>
 build_prepared_short_circuit_cond_branch_render_plan_if_supported(
     const PreparedX86FunctionDispatchContext& function_context,

@@ -19,6 +19,98 @@ std::optional<std::string> render_prepared_named_i8_immediate_compare_setup_if_s
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations);
 
+std::optional<std::string_view> prepared_inst_result_name(
+    const c4c::backend::bir::Inst& inst) {
+  if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst)) {
+    return binary->result.name;
+  }
+  if (const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&inst)) {
+    return cast->result.name;
+  }
+  if (const auto* select = std::get_if<c4c::backend::bir::SelectInst>(&inst)) {
+    return select->result.name;
+  }
+  if (const auto* load_local = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst)) {
+    return load_local->result.name;
+  }
+  if (const auto* load_global = std::get_if<c4c::backend::bir::LoadGlobalInst>(&inst)) {
+    return load_global->result.name;
+  }
+  return std::nullopt;
+}
+
+bool prepared_block_defines_named_value(const c4c::backend::bir::Block& block,
+                                        std::string_view value_name) {
+  for (const auto& inst : block.insts) {
+    if (const auto result_name = prepared_inst_result_name(inst);
+        result_name.has_value() && *result_name == value_name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool prepared_short_circuit_join_has_join_defined_named_incoming(
+    const c4c::backend::prepare::PreparedShortCircuitJoinContext& join_context) {
+  if (join_context.join_block == nullptr) {
+    return false;
+  }
+
+  const auto named_incoming_is_join_defined =
+      [&](const c4c::backend::prepare::PreparedEdgeValueTransfer* transfer) {
+        return transfer != nullptr &&
+               transfer->incoming_value.kind == c4c::backend::bir::Value::Kind::Named &&
+               prepared_block_defines_named_value(*join_context.join_block,
+                                                  transfer->incoming_value.name);
+      };
+
+  return named_incoming_is_join_defined(join_context.true_transfer) ||
+         named_incoming_is_join_defined(join_context.false_transfer);
+}
+
+bool is_supported_prepared_guard_compare_opcode(c4c::backend::bir::BinaryOpcode opcode) {
+  return opcode == c4c::backend::bir::BinaryOpcode::Eq ||
+         opcode == c4c::backend::bir::BinaryOpcode::Ne ||
+         opcode == c4c::backend::bir::BinaryOpcode::Sgt ||
+         opcode == c4c::backend::bir::BinaryOpcode::Sge ||
+         opcode == c4c::backend::bir::BinaryOpcode::Slt ||
+         opcode == c4c::backend::bir::BinaryOpcode::Sle;
+}
+
+std::optional<std::size_t> select_prepared_block_terminator_compare_index_if_supported(
+    const c4c::backend::bir::Block& block,
+    const std::optional<c4c::backend::prepare::PreparedShortCircuitContinuationLabels>&
+        continuation) {
+  const auto is_supported_guard_compare =
+      [](const c4c::backend::bir::BinaryInst& compare) {
+        const bool supported_operand_type =
+            compare.operand_type == c4c::backend::bir::TypeKind::I32 ||
+            compare.operand_type == c4c::backend::bir::TypeKind::I8;
+        const bool supported_result_type =
+            compare.result.type == c4c::backend::bir::TypeKind::I1 ||
+            compare.result.type == c4c::backend::bir::TypeKind::I32;
+        return is_supported_prepared_guard_compare_opcode(compare.opcode) &&
+               supported_operand_type && supported_result_type;
+      };
+  if (block.terminator.kind == c4c::backend::bir::TerminatorKind::CondBranch) {
+    if (block.insts.empty()) {
+      return std::nullopt;
+    }
+    return block.insts.size() - 1;
+  }
+
+  if (continuation.has_value() &&
+      block.terminator.kind == c4c::backend::bir::TerminatorKind::Branch &&
+      !block.insts.empty()) {
+    const auto* branch_compare = std::get_if<c4c::backend::bir::BinaryInst>(&block.insts.back());
+    if (branch_compare != nullptr && is_supported_guard_compare(*branch_compare)) {
+      return block.insts.size() - 1;
+    }
+  }
+
+  return std::nullopt;
+}
+
 }  // namespace
 
 std::optional<std::pair<std::string, std::string>> render_prepared_guard_false_branch_compare(
@@ -287,6 +379,60 @@ std::optional<ShortCircuitEntryCompareContext> build_prepared_guard_compare_cont
       .compare_setup = std::move(false_branch_compare->first),
       .false_branch_opcode = std::move(false_branch_compare->second),
   };
+}
+
+bool prepared_short_circuit_continuation_is_admissible(
+    const PreparedX86FunctionDispatchContext& function_context,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& block,
+    c4c::BlockLabelId block_label_id,
+    const c4c::backend::prepare::PreparedShortCircuitJoinContext& join_context,
+    const std::function<const c4c::backend::bir::Block*(std::string_view)>& find_block) {
+  const auto* function_control_flow = function_context.function_control_flow;
+  const auto* prepared_names = function_context.prepared_names;
+  if (function_control_flow == nullptr || prepared_names == nullptr ||
+      block_label_id == c4c::kInvalidBlockLabel) {
+    return false;
+  }
+
+  if (!c4c::backend::prepare::find_prepared_short_circuit_continuation_targets(
+           *prepared_names, *function_control_flow, function, block_label_id)
+           .has_value()) {
+    return true;
+  }
+
+  const auto* source_branch_condition =
+      c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
+                                                            block_label_id);
+  if (source_branch_condition == nullptr) {
+    return false;
+  }
+
+  const auto direct_targets =
+      c4c::backend::prepare::resolve_prepared_compare_branch_target_labels(
+          *prepared_names, function_control_flow, block_label_id, block, *source_branch_condition);
+  if (!direct_targets.has_value()) {
+    return false;
+  }
+
+  const auto rhs_entry_label = join_context.classified_incoming.short_circuit_on_compare_true
+                                   ? direct_targets->false_label
+                                   : direct_targets->true_label;
+  const auto* rhs_entry_block = find_block(
+      c4c::backend::prepare::prepared_block_label(*prepared_names, rhs_entry_label));
+  if (rhs_entry_block == nullptr) {
+    return false;
+  }
+
+  const auto rhs_compare_index = select_prepared_block_terminator_compare_index_if_supported(
+      *rhs_entry_block,
+      c4c::backend::prepare::PreparedShortCircuitContinuationLabels{
+          .incoming_label = rhs_entry_label,
+          .true_label = join_context.continuation_true_label,
+          .false_label = join_context.continuation_false_label,
+      });
+  return (rhs_compare_index.has_value() && *rhs_compare_index < rhs_entry_block->insts.size()) ||
+         prepared_short_circuit_join_has_join_defined_named_incoming(join_context);
 }
 
 namespace {

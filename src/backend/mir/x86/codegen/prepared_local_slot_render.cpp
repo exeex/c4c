@@ -40,23 +40,6 @@ bool block_defines_named_value(const c4c::backend::bir::Block& block, std::strin
   return false;
 }
 
-bool short_circuit_join_has_join_defined_named_incoming(
-    const c4c::backend::prepare::PreparedShortCircuitJoinContext& join_context) {
-  if (join_context.join_block == nullptr) {
-    return false;
-  }
-
-  const auto named_incoming_is_join_defined =
-      [&](const c4c::backend::prepare::PreparedEdgeValueTransfer* transfer) {
-        return transfer != nullptr &&
-               transfer->incoming_value.kind == c4c::backend::bir::Value::Kind::Named &&
-               block_defines_named_value(*join_context.join_block, transfer->incoming_value.name);
-      };
-
-  return named_incoming_is_join_defined(join_context.true_transfer) ||
-         named_incoming_is_join_defined(join_context.false_transfer);
-}
-
 }  // namespace
 
 namespace {
@@ -2115,43 +2098,14 @@ select_prepared_short_circuit_cond_branch_render_if_supported(
   if (!join_context.has_value()) {
     return std::nullopt;
   }
-  if (c4c::backend::prepare::find_prepared_short_circuit_continuation_targets(
-          *prepared_names, *function_control_flow, function, *resolved_block_label_id)
-          .has_value()) {
-    const auto* source_branch_condition =
-        c4c::backend::prepare::find_prepared_branch_condition(*function_control_flow,
-                                                              *resolved_block_label_id);
-    if (source_branch_condition == nullptr) {
-      return std::nullopt;
-    }
-    const auto direct_targets =
-        c4c::backend::prepare::resolve_prepared_compare_branch_target_labels(*prepared_names,
-                                                                             function_control_flow,
-                                                                             *resolved_block_label_id,
-                                                                             block,
-                                                                             *source_branch_condition);
-    if (!direct_targets.has_value()) {
-      return std::nullopt;
-    }
-    const auto rhs_entry_label = join_context->classified_incoming.short_circuit_on_compare_true
-                                     ? direct_targets->false_label
-                                     : direct_targets->true_label;
-    const auto* rhs_entry_block =
-        find_block(c4c::backend::prepare::prepared_block_label(*prepared_names, rhs_entry_label));
-    if (rhs_entry_block == nullptr) {
-      return std::nullopt;
-    }
-    const auto rhs_compare_index = select_prepared_block_terminator_compare_index_if_supported(
-        *rhs_entry_block,
-        c4c::backend::prepare::PreparedShortCircuitContinuationLabels{
-            .incoming_label = rhs_entry_label,
-            .true_label = join_context->continuation_true_label,
-            .false_label = join_context->continuation_false_label,
-        });
-    if ((!rhs_compare_index.has_value() || *rhs_compare_index >= rhs_entry_block->insts.size()) &&
-        !short_circuit_join_has_join_defined_named_incoming(*join_context)) {
-      return std::nullopt;
-    }
+  if (!c4c::backend::x86::prepared_short_circuit_continuation_is_admissible(
+          function_context,
+          function,
+          block,
+          *resolved_block_label_id,
+          *join_context,
+          find_block)) {
+    return std::nullopt;
   }
 
   if (current_i8_name.has_value() && compare_index < block.insts.size()) {
