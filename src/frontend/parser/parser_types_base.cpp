@@ -1627,7 +1627,7 @@ TypeSpec Parser::parse_base_type() {
                                             if (owner_lookup_name.find("::") ==
                                                 std::string::npos) {
                                                 const std::string canonical_owner =
-                                                    bridge_name_in_context(
+                                                    compatibility_namespace_name_in_context(
                                                         current_namespace_context_id(),
                                                         parser_text_id_for_token(
                                                             kInvalidText,
