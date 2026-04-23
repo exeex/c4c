@@ -9,16 +9,17 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Just Finished
 
-- completed the Step 2 `parser_types_base.cpp` packet by routing the remaining
-  safe C++11 `[[attribute]]` skip-path reads through `core_input_state_`
-  instead of direct `tokens_`/`pos_` access, while leaving the intentional
+- completed the Step 2 `parser_types_declarator.cpp` probe-routing packet by
+  moving the read-only template/declarator lookahead helpers onto
+  `core_input_state_` access while leaving the intentional token-stream
   save/restore rollback sites unchanged
 
 ## Suggested Next
 
-- continue Step 2 in `parser_types_declarator.cpp`, starting with the
-  front-loaded lookahead/probe helpers that still read parser input through
-  `tokens_`/`pos_` instead of `core_input_state_`
+- continue Step 2 in `parser_types_declarator.cpp` by routing the remaining
+  read-only cursor probes and token-spelling helpers through
+  `core_input_state_`, while still avoiding the injected-token save/restore
+  path in the dependent-typename flow
 
 ## Watchouts
 
@@ -31,8 +32,10 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
   diagnostics, and rollback, especially where tentative parsing still performs
   explicit token-stream save/restore
 - treat the remaining direct `pos_` save/restore sites in
-  `parser_types_base.cpp` as intentional rollback mechanics unless a later
-  Step 3 classification packet chooses to rework them
+  `parser_types_declarator.cpp` as intentional rollback mechanics unless a
+  later Step 3 classification packet chooses to rework them
+- keep the dependent-typename injected-token detour intact for this Step 2
+  route; it is not just a read-only probe
 - refresh proof after each bounded bundle-routing packet and keep it captured
   in `test_after.log`
 

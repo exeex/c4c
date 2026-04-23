@@ -67,27 +67,27 @@ bool Parser::parse_next_template_argument(std::vector<TemplateArgParseResult>* o
 bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
     ParseContextGuard trace(this, __func__);
     if (!out_arg) return false;
-    const int start_pos = pos_;
+    const int start_pos = core_input_state_.pos;
     const auto starts_template_id_type_head = [&]() -> bool {
-        int probe = pos_;
-        if (probe >= static_cast<int>(tokens_.size())) return false;
-        if (tokens_[probe].kind == TokenKind::KwTypename) ++probe;
-        if (probe < static_cast<int>(tokens_.size()) &&
-            tokens_[probe].kind == TokenKind::ColonColon) {
+        int probe = core_input_state_.pos;
+        if (probe >= static_cast<int>(core_input_state_.tokens.size())) return false;
+        if (core_input_state_.tokens[probe].kind == TokenKind::KwTypename) ++probe;
+        if (probe < static_cast<int>(core_input_state_.tokens.size()) &&
+            core_input_state_.tokens[probe].kind == TokenKind::ColonColon) {
             ++probe;
         }
-        if (probe >= static_cast<int>(tokens_.size()) ||
-            tokens_[probe].kind != TokenKind::Identifier) {
+        if (probe >= static_cast<int>(core_input_state_.tokens.size()) ||
+            core_input_state_.tokens[probe].kind != TokenKind::Identifier) {
             return false;
         }
         ++probe;
-        while (probe + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[probe].kind == TokenKind::ColonColon &&
-               tokens_[probe + 1].kind == TokenKind::Identifier) {
+        while (probe + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[probe].kind == TokenKind::ColonColon &&
+               core_input_state_.tokens[probe + 1].kind == TokenKind::Identifier) {
             probe += 2;
         }
-        return probe < static_cast<int>(tokens_.size()) &&
-               tokens_[probe].kind == TokenKind::Less;
+        return probe < static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[probe].kind == TokenKind::Less;
     };
 
     const auto is_simple_known_template_type_head = [&]() -> bool {
@@ -393,13 +393,13 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
         if (!check(TokenKind::ColonColon))
             break;
 
-        int lookahead = pos_ + 1;
-        if (lookahead >= static_cast<int>(tokens_.size()))
+        int lookahead = core_input_state_.pos + 1;
+        if (lookahead >= static_cast<int>(core_input_state_.tokens.size()))
             break;
-        if (tokens_[lookahead].kind == TokenKind::KwTemplate)
+        if (core_input_state_.tokens[lookahead].kind == TokenKind::KwTemplate)
             ++lookahead;
-        if (lookahead >= static_cast<int>(tokens_.size()) ||
-            tokens_[lookahead].kind != TokenKind::Identifier)
+        if (lookahead >= static_cast<int>(core_input_state_.tokens.size()) ||
+            core_input_state_.tokens[lookahead].kind != TokenKind::Identifier)
             break;
 
         qn.qualifier_segments.push_back(qn.base_name);
@@ -448,11 +448,11 @@ bool Parser::consume_template_parameter_type_start(bool allow_typename_keyword) 
 bool Parser::consume_template_args_before_scope() {
     if (!check(TokenKind::Less)) return false;
 
-    int probe = pos_;
+    int probe = core_input_state_.pos;
     int depth = 0;
     bool balanced = false;
-    while (probe < static_cast<int>(tokens_.size())) {
-        const TokenKind k = tokens_[probe].kind;
+    while (probe < static_cast<int>(core_input_state_.tokens.size())) {
+        const TokenKind k = core_input_state_.tokens[probe].kind;
         if (k == TokenKind::Less) {
             ++depth;
         } else if (k == TokenKind::Greater) {
@@ -474,8 +474,8 @@ bool Parser::consume_template_args_before_scope() {
         ++probe;
     }
 
-    if (!balanced || probe >= static_cast<int>(tokens_.size()) ||
-        tokens_[probe].kind != TokenKind::ColonColon) {
+    if (!balanced || probe >= static_cast<int>(core_input_state_.tokens.size()) ||
+        core_input_state_.tokens[probe].kind != TokenKind::ColonColon) {
         return false;
     }
 
@@ -494,8 +494,8 @@ bool Parser::consume_member_pointer_owner_prefix() {
         return false;
     }
     if (!(check(TokenKind::ColonColon) &&
-          pos_ + 1 < static_cast<int>(tokens_.size()) &&
-          tokens_[pos_ + 1].kind == TokenKind::Star)) {
+          core_input_state_.pos + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+          core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::Star)) {
         return false;
     }
 
@@ -985,26 +985,26 @@ bool Parser::parse_qualified_declarator_name(std::string* out_name) {
 bool Parser::is_grouped_declarator_start() const {
     if (!check(TokenKind::LParen)) return false;
 
-    int pk = pos_ + 1;
-    while (pk < static_cast<int>(tokens_.size()) &&
-           tokens_[pk].kind == TokenKind::KwAttribute) {
+    int pk = core_input_state_.pos + 1;
+    while (pk < static_cast<int>(core_input_state_.tokens.size()) &&
+           core_input_state_.tokens[pk].kind == TokenKind::KwAttribute) {
         ++pk;
-        if (pk < static_cast<int>(tokens_.size()) &&
-            tokens_[pk].kind == TokenKind::LParen) {
+        if (pk < static_cast<int>(core_input_state_.tokens.size()) &&
+            core_input_state_.tokens[pk].kind == TokenKind::LParen) {
             int depth = 1;
             ++pk;
-            while (pk < static_cast<int>(tokens_.size()) && depth > 0) {
-                if (tokens_[pk].kind == TokenKind::LParen) ++depth;
-                else if (tokens_[pk].kind == TokenKind::RParen) --depth;
+            while (pk < static_cast<int>(core_input_state_.tokens.size()) && depth > 0) {
+                if (core_input_state_.tokens[pk].kind == TokenKind::LParen) ++depth;
+                else if (core_input_state_.tokens[pk].kind == TokenKind::RParen) --depth;
                 ++pk;
             }
         }
     }
 
-    bool is_grouped = pk < static_cast<int>(tokens_.size()) &&
-                      tokens_[pk].kind == TokenKind::Identifier;
-    if (is_grouped && pk + 1 < static_cast<int>(tokens_.size())) {
-        const auto next_k = tokens_[pk + 1].kind;
+    bool is_grouped = pk < static_cast<int>(core_input_state_.tokens.size()) &&
+                      core_input_state_.tokens[pk].kind == TokenKind::Identifier;
+    if (is_grouped && pk + 1 < static_cast<int>(core_input_state_.tokens.size())) {
+        const auto next_k = core_input_state_.tokens[pk + 1].kind;
         // Keep parameter-list heads such as `(T&&)` and `(Type<Args>&)` on the
         // surrounding declaration path instead of misrouting them into grouped
         // declarator parsing.
@@ -1023,24 +1023,24 @@ bool Parser::is_grouped_declarator_start() const {
 bool Parser::is_parenthesized_pointer_declarator_start() {
     if (!check(TokenKind::LParen)) return false;
 
-    int pk = pos_ + 1;
-    while (pk < static_cast<int>(tokens_.size()) &&
-           tokens_[pk].kind == TokenKind::KwAttribute) {
+    int pk = core_input_state_.pos + 1;
+    while (pk < static_cast<int>(core_input_state_.tokens.size()) &&
+           core_input_state_.tokens[pk].kind == TokenKind::KwAttribute) {
         ++pk;  // skip __attribute__
-        if (pk < static_cast<int>(tokens_.size()) &&
-            tokens_[pk].kind == TokenKind::LParen) {
+        if (pk < static_cast<int>(core_input_state_.tokens.size()) &&
+            core_input_state_.tokens[pk].kind == TokenKind::LParen) {
             int depth = 1;
             ++pk;
-            while (pk < static_cast<int>(tokens_.size()) && depth > 0) {
-                if (tokens_[pk].kind == TokenKind::LParen) ++depth;
-                else if (tokens_[pk].kind == TokenKind::RParen) --depth;
+            while (pk < static_cast<int>(core_input_state_.tokens.size()) && depth > 0) {
+                if (core_input_state_.tokens[pk].kind == TokenKind::LParen) ++depth;
+                else if (core_input_state_.tokens[pk].kind == TokenKind::RParen) --depth;
                 ++pk;
             }
         }
     }
-    if (pk >= static_cast<int>(tokens_.size())) return false;
+    if (pk >= static_cast<int>(core_input_state_.tokens.size())) return false;
 
-    const TokenKind lookahead = tokens_[pk].kind;
+    const TokenKind lookahead = core_input_state_.tokens[pk].kind;
     if (lookahead == TokenKind::Star || lookahead == TokenKind::Caret ||
         (is_cpp_mode() &&
          (lookahead == TokenKind::Amp || lookahead == TokenKind::AmpAmp))) {
@@ -1517,16 +1517,16 @@ Parser::TypenameTemplateParamKind Parser::classify_typename_template_parameter()
     if (!is_cpp_mode() || !check(TokenKind::KwTypename))
         return TypenameTemplateParamKind::TypeParameter;
 
-    int probe = pos_ + 1;
-    if (probe < static_cast<int>(tokens_.size()) &&
-        tokens_[probe].kind == TokenKind::Identifier) {
+    int probe = core_input_state_.pos + 1;
+    if (probe < static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[probe].kind == TokenKind::Identifier) {
         ++probe;
     }
 
-    if (probe >= static_cast<int>(tokens_.size()))
+    if (probe >= static_cast<int>(core_input_state_.tokens.size()))
         return TypenameTemplateParamKind::TypeParameter;
 
-    switch (tokens_[probe].kind) {
+    switch (core_input_state_.tokens[probe].kind) {
         case TokenKind::Assign:
         case TokenKind::Comma:
         case TokenKind::Greater:
@@ -1538,7 +1538,7 @@ Parser::TypenameTemplateParamKind Parser::classify_typename_template_parameter()
         case TokenKind::KwTypename:
             return TypenameTemplateParamKind::TypeParameter;
         case TokenKind::Identifier:
-            if (token_spelling(tokens_[probe]) == "typename")
+            if (token_spelling(core_input_state_.tokens[probe]) == "typename")
                 return TypenameTemplateParamKind::TypeParameter;
             break;
         default:
