@@ -1922,7 +1922,7 @@ Node* Parser::parse_record_tag_setup(int line,
             resolved_tag = arena_.strdup(buf);
         } else {
             const std::string qtag =
-                bridge_name_in_context(
+                compatibility_namespace_name_in_context(
                     current_namespace_context_id(),
                     parser_text_id_for_token(kInvalidText, resolved_tag),
                     resolved_tag);
@@ -1966,7 +1966,7 @@ Node* Parser::parse_record_tag_setup(int line,
         const std::string qtag =
             std::strstr(resolved_tag, "::")
                 ? std::string(resolved_tag)
-                : bridge_name_in_context(
+                : compatibility_namespace_name_in_context(
                       current_namespace_context_id(),
                       parser_text_id_for_token(kInvalidText, resolved_tag),
                       resolved_tag);
@@ -2110,10 +2110,10 @@ void Parser::register_record_definition(Node* sd,
     const std::string canonical =
         std::strstr(source_tag, "::")
             ? std::string(source_tag)
-            : bridge_name_in_context(current_namespace_context_id(),
-                                     parser_text_id_for_token(kInvalidText,
-                                                              source_tag),
-                                     source_tag);
+            : compatibility_namespace_name_in_context(
+                  current_namespace_context_id(),
+                  parser_text_id_for_token(kInvalidText, source_tag),
+                  source_tag);
     sd->name = arena_.strdup(canonical.c_str());
     apply_decl_namespace(sd, current_namespace_context_id(), source_tag);
     definition_state_.struct_tag_def_map[source_tag] = sd;
@@ -2220,7 +2220,7 @@ Node* Parser::parse_enum() {
             tag = arena_.strdup(buf);
         }
         Node* ref = make_node(NK_ENUM_DEF, ln);
-        ref->name = arena_.strdup(bridge_name_in_context(
+        ref->name = arena_.strdup(compatibility_namespace_name_in_context(
             current_namespace_context_id(),
             parser_text_id_for_token(kInvalidText, tag), tag).c_str());
         apply_decl_namespace(ref, current_namespace_context_id(), tag);
@@ -2237,7 +2237,7 @@ Node* Parser::parse_enum() {
     }
 
     Node* ed = make_node(NK_ENUM_DEF, ln);
-    ed->name = arena_.strdup(bridge_name_in_context(
+    ed->name = arena_.strdup(compatibility_namespace_name_in_context(
         current_namespace_context_id(), parser_text_id_for_token(kInvalidText, tag),
         tag).c_str());
     apply_decl_namespace(ed, current_namespace_context_id(), tag);

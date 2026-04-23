@@ -10,31 +10,27 @@ Current Step Title: Contain Canonical String Fallbacks To Compatibility Helpers
 
 ## Just Finished
 
-- introduced an explicit
-  `compatibility_namespace_name_in_context()` bridge and routed the remaining
-  namespace lookup fallbacks through it so canonical string synthesis is now
-  isolated to compatibility/debug-style key construction
-- kept parser namespace traversal and resolution semantics unchanged while
-  limiting the new Step 3 work to the owned parser bridge helpers in
-  `parser_core.cpp` and the corresponding declaration in `parser.hpp`
+- completed Step 3 in `plan.md` by retargeting the declaration and record
+  namespace canonical-name synthesis sites to the explicit
+  `compatibility_namespace_name_in_context()` bridge
+- kept parser namespace lookup behavior unchanged while limiting this packet to
+  the owned declaration and record helpers in
+  `parser_declarations.cpp` and `parser_types_struct.cpp`
 
 ## Suggested Next
 
-- continue Step 3 by auditing the remaining `bridge_name_in_context()`
-  registrations in declaration/record code and keep any new canonical string
-  synthesis confined to explicit compatibility or debug bridges
-- avoid pulling using-declaration alias cleanup or broader binding-table
-  rewrites into this runbook unless a parser namespace helper still depends on
-  canonical strings for a legacy key
+- continue with the next packet only if there are still declaration or record
+  namespace bridge call sites outside this slice that need the same explicit
+  compatibility intent
+- otherwise leave parser namespace lookup unchanged and move to the next
+  plan step or lifecycle decision
 
 ## Watchouts
 
-- keep the work inside parser namespace lookup
 - preserve namespace push/pop registration and visibility behavior
-- use canonical strings only as compatibility/debug bridges while semantic
-  lookup moves to `TextId` segments
-- avoid widening the packet into full lexical-scope or binding-table cleanup
-- capture each executor proof in `test_after.log`
+- keep canonical strings confined to compatibility/debug bridges
+- avoid widening into lexical-scope or binding-table cleanup
+- preserve `test_after.log` as the canonical proof artifact for this packet
 
 ## Proof
 
