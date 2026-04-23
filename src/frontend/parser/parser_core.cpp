@@ -1715,6 +1715,22 @@ int Parser::resolve_namespace_name(const QualifiedNameRef& name) const {
                                            follow_name);
 }
 
+std::string Parser::qualified_name_text(const QualifiedNameRef& name,
+                                        bool include_global_prefix) const {
+    std::string qualified;
+    if (include_global_prefix && name.is_global_qualified) qualified = "::";
+    for (size_t i = 0; i < name.qualifier_segments.size(); ++i) {
+        if (!qualified.empty() && qualified != "::") qualified += "::";
+        const TextId segment_text_id =
+            i < name.qualifier_text_ids.size() ? name.qualifier_text_ids[i]
+                                               : kInvalidText;
+        qualified += parser_text(segment_text_id, name.qualifier_segments[i]);
+    }
+    if (!qualified.empty() && qualified != "::") qualified += "::";
+    qualified += parser_text(name.base_text_id, name.base_name);
+    return qualified;
+}
+
 std::string Parser::resolve_qualified_value_name(
     const QualifiedNameRef& name) const {
     const std::string base_name =

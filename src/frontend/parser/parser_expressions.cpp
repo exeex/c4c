@@ -1257,7 +1257,7 @@ Node* Parser::parse_primary() {
         QualifiedNameRef qn = parse_qualified_name(true);
         std::string qualified_name = resolve_qualified_value_name(qn);
         if (qualified_name.empty()) {
-            qualified_name = qualified_name_text(*this, qn, true);
+            qualified_name = qualified_name_text(qn, true);
         }
         const char* nm = arena_.strdup(qualified_name.c_str());
         Node* var_node = make_node(NK_VAR, ln);
@@ -1423,7 +1423,7 @@ Node* Parser::parse_primary() {
         }
         std::string qualified_name = resolve_qualified_value_name(qn);
         if (qualified_name.empty()) {
-            qualified_name = qualified_name_text(*this, qn);
+            qualified_name = qualified_name_text(qn);
         }
         const char* nm = arena_.strdup(qualified_name.c_str());
         const BuiltinId builtin_id = builtin_id_from_name(nm);
@@ -1653,7 +1653,7 @@ Node* Parser::parse_primary() {
                             resolve_qualified_value_name(operand_name);
                         if (qualified_name.empty()) {
                             qualified_name =
-                                qualified_name_text(*this, operand_name);
+                                qualified_name_text(operand_name);
                         }
                         const char* nm = arena_.strdup(qualified_name.c_str());
                         arg = make_var(nm, ln);

@@ -9,17 +9,19 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: switched `parser_expressions.cpp` qualified-value fallback
-  spellings to the shared TextId-backed `qualified_name_text()` helper and
-  removed the file-local duplicate qualified-name spelling helper
-- kept expression-side unresolved qualified-name fallback on the same segment
-  path already used by Step 2 traversal work, without widening the packet into
-  `parser_core.cpp` or unrelated binding-table cleanup
+- Step 2 packet: promoted TextId-backed qualified-name spelling onto
+  `Parser::qualified_name_text()` and switched the declarations-side
+  `using`-declaration unresolved fallback onto that shared helper
+- rewired the existing parser-family helper bridge in `types_helpers.hpp` plus
+  expression and struct call sites to the shared parser method so qualified-name
+  fallback spelling now flows through one implementation
 
 ## Suggested Next
 
-- if Step 2 continues, inspect the next parser-family duplicate qualified-name
-  spelling bridge and consolidate it onto the shared TextId-backed helper
+- if Step 2 continues, inspect `parser_types_declarator.cpp` for the remaining
+  file-local `spelled_qualified_name_from_text_ids()` bridge and decide whether
+  it can collapse onto `Parser::qualified_name_text()` without widening into
+  declarator-specific template parsing
 - keep the route inside parser namespace lookup and avoid widening into
   unrelated lexical-scope, binding-table, or backend cleanup
 
@@ -36,10 +38,10 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 - keep raw `::`-qualified spellings stable when they already bypass bridge
   synthesis; unresolved fallback spelling now comes from TextId-backed segment
   joins instead of `qn.spelled()`
-- keep `parser_core.cpp` at the restored baseline; do not add new behavior
-  there while Step 2 is still trimming parser entry-point bridge assumptions
-- keep expression-side unresolved qualified-name fallback stable while shifting
-  parser-family consumers onto shared TextId-backed qualified-name helpers
+- keep the shared helper behavior spelling-stable for global-qualified names
+  while Step 2 trims parser-family bridge duplication
+- keep declarator-specific operator/template token consumption separate from
+  namespace lookup cleanup if the next packet touches `parser_types_declarator.cpp`
 
 ## Proof
 

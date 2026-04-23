@@ -375,18 +375,7 @@ struct QualifiedTypeProbe {
 std::string qualified_name_text(const Parser& parser,
                                 const Parser::QualifiedNameRef& qn,
                                 bool include_global_prefix = true) {
-    std::string name;
-    if (include_global_prefix && qn.is_global_qualified) name = "::";
-    for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-        if (!name.empty() && name != "::") name += "::";
-        const TextId text_id =
-            i < qn.qualifier_text_ids.size() ? qn.qualifier_text_ids[i]
-                                             : kInvalidText;
-        name += parser.parser_text(text_id, qn.qualifier_segments[i]);
-    }
-    if (!name.empty() && name != "::") name += "::";
-    name += parser.parser_text(qn.base_text_id, qn.base_name);
-    return name;
+    return parser.qualified_name_text(qn, include_global_prefix);
 }
 
 std::string resolve_qualified_typedef_name(const Parser& parser,

@@ -7,21 +7,6 @@
 
 namespace c4c {
 
-static std::string qualified_name_spelling(const Parser& parser,
-                                           const Parser::QualifiedNameRef& name) {
-    std::string spelled;
-    if (name.is_global_qualified) spelled += "::";
-    for (size_t i = 0; i < name.qualifier_segments.size(); ++i) {
-        const TextId text_id =
-            i < name.qualifier_text_ids.size() ? name.qualifier_text_ids[i]
-                                               : kInvalidText;
-        spelled += parser.parser_text(text_id, name.qualifier_segments[i]);
-        spelled += "::";
-    }
-    spelled += parser.parser_text(name.base_text_id, name.base_name);
-    return spelled;
-}
-
 static void finalize_pending_operator_name(std::string& name, size_t param_count) {
     if (name.find("operator_star_pending") != std::string::npos) {
         name.replace(name.find("operator_star_pending"),
@@ -1477,7 +1462,7 @@ Node* Parser::parse_top_level() {
 
         std::string imported_value_name = resolve_qualified_value_name(target_name);
         if (imported_value_name.empty()) {
-            imported_value_name = qualified_name_spelling(*this, target_name);
+            imported_value_name = qualified_name_text(target_name);
             if (imported_value_name.rfind("::", 0) == 0) {
                 imported_value_name.erase(0, 2);
             }
