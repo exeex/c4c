@@ -146,6 +146,21 @@ std::string maybe_register_bank(std::optional<PreparedRegisterBank> bank) {
   return std::string(prepared_register_bank_name(*bank));
 }
 
+void append_register_occupancy(std::ostringstream& out,
+                               std::size_t contiguous_width,
+                               const std::vector<std::string>& occupied_register_names) {
+  out << " width=" << contiguous_width;
+  if (!occupied_register_names.empty()) {
+    out << " units=";
+    for (std::size_t index = 0; index < occupied_register_names.size(); ++index) {
+      if (index != 0) {
+        out << ",";
+      }
+      out << occupied_register_names[index];
+    }
+  }
+}
+
 void append_function_summaries(std::ostringstream& out, const PreparedBirModule& module) {
   out << "--- prepared-function-summaries ---\n";
   for (const auto& function : module.module.functions) {
@@ -180,7 +195,9 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
       for (const auto& saved : frame_plan->saved_callee_registers) {
         out << "  saved " << prepared_register_bank_name(saved.bank)
             << ":" << saved.register_name
-            << " order=" << saved.save_index << "\n";
+            << " order=" << saved.save_index;
+        append_register_occupancy(out, saved.contiguous_width, saved.occupied_register_names);
+        out << "\n";
       }
     }
 
@@ -486,7 +503,9 @@ void append_frame_plan(std::ostringstream& out, const PreparedBirModule& module)
     for (const auto& saved : function_plan.saved_callee_registers) {
       out << "  saved_register bank=" << prepared_register_bank_name(saved.bank)
           << " reg=" << saved.register_name
-          << " save_index=" << saved.save_index << "\n";
+          << " save_index=" << saved.save_index;
+      append_register_occupancy(out, saved.contiguous_width, saved.occupied_register_names);
+      out << "\n";
     }
     for (const auto slot_id : function_plan.frame_slot_order) {
       out << "  frame_slot_order slot_id=#" << slot_id;
@@ -592,7 +611,11 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
       }
       for (const auto& clobbered : call.clobbered_registers) {
         out << "    clobber bank=" << prepared_register_bank_name(clobbered.bank)
-            << " reg=" << clobbered.register_name << "\n";
+            << " reg=" << clobbered.register_name;
+        append_register_occupancy(out,
+                                  clobbered.contiguous_width,
+                                  clobbered.occupied_register_names);
+        out << "\n";
       }
     }
   }

@@ -22,6 +22,7 @@ struct ActiveRegisterAssignment {
   std::size_t value_index = 0;
   std::size_t end_point = 0;
   std::string register_name;
+  std::vector<std::string> occupied_register_names;
 };
 
 struct ProgramPointLocation {
@@ -175,7 +176,8 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
     case PreparedMoveStorageKind::None:
       return true;
     case PreparedMoveStorageKind::Register:
-      return lhs.assigned_register->register_name == rhs.assigned_register->register_name;
+      return lhs.assigned_register->occupied_register_names ==
+             rhs.assigned_register->occupied_register_names;
     case PreparedMoveStorageKind::StackSlot:
       return lhs.assigned_stack_slot->slot_id == rhs.assigned_stack_slot->slot_id;
   }
@@ -323,21 +325,31 @@ void expire_completed_assignments(std::vector<ActiveRegisterAssignment>& active,
                active.end());
 }
 
-[[nodiscard]] bool register_is_active(const std::vector<ActiveRegisterAssignment>& active,
-                                      std::string_view register_name) {
-  return std::any_of(active.begin(),
-                     active.end(),
-                     [register_name](const ActiveRegisterAssignment& assignment) {
-                       return assignment.register_name == register_name;
-                     });
+[[nodiscard]] bool assignments_overlap(const ActiveRegisterAssignment& active_assignment,
+                                       const PreparedRegisterCandidateSpan& candidate) {
+  for (const auto& active_register : active_assignment.occupied_register_names) {
+    for (const auto& candidate_register : candidate.occupied_register_names) {
+      if (active_register == candidate_register) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
-[[nodiscard]] std::optional<std::string> choose_register(
+[[nodiscard]] std::optional<PreparedRegisterCandidateSpan> choose_register_span(
     const std::vector<ActiveRegisterAssignment>& active,
-    const std::vector<std::string_view>& register_names) {
-  for (const std::string_view register_name : register_names) {
-    if (!register_is_active(active, register_name)) {
-      return std::string(register_name);
+    const std::vector<PreparedRegisterCandidateSpan>& candidate_spans) {
+  for (const auto& candidate : candidate_spans) {
+    bool overlap = false;
+    for (const auto& assignment : active) {
+      if (assignments_overlap(assignment, candidate)) {
+        overlap = true;
+        break;
+      }
+    }
+    if (!overlap) {
+      return candidate;
     }
   }
   return std::nullopt;
@@ -365,15 +377,19 @@ template <typename CanEvict>
 [[nodiscard]] std::optional<std::size_t> choose_eviction_candidate(
     const PreparedRegallocFunction& function,
     const std::vector<ActiveRegisterAssignment>& active,
-    const std::vector<std::string_view>& register_names,
+    const std::vector<PreparedRegisterCandidateSpan>& candidate_spans,
     const PreparedRegallocValue& value,
     CanEvict can_evict) {
   std::optional<std::size_t> weakest_active_index;
   for (std::size_t active_index = 0; active_index < active.size(); ++active_index) {
     const auto& assignment = active[active_index];
-    if (std::find(register_names.begin(), register_names.end(), assignment.register_name) ==
-            register_names.end() ||
-        !can_evict(assignment)) {
+    const bool overlaps_any_candidate =
+        std::any_of(candidate_spans.begin(),
+                    candidate_spans.end(),
+                    [&](const PreparedRegisterCandidateSpan& candidate) {
+                      return assignments_overlap(assignment, candidate);
+                    });
+    if (!overlaps_any_candidate || !can_evict(assignment)) {
       continue;
     }
 
@@ -1717,6 +1733,7 @@ void BirPreAlloc::run_regalloc() {
           .type = liveness_value.type,
           .value_kind = liveness_value.value_kind,
           .register_class = register_class,
+          .register_group_width = 1,
           .allocation_status = PreparedAllocationStatus::Unallocated,
           .spillable = eligible_for_register_seed && !liveness_value.requires_home_slot,
           .requires_home_slot = liveness_value.requires_home_slot,
@@ -1735,6 +1752,7 @@ void BirPreAlloc::run_regalloc() {
       regalloc_function.constraints.push_back(PreparedAllocationConstraint{
           .value_id = liveness_value.value_id,
           .register_class = register_class,
+          .register_group_width = 1,
           .requires_register = !liveness_value.requires_home_slot,
           .requires_home_slot = liveness_value.requires_home_slot,
           .cannot_cross_call = liveness_value.crosses_call &&
@@ -1820,18 +1838,21 @@ void BirPreAlloc::run_regalloc() {
         }
 
         expire_completed_assignments(active_assignments, value.live_interval->start_point);
-        const auto register_names = register_pool_for_value(value);
-        if (const auto chosen_register = choose_register(active_assignments, register_names);
+        const auto candidate_spans = register_pool_for_value(value);
+        if (const auto chosen_register = choose_register_span(active_assignments, candidate_spans);
             chosen_register.has_value()) {
           value.assigned_register = PreparedPhysicalRegisterAssignment{
               .reg_class = value.register_class,
-              .register_name = std::move(*chosen_register),
+              .register_name = chosen_register->register_name,
+              .contiguous_width = chosen_register->contiguous_width,
+              .occupied_register_names = chosen_register->occupied_register_names,
           };
           value.allocation_status = PreparedAllocationStatus::AssignedRegister;
           active_assignments.push_back(ActiveRegisterAssignment{
               .value_index = value_index,
               .end_point = value.live_interval->end_point,
               .register_name = value.assigned_register->register_name,
+              .occupied_register_names = value.assigned_register->occupied_register_names,
           });
           ++assigned_register_count;
           continue;
@@ -1839,7 +1860,7 @@ void BirPreAlloc::run_regalloc() {
 
         const auto eviction_index = choose_eviction_candidate(regalloc_function,
                                                               active_assignments,
-                                                              register_names,
+                                                              candidate_spans,
                                                               value,
                                                               can_evict_assignment);
         if (!eviction_index.has_value()) {
@@ -1851,6 +1872,12 @@ void BirPreAlloc::run_regalloc() {
         value.assigned_register = PreparedPhysicalRegisterAssignment{
             .reg_class = value.register_class,
             .register_name = active_assignments[*eviction_index].register_name,
+            .contiguous_width =
+                regalloc_function.values[active_assignments[*eviction_index].value_index]
+                    .assigned_register->contiguous_width,
+            .occupied_register_names =
+                regalloc_function.values[active_assignments[*eviction_index].value_index]
+                    .assigned_register->occupied_register_names,
         };
         value.allocation_status = PreparedAllocationStatus::AssignedRegister;
 
@@ -1861,25 +1888,32 @@ void BirPreAlloc::run_regalloc() {
             .value_index = value_index,
             .end_point = value.live_interval->end_point,
             .register_name = value.assigned_register->register_name,
+            .occupied_register_names = value.assigned_register->occupied_register_names,
         };
       }
     };
 
     assign_from_pool([](const PreparedRegallocValue& value) { return value.crosses_call; },
                      [this](const PreparedRegallocValue& value) {
-                       return callee_saved_registers(prepared_.target_profile, value.register_class);
+                       return callee_saved_register_spans(prepared_.target_profile,
+                                                          value.register_class,
+                                                          value.register_group_width);
                      },
                      active_callee_saved_assignments,
                      [](const ActiveRegisterAssignment&) { return true; });
     assign_from_pool([](const PreparedRegallocValue& value) { return !value.crosses_call; },
                      [this](const PreparedRegallocValue& value) {
-                       return caller_saved_registers(prepared_.target_profile, value.register_class);
+                       return caller_saved_register_spans(prepared_.target_profile,
+                                                          value.register_class,
+                                                          value.register_group_width);
                      },
                      active_caller_saved_assignments,
                      [](const ActiveRegisterAssignment&) { return true; });
     assign_from_pool([](const PreparedRegallocValue& value) { return !value.crosses_call; },
                      [this](const PreparedRegallocValue& value) {
-                       return callee_saved_registers(prepared_.target_profile, value.register_class);
+                       return callee_saved_register_spans(prepared_.target_profile,
+                                                          value.register_class,
+                                                          value.register_group_width);
                      },
                      active_callee_saved_assignments,
                      [&regalloc_function](const ActiveRegisterAssignment& assignment) {

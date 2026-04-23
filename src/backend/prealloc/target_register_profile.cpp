@@ -190,6 +190,97 @@ template <std::size_t N>
   return {};
 }
 
+[[nodiscard]] std::vector<std::string> contiguous_vector_units(std::string_view prefix,
+                                                               std::size_t start_index,
+                                                               std::size_t count) {
+  std::vector<std::string> units;
+  units.reserve(count);
+  for (std::size_t index = 0; index < count; ++index) {
+    units.push_back(std::string(prefix) + std::to_string(start_index + index));
+  }
+  return units;
+}
+
+[[nodiscard]] std::vector<PreparedRegisterCandidateSpan> singleton_spans(
+    const std::vector<std::string_view>& register_names) {
+  std::vector<PreparedRegisterCandidateSpan> spans;
+  spans.reserve(register_names.size());
+  for (const std::string_view register_name : register_names) {
+    spans.push_back(PreparedRegisterCandidateSpan{
+        .register_name = std::string(register_name),
+        .contiguous_width = 1,
+        .occupied_register_names = {std::string(register_name)},
+    });
+  }
+  return spans;
+}
+
+[[nodiscard]] std::vector<PreparedRegisterCandidateSpan> contiguous_group_spans(
+    const std::vector<std::string>& units,
+    std::size_t contiguous_width) {
+  if (contiguous_width == 0 || units.size() < contiguous_width) {
+    return {};
+  }
+  std::vector<PreparedRegisterCandidateSpan> spans;
+  for (std::size_t base_index = 0; base_index + contiguous_width <= units.size();
+       base_index += contiguous_width) {
+    PreparedRegisterCandidateSpan span{
+        .register_name = units[base_index],
+        .contiguous_width = contiguous_width,
+        .occupied_register_names = {},
+    };
+    span.occupied_register_names.reserve(contiguous_width);
+    for (std::size_t offset = 0; offset < contiguous_width; ++offset) {
+      span.occupied_register_names.push_back(units[base_index + offset]);
+    }
+    spans.push_back(std::move(span));
+  }
+  return spans;
+}
+
+[[nodiscard]] std::vector<PreparedRegisterCandidateSpan> register_spans_for_pool(
+    const c4c::TargetProfile& target_profile,
+    PreparedRegisterClass reg_class,
+    bool caller_pool,
+    std::size_t contiguous_width) {
+  if (contiguous_width == 0) {
+    return {};
+  }
+  if (reg_class == PreparedRegisterClass::Vector) {
+    switch (target_profile.arch) {
+      case c4c::TargetArch::X86_64:
+        return contiguous_group_spans(
+            caller_pool ? contiguous_vector_units("ymm", 0, 16)
+                        : contiguous_vector_units("ymm", 16, 16),
+            contiguous_width);
+      case c4c::TargetArch::I686:
+        return contiguous_group_spans(
+            caller_pool ? contiguous_vector_units("ymm", 0, 8)
+                        : contiguous_vector_units("ymm", 8, 8),
+            contiguous_width);
+      case c4c::TargetArch::Aarch64:
+        return contiguous_group_spans(
+            caller_pool ? contiguous_vector_units("v", 0, 16)
+                        : contiguous_vector_units("v", 16, 16),
+            contiguous_width);
+      case c4c::TargetArch::Riscv64:
+        return contiguous_group_spans(
+            caller_pool ? contiguous_vector_units("v", 0, 16)
+                        : contiguous_vector_units("v", 16, 16),
+            contiguous_width);
+      case c4c::TargetArch::Unknown:
+        return {};
+    }
+  }
+
+  const auto registers = caller_pool ? caller_saved_registers(target_profile, reg_class)
+                                     : callee_saved_registers(target_profile, reg_class);
+  if (contiguous_width != 1) {
+    return {};
+  }
+  return singleton_spans(registers);
+}
+
 }  // namespace
 
 std::optional<std::string> call_arg_destination_register_name(
@@ -271,6 +362,20 @@ std::optional<std::string> call_result_destination_register_name(
       return std::nullopt;
   }
   return std::nullopt;
+}
+
+std::vector<PreparedRegisterCandidateSpan> caller_saved_register_spans(
+    const c4c::TargetProfile& target_profile,
+    PreparedRegisterClass reg_class,
+    std::size_t contiguous_width) {
+  return register_spans_for_pool(target_profile, reg_class, true, contiguous_width);
+}
+
+std::vector<PreparedRegisterCandidateSpan> callee_saved_register_spans(
+    const c4c::TargetProfile& target_profile,
+    PreparedRegisterClass reg_class,
+    std::size_t contiguous_width) {
+  return register_spans_for_pool(target_profile, reg_class, false, contiguous_width);
 }
 
 std::vector<std::string_view> caller_saved_registers(

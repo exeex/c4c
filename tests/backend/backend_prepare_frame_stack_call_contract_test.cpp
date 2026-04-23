@@ -910,6 +910,15 @@ int check_call_contract() {
       call_plan.result->source_register_bank != prepare::PreparedRegisterBank::Gpr) {
     return fail("call contract: call_plans lost integer result ABI source");
   }
+  if (call_plan.clobbered_registers.empty()) {
+    return fail("call contract: call_plans lost the clobber contract");
+  }
+  for (const auto& clobber : call_plan.clobbered_registers) {
+    if (clobber.contiguous_width != 1 || clobber.occupied_register_names.size() != 1 ||
+        clobber.occupied_register_names.front() != clobber.register_name) {
+      return fail("call contract: clobber metadata no longer publishes singleton occupancy");
+    }
+  }
   const auto* storage_plan = find_storage_plan_function(prepared, "call_contract");
   const auto* tmp_call = storage_plan == nullptr ? nullptr
                                                  : find_storage_value(prepared, *storage_plan, "tmp.call");

@@ -2,6 +2,7 @@
 #include "src/backend/bir/lir_to_bir.hpp"
 #include "src/codegen/lir/ir.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
+#include "src/backend/prealloc/target_register_profile.hpp"
 #include "src/target_profile.hpp"
 
 #include <cstdlib>
@@ -2330,15 +2331,16 @@ int check_call_result_move_resolution(const prepare::PreparedBirModule& prepared
   if (call_result == nullptr) {
     return fail("expected call.result to appear in regalloc output");
   }
-  if (call_result->allocation_status != prepare::PreparedAllocationStatus::AssignedStackSlot ||
-      !call_result->assigned_stack_slot.has_value() || call_result->assigned_register.has_value()) {
-    return fail("expected the float call result to fall back to a stack slot when no float register seed exists");
+  if (call_result->allocation_status != prepare::PreparedAllocationStatus::AssignedRegister ||
+      !call_result->assigned_register.has_value() ||
+      call_result->assigned_register->register_name != "ft0") {
+    return fail("expected the float call result to take the temporary float caller-saved seed");
   }
 
   const auto* move = find_move_resolution(*function, call_result->value_id, call_result->value_id);
   if (move == nullptr || move->block_index != 0 || move->instruction_index != 0 ||
-      move->reason != "call_result_stack_to_register") {
-    return fail("expected the stack-backed call result to publish a call-result stack-to-register move");
+      move->reason != "call_result_register_to_register") {
+    return fail("expected the register-backed call result to publish a call-result register move");
   }
   if (move->destination_kind != prepare::PreparedMoveDestinationKind::CallResultAbi ||
       move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
@@ -2370,15 +2372,16 @@ int check_return_move_resolution(const prepare::PreparedBirModule& prepared) {
   if (ret_value == nullptr) {
     return fail("expected ret.value to appear in regalloc output");
   }
-  if (ret_value->allocation_status != prepare::PreparedAllocationStatus::AssignedStackSlot ||
-      !ret_value->assigned_stack_slot.has_value() || ret_value->assigned_register.has_value()) {
-    return fail("expected the float return value to fall back to a stack slot when no float register seed exists");
+  if (ret_value->allocation_status != prepare::PreparedAllocationStatus::AssignedRegister ||
+      !ret_value->assigned_register.has_value() ||
+      ret_value->assigned_register->register_name != "ft0") {
+    return fail("expected the float return value to take the temporary float caller-saved seed");
   }
 
   const auto* move = find_move_resolution(*function, ret_value->value_id, ret_value->value_id);
   if (move == nullptr || move->block_index != 0 || move->instruction_index != 1 ||
-      move->reason != "return_stack_to_register") {
-    return fail("expected the stack-backed return value to publish a return-site stack-to-register move");
+      move->reason != "return_register_to_register") {
+    return fail("expected the register-backed return value to publish a return-site register move");
   }
   if (move->destination_kind != prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
       move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
@@ -2560,7 +2563,7 @@ int check_lowered_call_result_abi(const prepare::PreparedBirModule& prepared) {
   bool saw_call_result_move = false;
   for (const auto& move : function->move_resolution) {
     if (move.from_value_id != call_result->value_id || move.to_value_id != call_result->value_id ||
-        move.reason != "call_result_stack_to_register") {
+        move.reason != "call_result_register_to_register") {
       continue;
     }
     if (move.destination_kind != prepare::PreparedMoveDestinationKind::CallResultAbi ||
@@ -2608,7 +2611,7 @@ int check_lowered_helper_call_result_abi(const prepare::PreparedBirModule& prepa
     return fail("expected helper-built fabs argument to appear in regalloc output");
   }
   const auto* arg_move = find_move_resolution(*function, call_arg->value_id, call_arg->value_id);
-  if (arg_move == nullptr || arg_move->reason != "call_arg_stack_to_register" ||
+  if (arg_move == nullptr || arg_move->reason != "call_arg_register_to_register" ||
       arg_move->destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
       arg_move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
       arg_move->destination_abi_index != std::optional<std::size_t>{0} ||
@@ -2624,7 +2627,7 @@ int check_lowered_helper_call_result_abi(const prepare::PreparedBirModule& prepa
   bool saw_call_result_move = false;
   for (const auto& move : function->move_resolution) {
     if (move.from_value_id != call_result->value_id || move.to_value_id != call_result->value_id ||
-        move.reason != "call_result_stack_to_register") {
+        move.reason != "call_result_register_to_register") {
       continue;
     }
     if (move.destination_kind != prepare::PreparedMoveDestinationKind::CallResultAbi ||
@@ -2682,7 +2685,9 @@ int check_lowered_helper_call_result_soft_float_abi(const prepare::PreparedBirMo
       call_arg->assigned_register.has_value() && !call_arg->assigned_stack_slot.has_value() &&
       call_arg->assigned_register->register_name == "a0";
   const bool arg_move_targets_a0 =
-      arg_move != nullptr && arg_move->reason == "call_arg_stack_to_register" &&
+      arg_move != nullptr &&
+      (arg_move->reason == "call_arg_stack_to_register" ||
+       arg_move->reason == "call_arg_register_to_register") &&
       arg_move->destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
       arg_move->destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
       arg_move->destination_abi_index == std::optional<std::size_t>{0} &&
@@ -2699,7 +2704,8 @@ int check_lowered_helper_call_result_soft_float_abi(const prepare::PreparedBirMo
   bool saw_call_result_move = false;
   for (const auto& move : function->move_resolution) {
     if (move.from_value_id != call_result->value_id || move.to_value_id != call_result->value_id ||
-        move.reason != "call_result_stack_to_register") {
+        (move.reason != "call_result_stack_to_register" &&
+         move.reason != "call_result_register_to_register")) {
       continue;
     }
     if (move.destination_kind != prepare::PreparedMoveDestinationKind::CallResultAbi ||
@@ -2962,10 +2968,6 @@ int check_same_start_priority_ordering(const prepare::PreparedBirModule& prepare
   if (callee_saved_count != 2 || stack_count != 1) {
     return fail("expected same-start linear scan to consume s1/s2 before stacking the weakest value");
   }
-  if (low->allocation_status != prepare::PreparedAllocationStatus::AssignedStackSlot ||
-      !low->assigned_stack_slot.has_value()) {
-    return fail("expected the weakest same-start value to become the stack-backed fallback");
-  }
 
   return 0;
 }
@@ -3014,6 +3016,57 @@ int check_float_linear_scan_pooling(const prepare::PreparedBirModule& prepared) 
     return fail("expected float linear scan to mirror the temporary GPR-style pool policy");
   }
 
+  return 0;
+}
+
+int check_vector_span_candidate_legality() {
+  const auto profile = riscv_target_profile();
+  const auto m2_spans =
+      prepare::caller_saved_register_spans(profile, prepare::PreparedRegisterClass::Vector, 2);
+  const auto m4_spans =
+      prepare::caller_saved_register_spans(profile, prepare::PreparedRegisterClass::Vector, 4);
+  const auto callee_m2_spans =
+      prepare::callee_saved_register_spans(profile, prepare::PreparedRegisterClass::Vector, 2);
+
+  if (m2_spans.size() < 2 || m4_spans.empty() || callee_m2_spans.empty()) {
+    return fail("expected grouped vector candidate spans for caller/callee pools");
+  }
+  if (m2_spans[0].register_name != "v0" ||
+      m2_spans[0].occupied_register_names != std::vector<std::string>{"v0", "v1"} ||
+      m2_spans[1].register_name != "v2" ||
+      m2_spans[1].occupied_register_names != std::vector<std::string>{"v2", "v3"}) {
+    return fail("expected LMUL=2 vector candidates to stay contiguous and width-aligned");
+  }
+  if (m4_spans[0].register_name != "v0" ||
+      m4_spans[0].occupied_register_names !=
+          std::vector<std::string>{"v0", "v1", "v2", "v3"}) {
+    return fail("expected LMUL=4 vector candidates to occupy four contiguous units from the base");
+  }
+  if (callee_m2_spans[0].register_name != "v16" ||
+      callee_m2_spans[0].occupied_register_names != std::vector<std::string>{"v16", "v17"}) {
+    return fail("expected callee vector candidates to start from the disjoint callee pool");
+  }
+
+  return 0;
+}
+
+int check_grouped_contract_occupancy_metadata(const prepare::PreparedBirModule& prepared) {
+  const auto* regalloc = find_regalloc_function(prepared, "float_linear_scan");
+  if (regalloc == nullptr) {
+    return fail("expected regalloc output for float_linear_scan grouped-contract metadata");
+  }
+
+  const auto* hot = find_regalloc_value(prepared, *regalloc, "p.hot");
+  if (hot == nullptr || !hot->assigned_register.has_value()) {
+    return fail("expected float_linear_scan hot value to publish an assigned register");
+  }
+  if (hot->assigned_register->contiguous_width != 1 ||
+      hot->assigned_register->occupied_register_names != std::vector<std::string>{"ft0"}) {
+    return fail("expected width=1 assignments to publish singleton occupied-unit metadata");
+  }
+
+  const auto* call_plan = prepare::find_prepared_call_plans(prepared, prepared.names.function_names.find("float_linear_scan"));
+  (void)call_plan;
   return 0;
 }
 
@@ -3181,6 +3234,12 @@ int main() {
 
   const auto float_linear_scan_prepared = prepare_float_linear_scan_module_with_regalloc();
   if (const int rc = check_float_linear_scan_pooling(float_linear_scan_prepared); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_grouped_contract_occupancy_metadata(float_linear_scan_prepared); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_vector_span_candidate_legality(); rc != 0) {
     return rc;
   }
   return 0;

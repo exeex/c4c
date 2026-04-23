@@ -190,10 +190,12 @@ namespace {
   for (PreparedRegisterClass reg_class :
        {PreparedRegisterClass::General, PreparedRegisterClass::Float, PreparedRegisterClass::Vector}) {
     const PreparedRegisterBank bank = register_bank_from_class(reg_class);
-    for (const std::string_view register_name : caller_saved_registers(target_profile, reg_class)) {
+    for (const auto& register_span : caller_saved_register_spans(target_profile, reg_class, 1)) {
       clobbers.push_back(PreparedClobberedRegister{
           .bank = bank,
-          .register_name = std::string(register_name),
+          .register_name = register_span.register_name,
+          .contiguous_width = register_span.contiguous_width,
+          .occupied_register_names = register_span.occupied_register_names,
       });
     }
   }
@@ -251,15 +253,15 @@ void populate_frame_plan(PreparedBirModule& prepared) {
         regalloc_function != nullptr) {
       for (PreparedRegisterClass reg_class :
            {PreparedRegisterClass::General, PreparedRegisterClass::Float, PreparedRegisterClass::Vector}) {
-        const auto callee_saved = callee_saved_registers(prepared.target_profile, reg_class);
+        const auto callee_saved = callee_saved_register_spans(prepared.target_profile, reg_class, 1);
         for (std::size_t save_index = 0; save_index < callee_saved.size(); ++save_index) {
-          const std::string_view callee_saved_name = callee_saved[save_index];
+          const auto& callee_saved_span = callee_saved[save_index];
           bool used = false;
           for (const auto& value : regalloc_function->values) {
             if (!value.assigned_register.has_value()) {
               continue;
             }
-            if (value.assigned_register->register_name == callee_saved_name) {
+            if (value.assigned_register->register_name == callee_saved_span.register_name) {
               used = true;
               break;
             }
@@ -269,7 +271,9 @@ void populate_frame_plan(PreparedBirModule& prepared) {
           }
           saved_registers.push_back(PreparedSavedRegister{
               .bank = register_bank_from_class(reg_class),
-              .register_name = std::string(callee_saved_name),
+              .register_name = callee_saved_span.register_name,
+              .contiguous_width = callee_saved_span.contiguous_width,
+              .occupied_register_names = callee_saved_span.occupied_register_names,
               .save_index = save_index,
           });
         }

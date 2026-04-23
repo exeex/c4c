@@ -225,6 +225,8 @@ enum class PreparedRegisterBank {
 struct PreparedSavedRegister {
   PreparedRegisterBank bank = PreparedRegisterBank::None;
   std::string register_name;
+  std::size_t contiguous_width = 1;
+  std::vector<std::string> occupied_register_names;
   std::size_t save_index = 0;
 };
 
@@ -658,6 +660,14 @@ enum class PreparedSpillReloadOpKind {
 struct PreparedPhysicalRegisterAssignment {
   PreparedRegisterClass reg_class = PreparedRegisterClass::None;
   std::string register_name;
+  std::size_t contiguous_width = 1;
+  std::vector<std::string> occupied_register_names;
+};
+
+struct PreparedRegisterCandidateSpan {
+  std::string register_name;
+  std::size_t contiguous_width = 1;
+  std::vector<std::string> occupied_register_names;
 };
 
 struct PreparedStackSlotAssignment {
@@ -668,6 +678,7 @@ struct PreparedStackSlotAssignment {
 struct PreparedAllocationConstraint {
   PreparedValueId value_id = 0;
   PreparedRegisterClass register_class = PreparedRegisterClass::None;
+  std::size_t register_group_width = 1;
   bool requires_register = false;
   bool requires_home_slot = false;
   bool cannot_cross_call = false;
@@ -738,6 +749,7 @@ struct PreparedRegallocValue {
   c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
   PreparedValueKind value_kind = PreparedValueKind::Temporary;
   PreparedRegisterClass register_class = PreparedRegisterClass::None;
+  std::size_t register_group_width = 1;
   PreparedAllocationStatus allocation_status = PreparedAllocationStatus::Unallocated;
   bool spillable = true;
   bool requires_home_slot = false;
@@ -872,6 +884,8 @@ struct PreparedCallResultPlan {
 struct PreparedClobberedRegister {
   PreparedRegisterBank bank = PreparedRegisterBank::None;
   std::string register_name;
+  std::size_t contiguous_width = 1;
+  std::vector<std::string> occupied_register_names;
 };
 
 struct PreparedCallPlan {
