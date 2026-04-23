@@ -1,39 +1,29 @@
 # Execution State
 
 Status: Active
-Source Idea Path: ideas/open/82_extract_full_x86_backend_subsystem_to_markdown_for_phoenix_rebuild.md
+Source Idea Path: ideas/open/81_parser_state_convergence_and_scope_rationalization.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Reproduce The Downstream Tail Boundary
+Current Step Title: Consolidate State-Bearing Structs Into `parser_state.hpp`
+Plan Review Counter: 0 / 8
+
 # Current Packet
 
 ## Just Finished
 
-- completed plan step `1 - Freeze The Whole-Subsystem Extraction Inventory` by
-  writing `docs/backend/x86_subsystem_legacy/index.md`, fixing the accepted
-  directory-index headers, and recording which deleted root/assembler/linker
-  legacy files still need stage-1 extraction evidence
+- reset the active lifecycle state to the parser-state-convergence runbook and
+  aligned the current-step metadata with Step 1
 
 ## Suggested Next
 
-- start the missing per-file extraction set under
-  `docs/backend/x86_subsystem_legacy/` for `mod.cpp`, `assembler/`, and
-  `linker/`, using legacy evidence rather than accepting the current deletions
-  as progress
+- begin Step 1 by moving state-bearing structs out of `parser.hpp` into
+  `parser_state.hpp`
 
 ## Watchouts
 
-- `docs/backend/x86_codegen_legacy/` is accepted prior stage-1 evidence for the
-  codegen subtree and should be indexed, not regenerated, unless later review
-  proves it insufficient
-- current deletions under `src/backend/mir/x86/assembler/`,
-  `src/backend/mir/x86/linker/`, and `src/backend/mir/x86/mod.cpp` do not
-  count as Phoenix progress until matching extraction artifacts exist
-- `assembler/parser.hpp` is not an accepted second directory index header; its
-  contract should be documented as helper or compatibility content instead
-- the new top-level inventory already treats `docs/backend/x86_codegen_legacy/`
-  as accepted evidence, so the next packet should not duplicate that subtree
+- keep the work inside the parser subsystem
+- do not expand into `TextId` cleanup or backend work yet
 
 ## Proof
 
-- inventory-only packet; no code proof run in this packet
+- lifecycle repair only; no build or test proof run

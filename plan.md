@@ -1,182 +1,171 @@
-# Extract Full X86 Backend Subsystem To Markdown For Phoenix Rebuild
+# Parser State Convergence And Scope Rationalization
 
 Status: Active
-Source Idea: ideas/open/82_extract_full_x86_backend_subsystem_to_markdown_for_phoenix_rebuild.md
-Supersedes: ideas/open/59_cfg_contract_consumption_for_short_circuit_and_guard_chain.md
-Activated from: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implementation_for_phoenix_rebuild.md
+Source Idea: ideas/open/81_parser_state_convergence_and_scope_rationalization.md
 
 ## Purpose
 
-Create the missing stage-1 Phoenix evidence for the full
-`src/backend/mir/x86/` subsystem so future teardown and replacement work can
-cover the root dispatcher, assembler, linker, and accepted codegen rebuild as
-one explicit ownership graph.
+Make parser-owned mutable state easier to read and reason about before later
+semantic-scope and `TextId` cleanup.
 
 ## Goal
 
-Replace ad hoc live-tree deletion and codegen-only Phoenix assumptions with one
-reviewable extraction package for the whole `x86` subsystem.
+Regroup parser state into named bundles with explicit lifetime boundaries so
+future parser changes can distinguish semantic scope from namespace, pragma,
+debug, and tentative rollback state.
 
 ## Core Rule
 
-Do not count deletion or restructuring under `src/backend/mir/x86/` as Phoenix
-progress until the matching legacy behavior has a compressed markdown evidence
-artifact.
+Do not broaden this into a general parser rewrite or a repo-wide identity
+migration; keep every change inside the parser subsystem and preserve behavior
+unless a structural move forces a correctness fix.
 
 ## Read First
 
-- `ideas/open/82_extract_full_x86_backend_subsystem_to_markdown_for_phoenix_rebuild.md`
-- `.codex/skills/phoenix-rebuild/SKILL.md`
-- `docs/backend/x86_codegen_legacy/index.md`
-- `docs/backend/x86_codegen_rebuild/index.md`
-- `docs/backend/x86_codegen_rebuild_handoff.md`
+- ideas/open/81_parser_state_convergence_and_scope_rationalization.md
+- src/frontend/parser/parser.hpp
+- src/frontend/parser/parser_state.hpp
+- parser implementation files that manipulate parser-owned mutable state
 
 ## Scope
 
-- `src/backend/mir/x86/mod.cpp`
-- `src/backend/mir/x86/assembler/`
-- `src/backend/mir/x86/linker/`
-- accepted prior Phoenix evidence for `src/backend/mir/x86/codegen/`
+- `src/frontend/parser/parser.hpp`
+- `src/frontend/parser/parser_state.hpp`
+- parser implementation files that directly depend on parser-owned mutable
+  state layout
 
 ## Non-Goals
 
-- redefining the replacement architecture before stage 2
-- converting replacement drafts into live implementation
-- counting the already-open codegen stage-4 idea as sufficient evidence for the
-  rest of `src/backend/mir/x86/`
-- deleting more live legacy code before matching extraction artifacts exist
+- no immediate replacement of every parser string path with `TextId`
+- no backend or HIR work
+- no grammar changes unless required by a structural move
+- no testcase-shaped narrowing of the route
 
 ## Working Model
 
-- treat the existing `docs/backend/x86_codegen_legacy/` package as accepted
-  stage-1 evidence for the codegen subtree
-- treat the missing root, assembler, and linker extraction as the blocker for a
-  whole-subsystem Phoenix route
-- keep one accepted non-helper directory index header per directory:
-  `x86_codegen.hpp`, `assembler/mod.hpp`, `assembler/encoder/mod.hpp`, and
-  `linker/mod.hpp`
-- treat `parser.hpp` and similar local headers as helper or compatibility
-  content, not as second directory indexes
+- treat parser state layout as the primary seam, not the lexical grammar itself
+- separate semantic lexical scope from namespace, template, pragma, debug, and
+  tentative rollback mechanisms
+- keep parser entry surface in `parser.hpp` and move state-bearing support types
+  to `parser_state.hpp`
+- use the regrouped state layout to expose clear ownership before any later
+  shared-helper or `TextId` follow-up
 
 ## Execution Rules
 
-- use compressed extraction rather than source dumps
-- keep short fenced `cpp` blocks only for essential surfaces
-- classify each notable responsibility seam and special case as `core
-  lowering`, `optional fast path`, `legacy compatibility`, or `overfit to
-  reject`
-- if a deleted legacy `.cpp` lacks a matching extraction artifact, restore it
-  or stop the teardown route before later stages proceed
-- preserve `todo.md` as the packet log; do not rewrite this runbook for routine
-  extraction progress
+- prefer small behavior-preserving moves over mixed refactors
+- keep `parser.hpp` focused on API and method index, not snapshot or bundle
+  internals
+- do not promote execution churn back into the idea file unless durable intent
+  changes
+- after each structural move, validate with
+  `cmake --build build -j --target c4c_frontend c4cll`
+- run focused parser/frontend tests that cover tentative parsing and
+  scope-heavy paths before broadening
+- escalate to broader `ctest` only when a step crosses multiple parser
+  subsystems
+- use `todo.md` for packet state and route checkpoints; rewrite `plan.md` only
+  when the active contract changes
 
-## Step 1: Freeze The Whole-Subsystem Extraction Inventory
+## Validation
 
-Goal: confirm the exact in-scope legacy source list, accepted directory-index
-headers, and already-satisfied codegen evidence before extracting anything new.
+- `cmake --build build -j --target c4c_frontend c4cll`
+- focused parser/frontend tests covering tentative parsing and scope-heavy
+  paths
+- broader `ctest` only if a step crosses multiple parser subsystems
 
-Primary targets:
+## Step 1: Consolidate State-Bearing Structs Into `parser_state.hpp`
 
-- `src/backend/mir/x86/mod.cpp`
-- `src/backend/mir/x86/assembler/`
-- `src/backend/mir/x86/linker/`
-- `docs/backend/x86_codegen_legacy/index.md`
-
-Actions:
-
-- enumerate every in-scope legacy `.cpp` that still needs a new companion under
-  `docs/backend/x86_subsystem_legacy/`
-- confirm the accepted directory-index headers for each directory and record
-  why any extra header is helper or compatibility-only rather than a second
-  index
-- confirm the existing `docs/backend/x86_codegen_legacy/` package is the
-  accepted evidence for the codegen subtree and does not need regeneration in
-  this step
-- record any live-tree deletions that currently lack matching extraction
-  evidence
-
-Completion check:
-
-- the stage-1 artifact map is explicit, directory-index ownership is explicit,
-  and every currently deleted in-scope legacy `.cpp` is either scheduled for
-  extraction from legacy evidence or flagged as a blocker
-
-## Step 2: Extract The Missing Root, Assembler, And Linker Legacy Sources
-
-Goal: create the missing per-file evidence for the non-codegen parts of the
-`x86` subsystem.
+Goal: move parser state support types out of `parser.hpp` without changing
+parser behavior.
 
 Primary targets:
 
-- `docs/backend/x86_subsystem_legacy/mod.cpp.md`
-- `docs/backend/x86_subsystem_legacy/assembler/*.md`
-- `docs/backend/x86_subsystem_legacy/assembler/encoder/*.md`
-- `docs/backend/x86_subsystem_legacy/linker/*.md`
+- `src/frontend/parser/parser.hpp`
+- `src/frontend/parser/parser_state.hpp`
+- parser implementation files that still define or include state support types
 
 Actions:
 
-- write one markdown companion for every in-scope legacy `.cpp` in the root,
-  assembler, assembler encoder, and linker directories
-- write one markdown companion for each accepted directory-index header:
-  `assembler/mod.hpp`, `assembler/encoder/mod.hpp`, and `linker/mod.hpp`
-- capture the real entry points, hidden dependencies, state handoff, and
-  special-case buckets for each file
-- avoid mechanically copying the source; summarize non-essential internals in
-  prose
+- identify state-bearing structs, snapshots, and other support types still
+  embedded in `parser.hpp`
+- move types that are not part of the true parser entry surface into
+  `parser_state.hpp`
+- keep `parser.hpp` limited to parser API, method declarations, and
+  entry-facing declarations
+- preserve include dependencies so existing parser implementation files
+  continue to compile
 
 Completion check:
 
-- every missing non-codegen legacy `.cpp` and accepted directory-index header
-  has a reviewable companion artifact under `docs/backend/x86_subsystem_legacy/`
+- `parser_state.hpp` owns the extracted state support types and `parser.hpp`
+  no longer carries them
 
-## Step 3: Build The Top-Level Whole-X86 Extraction Index
+## Step 2: Regroup Parser Member Fields Into Explicit Bundles
 
-Goal: make one top-level index point at the complete whole-subsystem Phoenix
-evidence package.
+Goal: make the parser's mutable ownership boundaries readable by clustering
+fields into named bundles.
 
 Primary targets:
 
-- `docs/backend/x86_subsystem_legacy/index.md`
-- `docs/backend/x86_codegen_legacy/index.md`
+- `src/frontend/parser/parser.hpp`
+- `src/frontend/parser/parser_state.hpp`
+- parser implementation files that initialize or snapshot parser-owned state
 
 Actions:
 
-- summarize the current subsystem ownership graph across root dispatch,
-  assembler, linker, and codegen
-- point the top-level index at every new root/assembler/linker artifact plus
-  the accepted `docs/backend/x86_codegen_legacy/` package
-- call out the major responsibility overlaps and cross-directory dependency
-  directions that later stages must redesign
-- explicitly classify the remaining live compatibility surface that the stage-4
-  codegen rebuild does not yet cover
+- regroup related members into explicit bundles such as input, bindings,
+  record/enum definitions, namespace, template, pragma, diagnostics, and
+  tentative rollback
+- keep behavior unchanged while moving fields
+- ensure rollback and push/pop helpers still restore the same semantic surface
 
 Completion check:
 
-- `docs/backend/x86_subsystem_legacy/index.md` acts as the canonical entry
-  point for the full extraction package and makes the whole-subsystem rebuild
-  pressure reviewable at a glance
+- parser member layout matches explicit ownership bundles and no field lost its
+  lifecycle coverage
 
-## Step 4: Reconcile Teardown State With The Extraction Evidence
+## Step 3: Classify Push/Pop And Rollback Paths By Kind
 
-Goal: ensure the current live-tree deletions under `src/backend/mir/x86/`
-comply with the Phoenix teardown rule before later stages proceed.
+Goal: separate real semantic scope from other parser context machines.
 
 Primary targets:
 
-- current worktree deletions in `src/backend/mir/x86/mod.cpp`
-- current worktree deletions under `src/backend/mir/x86/assembler/`
-- current worktree deletions under `src/backend/mir/x86/linker/`
+- parser implementation files that implement push/pop, save/restore, or
+  tentative parse guards
 
 Actions:
 
-- verify every deleted legacy `.cpp` now has matching extraction evidence
-- if any deletion still lacks evidence, restore it or explicitly stop the
-  teardown route instead of silently keeping the file removed
-- update `todo.md` with the coverage state, blockers, and which directories are
-  now extraction-complete
+- classify each mechanism as semantic lexical scope, namespace context,
+  template scope, pragma stack, debug context, or tentative rollback
+- note where helpers can be shared and where the mechanism must stay distinct
+- confirm the classification explains current lifetime boundaries without
+  changing grammar behavior
 
 Completion check:
 
-- no in-scope deleted legacy `.cpp` remains unsupported by stage-1 extraction
-  evidence, and the whole-subsystem Phoenix route can advance honestly to stage
-  2
+- the parser's state transitions are documented and grouped by mechanism
+  instead of being treated as one flat stack
+
+## Step 4: Define The Next Follow-On Slice For Scope Convergence
+
+Goal: turn the regrouped parser state layout into the next bounded execution
+slice.
+
+Primary targets:
+
+- `todo.md`
+- parser files identified by the prior step as the next narrow follow-on
+
+Actions:
+
+- record the next narrow slice needed to continue semantic scope convergence
+- keep later `TextId` cleanup explicitly out of this runbook until the state
+  layout is stable
+- document any cross-subsystem dependency that now needs its own idea file
+  instead of expanding this one
+
+Completion check:
+
+- the active runbook ends with a concrete next slice and a clear boundary for
+  later `TextId` work
