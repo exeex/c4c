@@ -336,6 +336,9 @@ class Parser {
                                               const TypeSpec& type);
   void register_struct_member_typedef_binding(const std::string& scoped_name,
                                               const TypeSpec& type);
+  void register_structured_typedef_binding_in_context(
+      int context_id, TextId name_text_id, std::string_view fallback_name,
+      const TypeSpec& type);
   bool has_var_type(const std::string& name) const;
   const TypeSpec* find_var_type(const std::string& name) const;
   const TypeSpec* find_visible_var_type(TextId name_text_id,
@@ -370,6 +373,9 @@ class Parser {
   QualifiedNameKey known_fn_name_key(int context_id, TextId name_text_id,
                                      std::string_view name) const;
   QualifiedNameKey known_fn_name_key_in_context(
+      int context_id, TextId name_text_id,
+      std::string_view fallback_name) const;
+  QualifiedNameKey struct_typedef_key_in_context(
       int context_id, TextId name_text_id,
       std::string_view fallback_name) const;
   std::string bridge_name_in_context(int context_id, TextId name_text_id,

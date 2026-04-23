@@ -1439,6 +1439,8 @@ Node* Parser::parse_top_level() {
                     parser_text_id_for_token(kInvalidText, first_name);
                 const std::string qualified = compatibility_namespace_name_in_context(
                     using_context_id, alias_name_text_id, first_name);
+                register_structured_typedef_binding_in_context(
+                    using_context_id, alias_name_text_id, first_name, alias_ts);
                 register_typedef_binding(qualified, alias_ts, true);
                 if (using_context_id == 0) {
                     register_typedef_binding(first_name, alias_ts, true);
@@ -1470,6 +1472,9 @@ Node* Parser::parse_top_level() {
                     find_typedef_type(imported_type_name)) {
                 const std::string imported_key = compatibility_namespace_name_in_context(
                     using_context_id, target_name.base_text_id, imported_name);
+                register_structured_typedef_binding_in_context(
+                    using_context_id, target_name.base_text_id, imported_name,
+                    *imported_typedef);
                 register_typedef_binding(imported_key, *imported_typedef, true);
                 if (using_context_id == 0) {
                     register_typedef_binding(imported_name, *imported_typedef, true);

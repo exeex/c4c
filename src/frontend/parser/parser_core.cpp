@@ -174,6 +174,80 @@ bool is_unqualified_lookup_name(std::string_view name) {
     return !name.empty() && name.find("::") == std::string_view::npos;
 }
 
+QualifiedNameKey find_known_fn_name_key_from_spelling(
+    const Parser& parser, int context_id, TextId name_text_id,
+    std::string_view name);
+
+QualifiedNameKey qualified_key_in_context(const Parser& parser, int context_id,
+                                          TextId name_text_id,
+                                          std::string_view fallback_name,
+                                          bool create_missing_path) {
+    QualifiedNameKey key;
+    if (context_id <= 0 || fallback_name.find("::") != std::string_view::npos) {
+        return find_known_fn_name_key_from_spelling(parser, context_id, name_text_id,
+                                                    fallback_name);
+    }
+
+    key.context_id = 0;
+    key.base_text_id = name_text_id != kInvalidText
+                           ? name_text_id
+                           : parser.parser_text_id_for_token(kInvalidText,
+                                                             fallback_name);
+    if (key.base_text_id == kInvalidText) return key;
+
+    std::vector<int> ancestry;
+    for (int walk = context_id; walk > 0;
+         walk = parser.namespace_state_.namespace_contexts[walk].parent_id) {
+        ancestry.push_back(walk);
+    }
+
+    std::vector<TextId> qualifier_text_ids;
+    for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it) {
+        const Parser::NamespaceContext& ctx =
+            parser.namespace_state_.namespace_contexts[*it];
+        if (ctx.is_anonymous) {
+            qualifier_text_ids.clear();
+            const std::string_view canonical =
+                ctx.canonical_name ? std::string_view(ctx.canonical_name)
+                                   : std::string_view{};
+            size_t segment_start = 0;
+            while (segment_start < canonical.size()) {
+                const size_t sep = canonical.find("::", segment_start);
+                const std::string_view segment =
+                    canonical.substr(segment_start, sep - segment_start);
+                if (!segment.empty()) {
+                    qualifier_text_ids.push_back(
+                        parser.parser_text_id_for_token(kInvalidText, segment));
+                }
+                if (sep == std::string_view::npos) break;
+                segment_start = sep + 2;
+            }
+            continue;
+        }
+        if (ctx.text_id != kInvalidText) qualifier_text_ids.push_back(ctx.text_id);
+    }
+
+    if (qualifier_text_ids.empty()) return key;
+
+    key.qualifier_path_id =
+        create_missing_path
+            ? const_cast<NamePathTable&>(
+                  parser.shared_lookup_state_.parser_name_paths)
+                  .intern(qualifier_text_ids)
+            : parser.shared_lookup_state_.parser_name_paths.find(
+                  qualifier_text_ids);
+    if (key.qualifier_path_id != kInvalidNamePath) return key;
+
+    if (!create_missing_path) {
+        const std::string candidate =
+            parser.compatibility_namespace_name_in_context(context_id, name_text_id,
+                                                           fallback_name);
+        return find_known_fn_name_key_from_spelling(parser, 0, name_text_id,
+                                                    candidate);
+    }
+    return key;
+}
+
 QualifiedNameKey make_struct_member_typedef_key(Parser& parser,
                                                 std::string_view owner_name,
                                                 std::string_view member_name) {
@@ -816,6 +890,15 @@ void Parser::register_struct_member_typedef_binding(
         type);
 }
 
+void Parser::register_structured_typedef_binding_in_context(
+    int context_id, TextId name_text_id, std::string_view fallback_name,
+    const TypeSpec& type) {
+    const QualifiedNameKey key = qualified_key_in_context(
+        *this, context_id, name_text_id, fallback_name, true);
+    if (key.base_text_id == kInvalidText) return;
+    binding_state_.struct_typedefs[key] = type;
+}
+
 bool Parser::has_var_type(const std::string& name) const {
     if (!uses_symbol_identity(name)) {
         const TextId id = find_parser_text_id(name);
@@ -885,58 +968,15 @@ QualifiedNameKey Parser::known_fn_name_key(int context_id, TextId name_text_id,
 
 QualifiedNameKey Parser::known_fn_name_key_in_context(
     int context_id, TextId name_text_id, std::string_view fallback_name) const {
-    if (context_id <= 0 || fallback_name.find("::") != std::string_view::npos) {
-        return known_fn_name_key(context_id, name_text_id, fallback_name);
-    }
+    return qualified_key_in_context(*this, context_id, name_text_id,
+                                    fallback_name, false);
+}
 
-    QualifiedNameKey key;
-    key.context_id = 0;
-    key.base_text_id = name_text_id != kInvalidText
-                           ? name_text_id
-                           : parser_text_id_for_token(kInvalidText, fallback_name);
-    if (key.base_text_id == kInvalidText) return key;
-
-    std::vector<int> ancestry;
-    for (int walk = context_id; walk > 0;
-         walk = namespace_state_.namespace_contexts[walk].parent_id) {
-        ancestry.push_back(walk);
-    }
-
-    std::vector<TextId> qualifier_text_ids;
-    for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it) {
-        const NamespaceContext& ctx = namespace_state_.namespace_contexts[*it];
-        if (ctx.is_anonymous) {
-            qualifier_text_ids.clear();
-            const std::string_view canonical =
-                ctx.canonical_name ? std::string_view(ctx.canonical_name)
-                                   : std::string_view{};
-            size_t segment_start = 0;
-            while (segment_start < canonical.size()) {
-                const size_t sep = canonical.find("::", segment_start);
-                const std::string_view segment =
-                    canonical.substr(segment_start, sep - segment_start);
-                if (!segment.empty()) {
-                    qualifier_text_ids.push_back(
-                        parser_text_id_for_token(kInvalidText, segment));
-                }
-                if (sep == std::string_view::npos) break;
-                segment_start = sep + 2;
-            }
-            continue;
-        }
-        if (ctx.text_id != kInvalidText) qualifier_text_ids.push_back(ctx.text_id);
-    }
-
-    if (qualifier_text_ids.empty()) return key;
-
-    key.qualifier_path_id =
-        shared_lookup_state_.parser_name_paths.find(qualifier_text_ids);
-    if (key.qualifier_path_id != kInvalidNamePath) return key;
-
-    const std::string candidate =
-        compatibility_namespace_name_in_context(context_id, name_text_id,
-                                                fallback_name);
-    return known_fn_name_key(0, name_text_id, candidate);
+QualifiedNameKey Parser::struct_typedef_key_in_context(
+    int context_id, TextId name_text_id,
+    std::string_view fallback_name) const {
+    return qualified_key_in_context(*this, context_id, name_text_id,
+                                    fallback_name, false);
 }
 
 bool Parser::has_known_fn_name(const QualifiedNameKey& key) const {
@@ -2228,6 +2268,14 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
 bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
                                     std::string_view name,
                                     std::string* resolved) const {
+    const QualifiedNameKey candidate_key =
+        struct_typedef_key_in_context(context_id, name_text_id, name);
+    if (const auto it = binding_state_.struct_typedefs.find(candidate_key);
+        it != binding_state_.struct_typedefs.end()) {
+        *resolved =
+            compatibility_namespace_name_in_context(context_id, name_text_id, name);
+        return true;
+    }
     const std::string candidate =
         compatibility_namespace_name_in_context(context_id, name_text_id, name);
     if (has_typedef_type(candidate)) {
