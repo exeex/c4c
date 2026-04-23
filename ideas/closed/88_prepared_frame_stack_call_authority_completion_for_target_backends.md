@@ -21,6 +21,16 @@ This idea owns prealloc contract gaps where:
 - dynamic stack regions, fixed-frame anchoring, call arg/result placement, or
   call-clobber/save ownership are not yet published as executable authority
 
+## Latest Durable Note
+
+As of 2026-04-23, the prepared frame, dynamic-stack, storage, and scalar
+call-boundary contracts owned by this idea are published as authoritative
+prealloc output, the backend/prealloc contract fixtures cover direct-call and
+nested dynamic-stack scalar cases, and the root x86 consumer surface now reads
+those prepared plans directly instead of hiding scalar frame/stack/call policy
+reconstruction for the covered cases. Grouped-register follow-on work remains
+separate under idea 89.
+
 ## Scope Notes
 
 Expected repair themes include:
