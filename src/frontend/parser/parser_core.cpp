@@ -1933,7 +1933,7 @@ std::string Parser::qualify_name(TextId name_text_id,
     const int context_id = current_namespace_context_id();
     if (context_id <= 0) return std::string(name);
     if (name.find("::") != std::string::npos) return std::string(name);
-    return compatibility_namespace_name_in_context(context_id, name_text_id, name);
+    return bridge_name_in_context(context_id, name_text_id, name);
 }
 
 std::string Parser::qualify_name(const std::string& name) const {
@@ -2353,18 +2353,11 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
         struct_typedef_key_in_context(context_id, name_text_id, name);
     if (const auto it = binding_state_.struct_typedefs.find(candidate_key);
         it != binding_state_.struct_typedefs.end()) {
-        if (shared_lookup_state_.token_texts) {
-            *resolved = render_qualified_name(
-                candidate_key, shared_lookup_state_.parser_name_paths,
-                *shared_lookup_state_.token_texts);
-        } else {
-            *resolved = compatibility_namespace_name_in_context(
-                context_id, name_text_id, name);
-        }
+        *resolved = bridge_name_in_context(context_id, name_text_id, name);
         return true;
     }
     const std::string candidate =
-        compatibility_namespace_name_in_context(context_id, name_text_id, name);
+        bridge_name_in_context(context_id, name_text_id, name);
     if (has_typedef_type(candidate)) {
         *resolved = candidate;
         return true;
@@ -2413,7 +2406,7 @@ bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
         return true;
     }
     const std::string candidate =
-        compatibility_namespace_name_in_context(context_id, name_text_id, name);
+        bridge_name_in_context(context_id, name_text_id, name);
     if (binding_state_.concept_names.count(candidate)) {
         *resolved = candidate;
         return true;
