@@ -7,28 +7,29 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Moved the first real unqualified local typedef/value registration packet onto
-`ParserLexicalScopeState`: unqualified names registered while a local binding
-scope is active now bind only into the lexical scope tables instead of leaking
-into the flat parser tables, and local user-typedef membership now rides a
-scope-local side table so same-scope conflict checks still work. Added parser
-regressions that prove local registrations stay visible through the lexical
-facade inside scope, disappear after pop, and no longer bias later ctor-init
-ambiguity probes after an inner block ends.
+Completed plan step 2's next non-block local-scope packet for `if` condition
+declarations: the parser now opens a dedicated lexical binding scope only for
+successful condition declarations, keeps the declared name visible while the
+then/else arms parse, and drops that scope when the statement finishes instead
+of leaking the binding into the flat parser tables. Added parser regressions
+that prove the synthetic condition block still forms correctly and that the
+condition-declared value no longer remains visible after the `if` statement.
 
 ## Suggested Next
-Continue step 2 by auditing the remaining local declaration forms that still
-skip lexical push/pop or rely on flat tables for visibility, with
-if-condition declarations and other non-block local scopes as the next likely
-packet before any concept-name cleanup.
+Continue step 2 by auditing the remaining non-block local declaration forms
+that still bypass `ParserLexicalScopeState`, especially other statement-shaped
+scopes that may need lexical push/pop coverage before moving on to concept-name
+cleanup.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. Do not reopen the
-qualified-owner lookup slice completed under idea 84. The first migration
-packet should stay on unqualified local typedef/value visibility and treat the
-string-backed `concept_names` cleanup as a follow-on once the scope-local
-typedef/value route is proven.
+qualified-owner lookup slice completed under idea 84. Condition-declaration
+scope should only stay alive for a successfully parsed declaration; failed
+tentative parses must still unwind cleanly without leaving lexical bindings
+behind. Treat string-backed `concept_names` cleanup as a later packet, not part
+of this scope-lifetime slice.
 
 ## Proof
 Ran `cmake --build --preset default` and
-`ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`.
+`ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
+with proof captured in `test_after.log`.

@@ -1192,6 +1192,43 @@ void test_parser_if_condition_decl_uses_local_visible_typedef_scope() {
               "test fixture should balance the local visible typedef scope");
 }
 
+void test_parser_if_condition_decl_scope_does_not_leak_bindings() {
+  c4c::Lexer lexer("if (Alias value = 0) value = 1; else value = 2;\n"
+                   "value = 3;\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  c4c::Node* stmt = parser.parse_stmt();
+  expect_true(stmt != nullptr && stmt->kind == c4c::NK_BLOCK,
+              "if-condition declaration scope should still parse as a synthetic block");
+  expect_true(stmt->children[1] != nullptr &&
+                  stmt->children[1]->kind == c4c::NK_IF,
+              "if-condition declaration scope should keep the wrapped if node");
+  expect_true(parser.find_var_type("value") == nullptr,
+              "if-condition declarations should not leak through the flat var table");
+  expect_true(parser.find_visible_var_type("value") == nullptr,
+              "if-condition declaration scope should pop after the statement finishes");
+
+  c4c::Node* trailing = parser.parse_stmt();
+  expect_true(trailing != nullptr,
+              "parsing should continue after the if-condition declaration scope ends");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
 void test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback() {
   c4c::Lexer lexer("typedef ForwardDecl Alias;\n",
                    c4c::LexProfile::CppSubset);
@@ -2061,6 +2098,7 @@ int main() {
   test_parser_visible_value_alias_resolves_scope_local_target_type();
   test_parser_register_local_bindings_keep_flat_tables_empty();
   test_parser_if_condition_decl_uses_local_visible_typedef_scope();
+  test_parser_if_condition_decl_scope_does_not_leak_bindings();
   test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback();
   test_parser_block_local_bindings_do_not_leak_into_later_ctor_init_probes();
   test_parser_local_ctor_init_probe_balances_unresolved_param_and_value_expr_shapes();

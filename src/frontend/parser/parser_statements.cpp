@@ -1,4 +1,5 @@
 #include <cctype>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -8,21 +9,27 @@
 #include "types_helpers.hpp"
 
 namespace c4c {
+namespace {
+
+struct LexicalBindingScopeGuard {
+    Parser* parser = nullptr;
+
+    explicit LexicalBindingScopeGuard(Parser* parser_in) : parser(parser_in) {
+        if (parser) parser->push_local_binding_scope();
+    }
+
+    ~LexicalBindingScopeGuard() {
+        if (parser) parser->pop_local_binding_scope();
+    }
+};
+
+}  // namespace
+
 Node* Parser::parse_block() {
     ParseContextGuard trace(this, __func__);
     int ln = cur().line;
     expect(TokenKind::LBrace);
-    struct LexicalBindingScopeGuard {
-        Parser* parser = nullptr;
-
-        explicit LexicalBindingScopeGuard(Parser* parser_in) : parser(parser_in) {
-            if (parser) parser->push_local_binding_scope();
-        }
-
-        ~LexicalBindingScopeGuard() {
-            if (parser) parser->pop_local_binding_scope();
-        }
-    } lexical_scope_guard(this);
+    LexicalBindingScopeGuard lexical_scope_guard(this);
     // Save enum constant scope — inner block enums must not leak to outer scope.
     auto saved_enum_consts = binding_state_.enum_consts;
     std::vector<Node*> stmts;
@@ -282,6 +289,7 @@ Node* Parser::parse_stmt() {
                 is_constexpr_if = true;
             }
             expect(TokenKind::LParen);
+            std::unique_ptr<LexicalBindingScopeGuard> condition_scope_guard;
             auto can_start_if_condition_decl = [&]() -> bool {
                 if (!is_cpp_mode()) return false;
                 TokenKind k = cur().kind;
@@ -327,7 +335,9 @@ Node* Parser::parse_stmt() {
                 if (!can_start_if_condition_decl()) return nullptr;
 
                 auto try_parse_if_condition_decl =
-                    [&](auto& guard) -> Node* {
+                    [&](auto& guard,
+                        std::unique_ptr<LexicalBindingScopeGuard>& pending_scope)
+                    -> Node* {
                         TypeSpec base_ts = parse_base_type();
                         parse_attributes(&base_ts);
 
@@ -358,6 +368,7 @@ Node* Parser::parse_stmt() {
                         decl->name = vname;
                         decl->init = init_node;
                         register_var_type_binding(vname, ts);
+                        condition_scope_guard = std::move(pending_scope);
                         guard.commit();
                         return decl;
                     };
@@ -365,11 +376,15 @@ Node* Parser::parse_stmt() {
                 try {
                     if (can_use_lite_if_condition_decl()) {
                         TentativeParseGuardLite guard(*this);
-                        return try_parse_if_condition_decl(guard);
+                        auto pending_scope =
+                            std::make_unique<LexicalBindingScopeGuard>(this);
+                        return try_parse_if_condition_decl(guard, pending_scope);
                     }
 
                     TentativeParseGuard guard(*this);
-                    return try_parse_if_condition_decl(guard);
+                    auto pending_scope =
+                        std::make_unique<LexicalBindingScopeGuard>(this);
+                    return try_parse_if_condition_decl(guard, pending_scope);
                 } catch (const std::exception&) {
                     return nullptr;
                 }
