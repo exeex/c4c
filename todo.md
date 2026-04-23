@@ -3,20 +3,19 @@ Source Idea Path: ideas/open/89_grouped_register_bank_and_storage_authority_for_
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Publish Grouped Storage, Spill, Reload, And Clobber Semantics
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Plan Step 3: published grouped storage width/unit authority through
-`storage_plans` and extended call-clobber publication so grouped caller-saved
-vector spans appear in prealloc call contracts and prepared-printer output.
+Plan Step 3: preserved grouped register-span authority on spill eviction and
+published that bank/span plus stack-slot metadata through `spill_reload_ops`
+and prepared-printer output for grouped LMUL-style vector spans.
 
 ## Suggested Next
 
-Thread grouped spill/reload publication through the remaining prealloc
-contracts so grouped evictions and reload points carry bank/span authority
-without downstream inference.
+Review whether any Step 3 storage/call consumers beyond the prepared dump need
+focused proof now that grouped spill/reload authority is present end-to-end.
 
 ## Watchouts
 
@@ -28,4 +27,4 @@ without downstream inference.
 
 ## Proof
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_(prepare_frame_stack_call_contract|prepared_printer)$'` (`test_after.log`)
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_liveness|backend_prepared_printer|backend_prepare_frame_stack_call_contract)$'` (`test_after.log`)

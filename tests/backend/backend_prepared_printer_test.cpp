@@ -1053,6 +1053,165 @@ prepare::PreparedBirModule prepare_grouped_cross_call_preservation_dump_module()
   return std::move(regalloc_planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_grouped_spill_reload_dump_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  bir::Function decl;
+  decl.name = "vec_sink";
+  decl.is_declaration = true;
+  decl.return_type = bir::TypeKind::Void;
+  decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "arg0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  module.functions.push_back(std::move(decl));
+
+  bir::Function function;
+  function.name = "grouped_spill_reload_dump_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.carry",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.arg",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "carry"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.carry"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "seed"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(99),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "vec_sink",
+      .args = {bir::Value::named(bir::TypeKind::I32, "p.arg")},
+      .arg_types = {bir::TypeKind::I32},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "local0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(2),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "hot"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(6),
+      .rhs = bir::Value::immediate_i32(7),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "hot.mix0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "hot"),
+      .rhs = bir::Value::immediate_i32(7),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "hot.mix1"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "hot.mix0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "hot"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "hot.mix2"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "hot.mix1"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "hot"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "hot.mix3"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "hot"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "hot.mix2"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "hot.mix4"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "hot.mix3"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "hot"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "merge0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "local0"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "hot.mix4"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "carry"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "merge0"),
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "merge")};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule seeded;
+  seeded.module = std::move(module);
+  seeded.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(seeded), options);
+  planner.run_stack_layout();
+  planner.run_liveness();
+
+  auto prepared = std::move(planner.prepared());
+  set_register_group_override(prepared,
+                              "grouped_spill_reload_dump_contract",
+                              "carry",
+                              prepare::PreparedRegisterClass::Vector,
+                              16);
+  set_register_group_override(prepared,
+                              "grouped_spill_reload_dump_contract",
+                              "local0",
+                              prepare::PreparedRegisterClass::Vector,
+                              16);
+  set_register_group_override(prepared,
+                              "grouped_spill_reload_dump_contract",
+                              "hot",
+                              prepare::PreparedRegisterClass::Vector,
+                              16);
+
+  prepare::BirPreAlloc regalloc_planner(std::move(prepared), {});
+  regalloc_planner.run_regalloc();
+  regalloc_planner.publish_contract_plans();
+  return std::move(regalloc_planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_stack_argument_slot_dump_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1801,6 +1960,80 @@ int main() {
   if (!expect_contains(grouped_cross_call_dump,
                        clobber_detail(*grouped_clobber_it),
                        "grouped call clobber detail")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto grouped_spill_reload_prepared = prepare_grouped_spill_reload_dump_module();
+  const auto grouped_spill_function_id =
+      grouped_spill_reload_prepared.names.function_names.find("grouped_spill_reload_dump_contract");
+  const auto* grouped_spill_regalloc =
+      grouped_spill_function_id == c4c::kInvalidFunctionName
+          ? nullptr
+          : [&]() -> const prepare::PreparedRegallocFunction* {
+              for (const auto& function : grouped_spill_reload_prepared.regalloc.functions) {
+                if (function.function_name == grouped_spill_function_id) {
+                  return &function;
+                }
+              }
+              return nullptr;
+            }();
+  const auto* grouped_spill_storage = find_storage_plan_function(
+      grouped_spill_reload_prepared, "grouped_spill_reload_dump_contract");
+  if (grouped_spill_regalloc == nullptr || grouped_spill_storage == nullptr) {
+    std::cerr << "[FAIL] missing grouped spill/reload dump fixture\n";
+    return EXIT_FAILURE;
+  }
+  const auto grouped_spill_it = std::find_if(
+      grouped_spill_regalloc->spill_reload_ops.begin(),
+      grouped_spill_regalloc->spill_reload_ops.end(),
+      [&](const prepare::PreparedSpillReloadOp& op) {
+        return op.op_kind == prepare::PreparedSpillReloadOpKind::Spill &&
+               op.register_bank == prepare::PreparedRegisterBank::Vreg &&
+               op.contiguous_width == 16 &&
+               op.occupied_register_names.size() == 16 &&
+               op.occupied_register_names.front() == "v0" &&
+               op.occupied_register_names.back() == "v15";
+      });
+  if (grouped_spill_it == grouped_spill_regalloc->spill_reload_ops.end()) {
+    std::cerr << "[FAIL] missing grouped spill/reload authority in dump fixture\n";
+    return EXIT_FAILURE;
+  }
+  const auto grouped_spill_value_it = std::find_if(
+      grouped_spill_regalloc->values.begin(),
+      grouped_spill_regalloc->values.end(),
+      [&](const prepare::PreparedRegallocValue& value) {
+        return value.value_id == grouped_spill_it->value_id;
+      });
+  const std::string grouped_spill_value_name =
+      grouped_spill_value_it == grouped_spill_regalloc->values.end()
+          ? std::string{}
+          : std::string(prepare::prepared_value_name(grouped_spill_reload_prepared.names,
+                                                     grouped_spill_value_it->value_name));
+  if (grouped_spill_value_it == grouped_spill_regalloc->values.end() ||
+      !grouped_spill_it->slot_id.has_value() || !grouped_spill_it->stack_offset_bytes.has_value()) {
+    std::cerr << "[FAIL] missing grouped spill slot authority in dump fixture\n";
+    return EXIT_FAILURE;
+  }
+  const std::string grouped_spill_reload_dump = prepare::print(grouped_spill_reload_prepared);
+  if (!expect_contains(grouped_spill_reload_dump,
+                       "spill_reload kind=spill value_id=" +
+                           std::to_string(grouped_spill_it->value_id) +
+                           " value=" + grouped_spill_value_name + " block_index=" +
+                           std::to_string(grouped_spill_it->block_index) +
+                           " inst_index=" +
+                           std::to_string(grouped_spill_it->instruction_index) +
+                           " bank=vreg reg=v0 width=16 units=v0,v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15 slot_id=#" +
+                           std::to_string(*grouped_spill_it->slot_id) +
+                           " stack_offset=" +
+                           std::to_string(*grouped_spill_it->stack_offset_bytes),
+                       "grouped spill detail")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(grouped_spill_reload_dump,
+                       "spill_reload kind=reload value_id=" +
+                           std::to_string(grouped_spill_it->value_id) + " value=" +
+                           grouped_spill_value_name,
+                       "grouped reload detail")) {
     return EXIT_FAILURE;
   }
 

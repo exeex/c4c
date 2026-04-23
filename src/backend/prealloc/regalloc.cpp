@@ -78,6 +78,22 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
   return 1;
 }
 
+[[nodiscard]] PreparedRegisterBank register_bank_from_class(PreparedRegisterClass reg_class) {
+  switch (reg_class) {
+    case PreparedRegisterClass::General:
+      return PreparedRegisterBank::Gpr;
+    case PreparedRegisterClass::Float:
+      return PreparedRegisterBank::Fpr;
+    case PreparedRegisterClass::Vector:
+      return PreparedRegisterBank::Vreg;
+    case PreparedRegisterClass::AggregateAddress:
+      return PreparedRegisterBank::AggregateAddress;
+    case PreparedRegisterClass::None:
+      return PreparedRegisterBank::None;
+  }
+  return PreparedRegisterBank::None;
+}
+
 [[nodiscard]] bool intervals_overlap(const PreparedLiveInterval& lhs,
                                      const PreparedLiveInterval& rhs) {
   return std::max(lhs.start_point, rhs.start_point) <= std::min(lhs.end_point, rhs.end_point);
@@ -1682,6 +1698,9 @@ void append_spill_reload_ops(const PreparedLivenessFunction& liveness_function,
     if (!spill_point.has_value() || !value.assigned_stack_slot.has_value()) {
       continue;
     }
+    const auto& published_register = value.assigned_register.has_value()
+                                         ? value.assigned_register
+                                         : value.spill_register_authority;
 
     if (const auto spill_location = locate_program_point(liveness_function, *spill_point);
         spill_location.has_value()) {
@@ -1690,6 +1709,23 @@ void append_spill_reload_ops(const PreparedLivenessFunction& liveness_function,
           .op_kind = PreparedSpillReloadOpKind::Spill,
           .block_index = spill_location->block_index,
           .instruction_index = spill_location->instruction_index,
+          .register_bank = register_bank_from_class(value.register_class),
+          .register_name = published_register.has_value()
+                               ? std::optional<std::string>{published_register->register_name}
+                               : std::nullopt,
+          .contiguous_width = published_register.has_value()
+                                  ? published_register->contiguous_width
+                                  : std::max<std::size_t>(value.register_group_width, 1),
+          .occupied_register_names = published_register.has_value()
+                                         ? published_register->occupied_register_names
+                                         : std::vector<std::string>{},
+          .slot_id = value.assigned_stack_slot.has_value()
+                         ? std::optional<PreparedFrameSlotId>{value.assigned_stack_slot->slot_id}
+                         : std::nullopt,
+          .stack_offset_bytes = value.assigned_stack_slot.has_value()
+                                    ? std::optional<std::size_t>{
+                                          value.assigned_stack_slot->offset_bytes}
+                                    : std::nullopt,
       });
     }
 
@@ -1705,6 +1741,23 @@ void append_spill_reload_ops(const PreparedLivenessFunction& liveness_function,
             .op_kind = PreparedSpillReloadOpKind::Reload,
             .block_index = reload_location->block_index,
             .instruction_index = reload_location->instruction_index,
+            .register_bank = register_bank_from_class(value.register_class),
+            .register_name = published_register.has_value()
+                                 ? std::optional<std::string>{published_register->register_name}
+                                 : std::nullopt,
+            .contiguous_width = published_register.has_value()
+                                    ? published_register->contiguous_width
+                                    : std::max<std::size_t>(value.register_group_width, 1),
+            .occupied_register_names = published_register.has_value()
+                                           ? published_register->occupied_register_names
+                                           : std::vector<std::string>{},
+            .slot_id = value.assigned_stack_slot.has_value()
+                           ? std::optional<PreparedFrameSlotId>{value.assigned_stack_slot->slot_id}
+                           : std::nullopt,
+            .stack_offset_bytes = value.assigned_stack_slot.has_value()
+                                      ? std::optional<std::size_t>{
+                                            value.assigned_stack_slot->offset_bytes}
+                                      : std::nullopt,
         });
         last_reload_point = use_point;
       }
@@ -1769,6 +1822,7 @@ void BirPreAlloc::run_regalloc() {
           .live_interval = liveness_value.live_interval,
           .assigned_register = std::nullopt,
           .assigned_stack_slot = std::nullopt,
+          .spill_register_authority = std::nullopt,
       });
 
       if (!eligible_for_register_seed) {
@@ -1907,6 +1961,7 @@ void BirPreAlloc::run_regalloc() {
         };
         value.allocation_status = PreparedAllocationStatus::AssignedRegister;
 
+        evicted_value.spill_register_authority = evicted_value.assigned_register;
         evicted_value.assigned_register.reset();
         evicted_value.allocation_status = PreparedAllocationStatus::Unallocated;
 

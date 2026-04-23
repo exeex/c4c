@@ -73,6 +73,26 @@ const PreparedFrameSlot* find_frame_slot(const PreparedBirModule& module,
   return nullptr;
 }
 
+const PreparedRegallocFunction* find_regalloc_function(const PreparedBirModule& module,
+                                                       FunctionNameId function_name) {
+  for (const auto& function : module.regalloc.functions) {
+    if (function.function_name == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+const PreparedRegallocValue* find_regalloc_value(const PreparedRegallocFunction& function,
+                                                 PreparedValueId value_id) {
+  for (const auto& value : function.values) {
+    if (value.value_id == value_id) {
+      return &value;
+    }
+  }
+  return nullptr;
+}
+
 const bir::Function* find_prepared_function(const PreparedBirModule& module,
                                             FunctionNameId function_name) {
   if (function_name == kInvalidFunctionName) {
@@ -988,6 +1008,34 @@ void append_storage_plans(std::ostringstream& out, const PreparedBirModule& modu
   }
 }
 
+void append_regalloc(std::ostringstream& out, const PreparedBirModule& module) {
+  out << "--- prepared-regalloc ---\n";
+  for (const auto& function : module.regalloc.functions) {
+    out << "prepared.func @" << maybe_function_name(module.names, function.function_name) << "\n";
+    for (const auto& op : function.spill_reload_ops) {
+      out << "  spill_reload kind=" << prepared_spill_reload_op_kind_name(op.op_kind)
+          << " value_id=" << op.value_id;
+      if (const auto* value = find_regalloc_value(function, op.value_id); value != nullptr) {
+        out << " value=" << maybe_value_name(module.names, value->value_name);
+      }
+      out << " block_index=" << op.block_index
+          << " inst_index=" << op.instruction_index
+          << " bank=" << prepared_register_bank_name(op.register_bank);
+      if (op.register_name.has_value()) {
+        out << " reg=" << *op.register_name;
+      }
+      append_register_occupancy(out, op.contiguous_width, op.occupied_register_names);
+      if (op.slot_id.has_value()) {
+        out << " slot_id=#" << *op.slot_id;
+      }
+      if (op.stack_offset_bytes.has_value()) {
+        out << " stack_offset=" << *op.stack_offset_bytes;
+      }
+      out << "\n";
+    }
+  }
+}
+
 void append_addressing(std::ostringstream& out, const PreparedBirModule& module) {
   out << "--- prepared-addressing ---\n";
   for (const auto& function_addressing : module.addressing.functions) {
@@ -1066,6 +1114,7 @@ std::string print(const PreparedBirModule& module) {
   append_frame_plan(out, module);
   append_dynamic_stack_plan(out, module);
   append_call_plans(out, module);
+  append_regalloc(out, module);
   append_storage_plans(out, module);
   append_addressing(out, module);
   return out.str();

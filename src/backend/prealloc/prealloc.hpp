@@ -751,6 +751,12 @@ struct PreparedSpillReloadOp {
   PreparedSpillReloadOpKind op_kind = PreparedSpillReloadOpKind::Spill;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
+  PreparedRegisterBank register_bank = PreparedRegisterBank::None;
+  std::optional<std::string> register_name;
+  std::size_t contiguous_width = 1;
+  std::vector<std::string> occupied_register_names;
+  std::optional<PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
 };
 
 struct PreparedRegallocValue {
@@ -771,6 +777,7 @@ struct PreparedRegallocValue {
   std::optional<PreparedLiveInterval> live_interval;
   std::optional<PreparedPhysicalRegisterAssignment> assigned_register;
   std::optional<PreparedStackSlotAssignment> assigned_stack_slot;
+  std::optional<PreparedPhysicalRegisterAssignment> spill_register_authority;
 };
 
 struct PreparedRegallocFunction {
