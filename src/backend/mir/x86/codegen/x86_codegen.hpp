@@ -2523,24 +2523,6 @@ struct X86Codegen {
   static std::string reg_to_8l(const std::string& reg);
   static const char* gcc_cc_to_x86(const std::string& cond);
 
-  void float_operand_to_xmm0(const Operand& op, bool is_f32);
-  void emit_nontemporal_store(const IntrinsicOp& op,
-                              const Operand& ptr,
-                              const Operand& val,
-                              std::optional<Value> dest);
-  void emit_sse_binary_128(const Value& dest_ptr,
-                           const Operand& lhs,
-                           const Operand& rhs,
-                           const char* mnemonic);
-  void emit_sse_unary_imm_128(const Value& dest_ptr,
-                              const Operand& src,
-                              std::uint8_t imm,
-                              const char* mnemonic);
-  void emit_sse_shuffle_imm_128(const Value& dest_ptr,
-                                const Operand& lhs,
-                                const Operand& rhs,
-                                std::uint8_t imm,
-                                const char* mnemonic);
   void emit_intrinsic_impl(const std::optional<Value>& dest,
                            const IntrinsicOp& intrinsic,
                            const std::vector<Operand>& args);

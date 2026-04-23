@@ -194,99 +194,103 @@ void X86Codegen::emit_fence_impl(AtomicOrdering ordering) {
   }
 }
 
-void X86Codegen::float_operand_to_xmm0(const Operand& op, bool is_f32) {
+void float_operand_to_xmm0(X86Codegen& codegen, const Operand& op, bool is_f32) {
   if (const auto imm = op.immediate) {
     if (*imm == 0) {
-      this->state.emit(is_f32 ? "    xorps %xmm0, %xmm0" : "    xorpd %xmm0, %xmm0");
+      codegen.state.emit(is_f32 ? "    xorps %xmm0, %xmm0" : "    xorpd %xmm0, %xmm0");
       return;
     }
 
     if (is_f32) {
-      this->state.out.emit_instr_imm_reg("    movl", *imm, "eax");
-      this->state.emit("    movd %eax, %xmm0");
+      codegen.state.out.emit_instr_imm_reg("    movl", *imm, "eax");
+      codegen.state.emit("    movd %eax, %xmm0");
       return;
     }
 
     if (*imm >= static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()) &&
         *imm <= static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())) {
-      this->state.out.emit_instr_imm_reg("    movq", *imm, "rax");
+      codegen.state.out.emit_instr_imm_reg("    movq", *imm, "rax");
     } else {
-      this->state.out.emit_instr_imm_reg("    movabsq", *imm, "rax");
+      codegen.state.out.emit_instr_imm_reg("    movabsq", *imm, "rax");
     }
-    this->state.emit("    movq %rax, %xmm0");
+    codegen.state.emit("    movq %rax, %xmm0");
     return;
   }
 
-  this->operand_to_reg(op, "rax");
-  this->state.emit(is_f32 ? "    movd %eax, %xmm0" : "    movq %rax, %xmm0");
+  codegen.operand_to_reg(op, "rax");
+  codegen.state.emit(is_f32 ? "    movd %eax, %xmm0" : "    movq %rax, %xmm0");
 }
 
-void X86Codegen::emit_nontemporal_store(const IntrinsicOp& op,
-                                        const Operand& ptr,
-                                        const Operand& val,
-                                        std::optional<Value> dest) {
+void emit_nontemporal_store(X86Codegen& codegen,
+                            const IntrinsicOp& op,
+                            const Operand& ptr,
+                            const Operand& val,
+                            std::optional<Value> dest) {
   (void)dest;
-  this->operand_to_reg(ptr, "rax");
+  codegen.operand_to_reg(ptr, "rax");
   switch (op) {
     case IntrinsicOp::Movnti:
-      this->operand_to_reg(val, "rcx");
-      this->state.emit("    movnti %ecx, (%rax)");
+      codegen.operand_to_reg(val, "rcx");
+      codegen.state.emit("    movnti %ecx, (%rax)");
       return;
     case IntrinsicOp::Movnti64:
-      this->operand_to_reg(val, "rcx");
-      this->state.emit("    movnti %rcx, (%rax)");
+      codegen.operand_to_reg(val, "rcx");
+      codegen.state.emit("    movnti %rcx, (%rax)");
       return;
     case IntrinsicOp::Movntdq:
-      this->operand_to_reg(val, "rcx");
-      this->state.emit("    movdqu (%rcx), %xmm0");
-      this->state.emit("    movntdq %xmm0, (%rax)");
+      codegen.operand_to_reg(val, "rcx");
+      codegen.state.emit("    movdqu (%rcx), %xmm0");
+      codegen.state.emit("    movntdq %xmm0, (%rax)");
       return;
     case IntrinsicOp::Movntpd:
-      this->operand_to_reg(val, "rcx");
-      this->state.emit("    movupd (%rcx), %xmm0");
-      this->state.emit("    movntpd %xmm0, (%rax)");
+      codegen.operand_to_reg(val, "rcx");
+      codegen.state.emit("    movupd (%rcx), %xmm0");
+      codegen.state.emit("    movntpd %xmm0, (%rax)");
       return;
     default:
       return;
   }
 }
 
-void X86Codegen::emit_sse_binary_128(const Value& dest_ptr,
-                                     const Operand& lhs,
-                                     const Operand& rhs,
-                                     const char* mnemonic) {
-  this->operand_to_reg(lhs, "rax");
-  this->state.emit("    movdqu (%rax), %xmm0");
-  this->operand_to_reg(rhs, "rcx");
-  this->state.emit("    movdqu (%rcx), %xmm1");
-  this->state.emit(std::string("    ") + mnemonic + " %xmm1, %xmm0");
-  load_dest_ptr_to_reg(*this, dest_ptr, "rax");
-  this->state.emit("    movdqu %xmm0, (%rax)");
+void emit_sse_binary_128(X86Codegen& codegen,
+                         const Value& dest_ptr,
+                         const Operand& lhs,
+                         const Operand& rhs,
+                         const char* mnemonic) {
+  codegen.operand_to_reg(lhs, "rax");
+  codegen.state.emit("    movdqu (%rax), %xmm0");
+  codegen.operand_to_reg(rhs, "rcx");
+  codegen.state.emit("    movdqu (%rcx), %xmm1");
+  codegen.state.emit(std::string("    ") + mnemonic + " %xmm1, %xmm0");
+  load_dest_ptr_to_reg(codegen, dest_ptr, "rax");
+  codegen.state.emit("    movdqu %xmm0, (%rax)");
 }
 
-void X86Codegen::emit_sse_unary_imm_128(const Value& dest_ptr,
-                                        const Operand& src,
-                                        std::uint8_t imm,
-                                        const char* mnemonic) {
-  this->operand_to_reg(src, "rax");
-  this->state.emit("    movdqu (%rax), %xmm0");
-  this->state.emit(std::string("    ") + mnemonic + " $" + std::to_string(imm) + ", %xmm0");
-  load_dest_ptr_to_reg(*this, dest_ptr, "rax");
-  this->state.emit("    movdqu %xmm0, (%rax)");
+void emit_sse_unary_imm_128(X86Codegen& codegen,
+                            const Value& dest_ptr,
+                            const Operand& src,
+                            std::uint8_t imm,
+                            const char* mnemonic) {
+  codegen.operand_to_reg(src, "rax");
+  codegen.state.emit("    movdqu (%rax), %xmm0");
+  codegen.state.emit(std::string("    ") + mnemonic + " $" + std::to_string(imm) + ", %xmm0");
+  load_dest_ptr_to_reg(codegen, dest_ptr, "rax");
+  codegen.state.emit("    movdqu %xmm0, (%rax)");
 }
 
-void X86Codegen::emit_sse_shuffle_imm_128(const Value& dest_ptr,
-                                          const Operand& lhs,
-                                          const Operand& rhs,
-                                          std::uint8_t imm,
-                                          const char* mnemonic) {
+void emit_sse_shuffle_imm_128(X86Codegen& codegen,
+                              const Value& dest_ptr,
+                              const Operand& lhs,
+                              const Operand& rhs,
+                              std::uint8_t imm,
+                              const char* mnemonic) {
   (void)rhs;
-  this->operand_to_reg(lhs, "rax");
-  this->state.emit("    movdqu (%rax), %xmm0");
-  this->state.emit(std::string("    ") + mnemonic + " $" + std::to_string(imm) +
-                   ", %xmm0, %xmm0");
-  load_dest_ptr_to_reg(*this, dest_ptr, "rax");
-  this->state.emit("    movdqu %xmm0, (%rax)");
+  codegen.operand_to_reg(lhs, "rax");
+  codegen.state.emit("    movdqu (%rax), %xmm0");
+  codegen.state.emit(std::string("    ") + mnemonic + " $" + std::to_string(imm) +
+                     ", %xmm0, %xmm0");
+  load_dest_ptr_to_reg(codegen, dest_ptr, "rax");
+  codegen.state.emit("    movdqu %xmm0, (%rax)");
 }
 
 void X86Codegen::emit_intrinsic_impl(const std::optional<Value>& dest,
@@ -314,7 +318,7 @@ void X86Codegen::emit_intrinsic_impl(const std::optional<Value>& dest,
     case IntrinsicOp::Movntdq:
     case IntrinsicOp::Movntpd:
       if (dest.has_value()) {
-        this->emit_nontemporal_store(intrinsic, value_as_operand(*dest), args[0], dest);
+        emit_nontemporal_store(*this, intrinsic, value_as_operand(*dest), args[0], dest);
       }
       return;
     case IntrinsicOp::Loaddqu:
@@ -360,7 +364,7 @@ void X86Codegen::emit_intrinsic_impl(const std::optional<Value>& dest,
     case IntrinsicOp::Punpcklwd128:
     case IntrinsicOp::Punpckhwd128:
       if (dest.has_value()) {
-        this->emit_sse_binary_128(*dest, args[0], args[1], sse_binary_mnemonic(intrinsic));
+        emit_sse_binary_128(*this, *dest, args[0], args[1], sse_binary_mnemonic(intrinsic));
       }
       return;
     case IntrinsicOp::Pmovmskb128:
@@ -436,7 +440,7 @@ void X86Codegen::emit_intrinsic_impl(const std::optional<Value>& dest,
       }
       return;
     case IntrinsicOp::SqrtF64:
-      this->float_operand_to_xmm0(args[0], false);
+      float_operand_to_xmm0(*this, args[0], false);
       this->state.emit("    sqrtsd %xmm0, %xmm0");
       this->state.emit("    movq %xmm0, %rax");
       if (dest.has_value()) {
@@ -444,7 +448,7 @@ void X86Codegen::emit_intrinsic_impl(const std::optional<Value>& dest,
       }
       return;
     case IntrinsicOp::SqrtF32:
-      this->float_operand_to_xmm0(args[0], true);
+      float_operand_to_xmm0(*this, args[0], true);
       this->state.emit("    sqrtss %xmm0, %xmm0");
       this->state.emit("    movd %xmm0, %eax");
       if (dest.has_value()) {
@@ -452,7 +456,7 @@ void X86Codegen::emit_intrinsic_impl(const std::optional<Value>& dest,
       }
       return;
     case IntrinsicOp::FabsF64:
-      this->float_operand_to_xmm0(args[0], false);
+      float_operand_to_xmm0(*this, args[0], false);
       this->state.emit("    movabsq $0x7FFFFFFFFFFFFFFF, %rcx");
       this->state.emit("    movq %rcx, %xmm1");
       this->state.emit("    andpd %xmm1, %xmm0");
@@ -462,7 +466,7 @@ void X86Codegen::emit_intrinsic_impl(const std::optional<Value>& dest,
       }
       return;
     case IntrinsicOp::FabsF32:
-      this->float_operand_to_xmm0(args[0], true);
+      float_operand_to_xmm0(*this, args[0], true);
       this->state.emit("    movl $0x7FFFFFFF, %ecx");
       this->state.emit("    movd %ecx, %xmm1");
       this->state.emit("    andps %xmm1, %xmm0");
@@ -513,18 +517,18 @@ void X86Codegen::emit_intrinsic_impl(const std::optional<Value>& dest,
     case IntrinsicOp::Pslldi128:
     case IntrinsicOp::Psrldi128:
       if (dest.has_value()) {
-        this->emit_sse_unary_imm_128(*dest, args[0],
-                                     static_cast<std::uint8_t>(operand_to_imm_i64(args[1])),
-                                     sse_unary_imm_mnemonic(intrinsic));
+        emit_sse_unary_imm_128(*this, *dest, args[0],
+                               static_cast<std::uint8_t>(operand_to_imm_i64(args[1])),
+                               sse_unary_imm_mnemonic(intrinsic));
       }
       return;
     case IntrinsicOp::Pshufd128:
     case IntrinsicOp::Pshuflw128:
     case IntrinsicOp::Pshufhw128:
       if (dest.has_value()) {
-        this->emit_sse_shuffle_imm_128(*dest, args[0], Operand::zero(),
-                                       static_cast<std::uint8_t>(operand_to_imm_i64(args[1])),
-                                       sse_shuffle_mnemonic(intrinsic));
+        emit_sse_shuffle_imm_128(*this, *dest, args[0], Operand::zero(),
+                                 static_cast<std::uint8_t>(operand_to_imm_i64(args[1])),
+                                 sse_shuffle_mnemonic(intrinsic));
       }
       return;
     case IntrinsicOp::Loadldi128:
