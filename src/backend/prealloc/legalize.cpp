@@ -1638,6 +1638,8 @@ PreparedControlFlowFunction* find_mutable_control_flow_function(PreparedControlF
   return nullptr;
 }
 
+}  // namespace
+
 void out_of_ssa_module(bir::Module& module,
                        PreparedNameTables& names,
                        PreparedControlFlow* control_flow) {
@@ -1656,7 +1658,7 @@ void out_of_ssa_module(bir::Module& module,
       function_control_flow->parallel_copy_bundles.clear();
     }
 
-    lower_phi_nodes(function_control_flow != nullptr ? &function : &function,
+    lower_phi_nodes(&function,
                     names,
                     function_control_flow != nullptr ? &function_control_flow->join_transfers
                                                     : nullptr);
@@ -1673,8 +1675,6 @@ void out_of_ssa_module(bir::Module& module,
   }
 }
 
-}  // namespace
-
 void BirPreAlloc::run_legalize() {
   prepared_.completed_phases.push_back("legalize");
   prepared_.control_flow.functions.clear();
@@ -1690,18 +1690,6 @@ void BirPreAlloc::run_legalize() {
           "bootstrap BIR legalize kept semantic CFG and phi form intact while promoting i1 "
           "values plus function signature/storage bookkeeping, memory-address/load-store "
           "bookkeeping, and call ABI metadata",
-  });
-}
-
-void BirPreAlloc::run_out_of_ssa() {
-  prepared_.completed_phases.push_back("out_of_ssa");
-  out_of_ssa_module(prepared_.module, prepared_.names, &prepared_.control_flow);
-  prepared_.invariants.push_back(PreparedBirInvariant::NoPhiNodes);
-  prepared_.notes.push_back(PrepareNote{
-      .phase = "out_of_ssa",
-      .message =
-          "out_of_ssa removed phi nodes from live prepared BIR and published authoritative "
-          "join-transfer plus parallel-copy obligations",
   });
 }
 

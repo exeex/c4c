@@ -2281,14 +2281,17 @@ int check_phi_join_move_resolution(const prepare::PreparedBirModule& prepared) {
   }
 
   const auto* move = find_move_resolution(*function, left_feed->value_id, phi->value_id);
-  if (move == nullptr || move->reason != "phi_join_stack_to_stack") {
+  if (move == nullptr || !move_resolution_reason_has_prefix(*move, "phi_join_stack_to_")) {
     return fail("expected the stack-backed left phi incoming to publish prepared phi-join move resolution");
   }
   if (move->uses_cycle_temp_source) {
     return fail("expected the acyclic phi join move resolution to read directly from the incoming value");
   }
+  const auto expected_phi_destination_kind =
+      phi->assigned_register.has_value() ? prepare::PreparedMoveStorageKind::Register
+                                         : prepare::PreparedMoveStorageKind::StackSlot;
   if (move->destination_kind != prepare::PreparedMoveDestinationKind::Value ||
-      move->destination_storage_kind != prepare::PreparedMoveStorageKind::StackSlot ||
+      move->destination_storage_kind != expected_phi_destination_kind ||
       move->destination_abi_index.has_value() || move->destination_register_name.has_value()) {
     return fail("expected phi-join move resolution to keep the generic value destination surface");
   }

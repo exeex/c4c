@@ -103,6 +103,7 @@ add_executable(backend_prepare_phi_materialize_test
     "${BACKEND_TEST_ROOT}/backend_prepare_phi_materialize_test.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/legalize.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prealloc/out_of_ssa.cpp"
 )
 target_include_directories(backend_prepare_phi_materialize_test PRIVATE
     "${PROJECT_SOURCE_DIR}"

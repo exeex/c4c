@@ -201,12 +201,25 @@ int check_prepare_phi_invariant(const prepare::PreparedBirModule& prepared) {
   return 0;
 }
 
+int check_legalize_preserves_phi(const prepare::PreparedBirModule& prepared) {
+  if (contains_invariant(prepared, prepare::PreparedBirInvariant::NoPhiNodes)) {
+    return fail("expected legalize-only preparation to avoid publishing the no-phi-nodes invariant");
+  }
+  if (prepared.module.functions.size() != 1) {
+    return fail("expected exactly one function when checking legalize-only phi preservation");
+  }
+  if (!function_contains_phi(prepared.module.functions.front())) {
+    return fail("expected legalize-only preparation to preserve phi nodes in semantic BIR");
+  }
+  return 0;
+}
+
 int check_prepare_i1_invariant(const prepare::PreparedBirModule& prepared) {
   if (!contains_invariant(prepared, prepare::PreparedBirInvariant::NoTargetFacingI1)) {
     return fail("expected prepare legalize to publish the no-target-facing-i1 invariant");
   }
-  if (prepared.invariants.size() < 2 ||
-      prepare::prepared_bir_invariant_name(prepared.invariants[1]) != "no_target_facing_i1") {
+  if (prepare::prepared_bir_invariant_name(prepare::PreparedBirInvariant::NoTargetFacingI1) !=
+      "no_target_facing_i1") {
     return fail("expected stable name for the no-target-facing-i1 invariant");
   }
   for (const auto& function : prepared.module.functions) {
@@ -724,6 +737,96 @@ prepare::PreparedBirModule legalize_two_way_branch_join_module() {
   prepare::BirPreAlloc planner(std::move(prepared), options);
   planner.run_legalize();
   planner.run_out_of_ssa();
+  return std::move(planner.prepared());
+}
+
+prepare::PreparedBirModule legalize_two_way_branch_join_module_legalize_only() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "branch_join_prepare_contract_legalize_only";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I1, "cond0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "cond0"),
+      .true_label = "is_zero",
+      .false_label = "is_nonzero",
+  };
+
+  bir::Block is_zero;
+  is_zero.label = "is_zero";
+  is_zero.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "zero.adjusted"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(5),
+  });
+  is_zero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block is_nonzero;
+  is_nonzero.label = "is_nonzero";
+  is_nonzero.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "nonzero.adjusted"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.x"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  is_nonzero.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block join;
+  join.label = "join";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "is_zero",
+              .value = bir::Value::named(bir::TypeKind::I32, "zero.adjusted"),
+          },
+          bir::PhiIncoming{
+              .label = "is_nonzero",
+              .value = bir::Value::named(bir::TypeKind::I32, "nonzero.adjusted"),
+          },
+      },
+  });
+  join.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "merge"),
+  };
+
+  function.blocks = {
+      std::move(entry),
+      std::move(is_zero),
+      std::move(is_nonzero),
+      std::move(join),
+  };
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
   return std::move(planner.prepared());
 }
 
@@ -1992,6 +2095,10 @@ int main() {
 
   const auto prepared_two_way_join = legalize_two_way_branch_join_module();
   if (const int status = check_prepare_phi_invariant(prepared_two_way_join); status != 0) {
+    return status;
+  }
+  const auto prepared_two_way_join_legalize_only = legalize_two_way_branch_join_module_legalize_only();
+  if (const int status = check_legalize_preserves_phi(prepared_two_way_join_legalize_only); status != 0) {
     return status;
   }
   if (const int status = check_prepare_i1_invariant(prepared_two_way_join); status != 0) {
