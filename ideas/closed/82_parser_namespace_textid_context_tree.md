@@ -1,14 +1,14 @@
 # Parser Namespace TextId Context Tree
 
-Status: Open
+Status: Closed
 Last Updated: 2026-04-23
 
 ## Goal
 
-Replace parser namespace lookup's canonical-string-driven path with a namespace
-context tree that resolves qualified names segment-by-segment via `TextId`,
-while keeping namespace push/pop as the active registration and visibility
-mechanism.
+Replace parser namespace lookup's canonical-string-driven path with a
+namespace context tree that resolves qualified names segment-by-segment via
+`TextId`, while keeping namespace push/pop as the active registration and
+visibility mechanism.
 
 ## Why This Idea Exists
 
@@ -82,7 +82,7 @@ At minimum:
   - `using namespace` visibility
   - nested namespace definitions
   - namespace-qualified type/value references
-- broader `ctest` only if the slice crosses more than parser namespace lookup
+- broader `ctest` only if the slice crosses beyond parser namespace lookup
 
 ## Non-Goals
 
@@ -99,3 +99,19 @@ At minimum:
 3. Keep canonical string synthesis only as a compatibility/debug bridge.
 4. Use the resulting namespace tree as a cleaner base for later parser binding
    and scope work, without forcing that work into this idea.
+
+## Completion Notes
+
+Completed on 2026-04-23.
+
+This runbook finished the namespace-tree slice by:
+
+- moving namespace child registration and traversal onto structured
+  `TextId`-driven context handling
+- containing the remaining canonical namespace string synthesis behind the
+  explicit compatibility bridge path
+- preserving parser namespace lookup behavior while retiring the semantic
+  dependency on canonical string keys
+
+The route boundary for the next parser scope initiative is tracked separately
+in `ideas/open/83_parser_scope_textid_binding_lookup.md`.
