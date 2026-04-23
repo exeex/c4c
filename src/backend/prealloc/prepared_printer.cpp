@@ -73,6 +73,20 @@ const PreparedFrameSlot* find_frame_slot(const PreparedBirModule& module,
   return nullptr;
 }
 
+const bir::Function* find_prepared_function(const PreparedBirModule& module,
+                                            FunctionNameId function_name) {
+  if (function_name == kInvalidFunctionName) {
+    return nullptr;
+  }
+  const auto name = prepared_function_name(module.names, function_name);
+  for (const auto& function : module.module.functions) {
+    if (function.name == name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
 std::string terminator_kind_name(c4c::backend::bir::TerminatorKind kind) {
   switch (kind) {
     case c4c::backend::bir::TerminatorKind::Return:
@@ -306,6 +320,7 @@ void append_prepared_control_flow(std::ostringstream& out, const PreparedBirModu
   out << "--- prepared-control-flow ---\n";
   for (const auto& function_cf : module.control_flow.functions) {
     out << "prepared.func @" << maybe_function_name(module.names, function_cf.function_name) << "\n";
+    const auto* function = find_prepared_function(module, function_cf.function_name);
 
     for (const auto& block : function_cf.blocks) {
       out << "  block " << maybe_block_label(module.names, block.block_label)
@@ -374,6 +389,17 @@ void append_prepared_control_flow(std::ostringstream& out, const PreparedBirModu
                     ? std::to_string(*transfer.source_false_transfer_index)
                     : std::string("<none>"))
             << ")";
+      }
+      if (function != nullptr) {
+        const auto continuation_targets = find_prepared_compare_join_continuation_targets(
+            module.names, function_cf, *function, transfer.source_branch_block_label.value_or(kInvalidBlockLabel));
+        if (continuation_targets.has_value()) {
+          out << " continuation_targets=("
+              << maybe_block_label(module.names, continuation_targets->true_label)
+              << ", "
+              << maybe_block_label(module.names, continuation_targets->false_label)
+              << ")";
+        }
       }
       out << "\n";
       for (const auto& incoming : transfer.incomings) {

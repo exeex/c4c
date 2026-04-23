@@ -209,6 +209,10 @@ int main() {
                        "join transfer source transfer indexes")) {
     return EXIT_FAILURE;
   }
+  if (!expect_contains(dump, "continuation_targets=(block_1, block_2)",
+                       "join transfer continuation targets")) {
+    return EXIT_FAILURE;
+  }
 
   return EXIT_SUCCESS;
 }
