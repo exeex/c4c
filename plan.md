@@ -271,6 +271,13 @@ Completion check:
 Goal: publish caller-save, callee-save, and call-clobber ownership as prepared
 authority so backend consumers do not reconstruct preservation policy locally.
 
+Execution note:
+
+- Step 3.2 is now treated as exhausted for scalar prepared authority. Recent
+  packets tightened proof around the published direct call-clobber surface and
+  did not identify another truthful scalar save/clobber field to add without
+  crossing into grouped-register scope owned by idea 89.
+
 Primary target:
 
 - `src/backend/prealloc/prealloc.hpp`
@@ -294,6 +301,15 @@ Completion check:
 Goal: finish the remaining scalar call-boundary cases where variadic behavior,
 nested dynamic-stack interactions, or other edge conditions still hide missing
 prepared facts.
+
+Execution note:
+
+- This is now the active Step 3 route after Step 3.2 exhausted its scalar
+  save/clobber publication work.
+- The next packet should first audit whether any in-scope scalar variadic,
+  nested dynamic-stack, or adjacent call-boundary edge case still requires a
+  prepared fact. If no such gap remains, record that outcome in `todo.md` so
+  Step 4 can take over without reopening grouped-register work.
 
 Primary target:
 
