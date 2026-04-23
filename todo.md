@@ -9,19 +9,21 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: added `TextId`-aware visible value/type/concept lookup entry
-  points in `parser_core.cpp` so unqualified namespace-visible resolution can
-  reuse parsed token identity instead of re-finding names from strings
-- updated the nearby expression, statement, and qualified-type helper call
-  sites that already carry parser token ids to stay on that `TextId` path
-  while preserving existing namespace alias and fallback behavior
+- Step 2 packet: switched parser-side `using` alias lookup from spelled-string
+  keys to `TextId` keys so visible value/type resolution and qualified
+  namespace target import reuse the parsed identifier identity instead of
+  probing alias maps by rendered spelling first
+- tightened the `using` declaration registration sites in
+  `parser_declarations.cpp` to keep alias bridge names and imported alias
+  tables aligned with the parsed target `TextId`
 
 ## Suggested Next
 
 - if Step 2 continues, audit the remaining parser namespace compatibility
   helpers that still synthesize string spellings first, especially the
-  `qualify_name` / bridge-facing registration call sites that may already have
-  a parsed `TextId` available
+  `qualify_name` / bridge-facing registration call sites and any declaration
+  paths that still materialize qualified strings before checking whether a
+  parser `TextId` route already exists
 - keep the route inside parser namespace lookup and avoid widening into
   unrelated declarator parsing, lexical-scope, binding-table, or backend cleanup
 

@@ -1519,13 +1519,9 @@ std::string Parser::resolve_visible_value_name(TextId name_text_id,
     return resolve_visible_name_from_namespace_stack(
         namespace_state_.namespace_stack, spelled,
         [&](int context_id, std::string* resolved) {
-            auto alias_it = namespace_state_.using_value_aliases.find(context_id);
-            if (alias_it != namespace_state_.using_value_aliases.end()) {
-                auto value_it = alias_it->second.find(spelled);
-                if (value_it != alias_it->second.end()) {
-                    *resolved = value_it->second;
-                    return true;
-                }
+            if (lookup_using_value_alias(context_id, name_text_id, spelled,
+                                         resolved)) {
+                return true;
             }
             return lookup_value_in_context(context_id, name_text_id, spelled,
                                            resolved);
@@ -1542,14 +1538,10 @@ std::string Parser::resolve_visible_type_name(TextId name_text_id,
     return resolve_visible_name_from_namespace_stack(
         namespace_state_.namespace_stack, spelled,
         [&](int context_id, std::string* resolved) {
-            auto alias_it = namespace_state_.using_value_aliases.find(context_id);
-            if (alias_it != namespace_state_.using_value_aliases.end()) {
-                auto value_it = alias_it->second.find(spelled);
-                if (value_it != alias_it->second.end() &&
-                    has_typedef_type(value_it->second)) {
-                    *resolved = value_it->second;
-                    return true;
-                }
+            if (lookup_using_value_alias(context_id, name_text_id, spelled,
+                                         resolved) &&
+                has_typedef_type(*resolved)) {
+                return true;
             }
             return lookup_type_in_context(context_id, name_text_id, spelled,
                                           resolved);
@@ -1764,12 +1756,10 @@ std::string Parser::resolve_qualified_value_name(
     const int context_id = resolve_namespace_context(name);
     if (context_id < 0) return {};
 
-    auto alias_it = namespace_state_.using_value_aliases.find(context_id);
-    if (alias_it != namespace_state_.using_value_aliases.end()) {
-        auto value_it = alias_it->second.find(base_name);
-        if (value_it != alias_it->second.end()) {
-            return value_it->second;
-        }
+    std::string alias_name;
+    if (lookup_using_value_alias(context_id, name.base_text_id, base_name,
+                                 &alias_name)) {
+        return alias_name;
     }
 
     std::string resolved;
@@ -1798,6 +1788,23 @@ std::string Parser::resolve_qualified_type_name(
         return resolved;
     }
     return {};
+}
+
+bool Parser::lookup_using_value_alias(int context_id, TextId name_text_id,
+                                      std::string_view fallback_name,
+                                      std::string* resolved) const {
+    if (!resolved) return false;
+    if (name_text_id == kInvalidText) {
+        name_text_id = find_parser_text_id(fallback_name);
+    }
+    if (name_text_id == kInvalidText) return false;
+
+    const auto alias_it = namespace_state_.using_value_aliases.find(context_id);
+    if (alias_it == namespace_state_.using_value_aliases.end()) return false;
+    const auto value_it = alias_it->second.find(name_text_id);
+    if (value_it == alias_it->second.end()) return false;
+    *resolved = value_it->second;
+    return true;
 }
 
 bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,

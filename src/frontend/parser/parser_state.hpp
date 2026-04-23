@@ -336,7 +336,7 @@ struct ParserNamespaceState {
   std::unordered_map<int, std::unordered_map<TextId, int>>
       named_namespace_children;
   std::unordered_map<int, std::vector<int>> anonymous_namespace_children;
-  std::unordered_map<int, std::unordered_map<std::string, std::string>>
+  std::unordered_map<int, std::unordered_map<TextId, std::string>>
       using_value_aliases;
   std::unordered_map<int, std::vector<int>> using_namespace_contexts;
 };

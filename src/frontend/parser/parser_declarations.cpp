@@ -1418,8 +1418,10 @@ Node* Parser::parse_top_level() {
                     recover_top_level_using_alias_or_boundary(*this, ln);
                     return nullptr;
                 }
+                const TextId alias_name_text_id =
+                    parser_text_id_for_token(kInvalidText, first_name);
                 const std::string qualified = bridge_name_in_context(
-                    using_context_id, find_parser_text_id(first_name), first_name);
+                    using_context_id, alias_name_text_id, first_name);
                 register_typedef_binding(qualified, alias_ts, true);
                 if (using_context_id == 0) {
                     register_typedef_binding(first_name, alias_ts, true);
@@ -1476,7 +1478,8 @@ Node* Parser::parse_top_level() {
             if (has_known_fn_name(imported_value_name)) {
                 register_known_fn_name(imported_key);
             }
-            namespace_state_.using_value_aliases[using_context_id][imported_name] =
+            namespace_state_.using_value_aliases[using_context_id]
+                                               [target_name.base_text_id] =
                 imported_value_name;
         }
         recover_top_level_decl_terminator_or_boundary(*this, ln);
