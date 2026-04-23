@@ -328,16 +328,19 @@ struct ParserTemplateState {
 // TextId-native lookup without changing qualified lookup behavior.
 struct ParserLexicalScopeState {
   using LocalTypeTable = LocalNameTable<LocalNameKey, TypeSpec>;
+  using LocalUserTypedefTable = LocalNameTable<LocalNameKey, bool>;
 
   void push_scope() {
     visible_typedef_types.push_scope();
     visible_value_types.push_scope();
+    visible_user_typedefs.push_scope();
   }
 
   bool pop_scope() {
     const bool popped_types = visible_typedef_types.pop_scope();
     const bool popped_values = visible_value_types.pop_scope();
-    return popped_types || popped_values;
+    const bool popped_user_typedefs = visible_user_typedefs.pop_scope();
+    return popped_types || popped_values || popped_user_typedefs;
   }
 
   [[nodiscard]] bool empty() const { return visible_typedef_types.empty(); }
@@ -348,6 +351,7 @@ struct ParserLexicalScopeState {
 
   LocalTypeTable visible_typedef_types;
   LocalTypeTable visible_value_types;
+  LocalUserTypedefTable visible_user_typedefs;
 };
 
 // Transient parser context that moves with lexical/state transitions.

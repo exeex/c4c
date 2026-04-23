@@ -318,10 +318,12 @@ class Parser {
   void push_local_binding_scope();
   bool pop_local_binding_scope();
   bool has_local_binding_scope() const;
-  void bind_local_typedef(TextId name_text_id, const TypeSpec& type);
+  void bind_local_typedef(TextId name_text_id, const TypeSpec& type,
+                          bool is_user_typedef = false);
   void bind_local_value(TextId name_text_id, const TypeSpec& type);
   const TypeSpec* find_local_visible_typedef_type(TextId name_text_id) const;
   const TypeSpec* find_local_visible_var_type(TextId name_text_id) const;
+  bool has_local_visible_user_typedef(TextId name_text_id) const;
   TypeSpec resolve_typedef_type_chain(TypeSpec ts) const;
   TypeSpec resolve_struct_like_typedef_type(TypeSpec ts) const;
   bool are_types_compatible(const TypeSpec& lhs, const TypeSpec& rhs) const;

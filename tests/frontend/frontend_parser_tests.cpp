@@ -1117,6 +1117,45 @@ void test_parser_visible_value_alias_resolves_scope_local_target_type() {
               "test fixture should balance the local visible value scope");
 }
 
+void test_parser_register_local_bindings_keep_flat_tables_empty() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  c4c::TypeSpec value_ts{};
+  value_ts.array_size = -1;
+  value_ts.inner_rank = -1;
+  value_ts.base = c4c::TB_DOUBLE;
+
+  parser.push_local_binding_scope();
+  parser.register_typedef_binding("Alias", alias_ts, true);
+  parser.register_var_type_binding("value", value_ts);
+
+  expect_true(parser.find_typedef_type("Alias") == nullptr,
+              "local typedef registration should keep the flat typedef table empty");
+  expect_true(parser.find_visible_typedef_type("Alias") != nullptr &&
+                  parser.find_visible_typedef_type("Alias")->base == c4c::TB_INT,
+              "local typedef registration should resolve through lexical scope storage");
+  expect_true(parser.find_var_type("value") == nullptr,
+              "local value registration should keep the flat value table empty");
+  expect_true(parser.find_visible_var_type("value") != nullptr &&
+                  parser.find_visible_var_type("value")->base == c4c::TB_DOUBLE,
+              "local value registration should resolve through lexical scope storage");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local binding scope");
+  expect_true(parser.find_visible_typedef_type("Alias") == nullptr,
+              "popping the local scope should remove lexical typedef visibility");
+  expect_true(parser.find_visible_var_type("value") == nullptr,
+              "popping the local scope should remove lexical value visibility");
+}
+
 void test_parser_if_condition_decl_uses_local_visible_typedef_scope() {
   c4c::Lexer lexer("if (Alias value = 0) { }\n", c4c::LexProfile::CppSubset);
   const std::vector<c4c::Token> tokens = lexer.scan_all();
@@ -1170,6 +1209,46 @@ void test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback
               "top-level typedef fallback should register the alias in the parser typedef table");
   expect_eq(alias_ts->tag, "ForwardDecl",
             "registered top-level typedef aliases should keep the unresolved placeholder base");
+}
+
+void test_parser_block_local_bindings_do_not_leak_into_later_ctor_init_probes() {
+  c4c::Lexer lexer("struct Box { Box(int); };\n"
+                   "int main() {\n"
+                   "  {\n"
+                   "    typedef int Alias;\n"
+                   "    int source = 7;\n"
+                   "  }\n"
+                   "  Box alias_copy(Alias(other));\n"
+                   "  Box value(source(other));\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "block-local leak regression should parse as a program");
+  expect_eq_int(program->n_children, 2,
+                "the block-local leak regression should contain the record definition and main");
+
+  c4c::Node* main_fn = program->children[1];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the block-local leak regression should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 3,
+                "main should retain the inner block plus both post-block ambiguous declarations");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_BLOCK,
+              "the inner scope should remain an explicit block");
+  expect_true(main_fn->body->children[1] != nullptr &&
+                  main_fn->body->children[1]->kind == c4c::NK_EMPTY,
+              "out-of-scope typedef names should not survive into later ctor-init probes");
+  expect_true(main_fn->body->children[2] != nullptr &&
+                  main_fn->body->children[2]->kind == c4c::NK_EMPTY,
+              "out-of-scope value names should not survive into later ctor-init probes");
 }
 
 void test_parser_local_ctor_init_probe_balances_unresolved_param_and_value_expr_shapes() {
@@ -1980,8 +2059,10 @@ int main() {
   test_parser_using_value_import_keeps_structured_target_key();
   test_parser_global_using_value_import_keeps_global_target_resolution();
   test_parser_visible_value_alias_resolves_scope_local_target_type();
+  test_parser_register_local_bindings_keep_flat_tables_empty();
   test_parser_if_condition_decl_uses_local_visible_typedef_scope();
   test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback();
+  test_parser_block_local_bindings_do_not_leak_into_later_ctor_init_probes();
   test_parser_local_ctor_init_probe_balances_unresolved_param_and_value_expr_shapes();
   test_parser_local_ctor_init_probe_balances_parenthesized_param_and_value_call_shapes();
   test_parser_local_ctor_init_probe_preserves_visible_head_handoff_boundary();
