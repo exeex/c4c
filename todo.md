@@ -1,19 +1,30 @@
 Status: Active
 Source Idea Path: ideas/open/83_parser_scope_textid_binding_lookup.md
 Source Plan Path: plan.md
-Current Step ID: none
-Current Step Title: none
+Current Step ID: 1
+Current Step Title: Inventory parser binding tables
 
 # Current Packet
 
 ## Just Finished
-Activated idea 83 and established the canonical runbook plus execution-state skeleton.
+Completed plan Step 1 by inventorying parser binding tables and classifying the
+main migration targets into `TextId`-native, direct `TextId` replacements,
+scope-local `LocalNameTable` candidates, sequence/path-key cases, and
+namespace-owned tables that must stay separate from lexical lookup.
 
 ## Suggested Next
-Start Step 1 by inventorying parser binding tables and classifying which ones should stay string-keyed, become `TextId`-keyed, or move to `LocalNameTable` scope-local storage.
+Start Step 2 by adding explicit parser lexical scope state with push/pop
+behavior for the simplest unqualified local bindings, using
+`LocalNameTable`-backed visibility that stays separate from namespace
+traversal state.
 
 ## Watchouts
-Keep namespace traversal separate from lexical scope lookup. Do not promote routine execution notes back into the source idea unless intent changes.
+Do not collapse namespace traversal into lexical lookup. Keep
+single-segment semantic names on `TextId`, reserve sequence/path ids for
+multi-segment identities, and avoid growing new parser-wide flat tables for
+bindings that should follow lexical scope lifetime.
 
 ## Proof
-No execution proof yet. This is activation state only.
+No build/test proof for this packet. The completion artifact is the inventory
+captured in `ideas/open/83_parser_scope_textid_binding_lookup.md`; no code
+paths changed and no `test_after.log` was required.
