@@ -9,20 +9,24 @@
 namespace c4c {
 
 using TextId = uint32_t;
+using SymbolId = uint32_t;
 using LinkNameId = uint32_t;
 using MemberSymbolId = uint32_t;
 using FunctionNameId = uint32_t;
 using BlockLabelId = uint32_t;
 using ValueNameId = uint32_t;
 using SlotNameId = uint32_t;
+using AnonTypeId = uint32_t;
 
 constexpr TextId kInvalidText = 0;
+constexpr SymbolId kInvalidSymbol = 0;
 constexpr LinkNameId kInvalidLinkName = 0;
 constexpr MemberSymbolId kInvalidMemberSymbol = 0;
 constexpr FunctionNameId kInvalidFunctionName = 0;
 constexpr BlockLabelId kInvalidBlockLabel = 0;
 constexpr ValueNameId kInvalidValueName = 0;
 constexpr SlotNameId kInvalidSlotName = 0;
+constexpr AnonTypeId kInvalidAnonType = 0;
 
 // Generic stable-id table keyed by a caller-provided value type.
 template <typename Id, Id InvalidId, typename Key>
@@ -129,6 +133,7 @@ struct PathIdTable : KeyIdTable<Id, InvalidId, std::string> {
 };
 
 using TextTable = StringIdTable<TextId, kInvalidText>;
+using SymbolTable = StringIdTable<SymbolId, kInvalidSymbol>;
 
 // Semantic ids reuse TextTable storage so domain-specific name tables can carry
 // meaning without owning duplicate spelling bytes.
@@ -180,5 +185,6 @@ using FunctionNameTable = SemanticNameTable<FunctionNameId, kInvalidFunctionName
 using BlockLabelTable = SemanticNameTable<BlockLabelId, kInvalidBlockLabel>;
 using ValueNameTable = SemanticNameTable<ValueNameId, kInvalidValueName>;
 using SlotNameTable = SemanticNameTable<SlotNameId, kInvalidSlotName>;
+using AnonTypeTable = KeyIdTable<AnonTypeId, kInvalidAnonType, TextId>;
 
 }  // namespace c4c

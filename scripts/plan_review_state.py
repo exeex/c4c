@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 
@@ -34,32 +32,17 @@ def write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def read_git_text(*args: str) -> str:
-    completed = subprocess.run(
-        ["git", *args],
-        check=True,
-        capture_output=True,
-        text=True,
-        cwd=repo_root(),
-    )
-    return completed.stdout
-
-
 def parse_todo(path: Path) -> dict:
     text = read_text(path)
-    return parse_todo_text(text, str(path))
-
-
-def parse_todo_text(text: str, source: str = "todo.md") -> dict:
     step_id_match = CURRENT_STEP_ID_RE.search(text)
     step_title_match = CURRENT_STEP_TITLE_RE.search(text)
     counter_match = PLAN_REVIEW_COUNTER_RE.search(text)
     if not step_id_match:
-        raise SystemExit(f"missing 'Current Step ID:' line in {source}")
+        raise SystemExit(f"missing 'Current Step ID:' line in {path}")
     if not step_title_match:
-        raise SystemExit(f"missing 'Current Step Title:' line in {source}")
+        raise SystemExit(f"missing 'Current Step Title:' line in {path}")
     if not counter_match:
-        raise SystemExit(f"missing 'Plan Review Counter:' line in {source}")
+        raise SystemExit(f"missing 'Plan Review Counter:' line in {path}")
     return {
         "text": text,
         "current_step_id": step_id_match.group(1),
@@ -142,7 +125,14 @@ def init_from_todo(todo_path: Path, state_path: Path) -> dict:
 
 
 def git(*args: str) -> str:
-    return read_git_text(*args)
+    completed = subprocess.run(
+        ["git", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=repo_root(),
+    )
+    return completed.stdout
 
 
 def staged_paths() -> set[str]:
@@ -153,42 +143,6 @@ def staged_paths() -> set[str]:
 def git_add(*paths: Path) -> None:
     rel_paths = [str(path.relative_to(repo_root())) for path in paths]
     subprocess.run(["git", "add", *rel_paths], check=True, cwd=repo_root())
-
-
-def rel_repo_path(path: Path) -> str:
-    return str(path.relative_to(repo_root()))
-
-
-def read_index_text(path: Path) -> str:
-    return read_git_text("show", f":{rel_repo_path(path)}")
-
-
-def write_index_text(path: Path, text: str) -> None:
-    rel_path = rel_repo_path(path)
-    with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", delete=False, dir=repo_root()
-    ) as handle:
-        handle.write(text)
-        temp_path = Path(handle.name)
-    try:
-        completed = subprocess.run(
-            ["git", "hash-object", "-w", "--path", rel_path, str(temp_path)],
-            check=True,
-            capture_output=True,
-            text=True,
-            cwd=repo_root(),
-        )
-        blob_id = completed.stdout.strip()
-        subprocess.run(
-            ["git", "update-index", "--cacheinfo", "100644", blob_id, rel_path],
-            check=True,
-            cwd=repo_root(),
-        )
-    finally:
-        try:
-            os.unlink(temp_path)
-        except FileNotFoundError:
-            pass
 
 
 def ensure_state(todo_path: Path, state_path: Path) -> dict:
@@ -260,7 +214,7 @@ def cmd_prepare_commit(args) -> int:
         return 0
 
     state = ensure_state(args.todo, args.state)
-    todo = parse_todo_text(read_index_text(args.todo), f"index:{args.todo.name}")
+    todo = parse_todo(args.todo)
 
     next_step_id = todo["current_step_id"]
     next_step_title = todo["current_step_title"]
@@ -279,40 +233,9 @@ def cmd_prepare_commit(args) -> int:
     else:
         state["counter"] += 1
 
-    updated_text = replace_once(
-        todo["text"],
-        CURRENT_STEP_ID_RE,
-        f"Current Step ID: {state['current_step_id']}",
-    )
-    updated_text = replace_once(
-        updated_text,
-        CURRENT_STEP_TITLE_RE,
-        f"Current Step Title: {state['current_step_title']}",
-    )
-    updated_text = replace_once(
-        updated_text,
-        PLAN_REVIEW_COUNTER_RE,
-        f"Plan Review Counter: {state['counter']} / {state['review_limit']}",
-    )
-    write_index_text(args.todo, updated_text)
-    return 0
-
-
-def cmd_sync_from_head(args) -> int:
-    if not args.todo.exists():
-        return 0
-    try:
-        text = read_git_text("show", f"HEAD:{rel_repo_path(args.todo)}")
-    except subprocess.CalledProcessError:
-        return 0
-    todo = parse_todo_text(text, f"HEAD:{args.todo.name}")
-    state = {
-        "current_step_id": todo["current_step_id"],
-        "current_step_title": todo["current_step_title"],
-        "counter": todo["counter"],
-        "review_limit": todo["review_limit"],
-    }
     save_state(args.state, state)
+    sync_todo(args.todo, state)
+    git_add(args.todo)
     return 0
 
 
@@ -346,9 +269,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     prepare = subparsers.add_parser("prepare-commit")
     prepare.set_defaults(func=cmd_prepare_commit)
-
-    sync_from_head = subparsers.add_parser("sync-from-head")
-    sync_from_head.set_defaults(func=cmd_sync_from_head)
 
     return parser
 

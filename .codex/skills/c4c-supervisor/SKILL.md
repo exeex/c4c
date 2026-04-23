@@ -1,6 +1,6 @@
 ---
 name: c4c-supervisor
-description: Lightweight c4c orchestration shell. Use for the direct user-facing agent that decides whether to call the plan owner, an executor, or a reviewer, checks git status before and after delegation, normalizes canonical regression logs, runs supervisor-side validation, and commits completed coherent slices. This role should stay lightweight and is intended to run on gpt-5.4-mini.
+description: Lightweight c4c orchestration shell. Use for the direct user-facing agent that decides whether to call the plan owner, an executor, or a reviewer, checks git status before and after delegation, normalizes canonical regression logs, runs supervisor-side validation, and commits completed coherent slices. This role should stay lightweight.
 ---
 
 # C4C Supervisor
@@ -11,20 +11,13 @@ This role is an orchestration shell. It chooses the next specialist, reviews
 the returned slice, runs acceptance checks, maintains canonical regression-log
 state, and creates the final commit. It does not own lifecycle rewrites or implementation edits when a matching specialist role exists.
 
-## Model Intent
-
-- default this role to `gpt-5.4-mini`
-- call `c4c-plan-owner` on `gpt-5.4` for lifecycle work
-- call `c4c-executor` on `gpt-5.4` for implementation work
-- call `c4c-reviewer` on `gpt-5.4` for route-drift review
-- use `c4c-divide-and-conquer` when the active route is genuinely stuck and
-  needs a decomposition initiative instead of another repair packet
-
 ## Start Here
 
 1. Read [`AGENTS.md`](/workspaces/c4c/AGENTS.md).
 2. Detect state from `plan.md`, `todo.md`, and `ideas/open/`.
-3. Run [`scripts/plan_change_gap.sh`](/workspaces/c4c/scripts/plan_change_gap.sh).
+3. If [`todo.md`](/workspaces/c4c/todo.md) exists, inspect the current review
+   metadata there and use `scripts/plan_review_state.py show` when you need the
+   local `.plan_review_state.json` state directly.
 4. If `plan.md` exists, read the linked source idea before making route,
    review, or acceptance decisions.
 5. When preparing a code packet, read
@@ -49,9 +42,6 @@ state, and creates the final commit. It does not own lifecycle rewrites or imple
 - decide whether `c4c-reviewer` is needed and whether delegated `c4c-executor`
   or `c4c-reviewer` packets should explicitly use `c4c-clang-tools` to save
   token on C++ exploration
-- let executors choose `c4cll-debug-flags` on their own when a packet needs
-  `c4cll` stage-level observation; do not require a supervisor `Tooling` line
-  for normal flag-driven compiler debugging
 - flush completed ready slices before delegating new work
 - watch `todo.md` execution metadata so oversized steps can trigger plan review
   from stable state instead of chat-only judgment
@@ -186,15 +176,9 @@ Choose the next specialist with these rules:
 - when a packet will inspect large or cross-linked C++ code:
   decide whether to add a `Tooling` line telling the subagent to use
   `c4c-clang-tools` first for AST-backed queries
-- do not micromanage normal `c4cll` debug-flag choice from the supervisor;
-  executor packets may use `c4cll-debug-flags` at executor discretion unless
-  the packet needs a very specific mandated command
 - call `c4c-reviewer` only for real route risk:
   repeated lifecycle repairs, multiple direction-changing plan commits, packet boundary drift, or explicit drift suspicion
 - do not call `c4c-reviewer` only because commit count is high
-- when repeated collisions suggest the real problem is route shape rather than
-  one more implementation packet, use `c4c-divide-and-conquer` first and then
-  hand any resulting idea/plan switch to `c4c-plan-owner`
 
 Use `c4c-plan-owner` during normal execution only when one of these is true:
 
@@ -205,14 +189,6 @@ Use `c4c-plan-owner` during normal execution only when one of these is true:
 - the current `plan.md` no longer faithfully represents the linked source idea
 - a reviewer explicitly justified route reset
 - a blocker cannot be resolved within the current runbook
-
-Use `c4c-divide-and-conquer` before sending work to `c4c-plan-owner` when all
-of these are true:
-
-- the route is blocked by repeated collisions rather than one fresh failure
-- the current problem can be decomposed into smaller owned seams
-- switching to a new idea under `ideas/open/` is more honest than stretching
-  the existing runbook
 
 Oversized-step trigger:
 
@@ -272,8 +248,10 @@ After a specialist returns:
 5. ensure a fresh build happened for code slices
 6. normalize canonical log state before regression guard
 7. if broader validation is warranted and matching logs do not exist, run `c4c-regression-guard`
-8. use `scripts/plan_change_gap.sh` as the quick route-freshness check
-9. inspect deeper git history only if that quick check suggests real route risk
+8. use `todo.md` review metadata plus local `.plan_review_state.json` state as
+   the quick oversized-step / route-friction check
+9. inspect deeper git history only if that state or the diff suggests real
+   route risk
 10. check both whether the slice matches `plan.md` and whether `plan.md` still
     matches the linked source idea
 11. if executor-written `Suggested Next` in [`todo.md`](/workspaces/c4c/todo.md)

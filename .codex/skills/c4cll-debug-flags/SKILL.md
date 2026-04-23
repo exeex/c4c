@@ -5,126 +5,197 @@ description: Use when working on c4cll frontend or backend debugging and you nee
 
 # c4cll Debug Flags
 
-Use this skill when the task is to inspect compiler behavior through `c4cll`
-flags instead of patching code first.
+Use this skill when the task is to investigate frontend or backend behavior
+through `c4cll` command-line flags instead of immediately patching the code.
 
-## Pipeline Map
+## Frontend Debug
 
-- `C/C++ -> HIR -> LIR -> BIR -> MIR -> assembly`
-- `HIR`: frontend semantic stage; owns template instantiation and Sema-like work
-- `LIR`: LLVM IR route; inspect with `--codegen llvm`
-- `BIR`: backend IR for CFG, phi, legalization, register allocation, and preparation
-- `MIR`: machine-lowering route after BIR
-- `assembly`: final backend-native text from `--codegen asm`
+### Quick selection
 
-Current limitation:
-
-- there is no standalone `--dump-lir`
-- use `--codegen llvm` for LLVM IR
-- `--dump-bir`, `--dump-prepared-bir`, `--dump-mir`, and `--trace-mir` are
-  backend-native evidence, not LLVM-path evidence
-
-## Stage To Flag
-
-- Parse / syntax:
-  - `--parse-only`
-- Parser control flow:
-  - `--parser-debug`
-  - `--parser-debug-tentative`
-  - `--parser-debug-injected`
-- Canonical semantic facts / type issues:
-  - `--dump-canonical`
-- HIR / template instantiation / compile-time behavior:
-  - `--dump-hir-summary`
-  - `--dump-hir`
-- LIR / LLVM IR:
-  - `--codegen llvm`
-- Semantic BIR:
-  - `--dump-bir`
-- Prepared BIR:
-  - `--dump-prepared-bir`
-- MIR summary:
-  - `--dump-mir`
-- MIR trace:
-  - `--trace-mir`
-- Final backend asm:
-  - `--codegen asm`
-
-## Fast Triage
-
-- "parse error / ambiguous syntax / backtracking":
+- Parser shape / syntax issue:
   - start with `--parse-only`
-  - add parser debug flags only as needed
-- "wrong type / owner resolution / canonical form":
+- Parser control-flow / backtracking issue:
+  - add `--parser-debug`
+  - add `--parser-debug-tentative` for speculative-parse visibility
+  - add `--parser-debug-injected` when token injection/swap might be involved
+- Sema / canonical type issue:
   - use `--dump-canonical`
-- "template instantiation / compile-time execution / HIR lowering":
-  - use `--dump-hir-summary`, then `--dump-hir`
-- "LLVM path output is wrong":
-  - use `--codegen llvm`
-- "backend CFG / phi / legalization / regalloc prep is wrong":
-  - use `--dump-bir`, then `--dump-prepared-bir`
-- "machine lowering route is wrong":
-  - use `--dump-mir`, then `--trace-mir`
-- "final native output is wrong":
-  - use `--codegen asm`
-  - compare with `--codegen llvm` only to separate LLVM-path output from
-    backend-native output
+- HIR lowering / compile-time behavior:
+  - use `--dump-hir-summary`
+  - escalate to `--dump-hir` when full detail is needed
 
-Rule of thumb:
+### Command recipes
 
-1. Start with the first stage that can explain the symptom.
-2. Do not jump to BIR/MIR until HIR looks structurally correct.
-3. If `--codegen asm` fails but `--codegen llvm` looks healthy, treat it as a
-   backend-native issue, not a frontend issue.
-
-## Command Recipes
-
-Frontend:
+Basic parser check:
 
 ```bash
 ./build/c4cll --parse-only <file>
+```
+
+Parser debug:
+
+```bash
 ./build/c4cll --parser-debug --parse-only <file>
+```
+
+Parser debug with speculative branches:
+
+```bash
 ./build/c4cll --parser-debug --parser-debug-tentative --parse-only <file>
+```
+
+Parser debug with injected-token events:
+
+```bash
 ./build/c4cll --parser-debug --parser-debug-injected --parse-only <file>
+```
+
+Full parser debug for hard parser cases:
+
+```bash
+./build/c4cll --parser-debug --parser-debug-tentative --parser-debug-injected --parse-only <file>
+```
+
+Canonical semantic view:
+
+```bash
 ./build/c4cll --dump-canonical <file>
+```
+
+Compact HIR view:
+
+```bash
 ./build/c4cll --dump-hir-summary <file>
+```
+
+Full HIR plus compile-time/materialization stats:
+
+```bash
 ./build/c4cll --dump-hir <file>
 ```
 
-Midend and backend:
+### Investigation workflow
+
+1. Start with the narrowest mode that answers the current question.
+2. Prefer `--parse-only` before `--dump-hir` when the failure may still be in parser land.
+3. If parser debug output is noisy, rerun with a reduced testcase before adding more channels.
+4. If parse succeeds but later stages fail, switch to `--dump-canonical` or `--dump-hir-summary`.
+5. Use full `--dump-hir` only when summary output is insufficient.
+
+### Practical heuristics
+
+- If the testcase hangs or runs very slowly during parse:
+  - use `--parser-debug` first to see progress heartbeats
+- If a failure involves nested templates or dependent names:
+  - include `--parser-debug-tentative`
+- If the code path is known to inject synthetic tokens:
+  - include `--parser-debug-injected`
+- If a bug report is about "wrong type" rather than "won't parse":
+  - prefer `--dump-canonical`
+- If a bug report is about template lowering, deferred consteval, or NTTP materialization:
+  - prefer `--dump-hir-summary`, then `--dump-hir`
+
+### Constraints
+
+- `--pp-only`, `--lex-only`, `--parse-only`, `--dump-canonical`, `--dump-hir`,
+  and `--dump-hir-summary` are mutually exclusive frontend inspection modes.
+- Parser debug flags are most useful with `--parse-only`, but can also help when
+  earlier frontend stages need observation before later failures.
+
+### Examples for current repo
+
+STL parser bring-up:
 
 ```bash
-./build/c4cll --codegen llvm --target <triple> <file> -o /tmp/out.ll
-./build/c4cll --dump-bir --target <triple> <file>
-./build/c4cll --dump-prepared-bir --target <triple> <file>
-./build/c4cll --dump-mir --target <triple> <file>
-./build/c4cll --trace-mir --target <triple> <file>
-./build/c4cll --codegen asm --target <triple> <file> -o /tmp/out.s
+./build/c4cll --parser-debug --parser-debug-tentative --parse-only tests/cpp/std/std_vector_simple.cpp
 ```
 
-Compare LLVM path and backend-native path:
+EASTL parser bring-up:
+
+```bash
+./build/c4cll --parser-debug --parser-debug-tentative --parser-debug-injected --parse-only tests/cpp/eastl/eastl_vector_simple.cpp
+```
+
+Known parser-debug negative testcase:
+
+```bash
+./build/c4cll --parser-debug --parser-debug-tentative --parse-only tests/cpp/internal/negative_case/parser_debug_qualified_type_template_arg_stack.cpp
+```
+
+## Backend Debug
+
+### Quick selection
+
+- Backend route / semantic BIR investigation:
+  - use `--codegen asm --target <triple> <file> -o <out>`
+  - inspect `<out>` to see whether the backend emitted native asm, semantic
+    BIR text, or LLVM-ish fallback text
+- Backend route comparison against LLVM path:
+  - compare `--codegen asm` and `--codegen llvm` on the same testcase
+
+### Command recipes
+
+Backend route / BIR observation:
+
+```bash
+./build/c4cll --codegen asm --target <triple> <file> -o <out>
+cat <out>
+```
+
+Backend route versus LLVM route:
 
 ```bash
 ./build/c4cll --codegen asm --target <triple> <file> -o /tmp/backend.txt
 ./build/c4cll --codegen llvm --target <triple> <file> -o /tmp/llvm.txt
 ```
 
-## Constraints
+### Investigation workflow
 
-- `--pp-only`, `--lex-only`, `--parse-only`, `--dump-canonical`, `--dump-hir`,
-  `--dump-hir-summary`, `--dump-bir`, `--dump-prepared-bir`, `--dump-mir`,
-  and `--trace-mir` are mutually exclusive inspection modes
-- `--backend-bir-stage` is for `--codegen asm` only; do not combine it with
-  `--dump-bir`, `--dump-prepared-bir`, `--dump-mir`, or `--trace-mir`
-- `--dump-mir` and `--trace-mir` are currently route-level MIR visibility, not
-  a full printed target-local MIR graph
+1. First ask whether the question is about lowering route or final machine asm.
+2. Use `--codegen asm --target <triple> ... -o <out>` to observe the backend
+   route surface.
+3. If `<out>` starts with `bir.func`, semantic BIR lowering succeeded and the
+   current route printed BIR text.
+4. If `<out>` looks like LLVM IR such as `define ...`, the route fell back to
+   LIR/LLVM-style text instead of staying on the semantic BIR lane.
+5. If `--codegen asm` errors out saying backend-native assembly is required,
+   the chosen route did not produce native asm and did not return printable BIR
+   text for that path.
+6. Use `--codegen llvm` only as the comparison surface, not as proof that the
+   backend route is healthy.
 
-## Repo Examples
+### Practical heuristics
+
+- If the question is "did this testcase reach BIR yet?":
+  - prefer `--codegen asm --target <triple> <file> -o <out>`
+- If the question is "did this route stay on backend lowering or bounce back to
+  LLVM-ish text?":
+  - inspect whether the output starts with `bir.func` or LLVM-like `define`
+- If the question is target-specific:
+  - rerun the same testcase with the exact target triple you care about
+- If the question is route drift:
+  - keep one known-good semantic BIR testcase nearby as a sentinel
+
+### Constraints
+
+- There is currently no dedicated `--dump-bir` flag.
+- Backend BIR observation currently piggybacks on `--codegen asm`.
+- This route may print native asm, semantic BIR text, or LLVM-ish fallback
+  text depending on how far the backend pipeline got for the chosen testcase
+  and target.
+
+### Examples for current repo
+
+Minimal BIR route check:
 
 ```bash
-./build/c4cll --parse-only tests/cpp/internal/parse_only_case/top_level_empty_namespace_block_preserves_following_decl_parse.cpp
-./build/c4cll --parser-debug --parser-debug-tentative --parse-only tests/cpp/internal/negative_case/parser_debug_if_condition_decl_tentative_lite.cpp
-./build/c4cll --dump-hir-summary tests/cpp/internal/hir_case/hir_stmt_local_decl_helper_hir.cpp
-./build/c4cll --dump-bir --target x86_64-unknown-linux-gnu tests/c/internal/positive_case/inline_param_bind.c
-./build/c4cll --trace-mir --target x86_64-unknown-linux-gnu tests/c/internal/positive_case/inline_param_bind.c
+./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/branch_if_eq.c -o /tmp/branch_if_eq.txt
+cat /tmp/branch_if_eq.txt
+```
+
+Backend route compare on the same testcase:
+
+```bash
+./build/c4cll --codegen asm --target riscv64-unknown-linux-gnu tests/c/internal/backend_case/call_helper.c -o /tmp/call_helper_backend.txt
+./build/c4cll --codegen llvm --target riscv64-unknown-linux-gnu tests/c/internal/backend_case/call_helper.c -o /tmp/call_helper_llvm.txt
 ```

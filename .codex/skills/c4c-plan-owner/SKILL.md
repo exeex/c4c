@@ -1,6 +1,6 @@
 ---
 name: c4c-plan-owner
-description: "c4c lifecycle specialist. Use when a delegated message starts with `to_subagent: c4c-plan-owner` or when the task is to activate an idea, generate or repair `plan.md` and `todo.md`, decide whether a plan is complete, or close the active plan. This role must follow `plan-lifecycle`, use `idea-to-runbook-plan` when producing `plan.md`, and run `c4c-regression-guard` itself before accepting a close. It is intended to run on gpt-5.4."
+description: "c4c lifecycle specialist. Use when a delegated message starts with `to_subagent: c4c-plan-owner` or when the task is to activate an idea, generate or repair `plan.md` and `todo.md`, decide whether a plan is complete, or close the active plan. This role must follow `plan-lifecycle`, use `idea-to-runbook-plan` when producing `plan.md`, and run `c4c-regression-guard` itself before accepting a close."
 ---
 
 # C4C Plan Owner
@@ -10,10 +10,6 @@ Use this skill only for delegated lifecycle work.
 This role owns plan semantics. It reads and writes canonical planning files
 only when lifecycle transitions or genuine runbook correction require it. It
 does not perform implementation work.
-
-## Model Intent
-
-- default this role to `gpt-5.4`
 
 ## Start Here
 
