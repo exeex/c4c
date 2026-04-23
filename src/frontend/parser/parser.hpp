@@ -340,7 +340,9 @@ class Parser {
   const TypeSpec* find_visible_var_type(const std::string& name) const;
   void register_var_type_binding(const std::string& name, const TypeSpec& type);
   bool has_known_fn_name(const std::string& name) const;
+  bool has_known_fn_name(const QualifiedNameKey& key) const;
   void register_known_fn_name(const std::string& name);
+  void register_known_fn_name(const QualifiedNameKey& key);
   bool is_typedef_name(std::string_view s) const;
   bool is_cpp_mode() const {
     return core_input_state_.source_profile == SourceProfile::CppSubset ||
@@ -362,6 +364,8 @@ class Parser {
   // Compatibility/debug bridge for legacy string-keyed namespace consumers.
   std::string compatibility_namespace_name_in_context(
       int context_id, TextId name_text_id, std::string_view fallback_name) const;
+  QualifiedNameKey known_fn_name_key(int context_id, TextId name_text_id,
+                                     std::string_view name) const;
   std::string bridge_name_in_context(int context_id, TextId name_text_id,
                                      std::string_view fallback_name) const;
   std::string qualified_name_text(const QualifiedNameRef& name,

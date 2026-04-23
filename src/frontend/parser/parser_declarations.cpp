@@ -2299,7 +2299,7 @@ Node* Parser::parse_top_level() {
             } else {
                 match(TokenKind::Semi);
             }
-            binding_state_.known_fn_names.insert(qualified_op_name);
+            register_known_fn_name(qualified_op_name);
             set_current_struct_tag(saved_tag_op);
             return fn;
         }
@@ -2438,7 +2438,7 @@ Node* Parser::parse_top_level() {
                 } else {
                     match(TokenKind::Semi);
                 }
-                binding_state_.known_fn_names.insert(qualified_ctor_name);
+                register_known_fn_name(qualified_ctor_name);
                 set_current_struct_tag(saved_tag_ctor);
                 return fn;
             }
@@ -3069,7 +3069,7 @@ top_level_base_ready:
             fn->ret_fn_ptr_params   = decl_fn_ptr_params;
             fn->n_ret_fn_ptr_params = decl_n_fn_ptr_params;
             fn->ret_fn_ptr_variadic = decl_fn_ptr_variadic;
-            binding_state_.known_fn_names.insert(scoped_decl_name);
+            register_known_fn_name(scoped_decl_name);
             restore_owner_scope();
             return fn;
         }
@@ -3098,7 +3098,7 @@ top_level_base_ready:
         fn->ret_fn_ptr_params   = decl_fn_ptr_params;
         fn->n_ret_fn_ptr_params = decl_n_fn_ptr_params;
         fn->ret_fn_ptr_variadic = decl_fn_ptr_variadic;
-        binding_state_.known_fn_names.insert(scoped_decl_name);
+        register_known_fn_name(scoped_decl_name);
         restore_owner_scope();
         return fn;
     }
@@ -3279,7 +3279,7 @@ top_level_base_ready:
             }
             propagate_ret_fn_ptr(fn);
             attach_spec_args(fn);
-            binding_state_.known_fn_names.insert(scoped_decl_name);
+            register_known_fn_name(scoped_decl_name);
             restore_owner_scope();
             return fn;
         }
@@ -3310,7 +3310,7 @@ top_level_base_ready:
         }
         propagate_ret_fn_ptr(fn);
         attach_spec_args(fn);
-        binding_state_.known_fn_names.insert(scoped_decl_name);
+        register_known_fn_name(scoped_decl_name);
         restore_owner_scope();
         return fn;
     }

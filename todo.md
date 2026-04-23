@@ -1,19 +1,20 @@
 Status: Active
 Source Idea Path: ideas/open/84_parser_qualified_name_structured_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory remaining qualified parser binding tables
+Current Step ID: 2
+Current Step Title: Introduce structured qualified-name keys for parser-owned lookup
 
 # Current Packet
 
 ## Just Finished
-Switched the active lifecycle from idea 83 to idea 84 so the remaining qualified/owner-scoped lookup work is tracked separately from unqualified lexical-scope migration.
+Migrated parser-owned `known_fn_names` tracking to structured qualified-name keys and routed the parser lookup/registration paths through the new structured helper instead of direct flat-string set access.
 
 ## Suggested Next
-Inventory the remaining qualified parser binding tables and classify which ones should move to structured keys versus remain compatibility-only for now.
+Migrate `ParserBindingState::struct_typedefs` to the same structured qualified-name key pattern so the remaining owner-scoped parser table stops relying on rendered strings.
 
 ## Watchouts
-Do not pull unqualified lexical-scope migration back into this plan. The remaining scope here is qualified/owner-scoped lookup only.
+The structured key currently preserves existing behavior by keying off qualified spelling rather than namespace-context identity.
 
 ## Proof
-No code changes in this lifecycle packet.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
+Passed. Proof log: `test_after.log`

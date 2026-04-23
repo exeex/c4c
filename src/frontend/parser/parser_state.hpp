@@ -13,6 +13,7 @@
 #include "token.hpp"
 #include "source_profile.hpp"
 #include "../../shared/local_name_table.hpp"
+#include "../../shared/qualified_name_table.hpp"
 #include "../../shared/text_id_table.hpp"
 
 namespace c4c {
@@ -177,6 +178,7 @@ struct ParserSharedLookupState {
   FileTable* token_files = nullptr;
   ParserSymbolTable parser_symbols;
   ParserNameTables parser_name_tables;
+  NamePathTable parser_name_paths;
 
   ParserSharedLookupState(TextTable* token_texts_in = nullptr,
                           FileTable* token_files_in = nullptr)
@@ -288,7 +290,7 @@ struct ParserBindingState {
   std::unordered_map<TextId, ParserFnPtrTypedefInfo> typedef_fn_ptr_info;
   ParserEnumConstTable enum_consts;
   ParserConstIntBindingTable const_int_bindings;
-  std::set<std::string> known_fn_names;
+  std::unordered_set<QualifiedNameKey, QualifiedNameKeyHash> known_fn_names;
   std::unordered_set<TextId> non_atom_typedefs;
   std::unordered_set<TextId> non_atom_user_typedefs;
   std::unordered_map<TextId, TypeSpec> non_atom_typedef_types;

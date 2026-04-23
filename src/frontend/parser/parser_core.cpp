@@ -174,6 +174,78 @@ bool is_unqualified_lookup_name(std::string_view name) {
     return !name.empty() && name.find("::") == std::string_view::npos;
 }
 
+QualifiedNameKey find_known_fn_name_key_from_spelling(
+    const Parser& parser, int context_id, TextId name_text_id,
+    std::string_view name) {
+    QualifiedNameKey key;
+    (void)context_id;
+    key.context_id = 0;
+    if (name.empty()) return key;
+
+    size_t start = 0;
+    if (name.rfind("::", 0) == 0) {
+        key.is_global_qualified = true;
+        start = 2;
+    }
+
+    std::vector<TextId> qualifier_text_ids;
+    size_t segment_start = start;
+    while (segment_start < name.size()) {
+        const size_t sep = name.find("::", segment_start);
+        if (sep == std::string_view::npos) break;
+        const std::string_view segment = name.substr(segment_start, sep - segment_start);
+        if (!segment.empty()) {
+            qualifier_text_ids.push_back(
+                parser.parser_text_id_for_token(kInvalidText, segment));
+        }
+        segment_start = sep + 2;
+    }
+
+    const std::string_view base = name.substr(segment_start);
+    key.base_text_id = name_text_id != kInvalidText &&
+                               !name.empty() &&
+                               name.find("::") == std::string_view::npos
+                           ? name_text_id
+                           : parser.parser_text_id_for_token(kInvalidText, base);
+    if (key.base_text_id == kInvalidText && !base.empty()) {
+        key.base_text_id = parser.find_parser_text_id(base);
+    }
+
+    if (!qualifier_text_ids.empty()) {
+        key.qualifier_path_id =
+            parser.shared_lookup_state_.parser_name_paths.find(qualifier_text_ids);
+    }
+    return key;
+}
+
+QualifiedNameKey intern_known_fn_name_key_from_spelling(
+    Parser& parser, int context_id, TextId name_text_id, std::string_view name) {
+    QualifiedNameKey key = find_known_fn_name_key_from_spelling(
+        parser, context_id, name_text_id, name);
+    if (key.qualifier_path_id == kInvalidNamePath) {
+        std::vector<TextId> qualifier_text_ids;
+        size_t start = name.rfind("::", 0) == 0 ? 2 : 0;
+        size_t segment_start = start;
+        while (segment_start < name.size()) {
+            const size_t sep = name.find("::", segment_start);
+            if (sep == std::string_view::npos) break;
+            const std::string_view segment =
+                name.substr(segment_start, sep - segment_start);
+            if (!segment.empty()) {
+                qualifier_text_ids.push_back(
+                    parser.parser_text_id_for_token(kInvalidText, segment));
+            }
+            segment_start = sep + 2;
+        }
+        if (!qualifier_text_ids.empty()) {
+            key.qualifier_path_id =
+                parser.shared_lookup_state_.parser_name_paths.intern(
+                    qualifier_text_ids);
+        }
+    }
+    return key;
+}
+
 int& visible_typedef_fallback_depth_for(const Parser& parser) {
     static thread_local std::unordered_map<const Parser*, int> depths;
     return depths[&parser];
@@ -739,12 +811,28 @@ void Parser::register_var_type_binding(const std::string& name,
     }
 }
 
+QualifiedNameKey Parser::known_fn_name_key(int context_id, TextId name_text_id,
+                                           std::string_view name) const {
+    return find_known_fn_name_key_from_spelling(*this, context_id, name_text_id,
+                                                name);
+}
+
+bool Parser::has_known_fn_name(const QualifiedNameKey& key) const {
+    return binding_state_.known_fn_names.count(key) > 0;
+}
+
 bool Parser::has_known_fn_name(const std::string& name) const {
-    return binding_state_.known_fn_names.count(name) > 0;
+    return has_known_fn_name(
+        known_fn_name_key(0, parser_text_id_for_token(kInvalidText, name), name));
+}
+
+void Parser::register_known_fn_name(const QualifiedNameKey& key) {
+    binding_state_.known_fn_names.insert(key);
 }
 
 void Parser::register_known_fn_name(const std::string& name) {
-    binding_state_.known_fn_names.insert(name);
+    register_known_fn_name(intern_known_fn_name_key_from_spelling(
+        *this, 0, parser_text_id_for_token(kInvalidText, name), name));
 }
 
 ParserParseContextGuard::ParserParseContextGuard(
@@ -1979,13 +2067,15 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
                                      std::string* resolved) const {
     const std::string candidate =
         compatibility_namespace_name_in_context(context_id, name_text_id, name);
-    if (has_var_type(candidate) || has_known_fn_name(candidate)) {
+    if (has_var_type(candidate) ||
+        has_known_fn_name(known_fn_name_key(0, name_text_id, candidate))) {
         *resolved = candidate;
         return true;
     }
     const std::string fallback_name(name);
     if (context_id == 0 &&
-        (has_var_type(fallback_name) || has_known_fn_name(fallback_name))) {
+        (has_var_type(fallback_name) ||
+         has_known_fn_name(known_fn_name_key(0, name_text_id, fallback_name)))) {
         *resolved = name;
         return true;
     }
