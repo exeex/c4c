@@ -9,20 +9,18 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: removed the remaining `qn.spelled()` qualified-expression
-  fallbacks in `parser_expressions.cpp` by rebuilding unresolved qualified
-  spellings from `QualifiedNameRef` TextIds instead of the rendered-name
-  fallback path
-- kept the lookup-first behavior in the global-qualified identifier, ordinary
-  qualified identifier, and qualified functional-cast operand paths while
-  preserving the existing `apply_qualified_name(...)` wiring
+- Step 2 packet: replaced the last direct `QualifiedNameRef::spelled()` use in
+  `parser_types_declarator.cpp` with the TextId-backed qualified-name spelling
+  helper inside `consume_qualified_type_spelling()`
+- kept the qualified-type spelling/consumption path on the TextId-backed
+  bridge instead of the rendered-name fallback path, while leaving the rest of
+  Step 2 parser type handling untouched
 
 ## Suggested Next
 
-- run the focused build/test proof for Step 2 and record the outcome in the
-  proof block below
-- if the proof is green, keep Step 2 narrowed to parser expression lookup
-  helpers and avoid widening into `parser_core.cpp` or broader binding-table
+- if Step 2 continues, inspect the next qualified-type consumer in the parser
+  type family and keep the work inside qualified spelling/consumption paths
+- avoid widening this packet into `parser_core.cpp` or unrelated binding-table
   cleanup
 
 ## Watchouts
@@ -40,9 +38,11 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
   joins instead of `qn.spelled()`
 - keep `parser_core.cpp` at the restored baseline; do not add new behavior
   there while Step 2 is still trimming parser entry-point bridge assumptions
+- the declarator packet now uses a local TextId helper to avoid widening the
+  qualified-type spelling route into unrelated parser families
 
 ## Proof
 
 - `cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R 'namespace|namespaced|using_namespace|using_declaration_namespace|using_nested_namespace|bad_namespace_member_without_qualification' | tee test_after.log`
-- result: passed, 45/45 focused tests green
+- result: passed after one helper-scope fix, 45/45 focused tests green
 - log: `test_after.log`
