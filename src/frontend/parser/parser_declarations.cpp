@@ -804,6 +804,55 @@ Node* Parser::parse_local_decl() {
                         resolve_visible_value_name(head_tok.text_id, head_name);
                     return !resolved.empty() && has_known_fn_name(resolved);
                 };
+                auto classify_qualified_value_or_type_starter =
+                    [&](int pos) -> int {
+                    if (pos >= static_cast<int>(core_input_state_.tokens.size())) {
+                        return 0;
+                    }
+                    const TokenKind first_kind =
+                        core_input_state_.tokens[pos].kind;
+                    if (first_kind != TokenKind::Identifier &&
+                        first_kind != TokenKind::ColonColon) {
+                        return 0;
+                    }
+
+                    const int saved_pos = core_input_state_.pos;
+                    core_input_state_.pos = pos;
+
+                    QualifiedNameRef qn;
+                    const bool parsed_qn = peek_qualified_name(
+                        &qn, first_kind == TokenKind::ColonColon);
+                    core_input_state_.pos = saved_pos;
+                    if (!parsed_qn ||
+                        (!qn.is_global_qualified &&
+                         qn.qualifier_segments.empty())) {
+                        return 0;
+                    }
+
+                    int after_name_pos = pos;
+                    if (qn.is_global_qualified) ++after_name_pos;
+                    after_name_pos +=
+                        1 + 2 * static_cast<int>(qn.qualifier_segments.size());
+                    if (after_name_pos >=
+                        static_cast<int>(core_input_state_.tokens.size())) {
+                        return 0;
+                    }
+
+                    const TokenKind tail_kind =
+                        core_input_state_.tokens[after_name_pos].kind;
+                    if (tail_kind != TokenKind::LParen &&
+                        !(tail_kind == TokenKind::Less &&
+                          starts_with_value_like_template_expr(
+                              *this, core_input_state_.tokens, pos))) {
+                        return 0;
+                    }
+
+                    if (!resolve_qualified_value_name(qn).empty()) return 1;
+                    if (!resolve_qualified_type_name(qn).empty()) return -1;
+                    // Keep unresolved qualified starters on the declaration
+                    // side unless they are known-visible value paths.
+                    return -1;
+                };
                 auto can_use_lite_ctor_init_probe = [&]() -> bool {
                     if (core_input_state_.pos + 1 >=
                         static_cast<int>(core_input_state_.tokens.size())) {
@@ -837,7 +886,6 @@ Node* Parser::parse_local_decl() {
                         case TokenKind::KwUnion:
                         case TokenKind::KwEnum:
                         case TokenKind::KwTypename:
-                        case TokenKind::ColonColon:
                         case TokenKind::RParen:
                             return false;
                         case TokenKind::Identifier: {
@@ -851,6 +899,10 @@ Node* Parser::parse_local_decl() {
                             if (single_value_arg) return true;
                             if (starts_with_visible_value_template_expr(
                                     core_input_state_.pos + 1)) {
+                                return true;
+                            }
+                            if (classify_qualified_value_or_type_starter(
+                                    core_input_state_.pos + 1) > 0) {
                                 return true;
                             }
                             // If the first argument already has unresolved
@@ -875,6 +927,9 @@ Node* Parser::parse_local_decl() {
                             }
                             return true;
                         }
+                        case TokenKind::ColonColon:
+                            return classify_qualified_value_or_type_starter(
+                                       core_input_state_.pos + 1) > 0;
                         default:
                             return false;
                     }
@@ -914,6 +969,11 @@ Node* Parser::parse_local_decl() {
                             core_input_state_.pos + 1)) {
                         return false;
                     }
+                    const int qualified_head_kind =
+                        classify_qualified_value_or_type_starter(
+                            core_input_state_.pos + 1);
+                    if (qualified_head_kind > 0) return false;
+                    if (qualified_head_kind < 0) return true;
 
                     std::vector<Node*> probe_params;
                     std::vector<const char*> probe_knr_names;

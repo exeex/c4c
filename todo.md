@@ -8,18 +8,18 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 
 ## Just Finished
 Advanced `plan.md` step 2 by teaching the local ctor-init/function-declaration
-probe to keep unresolved template-headed parameter forms such as
-`Value<int>(other)` on the declaration-first path while still biasing known
-visible value templates like `source<int>(payload)` toward
-direct-initialization expressions. The probe now recognizes value-like
-template starters backed by visible value or known function bindings instead
-of letting them fall through to the generic parameter-list heuristic.
+probe to classify qualified starters such as `ns::value(...)` and
+`ns::value<T>(...)` before the generic parameter-list path. The direct-init
+probe now keeps unresolved qualified starters on the declaration/type side
+while still biasing known qualified visible values and function templates
+toward constructor-style expression parsing.
 
 ## Suggested Next
-Continue `plan.md` step 2 by auditing the remaining ctor-init probe cases
-where qualified starters such as `ns::value(...)` or `ns::value<T>(...)`
-still rely on the generic parameter-list path instead of an explicit
-value-vs-type split that stays separate from namespace traversal.
+Continue `plan.md` step 2 by checking whether the remaining local
+declaration/expression ambiguity probes can reuse the same qualified
+value-vs-type split without pulling namespace traversal back into the lexical
+scope path. Focus on `using`-imported or global-qualified starter forms only
+if they still bypass the structured helper.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. The shared helper
@@ -28,10 +28,10 @@ still distinguish value bindings from type bindings. The constructor-init
 probe now special-cases unresolved `identifier identifier`,
 `identifier &/* identifier`, simple parenthesized `identifier(...)`, and
 grouped pointer/reference `identifier((...))` starters differently, and it now
-also short-circuits value-like template starters only when the head resolves
-through visible value or known-function lookup. Future cleanup should keep
-that value-vs-type bias local to direct-init disambiguation instead of
-re-expanding it into namespace-qualified lookup.
+also short-circuits both unqualified and qualified value-like starters only
+when the head resolves through visible value or known-function lookup. Future
+cleanup should keep that value-vs-type bias local to direct-init
+disambiguation instead of re-expanding it into namespace-qualified lookup.
 
 ## Proof
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' | tee test_after.log` passed. Proof log: `test_after.log`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_cxx_)' | tee test_after.log` passed. Proof log: `test_after.log`.
