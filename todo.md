@@ -5,37 +5,44 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 3.3.3
 Current Step Title: Finish The Remaining Stack And Local-Slot Observational Holdouts
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed step 3.3.3 for the authoritative named stack-offset query path used
-by `prepared_fast_path_operands.cpp` by moving
-`find_prepared_authoritative_named_stack_offset_if_supported` out of
-`x86_codegen.hpp` and into `lowering/frame_lowering.*`, leaving only a forward
-declaration in the transitional header for its remaining inline caller.
+Completed another step 3.3.3 declaration cleanup packet by moving the
+authoritative fixed/home stack-offset query surface and
+`build_prepared_module_local_slot_layout(...)` wrappers out of
+`x86_codegen.hpp` and into `lowering/frame_lowering.*`, so the transitional
+header no longer owns those stack/home query declarations.
 
 ## Suggested Next
 
-Continue step 3.3.3 by moving the next stack/local-slot observational holdout
-behind lowering-owned seams, likely the remaining prepared named stack-address
-query/render path that still keeps `x86_codegen.hpp` in the include chain for
-prepared fast-path helpers.
+Continue step 3.3.3 by moving the last remaining local-slot declaration
+holdout behind a narrower owner: the inline bounded multi-defined helper still
+uses `render_prepared_local_slot_memory_operand_if_supported(...)` from
+`x86_codegen.hpp`, so the next packet should re-seam or relocate that inline
+path until the transitional header no longer needs the local-slot renderer
+declaration.
 
 ## Watchouts
 
-- `prepared_fast_path_operands.cpp` still includes `x86_codegen.hpp` for other
-  shared helpers such as ABI register selection, register narrowing, prepared
-  stack-address rendering, and the canonical call-bundle handoff message.
-- `x86_codegen.hpp` still carries a forward declaration for the moved resolver
-  because an inline prepared stack-address helper there still calls it; fully
-  removing that declaration will require moving or re-seaming that inline path
-  as a follow-on 3.3.3 packet.
+- `x86_codegen.hpp` still declares
+  `render_prepared_local_slot_memory_operand_if_supported(...)` because
+  `render_prepared_bounded_multi_defined_call_lane_body_if_supported(...)`
+  remains inline there and still issues local-slot loads/stores directly.
+- The generic stack render helpers
+  `render_prepared_stack_memory_operand(...)` and
+  `render_prepared_stack_address_expr(...)` still remain on the transitional
+  header because backend tests and compatibility consumers include that
+  surface directly.
+- `prepared_fast_path_operands.cpp` still includes `x86_codegen.hpp` for
+  non-stack helpers such as register narrowing and the canonical call-bundle
+  handoff message.
 
 ## Proof
 
-Step 3.3.3 authoritative named stack-offset seam packet on
+Step 3.3.3 stack/home declaration cleanup packet on
 2026-04-23:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`

@@ -9,6 +9,12 @@ struct PreparedNamedHomeSelection {
   std::optional<std::size_t> frame_offset;
 };
 
+std::optional<std::size_t> find_prepared_fixed_permanent_named_stack_offset_if_supported(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    const c4c::backend::prepare::PreparedNameTables& prepared_names,
+    c4c::FunctionNameId function_name,
+    std::string_view value_name);
+
 std::optional<std::size_t> find_prepared_authoritative_named_stack_offset_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
     const c4c::backend::prepare::PreparedStackLayout* stack_layout,
@@ -17,7 +23,7 @@ std::optional<std::size_t> find_prepared_authoritative_named_stack_offset_if_sup
     const c4c::backend::prepare::PreparedValueLocationFunction* function_locations,
     c4c::FunctionNameId function_name,
     std::string_view value_name,
-    std::unordered_set<std::string_view>* visited_names);
+    std::unordered_set<std::string_view>* visited_names = nullptr);
 
 std::optional<std::size_t> find_prepared_authoritative_value_stack_offset_if_supported(
     const PreparedModuleLocalSlotLayout& local_layout,
@@ -76,5 +82,28 @@ std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_la
     const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
     const c4c::backend::prepare::PreparedNameTables* prepared_names,
     c4c::TargetArch prepared_arch);
+
+inline std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
+    c4c::TargetArch prepared_arch) {
+  return build_prepared_module_local_slot_layout(
+      function, stack_layout, nullptr, nullptr, prepared_arch);
+}
+
+inline std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
+    const c4c::backend::bir::Function& function,
+    c4c::TargetArch prepared_arch) {
+  return build_prepared_module_local_slot_layout(function, nullptr, nullptr, nullptr, prepared_arch);
+}
+
+inline std::optional<PreparedModuleLocalSlotLayout> build_prepared_module_local_slot_layout(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    const c4c::backend::prepare::PreparedNameTables* prepared_names,
+    c4c::TargetArch prepared_arch) {
+  return build_prepared_module_local_slot_layout(
+      function, nullptr, function_addressing, prepared_names, prepared_arch);
+}
 
 }  // namespace c4c::backend::x86
