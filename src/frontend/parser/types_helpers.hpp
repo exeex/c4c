@@ -374,17 +374,22 @@ struct QualifiedTypeProbe {
 
 std::string resolve_qualified_typedef_name(const Parser& parser,
                                            const Parser::QualifiedNameRef& qn) {
-    std::string resolved = qn.spelled();
-    if (!resolved.empty() && parser.has_typedef_type(resolved))
-        return resolved;
-
-    if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
-        resolved = parser.resolve_qualified_type_name(qn);
+    const bool is_qualified = !qn.qualifier_segments.empty() ||
+                              qn.is_global_qualified;
+    if (is_qualified) {
+        std::string resolved = parser.resolve_qualified_type_name(qn);
+        if (!resolved.empty() && parser.has_typedef_type(resolved))
+            return resolved;
+        resolved = qn.spelled();
+        if (!resolved.empty() && parser.has_typedef_type(resolved))
+            return resolved;
+    } else {
+        std::string resolved = qn.spelled();
         if (!resolved.empty() && parser.has_typedef_type(resolved))
             return resolved;
     }
 
-    resolved = parser.resolve_visible_type_name(
+    std::string resolved = parser.resolve_visible_type_name(
         parser.parser_text(qn.base_text_id, qn.base_name));
     if (parser.has_typedef_type(resolved))
         return resolved;
@@ -400,15 +405,23 @@ std::string resolve_qualified_known_type_name(
     std::string resolved = resolve_qualified_typedef_name(parser, qn);
     if (!resolved.empty()) return resolved;
 
-    resolved = qn.spelled();
-    if (!resolved.empty() &&
-        (parser.template_state_.template_struct_defs.count(resolved) > 0 ||
-         parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {
-        return resolved;
-    }
-
-    if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
+    const bool is_qualified = !qn.qualifier_segments.empty() ||
+                              qn.is_global_qualified;
+    if (is_qualified) {
         resolved = parser.resolve_qualified_type_name(qn);
+        if (!resolved.empty() &&
+            (parser.template_state_.template_struct_defs.count(resolved) > 0 ||
+             parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {
+            return resolved;
+        }
+        resolved = qn.spelled();
+        if (!resolved.empty() &&
+            (parser.template_state_.template_struct_defs.count(resolved) > 0 ||
+             parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {
+            return resolved;
+        }
+    } else {
+        resolved = qn.spelled();
         if (!resolved.empty() &&
             (parser.template_state_.template_struct_defs.count(resolved) > 0 ||
              parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {

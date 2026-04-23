@@ -11,15 +11,15 @@ Plan Review Counter: 1 / 8
 
 ## Just Finished
 
-- Step 2 packet: replaced the last direct
-  `canonical_name_in_context(...)` fallback sites in the owned parser files
-  with `bridge_name_in_context(...)` so qualified record-tag and nested-owner
-  lookup now stay on the TextId-aware bridge path after context resolution
+- Step 2 packet: redirected the qualified type probe path in
+  `types_helpers.hpp` so structured `resolve_qualified_type_name(qn)` probes
+  run before spelled-name fallback for qualified/global-qualified type
+  resolution
 
 ## Suggested Next
 
 - continue Step 2 by checking whether any remaining parser namespace lookup
-  helpers still depend on string synthesis after context resolution
+  helpers still depend on bridge/canonical synthesis after context resolution
 - keep the follow-on packet inside parser namespace lookup and leave broader
   binding-table or lexical-scope cleanup for later work
 
@@ -35,9 +35,11 @@ Plan Review Counter: 1 / 8
   namespace-scoped aliases while the lookup internals move to `TextId` paths
 - keep raw `::`-qualified spellings stable when they already bypass bridge
   synthesis
+- keep `parser_core.cpp` at the restored baseline for this redirected packet;
+  do not add new behavior there
 
 ## Proof
 
 - `cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R 'namespace|namespaced|using_namespace|using_declaration_namespace|using_nested_namespace|bad_namespace_member_without_qualification' | tee test_after.log`
-- result: passed after the TextId bridge replacement slice, 44/44 focused tests green
+- result: passed, 44/44 focused tests green
 - log: `test_after.log`
