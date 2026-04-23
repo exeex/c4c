@@ -1624,13 +1624,19 @@ TypeSpec Parser::parse_base_type() {
                                                         resolved_owner);
                                         }
                                         if (!primary_tpl) {
-                                            const std::string canonical_owner =
-                                                canonical_name_in_context(
-                                                    current_namespace_context_id(),
-                                                    owner_lookup_name);
-                                            primary_tpl =
-                                                find_template_struct_primary(
-                                                    canonical_owner);
+                                            if (owner_lookup_name.find("::") ==
+                                                std::string::npos) {
+                                                const std::string canonical_owner =
+                                                    bridge_name_in_context(
+                                                        current_namespace_context_id(),
+                                                        parser_text_id_for_token(
+                                                            kInvalidText,
+                                                            owner_lookup_name),
+                                                        owner_lookup_name);
+                                                primary_tpl =
+                                                    find_template_struct_primary(
+                                                        canonical_owner);
+                                            }
                                         }
                                         if (!primary_tpl) return false;
 
