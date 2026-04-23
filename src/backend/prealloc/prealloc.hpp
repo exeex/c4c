@@ -939,6 +939,7 @@ enum class PreparedCallWrapperKind {
 
 struct PreparedIndirectCalleePlan {
   ValueNameId value_name = kInvalidValueName;
+  std::optional<PreparedValueId> value_id;
   PreparedStorageEncodingKind encoding = PreparedStorageEncodingKind::None;
   PreparedRegisterBank bank = PreparedRegisterBank::None;
   std::optional<std::string> register_name;

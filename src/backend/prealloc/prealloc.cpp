@@ -251,6 +251,7 @@ namespace {
 
   PreparedIndirectCalleePlan plan{
       .value_name = *value_name_id,
+      .value_id = std::nullopt,
       .encoding = PreparedStorageEncodingKind::None,
       .bank = published_bank_for_value(regalloc_function, *value_name_id, call.callee_value->type),
       .register_name = std::nullopt,
@@ -266,6 +267,7 @@ namespace {
   }
 
   if (const auto* home = find_prepared_value_home(*value_locations, *value_name_id); home != nullptr) {
+    plan.value_id = home->value_id;
     plan.encoding = storage_encoding_from_home(*home);
     plan.register_name = home->register_name;
     plan.slot_id = home->slot_id;

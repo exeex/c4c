@@ -1199,7 +1199,7 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(call_wrapper_dump,
-                       "callsite block=0 inst=3 wrapper=indirect variadic_fpr_args=0 args=1 indirect_callee=callee.ptr indirect_home=register indirect_bank=gpr",
+                       "callsite block=0 inst=3 wrapper=indirect variadic_fpr_args=0 args=1 indirect_callee=callee.ptr indirect_home=register indirect_bank=gpr indirect_value_id=",
                        "indirect wrapper summary")) {
     return EXIT_FAILURE;
   }
@@ -1209,7 +1209,7 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(call_wrapper_dump,
-                       "call block_index=0 inst_index=3 wrapper_kind=indirect variadic_fpr_arg_register_count=0 indirect=yes indirect_callee=callee.ptr indirect_encoding=register indirect_bank=gpr",
+                       "call block_index=0 inst_index=3 wrapper_kind=indirect variadic_fpr_arg_register_count=0 indirect=yes indirect_callee=callee.ptr indirect_encoding=register indirect_bank=gpr indirect_value_id=",
                        "indirect wrapper call-plan detail")) {
     return EXIT_FAILURE;
   }

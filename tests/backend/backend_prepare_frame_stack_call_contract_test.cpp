@@ -1609,7 +1609,17 @@ int check_indirect_call_contract() {
     return fail("indirect-call contract: call_plans lost GPR ownership");
   }
   const auto& indirect_callee = *call_plan.indirect_callee;
+  const auto* storage_plan = find_storage_plan_function(prepared, "indirect_call_contract");
+  if (storage_plan == nullptr) {
+    return fail("indirect-call contract: storage plan no longer publishes the indirect callee value");
+  }
+  const auto* callee_storage = find_storage_value(prepared, *storage_plan, "callee.ptr");
+  if (callee_storage == nullptr) {
+    return fail("indirect-call contract: storage plan no longer resolves callee.ptr");
+  }
   if (prepare::prepared_value_name(prepared.names, indirect_callee.value_name) != "callee.ptr" ||
+      !indirect_callee.value_id.has_value() ||
+      *indirect_callee.value_id != callee_storage->value_id ||
       indirect_callee.encoding != prepare::PreparedStorageEncodingKind::Register ||
       indirect_callee.bank != prepare::PreparedRegisterBank::Gpr ||
       !indirect_callee.register_name.has_value()) {

@@ -183,6 +183,9 @@ void append_indirect_callee_summary(std::ostringstream& out,
   out << " indirect_callee=" << maybe_value_name(names, callee->value_name)
       << " indirect_home=" << storage_encoding_kind_name(callee->encoding)
       << " indirect_bank=" << prepared_register_bank_name(callee->bank);
+  if (callee->value_id.has_value()) {
+    out << " indirect_value_id=" << *callee->value_id;
+  }
   if (callee->register_name.has_value()) {
     out << " indirect_reg=" << *callee->register_name;
   }
@@ -200,6 +203,9 @@ void append_indirect_callee_detail(std::ostringstream& out,
   out << " indirect_callee=" << maybe_value_name(names, callee.value_name)
       << " indirect_encoding=" << storage_encoding_kind_name(callee.encoding)
       << " indirect_bank=" << prepared_register_bank_name(callee.bank);
+  if (callee.value_id.has_value()) {
+    out << " indirect_value_id=" << *callee.value_id;
+  }
   if (callee.register_name.has_value()) {
     out << " indirect_reg=" << *callee.register_name;
   }
