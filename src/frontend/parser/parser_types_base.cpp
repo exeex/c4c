@@ -266,9 +266,17 @@ bool Parser::looks_like_unresolved_parenthesized_parameter_type_head(int pos) co
     int inner = lparen + 1;
     if (inner >= static_cast<int>(core_input_state_.tokens.size())) return false;
 
-    if (core_input_state_.tokens[inner].kind == TokenKind::Star ||
-        core_input_state_.tokens[inner].kind == TokenKind::Amp ||
-        core_input_state_.tokens[inner].kind == TokenKind::AmpAmp) {
+    int grouped_depth = 0;
+    while (inner < static_cast<int>(core_input_state_.tokens.size()) &&
+           core_input_state_.tokens[inner].kind == TokenKind::LParen) {
+        ++grouped_depth;
+        ++inner;
+    }
+
+    while (inner < static_cast<int>(core_input_state_.tokens.size()) &&
+           (core_input_state_.tokens[inner].kind == TokenKind::Star ||
+            core_input_state_.tokens[inner].kind == TokenKind::Amp ||
+            core_input_state_.tokens[inner].kind == TokenKind::AmpAmp)) {
         ++inner;
     }
 
@@ -276,9 +284,18 @@ bool Parser::looks_like_unresolved_parenthesized_parameter_type_head(int pos) co
         core_input_state_.tokens[inner].kind != TokenKind::Identifier) {
         return false;
     }
+    ++inner;
 
-    return inner + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
-           core_input_state_.tokens[inner + 1].kind == TokenKind::RParen;
+    for (int i = 0; i < grouped_depth; ++i) {
+        if (inner >= static_cast<int>(core_input_state_.tokens.size()) ||
+            core_input_state_.tokens[inner].kind != TokenKind::RParen) {
+            return false;
+        }
+        ++inner;
+    }
+
+    return inner < static_cast<int>(core_input_state_.tokens.size()) &&
+           core_input_state_.tokens[inner].kind == TokenKind::RParen;
 }
 
 // ── skip helpers ─────────────────────────────────────────────────────────────
