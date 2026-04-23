@@ -183,12 +183,12 @@ std::string Parser::build_template_struct_mangled_name(
 bool Parser::decode_type_ref_text(const std::string& text, TypeSpec* out) {
     if (!out || text.empty()) return false;
 
-    if (const TypeSpec* type = find_typedef_type(text)) {
+    if (const TypeSpec* type = find_visible_typedef_type(text)) {
         *out = *type;
         return true;
     }
 
-    if (const TypeSpec* type = find_visible_typedef_type(text)) {
+    if (const TypeSpec* type = find_typedef_type(text)) {
         *out = *type;
         return true;
     }

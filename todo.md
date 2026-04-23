@@ -7,18 +7,18 @@ Current Step Title: Move unqualified visible lookup onto the new scope-local pat
 # Current Packet
 
 ## Just Finished
-Completed another Step 4 parser packet by routing the remaining unqualified
-typedef/dependent-type resolution points in base-type parsing through the
-scoped visible typedef facade. `parse_base_type()` now resolves unqualified
-typedef tags through local-first visible lookup before the legacy flat table,
-and dependent `typename` parsing no longer falls through when the visible
-binding exists only in parser-local scope state.
+Completed another Step 4 parser packet by moving the remaining unqualified
+template/helper typedef checks in `parser_types_template.cpp` and
+`types_helpers.hpp` onto the scoped visible typedef facade. Template type-ref
+decoding now probes visible typedef bindings before the flat table, and the
+qualified-type helper marks unqualified typedef names as resolved when they
+exist only in parser-local visible scope state while preserving the visible
+typedef spelling instead of leaking the underlying tag.
 
 ## Suggested Next
-Continue Step 4 by auditing the remaining template/member lookup helpers that
-still read typedef state directly from legacy flat tables, especially the
-fallbacks in `parser_types_template.cpp` that may still miss parser-local
-visible typedef bindings.
+Review whether any non-template parser helpers outside this packet still use
+unqualified `has_typedef_type(...)` / `find_typedef_type(...)` checks where
+the new local-first visible typedef facade should be consulted instead.
 
 ## Watchouts
 Do not collapse namespace traversal into lexical lookup. Step 3 only adds the

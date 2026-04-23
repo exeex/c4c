@@ -406,9 +406,9 @@ std::string resolve_qualified_typedef_name(const Parser& parser,
         if (!resolved.empty() && parser.has_typedef_type(resolved))
             return resolved;
     } else {
-        std::string resolved = std::string(base_name);
-        if (!resolved.empty() && parser.has_typedef_type(resolved))
-            return resolved;
+        if (parser.find_visible_typedef_type(qn.base_text_id, base_name)) {
+            return std::string(base_name);
+        }
     }
 
     std::string resolved =
@@ -458,7 +458,9 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
                                         const Parser::QualifiedNameRef& qn) {
     QualifiedTypeProbe probe;
     probe.resolved_typedef_name = resolve_qualified_known_type_name(parser, qn);
-    if (parser.has_typedef_type(probe.resolved_typedef_name)) {
+    if ((!qn.qualifier_segments.empty() || qn.is_global_qualified)
+            ? parser.has_typedef_type(probe.resolved_typedef_name)
+            : parser.has_visible_typedef_type(qn.base_text_id, qn.base_name)) {
         probe.has_resolved_typedef = true;
         return probe;
     }
