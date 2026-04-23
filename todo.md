@@ -3,7 +3,7 @@ Source Idea Path: ideas/open/88_prepared_frame_stack_call_authority_completion_f
 Source Plan Path: plan.md
 Current Step ID: 3.1
 Current Step Title: Argument And Result Source Authority
-Plan Review Counter: 2 / 6
+Plan Review Counter: 3 / 6
 # Current Packet
 
 ## Just Finished
