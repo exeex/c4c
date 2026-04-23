@@ -3,7 +3,7 @@ Source Idea Path: ideas/open/88_prepared_frame_stack_call_authority_completion_f
 Source Plan Path: plan.md
 Current Step ID: 3.2
 Current Step Title: Save, Clobber, And Preservation Authority
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
