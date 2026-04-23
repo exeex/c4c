@@ -201,6 +201,55 @@ void append_indirect_callee_detail(std::ostringstream& out,
   }
 }
 
+void append_memory_return_summary(std::ostringstream& out,
+                                  const PreparedNameTables& names,
+                                  const std::optional<PreparedMemoryReturnPlan>& memory_return) {
+  if (!memory_return.has_value()) {
+    return;
+  }
+
+  out << " memory_return=";
+  if (memory_return->storage_slot_name != kInvalidSlotName) {
+    out << prepared_slot_name(names, memory_return->storage_slot_name);
+  } else {
+    out << "<none>";
+  }
+  out << " memory_home=" << storage_encoding_kind_name(memory_return->encoding);
+  if (memory_return->sret_arg_index.has_value()) {
+    out << " sret_arg=" << *memory_return->sret_arg_index;
+  }
+  if (memory_return->stack_offset_bytes.has_value()) {
+    out << " memory_stack_offset=" << *memory_return->stack_offset_bytes;
+  }
+}
+
+void append_memory_return_detail(std::ostringstream& out,
+                                 const PreparedNameTables& names,
+                                 const PreparedMemoryReturnPlan& memory_return) {
+  out << " memory_return=";
+  if (memory_return.storage_slot_name != kInvalidSlotName) {
+    out << prepared_slot_name(names, memory_return.storage_slot_name);
+  } else {
+    out << "<none>";
+  }
+  out << " memory_encoding=" << storage_encoding_kind_name(memory_return.encoding);
+  if (memory_return.sret_arg_index.has_value()) {
+    out << " sret_arg_index=" << *memory_return.sret_arg_index;
+  }
+  if (memory_return.slot_id.has_value()) {
+    out << " memory_slot=#" << *memory_return.slot_id;
+  }
+  if (memory_return.stack_offset_bytes.has_value()) {
+    out << " memory_stack_offset=" << *memory_return.stack_offset_bytes;
+  }
+  if (memory_return.size_bytes != 0) {
+    out << " memory_size=" << memory_return.size_bytes;
+  }
+  if (memory_return.align_bytes != 0) {
+    out << " memory_align=" << memory_return.align_bytes;
+  }
+}
+
 std::string maybe_register_bank(std::optional<PreparedRegisterBank> bank) {
   if (!bank.has_value()) {
     return "none";
@@ -303,6 +352,7 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
         out << " variadic_fpr_args=" << call.variadic_fpr_arg_register_count;
         out << " args=" << call.arguments.size();
         append_indirect_callee_summary(out, module.names, call.indirect_callee);
+        append_memory_return_summary(out, module.names, call.memory_return);
         if (call.result.has_value()) {
           out << " result_bank=" << prepared_register_bank_name(call.result->value_bank);
         }
@@ -676,6 +726,9 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
       }
       if (call.indirect_callee.has_value()) {
         append_indirect_callee_detail(out, module.names, *call.indirect_callee);
+      }
+      if (call.memory_return.has_value()) {
+        append_memory_return_detail(out, module.names, *call.memory_return);
       }
       out << "\n";
       for (const auto& arg : call.arguments) {

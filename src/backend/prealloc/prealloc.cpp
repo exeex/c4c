@@ -278,6 +278,63 @@ namespace {
   return plan;
 }
 
+[[nodiscard]] std::optional<PreparedMemoryReturnPlan> build_memory_return_plan(
+    const PreparedNameTables& names,
+    const PreparedStackLayout& stack_layout,
+    FunctionNameId function_name,
+    const bir::CallInst& call) {
+  if (!call.result_abi.has_value() || !call.result_abi->returned_in_memory ||
+      !call.sret_storage_name.has_value()) {
+    return std::nullopt;
+  }
+
+  PreparedMemoryReturnPlan plan{
+      .sret_arg_index = std::nullopt,
+      .storage_slot_name = kInvalidSlotName,
+      .encoding = PreparedStorageEncodingKind::None,
+      .slot_id = std::nullopt,
+      .stack_offset_bytes = std::nullopt,
+      .size_bytes = 0,
+      .align_bytes = 0,
+  };
+
+  for (std::size_t arg_index = 0; arg_index < call.arg_abi.size(); ++arg_index) {
+    if (call.arg_abi[arg_index].sret_pointer) {
+      plan.sret_arg_index = arg_index;
+      plan.size_bytes = call.arg_abi[arg_index].size_bytes;
+      plan.align_bytes = call.arg_abi[arg_index].align_bytes;
+      break;
+    }
+  }
+
+  const SlotNameId slot_name_id = names.slot_names.find(*call.sret_storage_name);
+  if (slot_name_id == kInvalidSlotName) {
+    return plan;
+  }
+  plan.storage_slot_name = slot_name_id;
+
+  for (const auto& object : stack_layout.objects) {
+    if (object.function_name != function_name || object.slot_name != slot_name_id) {
+      continue;
+    }
+    if (plan.size_bytes == 0) {
+      plan.size_bytes = object.size_bytes;
+    }
+    if (plan.align_bytes == 0) {
+      plan.align_bytes = object.align_bytes;
+    }
+    if (const auto* frame_slot = find_prepared_frame_slot(stack_layout, object.object_id);
+        frame_slot != nullptr) {
+      plan.encoding = PreparedStorageEncodingKind::FrameSlot;
+      plan.slot_id = frame_slot->slot_id;
+      plan.stack_offset_bytes = frame_slot->offset_bytes;
+    }
+    break;
+  }
+
+  return plan;
+}
+
 [[nodiscard]] const PreparedAbiBinding* find_call_abi_binding(
     const PreparedMoveBundle* move_bundle,
     PreparedMoveDestinationKind destination_kind,
@@ -562,6 +619,8 @@ void populate_call_plans(PreparedBirModule& prepared) {
                                                     : std::optional<std::string>{call->callee},
             .indirect_callee =
                 build_indirect_callee_plan(prepared.names, regalloc_function, value_locations, *call),
+            .memory_return =
+                build_memory_return_plan(prepared.names, prepared.stack_layout, function_name_id, *call),
             .arguments = {},
             .result = std::nullopt,
             .clobbered_registers = call_clobbers,

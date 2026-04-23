@@ -943,6 +943,16 @@ struct PreparedIndirectCalleePlan {
   std::optional<std::int64_t> pointer_byte_delta;
 };
 
+struct PreparedMemoryReturnPlan {
+  std::optional<std::size_t> sret_arg_index;
+  SlotNameId storage_slot_name = kInvalidSlotName;
+  PreparedStorageEncodingKind encoding = PreparedStorageEncodingKind::None;
+  std::optional<PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
+  std::size_t size_bytes = 0;
+  std::size_t align_bytes = 0;
+};
+
 struct PreparedCallPlan {
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
@@ -951,6 +961,7 @@ struct PreparedCallPlan {
   bool is_indirect = false;
   std::optional<std::string> direct_callee_name;
   std::optional<PreparedIndirectCalleePlan> indirect_callee;
+  std::optional<PreparedMemoryReturnPlan> memory_return;
   std::vector<PreparedCallArgumentPlan> arguments;
   std::optional<PreparedCallResultPlan> result;
   std::vector<PreparedClobberedRegister> clobbered_registers;

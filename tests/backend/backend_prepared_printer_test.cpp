@@ -511,6 +511,102 @@ prepare::PreparedBirModule prepare_call_wrapper_dump_module() {
       options);
 }
 
+prepare::PreparedBirModule prepare_memory_return_call_dump_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function callee;
+  callee.name = "extern_make_pair";
+  callee.is_declaration = true;
+  callee.return_type = bir::TypeKind::Void;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "ret.sret",
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Memory,
+          .sret_pointer = true,
+      },
+      .is_sret = true,
+  });
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "seed",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "memory_return_dump_contract";
+  caller.return_type = bir::TypeKind::I32;
+  caller.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.call.sret.storage",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "extern_make_pair",
+      .args = {
+          bir::Value::named(bir::TypeKind::Ptr, "lv.call.sret.storage"),
+          bir::Value::immediate_i32(13),
+      },
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::I32},
+      .arg_abi = {
+          bir::CallArgAbiInfo{
+              .type = bir::TypeKind::Ptr,
+              .size_bytes = 8,
+              .align_bytes = 4,
+              .primary_class = bir::AbiValueClass::Memory,
+              .sret_pointer = true,
+          },
+          bir::CallArgAbiInfo{
+              .type = bir::TypeKind::I32,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .primary_class = bir::AbiValueClass::Integer,
+              .passed_in_register = true,
+          },
+      },
+      .return_type_name = "pair",
+      .return_type = bir::TypeKind::Void,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Void,
+          .primary_class = bir::AbiValueClass::Memory,
+          .returned_in_memory = true,
+      },
+      .sret_storage_name = "lv.call.sret.storage",
+  });
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+  caller.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(caller));
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      c4c::default_target_profile(c4c::TargetArch::X86_64),
+      options);
+}
+
 bool expect_contains(const std::string& text,
                      const std::string& needle,
                      const char* description) {
@@ -745,6 +841,19 @@ int main() {
   if (!expect_contains(call_wrapper_dump,
                        "call block_index=0 inst_index=3 wrapper_kind=indirect variadic_fpr_arg_register_count=0 indirect=yes indirect_callee=callee.ptr indirect_encoding=register indirect_bank=gpr",
                        "indirect wrapper call-plan detail")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto memory_return_prepared = prepare_memory_return_call_dump_module();
+  const std::string memory_return_dump = prepare::print(memory_return_prepared);
+  if (!expect_contains(memory_return_dump,
+                       "callsite block=0 inst=0 wrapper=direct_extern_fixed_arity callee=extern_make_pair variadic_fpr_args=0 args=2 memory_return=lv.call.sret.storage memory_home=frame_slot sret_arg=0",
+                       "memory-return summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(memory_return_dump,
+                       "call block_index=0 inst_index=0 wrapper_kind=direct_extern_fixed_arity variadic_fpr_arg_register_count=0 indirect=no callee=extern_make_pair memory_return=lv.call.sret.storage memory_encoding=frame_slot sret_arg_index=0",
+                       "memory-return call-plan detail")) {
     return EXIT_FAILURE;
   }
 

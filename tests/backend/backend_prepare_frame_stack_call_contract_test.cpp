@@ -365,6 +365,94 @@ bir::Module make_indirect_call_contract_module() {
   return module;
 }
 
+bir::Module make_memory_return_call_contract_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function callee;
+  callee.name = "extern_make_pair";
+  callee.is_declaration = true;
+  callee.return_type = bir::TypeKind::Void;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "ret.sret",
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Memory,
+          .sret_pointer = true,
+      },
+      .is_sret = true,
+  });
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "seed",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "memory_return_call_contract";
+  caller.return_type = bir::TypeKind::I32;
+  caller.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.call.sret.storage",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "extern_make_pair",
+      .args = {
+          bir::Value::named(bir::TypeKind::Ptr, "lv.call.sret.storage"),
+          bir::Value::immediate_i32(13),
+      },
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::I32},
+      .arg_abi = {
+          bir::CallArgAbiInfo{
+              .type = bir::TypeKind::Ptr,
+              .size_bytes = 8,
+              .align_bytes = 4,
+              .primary_class = bir::AbiValueClass::Memory,
+              .sret_pointer = true,
+          },
+          bir::CallArgAbiInfo{
+              .type = bir::TypeKind::I32,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .primary_class = bir::AbiValueClass::Integer,
+              .passed_in_register = true,
+          },
+      },
+      .return_type_name = "pair",
+      .return_type = bir::TypeKind::Void,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Void,
+          .primary_class = bir::AbiValueClass::Memory,
+          .returned_in_memory = true,
+      },
+      .sret_storage_name = "lv.call.sret.storage",
+  });
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+  caller.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(caller));
+  return module;
+}
+
 bir::Module make_call_wrapper_kind_contract_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1189,6 +1277,41 @@ int check_indirect_call_contract() {
   return 0;
 }
 
+int check_memory_return_call_contract() {
+  const auto prepared = prepare_module(make_memory_return_call_contract_module());
+  const auto* call_plans = find_call_plans_function(prepared, "memory_return_call_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 1) {
+    return fail("memory-return contract: call_plans no longer publish the aggregate-return call");
+  }
+
+  const auto& call_plan = call_plans->calls.front();
+  if (call_plan.result.has_value() || !call_plan.memory_return.has_value() ||
+      call_plan.arguments.size() != 2) {
+    return fail("memory-return contract: call_plans lost explicit memory-return publication");
+  }
+
+  const auto* storage_object = find_stack_object(prepared, "lv.call.sret.storage");
+  const auto* frame_slot =
+      storage_object == nullptr ? nullptr : find_frame_slot(prepared, storage_object->object_id);
+  if (storage_object == nullptr || frame_slot == nullptr) {
+    return fail("memory-return contract: missing published stack storage for the sret destination");
+  }
+
+  const auto& memory_return = *call_plan.memory_return;
+  if (memory_return.sret_arg_index != std::optional<std::size_t>{0} ||
+      memory_return.storage_slot_name == c4c::kInvalidSlotName ||
+      prepare::prepared_slot_name(prepared.names, memory_return.storage_slot_name) !=
+          "lv.call.sret.storage" ||
+      memory_return.encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      memory_return.slot_id != std::optional<prepare::PreparedFrameSlotId>{frame_slot->slot_id} ||
+      memory_return.stack_offset_bytes != std::optional<std::size_t>{frame_slot->offset_bytes} ||
+      memory_return.size_bytes != 8 || memory_return.align_bytes != 4) {
+    return fail("memory-return contract: call_plans lost the published sret destination authority");
+  }
+
+  return 0;
+}
+
 int check_call_wrapper_kind_contract() {
   const auto prepared = prepare_module(make_call_wrapper_kind_contract_module());
   const auto* call_plans = find_call_plans_function(prepared, "call_wrapper_kind_contract");
@@ -1477,6 +1600,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_indirect_call_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_memory_return_call_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_call_wrapper_kind_contract(); rc != 0) {
