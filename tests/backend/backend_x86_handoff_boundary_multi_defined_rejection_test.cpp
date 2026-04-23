@@ -153,14 +153,14 @@ int check_route_rejection(const bir::Module& module,
   }
 
   try {
-    (void)c4c::backend::emit_target_bir_module(module, target_profile);
+    (void)c4c::backend::emit_x86_bir_module_entry(module, target_profile);
     return fail((std::string(failure_context) +
-                 ": public x86 BIR entry unexpectedly kept a mixed bootstrap fallback alive")
+                 ": explicit x86 BIR entry unexpectedly kept a mixed bootstrap fallback alive")
                     .c_str());
   } catch (const std::invalid_argument& error) {
     if (std::string_view(error.what()).find(expected_message_fragment) == std::string_view::npos) {
       return fail((std::string(failure_context) +
-                   ": public x86 BIR entry rejected the out-of-scope route with the wrong contract message")
+                   ": explicit x86 BIR entry rejected the out-of-scope route with the wrong contract message")
                       .c_str());
     }
   }

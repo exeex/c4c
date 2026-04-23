@@ -1111,12 +1111,20 @@ c4c::backend::bir::Module prepare_bir_module_for_target(
   return prepare_semantic_bir_pipeline(module, target_profile).module;
 }
 
+std::string emit_x86_bir_module_entry(const bir::Module& module,
+                                      const c4c::TargetProfile& target_profile) {
+  require_x86_module_entry_target(target_profile, "emit_x86_bir_module_entry");
+  const auto prepared = prepare_semantic_bir_pipeline(module, target_profile);
+  return c4c::backend::x86::api::emit_prepared_module(prepared);
+}
+
 std::string emit_target_bir_module(const bir::Module& module,
                                    const c4c::TargetProfile& target_profile) {
-  const auto prepared = prepare_semantic_bir_pipeline(module, target_profile);
   if (is_x86_target(target_profile)) {
-    return c4c::backend::x86::api::emit_prepared_module(prepared);
+    return emit_x86_bir_module_entry(module, target_profile);
   }
+
+  const auto prepared = prepare_semantic_bir_pipeline(module, target_profile);
   return render_prepared_bir_text(prepared.module);
 }
 
@@ -1186,11 +1194,13 @@ std::string emit_module(const BackendModuleInput& input,
       return c4c::backend::bir::print(input.bir_module());
     }
     c4c::TargetProfile target_profile_storage;
-    return emit_target_bir_module(
-        input.bir_module(),
-        profile_or_default(options.target_profile,
-                           target_profile_storage,
-                           input.bir_module().target_triple));
+    const auto& target_profile = profile_or_default(options.target_profile,
+                                                    target_profile_storage,
+                                                    input.bir_module().target_triple);
+    if (is_x86_target(target_profile)) {
+      return emit_x86_bir_module_entry(input.bir_module(), target_profile);
+    }
+    return emit_target_bir_module(input.bir_module(), target_profile);
   }
 
   const auto& lir_module = input.lir_module();

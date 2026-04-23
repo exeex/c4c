@@ -2826,10 +2826,10 @@ int check_route_outputs(const bir::Module& module,
                     .c_str());
   }
 
-  const auto public_asm = c4c::backend::emit_target_bir_module(module, target_profile);
+  const auto public_asm = c4c::backend::emit_x86_bir_module_entry(module, target_profile);
   if (public_asm != prepared_asm) {
     return fail((std::string(failure_context) +
-                 ": public x86 BIR entry no longer routes through the x86 prepared-module consumer")
+                 ": explicit x86 BIR entry no longer routes through the x86 prepared-module consumer")
                     .c_str());
   }
 
@@ -2837,7 +2837,7 @@ int check_route_outputs(const bir::Module& module,
       BackendModuleInput{module}, BackendOptions{.target_profile = x86_target_profile()});
   if (generic_asm != public_asm) {
     return fail((std::string(failure_context) +
-                 ": generic backend emit path no longer routes x86 BIR input through emit_target_bir_module")
+                 ": generic backend emit path no longer routes x86 BIR input through emit_x86_bir_module_entry")
                     .c_str());
   }
 
@@ -2878,10 +2878,10 @@ int check_route_contains_fragments(
     }
   }
 
-  const auto public_asm = c4c::backend::emit_target_bir_module(module, target_profile);
+  const auto public_asm = c4c::backend::emit_x86_bir_module_entry(module, target_profile);
   if (public_asm != prepared_asm) {
     return fail((std::string(failure_context) +
-                 ": public x86 BIR entry no longer routes through the x86 prepared-module consumer")
+                 ": explicit x86 BIR entry no longer routes through the x86 prepared-module consumer")
                     .c_str());
   }
 
@@ -2889,7 +2889,7 @@ int check_route_contains_fragments(
       BackendModuleInput{module}, BackendOptions{.target_profile = x86_target_profile()});
   if (generic_asm != public_asm) {
     return fail((std::string(failure_context) +
-                 ": generic backend emit path no longer routes x86 BIR input through emit_target_bir_module")
+                 ": generic backend emit path no longer routes x86 BIR input through emit_x86_bir_module_entry")
                     .c_str());
   }
 

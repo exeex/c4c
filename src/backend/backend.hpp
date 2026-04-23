@@ -78,6 +78,12 @@ struct BackendAssembleResult {
 // Current public BIR entrypoint. x86 now routes prepared backend data into the
 // target-local prepared-module consumer boundary instead of returning prepared
 // semantic BIR text directly.
+std::string emit_x86_bir_module_entry(const bir::Module& module,
+                                      const c4c::TargetProfile& target_profile);
+
+// Compatibility wrapper: x86 targets route through
+// `emit_x86_bir_module_entry(...)`, while non-x86 targets keep the existing
+// generic prepared-BIR text contract.
 std::string emit_target_bir_module(const bir::Module& module,
                                    const c4c::TargetProfile& target_profile);
 
