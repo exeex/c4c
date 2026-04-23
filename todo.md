@@ -7,14 +7,16 @@ Current Step Title: Retarget `using` / alias / import lookup paths to structured
 # Current Packet
 
 ## Just Finished
-Added a structured qualified-name helper for the `using` importer, switched value-alias import recording to store `QualifiedNameKey` identity before any compatibility string bridge, and tightened parser tests so alias visibility still resolves when the bridge spelling is corrupted.
+Retargeted `using` value-import registration to preserve the resolved visible value name while still storing structured `QualifiedNameKey` identity, and isolated namespace value lookup rendering behind a structured-first helper that keeps global `using ::name` aliases on the existing unqualified value-binding path.
 
 ## Suggested Next
-Continue Step 3 by isolating the remaining string-keyed namespace value fallback inside `lookup_value_in_context(...)`, especially the anonymous-namespace and `has_var_type(...)` compatibility cases that still require rendered bridge names.
+Continue Step 3 by trimming the remaining compatibility-only value fallback cases around anonymous-namespace recursion and `has_var_type(...)`, and verify whether any namespace-visible value lookups still depend on `compatibility_namespace_name_in_context(...)` outside the new helper boundary.
 
 ## Watchouts
 `has_var_type(...)` still relies on the legacy value tables, so compatibility rendering remains a bridge-only fallback on the touched `using` path and should stay narrow rather than widening into a repo-wide var-identity migration.
 
 ## Proof
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
+`cmake --build --preset default`
+`ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
+`ctest --test-dir build -j --output-on-failure -R '^cpp_positive_sema_using_global_scope_decl_parse_cpp$'`
 Passed. Proof log: `test_after.log`

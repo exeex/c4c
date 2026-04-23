@@ -1485,7 +1485,10 @@ Node* Parser::parse_top_level() {
         }
 
         const QualifiedNameKey imported_value_key = qualified_name_key(target_name);
-        std::string imported_value_name = qualified_name_text(target_name);
+        std::string imported_value_name = resolve_qualified_value_name(target_name);
+        if (imported_value_name.empty()) {
+            imported_value_name = qualified_name_text(target_name);
+        }
         if (imported_value_name.empty()) {
             imported_value_name = compatibility_namespace_name_in_context(
                 using_context_id, target_name.base_text_id, imported_name);

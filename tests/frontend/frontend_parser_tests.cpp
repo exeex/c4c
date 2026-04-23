@@ -929,6 +929,32 @@ void test_parser_using_value_import_keeps_structured_target_key() {
             "using-import lookup should prefer the structured target key over the compatibility bridge");
 }
 
+void test_parser_global_using_value_import_keeps_global_target_resolution() {
+  c4c::Lexer lexer("using ::Target;\n", c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+  parser.register_var_type_binding("Target", target_ts);
+
+  (void)parser.parse_top_level();
+
+  const c4c::TextId alias_text = parser.find_parser_text_id("Target");
+  expect_true(alias_text != c4c::kInvalidText,
+              "global using-import fixture should intern the alias text");
+  auto alias_it = parser.namespace_state_.using_value_aliases[0].find(alias_text);
+  expect_true(alias_it != parser.namespace_state_.using_value_aliases[0].end(),
+              "global using-import fixture should record a value-alias entry");
+  alias_it->second.compatibility_name = "corrupted";
+  expect_eq(parser.resolve_visible_value_name("Target"), "Target",
+            "global using-import lookup should keep the global target spelling instead of introducing a leading scope bridge");
+}
+
 void test_parser_template_member_suffix_probe_uses_token_spelling() {
   c4c::Lexer lexer(
       "template<int N>\n"
@@ -1115,6 +1141,7 @@ int main() {
   test_parser_visible_type_alias_uses_scope_local_typedef_facade();
   test_parser_visible_type_alias_keeps_qualified_target_resolution();
   test_parser_using_value_import_keeps_structured_target_key();
+  test_parser_global_using_value_import_keeps_global_target_resolution();
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
   test_parser_alias_template_value_probes_use_token_spelling();

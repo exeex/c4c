@@ -170,6 +170,11 @@ bool can_probe_local_binding(TextId name_text_id, std::string_view name) {
            name.find("::") == std::string_view::npos;
 }
 
+QualifiedNameKey qualified_key_in_context(const Parser& parser, int context_id,
+                                          TextId name_text_id,
+                                          std::string_view fallback_name,
+                                          bool create_missing_path);
+
 std::string render_structured_name(const Parser& parser,
                                    const QualifiedNameKey& key) {
     if (key.base_text_id == kInvalidText) return {};
@@ -177,6 +182,29 @@ std::string render_structured_name(const Parser& parser,
     if (!texts) return {};
     return render_qualified_name(key, parser.shared_lookup_state_.parser_name_paths,
                                  *texts);
+}
+
+std::string render_value_binding_name(const Parser& parser,
+                                      const QualifiedNameKey& key) {
+    if (key.base_text_id == kInvalidText) return {};
+    if (key.is_global_qualified && key.qualifier_path_id == kInvalidNamePath) {
+        return std::string(
+            parser.parser_text(key.base_text_id, std::string_view{}));
+    }
+    return render_structured_name(parser, key);
+}
+
+std::string render_lookup_name_in_context(const Parser& parser, int context_id,
+                                          TextId name_text_id,
+                                          std::string_view fallback_name) {
+    const QualifiedNameKey key = qualified_key_in_context(
+        parser, context_id, name_text_id, fallback_name, true);
+    if (const std::string structured = render_value_binding_name(parser, key);
+        !structured.empty()) {
+        return structured;
+    }
+    return parser.compatibility_namespace_name_in_context(context_id, name_text_id,
+                                                          fallback_name);
 }
 
 bool is_unqualified_lookup_name(std::string_view name) {
@@ -2251,7 +2279,8 @@ bool Parser::lookup_using_value_alias(int context_id, TextId name_text_id,
     const auto value_it = alias_it->second.find(name_text_id);
     if (value_it == alias_it->second.end()) return false;
     const ParserNamespaceState::UsingValueAlias& alias = value_it->second;
-    if (const std::string structured = render_structured_name(*this, alias.target_key);
+    if (const std::string structured =
+            render_value_binding_name(*this, alias.target_key);
         !structured.empty()) {
         *resolved = structured;
         return true;
@@ -2271,7 +2300,7 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
     }
 
     const std::string candidate =
-        compatibility_namespace_name_in_context(context_id, name_text_id, name);
+        render_lookup_name_in_context(*this, context_id, name_text_id, name);
     if (has_var_type(candidate)) {
         *resolved = candidate;
         return true;
