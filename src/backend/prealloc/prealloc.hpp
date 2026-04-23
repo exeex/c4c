@@ -942,8 +942,10 @@ struct PreparedCallPreservedValue {
   ValueNameId value_name = kInvalidValueName;
   PreparedCallPreservationRoute route = PreparedCallPreservationRoute::Unknown;
   std::optional<std::size_t> callee_saved_save_index;
+  std::size_t contiguous_width = 1;
   std::optional<std::string> register_name;
   std::optional<PreparedRegisterBank> register_bank;
+  std::vector<std::string> occupied_register_names;
   std::optional<PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> stack_offset_bytes;
 };
@@ -3831,6 +3833,7 @@ class BirPreAlloc {
   void run_liveness();
   void run_out_of_ssa();
   void run_regalloc();
+  void publish_contract_plans();
 
   PreparedBirModule& prepared() { return prepared_; }
   const PreparedBirModule& prepared() const { return prepared_; }
@@ -3838,7 +3841,6 @@ class BirPreAlloc {
 
  private:
   void note(std::string_view message);
-  void publish_contract_plans();
 
   PrepareOptions options_;
   PreparedBirModule prepared_;

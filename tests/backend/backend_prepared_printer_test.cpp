@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <string_view>
 
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
@@ -14,6 +15,24 @@ namespace {
 
 c4c::TargetProfile riscv_target_profile() {
   return c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+}
+
+void set_register_group_override(prepare::PreparedBirModule& prepared,
+                                 std::string_view function_name,
+                                 std::string_view value_name,
+                                 prepare::PreparedRegisterClass register_class,
+                                 std::size_t contiguous_width) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  const auto value_id = prepared.names.value_names.find(value_name);
+  if (function_id == c4c::kInvalidFunctionName || value_id == c4c::kInvalidValueName) {
+    return;
+  }
+  prepared.register_group_overrides.values.push_back(prepare::PreparedRegisterGroupOverride{
+      .function_name = function_id,
+      .value_name = value_id,
+      .register_class = register_class,
+      .contiguous_width = contiguous_width,
+  });
 }
 
 prepare::PreparedBirModule legalize_short_circuit_or_guard_module() {
@@ -928,6 +947,112 @@ prepare::PreparedBirModule prepare_stack_cross_call_preservation_dump_module() {
       options);
 }
 
+prepare::PreparedBirModule prepare_grouped_cross_call_preservation_dump_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  bir::Function decl;
+  decl.name = "vec_sink";
+  decl.is_declaration = true;
+  decl.return_type = bir::TypeKind::Void;
+  decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "arg0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  module.functions.push_back(std::move(decl));
+
+  bir::Function function;
+  function.name = "grouped_cross_call_preservation_dump_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.vcarry",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.arg",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.local",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "carry.pre"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.vcarry"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "p.arg"),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "vec_sink",
+      .args = {bir::Value::named(bir::TypeKind::I32, "p.arg")},
+      .arg_types = {bir::TypeKind::I32},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "post.local"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.local"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "p.local"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "out"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "carry.pre"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "post.local"),
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "out")};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule seeded;
+  seeded.module = std::move(module);
+  seeded.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(seeded), options);
+  planner.run_legalize();
+  planner.run_stack_layout();
+  planner.run_liveness();
+
+  auto prepared = std::move(planner.prepared());
+  set_register_group_override(prepared,
+                              "grouped_cross_call_preservation_dump_contract",
+                              "carry.pre",
+                              prepare::PreparedRegisterClass::Vector,
+                              2);
+  set_register_group_override(prepared,
+                              "grouped_cross_call_preservation_dump_contract",
+                              "post.local",
+                              prepare::PreparedRegisterClass::Vector,
+                              1);
+
+  prepare::BirPreAlloc regalloc_planner(std::move(prepared), {});
+  regalloc_planner.run_regalloc();
+  regalloc_planner.publish_contract_plans();
+  return std::move(regalloc_planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_stack_argument_slot_dump_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1530,14 +1655,15 @@ int main() {
   const std::string cross_call_dump = prepare::print(cross_call_prepared);
   if (!expect_contains(cross_call_dump,
                        "preserves=carry#" + std::to_string(cross_call_carry->value_id) +
-                           ":callee_saved_register:s1:save" + std::to_string(cross_call_save_index),
+                           ":callee_saved_register:s1[s1]:save" +
+                           std::to_string(cross_call_save_index),
                        "cross-call preservation summary")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(cross_call_dump,
                        "preserve value=carry value_id=" + std::to_string(cross_call_carry->value_id) +
                            " route=callee_saved_register save_index=" +
-                           std::to_string(cross_call_save_index) + " reg=s1 bank=gpr",
+                           std::to_string(cross_call_save_index) + " reg=s1 bank=gpr units=s1",
                        "cross-call preservation detail")) {
     return EXIT_FAILURE;
   }
@@ -1572,6 +1698,70 @@ int main() {
   if (!expect_contains(stack_cross_call_dump,
                        stack_preserved_summary,
                        "stack-preserved call-slot summary")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto grouped_cross_call_prepared = prepare_grouped_cross_call_preservation_dump_module();
+  const auto* grouped_cross_call_plans = find_call_plans_function(
+      grouped_cross_call_prepared, "grouped_cross_call_preservation_dump_contract");
+  const auto grouped_cross_call_function_id =
+      grouped_cross_call_prepared.names.function_names.find(
+          "grouped_cross_call_preservation_dump_contract");
+  const auto* grouped_cross_call_frame_plan =
+      grouped_cross_call_function_id == c4c::kInvalidFunctionName
+          ? nullptr
+          : prepare::find_prepared_frame_plan(grouped_cross_call_prepared,
+                                              grouped_cross_call_function_id);
+  if (grouped_cross_call_plans == nullptr || grouped_cross_call_plans->calls.size() != 1 ||
+      grouped_cross_call_frame_plan == nullptr) {
+    std::cerr << "[FAIL] missing grouped cross-call preservation dump fixture\n";
+    return EXIT_FAILURE;
+  }
+  const auto& grouped_cross_call = grouped_cross_call_plans->calls.front();
+  const auto grouped_preserved_it = std::find_if(
+      grouped_cross_call.preserved_values.begin(),
+      grouped_cross_call.preserved_values.end(),
+      [](const prepare::PreparedCallPreservedValue& preserved) {
+        return preserved.contiguous_width == 2 &&
+               preserved.register_bank ==
+                   std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Vreg};
+      });
+  if (grouped_preserved_it == grouped_cross_call.preserved_values.end() ||
+      !grouped_preserved_it->register_name.has_value() ||
+      !grouped_preserved_it->callee_saved_save_index.has_value()) {
+    std::cerr << "[FAIL] missing grouped preserved-value authority in dump fixture\n";
+    return EXIT_FAILURE;
+  }
+  const auto grouped_saved_it = std::find_if(
+      grouped_cross_call_frame_plan->saved_callee_registers.begin(),
+      grouped_cross_call_frame_plan->saved_callee_registers.end(),
+      [&](const prepare::PreparedSavedRegister& saved) {
+        return saved.occupied_register_names == grouped_preserved_it->occupied_register_names;
+      });
+  if (grouped_saved_it == grouped_cross_call_frame_plan->saved_callee_registers.end()) {
+    std::cerr << "[FAIL] missing grouped saved-register span authority in dump fixture\n";
+    return EXIT_FAILURE;
+  }
+  const std::string grouped_cross_call_dump = prepare::print(grouped_cross_call_prepared);
+  if (!expect_contains(grouped_cross_call_dump,
+                       "carry.pre#" + std::to_string(grouped_preserved_it->value_id) +
+                           ":callee_saved_register:" + *grouped_preserved_it->register_name +
+                           "/w2[" + grouped_preserved_it->occupied_register_names.front() + "," +
+                           grouped_preserved_it->occupied_register_names.back() + "]" + ":save" +
+                           std::to_string(*grouped_preserved_it->callee_saved_save_index),
+                       "grouped cross-call preservation summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(grouped_cross_call_dump,
+                       "preserve value=carry.pre value_id=" +
+                           std::to_string(grouped_preserved_it->value_id) +
+                           " route=callee_saved_register save_index=" +
+                           std::to_string(*grouped_preserved_it->callee_saved_save_index) +
+                           " reg=" + *grouped_preserved_it->register_name +
+                           " width=2 bank=vreg units=" +
+                           grouped_saved_it->occupied_register_names.front() + "," +
+                           grouped_saved_it->occupied_register_names.back(),
+                       "grouped cross-call preservation detail")) {
     return EXIT_FAILURE;
   }
 

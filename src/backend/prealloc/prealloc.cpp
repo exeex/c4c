@@ -434,6 +434,23 @@ namespace {
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<std::size_t> callee_saved_span_save_index(
+    const c4c::TargetProfile& target_profile,
+    const PreparedRegallocValue& value) {
+  if (!value.assigned_register.has_value()) {
+    return std::nullopt;
+  }
+  const auto callee_saved =
+      callee_saved_register_spans(target_profile, value.register_class, value.register_group_width);
+  for (std::size_t save_index = 0; save_index < callee_saved.size(); ++save_index) {
+    if (callee_saved[save_index].occupied_register_names ==
+        value.assigned_register->occupied_register_names) {
+      return save_index;
+    }
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] std::vector<PreparedCallPreservedValue> build_call_preserved_values(
     const PreparedBirModule& prepared,
     const PreparedFramePlanFunction* frame_plan,
@@ -454,8 +471,7 @@ namespace {
   }
 
   for (const auto& value : regalloc_function->values) {
-    if (!value.crosses_call || !value.live_interval.has_value() ||
-        value.register_group_width != 1 || value.register_class == PreparedRegisterClass::Vector) {
+    if (!value.crosses_call || !value.live_interval.has_value()) {
       continue;
     }
     if (!(*call_point > value.live_interval->start_point &&
@@ -468,8 +484,10 @@ namespace {
         .value_name = value.value_name,
         .route = PreparedCallPreservationRoute::Unknown,
         .callee_saved_save_index = std::nullopt,
+        .contiguous_width = std::max<std::size_t>(value.register_group_width, 1),
         .register_name = std::nullopt,
         .register_bank = std::nullopt,
+        .occupied_register_names = {},
         .slot_id = std::nullopt,
         .stack_offset_bytes = std::nullopt,
     };
@@ -495,6 +513,8 @@ namespace {
     } else if (value.assigned_register.has_value()) {
       preserved.register_name = value.assigned_register->register_name;
       preserved.register_bank = register_bank_from_class(value.register_class);
+      preserved.contiguous_width = value.assigned_register->contiguous_width;
+      preserved.occupied_register_names = value.assigned_register->occupied_register_names;
       if (is_callee_saved_register_assignment(prepared.target_profile, value)) {
         preserved.route = PreparedCallPreservationRoute::CalleeSavedRegister;
         preserved.callee_saved_save_index = find_saved_callee_save_index(frame_plan, value);
@@ -561,34 +581,49 @@ void populate_frame_plan(PreparedBirModule& prepared) {
     std::vector<PreparedSavedRegister> saved_registers;
     if (const auto* regalloc_function = find_regalloc_function(prepared.regalloc, function_name_id);
         regalloc_function != nullptr) {
-      for (PreparedRegisterClass reg_class :
-           {PreparedRegisterClass::General, PreparedRegisterClass::Float, PreparedRegisterClass::Vector}) {
-        const auto callee_saved = callee_saved_register_spans(prepared.target_profile, reg_class, 1);
-        for (std::size_t save_index = 0; save_index < callee_saved.size(); ++save_index) {
-          const auto& callee_saved_span = callee_saved[save_index];
-          bool used = false;
-          for (const auto& value : regalloc_function->values) {
-            if (!value.assigned_register.has_value()) {
-              continue;
-            }
-            if (value.assigned_register->register_name == callee_saved_span.register_name) {
-              used = true;
-              break;
-            }
-          }
-          if (!used) {
-            continue;
-          }
-          saved_registers.push_back(PreparedSavedRegister{
-              .bank = register_bank_from_class(reg_class),
-              .register_name = callee_saved_span.register_name,
-              .contiguous_width = callee_saved_span.contiguous_width,
-              .occupied_register_names = callee_saved_span.occupied_register_names,
-              .save_index = save_index,
-          });
+      for (const auto& value : regalloc_function->values) {
+        if (!value.assigned_register.has_value() ||
+            !is_callee_saved_register_assignment(prepared.target_profile, value)) {
+          continue;
         }
+        const auto save_index = callee_saved_span_save_index(prepared.target_profile, value);
+        if (!save_index.has_value()) {
+          continue;
+        }
+        const auto already_published =
+            std::find_if(saved_registers.begin(),
+                         saved_registers.end(),
+                         [&](const PreparedSavedRegister& saved) {
+                           return saved.bank == register_bank_from_class(value.register_class) &&
+                                  saved.occupied_register_names ==
+                                      value.assigned_register->occupied_register_names;
+                         });
+        if (already_published != saved_registers.end()) {
+          continue;
+        }
+        saved_registers.push_back(PreparedSavedRegister{
+            .bank = register_bank_from_class(value.register_class),
+            .register_name = value.assigned_register->register_name,
+            .contiguous_width = value.assigned_register->contiguous_width,
+            .occupied_register_names = value.assigned_register->occupied_register_names,
+            .save_index = *save_index,
+        });
       }
     }
+    std::sort(saved_registers.begin(),
+              saved_registers.end(),
+              [](const PreparedSavedRegister& lhs, const PreparedSavedRegister& rhs) {
+                if (lhs.bank != rhs.bank) {
+                  return static_cast<int>(lhs.bank) < static_cast<int>(rhs.bank);
+                }
+                if (lhs.save_index != rhs.save_index) {
+                  return lhs.save_index < rhs.save_index;
+                }
+                if (lhs.contiguous_width != rhs.contiguous_width) {
+                  return lhs.contiguous_width < rhs.contiguous_width;
+                }
+                return lhs.register_name < rhs.register_name;
+              });
     plan.saved_callee_registers = std::move(saved_registers);
 
     for (const auto& block : function.blocks) {

@@ -289,6 +289,19 @@ void append_preserved_value_summary(std::ostringstream& out,
   }
   if (preserved.register_name.has_value()) {
     out << ":" << *preserved.register_name;
+    if (preserved.contiguous_width > 1) {
+      out << "/w" << preserved.contiguous_width;
+    }
+    if (!preserved.occupied_register_names.empty()) {
+      out << "[";
+      for (std::size_t index = 0; index < preserved.occupied_register_names.size(); ++index) {
+        if (index != 0) {
+          out << ",";
+        }
+        out << preserved.occupied_register_names[index];
+      }
+      out << "]";
+    }
   } else if (preserved.stack_offset_bytes.has_value()) {
     out << ":stack+" << *preserved.stack_offset_bytes;
   }
@@ -482,7 +495,19 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
           if (preserved.register_name.has_value()) {
             out << " reg=" << *preserved.register_name;
           }
+          if (preserved.contiguous_width > 1) {
+            out << " width=" << preserved.contiguous_width;
+          }
           out << " bank=" << maybe_register_bank(preserved.register_bank);
+          if (!preserved.occupied_register_names.empty()) {
+            out << " units=";
+            for (std::size_t index = 0; index < preserved.occupied_register_names.size(); ++index) {
+              if (index != 0) {
+                out << ",";
+              }
+              out << preserved.occupied_register_names[index];
+            }
+          }
           if (preserved.slot_id.has_value()) {
             out << " slot=#" << *preserved.slot_id;
           }
