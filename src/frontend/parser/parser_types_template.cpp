@@ -188,11 +188,6 @@ bool Parser::decode_type_ref_text(const std::string& text, TypeSpec* out) {
         return true;
     }
 
-    if (const TypeSpec* type = find_typedef_type(text)) {
-        *out = *type;
-        return true;
-    }
-
     if (parse_mangled_type_suffix(text, out)) return true;
 
     auto init_tag = [&](TypeBase base, size_t prefix_len) {

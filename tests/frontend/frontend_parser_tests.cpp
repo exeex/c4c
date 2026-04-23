@@ -696,6 +696,31 @@ void test_parser_local_visible_typedef_cast_uses_scope_lookup() {
               "test fixture should balance the local visible typedef scope");
 }
 
+void test_parser_decode_type_ref_text_uses_local_visible_scope_lookup() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  c4c::TypeSpec decoded{};
+  expect_true(parser.decode_type_ref_text("Alias", &decoded),
+              "type-ref decoding should consult parser-local visible typedef bindings");
+  expect_true(decoded.base == c4c::TB_INT,
+              "type-ref decoding should recover the bound local visible typedef type");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
 void test_parser_is_typedef_name_uses_local_visible_scope_lookup() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -896,6 +921,7 @@ int main() {
   test_parser_typeof_like_probes_use_token_spelling();
   test_parser_parse_base_type_identifier_probes_use_token_spelling();
   test_parser_local_visible_typedef_cast_uses_scope_lookup();
+  test_parser_decode_type_ref_text_uses_local_visible_scope_lookup();
   test_parser_is_typedef_name_uses_local_visible_scope_lookup();
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();

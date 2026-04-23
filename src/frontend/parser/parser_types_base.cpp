@@ -1136,7 +1136,7 @@ TypeSpec Parser::parse_base_type() {
         Node* ed = parse_enum();
         definition_state_.last_enum_def = ed;
         if (ed && ed->name) {
-            if (const TypeSpec* typedef_type = find_typedef_type(ed->name)) {
+            if (const TypeSpec* typedef_type = find_visible_typedef_type(ed->name)) {
                 ts = *typedef_type;
             }
         }

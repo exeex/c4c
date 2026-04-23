@@ -1788,7 +1788,7 @@ Node* Parser::parse_top_level() {
         const std::string_view alias_name = last_using_alias_name_text();
         if (!alias_name.empty() && !template_params.empty()) {
             if (const TypeSpec* aliased_type =
-                    find_typedef_type(alias_name)) {
+                    find_visible_typedef_type(alias_name)) {
                 ParserAliasTemplateInfo ati;
                 for (size_t i = 0; i < template_params.size(); ++i) {
                     ati.param_names.push_back(template_params[i]);
