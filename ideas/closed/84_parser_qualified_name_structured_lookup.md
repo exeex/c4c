@@ -1,6 +1,6 @@
 # Parser Qualified Name Structured Lookup
 
-Status: Open
+Status: Closed
 Last Updated: 2026-04-23
 
 ## Goal
@@ -212,3 +212,20 @@ The boundary is deliberate:
 - idea 83: lexical scope-local unqualified binding
 - idea 84: qualified semantic identity that still bridges through rendered
   names between those systems
+
+## Completion Notes
+
+Completed on 2026-04-23.
+
+This runbook finished the parser qualified-lookup slice by:
+
+- migrating parser-owned qualified lookup paths to structured identity built
+  from owner-path context and `TextId`-based segments
+- retargeting alias/import and declaration bridge paths away from rendered
+  qualified-name strings as the primary semantic key
+- demoting remaining compatibility rendering on the touched typedef and
+  concept paths to bridge-only fallback support
+
+The remaining compatibility string storage is intentionally limited to
+untouched bridge and diagnostics surfaces rather than the primary qualified
+semantic lookup path.
