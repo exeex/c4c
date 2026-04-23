@@ -38,4 +38,4 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 - `cmake --build build -j --target c4c_frontend c4cll`
 - `ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_parse_top_level_pragma_pack_preserves_following_decl_dump|cpp_parse_top_level_pragma_gcc_visibility_preserves_following_decl_dump)$'`
 - Result: passed
-- Log: `test_after.log`
+- Log: rolled forward into `test_before.log`
