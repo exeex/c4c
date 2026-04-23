@@ -841,6 +841,91 @@ Completion check:
 - prepared debug and admission surfaces explain canonical seam decisions
   observationally and do not regain lowering ownership
 
+#### Step 3.3.1: Move Compare-Driven Prepared Entry Declarations Behind A Dedicated Observational Seam
+
+Goal: stop compare-driven prepared entry declarations from lingering in the
+transitional shared header once the prepared path only needs them as an
+observational adapter surface.
+
+Primary targets:
+
+- `src/backend/mir/x86/codegen/prepared/prepared_compare_entry.*`
+- transitional compare-entry declarations still exposed through
+  `src/backend/mir/x86/codegen/x86_codegen.hpp`
+
+Actions:
+
+- peel the compare-driven prepared entry declaration cluster into a dedicated
+  `prepared/` seam used by the prepared entry implementation and module
+  dispatcher
+- keep the moved seam limited to observational entry reporting instead of
+  regrowing compare policy or broader prepared lowering ownership
+- preserve the existing prepared compare-entry output contract while trimming
+  the transitional shared header
+
+Completion check:
+
+- compare-driven prepared entry declarations live behind a dedicated
+  observational seam, and `x86_codegen.hpp` no longer carries that prepared
+  entry cluster
+
+#### Step 3.3.2: Rehome Prepared Bounded Multi-Defined Debug Helpers Behind Owned Adapters
+
+Goal: pull the remaining prepared bounded multi-defined helper families out of
+`x86_codegen.hpp` so debug/admission reporting consumes owned adapters instead
+of inline transitional helpers.
+
+Primary targets:
+
+- prepared bounded multi-defined helper families still declared inline in
+  `src/backend/mir/x86/codegen/x86_codegen.hpp`
+- their owning `prepared/` or `lowering/` adapter seams under
+  `src/backend/mir/x86/codegen/`
+
+Actions:
+
+- extract one coherent bounded multi-defined helper cluster at a time,
+  starting with the helper family that still keeps stack/local-slot operand
+  surfaces pinned to `x86_codegen.hpp`
+- route observational reporting through the owning adapter seam rather than
+  letting transitional inline helpers continue to own home or operand policy
+- keep the move bounded away from broader module orchestration or new matcher
+  shortcuts
+
+Completion check:
+
+- a bounded multi-defined helper family now lives behind its owning adapter
+  seam, and `x86_codegen.hpp` no longer has to retain that cluster for debug
+  or admission reporting
+
+#### Step 3.3.3: Finish The Remaining Stack And Local-Slot Observational Holdouts
+
+Goal: clear the final stack/local-slot declaration holdouts so prepared debug
+and admission surfaces become purely observational consumers of canonical
+owners.
+
+Primary targets:
+
+- stack and local-slot operand/home declarations still kept in
+  `src/backend/mir/x86/codegen/x86_codegen.hpp` for transitional prepared
+  helpers
+- the owning prepared or lowering seams that should expose those declarations
+
+Actions:
+
+- move the remaining stack/local-slot operand and home-query declarations
+  behind their owning prepared or lowering headers once the inline holdouts no
+  longer depend on the transitional surface
+- classify any residual prepared-only debug hooks explicitly if they still
+  need to survive as compatibility adapters
+- preserve existing debug/admission output while ending transitional ownership
+  of operand/home policy
+
+Completion check:
+
+- stack/local-slot declaration holdouts have moved behind owned seams, and the
+  remaining prepared debug/admission surfaces only observe canonical decisions
+
 ## Step 4: Shift Module Entry And Legacy Dispatch To The Replacement Graph
 
 Goal: make the reviewed replacement ownership graph the live path while
