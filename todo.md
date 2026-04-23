@@ -1,27 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/83_parser_scope_textid_binding_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add parser lexical scope state for local bindings
+Current Step ID: 3
+Current Step Title: Introduce a unified TextId-first lookup facade
 
 # Current Packet
 
 ## Just Finished
-Completed plan Step 2 by adding explicit parser-local lexical scope state with
-push/pop behavior on block entry and exit, mirroring local typedef/value
-bindings into a dedicated scope stack that stays separate from namespace
-traversal and legacy visible-name lookup.
+Completed plan Step 3 by adding `TextId`-aware visible lookup helpers that
+probe the new lexical typedef/value tables first for unqualified names, then
+fall back to the existing namespace and compatibility bridge paths.
 
 ## Suggested Next
-Start Step 3 by introducing a unified `TextId`-first lookup facade that can
-query the new lexical scope tables for unqualified typedef/value visibility
-before falling back to the current bridge-based paths.
+Start Step 4 by routing more unqualified visible lookup call sites through the
+new local-first facade so block-local visibility stops depending on the legacy
+flat parser binding tables.
 
 ## Watchouts
-Do not collapse namespace traversal into lexical lookup. The new lexical scope
-state currently mirrors block-local typedef/value bindings only; template
-parameters, enum constants, and compatibility bridges still flow through the
-legacy lookup path until Step 3 redirects unqualified lookup.
+Do not collapse namespace traversal into lexical lookup. Step 3 only adds the
+local-first facade; local bindings are still mirrored into the legacy flat
+tables until Step 4 finishes moving unqualified visibility onto the scoped
+lookup path.
 
 ## Proof
 Proof command: `cmake --build --preset default && ctest --test-dir build -j

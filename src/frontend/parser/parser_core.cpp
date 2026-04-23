@@ -165,6 +165,11 @@ bool should_track_local_binding(const Parser& parser,
            uses_symbol_identity(name);
 }
 
+bool can_probe_local_binding(TextId name_text_id, std::string_view name) {
+    return name_text_id != kInvalidText && uses_symbol_identity(name) &&
+           name.find("::") == std::string_view::npos;
+}
+
 std::vector<std::string> merge_leading_top_level_qualified_probe(
     const std::vector<Parser::ParseDebugEvent>& parse_debug_events,
     const std::vector<std::string>& summary_stack) {
@@ -422,15 +427,32 @@ const TypeSpec* Parser::find_local_visible_var_type(TextId name_text_id) const {
     return nullptr;
 }
 
+bool Parser::has_visible_typedef_type(TextId name_text_id,
+                                      std::string_view name) const {
+    if (const TypeSpec* type = find_visible_typedef_type(name_text_id, name)) {
+        (void)type;
+        return true;
+    }
+    return false;
+}
+
 bool Parser::has_visible_typedef_type(std::string_view name) const {
-    if (has_typedef_type(name)) return true;
-    const std::string resolved = resolve_visible_type_name(name);
-    return resolved != name && has_typedef_type(resolved);
+    return has_visible_typedef_type(find_parser_text_id(name), name);
 }
 
 const TypeSpec* Parser::find_visible_typedef_type(std::string_view name) const {
+    return find_visible_typedef_type(find_parser_text_id(name), name);
+}
+
+const TypeSpec* Parser::find_visible_typedef_type(TextId name_text_id,
+                                                  std::string_view name) const {
+    if (can_probe_local_binding(name_text_id, name)) {
+        if (const TypeSpec* type = find_local_visible_typedef_type(name_text_id)) {
+            return type;
+        }
+    }
     if (const TypeSpec* type = find_typedef_type(name)) return type;
-    const std::string resolved = resolve_visible_type_name(name);
+    const std::string resolved = resolve_visible_type_name(name_text_id, name);
     if (resolved.empty() || resolved == name) return nullptr;
     return find_typedef_type(resolved);
 }
@@ -656,11 +678,21 @@ const TypeSpec* Parser::find_var_type(const std::string& name) const {
     return &it->second;
 }
 
-const TypeSpec* Parser::find_visible_var_type(const std::string& name) const {
-    if (const TypeSpec* type = find_var_type(name)) return type;
-    const std::string resolved = resolve_visible_value_name(name);
+const TypeSpec* Parser::find_visible_var_type(TextId name_text_id,
+                                              std::string_view name) const {
+    if (can_probe_local_binding(name_text_id, name)) {
+        if (const TypeSpec* type = find_local_visible_var_type(name_text_id)) {
+            return type;
+        }
+    }
+    if (const TypeSpec* type = find_var_type(std::string(name))) return type;
+    const std::string resolved = resolve_visible_value_name(name_text_id, name);
     if (resolved.empty() || resolved == name) return nullptr;
     return find_var_type(resolved);
+}
+
+const TypeSpec* Parser::find_visible_var_type(const std::string& name) const {
+    return find_visible_var_type(find_parser_text_id(name), name);
 }
 
 void Parser::register_var_type_binding(const std::string& name,
@@ -1587,6 +1619,10 @@ const char* Parser::qualify_name_arena(const char* name) {
 
 std::string Parser::resolve_visible_value_name(TextId name_text_id,
                                                std::string_view name) const {
+    if (can_probe_local_binding(name_text_id, name) &&
+        find_local_visible_var_type(name_text_id)) {
+        return std::string(name);
+    }
     const std::string spelled(name);
     return resolve_visible_name_from_namespace_stack(
         namespace_state_.namespace_stack, spelled,
@@ -1606,6 +1642,10 @@ std::string Parser::resolve_visible_value_name(const std::string& name) const {
 
 std::string Parser::resolve_visible_type_name(TextId name_text_id,
                                               std::string_view name) const {
+    if (can_probe_local_binding(name_text_id, name) &&
+        find_local_visible_typedef_type(name_text_id)) {
+        return std::string(name);
+    }
     const std::string spelled(name);
     return resolve_visible_name_from_namespace_stack(
         namespace_state_.namespace_stack, spelled,
