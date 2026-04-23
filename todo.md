@@ -7,20 +7,20 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by retargeting the declaration-side
-constructor-vs-function probe in `parser_declarations.cpp` onto the same
-`TextId`-aware visible-type helper used by the updated type-head gates.
-The single-argument direct-initialization probe now classifies simple
-identifier arguments through one exact typedef-or-template-parameter
-visibility predicate instead of the broader legacy helper.
+Advanced `plan.md` step 2 by extending the declaration-side
+`typedef` base-type fallback in `parser_declarations.cpp` to reuse the same
+unresolved simple identifier type-head path that `parse_base_type()` already
+uses in C++ mode. Top-level `typedef ForwardDecl Alias;`-style declarations
+now register a placeholder typedef base instead of failing early before the
+shared declaration/type-head logic can recover.
 
 ## Suggested Next
 Continue `plan.md` step 2 by auditing the next declaration-side
-identifier-as-type disambiguation path that still bypasses the shared
-visible-type helper, especially nearby parser entry points that turn
-unresolved simple identifiers into placeholder type heads. Keep the packet
-inside declaration parsing and leave expression lookup plus qualified-name
-traversal untouched.
+identifier-as-type probe that still open-codes visible-type or placeholder
+fallback instead of routing through the same shared helper family. Prefer the
+next narrow packet in declaration parsing where a simple unqualified
+identifier still gets classified with bespoke token-shape checks rather than
+the parser-local lexical scope facade.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. The shared helper

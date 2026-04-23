@@ -2494,6 +2494,17 @@ Node* Parser::parse_top_level() {
                     consume();
                     goto top_level_base_ready;
                 }
+                if (is_cpp_mode() &&
+                    looks_like_unresolved_identifier_type_head(
+                        core_input_state_.pos)) {
+                    base_ts.array_size = -1;
+                    base_ts.array_rank = 0;
+                    for (int i = 0; i < 8; ++i) base_ts.array_dims[i] = -1;
+                    base_ts.base = TB_TYPEDEF;
+                    base_ts.tag = arena_.strdup(spelled.c_str());
+                    consume();
+                    goto top_level_base_ready;
+                }
             }
             std::string nm = check(TokenKind::Identifier)
                                  ? std::string(token_spelling(cur()))

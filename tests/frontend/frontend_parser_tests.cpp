@@ -1153,6 +1153,25 @@ void test_parser_if_condition_decl_uses_local_visible_typedef_scope() {
               "test fixture should balance the local visible typedef scope");
 }
 
+void test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback() {
+  c4c::Lexer lexer("typedef ForwardDecl Alias;\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* decl = parser.parse_top_level();
+  expect_true(decl == nullptr,
+              "top-level typedef fallback should stay bookkeeping-only after registering the alias");
+
+  const c4c::TypeSpec* alias_ts = parser.find_typedef_type("Alias");
+  expect_true(alias_ts != nullptr && alias_ts->base == c4c::TB_TYPEDEF,
+              "top-level typedef fallback should register the alias in the parser typedef table");
+  expect_eq(alias_ts->tag, "ForwardDecl",
+            "registered top-level typedef aliases should keep the unresolved placeholder base");
+}
+
 void test_parser_template_member_suffix_probe_uses_token_spelling() {
   c4c::Lexer lexer(
       "template<int N>\n"
@@ -1512,6 +1531,7 @@ int main() {
   test_parser_global_using_value_import_keeps_global_target_resolution();
   test_parser_visible_value_alias_resolves_scope_local_target_type();
   test_parser_if_condition_decl_uses_local_visible_typedef_scope();
+  test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback();
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
   test_parser_template_type_arg_uses_visible_scope_local_alias();
