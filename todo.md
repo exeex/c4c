@@ -1,30 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/85_parser_ctor_init_visible_head_probe_split.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add focused regressions for each seam
+Current Step ID: 4
+Current Step Title: Re-run focused parser proof
 
 # Current Packet
 
 ## Just Finished
-Split the visible-head decision into an explicit ctor-init handoff inside
-`probe_ctor_vs_function_decl()`. The parser now names the value-head vs
-type-head outcome before it falls through to the unresolved grouped
-pointer/reference checks and the tentative parameter-list parse, while keeping
-the current `source(other)` behavior unchanged.
+Added the remaining focused parser regression for the visible-head handoff
+boundary. The constructor-init probe suite now names separate checks for the
+parenthesized value path, grouped pointer/reference starters, and the
+visible-head handoff itself.
 
 ## Suggested Next
-Add focused parser regressions that pin the three mapped seams separately:
-parenthesized visible-value direct-init, grouped unresolved
-pointer/reference starters, and the visible-head handoff boundary itself.
+Re-run the focused parser proof and, if it stays green, treat the active
+runbook as complete and evaluate the source idea for closure.
 
 ## Watchouts
 Do not let this route drift back into the broader lexical-scope lookup plan.
-The explicit handoff is only a boundary refactor. Do not use it as cover for a
-classifier-first reorder that flips `Box value(source(other));` back onto the
-function-declaration side, and keep the grouped `identifier &/* identifier`
-fast-reject independent from the visible-value path.
+The new handoff regression is meant to pin the existing parser split, not to
+license a broader classifier reorder. `Box value(source(other));` and the
+qualified visible-value call shapes must stay on the direct-init declaration
+side while the visible-type cases remain function declarations.
 
 ## Proof
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' | tee test_after.log`
-passed after the visible-head handoff extraction. Proof log: `test_after.log`.
+passed after adding the dedicated visible-head handoff regression. Proof log:
+`test_after.log`.

@@ -1246,6 +1246,59 @@ void test_parser_local_ctor_init_probe_balances_parenthesized_param_and_value_ca
             "known visible value call-like forms should keep their declarator spelling");
 }
 
+void test_parser_local_ctor_init_probe_preserves_visible_head_handoff_boundary() {
+  c4c::Lexer lexer("struct Box { Box(int); };\n"
+                   "int source(int value) { return value; }\n"
+                   "namespace ns {\n"
+                   "int sink(int value) { return value; }\n"
+                   "}\n"
+                   "int main() {\n"
+                   "  int payload = 7;\n"
+                   "  Box copy(Value(other));\n"
+                   "  Box value(source(payload));\n"
+                   "  Box qualified_copy(ns::Value(other));\n"
+                   "  Box qualified_value(ns::sink(payload));\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "visible-head handoff regression should parse as a program");
+  expect_eq_int(program->n_children, 4,
+                "the visible-head handoff regression should contain the record, helper, namespace, and main");
+
+  c4c::Node* main_fn = program->children[3];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the visible-head handoff regression should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 5,
+                "main should retain the payload declaration and the focused handoff declarations");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_DECL,
+              "the payload declaration should remain a declaration");
+  expect_true(main_fn->body->children[1] != nullptr &&
+                  main_fn->body->children[1]->kind == c4c::NK_EMPTY,
+              "visible type heads should remain function declarations at the handoff boundary");
+  expect_true(main_fn->body->children[2] != nullptr &&
+                  main_fn->body->children[2]->kind == c4c::NK_DECL,
+              "visible value heads should stay ctor-init declarations at the handoff boundary");
+  expect_eq(main_fn->body->children[2]->name, "value",
+            "visible value handoff declarations should keep their declarator spelling");
+  expect_true(main_fn->body->children[3] != nullptr &&
+                  main_fn->body->children[3]->kind == c4c::NK_EMPTY,
+              "qualified visible type heads should remain function declarations at the handoff boundary");
+  expect_true(main_fn->body->children[4] != nullptr &&
+                  main_fn->body->children[4]->kind == c4c::NK_DECL,
+              "qualified visible value heads should stay ctor-init declarations at the handoff boundary");
+  expect_eq(main_fn->body->children[4]->name, "qualified_value",
+            "qualified visible value handoff declarations should keep their declarator spelling");
+}
+
 void test_parser_local_ctor_init_probe_balances_grouped_pointer_param_and_value_call_shapes() {
   c4c::Lexer lexer("struct Box { Box(int*); };\n"
                    "int deref(int* p) { return p ? *p : 0; }\n"
@@ -1931,6 +1984,7 @@ int main() {
   test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback();
   test_parser_local_ctor_init_probe_balances_unresolved_param_and_value_expr_shapes();
   test_parser_local_ctor_init_probe_balances_parenthesized_param_and_value_call_shapes();
+  test_parser_local_ctor_init_probe_preserves_visible_head_handoff_boundary();
   test_parser_local_ctor_init_probe_balances_grouped_pointer_param_and_value_call_shapes();
   test_parser_local_ctor_init_probe_balances_template_param_and_value_call_shapes();
   test_parser_local_ctor_init_probe_balances_qualified_param_and_value_call_shapes();
