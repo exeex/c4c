@@ -1,8 +1,9 @@
 # Grouped Register Bank And Storage Authority For Prealloc
 
-Status: Open
+Status: Closed
 Created: 2026-04-23
 Last-Updated: 2026-04-23
+Closed: 2026-04-23
 Parent Idea: [86_full_x86_backend_contract_first_replan.md](/workspaces/c4c/ideas/open/86_full_x86_backend_contract_first_replan.md)
 
 ## Intent
@@ -52,3 +53,11 @@ This idea is complete when prealloc can publish truthful bank/span/storage
 authority for grouped registers, and target backends no longer need to invent
 their own contiguous-register or alias reasoning beyond spelling and final
 encoding.
+
+## Closure Notes
+
+Grouped prealloc authority now publishes bank/span/storage decisions instead of
+leaving grouped legality to downstream reconstruction. The route landed grouped
+authority publication in prealloc, exposed the consumer-facing x86 debug proof
+surface, and finished with focused contract plus consumer confirmation from
+`backend_prepare_frame_stack_call_contract` and `backend_x86_route_debug`.
