@@ -7,17 +7,19 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by teaching single-token template type-argument
-disambiguation to accept visible lexical aliases through the visible typedef
-facade instead of requiring only flat typedef-table membership. Added focused
-parser coverage proving `try_parse_template_type_arg` now accepts a local alias
-that resolves only through `ParserLexicalScopeState` plus visible alias lookup.
+Advanced `plan.md` step 2 by retargeting deferred template-expression helpers
+onto the `TextId`-first visible typedef facade when probing single-token
+template arguments and template-owner aliases. Added focused parser coverage
+proving deferred NTTP builtin-trait evaluation and `Trait<...>::member`
+instantiation both accept scope-local aliases bound only through
+`ParserLexicalScopeState`, and refreshed the local alias template-arg
+expectation to match the existing resolved-type result.
 
 ## Suggested Next
-Continue `plan.md` step 2 with one narrow packet that audits other
-template-disambiguation and parse-predicate helpers for unqualified checks that
-still ask only `is_typedef_name(...)` or direct definition-map membership where
-`has_visible_typedef_type(...)` should participate for lexical aliases.
+Continue `plan.md` step 2 with one narrow packet that audits remaining
+token-based parser predicates for unqualified visible-type probes that still
+route through string-only overloads or pre-`TextId` bridge helpers instead of
+passing the token `text_id` directly into the visible lexical facade.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. Do not reopen the

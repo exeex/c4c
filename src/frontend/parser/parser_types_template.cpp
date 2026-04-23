@@ -278,7 +278,8 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                         return true;
                     }
                 }
-                if (const TypeSpec* type = find_visible_typedef_type(token_spelling(tok))) {
+                if (const TypeSpec* type =
+                        find_visible_typedef_type(tok.text_id, token_spelling(tok))) {
                     *out = *type;
                     return true;
                 }
@@ -466,16 +467,17 @@ bool Parser::eval_deferred_nttp_expr_tokens(
     auto resolve_template_arg = [&](std::vector<ParsedTemplateArg>& ref_args) -> bool {
         if (ti >= toks.size()) return false;
         if (toks[ti].kind == TokenKind::Identifier) {
+            const Token& tok = toks[ti];
             bool found = false;
             for (const auto& [pn, pts] : type_bindings) {
-                if (token_spelling(toks[ti]) == pn) {
+                if (token_spelling(tok) == pn) {
                     ParsedTemplateArg a; a.is_value = false; a.type = pts;
                     ref_args.push_back(a); found = true; break;
                 }
             }
             if (!found) {
                 for (const auto& [pn, pv] : nttp_bindings) {
-                    if (token_spelling(toks[ti]) == pn) {
+                    if (token_spelling(tok) == pn) {
                         ParsedTemplateArg a; a.is_value = true; a.value = pv;
                         ref_args.push_back(a); found = true; break;
                     }
@@ -483,7 +485,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
             }
             if (!found) {
                 if (const TypeSpec* type =
-                        find_visible_typedef_type(token_spelling(toks[ti]))) {
+                        find_visible_typedef_type(tok.text_id, token_spelling(tok))) {
                     ParsedTemplateArg a; a.is_value = false;
                     a.type = *type;
                     ref_args.push_back(a);
@@ -532,6 +534,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
     // Helper: evaluate Trait<args>::member pattern starting at current ti.
     auto eval_member_lookup = [&](long long* val) -> bool {
         if (ti >= toks.size() || toks[ti].kind != TokenKind::Identifier) return false;
+        const TextId ref_tpl_name_text_id = toks[ti].text_id;
         std::string ref_tpl_name = std::string(token_spelling(toks[ti]));
         size_t saved_ti = ti;
         ++ti;
@@ -567,7 +570,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         const Node* ref_primary = find_template_struct_primary(resolved_ref_tpl_name);
         if (!ref_primary) {
             if (const TypeSpec* visible_type =
-                    find_visible_typedef_type(ref_tpl_name)) {
+                    find_visible_typedef_type(ref_tpl_name_text_id, ref_tpl_name)) {
                 if (visible_type->tag && visible_type->tag[0]) {
                     resolved_ref_tpl_name = visible_type->tag;
                     ref_primary = find_template_struct_primary(
@@ -576,7 +579,8 @@ bool Parser::eval_deferred_nttp_expr_tokens(
             }
         }
         if (!ref_primary) {
-            const std::string visible_name = resolve_visible_type_name(ref_tpl_name);
+            const std::string visible_name =
+                resolve_visible_type_name(ref_tpl_name_text_id, ref_tpl_name);
             if (!visible_name.empty()) {
                 resolved_ref_tpl_name = visible_name;
                 ref_primary = find_template_struct_primary(resolved_ref_tpl_name);

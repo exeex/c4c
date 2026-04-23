@@ -1121,12 +1121,98 @@ void test_parser_template_type_arg_uses_visible_scope_local_alias() {
               "template type-argument probes should treat visible lexical aliases as type heads");
   expect_true(!arg.is_value,
               "visible lexical aliases should stay classified as type arguments");
-  expect_true(arg.type.base == c4c::TB_TYPEDEF,
-              "visible lexical aliases should parse as typedef-like type arguments");
-  expect_eq(arg.type.tag, "Alias",
-            "template type-argument parsing should preserve the alias spelling");
+  expect_true(arg.type.base == c4c::TB_INT,
+              "visible lexical aliases should resolve to the bound scope-local type");
+  expect_true(arg.type.tag == nullptr,
+              "visible lexical alias type-argument parsing should not fabricate a flat typedef tag");
   expect_eq_int(parser.pos_, 1,
                 "visible lexical alias type-argument parsing should stop before the template close");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  const std::vector<c4c::Token> toks = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "__is_same"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Comma, ","),
+      parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+  };
+
+  long long value = 0;
+  expect_true(parser.eval_deferred_nttp_expr_tokens("Trait", toks, {}, {}, &value),
+              "deferred NTTP builtin traits should resolve scope-local aliases through token TextId lookup");
+  expect_eq_int(value, 1,
+                "deferred NTTP builtin traits should treat the scope-local alias as the bound type");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases() {
+  c4c::Lexer lexer(
+      "template<typename T>\n"
+      "struct Trait { static constexpr int value = 7; };\n",
+      c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  (void)parser.parse_top_level();
+  expect_true(parser.find_template_struct_primary("Trait") != nullptr,
+              "template member lookup fixture should register the template primary");
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  c4c::TypeSpec trait_alias_ts{};
+  trait_alias_ts.array_size = -1;
+  trait_alias_ts.inner_rank = -1;
+  trait_alias_ts.base = c4c::TB_STRUCT;
+  trait_alias_ts.tag = arena.strdup("Trait");
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  const c4c::TextId trait_alias_text = lexer.text_table().intern("AliasTrait");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+  parser.bind_local_typedef(trait_alias_text, trait_alias_ts);
+
+  const std::vector<c4c::Token> toks = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "AliasTrait"),
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+  };
+
+  long long value = 0;
+  expect_true(parser.eval_deferred_nttp_expr_tokens("Trait", toks, {}, {}, &value),
+              "deferred NTTP member lookup should resolve scope-local template aliases and template arguments through token TextId lookup");
+  expect_eq_int(value, 7,
+                "deferred NTTP member lookup should preserve the instantiated static member value");
 
   expect_true(parser.pop_local_binding_scope(),
               "test fixture should balance the local visible typedef scope");
@@ -1268,6 +1354,8 @@ int main() {
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
   test_parser_template_type_arg_uses_visible_scope_local_alias();
+  test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias();
+  test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases();
   test_parser_alias_template_value_probes_use_token_spelling();
   test_parser_typename_template_parameter_probe_uses_token_spelling();
   test_parser_post_pointer_qualifier_probes_use_token_spelling();
