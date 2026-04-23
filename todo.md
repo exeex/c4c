@@ -5,7 +5,7 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Rewire Prepared Adapters And Debug Surfaces Over Canonical Seams
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
