@@ -64,6 +64,15 @@ bool is_x86_target(const c4c::TargetProfile& target_profile) {
          target_profile.arch == c4c::TargetArch::I686;
 }
 
+void require_x86_module_entry_target(const c4c::TargetProfile& target_profile,
+                                     std::string_view api_name) {
+  if (is_x86_target(target_profile)) {
+    return;
+  }
+  throw std::invalid_argument(std::string(api_name) +
+                              " requires an x86 target profile");
+}
+
 std::string make_x86_lir_handoff_failure_message(
     const c4c::backend::BirLoweringResult& lowering) {
   std::string message =
@@ -1111,33 +1120,57 @@ std::string emit_target_bir_module(const bir::Module& module,
   return render_prepared_bir_text(prepared.module);
 }
 
-std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
-                                   const c4c::TargetProfile& target_profile) {
+std::string emit_x86_lir_module_entry(const c4c::codegen::lir::LirModule& module,
+                                      const c4c::TargetProfile& target_profile) {
+  require_x86_module_entry_target(target_profile, "emit_x86_lir_module_entry");
   c4c::backend::BirLoweringOptions lowering_options{};
   auto lowering = c4c::backend::try_lower_to_bir_with_options(module, lowering_options);
   if (lowering.module.has_value()) {
     const auto prepared_bir = prepare_semantic_bir_pipeline(*lowering.module, target_profile);
-    if (is_x86_target(target_profile)) {
-      return c4c::backend::x86::api::emit_prepared_module(prepared_bir);
-    }
+    return c4c::backend::x86::api::emit_prepared_module(prepared_bir);
+  }
+  throw std::invalid_argument(make_x86_lir_handoff_failure_message(lowering));
+}
+
+std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
+                                   const c4c::TargetProfile& target_profile) {
+  if (is_x86_target(target_profile)) {
+    return emit_x86_lir_module_entry(module, target_profile);
+  }
+
+  c4c::backend::BirLoweringOptions lowering_options{};
+  auto lowering = c4c::backend::try_lower_to_bir_with_options(module, lowering_options);
+  if (lowering.module.has_value()) {
+    const auto prepared_bir = prepare_semantic_bir_pipeline(*lowering.module, target_profile);
     return render_prepared_bir_text(prepared_bir.module);
   }
-  if (is_x86_target(target_profile)) {
-    throw std::invalid_argument(make_x86_lir_handoff_failure_message(lowering));
-  }
   return emit_bootstrap_lir_module(module, target_profile);
+}
+
+BackendAssembleResult stage_x86_lir_module_entry(
+    const c4c::codegen::lir::LirModule& module,
+    const c4c::TargetProfile& target_profile,
+    const std::string& output_path) {
+  require_x86_module_entry_target(target_profile, "stage_x86_lir_module_entry");
+  return BackendAssembleResult{
+      .staged_text = c4c::backend::x86::api::emit_module(module, target_profile),
+      .output_path = output_path,
+      .object_emitted = false,
+      .error = "backend bootstrap mode does not assemble objects yet",
+  };
 }
 
 BackendAssembleResult assemble_target_lir_module(
     const c4c::codegen::lir::LirModule& module,
     const c4c::TargetProfile& target_profile,
     const std::string& output_path) {
-  // Generic backend assembly front door: x86 now stages text through the
-  // reviewed target-local api/ owner, while this backend-level wrapper keeps
-  // the existing bootstrap assemble contract for non-target-local object work.
-  const auto emitted = is_x86_target(target_profile)
-                           ? c4c::backend::x86::api::emit_module(module, target_profile)
-                           : emit_target_lir_module(module, target_profile);
+  if (is_x86_target(target_profile)) {
+    return stage_x86_lir_module_entry(module, target_profile, output_path);
+  }
+
+  // Generic backend assembly front door keeps the existing bootstrap assemble
+  // contract for non-target-local object work.
+  const auto emitted = emit_target_lir_module(module, target_profile);
   return BackendAssembleResult{
       .staged_text = emitted,
       .output_path = output_path,

@@ -5,39 +5,41 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 4
 Current Step Title: Shift Module Entry And Legacy Dispatch To The Replacement Graph
-Plan Review Counter: 5 / 6
+Plan Review Counter: 6 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed a step 4 dump-surface classification packet by making
-`src/backend/backend.cpp` route `BackendDumpStage::SemanticBir` and
-`BackendDumpStage::PreparedBir` through explicit generic backend dump helpers,
-while routing `BackendDumpStage::MirSummary` and `BackendDumpStage::MirTrace`
-through an explicit target-local x86 `route_debug` helper. Added focused
-backend-front-door assertions in `backend_x86_route_debug_test.cpp` proving
-semantic/prepared dumps still match the generic backend printers while MIR
-summary/trace still match the x86 route-debug surfaces.
+Completed a step 4 module-entry classification packet by splitting the x86 LIR
+front door into explicit public `emit_x86_lir_module_entry(...)` and
+`stage_x86_lir_module_entry(...)` surfaces, while keeping
+`emit_target_lir_module(...)` and `assemble_target_lir_module(...)` as
+compatibility wrappers that preserve the current generic/bootstrap contract for
+non-x86 callers. Added focused x86 handoff-boundary assertions proving the new
+explicit entrypoints still match the canonical x86 prepared-module and staging
+seams, and that the compatibility wrappers preserve the same rejection and
+bootstrap-result contracts.
 
 ## Suggested Next
 
 Audit the remaining step 4 public entrypoints in `src/backend/backend.cpp` and
-`src/backend/backend.hpp` for any legacy x86-only dispatch that still sits
-behind generic naming, especially around module entry helpers that still mix
-bootstrap behavior with target-local ownership.
+`src/backend/backend.hpp` for any other legacy x86-only dispatch that still
+sits behind generic naming, especially around BIR/public entry surfaces that
+still combine target-local ownership with shared backend compatibility names.
 
 ## Watchouts
 
-- `dump_module(...)` still lowers LIR to semantic/prepared BIR before both the
-  generic and x86 MIR branches; this packet only classified ownership of the
-  public dump surfaces, not the lowering pipeline itself.
-- `assemble_target_lir_module(...)` remains a separate bootstrap contract from
-  this dump-surface work; do not conflate the dump ownership split with object
-  emission ownership without a new packet.
+- `emit_target_lir_module(...)` and `assemble_target_lir_module(...)` still
+  exist as compatibility entrypoints because non-x86 callers in the tree route
+  through those names today; a future packet can only retire or rename them if
+  it updates those downstream call sites as part of the same slice.
+- `emit_target_bir_module(...)` still mixes a generic prepared-BIR fallback
+  with x86 prepared-module emission under one public name; if step 4 continues,
+  that BIR entry cluster is the next obvious ownership boundary to classify.
 
 ## Proof
 
-Step 4 backend-front-door dump classification packet on
+Step 4 backend-front-door module-entry classification packet on
 2026-04-23:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`

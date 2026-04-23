@@ -573,7 +573,20 @@ int check_lir_route_outputs(const lir::LirModule& module, const char* failure_co
       prepare::prepare_semantic_bir_module_with_options(*lowering.module, module.target_profile);
   const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
 
+  const auto explicit_x86_asm =
+      c4c::backend::emit_x86_lir_module_entry(module, module.target_profile);
+  if (explicit_x86_asm != prepared_asm) {
+    return fail((std::string(failure_context) +
+                 ": explicit x86 LIR module entry did not route through the canonical x86 prepared-module consumer")
+                    .c_str());
+  }
+
   const auto public_asm = c4c::backend::emit_target_lir_module(module, module.target_profile);
+  if (public_asm != explicit_x86_asm) {
+    return fail((std::string(failure_context) +
+                 ": compatibility LIR entry no longer matches the explicit x86 module-entry surface")
+                    .c_str());
+  }
   if (public_asm != prepared_asm) {
     return fail((std::string(failure_context) +
                  ": public x86 LIR entry did not route through the canonical x86 prepared-module consumer")
@@ -594,9 +607,28 @@ int check_lir_route_outputs(const lir::LirModule& module, const char* failure_co
 int check_lir_assemble_route_outputs(const lir::LirModule& module, const char* failure_context) {
   const std::string output_path = "ignored-by-generic-x86-backend-assemble.o";
   const auto expected_staged = c4c::backend::x86::api::emit_module(module, module.target_profile);
+  const auto explicit_x86_result =
+      c4c::backend::stage_x86_lir_module_entry(module, module.target_profile, output_path);
+  if (explicit_x86_result.staged_text != expected_staged) {
+    return fail((std::string(failure_context) +
+                 ": explicit x86 module-entry staging no longer uses the canonical x86 api seam")
+                    .c_str());
+  }
+  if (explicit_x86_result.output_path != output_path || explicit_x86_result.object_emitted ||
+      explicit_x86_result.error != "backend bootstrap mode does not assemble objects yet") {
+    return fail((std::string(failure_context) +
+                 ": explicit x86 module-entry staging no longer preserves the bootstrap assemble result contract")
+                    .c_str());
+  }
+
   const auto public_result =
       c4c::backend::assemble_target_lir_module(module, module.target_profile, output_path);
 
+  if (public_result.staged_text != explicit_x86_result.staged_text) {
+    return fail((std::string(failure_context) +
+                 ": compatibility assemble entry no longer matches the explicit x86 module-entry staging surface")
+                    .c_str());
+  }
   if (public_result.staged_text != expected_staged) {
     return fail((std::string(failure_context) +
                  ": generic backend assemble path no longer stages x86 LIR input through the canonical x86 api seam")
@@ -615,6 +647,19 @@ int check_lir_assemble_route_outputs(const lir::LirModule& module, const char* f
 int check_lir_route_rejection(const lir::LirModule& module,
                               std::string_view expected_message_fragment,
                               const char* failure_context) {
+  try {
+    (void)c4c::backend::emit_x86_lir_module_entry(module, module.target_profile);
+    return fail((std::string(failure_context) +
+                 ": explicit x86 module entry unexpectedly kept a mixed bootstrap fallback alive")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find(expected_message_fragment) == std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": explicit x86 module entry rejected unsupported lowering with the wrong contract message")
+                      .c_str());
+    }
+  }
+
   try {
     (void)c4c::backend::emit_target_lir_module(module, module.target_profile);
     return fail((std::string(failure_context) +

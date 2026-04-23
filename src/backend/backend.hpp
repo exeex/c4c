@@ -81,9 +81,27 @@ struct BackendAssembleResult {
 std::string emit_target_bir_module(const bir::Module& module,
                                    const c4c::TargetProfile& target_profile);
 
+// Explicit x86-owned LIR module-entry handoff. This is the target-local front
+// door that consumes semantic lir_to_bir output before x86 codegen.
+std::string emit_x86_lir_module_entry(const c4c::codegen::lir::LirModule& module,
+                                      const c4c::TargetProfile& target_profile);
+
+// Explicit x86-owned module-entry staging surface. The returned result still
+// preserves the existing bootstrap assemble contract around the x86 handoff.
+BackendAssembleResult stage_x86_lir_module_entry(
+    const c4c::codegen::lir::LirModule& module,
+    const c4c::TargetProfile& target_profile,
+    const std::string& output_path);
+
+// Compatibility wrapper: x86 targets route through
+// `emit_x86_lir_module_entry(...)`, while non-x86 targets keep the existing
+// generic bootstrap/public emit contract.
 std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
                                    const c4c::TargetProfile& target_profile);
 
+// Compatibility wrapper: x86 targets route through
+// `stage_x86_lir_module_entry(...)`, while non-x86 targets keep the existing
+// generic bootstrap assemble contract.
 BackendAssembleResult assemble_target_lir_module(
     const c4c::codegen::lir::LirModule& module,
     const c4c::TargetProfile& target_profile,
