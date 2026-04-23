@@ -18,11 +18,12 @@ const Parser::ParserSymbolTables& Parser::parser_symbol_tables() const {
 Parser::ParserLiteSnapshot Parser::save_lite_state() const {
     ParserLiteSnapshot snap;
     snap.pos = pos_;
-    if (last_resolved_typedef_text_id_ != kInvalidText) {
+    if (active_context_state_.last_resolved_typedef_text_id != kInvalidText) {
         snap.last_resolved_typedef.kind = TentativeTextRefKind::TextId;
-        snap.last_resolved_typedef.text_id = last_resolved_typedef_text_id_;
+        snap.last_resolved_typedef.text_id =
+            active_context_state_.last_resolved_typedef_text_id;
     }
-    snap.template_arg_expr_depth = template_arg_expr_depth_;
+    snap.template_arg_expr_depth = active_context_state_.template_arg_expr_depth;
     snap.token_mutation_count = token_mutations_.size();
     return snap;
 }
@@ -35,7 +36,8 @@ void Parser::restore_lite_state(const ParserLiteSnapshot& snap) {
         set_last_resolved_typedef(
             token_texts_->lookup(snap.last_resolved_typedef.text_id));
     }
-    template_arg_expr_depth_ = snap.template_arg_expr_depth;
+    active_context_state_.template_arg_expr_depth =
+        snap.template_arg_expr_depth;
     while (token_mutations_.size() > snap.token_mutation_count) {
         const TokenMutation& mutation = token_mutations_.back();
         tokens_[mutation.pos] = mutation.token;

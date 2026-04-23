@@ -676,13 +676,13 @@ void ParserTentativeParseGuardLite::commit() {
 
 ParserLocalVarBindingSuppressionGuard::ParserLocalVarBindingSuppressionGuard(
     Parser& p)
-    : parser(p), old(p.suppress_local_var_bindings_) {
-    parser.suppress_local_var_bindings_ = true;
+    : parser(p), old(p.active_context_state_.suppress_local_var_bindings) {
+    parser.active_context_state_.suppress_local_var_bindings = true;
 }
 
 ParserLocalVarBindingSuppressionGuard::
     ~ParserLocalVarBindingSuppressionGuard() {
-    parser.suppress_local_var_bindings_ = old;
+    parser.active_context_state_.suppress_local_var_bindings = old;
 }
 
 ParserRecordTemplatePreludeGuard::ParserRecordTemplatePreludeGuard(Parser* p)

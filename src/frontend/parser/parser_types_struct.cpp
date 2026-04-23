@@ -649,7 +649,7 @@ bool Parser::try_parse_record_using_member(
         register_typedef_binding(alias_name, alias_ts, false);
         member_typedef_names->push_back(arena_.strdup(alias_name.c_str()));
         member_typedef_types->push_back(alias_ts);
-        if (!current_struct_tag_.empty()) {
+        if (!active_context_state_.current_struct_tag.empty()) {
             std::string scoped = std::string(current_struct_tag_text()) + "::" + alias_name;
             register_struct_member_typedef_binding(scoped, alias_ts);
         }
@@ -688,7 +688,7 @@ bool Parser::try_parse_record_typedef_member(
         }
         member_typedef_names->push_back(name);
         member_typedef_types->push_back(type);
-        if (!current_struct_tag_.empty()) {
+        if (!active_context_state_.current_struct_tag.empty()) {
             std::string scoped = std::string(current_struct_tag_text()) + "::" + name;
             register_struct_member_typedef_binding(scoped, type);
         }
@@ -794,7 +794,8 @@ bool Parser::try_parse_record_enum_member(
 
     consume();
     Node* ed = parse_enum();
-    if (ed && parsing_top_level_context_) struct_defs_.push_back(ed);
+    if (ed && active_context_state_.parsing_top_level_context)
+        struct_defs_.push_back(ed);
     // After the enum body, there may be one or more field declarators:
     // e.g.  enum { X } x;   or   enum E { A, B } kind;
     // If the next token starts a declarator (not ; or }), parse it.
@@ -847,7 +848,7 @@ bool Parser::try_parse_record_constructor_member(
     const std::string& struct_source_name,
     std::vector<Node*>* methods) {
     ParseContextGuard trace(this, __func__);
-    if (!(is_cpp_mode() && !current_struct_tag_.empty()))
+    if (!(is_cpp_mode() && !active_context_state_.current_struct_tag.empty()))
         return false;
 
     int probe = pos_;
@@ -1007,7 +1008,7 @@ bool Parser::try_parse_record_constructor_member(
 bool Parser::try_parse_record_destructor_member(
     const std::string& struct_source_name,
     std::vector<Node*>* methods) {
-    if (!(is_cpp_mode() && !current_struct_tag_.empty() &&
+    if (!(is_cpp_mode() && !active_context_state_.current_struct_tag.empty() &&
           check(TokenKind::Tilde) &&
           pos_ + 1 < static_cast<int>(tokens_.size()) &&
           tokens_[pos_ + 1].kind == TokenKind::Identifier &&
@@ -1699,7 +1700,7 @@ void Parser::begin_record_body_context(const char* tag,
         register_typedef_name(tag, false);
 
     if (saved_struct_tag)
-        *saved_struct_tag = current_struct_tag_;
+        *saved_struct_tag = active_context_state_.current_struct_tag;
     if (tag && tag[0]) {
         set_current_struct_tag(tag);
     } else {
@@ -1744,7 +1745,7 @@ void Parser::parse_record_body_with_context(
     const char* tag,
     const char* template_origin_name,
     RecordBodyState* body_state) {
-    std::string saved_struct_tag = current_struct_tag_;
+    std::string saved_struct_tag = active_context_state_.current_struct_tag;
     std::string struct_source_name;
     begin_record_body_context(tag, template_origin_name, &saved_struct_tag,
                               &struct_source_name);
@@ -1917,7 +1918,7 @@ Node* Parser::parse_record_tag_setup(int line,
                                       is_union ? TB_UNION : TB_STRUCT,
                                       resolved_tag);
         }
-        if (is_cpp_mode() && parsing_top_level_context_)
+        if (is_cpp_mode() && active_context_state_.parsing_top_level_context)
             struct_defs_.push_back(ref);
         return ref;
     }
@@ -1934,7 +1935,8 @@ Node* Parser::parse_record_tag_setup(int line,
                 : canonical_name_in_context(current_namespace_context_id(),
                                             resolved_tag);
         if (defined_struct_tags_.count(qtag)) {
-            if (parsing_top_level_context_ && !is_cpp_mode()) {
+            if (active_context_state_.parsing_top_level_context &&
+                !is_cpp_mode()) {
                 throw std::runtime_error(std::string("redefinition of ") +
                                          (is_union ? "union " : "struct ") +
                                          resolved_tag);
@@ -2256,7 +2258,8 @@ Node* Parser::parse_enum() {
         for (int i = 0; i < ed->n_enum_variants; ++i)
             enum_consts_[std::string(ed->enum_names[i])] = ed->enum_vals[i];
     }
-    if (parsing_top_level_context_) struct_defs_.push_back(ed);
+    if (active_context_state_.parsing_top_level_context)
+        struct_defs_.push_back(ed);
     return ed;
 }
 

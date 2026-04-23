@@ -9,15 +9,18 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Just Finished
 
-- completed Step 2 by removing the pragma-state compatibility aliases from
-  `Parser` and routing the owned parser pragma reads/writes directly through
-  `pragma_state_` in `parser_core.cpp`, `parser_declarations.cpp`, and
-  `parser_types_struct.cpp`
+- completed another Step 2 packet by removing the active-context compatibility
+  aliases from `Parser` and routing the affected parser reads/writes directly
+  through `active_context_state_` plus the existing inline helpers in
+  `parser.hpp`, `parser_support.cpp`, `parser_core.cpp`,
+  `parser_declarations.cpp`, `parser_expressions.cpp`,
+  `parser_types_declarator.cpp`, and `parser_types_struct.cpp`
 
 ## Suggested Next
 
-- continue Step 2 by checking for any remaining parser-bundle alias holdouts
-  in the parser subsystem, then prove the same parser-focused subset again
+- continue Step 2 with another narrow alias-removal family in `parser.hpp`,
+  preferably the template-state aliases before touching the much wider
+  core-input aliases, then prove the same parser-focused subset again
 
 ## Watchouts
 

@@ -227,34 +227,6 @@ class Parser {
 
   // ── active parse context ──────────────────────────────────────────────────
   ParserActiveContextState active_context_state_;
-  // Set by the using-alias handler to let the template wrapper detect that
-  // a using type alias was defined during `parse_top_level()`.
-  std::string& last_using_alias_name_ =
-      active_context_state_.last_using_alias_name;
-  TextId& last_using_alias_name_text_id_ =
-      active_context_state_.last_using_alias_name_text_id;
-  // Last resolved typedef name from parse_base_type() (for fn_ptr propagation).
-  std::string& last_resolved_typedef_ =
-      active_context_state_.last_resolved_typedef;
-  TextId& last_resolved_typedef_text_id_ =
-      active_context_state_.last_resolved_typedef_text_id;
-  // Tag of the struct currently being parsed (empty if not in struct body).
-  std::string& current_struct_tag_ = active_context_state_.current_struct_tag;
-  TextId& current_struct_tag_text_id_ =
-      active_context_state_.current_struct_tag_text_id;
-  // True while parsing a file-scope declaration in parse_top_level().
-  bool& parsing_top_level_context_ =
-      active_context_state_.parsing_top_level_context;
-  // True while parsing an explicit template specialization (template<>).
-  bool& parsing_explicit_specialization_ =
-      active_context_state_.parsing_explicit_specialization;
-  // Nesting depth for expression parses that are constrained by template
-  // argument delimiters, so expression parsing does not consume enclosing
-  // template-close tokens as operators.
-  int& template_arg_expr_depth_ =
-      active_context_state_.template_arg_expr_depth;
-  bool& suppress_local_var_bindings_ =
-      active_context_state_.suppress_local_var_bindings;
 
   // ── namespace / using-directive tables ───────────────────────────────────
   ParserNamespaceState namespace_state_;
@@ -340,34 +312,39 @@ class Parser {
     return fallback;
   }
   void clear_current_struct_tag() {
-    current_struct_tag_.clear();
-    current_struct_tag_text_id_ = kInvalidText;
+    active_context_state_.current_struct_tag.clear();
+    active_context_state_.current_struct_tag_text_id = kInvalidText;
   }
   void set_current_struct_tag(std::string_view tag) {
-    current_struct_tag_ = std::string(tag);
-    current_struct_tag_text_id_ = parser_text_id_for_token(kInvalidText, tag);
+    active_context_state_.current_struct_tag = std::string(tag);
+    active_context_state_.current_struct_tag_text_id =
+        parser_text_id_for_token(kInvalidText, tag);
   }
   std::string_view current_struct_tag_text() const {
-    return parser_text(current_struct_tag_text_id_, current_struct_tag_);
+    return parser_text(active_context_state_.current_struct_tag_text_id,
+                       active_context_state_.current_struct_tag);
   }
   void clear_last_resolved_typedef() {
-    last_resolved_typedef_.clear();
-    last_resolved_typedef_text_id_ = kInvalidText;
+    active_context_state_.last_resolved_typedef.clear();
+    active_context_state_.last_resolved_typedef_text_id = kInvalidText;
   }
   void set_last_resolved_typedef(std::string_view name) {
-    last_resolved_typedef_ = std::string(name);
-    last_resolved_typedef_text_id_ = parser_text_id_for_token(kInvalidText, name);
+    active_context_state_.last_resolved_typedef = std::string(name);
+    active_context_state_.last_resolved_typedef_text_id =
+        parser_text_id_for_token(kInvalidText, name);
   }
   void clear_last_using_alias_name() {
-    last_using_alias_name_.clear();
-    last_using_alias_name_text_id_ = kInvalidText;
+    active_context_state_.last_using_alias_name.clear();
+    active_context_state_.last_using_alias_name_text_id = kInvalidText;
   }
   void set_last_using_alias_name(std::string_view name) {
-    last_using_alias_name_ = std::string(name);
-    last_using_alias_name_text_id_ = parser_text_id_for_token(kInvalidText, name);
+    active_context_state_.last_using_alias_name = std::string(name);
+    active_context_state_.last_using_alias_name_text_id =
+        parser_text_id_for_token(kInvalidText, name);
   }
   std::string_view last_using_alias_name_text() const {
-    return parser_text(last_using_alias_name_text_id_, last_using_alias_name_);
+    return parser_text(active_context_state_.last_using_alias_name_text_id,
+                       active_context_state_.last_using_alias_name);
   }
   const FnPtrTypedefInfo* find_typedef_fn_ptr_info(TextId text_id) const {
     if (text_id == kInvalidText) return nullptr;
@@ -375,7 +352,8 @@ class Parser {
     return it == typedef_fn_ptr_info_.end() ? nullptr : &it->second;
   }
   const FnPtrTypedefInfo* find_current_typedef_fn_ptr_info() const {
-    return find_typedef_fn_ptr_info(last_resolved_typedef_text_id_);
+    return find_typedef_fn_ptr_info(
+        active_context_state_.last_resolved_typedef_text_id);
   }
   std::string_view token_spelling(const Token& token) const;
   void set_parser_owned_spelling(Token& token, std::string_view spelling);

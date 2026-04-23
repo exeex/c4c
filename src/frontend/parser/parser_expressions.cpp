@@ -83,7 +83,9 @@ Node* Parser::parse_expr() {
 Node* Parser::parse_assign_expr() {
     ParseContextGuard trace(this, __func__);
     Node* lhs = parse_ternary();
-    if (template_arg_expr_depth_ > 0 && check_template_close()) return lhs;
+    if (active_context_state_.template_arg_expr_depth > 0 &&
+        check_template_close())
+        return lhs;
     int ln = cur().line;
     TokenKind k = cur().kind;
     const char* op = nullptr;
@@ -140,7 +142,9 @@ Node* Parser::parse_ternary() {
 Node* Parser::parse_binary(int min_prec) {
     Node* lhs = parse_unary();
     while (true) {
-        if (template_arg_expr_depth_ > 0 && check_template_close()) break;
+        if (active_context_state_.template_arg_expr_depth > 0 &&
+            check_template_close())
+            break;
         int prec = bin_prec(cur().kind);
         if (prec < min_prec) break;
         TokenKind k = cur().kind;
@@ -769,7 +773,8 @@ Node* Parser::parse_primary() {
 
         if (qualified_name == "::")
             qualified_name.clear();
-        if (!qualifier_owner.empty() && !current_struct_tag_.empty() &&
+        if (!qualifier_owner.empty() &&
+            !active_context_state_.current_struct_tag.empty() &&
             check(TokenKind::LParen)) {
             const std::string current_tag(current_struct_tag_text());
             const std::string resolved_owner =
@@ -1334,8 +1339,10 @@ Node* Parser::parse_primary() {
                 qualified_name_starts_from_type_owner(qn)) {
                 pos_ = ident_start;
                 std::vector<Token> saved_tokens = tokens_;
-                std::string saved_typedef = last_resolved_typedef_;
-                TextId saved_typedef_text_id = last_resolved_typedef_text_id_;
+                std::string saved_typedef =
+                    active_context_state_.last_resolved_typedef;
+                TextId saved_typedef_text_id =
+                    active_context_state_.last_resolved_typedef_text_id;
                 TypeSpec cast_ts = parse_base_type();
                 while (check(TokenKind::Star)) {
                     consume();
@@ -1352,8 +1359,9 @@ Node* Parser::parse_primary() {
                     starts_parenthesized_member_pointer_declarator(*this, pos_)) {
                     pos_ = ident_start;
                     tokens_ = saved_tokens;
-                    last_resolved_typedef_ = saved_typedef;
-                    last_resolved_typedef_text_id_ = saved_typedef_text_id;
+                    active_context_state_.last_resolved_typedef = saved_typedef;
+                    active_context_state_.last_resolved_typedef_text_id =
+                        saved_typedef_text_id;
                     qn = parse_qualified_name(false);
                 } else if (check(TokenKind::LParen)) {
                     consume();
@@ -1395,8 +1403,9 @@ Node* Parser::parse_primary() {
                 }
                 pos_ = ident_start;
                 tokens_ = saved_tokens;
-                last_resolved_typedef_ = saved_typedef;
-                last_resolved_typedef_text_id_ = saved_typedef_text_id;
+                active_context_state_.last_resolved_typedef = saved_typedef;
+                active_context_state_.last_resolved_typedef_text_id =
+                    saved_typedef_text_id;
                 qn = parse_qualified_name(false);
             }
         }

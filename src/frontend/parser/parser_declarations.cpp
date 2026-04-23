@@ -587,7 +587,7 @@ Node* Parser::parse_local_decl() {
         if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
         if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
         if (!ts.tag) return true;
-        if (is_cpp_mode() && !current_struct_tag_.empty()) {
+        if (is_cpp_mode() && !active_context_state_.current_struct_tag.empty()) {
             const std::string current_tag(current_struct_tag_text());
             const std::string qualified_current_tag = qualify_name(current_tag);
             const std::string spelled_tag = ts.tag;
@@ -869,7 +869,7 @@ Node* Parser::parse_local_decl() {
                 d->fn_ptr_variadic = info->variadic;
             }
         }
-        if (vname && !suppress_local_var_bindings_) {
+        if (vname && !active_context_state_.suppress_local_var_bindings) {
             register_var_type_binding(vname, ts);
         }
         decls.push_back(d);
@@ -958,7 +958,7 @@ Node* Parser::parse_top_level() {
         bool old;
         explicit TopLevelFlagGuard(bool& r) : ref(r), old(r) { ref = true; }
         ~TopLevelFlagGuard() { ref = old; }
-    } top_level_guard(parsing_top_level_context_);
+    } top_level_guard(active_context_state_.parsing_top_level_context);
 
     int ln = cur().line;
     if (at_end()) return nullptr;
@@ -1384,11 +1384,12 @@ Node* Parser::parse_top_level() {
         // Explicit template specialization: template<> RetType name<Args>(...) { ... }
         if (check(TokenKind::Greater)) {
             consume();  // consume >
-            bool saved_spec = parsing_explicit_specialization_;
-            parsing_explicit_specialization_ = true;
+            bool saved_spec =
+                active_context_state_.parsing_explicit_specialization;
+            active_context_state_.parsing_explicit_specialization = true;
             size_t struct_defs_before = struct_defs_.size();
             Node* spec = parse_top_level();
-            parsing_explicit_specialization_ = saved_spec;
+            active_context_state_.parsing_explicit_specialization = saved_spec;
             if (struct_defs_.size() > struct_defs_before) {
                 Node* last_sd = struct_defs_.back();
                 if (last_sd && last_sd->kind == NK_STRUCT_DEF &&
@@ -2036,7 +2037,7 @@ Node* Parser::parse_top_level() {
             expect(TokenKind::KwOperator);
 
             // Enter owner scope for out-of-class operator definition.
-            std::string saved_tag_op = current_struct_tag_;
+            std::string saved_tag_op = active_context_state_.current_struct_tag;
             set_current_struct_tag(qualified_owner);
             if (!template_scope_stack_.empty() &&
                 template_scope_stack_.back().kind == TemplateScopeKind::FreeFunctionTemplate &&
@@ -2130,10 +2131,10 @@ Node* Parser::parse_top_level() {
             }
 
             if (check(TokenKind::LBrace)) {
-                bool saved_top = parsing_top_level_context_;
-                parsing_top_level_context_ = false;
+                bool saved_top = active_context_state_.parsing_top_level_context;
+                active_context_state_.parsing_top_level_context = false;
                 fn->body = parse_block();
-                parsing_top_level_context_ = saved_top;
+                active_context_state_.parsing_top_level_context = saved_top;
             } else if (is_cpp_mode() && check(TokenKind::Assign) &&
                        pos_ + 1 < static_cast<int>(tokens_.size()) &&
                        tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
@@ -2170,7 +2171,8 @@ Node* Parser::parse_top_level() {
                 qualified_ctor_name += ctor_name;
 
                 // Enter owner scope for out-of-class constructor definition.
-                std::string saved_tag_ctor = current_struct_tag_;
+                std::string saved_tag_ctor =
+                    active_context_state_.current_struct_tag;
                 set_current_struct_tag(qualified_owner);
                 if (!template_scope_stack_.empty() &&
                     template_scope_stack_.back().kind == TemplateScopeKind::FreeFunctionTemplate &&
@@ -2260,10 +2262,11 @@ Node* Parser::parse_top_level() {
                 }
 
                 if (check(TokenKind::LBrace)) {
-                    bool saved_top = parsing_top_level_context_;
-                    parsing_top_level_context_ = false;
+                    bool saved_top =
+                        active_context_state_.parsing_top_level_context;
+                    active_context_state_.parsing_top_level_context = false;
                     fn->body = parse_block();
-                    parsing_top_level_context_ = saved_top;
+                    active_context_state_.parsing_top_level_context = saved_top;
                 } else if (is_cpp_mode() && check(TokenKind::Assign) &&
                            pos_ + 1 < static_cast<int>(tokens_.size()) &&
                            tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
@@ -2370,14 +2373,15 @@ top_level_base_ready:
     }
 
     // Phase C: save the return-type typedef name for fn_ptr propagation to NK_FUNCTION.
-    const TextId ret_typedef_name_id = last_resolved_typedef_text_id_;
+    const TextId ret_typedef_name_id =
+        active_context_state_.last_resolved_typedef_text_id;
 
     auto is_incomplete_object_type = [&](const TypeSpec& ts) -> bool {
         if (ts.ptr_level > 0) return false;
         if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
         if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
         if (!ts.tag) return true;
-        if (is_cpp_mode() && !current_struct_tag_.empty()) {
+        if (is_cpp_mode() && !active_context_state_.current_struct_tag.empty()) {
             const std::string current_tag(current_struct_tag_text());
             const std::string qualified_current_tag = qualify_name(current_tag);
             const std::string spelled_tag = ts.tag;
@@ -2687,7 +2691,8 @@ top_level_base_ready:
             }
         }
     };
-    std::string saved_struct_tag_for_qualified = current_struct_tag_;
+    std::string saved_struct_tag_for_qualified =
+        active_context_state_.current_struct_tag;
     enter_owner_scope();
     // Helper to restore struct tag before returning from this function.
     auto restore_owner_scope = [&]() {
@@ -2701,7 +2706,8 @@ top_level_base_ready:
     std::vector<TypeSpec> spec_arg_types;
     std::vector<bool> spec_arg_is_value;
     std::vector<long long> spec_arg_values;
-    if (parsing_explicit_specialization_ && decl_name && check(TokenKind::Less)) {
+    if (active_context_state_.parsing_explicit_specialization && decl_name &&
+        check(TokenKind::Less)) {
         consume();  // <
         while (!at_end() && !check(TokenKind::Greater)) {
             // Try to parse as type first (int, long, char, etc.)
@@ -2856,10 +2862,10 @@ top_level_base_ready:
         parse_attributes(&ts); skip_asm(); parse_attributes(&ts); skip_attributes();
         parse_optional_cpp20_trailing_requires_clause(*this);
         if (check(TokenKind::LBrace)) {
-            bool saved_top = parsing_top_level_context_;
-            parsing_top_level_context_ = false;
+            bool saved_top = active_context_state_.parsing_top_level_context;
+            active_context_state_.parsing_top_level_context = false;
             Node* body = parse_block();
-            parsing_top_level_context_ = saved_top;
+            active_context_state_.parsing_top_level_context = saved_top;
             Node* fn = make_node(NK_FUNCTION, ln);
             fn->type      = ts;
             fn->name      = scoped_decl_name;
@@ -3064,10 +3070,10 @@ top_level_base_ready:
 
         if (check(TokenKind::LBrace)) {
             // Function definition
-            bool saved_top = parsing_top_level_context_;
-            parsing_top_level_context_ = false;
+            bool saved_top = active_context_state_.parsing_top_level_context;
+            active_context_state_.parsing_top_level_context = false;
             Node* body = parse_block();
-            parsing_top_level_context_ = saved_top;
+            active_context_state_.parsing_top_level_context = saved_top;
             Node* fn = make_node(NK_FUNCTION, ln);
             fn->type      = ts;
             fn->name      = scoped_decl_name;
