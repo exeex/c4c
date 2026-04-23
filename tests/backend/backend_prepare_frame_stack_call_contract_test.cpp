@@ -2838,6 +2838,80 @@ int check_x86_consumer_surface_reads_nested_dynamic_stack_call_boundary_authorit
   return 0;
 }
 
+int check_x86_consumer_surface_reads_grouped_call_boundary_authority() {
+  const auto prepared = prepare_grouped_riscv_module_with_overrides(
+      make_grouped_cross_call_preservation_contract_module(),
+      {{"p.vcarry", 2}, {"carry.pre", 2}, {"post.local", 1}});
+  const auto function_id = prepare::resolve_prepared_function_name_id(
+      prepared.names, "grouped_cross_call_preservation_contract");
+  if (!function_id.has_value()) {
+    return fail("x86 consumer surface contract: failed to resolve grouped_cross_call_preservation_contract");
+  }
+
+  const auto consumed =
+      c4c::backend::x86::consume_plans(prepared, "grouped_cross_call_preservation_contract");
+  if (consumed.frame != prepare::find_prepared_frame_plan(prepared, *function_id) ||
+      consumed.dynamic_stack != prepare::find_prepared_dynamic_stack_plan(prepared, *function_id) ||
+      consumed.calls != prepare::find_prepared_call_plans(prepared, *function_id) ||
+      consumed.storage != prepare::find_prepared_storage_plan(prepared, *function_id)) {
+    return fail(
+        "x86 consumer surface contract: x86 no longer reads grouped call-boundary plans directly from prepared authority");
+  }
+  const auto* carry =
+      consumed.storage == nullptr ? nullptr : find_storage_value(prepared, *consumed.storage, "carry.pre");
+  if (consumed.frame == nullptr || consumed.dynamic_stack != nullptr || consumed.calls == nullptr ||
+      consumed.calls->calls.size() != 1 || consumed.storage == nullptr || carry == nullptr) {
+    return fail(
+        "x86 consumer surface contract: grouped fixture no longer exposes frame/call/storage authority through x86");
+  }
+
+  const auto& call_plan = consumed.calls->calls.front();
+  const auto preserved_it = std::find_if(
+      call_plan.preserved_values.begin(),
+      call_plan.preserved_values.end(),
+      [carry](const prepare::PreparedCallPreservedValue& preserved) {
+        return preserved.value_id == carry->value_id;
+      });
+  if (preserved_it == call_plan.preserved_values.end()) {
+    return fail("x86 consumer surface contract: grouped fixture lost direct preserved-value identity");
+  }
+  const auto saved_it = std::find_if(
+      consumed.frame->saved_callee_registers.begin(),
+      consumed.frame->saved_callee_registers.end(),
+      [preserved_it](const prepare::PreparedSavedRegister& saved) {
+        return saved.bank == prepare::PreparedRegisterBank::Vreg &&
+               saved.occupied_register_names == preserved_it->occupied_register_names;
+      });
+  if (saved_it == consumed.frame->saved_callee_registers.end()) {
+    return fail("x86 consumer surface contract: grouped fixture lost direct callee-saved span authority");
+  }
+  if (carry->bank != prepare::PreparedRegisterBank::Vreg || carry->contiguous_width != 2 ||
+      preserved_it->register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Vreg} ||
+      preserved_it->contiguous_width != 2 ||
+      carry->register_name != preserved_it->register_name ||
+      carry->occupied_register_names != preserved_it->occupied_register_names ||
+      preserved_it->register_name != std::optional<std::string>{saved_it->register_name} ||
+      preserved_it->callee_saved_save_index !=
+          std::optional<std::size_t>{saved_it->save_index}) {
+    return fail(
+        "x86 consumer surface contract: grouped storage/call/frame plans lost direct shared bank-span authority");
+  }
+  const auto grouped_clobber_it = std::find_if(
+      call_plan.clobbered_registers.begin(),
+      call_plan.clobbered_registers.end(),
+      [](const prepare::PreparedClobberedRegister& clobber) {
+        return clobber.bank == prepare::PreparedRegisterBank::Vreg &&
+               clobber.contiguous_width == 2 &&
+               clobber.occupied_register_names.size() == 2;
+      });
+  if (grouped_clobber_it == call_plan.clobbered_registers.end()) {
+    return fail(
+        "x86 consumer surface contract: grouped fixture lost direct grouped caller-clobber authority");
+  }
+  return 0;
+}
+
 int check_variadic_nested_dynamic_stack_call_contract() {
   const auto prepared = prepare_module(make_variadic_nested_dynamic_stack_call_module());
   const auto* function = find_function(prepared.module, "variadic_nested_dynamic_stack_contract");
@@ -2992,6 +3066,9 @@ int main() {
   }
   if (const int rc = check_x86_consumer_surface_reads_nested_dynamic_stack_call_boundary_authority();
       rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_x86_consumer_surface_reads_grouped_call_boundary_authority(); rc != 0) {
     return rc;
   }
   if (const int rc = check_variadic_nested_dynamic_stack_call_contract(); rc != 0) {
