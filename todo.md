@@ -10,16 +10,15 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 ## Just Finished
 
 - completed the Step 2 `parser_types_base.cpp` packet by routing the remaining
-  dense type-start and qualified-name lookahead paths through
-  `core_input_state_` instead of direct `tokens_`/`pos_` access, while leaving
-  the intentional whole-stream save/restore site unchanged
+  safe C++11 `[[attribute]]` skip-path reads through `core_input_state_`
+  instead of direct `tokens_`/`pos_` access, while leaving the intentional
+  save/restore rollback sites unchanged
 
 ## Suggested Next
 
-- continue Step 2 in `parser_types_base.cpp` with any remaining parser-input
-  bundle reads in the base-type lookahead cluster that are still safe to route
-  through `core_input_state_`, while keeping deliberate rollback/save sites
-  unchanged
+- continue Step 2 in `parser_types_declarator.cpp`, starting with the
+  front-loaded lookahead/probe helpers that still read parser input through
+  `tokens_`/`pos_` instead of `core_input_state_`
 
 ## Watchouts
 
@@ -31,10 +30,11 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 - keep future bundle-routing work behavior-preserving around cursor movement,
   diagnostics, and rollback, especially where tentative parsing still performs
   explicit token-stream save/restore
-- treat the remaining `parser_types_base.cpp` lookahead cluster as the next
-  bounded packet instead of spreading into broader parser expression or
-  declarator logic
-- the proof passed and is captured in `test_after.log`
+- treat the remaining direct `pos_` save/restore sites in
+  `parser_types_base.cpp` as intentional rollback mechanics unless a later
+  Step 3 classification packet chooses to rework them
+- refresh proof after each bounded bundle-routing packet and keep it captured
+  in `test_after.log`
 
 ## Proof
 

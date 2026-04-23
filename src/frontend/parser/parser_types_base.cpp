@@ -270,11 +270,16 @@ void Parser::skip_attributes() {
         if (check(TokenKind::LParen)) skip_paren_group();  // double-paren
     }
     // C++11 [[attribute]] syntax
-    while (check(TokenKind::LBracket) && pos_ + 1 < tokens_.size() &&
-           tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+    while (check(TokenKind::LBracket) &&
+           core_input_state_.pos + 1 <
+               static_cast<int>(core_input_state_.tokens.size()) &&
+           core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+               TokenKind::LBracket) {
         consume(); consume(); // [[
         int depth = 1;
-        while (pos_ < tokens_.size() && depth > 0) {
+        while (core_input_state_.pos <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               depth > 0) {
             if (check(TokenKind::LBracket)) ++depth;
             else if (check(TokenKind::RBracket)) --depth;
             if (depth > 0) consume();
