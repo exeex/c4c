@@ -2050,9 +2050,14 @@ std::string Parser::resolve_visible_type_name(TextId name_text_id,
             if (lookup_using_value_alias(context_id, name_text_id, spelled,
                                          resolved)) {
                 if (resolved->find("::") == std::string::npos) {
-                    if (probe_visible_typedef_name(*this,
-                                                    find_parser_text_id(*resolved),
-                                                    *resolved)) {
+                    const TextId resolved_text_id =
+                        find_parser_text_id(*resolved);
+                    if (resolved_text_id != kInvalidText &&
+                        find_local_visible_typedef_type(resolved_text_id)) {
+                        return true;
+                    }
+                    if (probe_visible_typedef_name(*this, resolved_text_id,
+                                                   *resolved)) {
                         return true;
                     }
                 } else if (has_typedef_type(*resolved)) {
@@ -2432,10 +2437,15 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
         return true;
     }
     if (context_id == 0 && name.find("::") == std::string_view::npos &&
-        visible_typedef_fallback_depth_for(*this) == 0 &&
-        probe_visible_typedef_name(*this, name_text_id, name)) {
-        *resolved = name;
-        return true;
+        visible_typedef_fallback_depth_for(*this) == 0) {
+        if (find_local_visible_typedef_type(name_text_id)) {
+            *resolved = name;
+            return true;
+        }
+        if (probe_visible_typedef_name(*this, name_text_id, name)) {
+            *resolved = name;
+            return true;
+        }
     }
 
     auto anon_it = namespace_state_.anonymous_namespace_children.find(context_id);

@@ -906,6 +906,35 @@ void test_parser_visible_type_alias_resolves_scope_local_target_type() {
               "test fixture should balance the local visible typedef scope");
 }
 
+void test_parser_visible_type_alias_uses_token_text_id_scope_lookup() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  const c4c::TextId target_text = texts.intern("Target");
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(target_text, target_ts);
+  parser.namespace_state_.using_value_aliases[0][alias_text] = {
+      parser.intern_semantic_name_key("Target"), "corrupted"};
+
+  const c4c::TypeSpec* visible_alias =
+      parser.find_visible_typedef_type(alias_text, "Alias");
+  expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
+              "token TextId visible typedef probes should consult the local lexical scope first");
+  expect_eq(parser.resolve_visible_type_name(alias_text, "Alias"), "Target",
+            "token TextId visible typedef probes should still resolve through the visible alias facade");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
 void test_parser_visible_type_alias_keeps_qualified_target_resolution() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -1346,6 +1375,7 @@ int main() {
   test_parser_record_body_context_keeps_visible_template_origin_lookup_local();
   test_parser_visible_type_alias_uses_scope_local_typedef_facade();
   test_parser_visible_type_alias_resolves_scope_local_target_type();
+  test_parser_visible_type_alias_uses_token_text_id_scope_lookup();
   test_parser_visible_type_alias_keeps_qualified_target_resolution();
   test_parser_resolve_typedef_type_chain_uses_local_visible_scope_lookup();
   test_parser_using_value_import_keeps_structured_target_key();
