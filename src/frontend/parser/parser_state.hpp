@@ -279,10 +279,12 @@ struct ParserAliasTemplateInfo {
   TypeSpec aliased_type;
 };
 
+using ParserEnumConstTable = std::unordered_map<TextId, long long>;
+
 struct ParserBindingState {
   std::set<std::string> concept_names;
   std::unordered_map<TextId, ParserFnPtrTypedefInfo> typedef_fn_ptr_info;
-  std::unordered_map<std::string, long long> enum_consts;
+  ParserEnumConstTable enum_consts;
   std::unordered_map<std::string, long long> const_int_bindings;
   std::set<std::string> known_fn_names;
   std::unordered_set<TextId> non_atom_typedefs;

@@ -2252,19 +2252,20 @@ Node* Parser::parse_enum() {
 
     std::vector<const char*> names;
     std::vector<long long>   vals;
-    std::unordered_set<std::string> seen_names;
-    std::unordered_map<std::string, long long> local_enum_consts =
-        binding_state_.enum_consts;
+    std::unordered_set<TextId> seen_names;
+    ParserEnumConstTable local_enum_consts = binding_state_.enum_consts;
     long long cur_val = 0;
 
     while (!at_end() && !check(TokenKind::RBrace)) {
         skip_attributes();
         if (!check(TokenKind::Identifier)) { consume(); continue; }
+        const TextId vname_text_id =
+            parser_text_id_for_token(cur().text_id, token_spelling(cur()));
         const char* vname = arena_.strdup(std::string(token_spelling(cur())));
         std::string vname_s(vname ? vname : "");
-        if (seen_names.count(vname_s))
+        if (vname_text_id != kInvalidText && seen_names.count(vname_text_id))
             throw std::runtime_error("duplicate enumerator: " + vname_s);
-        seen_names.insert(vname_s);
+        if (vname_text_id != kInvalidText) seen_names.insert(vname_text_id);
         consume();
         // Skip __attribute__((...)) between enum constant name and '='
         // e.g. _CLOCK_REALTIME __attribute__((availability(...))) = 0,
@@ -2287,7 +2288,7 @@ Node* Parser::parse_enum() {
         names.push_back(vname);
         vals.push_back(vval);
         // Track enum constants for subsequent initializers in this enum body.
-        local_enum_consts[std::string(vname)] = vval;
+        if (vname_text_id != kInvalidText) local_enum_consts[vname_text_id] = vval;
         if (!match(TokenKind::Comma)) break;
         // Trailing comma before } is allowed
         if (check(TokenKind::RBrace)) break;
@@ -2305,8 +2306,13 @@ Node* Parser::parse_enum() {
     }
     if (!is_scoped_enum) {
         for (int i = 0; i < ed->n_enum_variants; ++i)
-            binding_state_.enum_consts[std::string(ed->enum_names[i])] =
-                ed->enum_vals[i];
+            if (ed->enum_names[i] && ed->enum_names[i][0]) {
+                const TextId enum_name_text_id =
+                    parser_text_id_for_token(kInvalidText, ed->enum_names[i]);
+                if (enum_name_text_id != kInvalidText)
+                    binding_state_.enum_consts[enum_name_text_id] =
+                        ed->enum_vals[i];
+            }
     }
     if (active_context_state_.parsing_top_level_context)
         definition_state_.struct_defs.push_back(ed);

@@ -76,18 +76,34 @@ void Parser::restore_state(const ParserSnapshot& snap) {
 }
 
 
-bool eval_enum_expr(Node* n, const std::unordered_map<std::string, long long>& consts,
-                           long long* out) {
+static bool lookup_enum_const_value(const Node* n,
+                                    const ParserEnumConstTable& consts,
+                                    long long* out) {
+    if (!n || !out) return false;
+    if (n->unqualified_text_id != kInvalidText) {
+        const auto it = consts.find(n->unqualified_text_id);
+        if (it != consts.end()) {
+            *out = it->second;
+            return true;
+        }
+        return false;
+    }
+    if (n->name) {
+        // Compatibility fallback for AST nodes that still only carry spelling.
+        // Enum initializer identifiers should normally arrive with unqualified_text_id.
+    }
+    return false;
+}
+
+bool eval_enum_expr(Node* n, const ParserEnumConstTable& consts, long long* out) {
     if (!n || !out) return false;
     if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) { *out = n->ival; return true; }
     if (n->kind == NK_VAR && n->name) {
-        auto it = consts.find(n->name);
-        if (it != consts.end()) { *out = it->second; return true; }
-        return false;
+        return lookup_enum_const_value(n, consts, out);
     }
     if (n->kind == NK_CAST && n->left) return eval_enum_expr(n->left, consts, out);
     if (n->kind == NK_SIZEOF_TYPE) {
-        if (n->type.base == TB_TYPEDEF && n->type.tag && consts.count(n->type.tag) == 0) {
+        if (n->type.base == TB_TYPEDEF && n->type.tag) {
             return false;  // dependent or unresolved type
         }
         *out = sizeof_type_spec(n->type);
@@ -124,15 +140,16 @@ bool eval_enum_expr(Node* n, const std::unordered_map<std::string, long long>& c
 }
 
 bool is_dependent_enum_expr(Node* n,
-                            const std::unordered_map<std::string, long long>& consts) {
+                            const ParserEnumConstTable& consts) {
     if (!n) return false;
     if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) return false;
     if (n->kind == NK_VAR && n->name) {
-        if (consts.count(n->name) > 0) return false;
+        long long ignored = 0;
+        if (lookup_enum_const_value(n, consts, &ignored)) return false;
         return true;
     }
     if (n->kind == NK_SIZEOF_TYPE) {
-        return n->type.base == TB_TYPEDEF && n->type.tag && consts.count(n->type.tag) == 0;
+        return n->type.base == TB_TYPEDEF && n->type.tag;
     }
     if (n->kind == NK_SIZEOF_EXPR) {
         return true;

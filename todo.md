@@ -7,14 +7,14 @@ Current Step Title: Replace remaining suitable single-name string tables
 # Current Packet
 
 ## Just Finished
-Advanced Step 5 by making template-scope parameter tracking carry `TextId` alongside the compatibility spelling bridge, and updated active type-parameter probes to use token `text_id` when available.
+Advanced Step 5 by migrating parser enum-constant storage and helper lookup to `TextId` for unqualified enumerator identity, updating enum parsing to record `TextId` keys and constant-expression evaluation to resolve enum references through `unqualified_text_id`.
 
 ## Suggested Next
-Continue Step 5 with another narrow single-name table that still stores semantic identity as `std::string`, preferably one that does not also carry qualified-name semantics.
+Continue Step 5 with the next narrow single-name parser binding table that still uses `std::string` for semantic identity, keeping qualified and namespace-scoped lookup paths out of scope.
 
 ## Watchouts
-Keep namespace traversal separate from lexical scope lookup. Do not treat qualified or owner-scoped names as plain `TextId` migration candidates.
+Keep enum work limited to unqualified enumerator identity. Do not fold qualified enum references, namespace traversal, or other spelling-dependent constant tables into the same packet.
 
 ## Proof
-`cmake --build --preset default`
-`ctest --test-dir build -j --output-on-failure -R '^frontend_cxx_'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
+Passed; proof log: `test_after.log`

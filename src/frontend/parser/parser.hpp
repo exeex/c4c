@@ -766,10 +766,8 @@ class Parser {
   Node* make_block(Node** stmts, int n, int line);
 };
 
-bool eval_enum_expr(Node* n, const std::unordered_map<std::string, long long>& consts,
-                    long long* out);
-bool is_dependent_enum_expr(Node* n,
-                            const std::unordered_map<std::string, long long>& consts);
+bool eval_enum_expr(Node* n, const ParserEnumConstTable& consts, long long* out);
+bool is_dependent_enum_expr(Node* n, const ParserEnumConstTable& consts);
 TypeBase effective_scalar_base(const TypeSpec& ts);
 long long sizeof_base(TypeBase b);
 long long align_base(TypeBase b, int ptr_level);
