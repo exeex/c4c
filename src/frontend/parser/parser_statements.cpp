@@ -921,6 +921,17 @@ Node* Parser::parse_stmt() {
              core_input_state_.tokens[starter_tail_pos].kind == TokenKind::Arrow)) {
                 goto expr_stmt;
         }
+        if (is_cpp_mode() && starter_kind > 0 &&
+            starter_tail_pos < static_cast<int>(core_input_state_.tokens.size())) {
+            const TokenKind starter_tail_kind =
+                core_input_state_.tokens[starter_tail_pos].kind;
+            if (starter_tail_kind == TokenKind::LParen ||
+                (starter_tail_kind == TokenKind::Less &&
+                 starts_with_value_like_template_expr(
+                     *this, core_input_state_.tokens, core_input_state_.pos))) {
+                goto expr_stmt;
+            }
+        }
         if (is_cpp_mode() && check(TokenKind::Identifier) &&
             core_input_state_.pos + 2 <
                 static_cast<int>(core_input_state_.tokens.size()) &&

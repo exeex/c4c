@@ -7,16 +7,16 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Completed plan step 2's parser regression-fix packet: `parse_stmt` now forces
-member-access statements that continue with `.` or `->` down the expression
-path instead of misclassifying them as declarations. Added a parser regression
-covering a visible type head followed by member access, while keeping the
-previous `for` init-declaration and range-for lexical-scope coverage intact.
+Completed plan step 2's parser scope audit packet: `parse_stmt` now routes
+visible local value heads with call-like suffixes down the expression path
+instead of treating them as declarations, keeping lexical-scope-aware
+declaration-vs-expression decisions consistent. Added a parser regression for
+a local value shadowing a typedef and exercising the call-like statement path.
 
 ## Suggested Next
-Continue step 2 by auditing any remaining statement-shaped declaration forms
-that still bypass `ParserLexicalScopeState`, then move on to concept-name
-cleanup once the statement-scope coverage is stable.
+Continue step 2 by checking the remaining statement-shaped declaration probes
+that still rely on tentative parsing, then move on to concept-name cleanup once
+statement-scope coverage is stable.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. Do not reopen the
@@ -26,9 +26,9 @@ tentative parses must still unwind cleanly without leaving lexical bindings
 behind. Range-for bindings should stay loop-lifetime local and should not leak
 past the closing `)`/body boundary. Treat string-backed `concept_names` cleanup
 as a later packet, not part of this scope-lifetime slice.
-The member-access guard is intentionally narrow to `.` / `->` continuations;
-keep future declaration-vs-expression fixes from regressing the existing
-qualified-call and loop-scope coverage.
+The new expression-routing branch is intentionally limited to visible value
+heads with call-like suffixes; keep future declaration-vs-expression fixes from
+regressing the existing qualified-call, member-access, and loop-scope coverage.
 
 ## Proof
 Ran `cmake --build --preset default` and
