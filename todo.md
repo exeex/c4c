@@ -3,30 +3,30 @@ Source Idea Path: ideas/open/87_out_of_ssa_contract_and_parallel_copy_authority_
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Proof And Observation Tightening
-Plan Review Counter: 1 / 6
+Plan Review Counter: 2 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 3 now tightens proof around published out-of-SSA authority: the prepared printer stops
-reconstructing compare-join continuation targets, helper coverage proves authoritative joins return
-no continuation targets once publication is stripped, and x86 compare-join coverage proves removing
-authoritative out-of-SSA join metadata reopens no raw CFG fallback.
+Step 3 now proves the remaining loop-countdown handoff boundary: x86 loop-countdown coverage strips
+`parallel_copy_bundles` while preserving `join_transfers` and confirms the prepared-module consumer
+rejects missing authoritative parallel-copy publication instead of accepting phi-edge obligations
+through a join-only fallback.
 
 ## Suggested Next
 
-Step 3 follow-up: probe whether any remaining parallel-copy-only consumer still accepts
-`join_transfers` edge data after `parallel_copy_bundles` publication is removed, and if so close
-that last fallback in an owned packet.
+Step 3 follow-up: review whether any other prepared handoff family still lacks an isolated
+`parallel_copy_bundles`-removed/`join_transfers`-preserved rejection proof, or hand the runbook back
+for plan review if this was the last unresolved Step 3 fallback probe.
 
 ## Watchouts
 
 - Authoritative branch-owned continuation consumers must fail closed when
   `continuation_true_label`/`continuation_false_label` publication is absent; rebuilding them from
   join or rhs CFG shape is now a contract regression.
-- The compare-join x86 packet now proves missing authoritative out-of-SSA join metadata fails the
-  prepared handoff, but this packet did not yet isolate a separate runtime consumer that can still
-  recover edge-copy meaning from `join_transfers` after `parallel_copy_bundles` are stripped.
+- Loop-countdown now proves `join_transfers` alone are not enough to keep phi-edge obligations
+  alive after `parallel_copy_bundles` are stripped; treat any future success in that shape as a
+  contract regression.
 - Keep phi elimination and parallel-copy authority in `out_of_ssa`; do not push semantics back into
   `legalize`, and keep grouped-register or frame/stack/call work out of this runbook.
 

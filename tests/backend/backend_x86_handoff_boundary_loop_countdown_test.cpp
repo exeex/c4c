@@ -1101,6 +1101,55 @@ int check_loop_countdown_route_rejects_transfer_drift_when_authoritative_branch_
   return 0;
 }
 
+int check_loop_countdown_route_requires_authoritative_parallel_copy_bundles(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1 || control_flow->parallel_copy_bundles.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the loop countdown out-of-SSA handoff contract")
+                    .c_str());
+  }
+  if (control_flow->join_transfers.front().kind != prepare::PreparedJoinTransferKind::LoopCarry) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer classifies the loop countdown join as explicit loop-carry traffic")
+                    .c_str());
+  }
+
+  auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
+  if (mutable_control_flow == nullptr || mutable_control_flow->branch_conditions.size() != 1 ||
+      mutable_control_flow->join_transfers.size() != 1 ||
+      mutable_control_flow->parallel_copy_bundles.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture lost its mutable loop-countdown out-of-SSA handoff contract")
+                    .c_str());
+  }
+
+  mutable_control_flow->parallel_copy_bundles.clear();
+
+  try {
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted loop-countdown phi edge obligations after authoritative parallel-copy publication was removed")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected missing loop-countdown parallel-copy publication with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_local_countdown_guard_route_consumes_authoritative_guard_branch_condition(
     const bir::Module& module,
     const char* function_name,
@@ -1839,6 +1888,14 @@ int run_backend_x86_handoff_boundary_loop_countdown_tests() {
               make_x86_loop_countdown_join_module(),
               "main",
               "minimal loop-carried join countdown prepared-control-flow ownership rejects drifted loop-transfer metadata instead of reopening the local countdown fallback");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_loop_countdown_route_requires_authoritative_parallel_copy_bundles(
+              make_x86_loop_countdown_join_module(),
+              "main",
+              "minimal loop-carried join countdown prepared-control-flow ownership rejects loop phi-edge obligations when authoritative parallel-copy publication is removed but join metadata remains");
       status != 0) {
     return status;
   }
