@@ -759,6 +759,102 @@ prepare::PreparedBirModule prepare_call_argument_source_shape_dump_module() {
       options);
 }
 
+prepare::PreparedBirModule prepare_stack_argument_slot_dump_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function callee;
+  callee.name = "extern_take_byval";
+  callee.is_declaration = true;
+  callee.return_type = bir::TypeKind::Void;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "pair",
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Memory,
+          .passed_in_register = false,
+          .byval_copy = true,
+      },
+      .is_byval = true,
+  });
+  module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "stack_argument_slot_dump_contract";
+  caller.return_type = bir::TypeKind::Void;
+  caller.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "p.byval",
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Memory,
+          .passed_in_register = false,
+          .byval_copy = true,
+      },
+      .is_byval = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "extern_take_byval",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "p.byval")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Memory,
+          .passed_in_register = false,
+          .byval_copy = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  caller.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(caller));
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      c4c::default_target_profile(c4c::TargetArch::X86_64),
+      options);
+}
+
+const prepare::PreparedStackObject* find_stack_object(const prepare::PreparedBirModule& prepared,
+                                                      const char* object_name) {
+  for (const auto& object : prepared.stack_layout.objects) {
+    if (prepare::prepared_stack_object_name(prepared.names, object) == object_name) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
+const prepare::PreparedFrameSlot* find_frame_slot(const prepare::PreparedBirModule& prepared,
+                                                  prepare::PreparedObjectId object_id) {
+  for (const auto& slot : prepared.stack_layout.frame_slots) {
+    if (slot.object_id == object_id) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
 bool expect_contains(const std::string& text,
                      const std::string& needle,
                      const char* description) {
@@ -1049,6 +1145,36 @@ int main() {
   if (!expect_contains(source_shape_dump,
                        "source_base=loaded.ptr source_delta=4",
                        "computed-address argument detail payload")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto stack_arg_prepared = prepare_stack_argument_slot_dump_module();
+  const auto* stack_arg_object = find_stack_object(stack_arg_prepared, "p.byval");
+  const auto* stack_arg_slot =
+      stack_arg_object == nullptr ? nullptr : find_frame_slot(stack_arg_prepared, stack_arg_object->object_id);
+  if (stack_arg_object == nullptr || stack_arg_slot == nullptr) {
+    std::cerr << "[FAIL] missing prepared byval home slot fixture for stack argument dump\n";
+    return EXIT_FAILURE;
+  }
+  const std::string stack_arg_dump = prepare::print(stack_arg_prepared);
+  if (!expect_contains(stack_arg_dump,
+                       "arg0 bank=aggregate_address from=frame_slot:stack+0 to=rdi",
+                       "stack-backed byval argument summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(stack_arg_dump,
+                       "arg index=0 value_bank=aggregate_address source_encoding=frame_slot",
+                       "stack-backed byval argument detail encoding")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(stack_arg_dump,
+                       "source_slot=#" + std::to_string(stack_arg_slot->slot_id),
+                       "stack-backed byval argument frame-slot identity")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(stack_arg_dump,
+                       "source_stack_offset=" + std::to_string(stack_arg_slot->offset_bytes),
+                       "stack-backed byval argument stack offset")) {
     return EXIT_FAILURE;
   }
 

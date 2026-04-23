@@ -763,6 +763,9 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         if (arg.source_register_name.has_value()) {
           out << " source_reg=" << *arg.source_register_name;
         }
+        if (arg.source_slot_id.has_value()) {
+          out << " source_slot=#" << *arg.source_slot_id;
+        }
         if (arg.source_stack_offset_bytes.has_value()) {
           out << " source_stack_offset=" << *arg.source_stack_offset_bytes;
         }

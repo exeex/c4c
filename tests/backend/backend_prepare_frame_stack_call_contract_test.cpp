@@ -453,6 +453,74 @@ bir::Module make_memory_return_call_contract_module() {
   return module;
 }
 
+bir::Module make_stack_argument_slot_contract_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function callee;
+  callee.name = "extern_take_byval";
+  callee.is_declaration = true;
+  callee.return_type = bir::TypeKind::Void;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "pair",
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Memory,
+          .passed_in_register = false,
+          .byval_copy = true,
+      },
+      .is_byval = true,
+  });
+  module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "stack_argument_slot_contract";
+  caller.return_type = bir::TypeKind::Void;
+  caller.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "p.byval",
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Memory,
+          .passed_in_register = false,
+          .byval_copy = true,
+      },
+      .is_byval = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "extern_take_byval",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "p.byval")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Memory,
+          .passed_in_register = false,
+          .byval_copy = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  caller.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(caller));
+  return module;
+}
+
 bir::Module make_call_argument_source_shape_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1552,6 +1620,40 @@ int check_call_argument_source_shape_contract() {
   return 0;
 }
 
+int check_stack_argument_slot_contract() {
+  const auto prepared = prepare_module(make_stack_argument_slot_contract_module());
+  const auto* call_plans = find_call_plans_function(prepared, "stack_argument_slot_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 1) {
+    return fail("stack-argument slot contract: call_plans no longer publish the byval call");
+  }
+
+  const auto* stack_object = find_stack_object(prepared, "p.byval");
+  const auto* frame_slot =
+      stack_object == nullptr ? nullptr : find_frame_slot(prepared, stack_object->object_id);
+  if (stack_object == nullptr || frame_slot == nullptr) {
+    return fail("stack-argument slot contract: prepared stack layout lost the byval home slot");
+  }
+
+  const auto& call_plan = call_plans->calls.front();
+  if (call_plan.arguments.size() != 1) {
+    return fail("stack-argument slot contract: byval call lost argument publication");
+  }
+
+  const auto& arg = call_plan.arguments.front();
+  if (arg.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      arg.source_slot_id != std::optional<prepare::PreparedFrameSlotId>{frame_slot->slot_id} ||
+      arg.source_stack_offset_bytes != std::optional<std::size_t>{frame_slot->offset_bytes}) {
+    return fail("stack-argument slot contract: call_plans lost frame-slot-backed argument authority");
+  }
+  if (!arg.destination_register_name.has_value() ||
+      arg.destination_register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::AggregateAddress}) {
+    return fail("stack-argument slot contract: call_plans lost the target ABI carrier destination");
+  }
+
+  return 0;
+}
+
 int check_dynamic_stack_contract() {
   const auto prepared = prepare_module(make_dynamic_stack_module());
   const auto* function = find_function(prepared.module, "dynamic_stack_contract");
@@ -1798,6 +1900,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_call_argument_source_shape_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_stack_argument_slot_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_dynamic_stack_contract(); rc != 0) {

@@ -885,6 +885,7 @@ struct PreparedCallArgumentPlan {
   std::optional<bir::Value> source_literal;
   std::optional<std::string> source_symbol_name;
   std::optional<std::string> source_register_name;
+  std::optional<PreparedFrameSlotId> source_slot_id;
   std::optional<std::size_t> source_stack_offset_bytes;
   std::optional<PreparedRegisterBank> source_register_bank;
   std::optional<ValueNameId> source_base_value_name;

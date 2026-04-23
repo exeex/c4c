@@ -649,6 +649,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .source_literal = std::nullopt,
               .source_symbol_name = std::nullopt,
               .source_register_name = std::nullopt,
+              .source_slot_id = std::nullopt,
               .source_stack_offset_bytes = std::nullopt,
               .source_register_bank = std::nullopt,
               .source_base_value_name = std::nullopt,
@@ -676,6 +677,7 @@ void populate_call_plans(PreparedBirModule& prepared) {
                   home != nullptr) {
                 arg_plan.source_encoding = storage_encoding_from_home(*home);
                 arg_plan.source_register_name = home->register_name;
+                arg_plan.source_slot_id = home->slot_id;
                 arg_plan.source_stack_offset_bytes = home->offset_bytes;
                 if (home->immediate_i32.has_value()) {
                   arg_plan.source_literal = bir::Value::immediate_i32(*home->immediate_i32);
