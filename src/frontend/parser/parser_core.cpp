@@ -1700,7 +1700,9 @@ std::string Parser::resolve_qualified_value_name(
         }
     }
 
-    return canonical_name_in_context(context_id, base_name);
+    std::string resolved;
+    if (lookup_value_in_context(context_id, base_name, &resolved)) return resolved;
+    return {};
 }
 
 std::string Parser::resolve_qualified_type_name(
@@ -1714,7 +1716,9 @@ std::string Parser::resolve_qualified_type_name(
 
     const int context_id = resolve_namespace_context(name);
     if (context_id < 0) return {};
-    return canonical_name_in_context(context_id, base_name);
+    std::string resolved;
+    if (lookup_type_in_context(context_id, base_name, &resolved)) return resolved;
+    return {};
 }
 
 bool Parser::lookup_value_in_context(int context_id, const std::string& name,

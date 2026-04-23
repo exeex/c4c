@@ -9,15 +9,14 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: removed the remaining helper-side
-  `resolve_namespace_context(qn)` -> `canonical_name_in_context(...)` bridge in
-  qualified typedef/known-type resolution and routed those lookups through
-  `resolve_qualified_type_name(qn)` instead
+- Step 2 packet: routed the central qualified namespace value/type helpers in
+  `parser_core.cpp` through namespace-context lookup semantics instead of
+  returning `canonical_name_in_context(...)` after `resolve_namespace_context(...)`
 
 ## Suggested Next
 
-- continue Step 2 by auditing the remaining parser namespace call sites for
-  any last direct namespace-context string joins before typedef/record lookup
+- continue Step 2 by auditing any remaining `parser_core.cpp` namespace helper
+  paths that still synthesize qualified strings after context resolution
 - keep the follow-on packet inside parser namespace lookup and leave broader
   binding-table or lexical-scope cleanup for later work
 
@@ -34,7 +33,6 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Proof
 
-- `cmake --build build -j --target c4c_frontend c4cll`
-- `ctest --test-dir build -j --output-on-failure -R 'namespace|namespaced|using_namespace|using_declaration_namespace|using_nested_namespace|bad_namespace_member_without_qualification'`
-- result: passed
+- `cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R 'namespace|namespaced|using_namespace|using_declaration_namespace|using_nested_namespace|bad_namespace_member_without_qualification' | tee test_after.log`
+- result: passed, 44/44 focused tests green
 - log: `test_after.log`
