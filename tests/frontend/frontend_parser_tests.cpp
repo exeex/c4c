@@ -1089,6 +1089,42 @@ void test_parser_visible_value_alias_resolves_scope_local_target_type() {
               "test fixture should balance the local visible value scope");
 }
 
+void test_parser_if_condition_decl_uses_local_visible_typedef_scope() {
+  c4c::Lexer lexer("if (Alias value = 0) { }\n", c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  c4c::Node* stmt = parser.parse_stmt();
+  expect_true(stmt != nullptr && stmt->kind == c4c::NK_BLOCK,
+              "if-condition declarations should parse as a scoped block when they introduce a declaration");
+  expect_eq_int(stmt->n_children, 2,
+                "if-condition declaration blocks should contain the declaration and the wrapped if statement");
+  expect_true(stmt->children[0] != nullptr &&
+                  stmt->children[0]->kind == c4c::NK_DECL,
+              "if-condition declarations should materialize a declaration node in the scoped block");
+  expect_true(stmt->children[1] != nullptr &&
+                  stmt->children[1]->kind == c4c::NK_IF,
+              "if-condition declaration blocks should wrap the parsed if statement");
+  expect_true(stmt->children[0]->type.base == c4c::TB_INT,
+              "if-condition declaration types should resolve through the bound local typedef");
+  expect_eq(stmt->children[0]->name, "value",
+            "if-condition declarations should preserve the declarator spelling");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
 void test_parser_template_member_suffix_probe_uses_token_spelling() {
   c4c::Lexer lexer(
       "template<int N>\n"
@@ -1405,6 +1441,7 @@ int main() {
   test_parser_using_value_import_keeps_structured_target_key();
   test_parser_global_using_value_import_keeps_global_target_resolution();
   test_parser_visible_value_alias_resolves_scope_local_target_type();
+  test_parser_if_condition_decl_uses_local_visible_typedef_scope();
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
   test_parser_template_type_arg_uses_visible_scope_local_alias();

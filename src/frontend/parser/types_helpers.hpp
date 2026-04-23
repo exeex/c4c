@@ -287,15 +287,18 @@ bool instantiate_template_struct_via_injected_parse(
     return ok;
 }
 
-bool is_known_simple_type_head(const Parser& parser, const std::string& name) {
+bool is_known_simple_type_head(const Parser& parser, TextId name_text_id,
+                               std::string_view name) {
     if (match_floatn_keyword_base(name, nullptr)) return true;
-    if (parser.is_template_scope_type_param(name)) return true;
-    if (parser.is_typedef_name(name)) return true;
-    if (parser.has_visible_typedef_type(name)) return true;
+    if (parser.is_template_scope_type_param(name_text_id, name)) return true;
+    if (parser.is_typedef_name(name_text_id, name)) return true;
+    if (parser.has_visible_typedef_type(name_text_id, name)) return true;
     const std::string resolved = visible_type_head_name(parser, name);
-    return parser.template_state_.template_struct_defs.count(name) > 0 ||
+    return parser.template_state_.template_struct_defs.count(
+               std::string(name)) > 0 ||
            parser.template_state_.template_struct_defs.count(resolved) > 0 ||
-           parser.definition_state_.defined_struct_tags.count(name) > 0 ||
+           parser.definition_state_.defined_struct_tags.count(
+               std::string(name)) > 0 ||
            parser.definition_state_.defined_struct_tags.count(resolved) > 0;
 }
 
@@ -317,9 +320,10 @@ bool starts_with_value_like_template_expr(const Parser& parser,
     };
 
     bool saw_scope = tokens[start_pos].kind == TokenKind::ColonColon;
+    const Token& first_identifier = tokens[pos];
     const bool first_identifier_is_known_type =
-        is_known_simple_type_head(parser,
-                                  std::string(parser.token_spelling(tokens[pos])));
+        is_known_simple_type_head(parser, first_identifier.text_id,
+                                  parser.token_spelling(first_identifier));
 
     while (pos < static_cast<int>(tokens.size())) {
         const std::string current_name =

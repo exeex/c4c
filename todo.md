@@ -7,17 +7,18 @@ Current Step Title: Introduce parser lexical scope state for the simplest local 
 # Current Packet
 
 ## Just Finished
-Advanced `plan.md` step 2 by retargeting the remaining narrow unqualified
-typedef probe paths in the parser base, declarator, and declaration helpers
-onto parser-local `TextId` lexical scope lookups before the spelling-only
-bridge fallback. Added focused parser coverage that proves `parse_base_type()`
-now resolves a scope-local typedef alias through the lexical scope facade.
+Advanced `plan.md` step 2 by retargeting the statement-side `if` condition
+declaration probe and the shared value-like template disambiguation helper to
+keep the current token `TextId` on the first typedef/type-head lookup instead
+of dropping straight to the string-only wrapper path. Added focused parser
+coverage that proves a scope-local typedef alias now parses as an `if`
+condition declaration through the lexical scope facade.
 
 ## Suggested Next
 Continue `plan.md` step 2 with one narrow packet that audits the remaining
-token-spelling-only typedef probes in parser helpers where a current token
-`TextId` is available but the code still falls back to bridge-style string
-checks.
+parser helper sites where an identifier token already carries `TextId` but the
+first type-head or typedef probe still routes through a string-only wrapper or
+recomputed spelling path.
 
 ## Watchouts
 Keep lexical scope lookup separate from namespace traversal. Do not reopen the

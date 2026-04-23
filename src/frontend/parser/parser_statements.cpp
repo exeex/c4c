@@ -296,7 +296,9 @@ Node* Parser::parse_stmt() {
                                                 token_spelling(cur()))) {
                     return true;
                 }
-                if (is_typedef_name(token_spelling(cur()))) return true;
+                if (is_typedef_name(cur().text_id, token_spelling(cur()))) {
+                    return true;
+                }
                 return has_visible_typedef_type(cur().text_id,
                                                 token_spelling(cur()));
             };
