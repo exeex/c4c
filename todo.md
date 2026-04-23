@@ -9,14 +9,16 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Just Finished
 
-- completed the Step 2 `parser_core.cpp` packet by routing the token cursor
-  helpers, tentative-parse debug hooks, and nearby diagnostic formatting paths
-  through `core_input_state_` instead of the direct `tokens_`/`pos_` aliases
+- completed the Step 2 `parser_core.cpp` packet by routing the remaining
+  qualified-name lookahead and template-close token-mutation paths through
+  `core_input_state_` instead of direct `tokens_`/`pos_` access
 
 ## Suggested Next
 
-- continue Step 2 in `parser_core.cpp` with the remaining qualified-name and
-  token-mutation helper reads that still touch `tokens_` and `pos_` directly
+- continue Step 2 in `parser_types_base.cpp` with the dense type-start and
+  qualified-name lookahead paths that still read `tokens_` and `pos_`
+  directly, while leaving deliberate whole-stream save/restore sites alone for
+  now
 
 ## Watchouts
 
@@ -25,12 +27,12 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
   rewrites or grammar changes
 - preserve constructor, snapshot, and rollback behavior while the grouped
   layout is being converted to direct bundle access
-- the injected-template parse helper now swaps `core_input_state_.tokens` and
-  `core_input_state_.pos` directly; keep future core-input alias removals
-  behavior-preserving around cursor movement, diagnostics, and rollback
-- the remaining `parser_core.cpp` hits are in the qualified-name helper and
-  token-mutation paths; keep them as the next bounded packet instead of
-  pulling in broader parser logic
+- keep future bundle-routing work behavior-preserving around cursor movement,
+  diagnostics, and rollback, especially where tentative parsing still performs
+  explicit token-stream save/restore
+- treat the remaining `parser_types_base.cpp` lookahead cluster as the next
+  bounded packet instead of spreading into broader parser expression or
+  declarator logic
 - the proof passed and is captured in `test_after.log`
 
 ## Proof

@@ -1755,26 +1755,27 @@ bool Parser::lookup_concept_in_context(int context_id, const std::string& name,
 bool Parser::peek_qualified_name(QualifiedNameRef* out, bool allow_global) const {
     if (!out) return false;
     QualifiedNameRef result;
-    int p = pos_;
-    if (allow_global && p < static_cast<int>(tokens_.size()) &&
-        tokens_[p].kind == TokenKind::ColonColon) {
+    const auto& tokens = core_input_state_.tokens;
+    int p = core_input_state_.pos;
+    if (allow_global && p < static_cast<int>(tokens.size()) &&
+        tokens[p].kind == TokenKind::ColonColon) {
         result.is_global_qualified = true;
         ++p;
     }
-    if (p >= static_cast<int>(tokens_.size()) || tokens_[p].kind != TokenKind::Identifier) {
+    if (p >= static_cast<int>(tokens.size()) || tokens[p].kind != TokenKind::Identifier) {
         return false;
     }
-    result.base_name = std::string(token_spelling(tokens_[p]));
-    result.base_text_id = parser_text_id_for_token(tokens_[p].text_id, result.base_name);
+    result.base_name = std::string(token_spelling(tokens[p]));
+    result.base_text_id = parser_text_id_for_token(tokens[p].text_id, result.base_name);
     ++p;
-    while (p + 1 < static_cast<int>(tokens_.size()) &&
-           tokens_[p].kind == TokenKind::ColonColon &&
-           tokens_[p + 1].kind == TokenKind::Identifier) {
+    while (p + 1 < static_cast<int>(tokens.size()) &&
+           tokens[p].kind == TokenKind::ColonColon &&
+           tokens[p + 1].kind == TokenKind::Identifier) {
         result.qualifier_segments.push_back(result.base_name);
         result.qualifier_text_ids.push_back(result.base_text_id);
-        result.base_name = std::string(token_spelling(tokens_[p + 1]));
+        result.base_name = std::string(token_spelling(tokens[p + 1]));
         result.base_text_id =
-            parser_text_id_for_token(tokens_[p + 1].text_id, result.base_name);
+            parser_text_id_for_token(tokens[p + 1].text_id, result.base_name);
         p += 2;
     }
     *out = std::move(result);
@@ -1886,25 +1887,28 @@ bool Parser::parse_greater_than_in_template_list(bool consume_last_token) {
 
     if (check(TokenKind::GreaterGreater)) {
         // Consume one > and leave the second > in the token stream.
-        core_input_state_.token_mutations.push_back({pos_, tokens_[pos_]});
-        tokens_[pos_].kind = TokenKind::Greater;
-        set_parser_owned_spelling(tokens_[pos_], ">");
+        core_input_state_.token_mutations.push_back(
+            {core_input_state_.pos, core_input_state_.tokens[core_input_state_.pos]});
+        core_input_state_.tokens[core_input_state_.pos].kind = TokenKind::Greater;
+        set_parser_owned_spelling(core_input_state_.tokens[core_input_state_.pos], ">");
         return true;
     }
 
     if (check(TokenKind::GreaterEqual)) {
         // Consume one > and leave = in the token stream.
-        core_input_state_.token_mutations.push_back({pos_, tokens_[pos_]});
-        tokens_[pos_].kind = TokenKind::Assign;
-        set_parser_owned_spelling(tokens_[pos_], "=");
+        core_input_state_.token_mutations.push_back(
+            {core_input_state_.pos, core_input_state_.tokens[core_input_state_.pos]});
+        core_input_state_.tokens[core_input_state_.pos].kind = TokenKind::Assign;
+        set_parser_owned_spelling(core_input_state_.tokens[core_input_state_.pos], "=");
         return true;
     }
 
     if (check(TokenKind::GreaterGreaterAssign)) {
         // Consume one > and leave >= in the token stream.
-        core_input_state_.token_mutations.push_back({pos_, tokens_[pos_]});
-        tokens_[pos_].kind = TokenKind::GreaterEqual;
-        set_parser_owned_spelling(tokens_[pos_], ">=");
+        core_input_state_.token_mutations.push_back(
+            {core_input_state_.pos, core_input_state_.tokens[core_input_state_.pos]});
+        core_input_state_.tokens[core_input_state_.pos].kind = TokenKind::GreaterEqual;
+        set_parser_owned_spelling(core_input_state_.tokens[core_input_state_.pos], ">=");
         return true;
     }
 
