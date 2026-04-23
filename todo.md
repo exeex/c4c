@@ -3,7 +3,7 @@ Source Idea Path: ideas/open/87_out_of_ssa_contract_and_parallel_copy_authority_
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Proof And Observation Tightening
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
