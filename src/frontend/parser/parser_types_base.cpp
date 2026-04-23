@@ -66,8 +66,8 @@ static std::vector<std::string> split_template_arg_ref_text(
 bool Parser::is_type_start() const {
     TokenKind k = cur().kind;
     if (k == TokenKind::LBracket &&
-        pos_ + 1 < static_cast<int>(tokens_.size()) &&
-        tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+        core_input_state_.pos + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::LBracket) {
         return true;
     }
     if (is_type_kw(k)) return true;
@@ -81,7 +81,8 @@ bool Parser::is_type_start() const {
     if (k == TokenKind::Identifier) {
         const std::string name(token_spelling(cur()));
         if (is_concept_name(name)) return false;
-        if (starts_with_value_like_template_expr(*this, tokens_, pos_)) return false;
+        if (starts_with_value_like_template_expr(*this, core_input_state_.tokens,
+                                                 core_input_state_.pos)) return false;
         if (match_floatn_keyword_base(name, nullptr)) return true;
         if (is_template_scope_type_param(name)) return true;
         if (is_typedef_name(name)) return true;
@@ -90,8 +91,10 @@ bool Parser::is_type_start() const {
         // the name is registered as a template struct, or if we're inside a
         // struct body where namespace-scoped template names may not resolve.
         if (is_cpp_mode() &&
-            pos_ + 1 < static_cast<int>(tokens_.size()) &&
-            tokens_[pos_ + 1].kind == TokenKind::Less &&
+            core_input_state_.pos + 1 <
+                static_cast<int>(core_input_state_.tokens.size()) &&
+            core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                TokenKind::Less &&
             (find_template_struct_primary(name) ||
              find_template_struct_primary(resolve_visible_type_name(name)) ||
              !current_struct_tag_text().empty())) return true;
@@ -100,24 +103,27 @@ bool Parser::is_type_start() const {
         // be allowed to enter type parsing so the unresolved-template fallback
         // can recover declarations such as `holder<T> value`.
         if (is_cpp_mode() &&
-            pos_ + 1 < static_cast<int>(tokens_.size()) &&
-            tokens_[pos_ + 1].kind == TokenKind::Less) return true;
+            core_input_state_.pos + 1 <
+                static_cast<int>(core_input_state_.tokens.size()) &&
+            core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                TokenKind::Less) return true;
     }
     if (k == TokenKind::ColonColon) {
         QualifiedNameRef qn;
         if (peek_qualified_name(&qn, true)) {
             const QualifiedTypeProbe probe = probe_qualified_type(*this, qn);
             const int after_pos =
-                pos_ + (qn.is_global_qualified ? 1 : 0) +
+                core_input_state_.pos + (qn.is_global_qualified ? 1 : 0) +
                 2 * static_cast<int>(qn.qualifier_segments.size()) + 1;
             const TokenKind trailing_kind =
-                after_pos < static_cast<int>(tokens_.size())
-                    ? tokens_[after_pos].kind
+                after_pos < static_cast<int>(core_input_state_.tokens.size())
+                    ? core_input_state_.tokens[after_pos].kind
                     : TokenKind::EndOfFile;
             if (!probe.has_resolved_typedef &&
                 probe.has_unresolved_qualified_fallback &&
                 trailing_kind == TokenKind::Less &&
-                starts_with_value_like_template_expr(*this, tokens_, pos_)) {
+                starts_with_value_like_template_expr(*this, core_input_state_.tokens,
+                                                     core_input_state_.pos)) {
                 return false;
             }
             if (trailing_kind == TokenKind::LParen &&
@@ -131,22 +137,24 @@ bool Parser::is_type_start() const {
     }
     // C++ qualified type: StructName::TypedefName or ns::ns2::Type
     if (k == TokenKind::Identifier &&
-        pos_ + 2 < static_cast<int>(tokens_.size()) &&
-        tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
-        tokens_[pos_ + 2].kind == TokenKind::Identifier) {
+        core_input_state_.pos + 2 < static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::ColonColon &&
+        core_input_state_.tokens[core_input_state_.pos + 2].kind == TokenKind::Identifier) {
         QualifiedNameRef qn;
         if (peek_qualified_name(&qn, false)) {
             const QualifiedTypeProbe probe = probe_qualified_type(*this, qn);
             const int after_pos =
-                pos_ + 1 + 2 * static_cast<int>(qn.qualifier_segments.size());
+                core_input_state_.pos + 1 +
+                2 * static_cast<int>(qn.qualifier_segments.size());
             const TokenKind trailing_kind =
-                after_pos < static_cast<int>(tokens_.size())
-                    ? tokens_[after_pos].kind
+                after_pos < static_cast<int>(core_input_state_.tokens.size())
+                    ? core_input_state_.tokens[after_pos].kind
                     : TokenKind::EndOfFile;
             if (!probe.has_resolved_typedef &&
                 probe.has_unresolved_qualified_fallback &&
                 trailing_kind == TokenKind::Less &&
-                starts_with_value_like_template_expr(*this, tokens_, pos_)) {
+                starts_with_value_like_template_expr(*this, core_input_state_.tokens,
+                                                     core_input_state_.pos)) {
                 return false;
             }
             if (trailing_kind == TokenKind::LParen &&
@@ -165,31 +173,33 @@ bool Parser::can_start_parameter_type() const {
     if (is_type_start()) return true;
     if (!is_cpp_mode()) return false;
 
-    if (looks_like_unresolved_identifier_type_head(pos_)) return true;
+    if (looks_like_unresolved_identifier_type_head(core_input_state_.pos)) return true;
 
     if (check(TokenKind::Identifier) &&
-        pos_ + 1 < static_cast<int>(tokens_.size()) &&
-        tokens_[pos_ + 1].kind == TokenKind::Identifier) {
+        core_input_state_.pos + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::Identifier) {
         return true;
     }
 
     if (check(TokenKind::Identifier) &&
-        pos_ + 1 < static_cast<int>(tokens_.size()) &&
-        (tokens_[pos_ + 1].kind == TokenKind::Amp ||
-         tokens_[pos_ + 1].kind == TokenKind::AmpAmp)) {
+        core_input_state_.pos + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+        (core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::Amp ||
+         core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::AmpAmp)) {
         return true;
     }
 
     if (check(TokenKind::Identifier) &&
-        pos_ + 1 < static_cast<int>(tokens_.size()) &&
-        tokens_[pos_ + 1].kind == TokenKind::Less) {
+        core_input_state_.pos + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::Less) {
         return true;
     }
 
     if (!(check(TokenKind::ColonColon) ||
           (check(TokenKind::Identifier) &&
-           pos_ + 1 < static_cast<int>(tokens_.size()) &&
-           tokens_[pos_ + 1].kind == TokenKind::ColonColon))) {
+           core_input_state_.pos + 1 <
+               static_cast<int>(core_input_state_.tokens.size()) &&
+           core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+               TokenKind::ColonColon))) {
         return false;
     }
 
@@ -197,24 +207,24 @@ bool Parser::can_start_parameter_type() const {
     if (!peek_qualified_name(&qn, true)) return false;
 
     const int after_pos =
-        pos_ + (qn.is_global_qualified ? 1 : 0) +
+        core_input_state_.pos + (qn.is_global_qualified ? 1 : 0) +
         2 * static_cast<int>(qn.qualifier_segments.size()) + 1;
-    return after_pos < static_cast<int>(tokens_.size()) &&
-           (tokens_[after_pos].kind == TokenKind::Less ||
-            (tokens_[after_pos].kind == TokenKind::LParen &&
+    return after_pos < static_cast<int>(core_input_state_.tokens.size()) &&
+           (core_input_state_.tokens[after_pos].kind == TokenKind::Less ||
+            (core_input_state_.tokens[after_pos].kind == TokenKind::LParen &&
              starts_parenthesized_member_pointer_declarator(*this, after_pos)));
 }
 
 bool Parser::looks_like_unresolved_identifier_type_head(int pos) const {
     if (!is_cpp_mode()) return false;
-    if (pos < 0 || pos >= static_cast<int>(tokens_.size())) return false;
-    if (tokens_[pos].kind != TokenKind::Identifier) return false;
-    if (is_concept_name(std::string(token_spelling(tokens_[pos])))) return false;
+    if (pos < 0 || pos >= static_cast<int>(core_input_state_.tokens.size())) return false;
+    if (core_input_state_.tokens[pos].kind != TokenKind::Identifier) return false;
+    if (is_concept_name(std::string(token_spelling(core_input_state_.tokens[pos])))) return false;
 
     const int next = pos + 1;
-    if (next >= static_cast<int>(tokens_.size())) return false;
+    if (next >= static_cast<int>(core_input_state_.tokens.size())) return false;
 
-    switch (tokens_[next].kind) {
+    switch (core_input_state_.tokens[next].kind) {
         case TokenKind::Identifier:
         case TokenKind::Amp:
         case TokenKind::AmpAmp:
@@ -228,7 +238,7 @@ bool Parser::looks_like_unresolved_identifier_type_head(int pos) const {
             break;
     }
 
-    return is_qualifier(tokens_[next].kind);
+    return is_qualifier(core_input_state_.tokens[next].kind);
 }
 
 // ── skip helpers ─────────────────────────────────────────────────────────────
@@ -1012,8 +1022,10 @@ TypeSpec Parser::parse_base_type() {
                             has_struct || has_union || has_enum || base_set;
                         const bool simple_unqualified_known_type_head =
                             k == TokenKind::Identifier &&
-                            !(pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                              tokens_[pos_ + 1].kind == TokenKind::ColonColon) &&
+                            !(core_input_state_.pos + 1 <
+                                  static_cast<int>(core_input_state_.tokens.size()) &&
+                              core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                                  TokenKind::ColonColon) &&
                             (is_typedef_name(name) ||
                              is_template_scope_type_param(name) ||
                              has_visible_typedef_type(name));
@@ -1042,9 +1054,12 @@ TypeSpec Parser::parse_base_type() {
                         // after the pointee type: `R C::*member`. In that shape the
                         // class name belongs to the declarator, not the base type.
                         if (is_cpp_mode() &&
-                            pos_ + 2 < static_cast<int>(tokens_.size()) &&
-                            tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
-                            tokens_[pos_ + 2].kind == TokenKind::Star) {
+                            core_input_state_.pos + 2 <
+                                static_cast<int>(core_input_state_.tokens.size()) &&
+                            core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                                TokenKind::ColonColon &&
+                            core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                                TokenKind::Star) {
                             done = true;
                             break;
                         }
@@ -1059,7 +1074,7 @@ TypeSpec Parser::parse_base_type() {
                                !(has_signed || has_unsigned || has_short || long_count > 0 ||
                                  has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
                                  has_struct || has_union || has_enum || base_set) &&
-                               looks_like_unresolved_identifier_type_head(pos_)) {
+                               looks_like_unresolved_identifier_type_head(core_input_state_.pos)) {
                         // C++ unresolved simple type in a declarator or parameter:
                         // treat identifier spellings such as `Box value`,
                         // `Box& value`, `Box* value`, `Box const& value`, and
@@ -2822,9 +2837,11 @@ TypeSpec Parser::parse_base_type() {
                 // Handle TemplateStruct<Args>::member suffix (e.g. bool_constant<true>::type).
                 // Resolve the member as a typedef within the instantiated struct.
                 if (is_cpp_mode() && check(TokenKind::ColonColon) &&
-                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::Identifier) {
-                    std::string member(token_spelling(tokens_[pos_ + 1]));
+                    core_input_state_.pos + 1 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::Identifier) {
+                    std::string member(token_spelling(core_input_state_.tokens[core_input_state_.pos + 1]));
                     const bool should_preserve_deferred_template_member =
                         ts.tpl_struct_origin && ts.tpl_struct_args.size > 0 &&
                         member == "type";

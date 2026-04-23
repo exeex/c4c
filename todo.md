@@ -9,16 +9,17 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Just Finished
 
-- completed the Step 2 `parser_core.cpp` packet by routing the remaining
-  qualified-name lookahead and template-close token-mutation paths through
-  `core_input_state_` instead of direct `tokens_`/`pos_` access
+- completed the Step 2 `parser_types_base.cpp` packet by routing the remaining
+  dense type-start and qualified-name lookahead paths through
+  `core_input_state_` instead of direct `tokens_`/`pos_` access, while leaving
+  the intentional whole-stream save/restore site unchanged
 
 ## Suggested Next
 
-- continue Step 2 in `parser_types_base.cpp` with the dense type-start and
-  qualified-name lookahead paths that still read `tokens_` and `pos_`
-  directly, while leaving deliberate whole-stream save/restore sites alone for
-  now
+- continue Step 2 in `parser_types_base.cpp` with any remaining parser-input
+  bundle reads in the base-type lookahead cluster that are still safe to route
+  through `core_input_state_`, while keeping deliberate rollback/save sites
+  unchanged
 
 ## Watchouts
 
