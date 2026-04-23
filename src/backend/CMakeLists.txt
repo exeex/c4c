@@ -10,6 +10,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/api/x86_codegen_api_assemble.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/core/x86_codegen_output.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/lowering/call_lowering.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/lowering/atomics_intrinsics_lowering.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/lowering/comparison_lowering.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/lowering/frame_lowering.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/codegen/lowering/float_lowering.cpp"
