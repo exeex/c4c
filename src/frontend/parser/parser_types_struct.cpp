@@ -1815,13 +1815,8 @@ void Parser::parse_record_definition_prelude(
         QualifiedNameRef qn;
         if (peek_qualified_name(&qn, /*allow_global=*/true)) {
             qn = parse_qualified_name(/*allow_global=*/true);
-            std::string spelled;
-            for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-                if (!spelled.empty()) spelled += "::";
-                spelled += qn.qualifier_segments[i];
-            }
-            if (!spelled.empty()) spelled += "::";
-            spelled += qn.base_name;
+            const std::string spelled =
+                qualified_name_text(*this, qn, /*include_global_prefix=*/false);
             *tag = arena_.strdup(spelled.c_str());
         }
     } else if (check(TokenKind::Identifier)) {

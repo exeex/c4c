@@ -9,19 +9,20 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: replaced the last direct `QualifiedNameRef::spelled()` use in
-  `parser_types_declarator.cpp` with the TextId-backed qualified-name spelling
-  helper inside `consume_qualified_type_spelling()`
-- kept the qualified-type spelling/consumption path on the TextId-backed
-  bridge instead of the rendered-name fallback path, while leaving the rest of
-  Step 2 parser type handling untouched
+- Step 2 packet: switched `parser_types_struct.cpp` record-definition prelude
+  to use the shared TextId-backed `qualified_name_text()` helper when turning a
+  parsed qualified tag name into the stored record tag spelling
+- kept the record-tag spelling bridge aligned with the same qualified-name
+  segment path already used by Step 2 lookup/traversal work, without widening
+  the packet into `parser_core.cpp` or other parser families
 
 ## Suggested Next
 
-- if Step 2 continues, inspect the next qualified-type consumer in the parser
-  type family and keep the work inside qualified spelling/consumption paths
-- avoid widening this packet into `parser_core.cpp` or unrelated binding-table
-  cleanup
+- if Step 2 continues, inspect the next parser-family qualified-name spelling
+  bridge outside `parser_core.cpp` and move it onto the shared TextId-backed
+  helper instead of hand-joining raw segment strings
+- keep the route inside parser namespace lookup and avoid widening into
+  unrelated binding-table or lexical-scope cleanup
 
 ## Watchouts
 
@@ -38,11 +39,11 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
   joins instead of `qn.spelled()`
 - keep `parser_core.cpp` at the restored baseline; do not add new behavior
   there while Step 2 is still trimming parser entry-point bridge assumptions
-- the declarator packet now uses a local TextId helper to avoid widening the
-  qualified-type spelling route into unrelated parser families
+- keep record tag spelling stable for nested names while shifting parser-family
+  consumers onto shared TextId-backed qualified-name helpers
 
 ## Proof
 
 - `cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R 'namespace|namespaced|using_namespace|using_declaration_namespace|using_nested_namespace|bad_namespace_member_without_qualification' | tee test_after.log`
-- result: passed after one helper-scope fix, 45/45 focused tests green
+- result: passed, 45/45 focused tests green
 - log: `test_after.log`
