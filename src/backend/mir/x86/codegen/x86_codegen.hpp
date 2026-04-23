@@ -429,14 +429,6 @@ std::optional<std::string> render_prepared_local_slot_memory_operand_if_supporte
     std::size_t stack_byte_bias,
     std::string_view size_name);
 
-inline const c4c::backend::prepare::PreparedValueHome*
-find_prepared_bounded_multi_defined_named_value_home(
-    const c4c::backend::prepare::PreparedBirModule& module,
-    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
-    std::string_view value_name) {
-  return c4c::backend::prepare::find_prepared_value_home(module.names, function_locations, value_name);
-}
-
 inline std::optional<std::size_t> find_prepared_fixed_permanent_named_stack_offset_if_supported(
     const c4c::backend::prepare::PreparedStackLayout& stack_layout,
     const c4c::backend::prepare::PreparedNameTables& prepared_names,
@@ -643,25 +635,6 @@ inline std::optional<std::size_t> find_prepared_authoritative_named_stack_offset
   }
 }
 
-inline std::optional<std::size_t>
-find_prepared_bounded_multi_defined_named_frame_offset_if_supported(
-    const PreparedModuleLocalSlotLayout& local_layout,
-    const c4c::backend::prepare::PreparedStackLayout* stack_layout,
-    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
-    const c4c::backend::prepare::PreparedBirModule& module,
-    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
-    c4c::FunctionNameId function_name,
-    std::string_view value_name) {
-  return find_prepared_authoritative_named_stack_offset_if_supported(
-      local_layout,
-      stack_layout,
-      function_addressing,
-      &module.names,
-      &function_locations,
-      function_name,
-      value_name);
-}
-
 inline bool finalize_prepared_bounded_multi_defined_return_if_supported(
     const c4c::backend::bir::Value& returned,
     const PreparedModuleLocalSlotLayout& local_layout,
@@ -676,130 +649,6 @@ inline bool finalize_prepared_bounded_multi_defined_return_if_supported(
   *body += "    add rsp, " + std::to_string(local_layout.frame_size + 8) + "\n";
   *body += "    ret\n";
   return true;
-}
-
-inline void note_prepared_bounded_multi_defined_name_once(std::vector<std::string>* names,
-                                                          std::string_view name) {
-  const auto it = std::find(names->begin(), names->end(), std::string(name));
-  if (it == names->end()) {
-    names->push_back(std::string(name));
-  }
-}
-
-inline bool append_prepared_bounded_multi_defined_call_argument_if_supported(
-    const c4c::backend::bir::Value& arg,
-    c4c::backend::bir::TypeKind arg_type,
-    std::size_t arg_index,
-    std::size_t instruction_index,
-    const c4c::backend::prepare::PreparedBirModule& module,
-    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
-    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
-    c4c::FunctionNameId function_name,
-    const PreparedModuleLocalSlotLayout& local_layout,
-    const std::optional<PreparedBoundedMultiDefinedCurrentI32Carrier>& current_i32,
-    const std::function<bool(std::string_view)>& has_string_constant,
-    const std::function<bool(std::string_view)>& has_same_module_global,
-    const std::function<std::string(std::string_view)>& render_private_data_label,
-    const std::function<std::string(std::string_view)>& render_asm_symbol_name,
-    std::vector<std::string>* used_string_names,
-    std::vector<std::string>* used_same_module_global_names,
-    std::string* body) {
-  static constexpr const char* kArgRegs64[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
-  static constexpr const char* kArgRegs32[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
-
-  if (arg_type == c4c::backend::bir::TypeKind::Ptr) {
-    if (arg.kind != c4c::backend::bir::Value::Kind::Named || arg.name.empty()) {
-      return false;
-    }
-    if (arg.name.front() == '@') {
-      const std::string_view symbol_name(arg.name.data() + 1, arg.name.size() - 1);
-      if (has_string_constant(symbol_name)) {
-        note_prepared_bounded_multi_defined_name_once(used_string_names, symbol_name);
-        *body += "    lea ";
-        *body += kArgRegs64[arg_index];
-        *body += ", [rip + ";
-        *body += render_private_data_label(symbol_name);
-        *body += "]\n";
-        return true;
-      }
-      if (!has_same_module_global(symbol_name)) {
-        return false;
-      }
-      note_prepared_bounded_multi_defined_name_once(used_same_module_global_names,
-                                                    symbol_name);
-      *body += "    lea ";
-      *body += kArgRegs64[arg_index];
-      *body += ", [rip + ";
-      *body += render_asm_symbol_name(symbol_name);
-      *body += "]\n";
-      return true;
-    }
-
-    const auto frame_offset = find_prepared_bounded_multi_defined_named_frame_offset_if_supported(
-        local_layout, &module.stack_layout, function_addressing, module, function_locations,
-        function_name, arg.name);
-    if (frame_offset.has_value()) {
-      *body += "    lea ";
-      *body += kArgRegs64[arg_index];
-      *body += ", ";
-      *body += render_prepared_stack_address_expr(*frame_offset + 8);
-      *body += "\n";
-      return true;
-    }
-
-    const auto* home = find_prepared_bounded_multi_defined_named_value_home(
-        module, function_locations, arg.name);
-    if (home != nullptr &&
-        home->kind == c4c::backend::prepare::PreparedValueHomeKind::Register &&
-        home->register_name.has_value()) {
-      if (*home->register_name != kArgRegs64[arg_index]) {
-        *body += "    mov ";
-        *body += kArgRegs64[arg_index];
-        *body += ", ";
-        *body += *home->register_name;
-        *body += "\n";
-      }
-      return true;
-    }
-    if (home != nullptr &&
-        home->kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot &&
-        home->offset_bytes.has_value()) {
-      *body += "    lea ";
-      *body += kArgRegs64[arg_index];
-      *body += ", ";
-      *body += render_prepared_stack_address_expr(*home->offset_bytes);
-      *body += "\n";
-      return true;
-    }
-    return false;
-  }
-
-  if (arg_type != c4c::backend::bir::TypeKind::I32) {
-    return false;
-  }
-  if (arg.kind == c4c::backend::bir::Value::Kind::Immediate) {
-    *body += "    mov ";
-    *body += kArgRegs32[arg_index];
-    *body += ", ";
-    *body += std::to_string(static_cast<std::int32_t>(arg.immediate));
-    *body += "\n";
-    return true;
-  }
-  if (arg.kind != c4c::backend::bir::Value::Kind::Named) {
-    return false;
-  }
-  const auto source = select_prepared_bounded_multi_defined_named_i32_source_if_supported(
-      module, function_locations, current_i32, arg.name);
-  if (!source.has_value()) {
-    return false;
-  }
-  const auto destination_register = select_prepared_i32_call_argument_abi_register_if_supported(
-      &function_locations, instruction_index, arg_index);
-  if (!destination_register.has_value()) {
-    throw std::invalid_argument(std::string(kPreparedCallBundleHandoffRequired));
-  }
-  return append_prepared_bounded_multi_defined_i32_move_into_register_if_supported(
-      body, *destination_register, *source);
 }
 
 inline std::optional<PreparedBoundedMultiDefinedCallLaneRender>

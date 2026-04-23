@@ -154,6 +154,25 @@ bool finalize_prepared_bounded_multi_defined_call_result_if_supported(
     std::string* body,
     std::optional<PreparedBoundedMultiDefinedCurrentI32Carrier>* current_i32);
 
+bool append_prepared_bounded_multi_defined_call_argument_if_supported(
+    const c4c::backend::bir::Value& arg,
+    c4c::backend::bir::TypeKind arg_type,
+    std::size_t arg_index,
+    std::size_t instruction_index,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction* function_addressing,
+    c4c::FunctionNameId function_name,
+    const PreparedModuleLocalSlotLayout& local_layout,
+    const std::optional<PreparedBoundedMultiDefinedCurrentI32Carrier>& current_i32,
+    const std::function<bool(std::string_view)>& has_string_constant,
+    const std::function<bool(std::string_view)>& has_same_module_global,
+    const std::function<std::string(std::string_view)>& render_private_data_label,
+    const std::function<std::string(std::string_view)>& render_asm_symbol_name,
+    std::vector<std::string>* used_string_names,
+    std::vector<std::string>* used_same_module_global_names,
+    std::string* body);
+
 template <class ResolveNamedOperand>
 std::optional<PreparedI32ValueSelection> select_prepared_i32_value_if_supported(
     const c4c::backend::bir::Value& value,
