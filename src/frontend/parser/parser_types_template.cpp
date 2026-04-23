@@ -571,6 +571,16 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         std::string resolved_ref_tpl_name = ref_tpl_name;
         const Node* ref_primary = find_template_struct_primary(resolved_ref_tpl_name);
         if (!ref_primary) {
+            if (const TypeSpec* visible_type =
+                    find_visible_typedef_type(ref_tpl_name)) {
+                if (visible_type->tag && visible_type->tag[0]) {
+                    resolved_ref_tpl_name = visible_type->tag;
+                    ref_primary = find_template_struct_primary(
+                        resolved_ref_tpl_name);
+                }
+            }
+        }
+        if (!ref_primary) {
             const std::string visible_name = resolve_visible_type_name(ref_tpl_name);
             if (!visible_name.empty()) {
                 resolved_ref_tpl_name = visible_name;

@@ -565,7 +565,10 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                 : start_pos;
         const std::string spelled_name =
             join_token_lexemes(owner_start, core_input_state_.pos);
-        std::string resolved = resolve_visible_type_name(dep_name);
+        std::string resolved = dep_name;
+        if (!has_visible_typedef_type(dep_name)) {
+            resolved = resolve_visible_type_name(dep_name);
+        }
         if (!has_typedef_type(resolved)) {
             bool preserved_template_owner_member = false;
             if (spelled_name.find('<') != std::string::npos &&
