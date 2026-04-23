@@ -276,8 +276,8 @@ bool is_known_simple_type_head(const Parser& parser, const std::string& name) {
     if (parser.is_typedef_name(name)) return true;
     const std::string resolved = parser.resolve_visible_type_name(name);
     return parser.has_typedef_type(resolved) ||
-           parser.template_struct_defs_.count(name) > 0 ||
-           parser.template_struct_defs_.count(resolved) > 0 ||
+           parser.template_state_.template_struct_defs.count(name) > 0 ||
+           parser.template_state_.template_struct_defs.count(resolved) > 0 ||
            parser.defined_struct_tags_.count(name) > 0 ||
            parser.defined_struct_tags_.count(resolved) > 0;
 }
@@ -410,7 +410,7 @@ std::string resolve_qualified_known_type_name(
 
     resolved = spell_qualified_name_for_lookup(qn);
     if (!resolved.empty() &&
-        (parser.template_struct_defs_.count(resolved) > 0 ||
+        (parser.template_state_.template_struct_defs.count(resolved) > 0 ||
          parser.defined_struct_tags_.count(resolved) > 0)) {
         return resolved;
     }
@@ -422,7 +422,7 @@ std::string resolve_qualified_known_type_name(
                 parser.canonical_name_in_context(
                     context_id,
                     std::string(parser.parser_text(qn.base_text_id, qn.base_name)));
-            if (parser.template_struct_defs_.count(canonical) > 0 ||
+            if (parser.template_state_.template_struct_defs.count(canonical) > 0 ||
                 parser.defined_struct_tags_.count(canonical) > 0) {
                 return canonical;
             }
@@ -432,7 +432,7 @@ std::string resolve_qualified_known_type_name(
 
     resolved = parser.resolve_visible_type_name(
         parser.parser_text(qn.base_text_id, qn.base_name));
-    if (parser.template_struct_defs_.count(resolved) > 0 ||
+    if (parser.template_state_.template_struct_defs.count(resolved) > 0 ||
         parser.defined_struct_tags_.count(resolved) > 0) {
         return resolved;
     }
@@ -447,7 +447,8 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
         probe.has_resolved_typedef = true;
         return probe;
     }
-    if (parser.template_struct_defs_.count(probe.resolved_typedef_name) > 0 ||
+    if (parser.template_state_.template_struct_defs.count(
+            probe.resolved_typedef_name) > 0 ||
         parser.defined_struct_tags_.count(probe.resolved_typedef_name) > 0) {
         probe.has_resolved_typedef = true;
         return probe;

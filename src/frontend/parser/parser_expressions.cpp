@@ -1326,7 +1326,7 @@ Node* Parser::parse_primary() {
             if (first_qualifier.empty()) return false;
 
             return has_typedef_type(first_qualifier) ||
-                   template_struct_defs_.count(first_qualifier) > 0 ||
+                   template_state_.template_struct_defs.count(first_qualifier) > 0 ||
                    defined_struct_tags_.count(first_qualifier) > 0;
         };
         if (is_cpp_mode() && (check(TokenKind::Less) || check(TokenKind::LParen))) {

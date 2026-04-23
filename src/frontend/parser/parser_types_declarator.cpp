@@ -19,18 +19,19 @@ bool Parser::is_typedef_name(std::string_view s) const {
 
 void Parser::push_template_scope(TemplateScopeKind kind,
                                  const std::vector<TemplateScopeParam>& params) {
-    template_scope_stack_.push_back({kind, params});
+    template_state_.template_scope_stack.push_back({kind, params});
 }
 
 void Parser::pop_template_scope() {
-    if (!template_scope_stack_.empty())
-        template_scope_stack_.pop_back();
+    if (!template_state_.template_scope_stack.empty())
+        template_state_.template_scope_stack.pop_back();
 }
 
 bool Parser::is_template_scope_type_param(std::string_view name) const {
     // Walk from innermost scope to outermost.
-    for (int i = static_cast<int>(template_scope_stack_.size()) - 1; i >= 0; --i) {
-        for (const auto& p : template_scope_stack_[i].params) {
+    for (int i = static_cast<int>(template_state_.template_scope_stack.size()) - 1;
+         i >= 0; --i) {
+        for (const auto& p : template_state_.template_scope_stack[i].params) {
             if (!p.is_nttp && p.name && name == p.name) return true;
         }
     }
@@ -285,8 +286,8 @@ bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx,
     if (check(TokenKind::Identifier)) {
         const std::string name(token_spelling(cur()));
         const std::string resolved = resolve_visible_type_name(name);
-        if (alias_template_info_.count(name) > 0 ||
-            alias_template_info_.count(resolved) > 0) {
+        if (template_state_.alias_template_info.count(name) > 0 ||
+            template_state_.alias_template_info.count(resolved) > 0) {
             return false;
         }
     }

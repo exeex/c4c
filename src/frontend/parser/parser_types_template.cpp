@@ -14,15 +14,19 @@
 namespace c4c {
 
 Node* Parser::find_template_struct_primary(const std::string& name) const {
-    auto it = template_struct_defs_.find(name);
-    return it != template_struct_defs_.end() ? it->second : nullptr;
+    auto it = template_state_.template_struct_defs.find(name);
+    return it != template_state_.template_struct_defs.end() ? it->second
+                                                            : nullptr;
 }
 
 const std::vector<Node*>* Parser::find_template_struct_specializations(
     const Node* primary_tpl) const {
     if (!primary_tpl || !primary_tpl->name) return nullptr;
-    auto it = template_struct_specializations_.find(primary_tpl->name);
-    return it != template_struct_specializations_.end() ? &it->second : nullptr;
+    auto it = template_state_.template_struct_specializations.find(
+        primary_tpl->name);
+    return it != template_state_.template_struct_specializations.end()
+               ? &it->second
+               : nullptr;
 }
 
 const Node* Parser::select_template_struct_pattern_for_args(
@@ -41,12 +45,13 @@ void Parser::register_template_struct_primary(const std::string& name, Node* nod
         node->n_template_args != 0) {
         return;
     }
-    template_struct_defs_[name] = node;
+    template_state_.template_struct_defs[name] = node;
 }
 
 void Parser::register_template_struct_specialization(const char* primary_name, Node* node) {
     if (!primary_name || !primary_name[0] || !node) return;
-    template_struct_specializations_[primary_name].push_back(node);
+    template_state_.template_struct_specializations[primary_name].push_back(
+        node);
     if (!node->name) return;
     if (std::strstr(primary_name, "::")) return;
     std::string spelled_name = node->name;
@@ -54,7 +59,8 @@ void Parser::register_template_struct_specialization(const char* primary_name, N
     if (scope_sep == std::string::npos) return;
     std::string qualified_primary =
         spelled_name.substr(0, scope_sep + 2) + primary_name;
-    template_struct_specializations_[qualified_primary].push_back(node);
+    template_state_.template_struct_specializations[qualified_primary]
+        .push_back(node);
 }
 
 bool Parser::ensure_template_struct_instantiated_from_args(
@@ -100,7 +106,7 @@ bool Parser::ensure_template_struct_instantiated_from_args(
     }
 
     if (!struct_tag_def_map_.count(*out_mangled)) {
-        if (!instantiated_template_struct_keys_.count(instance_key) ||
+        if (!template_state_.instantiated_template_struct_keys.count(instance_key) ||
             !struct_tag_def_map_.count(*out_mangled)) {
             if (!instantiate_template_struct_via_injected_parse(
                     *this, template_name, args, line, debug_reason,
@@ -803,8 +809,8 @@ bool Parser::eval_deferred_nttp_default(
     const std::vector<std::pair<std::string, long long>>& nttp_bindings,
     long long* out) {
     std::string key = tpl_name + ":" + std::to_string(param_idx);
-    auto it = nttp_default_expr_tokens_.find(key);
-    if (it == nttp_default_expr_tokens_.end()) return false;
+    auto it = template_state_.nttp_default_expr_tokens.find(key);
+    if (it == template_state_.nttp_default_expr_tokens.end()) return false;
     return eval_deferred_nttp_expr_tokens(tpl_name, it->second,
                                           type_bindings, nttp_bindings, out);
 }

@@ -1151,15 +1151,16 @@ TypeSpec Parser::parse_base_type() {
                 set_last_resolved_typedef(tname);
                 // Alias template application: e.g. bool_constant<expr> → integral_constant<bool, expr>
                 if (is_cpp_mode() && check(TokenKind::Less)) {
-                    auto ati_it = alias_template_info_.find(tname);
-                    if (ati_it == alias_template_info_.end()) {
+                    auto ati_it = template_state_.alias_template_info.find(tname);
+                    if (ati_it == template_state_.alias_template_info.end()) {
                         const std::string resolved_alias_name =
                             resolve_visible_type_name(tname);
                         if (!resolved_alias_name.empty())
-                            ati_it = alias_template_info_.find(resolved_alias_name);
+                            ati_it = template_state_.alias_template_info.find(
+                                resolved_alias_name);
                     }
-                    if (ati_it != alias_template_info_.end()) {
-                        const AliasTemplateInfo& ati = ati_it->second;
+                    if (ati_it != template_state_.alias_template_info.end()) {
+                        const ParserAliasTemplateInfo& ati = ati_it->second;
                         const std::string alias_template_name = ati_it->first;
                         TentativeParseGuard alias_guard(*this);
                         std::vector<TemplateArgParseResult> alias_args;
@@ -1619,9 +1620,11 @@ TypeSpec Parser::parse_base_type() {
                                             find_template_struct_specializations(primary_tpl);
                                         if (!specializations) {
                                             auto it =
-                                                template_struct_specializations_.find(
+                                                template_state_.template_struct_specializations.find(
                                                     owner_lookup_name);
-                                            if (it != template_struct_specializations_.end())
+                                            if (it !=
+                                                template_state_
+                                                    .template_struct_specializations.end())
                                                 specializations = &it->second;
                                         }
                                         const Node* selected =
@@ -2171,8 +2174,10 @@ TypeSpec Parser::parse_base_type() {
                     }
 
                     // Instantiate if not already done
-                    if (!instantiated_template_struct_keys_.count(instance_key)) {
-                        instantiated_template_struct_keys_.insert(instance_key);
+                    if (!template_state_.instantiated_template_struct_keys.count(
+                            instance_key)) {
+                        template_state_.instantiated_template_struct_keys.insert(
+                            instance_key);
                         // Create a concrete NK_STRUCT_DEF with substituted field types
                         Node* inst = make_node(NK_STRUCT_DEF, tpl_def->line);
                         inst->name = arena_.strdup(mangled.c_str());

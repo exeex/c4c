@@ -1669,7 +1669,7 @@ Node* Parser::parse_top_level() {
         if (!alias_name.empty() && !template_params.empty()) {
             if (const TypeSpec* aliased_type =
                     find_typedef_type(alias_name)) {
-                AliasTemplateInfo ati;
+                ParserAliasTemplateInfo ati;
                 for (size_t i = 0; i < template_params.size(); ++i) {
                     ati.param_names.push_back(template_params[i]);
                     ati.param_is_nttp.push_back(template_param_nttp[i]);
@@ -1679,7 +1679,8 @@ Node* Parser::parse_top_level() {
                     ati.param_default_values.push_back(template_param_default_values[i]);
                 }
                 ati.aliased_type = *aliased_type;
-                alias_template_info_[std::string(alias_name)] = std::move(ati);
+                template_state_.alias_template_info[std::string(alias_name)] =
+                    std::move(ati);
             }
             clear_last_using_alias_name();
         }
@@ -1706,7 +1707,8 @@ Node* Parser::parse_top_level() {
             if (n->name && !deferred_nttp_defaults.empty()) {
                 for (auto& [idx, toks] : deferred_nttp_defaults) {
                     std::string key = std::string(n->name) + ":" + std::to_string(idx);
-                    nttp_default_expr_tokens_[key] = std::move(toks);
+                    template_state_.nttp_default_expr_tokens[key] =
+                        std::move(toks);
                 }
             }
         };
@@ -2039,12 +2041,15 @@ Node* Parser::parse_top_level() {
             // Enter owner scope for out-of-class operator definition.
             std::string saved_tag_op = active_context_state_.current_struct_tag;
             set_current_struct_tag(qualified_owner);
-            if (!template_scope_stack_.empty() &&
-                template_scope_stack_.back().kind == TemplateScopeKind::FreeFunctionTemplate &&
+            if (!template_state_.template_scope_stack.empty() &&
+                template_state_.template_scope_stack.back().kind ==
+                    TemplateScopeKind::FreeFunctionTemplate &&
                 (find_template_struct_primary(qualified_owner) ||
-                 template_struct_defs_.count(qualified_owner))) {
-                template_scope_stack_.back().kind = TemplateScopeKind::EnclosingClass;
-                template_scope_stack_.back().owner_struct_tag = qualified_owner;
+                 template_state_.template_struct_defs.count(qualified_owner))) {
+                template_state_.template_scope_stack.back().kind =
+                    TemplateScopeKind::EnclosingClass;
+                template_state_.template_scope_stack.back().owner_struct_tag =
+                    qualified_owner;
             }
 
             TypeSpec conv_ts = parse_base_type();
@@ -2174,12 +2179,15 @@ Node* Parser::parse_top_level() {
                 std::string saved_tag_ctor =
                     active_context_state_.current_struct_tag;
                 set_current_struct_tag(qualified_owner);
-                if (!template_scope_stack_.empty() &&
-                    template_scope_stack_.back().kind == TemplateScopeKind::FreeFunctionTemplate &&
+                if (!template_state_.template_scope_stack.empty() &&
+                    template_state_.template_scope_stack.back().kind ==
+                        TemplateScopeKind::FreeFunctionTemplate &&
                     (find_template_struct_primary(qualified_owner) ||
-                     template_struct_defs_.count(qualified_owner))) {
-                    template_scope_stack_.back().kind = TemplateScopeKind::EnclosingClass;
-                    template_scope_stack_.back().owner_struct_tag = qualified_owner;
+                     template_state_.template_struct_defs.count(qualified_owner))) {
+                    template_state_.template_scope_stack.back().kind =
+                        TemplateScopeKind::EnclosingClass;
+                    template_state_.template_scope_stack.back().owner_struct_tag =
+                        qualified_owner;
                 }
 
                 consume();  // (
@@ -2682,12 +2690,15 @@ top_level_base_ready:
         set_current_struct_tag(qualified_owner_tag);
         // If the owner is a known template struct and we have an active
         // FreeFunctionTemplate scope, relabel it as EnclosingClass.
-        if (!template_scope_stack_.empty() &&
-            template_scope_stack_.back().kind == TemplateScopeKind::FreeFunctionTemplate) {
+        if (!template_state_.template_scope_stack.empty() &&
+            template_state_.template_scope_stack.back().kind ==
+                TemplateScopeKind::FreeFunctionTemplate) {
             if (find_template_struct_primary(qualified_owner_tag) ||
-                template_struct_defs_.count(qualified_owner_tag)) {
-                template_scope_stack_.back().kind = TemplateScopeKind::EnclosingClass;
-                template_scope_stack_.back().owner_struct_tag = qualified_owner_tag;
+                template_state_.template_struct_defs.count(qualified_owner_tag)) {
+                template_state_.template_scope_stack.back().kind =
+                    TemplateScopeKind::EnclosingClass;
+                template_state_.template_scope_stack.back().owner_struct_tag =
+                    qualified_owner_tag;
             }
         }
     };

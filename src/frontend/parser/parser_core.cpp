@@ -448,7 +448,7 @@ bool Parser::resolves_to_record_ctor_type(TypeSpec ts) const {
     ts = resolve_struct_like_typedef_type(ts);
     if (ts.base == TB_TYPEDEF && ts.tag &&
         (defined_struct_tags_.count(ts.tag) > 0 ||
-         template_struct_defs_.count(ts.tag) > 0)) {
+         template_state_.template_struct_defs.count(ts.tag) > 0)) {
         return true;
     }
     return ts.base == TB_STRUCT || ts.base == TB_UNION;
@@ -690,8 +690,9 @@ ParserRecordTemplatePreludeGuard::ParserRecordTemplatePreludeGuard(Parser* p)
 
 ParserRecordTemplatePreludeGuard::~ParserRecordTemplatePreludeGuard() {
     if (!parser) return;
-    if (pushed_template_scope && !parser->template_scope_stack_.empty()) {
-        parser->template_scope_stack_.pop_back();
+    if (pushed_template_scope &&
+        !parser->template_state_.template_scope_stack.empty()) {
+        parser->template_state_.template_scope_stack.pop_back();
     }
     for (const std::string& name : injected_type_params) {
         parser->unregister_typedef_binding(name);
@@ -705,8 +706,9 @@ ParserTemplateDeclarationPreludeGuard::ParserTemplateDeclarationPreludeGuard(
 ParserTemplateDeclarationPreludeGuard::
     ~ParserTemplateDeclarationPreludeGuard() {
     if (!parser) return;
-    if (pushed_template_scope && !parser->template_scope_stack_.empty()) {
-        parser->template_scope_stack_.pop_back();
+    if (pushed_template_scope &&
+        !parser->template_state_.template_scope_stack.empty()) {
+        parser->template_state_.template_scope_stack.pop_back();
     }
     for (const std::string& name : injected_type_params) {
         parser->unregister_typedef_binding(name);

@@ -197,33 +197,6 @@ class Parser {
 
   // ── template metadata tables and active template scopes ──────────────────
   ParserTemplateState template_state_;
-  // Template struct definitions: maps struct tag → NK_STRUCT_DEF node with
-  // n_template_params > 0.  Used to instantiate template structs at usage sites.
-  std::unordered_map<std::string, Node*>& template_struct_defs_ =
-      template_state_.template_struct_defs;
-  // Template struct specialization patterns keyed by primary template name.
-  std::unordered_map<std::string, std::vector<Node*>>&
-      template_struct_specializations_ =
-          template_state_.template_struct_specializations;
-  // Already-instantiated template structs keyed by semantic identity
-  // (primary family + canonical args), not by mangled print name.
-  std::set<std::string>& instantiated_template_struct_keys_ =
-      template_state_.instantiated_template_struct_keys;
-  // Deferred NTTP default expression tokens, keyed by "template_tag:param_idx".
-  // Used for complex defaults like `arithmetic<T>::value` that can only be
-  // evaluated once template type arguments are known.
-  std::unordered_map<std::string, std::vector<Token>>&
-      nttp_default_expr_tokens_ = template_state_.nttp_default_expr_tokens;
-  // Alias template metadata: template<...> using Name = AliasedType;
-  // Stores the alias template's parameter info and the aliased TypeSpec so
-  // that applying Name<args> can rebuild the aliased template struct with
-  // substituted args instead of losing the alias template param mapping.
-  using AliasTemplateInfo = ParserAliasTemplateInfo;
-  std::unordered_map<std::string, AliasTemplateInfo>& alias_template_info_ =
-      template_state_.alias_template_info;
-  // Template-scope stack: tracks active template parameter visibility.
-  std::vector<TemplateScopeFrame>& template_scope_stack_ =
-      template_state_.template_scope_stack;
 
   // ── active parse context ──────────────────────────────────────────────────
   ParserActiveContextState active_context_state_;
