@@ -219,6 +219,72 @@ bool Parser::can_start_parameter_type() const {
              starts_parenthesized_member_pointer_declarator(*this, after_pos)));
 }
 
+int Parser::classify_visible_value_or_type_starter(int pos) {
+    if (pos < 0 || pos >= static_cast<int>(core_input_state_.tokens.size())) {
+        return 0;
+    }
+
+    const TokenKind first_kind = core_input_state_.tokens[pos].kind;
+    if (first_kind != TokenKind::Identifier &&
+        first_kind != TokenKind::ColonColon) {
+        return 0;
+    }
+
+    const int saved_pos = core_input_state_.pos;
+    core_input_state_.pos = pos;
+
+    QualifiedNameRef qn;
+    const bool parsed_qn = peek_qualified_name(&qn,
+                                               first_kind == TokenKind::ColonColon);
+    core_input_state_.pos = saved_pos;
+    if (!parsed_qn || (!qn.is_global_qualified &&
+                       qn.qualifier_segments.empty())) {
+        if (first_kind != TokenKind::Identifier) return 0;
+
+        const Token& head_tok = core_input_state_.tokens[pos];
+        const std::string head_name = std::string(token_spelling(head_tok));
+        if (find_visible_var_type(head_tok.text_id, head_name)) return 1;
+        if (has_known_fn_name(head_name)) return 1;
+
+        const std::string resolved_value =
+            resolve_visible_value_name(head_tok.text_id, head_name);
+        if (!resolved_value.empty() &&
+            has_known_fn_name(resolved_value)) {
+            return 1;
+        }
+
+        if (is_known_simple_visible_type_head(*this, head_tok.text_id,
+                                              head_name)) {
+            return -1;
+        }
+        const std::string resolved_type =
+            resolve_visible_type_name(head_tok.text_id, head_name);
+        if (!resolved_type.empty()) return -1;
+        return 0;
+    }
+
+    int after_name_pos = pos;
+    if (qn.is_global_qualified) ++after_name_pos;
+    after_name_pos += 1 + 2 * static_cast<int>(qn.qualifier_segments.size());
+    if (after_name_pos >= static_cast<int>(core_input_state_.tokens.size())) {
+        return 0;
+    }
+
+    const TokenKind tail_kind = core_input_state_.tokens[after_name_pos].kind;
+    if (tail_kind != TokenKind::LParen &&
+        !(tail_kind == TokenKind::Less &&
+          starts_with_value_like_template_expr(
+              *this, core_input_state_.tokens, pos))) {
+        return 0;
+    }
+
+    if (!resolve_qualified_value_name(qn).empty()) return 1;
+    if (!resolve_qualified_type_name(qn).empty()) return -1;
+    // Declaration-side probes keep unresolved qualified heads on the type side
+    // unless structured value lookup proves they are expression-like.
+    return -1;
+}
+
 bool Parser::looks_like_unresolved_identifier_type_head(int pos) const {
     if (!is_cpp_mode()) return false;
     if (pos < 0 || pos >= static_cast<int>(core_input_state_.tokens.size())) return false;

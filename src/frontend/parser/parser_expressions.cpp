@@ -1267,10 +1267,59 @@ Node* Parser::parse_primary() {
                 qn, true /* include_global_prefix */);
         }
         const char* nm = arena_.strdup(qualified_name.c_str());
-        Node* var_node = make_node(NK_VAR, ln);
-        var_node->name = nm;
-        apply_qualified_name(var_node, qn, nm);
-        return parse_postfix(var_node);
+        Node* ident = make_node(NK_VAR, ln);
+        ident->name = nm;
+        apply_qualified_name(ident, qn, nm);
+        if (is_cpp_mode() && check(TokenKind::Less)) {
+            TentativeParseGuard guard(*this);
+            std::vector<TemplateArgParseResult> parsed_args;
+            if (parse_template_argument_list(&parsed_args)) {
+                auto is_valid_after_template = [&]() -> bool {
+                    if (check(TokenKind::LParen) || check(TokenKind::ColonColon) ||
+                        check(TokenKind::LBrace)) return true;
+                    if (check(TokenKind::RParen) || check(TokenKind::Semi) ||
+                        check(TokenKind::Comma) || check(TokenKind::Ellipsis) ||
+                        check(TokenKind::RBracket) || check_template_close() ||
+                        check(TokenKind::RBrace)) return true;
+                    if (check(TokenKind::Pipe) || check(TokenKind::PipePipe) ||
+                        check(TokenKind::AmpAmp) || check(TokenKind::Amp) ||
+                        check(TokenKind::Question) || check(TokenKind::Colon) ||
+                        check(TokenKind::EqualEqual) || check(TokenKind::BangEqual) ||
+                        check(TokenKind::LessEqual) || check(TokenKind::GreaterEqual) ||
+                        check(TokenKind::Plus) || check(TokenKind::Minus) ||
+                        check(TokenKind::Star) || check(TokenKind::Slash) ||
+                        check(TokenKind::Percent) || check(TokenKind::Assign) ||
+                        check(TokenKind::Dot) || check(TokenKind::Arrow)) return true;
+                    return false;
+                };
+                if (is_valid_after_template()) {
+                    guard.commit();
+                    ident->has_template_args = true;
+                    ident->n_template_args = static_cast<int>(parsed_args.size());
+                    ident->template_arg_types =
+                        arena_.alloc_array<TypeSpec>(ident->n_template_args);
+                    ident->template_arg_is_value =
+                        arena_.alloc_array<bool>(ident->n_template_args);
+                    ident->template_arg_values =
+                        arena_.alloc_array<long long>(ident->n_template_args);
+                    ident->template_arg_nttp_names =
+                        arena_.alloc_array<const char*>(ident->n_template_args);
+                    ident->template_arg_exprs =
+                        arena_.alloc_array<Node*>(ident->n_template_args);
+                    for (int i = 0; i < ident->n_template_args; ++i) {
+                        ident->template_arg_types[i] = parsed_args[i].type;
+                        ident->template_arg_is_value[i] = parsed_args[i].is_value;
+                        ident->template_arg_values[i] = parsed_args[i].value;
+                        ident->template_arg_nttp_names[i] =
+                            parsed_args[i].nttp_name;
+                        ident->template_arg_exprs[i] = parsed_args[i].expr;
+                    }
+                    ident->is_concept_id =
+                        is_concept_name(ident->name ? ident->name : "");
+                }
+            }
+        }
+        return parse_postfix(ident);
     }
 
     // Identifier / label address

@@ -869,38 +869,78 @@ Node* Parser::parse_stmt() {
             }
         }
         if (is_cpp_mode() && check(TokenKind::Identifier) &&
-            core_input_state_.pos + 2 < static_cast<int>(core_input_state_.tokens.size()) &&
+            core_input_state_.pos + 2 <
+                static_cast<int>(core_input_state_.tokens.size()) &&
             core_input_state_.tokens[core_input_state_.pos + 1].kind ==
                 TokenKind::ColonColon &&
             core_input_state_.tokens[core_input_state_.pos + 2].kind ==
                 TokenKind::KwOperator) {
-            // `Type::operator...(...)` in block scope is an expression
-            // statement, not a local declaration. `peek_qualified_name()`
-            // only walks identifier segments, so route operator-owned
-            // statements before the generic qualified-type probe below.
             goto expr_stmt;
         }
-        if (is_cpp_mode() && check(TokenKind::Identifier) &&
-            core_input_state_.pos + 2 < static_cast<int>(core_input_state_.tokens.size()) &&
+        if (is_cpp_mode() && check(TokenKind::ColonColon) &&
+            core_input_state_.pos + 3 <
+                static_cast<int>(core_input_state_.tokens.size()) &&
             core_input_state_.tokens[core_input_state_.pos + 1].kind ==
-                TokenKind::ColonColon &&
+                TokenKind::Identifier &&
             core_input_state_.tokens[core_input_state_.pos + 2].kind ==
-                TokenKind::Identifier) {
-            // Peek the full qualified name to check if it resolves to a type.
+                TokenKind::ColonColon &&
+            core_input_state_.tokens[core_input_state_.pos + 3].kind ==
+                TokenKind::KwOperator) {
+            goto expr_stmt;
+        }
+        if (is_cpp_mode() &&
+            (check(TokenKind::ColonColon) ||
+             (check(TokenKind::Identifier) &&
+              core_input_state_.pos + 1 <
+                  static_cast<int>(core_input_state_.tokens.size()) &&
+              core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                  TokenKind::ColonColon))) {
             QualifiedNameRef qn;
-            if (peek_qualified_name(&qn, false) && !qn.qualifier_segments.empty()) {
+            if (peek_qualified_name(&qn, true) &&
+                (qn.is_global_qualified || !qn.qualifier_segments.empty())) {
                 const int after_pos =
-                    core_input_state_.pos + 1 +
-                    2 * static_cast<int>(qn.qualifier_segments.size());
+                    core_input_state_.pos + (qn.is_global_qualified ? 1 : 0) +
+                    1 + 2 * static_cast<int>(qn.qualifier_segments.size());
+                if (after_pos < static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[after_pos].kind ==
+                        TokenKind::KwOperator) {
+                    // `Type::operator...(...)` in block scope is an
+                    // expression statement, not a local declaration.
+                    goto expr_stmt;
+                }
+                if (after_pos + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[after_pos].kind ==
+                        TokenKind::ColonColon &&
+                    core_input_state_.tokens[after_pos + 1].kind ==
+                        TokenKind::KwOperator) {
+                    goto expr_stmt;
+                }
                 if (after_pos < static_cast<int>(core_input_state_.tokens.size()) &&
                     core_input_state_.tokens[after_pos].kind == TokenKind::LParen &&
                     starts_parenthesized_member_pointer_declarator(*this, after_pos)) {
                     return parse_local_decl();
                 }
-                const QualifiedTypeProbe probe = probe_qualified_type(*this, qn);
-                if (!probe.has_resolved_typedef) {
-                    // Likely a qualified call: Type::Method(args)
-                    goto expr_stmt;
+
+                const TokenKind after_kind =
+                    after_pos < static_cast<int>(core_input_state_.tokens.size())
+                        ? core_input_state_.tokens[after_pos].kind
+                        : TokenKind::EndOfFile;
+                const bool call_like_head =
+                    after_kind == TokenKind::LParen ||
+                    (after_kind == TokenKind::Less &&
+                     starts_with_value_like_template_expr(
+                         *this, core_input_state_.tokens, core_input_state_.pos));
+                if (call_like_head) {
+                    if (classify_visible_value_or_type_starter(
+                            core_input_state_.pos) > 0) {
+                        goto expr_stmt;
+                    }
+
+                    const QualifiedTypeProbe probe = probe_qualified_type(*this, qn);
+                    if (!probe.has_resolved_typedef) {
+                        // Likely a qualified call: Type::Method(args)
+                        goto expr_stmt;
+                    }
                 }
             }
         }
