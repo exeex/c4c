@@ -7,13 +7,13 @@ Current Step Title: Reduce compatibility rendering to bridge-only support on tou
 # Current Packet
 
 ## Just Finished
-Completed plan step 4 on the record/enum tag canonicalization seam by making `bridge_name_in_context(...)` structured-first and routing touched parser type-tag paths through it. Forward declarations, record definitions, and enum tags in namespace context now prefer structured rendering before the compatibility bridge.
+Completed another plan step 4 bridge cleanup on the parser type-identity path by replacing the remaining template-owner fallback in `parser_types_base.cpp` with `bridge_name_in_context(...)`. Alias-member template-primary lookup no longer rebuilds the owner through `compatibility_namespace_name_in_context(...)` before probing the template registry on this touched path.
 
 ## Suggested Next
-Check the remaining owner/type helper in `parser_types_base.cpp` that still rebuilds `canonical_owner` with `compatibility_namespace_name_in_context(...)` while searching template struct primaries, and only then decide whether another narrow structured-first bridge cleanup is warranted.
+Re-scan the remaining declaration/import helpers that still call `compatibility_namespace_name_in_context(...)` and decide whether step 4 should take one more narrow bridge-only cleanup packet there or roll forward to step 5 proof closure.
 
 ## Watchouts
-`has_var_type(...)` and other value-side fallbacks still rely on legacy tables, so the structured-first bridge cleanup should stay on parser type identity paths only. `compatibility_namespace_name_in_context(...)` is still the required bridge fallback when token text or path rendering is unavailable; this slice only demoted it from the primary path on touched record/enum tag flows.
+`has_var_type(...)` and other value-side fallbacks still rely on legacy tables, so the structured-first bridge cleanup should stay on parser type identity paths only. `compatibility_namespace_name_in_context(...)` remains the compatibility fallback inside `bridge_name_in_context(...)`; this slice only removed its direct use as the primary owner render on the touched template-member type path.
 
 ## Proof
 Passed. Proof run:
