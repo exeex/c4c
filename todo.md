@@ -3,34 +3,33 @@ Source Idea Path: ideas/open/88_prepared_frame_stack_call_authority_completion_f
 Source Plan Path: plan.md
 Current Step ID: 3.2
 Current Step Title: Save, Clobber, And Preservation Authority
-Plan Review Counter: 2 / 6
+Plan Review Counter: 3 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3.2 "Save, Clobber, And Preservation Authority" packet work
-for idea 88 by wiring per-call callee-saved preservation entries directly to
-the matching function-level save/restore authority instead of leaving backend
-consumers to correlate `call_plans` against `saved_callee_registers` by
-register name alone.
+Completed the next Step 3.2 "Save, Clobber, And Preservation Authority"
+packet for idea 88 by auditing non-callee-saved scalar preservation routes and
+repairing the stack-preserved publication gap in `call_plans`.
 
 Current packet result:
-- `PreparedCallPreservedValue` now publishes `callee_saved_save_index` when a
-  preserved scalar survives the call in a callee-saved register.
-- `populate_call_plans` now resolves that index against the function's
-  published `saved_callee_registers`, so the call-plan entry points at the
-  same save/restore authority record that owns the prologue/epilogue work.
-- Prepared summaries and detailed call-plan dumps now expose that save
-  ownership directly as part of the preserved-value publication.
-- Focused contract and printer coverage now prove the call-crossing `carry`
-  value references the matching frame-plan save authority for `s1`.
+- stack-preserved preserved values no longer publish raw regalloc spill-slot
+  coordinates; `build_call_preserved_values` now prefers prepared value-home
+  or stack-object-backed frame-slot authority before falling back to internal
+  assigned-slot data
+- focused Step 3.2 coverage now proves a cross-call scalar spilled under
+  pressure publishes the same frame-slot identity and stack offset through
+  both `call_plans` and `storage_plans`
+- the same audit did not uncover additional direct prepared authority for
+  current `unknown` routes in focused fixtures, so that route remains an
+  honest bounded publication rather than guessed save/restore policy
 
 ## Suggested Next
 
-Continue Step 3.2 by auditing whether stack-preserved or currently `unknown`
-cross-call scalar values need similarly direct function-level preservation
-ownership, or whether the remaining honest work shifts to another explicit
-save/restore authority gap within the same step.
+Continue Step 3.2 by checking whether any remaining scalar call-clobber or
+preservation facts still force backend consumers to correlate `call_plans`
+against lower-level prepared tables instead of following one direct authority
+record.
 
 ## Watchouts
 
@@ -40,9 +39,8 @@ save/restore authority gap within the same step.
   this packet into target-specific call instruction recovery.
 - Keep Step 3.2 focused on scalar preservation facts already known to prepared
   frame/regalloc state; do not widen into grouped-register preservation routes.
-- Treat `callee_saved_save_index` as a reference into function-local frame-plan
-  authority, not as a replacement for the existing published register/bank
-  facts.
+- Treat stack-preserved authority as prepared frame-slot publication, not as
+  permission to leak raw regalloc spill-slot numbering to consumers.
 - `unknown` preservation routes are still honest bounded publication, not a
   license to guess target-specific save/restore policy in later consumers.
 

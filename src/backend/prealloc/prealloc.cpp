@@ -439,6 +439,7 @@ namespace {
     const PreparedFramePlanFunction* frame_plan,
     const PreparedLivenessFunction* liveness_function,
     const PreparedRegallocFunction* regalloc_function,
+    const PreparedValueLocationFunction* value_locations,
     std::size_t block_index,
     std::size_t instruction_index) {
   std::vector<PreparedCallPreservedValue> preserved_values;
@@ -473,7 +474,21 @@ namespace {
         .stack_offset_bytes = std::nullopt,
     };
 
-    if (value.assigned_stack_slot.has_value()) {
+    const PreparedValueHome* value_home =
+        value_locations == nullptr ? nullptr : find_prepared_value_home(*value_locations, value.value_id);
+    if (value_home != nullptr && value_home->kind == PreparedValueHomeKind::StackSlot) {
+      preserved.route = PreparedCallPreservationRoute::StackSlot;
+      preserved.slot_id = value_home->slot_id;
+      preserved.stack_offset_bytes = value_home->offset_bytes;
+    } else if (value.stack_object_id.has_value()) {
+      if (const auto* frame_slot =
+              find_prepared_frame_slot(prepared.stack_layout, *value.stack_object_id);
+          frame_slot != nullptr) {
+        preserved.route = PreparedCallPreservationRoute::StackSlot;
+        preserved.slot_id = frame_slot->slot_id;
+        preserved.stack_offset_bytes = frame_slot->offset_bytes;
+      }
+    } else if (value.assigned_stack_slot.has_value()) {
       preserved.route = PreparedCallPreservationRoute::StackSlot;
       preserved.slot_id = value.assigned_stack_slot->slot_id;
       preserved.stack_offset_bytes = value.assigned_stack_slot->offset_bytes;
@@ -747,7 +762,13 @@ void populate_call_plans(PreparedBirModule& prepared) {
             .arguments = {},
             .result = std::nullopt,
             .preserved_values = build_call_preserved_values(
-                prepared, frame_plan, liveness_function, regalloc_function, block_index, instruction_index),
+                prepared,
+                frame_plan,
+                liveness_function,
+                regalloc_function,
+                value_locations,
+                block_index,
+                instruction_index),
             .clobbered_registers = call_clobbers,
         };
 

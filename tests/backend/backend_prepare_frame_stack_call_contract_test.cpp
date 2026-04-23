@@ -475,6 +475,103 @@ bir::Module make_cross_call_preservation_contract_module() {
   return module;
 }
 
+bir::Module make_stack_cross_call_preservation_contract_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function decl;
+  decl.name = "stack_boundary_helper";
+  decl.is_declaration = true;
+  decl.return_type = bir::TypeKind::I32;
+  decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "arg0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(decl));
+
+  bir::Function function;
+  function.name = "stack_cross_call_preservation_contract";
+  function.return_type = bir::TypeKind::I32;
+  constexpr int carry_count = 16;
+  for (int index = 0; index < carry_count; ++index) {
+    function.params.push_back(bir::Param{
+        .type = bir::TypeKind::I32,
+        .name = "p" + std::to_string(index),
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .abi = bir::CallArgAbiInfo{
+            .type = bir::TypeKind::I32,
+            .size_bytes = 4,
+            .align_bytes = 4,
+            .primary_class = bir::AbiValueClass::Integer,
+            .passed_in_register = true,
+        },
+    });
+  }
+
+  bir::Block entry;
+  entry.label = "entry";
+  for (int index = 0; index < carry_count; ++index) {
+    entry.insts.push_back(bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Add,
+        .result = bir::Value::named(bir::TypeKind::I32, "carry.stack." + std::to_string(index)),
+        .operand_type = bir::TypeKind::I32,
+        .lhs = bir::Value::named(bir::TypeKind::I32, "p" + std::to_string(index)),
+        .rhs = bir::Value::immediate_i32(index + 2),
+    });
+  }
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "call.stack.out"),
+      .callee = "stack_boundary_helper",
+      .args = {bir::Value::immediate_i32(17)},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "stack.sum.0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "call.stack.out"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "carry.stack.0"),
+  });
+  for (int index = 1; index < carry_count; ++index) {
+    entry.insts.push_back(bir::BinaryInst{
+        .opcode = bir::BinaryOpcode::Add,
+        .result = bir::Value::named(bir::TypeKind::I32, "stack.sum." + std::to_string(index)),
+        .operand_type = bir::TypeKind::I32,
+        .lhs = bir::Value::named(bir::TypeKind::I32, "stack.sum." + std::to_string(index - 1)),
+        .rhs = bir::Value::named(bir::TypeKind::I32, "carry.stack." + std::to_string(index)),
+    });
+  }
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "stack.sum." + std::to_string(carry_count - 1))};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 bir::Module make_indirect_call_contract_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1929,6 +2026,46 @@ int check_cross_call_preservation_contract() {
   return 0;
 }
 
+int check_stack_cross_call_preservation_contract() {
+  const auto prepared = prepare_module(make_stack_cross_call_preservation_contract_module());
+  const auto* call_plans =
+      find_call_plans_function(prepared, "stack_cross_call_preservation_contract");
+  const auto* storage_plan =
+      find_storage_plan_function(prepared, "stack_cross_call_preservation_contract");
+  if (call_plans == nullptr || call_plans->calls.size() != 1) {
+    return fail("stack cross-call preservation contract: missing call-plan publication");
+  }
+
+  const auto& call_plan = call_plans->calls.front();
+  const auto preserved_it = std::find_if(call_plan.preserved_values.begin(),
+                                         call_plan.preserved_values.end(),
+                                         [](const auto& value) {
+                                           return value.route ==
+                                                  prepare::PreparedCallPreservationRoute::StackSlot;
+                                         });
+  const auto* preserved =
+      preserved_it == call_plan.preserved_values.end() ? nullptr : &*preserved_it;
+  if (preserved == nullptr) {
+    return fail("stack cross-call preservation contract: expected at least one stack-slot preserved scalar");
+  }
+
+  const auto* storage_value =
+      storage_plan == nullptr
+          ? nullptr
+          : find_storage_value(
+                prepared, *storage_plan, prepare::prepared_value_name(prepared.names, preserved->value_name));
+  if (storage_value == nullptr ||
+      storage_value->encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      preserved->slot_id != storage_value->slot_id ||
+      preserved->stack_offset_bytes != storage_value->stack_offset_bytes ||
+      preserved->register_name.has_value() || preserved->register_bank.has_value() ||
+      preserved->callee_saved_save_index.has_value()) {
+    return fail("stack cross-call preservation contract: call_plans lost direct frame-slot authority");
+  }
+
+  return 0;
+}
+
 int check_dynamic_stack_contract() {
   const auto prepared = prepare_module(make_dynamic_stack_module());
   const auto* function = find_function(prepared.module, "dynamic_stack_contract");
@@ -2184,6 +2321,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_cross_call_preservation_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_stack_cross_call_preservation_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_dynamic_stack_contract(); rc != 0) {
