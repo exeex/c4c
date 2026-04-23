@@ -5,37 +5,38 @@ Source Idea Path: ideas/open/81_convert_reviewed_x86_codegen_drafts_to_implement
 Source Plan Path: plan.md
 Current Step ID: 4
 Current Step Title: Shift Module Entry And Legacy Dispatch To The Replacement Graph
-Plan Review Counter: 3 / 6
+Plan Review Counter: 4 / 6
 # Current Packet
 
 ## Just Finished
 
-Completed step 4's wrapper-classification packet by marking
-`src/backend/mir/x86/codegen/emit.cpp` as the legacy public entry compatibility
-shim for direct BIR/LIR/assemble callers and
-`src/backend/mir/x86/codegen/prepared_module_emit.cpp` as the legacy
-prepared-module symbol shim, while leaving real module-entry ownership in the
-reviewed `api/` and `module/` seams.
+Completed a step 4 backend-front-door classification packet by making
+`src/backend/backend.cpp` stage x86 LIR assembly text through the reviewed
+`api::emit_module(...)` seam instead of the generic backend helper path, while
+preserving the existing bootstrap `BackendAssembleResult` contract above that
+handoff. Added a focused x86 LIR boundary test proving the generic backend
+assemble entry now stages through the canonical x86 API surface.
 
 ## Suggested Next
 
-Audit the remaining step 4 public dispatch surfaces outside these wrappers,
-especially the generic `backend.cpp` x86 entrypoints, and decide whether any
-residual module-entry bounce paths still need explicit forwarding
-classification.
+Audit the remaining step 4 public x86 dispatch and dump surfaces in
+`src/backend/backend.cpp`, especially whether any semantic/prepared debug or
+dump branches still hide target-local ownership behind generic helpers without
+explicit classification.
 
 ## Watchouts
 
-- `emit.cpp` still owns direct target-profile resolution and the direct-LIR
-  rewrite-in-progress error remap; that is now explicit compatibility behavior,
-  not a place to reintroduce lowering or module orchestration.
-- `prepared_module_emit.cpp` remains intentionally thin and forwards straight to
-  `module::emit_prepared_module_text(...)`; any new whole-module logic belongs
-  under `module/`, not back in the wrapper.
+- `assemble_target_lir_module(...)` still preserves the generic backend
+  bootstrap object-emission contract; this packet only makes the x86 staged-text
+  handoff explicit and does not claim target-local object emission ownership at
+  the backend front door.
+- The real x86 object-emitting assemble path remains target-local; do not pull
+  the assembler object-writing stack into `backend.cpp` unless step 4 or a
+  follow-on plan explicitly widens that boundary.
 
 ## Proof
 
-Step 4 wrapper-classification packet on
+Step 4 backend-front-door assembly classification packet on
 2026-04-23:
 `cmake --build --preset default`
 `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`

@@ -951,7 +951,12 @@ BackendAssembleResult assemble_target_lir_module(
     const c4c::codegen::lir::LirModule& module,
     const c4c::TargetProfile& target_profile,
     const std::string& output_path) {
-  const auto emitted = emit_target_lir_module(module, target_profile);
+  // Generic backend assembly front door: x86 now stages text through the
+  // reviewed target-local api/ owner, while this backend-level wrapper keeps
+  // the existing bootstrap assemble contract for non-target-local object work.
+  const auto emitted = is_x86_target(target_profile)
+                           ? c4c::backend::x86::api::emit_module(module, target_profile)
+                           : emit_target_lir_module(module, target_profile);
   return BackendAssembleResult{
       .staged_text = emitted,
       .output_path = output_path,

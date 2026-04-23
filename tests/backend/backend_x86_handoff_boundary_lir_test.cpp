@@ -591,6 +591,27 @@ int check_lir_route_outputs(const lir::LirModule& module, const char* failure_co
   return 0;
 }
 
+int check_lir_assemble_route_outputs(const lir::LirModule& module, const char* failure_context) {
+  const std::string output_path = "ignored-by-generic-x86-backend-assemble.o";
+  const auto expected_staged = c4c::backend::x86::api::emit_module(module, module.target_profile);
+  const auto public_result =
+      c4c::backend::assemble_target_lir_module(module, module.target_profile, output_path);
+
+  if (public_result.staged_text != expected_staged) {
+    return fail((std::string(failure_context) +
+                 ": generic backend assemble path no longer stages x86 LIR input through the canonical x86 api seam")
+                    .c_str());
+  }
+  if (public_result.output_path != output_path || public_result.object_emitted ||
+      public_result.error != "backend bootstrap mode does not assemble objects yet") {
+    return fail((std::string(failure_context) +
+                 ": generic backend assemble path no longer preserves the bootstrap assemble result contract around the x86 api handoff")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_lir_route_rejection(const lir::LirModule& module,
                               std::string_view expected_message_fragment,
                               const char* failure_context) {
@@ -632,6 +653,12 @@ int run_backend_x86_handoff_boundary_lir_tests() {
   if (const auto status =
           check_lir_route_outputs(make_x86_return_constant_lir_module(),
                                   "minimal immediate return LIR route");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_lir_assemble_route_outputs(make_x86_return_constant_lir_module(),
+                                           "minimal immediate return x86 assemble route");
       status != 0) {
     return status;
   }
