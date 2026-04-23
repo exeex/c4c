@@ -1927,8 +1927,10 @@ Node* Parser::parse_record_tag_setup(int line,
             resolved_tag = arena_.strdup(buf);
         } else {
             const std::string qtag =
-                canonical_name_in_context(current_namespace_context_id(),
-                                          resolved_tag);
+                bridge_name_in_context(
+                    current_namespace_context_id(),
+                    parser_text_id_for_token(kInvalidText, resolved_tag),
+                    resolved_tag);
             resolved_tag = arena_.strdup(qtag.c_str());
         }
 

@@ -725,8 +725,11 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                                     nested_decl->namespace_context_id >= 0
                                         ? nested_decl->namespace_context_id
                                         : owner->namespace_context_id;
-                                nested_owner_tag = canonical_name_in_context(
-                                    nested_context, nested_decl->type.tag);
+                                nested_owner_tag = bridge_name_in_context(
+                                    nested_context,
+                                    parser_text_id_for_token(
+                                        kInvalidText, nested_decl->type.tag),
+                                    nested_decl->type.tag);
                                 owner_it = definition_state_.struct_tag_def_map.find(
                                     nested_owner_tag);
                             }
