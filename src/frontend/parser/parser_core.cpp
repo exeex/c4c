@@ -256,10 +256,6 @@ const std::string* select_best_parse_summary_leaf(
     return nullptr;
 }
 
-std::string make_namespace_context_key(int parent_id, const std::string& name) {
-    return std::to_string(parent_id) + "::" + name;
-}
-
 std::string build_canonical_namespace_name(const char* parent_name,
                                            const std::string& name) {
     std::string canonical = parent_name ? parent_name : "";
@@ -736,7 +732,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena,
     : core_input_state_(std::move(tokens), arena, source_profile, source_file),
       shared_lookup_state_(token_texts, token_files) {
     namespace_state_.namespace_contexts.push_back(
-        NamespaceContext{0, -1, false, arena_.strdup(""), arena_.strdup("")});
+        NamespaceContext{0, -1, false, kInvalidText, arena_.strdup(""),
+                         arena_.strdup("")});
     namespace_state_.namespace_stack.push_back(0);
     // Pre-seed well-known typedef names from standard / system headers
     // so the parser can disambiguate type-name vs identifier.
@@ -1579,10 +1576,22 @@ int Parser::current_namespace_context_id() const {
     return namespace_state_.namespace_stack.back();
 }
 
-int Parser::ensure_named_namespace_context(int parent_id, const std::string& name) {
-    const std::string key = make_namespace_context_key(parent_id, name);
-    auto it = namespace_state_.named_namespace_contexts.find(key);
-    if (it != namespace_state_.named_namespace_contexts.end()) return it->second;
+int Parser::find_named_namespace_child(int parent_id, TextId text_id) const {
+    if (text_id == kInvalidText) return -1;
+    auto parent_it = namespace_state_.named_namespace_children.find(parent_id);
+    if (parent_it == namespace_state_.named_namespace_children.end()) return -1;
+    auto child_it = parent_it->second.find(text_id);
+    if (child_it == parent_it->second.end()) return -1;
+    return child_it->second;
+}
+
+int Parser::ensure_named_namespace_context(int parent_id, TextId text_id,
+                                           const std::string& name) {
+    if (text_id == kInvalidText) {
+        text_id = parser_text_id_for_token(kInvalidText, name);
+    }
+    const int existing = find_named_namespace_child(parent_id, text_id);
+    if (existing >= 0) return existing;
 
     const NamespaceContext& parent = namespace_state_.namespace_contexts[parent_id];
     std::string canonical =
@@ -1590,9 +1599,9 @@ int Parser::ensure_named_namespace_context(int parent_id, const std::string& nam
 
     const int id = static_cast<int>(namespace_state_.namespace_contexts.size());
     namespace_state_.namespace_contexts.push_back(
-        NamespaceContext{id, parent_id, false, arena_.strdup(name.c_str()),
+        NamespaceContext{id, parent_id, false, text_id, arena_.strdup(name.c_str()),
                          arena_.strdup(canonical.c_str())});
-    namespace_state_.named_namespace_contexts[key] = id;
+    namespace_state_.named_namespace_children[parent_id][text_id] = id;
     return id;
 }
 
@@ -1604,7 +1613,7 @@ int Parser::create_anonymous_namespace_context(int parent_id) {
 
     const int id = static_cast<int>(namespace_state_.namespace_contexts.size());
     namespace_state_.namespace_contexts.push_back(
-        NamespaceContext{id, parent_id, true, arena_.strdup(""),
+        NamespaceContext{id, parent_id, true, kInvalidText, arena_.strdup(""),
                          arena_.strdup(canonical.c_str())});
     namespace_state_.anonymous_namespace_children[parent_id].push_back(id);
     return id;
@@ -1633,11 +1642,13 @@ std::string Parser::canonical_name_in_context(int context_id, const std::string&
 int Parser::resolve_namespace_context(const QualifiedNameRef& name) const {
     auto follow_path = [&](int start_id) -> int {
         int context_id = start_id;
-        for (const std::string& segment : name.qualifier_segments) {
-            const std::string key = make_namespace_context_key(context_id, segment);
-            auto it = namespace_state_.named_namespace_contexts.find(key);
-            if (it == namespace_state_.named_namespace_contexts.end()) return -1;
-            context_id = it->second;
+        for (size_t i = 0; i < name.qualifier_segments.size(); ++i) {
+            const TextId segment_text_id =
+                i < name.qualifier_text_ids.size()
+                    ? name.qualifier_text_ids[i]
+                    : find_parser_text_id(name.qualifier_segments[i]);
+            context_id = find_named_namespace_child(context_id, segment_text_id);
+            if (context_id < 0) return -1;
         }
         return context_id;
     };
@@ -1650,17 +1661,18 @@ int Parser::resolve_namespace_context(const QualifiedNameRef& name) const {
 int Parser::resolve_namespace_name(const QualifiedNameRef& name) const {
     auto follow_name = [&](int start_id) -> int {
         int context_id = start_id;
-        for (const std::string& segment : name.qualifier_segments) {
-            const std::string key = make_namespace_context_key(context_id, segment);
-            auto it = namespace_state_.named_namespace_contexts.find(key);
-            if (it == namespace_state_.named_namespace_contexts.end()) return -1;
-            context_id = it->second;
+        for (size_t i = 0; i < name.qualifier_segments.size(); ++i) {
+            const TextId segment_text_id =
+                i < name.qualifier_text_ids.size()
+                    ? name.qualifier_text_ids[i]
+                    : find_parser_text_id(name.qualifier_segments[i]);
+            context_id = find_named_namespace_child(context_id, segment_text_id);
+            if (context_id < 0) return -1;
         }
-        const std::string final_key =
-            make_namespace_context_key(context_id, name.base_name);
-        auto it = namespace_state_.named_namespace_contexts.find(final_key);
-        if (it == namespace_state_.named_namespace_contexts.end()) return -1;
-        return it->second;
+        const TextId base_text_id =
+            name.base_text_id != kInvalidText ? name.base_text_id
+                                              : find_parser_text_id(name.base_name);
+        return find_named_namespace_child(context_id, base_text_id);
     };
 
     return resolve_namespace_id_from_stack(namespace_state_.namespace_stack,

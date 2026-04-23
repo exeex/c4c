@@ -115,6 +115,7 @@ struct ParserNamespaceContext {
   int id = 0;
   int parent_id = -1;
   bool is_anonymous = false;
+  TextId text_id = kInvalidText;
   const char* display_name = nullptr;
   const char* canonical_name = nullptr;
 };
@@ -332,7 +333,8 @@ struct ParserNamespaceState {
   std::string current_namespace;
   std::vector<ParserNamespaceContext> namespace_contexts;
   std::vector<int> namespace_stack;
-  std::unordered_map<std::string, int> named_namespace_contexts;
+  std::unordered_map<int, std::unordered_map<TextId, int>>
+      named_namespace_children;
   std::unordered_map<int, std::vector<int>> anonymous_namespace_children;
   std::unordered_map<int, std::unordered_map<std::string, std::string>>
       using_value_aliases;

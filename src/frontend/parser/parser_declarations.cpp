@@ -1060,10 +1060,16 @@ Node* Parser::parse_top_level() {
 
         int context_id = current_namespace_context_id();
         if (has_name) {
-            for (const std::string& segment : ns_name.qualifier_segments) {
-                context_id = ensure_named_namespace_context(context_id, segment);
+            for (size_t i = 0; i < ns_name.qualifier_segments.size(); ++i) {
+                const TextId segment_text_id =
+                    i < ns_name.qualifier_text_ids.size()
+                        ? ns_name.qualifier_text_ids[i]
+                        : kInvalidText;
+                context_id = ensure_named_namespace_context(
+                    context_id, segment_text_id, ns_name.qualifier_segments[i]);
             }
-            context_id = ensure_named_namespace_context(context_id, ns_name.base_name);
+            context_id = ensure_named_namespace_context(
+                context_id, ns_name.base_text_id, ns_name.base_name);
         } else {
             context_id = create_anonymous_namespace_context(context_id);
         }
