@@ -279,6 +279,18 @@ void append_memory_return_detail(std::ostringstream& out,
   }
 }
 
+void append_preserved_value_summary(std::ostringstream& out,
+                                    const PreparedNameTables& names,
+                                    const PreparedCallPreservedValue& preserved) {
+  out << maybe_value_name(names, preserved.value_name) << "#" << preserved.value_id << ":"
+      << prepared_call_preservation_route_name(preserved.route);
+  if (preserved.register_name.has_value()) {
+    out << ":" << *preserved.register_name;
+  } else if (preserved.stack_offset_bytes.has_value()) {
+    out << ":stack+" << *preserved.stack_offset_bytes;
+  }
+}
+
 std::string maybe_register_bank(std::optional<PreparedRegisterBank> bank) {
   if (!bank.has_value()) {
     return "none";
@@ -385,6 +397,15 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
         if (call.result.has_value()) {
           out << " result_bank=" << prepared_register_bank_name(call.result->value_bank);
         }
+        if (!call.preserved_values.empty()) {
+          out << " preserves=";
+          for (std::size_t index = 0; index < call.preserved_values.size(); ++index) {
+            if (index != 0) {
+              out << ",";
+            }
+            append_preserved_value_summary(out, module.names, call.preserved_values[index]);
+          }
+        }
         out << "\n";
         for (const auto& arg : call.arguments) {
           out << "    arg" << arg.arg_index
@@ -417,6 +438,22 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
             out << ":" << *result.destination_register_name;
           } else if (result.destination_stack_offset_bytes.has_value()) {
             out << ":stack+" << *result.destination_stack_offset_bytes;
+          }
+          out << "\n";
+        }
+        for (const auto& preserved : call.preserved_values) {
+          out << "    preserve value=" << maybe_value_name(module.names, preserved.value_name)
+              << " value_id=" << preserved.value_id
+              << " route=" << prepared_call_preservation_route_name(preserved.route);
+          if (preserved.register_name.has_value()) {
+            out << " reg=" << *preserved.register_name;
+          }
+          out << " bank=" << maybe_register_bank(preserved.register_bank);
+          if (preserved.slot_id.has_value()) {
+            out << " slot=#" << *preserved.slot_id;
+          }
+          if (preserved.stack_offset_bytes.has_value()) {
+            out << " stack_offset=" << *preserved.stack_offset_bytes;
           }
           out << "\n";
         }
@@ -825,6 +862,22 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         }
         if (result.destination_stack_offset_bytes.has_value()) {
           out << " dest_stack_offset=" << *result.destination_stack_offset_bytes;
+        }
+        out << "\n";
+      }
+      for (const auto& preserved : call.preserved_values) {
+        out << "    preserve value=" << maybe_value_name(module.names, preserved.value_name)
+            << " value_id=" << preserved.value_id
+            << " route=" << prepared_call_preservation_route_name(preserved.route);
+        if (preserved.register_name.has_value()) {
+          out << " reg=" << *preserved.register_name;
+        }
+        out << " bank=" << maybe_register_bank(preserved.register_bank);
+        if (preserved.slot_id.has_value()) {
+          out << " slot=#" << *preserved.slot_id;
+        }
+        if (preserved.stack_offset_bytes.has_value()) {
+          out << " stack_offset=" << *preserved.stack_offset_bytes;
         }
         out << "\n";
       }

@@ -918,6 +918,35 @@ struct PreparedClobberedRegister {
   std::vector<std::string> occupied_register_names;
 };
 
+enum class PreparedCallPreservationRoute {
+  Unknown,
+  CalleeSavedRegister,
+  StackSlot,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_call_preservation_route_name(
+    PreparedCallPreservationRoute route) {
+  switch (route) {
+    case PreparedCallPreservationRoute::Unknown:
+      return "unknown";
+    case PreparedCallPreservationRoute::CalleeSavedRegister:
+      return "callee_saved_register";
+    case PreparedCallPreservationRoute::StackSlot:
+      return "stack_slot";
+  }
+  return "unknown";
+}
+
+struct PreparedCallPreservedValue {
+  PreparedValueId value_id = 0;
+  ValueNameId value_name = kInvalidValueName;
+  PreparedCallPreservationRoute route = PreparedCallPreservationRoute::Unknown;
+  std::optional<std::string> register_name;
+  std::optional<PreparedRegisterBank> register_bank;
+  std::optional<PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
+};
+
 enum class PreparedCallWrapperKind {
   SameModule,
   DirectExternFixedArity,
@@ -974,6 +1003,7 @@ struct PreparedCallPlan {
   std::optional<PreparedMemoryReturnPlan> memory_return;
   std::vector<PreparedCallArgumentPlan> arguments;
   std::optional<PreparedCallResultPlan> result;
+  std::vector<PreparedCallPreservedValue> preserved_values;
   std::vector<PreparedClobberedRegister> clobbered_registers;
 };
 

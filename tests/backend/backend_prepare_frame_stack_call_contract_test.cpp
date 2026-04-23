@@ -162,6 +162,10 @@ c4c::TargetProfile x86_target_profile() {
   return c4c::default_target_profile(c4c::TargetArch::X86_64);
 }
 
+c4c::TargetProfile riscv_target_profile() {
+  return c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+}
+
 prepare::PreparedBirModule prepare_module(const bir::Module& module) {
   prepare::PrepareOptions options;
   options.run_legalize = true;
@@ -169,6 +173,15 @@ prepare::PreparedBirModule prepare_module(const bir::Module& module) {
   options.run_liveness = true;
   options.run_regalloc = true;
   return prepare::prepare_semantic_bir_module_with_options(module, x86_target_profile(), options);
+}
+
+prepare::PreparedBirModule prepare_riscv_module(const bir::Module& module) {
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+  return prepare::prepare_semantic_bir_module_with_options(module, riscv_target_profile(), options);
 }
 
 bir::Module make_fixed_frame_module() {
@@ -400,6 +413,65 @@ bir::Module make_float_call_contract_module() {
   caller.blocks.push_back(std::move(entry));
 
   module.functions.push_back(std::move(caller));
+  return module;
+}
+
+bir::Module make_cross_call_preservation_contract_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  bir::Function decl;
+  decl.name = "boundary_helper";
+  decl.is_declaration = true;
+  decl.return_type = bir::TypeKind::I32;
+  decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "arg0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  module.functions.push_back(std::move(decl));
+
+  bir::Function function;
+  function.name = "cross_call_preservation_contract";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "pre.only"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "carry"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(3),
+      .rhs = bir::Value::immediate_i32(4),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "call.out"),
+      .callee = "boundary_helper",
+      .args = {bir::Value::named(bir::TypeKind::I32, "pre.only")},
+      .arg_types = {bir::TypeKind::I32},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "after"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "carry"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "call.out"),
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "after")};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
   return module;
 }
 
@@ -1811,6 +1883,37 @@ int check_stack_argument_slot_contract() {
   return 0;
 }
 
+int check_cross_call_preservation_contract() {
+  const auto prepared = prepare_riscv_module(make_cross_call_preservation_contract_module());
+  const auto* liveness = find_liveness_function(prepared, "cross_call_preservation_contract");
+  const auto* call_plans = find_call_plans_function(prepared, "cross_call_preservation_contract");
+  const auto* storage_plan =
+      find_storage_plan_function(prepared, "cross_call_preservation_contract");
+  const auto* carry =
+      storage_plan == nullptr ? nullptr : find_storage_value(prepared, *storage_plan, "carry");
+  if (liveness == nullptr || liveness->call_points.size() != 1 || call_plans == nullptr ||
+      call_plans->calls.size() != 1 || storage_plan == nullptr || carry == nullptr) {
+    return fail("cross-call preservation contract: missing liveness, call-plan, or carry storage publication");
+  }
+
+  const auto& call_plan = call_plans->calls.front();
+  if (call_plan.preserved_values.size() != 1) {
+    return fail("cross-call preservation contract: expected exactly one preserved scalar across the call");
+  }
+
+  const auto& preserved = call_plan.preserved_values.front();
+  if (preserved.value_id != carry->value_id ||
+      prepare::prepared_value_name(prepared.names, preserved.value_name) != "carry" ||
+      preserved.route != prepare::PreparedCallPreservationRoute::CalleeSavedRegister ||
+      preserved.register_name != std::optional<std::string>{"s1"} ||
+      preserved.register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr}) {
+    return fail("cross-call preservation contract: call_plans lost direct preserved-value authority");
+  }
+
+  return 0;
+}
+
 int check_dynamic_stack_contract() {
   const auto prepared = prepare_module(make_dynamic_stack_module());
   const auto* function = find_function(prepared.module, "dynamic_stack_contract");
@@ -2063,6 +2166,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_stack_argument_slot_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_cross_call_preservation_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_dynamic_stack_contract(); rc != 0) {

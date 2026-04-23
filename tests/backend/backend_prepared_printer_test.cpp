@@ -759,6 +759,70 @@ prepare::PreparedBirModule prepare_call_argument_source_shape_dump_module() {
       options);
 }
 
+prepare::PreparedBirModule prepare_cross_call_preservation_dump_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  bir::Function decl;
+  decl.name = "boundary_helper";
+  decl.is_declaration = true;
+  decl.return_type = bir::TypeKind::I32;
+  decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "arg0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  module.functions.push_back(std::move(decl));
+
+  bir::Function function;
+  function.name = "cross_call_preservation_dump_contract";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "pre.only"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "carry"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(3),
+      .rhs = bir::Value::immediate_i32(4),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "call.out"),
+      .callee = "boundary_helper",
+      .args = {bir::Value::named(bir::TypeKind::I32, "pre.only")},
+      .arg_types = {bir::TypeKind::I32},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "after"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "carry"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "call.out"),
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "after")};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+  return prepare::prepare_semantic_bir_module_with_options(module, riscv_target_profile(), options);
+}
+
 prepare::PreparedBirModule prepare_stack_argument_slot_dump_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1287,6 +1351,29 @@ int main() {
   if (!expect_contains(source_shape_dump,
                        computed_detail_shape,
                        "computed-address argument detail payload")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto cross_call_prepared = prepare_cross_call_preservation_dump_module();
+  const auto* cross_call_storage =
+      find_storage_plan_function(cross_call_prepared, "cross_call_preservation_dump_contract");
+  const auto* cross_call_carry =
+      cross_call_storage == nullptr ? nullptr : find_storage_value(cross_call_prepared, *cross_call_storage, "carry");
+  if (cross_call_storage == nullptr || cross_call_carry == nullptr) {
+    std::cerr << "[FAIL] missing prepared carry storage fixture for cross-call preservation dump\n";
+    return EXIT_FAILURE;
+  }
+  const std::string cross_call_dump = prepare::print(cross_call_prepared);
+  if (!expect_contains(cross_call_dump,
+                       "preserves=carry#" + std::to_string(cross_call_carry->value_id) +
+                           ":callee_saved_register:s1",
+                       "cross-call preservation summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(cross_call_dump,
+                       "preserve value=carry value_id=" + std::to_string(cross_call_carry->value_id) +
+                           " route=callee_saved_register reg=s1 bank=gpr",
+                       "cross-call preservation detail")) {
     return EXIT_FAILURE;
   }
 
