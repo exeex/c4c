@@ -9,18 +9,17 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
 
 ## Just Finished
 
-- completed another Step 2 packet by removing the template-state
-  compatibility aliases from `Parser` and routing the affected parser
-  reads/writes directly through `template_state_` in `parser.hpp`,
-  `parser_core.cpp`, `parser_declarations.cpp`, `parser_expressions.cpp`,
-  `parser_types_base.cpp`, `parser_types_declarator.cpp`,
-  `parser_types_template.cpp`, and `types_helpers.hpp`
+- completed the Step 2 shared-lookup alias-removal packet by deleting the
+  `Parser` compatibility aliases for token text, token file, symbol, and name
+  tables and routing the affected parser reads/writes directly through
+  `shared_lookup_state_` in `parser.hpp`, `parser_core.cpp`, and
+  `parser_support.cpp`
 
 ## Suggested Next
 
-- continue Step 2 with another narrow alias-removal family in `parser.hpp`,
-  preferably the shared-lookup aliases before touching the much wider
-  core-input aliases, then prove the same parser-focused subset again
+- continue Step 2 with the next alias-removal family in `parser.hpp`, most
+  likely the core-input aliases, then re-run the same parser-focused proof
+  subset
 
 ## Watchouts
 
@@ -29,13 +28,12 @@ Current Step Title: Regroup Parser Member Fields Into Explicit Bundles
   rewrites or grammar changes
 - preserve constructor, snapshot, and rollback behavior while the grouped
   layout is being converted to direct bundle access
-- alias removals can reach non-parser call sites such as `src/apps/c4cll.cpp`,
-  so audit repo-wide member reads and parser tests before assuming a family is
-  parser-local
+- shared-lookup alias removals are now complete; the next family is likely the
+  core-input bundle, which may have a wider surface than this packet
 
 ## Proof
 
 - `cmake --build build -j --target c4c_frontend c4cll`
 - `ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_parse_top_level_pragma_pack_preserves_following_decl_dump|cpp_parse_top_level_pragma_gcc_visibility_preserves_following_decl_dump)$'`
 - Result: passed
-- Log: rolled forward into `test_before.log`
+- Log: `test_after.log`

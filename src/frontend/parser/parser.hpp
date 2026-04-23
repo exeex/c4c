@@ -138,11 +138,6 @@ class Parser {
 
   // ── parser-owned shared lookup tables ────────────────────────────────────
   ParserSharedLookupState shared_lookup_state_;
-  TextTable*& token_texts_ = shared_lookup_state_.token_texts;
-  FileTable*& token_files_ = shared_lookup_state_.token_files;
-  SymbolTable& parser_symbols_ = shared_lookup_state_.parser_symbols;
-  ParserNameTables& parser_name_tables_ =
-      shared_lookup_state_.parser_name_tables;
 
   // ── parser name / binding tables ─────────────────────────────────────────
   ParserBindingState binding_state_;
@@ -273,15 +268,19 @@ class Parser {
                                   std::string_view fallback = {}) const {
     if (token_text_id != kInvalidText) return token_text_id;
     if (fallback.empty()) return kInvalidText;
-    return token_texts_ ? token_texts_->intern(fallback) : kInvalidText;
+    return shared_lookup_state_.token_texts
+               ? shared_lookup_state_.token_texts->intern(fallback)
+               : kInvalidText;
   }
   TextId find_parser_text_id(std::string_view text) const {
-    if (text.empty() || !token_texts_) return kInvalidText;
-    return token_texts_->find(text);
+    if (text.empty() || !shared_lookup_state_.token_texts) return kInvalidText;
+    return shared_lookup_state_.token_texts->find(text);
   }
   std::string_view parser_text(TextId text_id,
                                std::string_view fallback = {}) const {
-    if (token_texts_ && text_id != kInvalidText) return token_texts_->lookup(text_id);
+    if (shared_lookup_state_.token_texts && text_id != kInvalidText) {
+      return shared_lookup_state_.token_texts->lookup(text_id);
+    }
     return fallback;
   }
   void clear_current_struct_tag() {
@@ -334,13 +333,13 @@ class Parser {
                             std::string_view spelling);
   SymbolId symbol_id_for_token_text(TextId token_text_id,
                                     std::string_view fallback = {}) {
-    return parser_name_tables_.intern_identifier(
+    return shared_lookup_state_.parser_name_tables.intern_identifier(
         parser_text_id_for_token(token_text_id, fallback));
   }
   SymbolId symbol_id_for_token(const Token& token);
   void populate_qualified_name_symbol_ids(QualifiedNameRef* name);
   std::string_view symbol_spelling(SymbolId id) const {
-    return parser_symbols_.spelling(id);
+    return shared_lookup_state_.parser_symbols.spelling(id);
   }
   bool has_typedef_name(std::string_view name) const;
   bool has_typedef_type(std::string_view name) const;

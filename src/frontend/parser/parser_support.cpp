@@ -8,11 +8,11 @@ namespace c4c {
 // ── ParserSnapshot save / restore ────────────────────────────────────────────
 
 Parser::ParserSymbolTables& Parser::parser_symbol_tables() {
-    return parser_name_tables_;
+    return shared_lookup_state_.parser_name_tables;
 }
 
 const Parser::ParserSymbolTables& Parser::parser_symbol_tables() const {
-    return parser_name_tables_;
+    return shared_lookup_state_.parser_name_tables;
 }
 
 Parser::ParserLiteSnapshot Parser::save_lite_state() const {
@@ -32,9 +32,10 @@ void Parser::restore_lite_state(const ParserLiteSnapshot& snap) {
     pos_ = snap.pos;
     clear_last_resolved_typedef();
     if (snap.last_resolved_typedef.kind == TentativeTextRefKind::TextId &&
-        snap.last_resolved_typedef.text_id != kInvalidText && token_texts_) {
-        set_last_resolved_typedef(
-            token_texts_->lookup(snap.last_resolved_typedef.text_id));
+        snap.last_resolved_typedef.text_id != kInvalidText &&
+        shared_lookup_state_.token_texts) {
+        set_last_resolved_typedef(shared_lookup_state_.token_texts->lookup(
+            snap.last_resolved_typedef.text_id));
     }
     active_context_state_.template_arg_expr_depth =
         snap.template_arg_expr_depth;
@@ -62,7 +63,8 @@ void Parser::restore_state(const ParserSnapshot& snap) {
     restore_lite_state(snap.lite);
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
     parser_symbol_tables() = snap.symbol_tables;
-    parser_name_tables_.symbols = &parser_symbols_;
+    shared_lookup_state_.parser_name_tables.symbols =
+        &shared_lookup_state_.parser_symbols;
     non_atom_typedefs_ = snap.non_atom_typedefs;
     non_atom_user_typedefs_ = snap.non_atom_user_typedefs;
     non_atom_typedef_types_ = snap.non_atom_typedef_types;

@@ -301,17 +301,17 @@ Parser::SymbolId Parser::symbol_id_for_token(const Token& token) {
 
 std::string_view Parser::token_spelling(const Token& token) const {
     if (token.kind == TokenKind::EndOfFile) return {};
-    if (token_texts_ && token.text_id != kInvalidText) {
-        return token_texts_->lookup(token.text_id);
+    if (shared_lookup_state_.token_texts && token.text_id != kInvalidText) {
+        return shared_lookup_state_.token_texts->lookup(token.text_id);
     }
     throw std::runtime_error("token spelling requested without valid text_id");
 }
 
 void Parser::set_parser_owned_spelling(Token& token, std::string_view spelling) {
-    if (!token_texts_) {
+    if (!shared_lookup_state_.token_texts) {
         throw std::runtime_error("parser-owned token spelling requested without text table");
     }
-    token.text_id = token_texts_->intern(spelling);
+    token.text_id = shared_lookup_state_.token_texts->intern(spelling);
 }
 
 Token Parser::make_injected_token(const Token& seed, TokenKind kind,
@@ -332,13 +332,14 @@ void Parser::populate_qualified_name_symbol_ids(QualifiedNameRef* name) {
         const TextId text_id = parser_text_id_for_token(kInvalidText, segment);
         name->qualifier_text_ids.push_back(text_id);
         name->qualifier_symbol_ids.push_back(
-            parser_name_tables_.intern_identifier(text_id));
+            shared_lookup_state_.parser_name_tables.intern_identifier(text_id));
     }
     name->base_text_id = parser_text_id_for_token(kInvalidText, name->base_name);
     name->base_symbol_id =
         name->base_name.empty()
             ? kInvalidSymbol
-            : parser_name_tables_.intern_identifier(name->base_text_id);
+            : shared_lookup_state_.parser_name_tables.intern_identifier(
+                  name->base_text_id);
 }
 
 bool Parser::has_typedef_name(std::string_view name) const {
@@ -346,8 +347,8 @@ bool Parser::has_typedef_name(std::string_view name) const {
         const TextId id = find_parser_text_id(name);
         return id != kInvalidText && non_atom_typedefs_.count(id) > 0;
     }
-    return parser_name_tables_.is_typedef(
-        parser_name_tables_.find_identifier(name));
+    return shared_lookup_state_.parser_name_tables.is_typedef(
+        shared_lookup_state_.parser_name_tables.find_identifier(name));
 }
 
 bool Parser::has_typedef_type(std::string_view name) const {
@@ -355,8 +356,8 @@ bool Parser::has_typedef_type(std::string_view name) const {
         const TextId id = find_parser_text_id(name);
         return id != kInvalidText && non_atom_typedef_types_.count(id) > 0;
     }
-    return parser_name_tables_.has_typedef_type(
-        parser_name_tables_.find_identifier(name));
+    return shared_lookup_state_.parser_name_tables.has_typedef_type(
+        shared_lookup_state_.parser_name_tables.find_identifier(name));
 }
 
 const TypeSpec* Parser::find_typedef_type(std::string_view name) const {
@@ -366,8 +367,8 @@ const TypeSpec* Parser::find_typedef_type(std::string_view name) const {
         const auto it = non_atom_typedef_types_.find(id);
         return it == non_atom_typedef_types_.end() ? nullptr : &it->second;
     }
-    return parser_name_tables_.lookup_typedef_type(
-        parser_name_tables_.find_identifier(name));
+    return shared_lookup_state_.parser_name_tables.lookup_typedef_type(
+        shared_lookup_state_.parser_name_tables.find_identifier(name));
 }
 
 bool Parser::has_visible_typedef_type(std::string_view name) const {
@@ -459,8 +460,9 @@ bool Parser::is_user_typedef_name(const std::string& name) const {
         const TextId id = find_parser_text_id(name);
         return id != kInvalidText && non_atom_user_typedefs_.count(id) > 0;
     }
-    const SymbolId id = parser_name_tables_.find_identifier(name);
-    return id != kInvalidSymbol && parser_name_tables_.user_typedefs.count(id) > 0;
+    const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name);
+    return id != kInvalidSymbol &&
+           shared_lookup_state_.parser_name_tables.user_typedefs.count(id) > 0;
 }
 
 bool Parser::has_conflicting_user_typedef_binding(const std::string& name,
@@ -479,10 +481,11 @@ void Parser::register_typedef_name(const std::string& name,
         if (is_user_typedef) non_atom_user_typedefs_.insert(id);
         return;
     }
-    const SymbolId id = parser_name_tables_.intern_identifier(name);
+    const SymbolId id =
+        shared_lookup_state_.parser_name_tables.intern_identifier(name);
     if (id == kInvalidSymbol) return;
-    parser_name_tables_.typedefs.insert(id);
-    if (is_user_typedef) parser_name_tables_.user_typedefs.insert(id);
+    shared_lookup_state_.parser_name_tables.typedefs.insert(id);
+    if (is_user_typedef) shared_lookup_state_.parser_name_tables.user_typedefs.insert(id);
 }
 
 void Parser::register_typedef_binding(const std::string& name,
@@ -496,11 +499,12 @@ void Parser::register_typedef_binding(const std::string& name,
         non_atom_typedef_types_[id] = type;
         return;
     }
-    const SymbolId id = parser_name_tables_.intern_identifier(name);
+    const SymbolId id =
+        shared_lookup_state_.parser_name_tables.intern_identifier(name);
     if (id == kInvalidSymbol) return;
-    parser_name_tables_.typedefs.insert(id);
-    if (is_user_typedef) parser_name_tables_.user_typedefs.insert(id);
-    parser_name_tables_.typedef_types[id] = type;
+    shared_lookup_state_.parser_name_tables.typedefs.insert(id);
+    if (is_user_typedef) shared_lookup_state_.parser_name_tables.user_typedefs.insert(id);
+    shared_lookup_state_.parser_name_tables.typedef_types[id] = type;
 }
 
 void Parser::unregister_typedef_binding(const std::string& name) {
@@ -512,11 +516,11 @@ void Parser::unregister_typedef_binding(const std::string& name) {
         non_atom_typedef_types_.erase(id);
         return;
     }
-    const SymbolId id = parser_name_tables_.find_identifier(name);
+    const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name);
     if (id == kInvalidSymbol) return;
-    parser_name_tables_.typedefs.erase(id);
-    parser_name_tables_.user_typedefs.erase(id);
-    parser_name_tables_.typedef_types.erase(id);
+    shared_lookup_state_.parser_name_tables.typedefs.erase(id);
+    shared_lookup_state_.parser_name_tables.user_typedefs.erase(id);
+    shared_lookup_state_.parser_name_tables.typedef_types.erase(id);
 }
 
 void Parser::register_synthesized_typedef_binding(const std::string& name) {
@@ -554,9 +558,10 @@ void Parser::cache_typedef_type(const std::string& name, const TypeSpec& type) {
         non_atom_typedef_types_[id] = type;
         return;
     }
-    const SymbolId id = parser_name_tables_.intern_identifier(name);
+    const SymbolId id =
+        shared_lookup_state_.parser_name_tables.intern_identifier(name);
     if (id == kInvalidSymbol) return;
-    parser_name_tables_.typedef_types[id] = type;
+    shared_lookup_state_.parser_name_tables.typedef_types[id] = type;
 }
 
 void Parser::register_struct_member_typedef_binding(
@@ -570,8 +575,9 @@ bool Parser::has_var_type(const std::string& name) const {
         const TextId id = find_parser_text_id(name);
         return id != kInvalidText && non_atom_var_types_.count(id) > 0;
     }
-    const SymbolId id = parser_name_tables_.find_identifier(name);
-    return id != kInvalidSymbol && parser_name_tables_.var_types.count(id) > 0;
+    const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name);
+    return id != kInvalidSymbol &&
+           shared_lookup_state_.parser_name_tables.var_types.count(id) > 0;
 }
 
 const TypeSpec* Parser::find_var_type(const std::string& name) const {
@@ -581,10 +587,10 @@ const TypeSpec* Parser::find_var_type(const std::string& name) const {
         const auto it = non_atom_var_types_.find(id);
         return it == non_atom_var_types_.end() ? nullptr : &it->second;
     }
-    const SymbolId id = parser_name_tables_.find_identifier(name);
+    const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name);
     if (id == kInvalidSymbol) return nullptr;
-    const auto it = parser_name_tables_.var_types.find(id);
-    if (it == parser_name_tables_.var_types.end()) return nullptr;
+    const auto it = shared_lookup_state_.parser_name_tables.var_types.find(id);
+    if (it == shared_lookup_state_.parser_name_tables.var_types.end()) return nullptr;
     return &it->second;
 }
 
@@ -603,9 +609,10 @@ void Parser::register_var_type_binding(const std::string& name,
         non_atom_var_types_[id] = type;
         return;
     }
-    const SymbolId id = parser_name_tables_.intern_identifier(name);
+    const SymbolId id =
+        shared_lookup_state_.parser_name_tables.intern_identifier(name);
     if (id == kInvalidSymbol) return;
-    parser_name_tables_.var_types[id] = type;
+    shared_lookup_state_.parser_name_tables.var_types[id] = type;
 }
 
 bool Parser::has_known_fn_name(const std::string& name) const {
@@ -1095,9 +1102,12 @@ void Parser::maybe_emit_parse_debug_progress() {
             event.column);
     if (event.token_index >= 0 &&
         event.token_index < static_cast<int>(tokens_.size()) &&
-        token_files_ && tokens_[event.token_index].file_id != kInvalidFile) {
+        shared_lookup_state_.token_files &&
+        tokens_[event.token_index].file_id != kInvalidFile) {
         fprintf(stderr, " file=%s",
-                std::string(token_files_->lookup(tokens_[event.token_index].file_id)).c_str());
+                std::string(shared_lookup_state_.token_files->lookup(
+                                tokens_[event.token_index].file_id))
+                    .c_str());
     }
     if (!event.function_name.empty()) {
         fprintf(stderr, " fn=%s", event.function_name.c_str());
@@ -1384,8 +1394,11 @@ void Parser::dump_parse_debug_trace() const {
 
 const char* Parser::diag_file_at(int token_index) const {
     if (token_index >= 0 && token_index < static_cast<int>(tokens_.size()) &&
-        token_files_ && tokens_[token_index].file_id != kInvalidFile) {
-        const std::string file = std::string(token_files_->lookup(tokens_[token_index].file_id));
+        shared_lookup_state_.token_files &&
+        tokens_[token_index].file_id != kInvalidFile) {
+        const std::string file = std::string(
+            shared_lookup_state_.token_files->lookup(
+                tokens_[token_index].file_id));
         if (!file.empty()) return arena_.strdup(file);
     }
     return source_file_.c_str();
@@ -1755,8 +1768,10 @@ void Parser::apply_qualified_name(Node* node, const QualifiedNameRef& qn,
     node->is_global_qualified = qn.is_global_qualified;
     node->unqualified_text_id = qn.base_text_id;
     node->unqualified_name =
-        arena_.strdup(std::string(token_texts_ && qn.base_text_id != kInvalidText
-                                      ? token_texts_->lookup(qn.base_text_id)
+        arena_.strdup(std::string(shared_lookup_state_.token_texts &&
+                                          qn.base_text_id != kInvalidText
+                                      ? shared_lookup_state_.token_texts->lookup(
+                                            qn.base_text_id)
                                       : std::string_view(qn.base_name))
                           .c_str());
     node->n_qualifier_segments = static_cast<int>(qn.qualifier_segments.size());
@@ -1765,9 +1780,11 @@ void Parser::apply_qualified_name(Node* node, const QualifiedNameRef& qn,
         node->qualifier_text_ids = arena_.alloc_array<TextId>(node->n_qualifier_segments);
         for (int i = 0; i < node->n_qualifier_segments; ++i) {
             const std::string_view segment =
-                token_texts_ && i < static_cast<int>(qn.qualifier_text_ids.size()) &&
+                shared_lookup_state_.token_texts &&
+                        i < static_cast<int>(qn.qualifier_text_ids.size()) &&
                         qn.qualifier_text_ids[i] != kInvalidText
-                    ? token_texts_->lookup(qn.qualifier_text_ids[i])
+                    ? shared_lookup_state_.token_texts->lookup(
+                          qn.qualifier_text_ids[i])
                     : std::string_view(qn.qualifier_segments[i]);
             node->qualifier_segments[i] =
                 arena_.strdup(std::string(segment).c_str());
@@ -1989,9 +2006,11 @@ Node* Parser::make_node(NodeKind k, int line) {
     }
     if (loc_index >= 0 && loc_index < static_cast<int>(tokens_.size())) {
         n->column = tokens_[loc_index].column;
-        if (token_files_ && tokens_[loc_index].file_id != kInvalidFile) {
-            const std::string file =
-                std::string(token_files_->lookup(tokens_[loc_index].file_id));
+        if (shared_lookup_state_.token_files &&
+            tokens_[loc_index].file_id != kInvalidFile) {
+            const std::string file = std::string(
+                shared_lookup_state_.token_files->lookup(
+                    tokens_[loc_index].file_id));
             if (!file.empty()) n->file = arena_.strdup(file);
         }
     }
