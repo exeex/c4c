@@ -121,6 +121,31 @@ std::string move_resolution_op_kind_name(PreparedMoveResolutionOpKind kind) {
   return "unknown";
 }
 
+std::string storage_encoding_kind_name(PreparedStorageEncodingKind kind) {
+  switch (kind) {
+    case PreparedStorageEncodingKind::None:
+      return "none";
+    case PreparedStorageEncodingKind::Register:
+      return "register";
+    case PreparedStorageEncodingKind::FrameSlot:
+      return "frame_slot";
+    case PreparedStorageEncodingKind::Immediate:
+      return "immediate";
+    case PreparedStorageEncodingKind::ComputedAddress:
+      return "computed_address";
+    case PreparedStorageEncodingKind::SymbolAddress:
+      return "symbol_address";
+  }
+  return "unknown";
+}
+
+std::string maybe_register_bank(std::optional<PreparedRegisterBank> bank) {
+  if (!bank.has_value()) {
+    return "none";
+  }
+  return std::string(prepared_register_bank_name(*bank));
+}
+
 void append_prepared_control_flow(std::ostringstream& out, const PreparedBirModule& module) {
   out << "--- prepared-control-flow ---\n";
   for (const auto& function_cf : module.control_flow.functions) {
@@ -323,6 +348,161 @@ void append_stack_layout(std::ostringstream& out, const PreparedBirModule& modul
   }
 }
 
+void append_frame_plan(std::ostringstream& out, const PreparedBirModule& module) {
+  out << "--- prepared-frame-plan ---\n";
+  for (const auto& function_plan : module.frame_plan.functions) {
+    out << "prepared.func @" << maybe_function_name(module.names, function_plan.function_name)
+        << " frame_size=" << function_plan.frame_size_bytes
+        << " frame_alignment=" << function_plan.frame_alignment_bytes
+        << " has_dynamic_stack=" << (function_plan.has_dynamic_stack ? "yes" : "no")
+        << " fixed_slots_use_fp="
+        << (function_plan.uses_frame_pointer_for_fixed_slots ? "yes" : "no")
+        << "\n";
+    for (const auto& saved : function_plan.saved_callee_registers) {
+      out << "  saved_register bank=" << prepared_register_bank_name(saved.bank)
+          << " reg=" << saved.register_name
+          << " save_index=" << saved.save_index << "\n";
+    }
+    for (const auto slot_id : function_plan.frame_slot_order) {
+      out << "  frame_slot_order slot_id=#" << slot_id;
+      if (const auto* slot = find_frame_slot(module, slot_id); slot != nullptr) {
+        out << " offset=" << slot->offset_bytes
+            << " size=" << slot->size_bytes
+            << " align=" << slot->align_bytes;
+      }
+      out << "\n";
+    }
+  }
+}
+
+void append_dynamic_stack_plan(std::ostringstream& out, const PreparedBirModule& module) {
+  out << "--- prepared-dynamic-stack-plan ---\n";
+  for (const auto& function_plan : module.dynamic_stack_plan.functions) {
+    out << "prepared.func @" << maybe_function_name(module.names, function_plan.function_name)
+        << " requires_stack_save_restore="
+        << (function_plan.requires_stack_save_restore ? "yes" : "no")
+        << " fixed_slots_use_fp="
+        << (function_plan.uses_frame_pointer_for_fixed_slots ? "yes" : "no")
+        << "\n";
+    for (const auto& op : function_plan.operations) {
+      out << "  dynamic_stack_op block=" << maybe_block_label(module.names, op.block_label)
+          << " inst_index=" << op.instruction_index
+          << " kind=" << prepared_dynamic_stack_op_kind_name(op.kind);
+      if (op.result_value_name.has_value()) {
+        out << " result=" << prepared_value_name(module.names, *op.result_value_name);
+      }
+      if (op.operand_value_name.has_value()) {
+        out << " operand=" << prepared_value_name(module.names, *op.operand_value_name);
+      }
+      if (!op.allocation_type_text.empty()) {
+        out << " alloc_type=" << op.allocation_type_text;
+      }
+      if (op.element_size_bytes != 0) {
+        out << " elem_size=" << op.element_size_bytes;
+      }
+      if (op.element_align_bytes != 0) {
+        out << " elem_align=" << op.element_align_bytes;
+      }
+      out << "\n";
+    }
+  }
+}
+
+void append_call_plans(std::ostringstream& out, const PreparedBirModule& module) {
+  out << "--- prepared-call-plans ---\n";
+  for (const auto& function_plan : module.call_plans.functions) {
+    out << "prepared.func @" << maybe_function_name(module.names, function_plan.function_name)
+        << "\n";
+    for (const auto& call : function_plan.calls) {
+      out << "  call block_index=" << call.block_index
+          << " inst_index=" << call.instruction_index
+          << " indirect=" << (call.is_indirect ? "yes" : "no");
+      if (call.direct_callee_name.has_value()) {
+        out << " callee=" << *call.direct_callee_name;
+      }
+      out << "\n";
+      for (const auto& arg : call.arguments) {
+        out << "    arg index=" << arg.arg_index
+            << " value_bank=" << prepared_register_bank_name(arg.value_bank)
+            << " source_storage=" << move_storage_kind_name(arg.source_storage_kind);
+        if (arg.source_value_id.has_value()) {
+          out << " source_value_id=" << *arg.source_value_id;
+        }
+        if (arg.source_register_name.has_value()) {
+          out << " source_reg=" << *arg.source_register_name;
+        }
+        if (arg.source_stack_offset_bytes.has_value()) {
+          out << " source_stack_offset=" << *arg.source_stack_offset_bytes;
+        }
+        out << " source_bank=" << maybe_register_bank(arg.source_register_bank);
+        if (arg.destination_register_name.has_value()) {
+          out << " dest_reg=" << *arg.destination_register_name;
+        }
+        out << " dest_bank=" << maybe_register_bank(arg.destination_register_bank);
+        if (arg.destination_stack_offset_bytes.has_value()) {
+          out << " dest_stack_offset=" << *arg.destination_stack_offset_bytes;
+        }
+        out << "\n";
+      }
+      if (call.result.has_value()) {
+        const auto& result = *call.result;
+        out << "    result value_bank=" << prepared_register_bank_name(result.value_bank)
+            << " destination_storage="
+            << move_storage_kind_name(result.destination_storage_kind);
+        if (result.destination_value_id.has_value()) {
+          out << " destination_value_id=" << *result.destination_value_id;
+        }
+        if (result.source_register_name.has_value()) {
+          out << " source_reg=" << *result.source_register_name;
+        }
+        out << " source_bank=" << maybe_register_bank(result.source_register_bank);
+        if (result.destination_register_name.has_value()) {
+          out << " dest_reg=" << *result.destination_register_name;
+        }
+        out << " dest_bank=" << maybe_register_bank(result.destination_register_bank);
+        if (result.destination_stack_offset_bytes.has_value()) {
+          out << " dest_stack_offset=" << *result.destination_stack_offset_bytes;
+        }
+        out << "\n";
+      }
+      for (const auto& clobbered : call.clobbered_registers) {
+        out << "    clobber bank=" << prepared_register_bank_name(clobbered.bank)
+            << " reg=" << clobbered.register_name << "\n";
+      }
+    }
+  }
+}
+
+void append_storage_plans(std::ostringstream& out, const PreparedBirModule& module) {
+  out << "--- prepared-storage-plans ---\n";
+  for (const auto& function_plan : module.storage_plans.functions) {
+    out << "prepared.func @" << maybe_function_name(module.names, function_plan.function_name)
+        << "\n";
+    for (const auto& value : function_plan.values) {
+      out << "  storage " << maybe_value_name(module.names, value.value_name)
+          << " value_id=" << value.value_id
+          << " encoding=" << storage_encoding_kind_name(value.encoding)
+          << " bank=" << prepared_register_bank_name(value.bank);
+      if (value.register_name.has_value()) {
+        out << " reg=" << *value.register_name;
+      }
+      if (value.slot_id.has_value()) {
+        out << " slot_id=#" << *value.slot_id;
+      }
+      if (value.stack_offset_bytes.has_value()) {
+        out << " stack_offset=" << *value.stack_offset_bytes;
+      }
+      if (value.immediate_i32.has_value()) {
+        out << " imm_i32=" << *value.immediate_i32;
+      }
+      if (value.symbol_name.has_value()) {
+        out << " symbol=" << prepared_link_name(module.names, *value.symbol_name);
+      }
+      out << "\n";
+    }
+  }
+}
+
 void append_addressing(std::ostringstream& out, const PreparedBirModule& module) {
   out << "--- prepared-addressing ---\n";
   for (const auto& function_addressing : module.addressing.functions) {
@@ -397,6 +577,10 @@ std::string print(const PreparedBirModule& module) {
   append_prepared_control_flow(out, module);
   append_value_locations(out, module);
   append_stack_layout(out, module);
+  append_frame_plan(out, module);
+  append_dynamic_stack_plan(out, module);
+  append_call_plans(out, module);
+  append_storage_plans(out, module);
   append_addressing(out, module);
   return out.str();
 }

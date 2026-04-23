@@ -347,6 +347,20 @@ set_tests_properties(backend_cli_dump_prepared_bir_is_prepared PROPERTIES
 )
 
 add_test(
+  NAME backend_cli_dump_prepared_bir_exposes_contract_sections
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-prepared-bir
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c
+          "-DREQUIRED_SNIPPETS=prepared.module target=x86_64-unknown-linux-gnu|--- prepared-bir ---|--- prepared-control-flow ---|--- prepared-value-locations ---|--- prepared-stack-layout ---|--- prepared-frame-plan ---|--- prepared-dynamic-stack-plan ---|--- prepared-call-plans ---|--- prepared-storage-plans ---|--- prepared-addressing ---"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_prepared_bir_exposes_contract_sections PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
   NAME backend_cli_dump_mir_is_nonfatal_trace_shell
   COMMAND "${CMAKE_COMMAND}"
           -DCOMPILER=$<TARGET_FILE:c4cll>

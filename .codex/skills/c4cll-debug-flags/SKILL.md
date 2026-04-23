@@ -63,6 +63,9 @@ Current limitation:
   - use `--codegen llvm`
 - "backend CFG / phi / legalization / regalloc prep is wrong":
   - use `--dump-bir`, then `--dump-prepared-bir`
+  - for stack-specific reading, follow [debug_bir_stack.md](/workspaces/c4c/.codex/skills/c4cll-debug-flags/debug_bir_stack.md)
+  - for frame-specific reading, follow [debug_bir_frame.md](/workspaces/c4c/.codex/skills/c4cll-debug-flags/debug_bir_frame.md)
+  - for call-specific reading, follow [debug_bir_call.md](/workspaces/c4c/.codex/skills/c4cll-debug-flags/debug_bir_call.md)
 - "machine lowering route is wrong":
   - use `--dump-mir`, then `--trace-mir`
 - "final native output is wrong":
@@ -97,6 +100,7 @@ Midend and backend:
 ./build/c4cll --codegen llvm --target <triple> <file> -o /tmp/out.ll
 ./build/c4cll --dump-bir --target <triple> <file>
 ./build/c4cll --dump-prepared-bir --target <triple> <file>
+./build/c4cll --dump-prepared-bir --target <triple> --mir-focus-function <function> <file>
 ./build/c4cll --dump-mir --target <triple> <file>
 ./build/c4cll --trace-mir --target <triple> <file>
 ./build/c4cll --codegen asm --target <triple> <file> -o /tmp/out.s
@@ -118,6 +122,27 @@ Compare LLVM path and backend-native path:
   `--dump-bir`, `--dump-prepared-bir`, `--dump-mir`, or `--trace-mir`
 - `--dump-mir` and `--trace-mir` are currently route-level MIR visibility, not
   a full printed target-local MIR graph
+
+## Prepared BIR Contract Sections
+
+Current `--dump-prepared-bir` output is organized into ownership-oriented
+sections:
+
+- `--- prepared-control-flow ---`
+- `--- prepared-value-locations ---`
+- `--- prepared-stack-layout ---`
+- `--- prepared-frame-plan ---`
+- `--- prepared-dynamic-stack-plan ---`
+- `--- prepared-call-plans ---`
+- `--- prepared-storage-plans ---`
+- `--- prepared-addressing ---`
+
+Reading rule:
+
+1. use `--dump-bir` to verify semantic lowering first
+2. use `--dump-prepared-bir` to verify backend-facing authority next
+3. do not treat `--dump-mir` or `--trace-mir` as the source of truth for
+   stack, frame, or call ownership if the prepared dump already answers it
 
 ## Repo Examples
 
