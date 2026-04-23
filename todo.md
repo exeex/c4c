@@ -9,23 +9,21 @@ Current Step Title: Route Qualified Namespace Traversal Through TextId Segments
 
 ## Just Finished
 
-- Step 2 packet: switched the block-scope qualified declaration heuristic in
-  `parser_statements.cpp` from canonical-string rechecks to
-  `probe_qualified_type(*this, qn)`, so `ns::Type local;` now stays on the
-  TextId-backed qualified-type path instead of falling back through
-  `qn.spelled()`
-- added `namespace_qualified_local_decl_statement_probe_parse.cpp` so the
-  namespace parse-only subset proves `ns::Type local;` still parses as a local
-  declaration while `ns::value();` remains an expression statement
+- Step 2 packet: removed the remaining `qn.spelled()` qualified-expression
+  fallbacks in `parser_expressions.cpp` by rebuilding unresolved qualified
+  spellings from `QualifiedNameRef` TextIds instead of the rendered-name
+  fallback path
+- kept the lookup-first behavior in the global-qualified identifier, ordinary
+  qualified identifier, and qualified functional-cast operand paths while
+  preserving the existing `apply_qualified_name(...)` wiring
 
 ## Suggested Next
 
-- continue Step 2 by checking the remaining qualified expression entry points
-  that still fall back to rendered bridge names after namespace/value lookup
-  misses, especially the `parse_primary` `::name` and qualified identifier
-  paths in `parser_expressions.cpp`
-- keep the next packet inside parser namespace lookup helpers and avoid
-  widening into `parser_core.cpp` or broader binding-table cleanup
+- run the focused build/test proof for Step 2 and record the outcome in the
+  proof block below
+- if the proof is green, keep Step 2 narrowed to parser expression lookup
+  helpers and avoid widening into `parser_core.cpp` or broader binding-table
+  cleanup
 
 ## Watchouts
 
