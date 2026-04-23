@@ -472,6 +472,8 @@ class Parser {
   void pop_template_scope();
   // Check if a name is a type parameter in any active template scope frame.
   // Walks the stack from innermost to outermost.
+  bool is_template_scope_type_param(TextId name_text_id,
+                                    std::string_view name) const;
   bool is_template_scope_type_param(std::string_view name) const;
 
   // ── type spelling / type-specifier parsing ────────────────────────────────

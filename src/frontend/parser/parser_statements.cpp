@@ -292,7 +292,10 @@ Node* Parser::parse_stmt() {
                 }
                 if (k == TokenKind::KwTypename) return true;
                 if (k != TokenKind::Identifier) return false;
-                if (is_template_scope_type_param(token_spelling(cur()))) return true;
+                if (is_template_scope_type_param(cur().text_id,
+                                                token_spelling(cur()))) {
+                    return true;
+                }
                 if (is_typedef_name(token_spelling(cur()))) return true;
                 return has_visible_typedef_type(cur().text_id,
                                                 token_spelling(cur()));

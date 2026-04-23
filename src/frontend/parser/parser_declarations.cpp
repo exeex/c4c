@@ -1772,6 +1772,8 @@ Node* Parser::parse_top_level() {
             std::vector<TemplateScopeParam> scope_params;
             for (size_t i = 0; i < template_params.size(); ++i) {
                 TemplateScopeParam p;
+                p.name_text_id = parser_text_id_for_token(kInvalidText,
+                                                          template_params[i]);
                 p.name = template_params[i];
                 p.is_nttp = template_param_nttp[i];
                 scope_params.push_back(p);

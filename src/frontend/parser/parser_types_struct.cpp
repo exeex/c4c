@@ -514,6 +514,7 @@ void Parser::parse_record_template_member_prelude(
         std::vector<TemplateScopeParam> member_params;
         for (const auto& n : *injected_type_params) {
             TemplateScopeParam p;
+            p.name_text_id = parser_text_id_for_token(kInvalidText, n);
             p.name = arena_.strdup(n.c_str());
             p.is_nttp = false;
             member_params.push_back(p);

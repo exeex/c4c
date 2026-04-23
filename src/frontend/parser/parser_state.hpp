@@ -201,6 +201,7 @@ enum class ParserTemplateScopeKind {
 };
 
 struct ParserTemplateScopeParam {
+  TextId name_text_id = kInvalidText;
   const char* name = nullptr;
   bool is_nttp = false;
 };
