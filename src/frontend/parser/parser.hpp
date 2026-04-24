@@ -272,12 +272,10 @@ class Parser {
     active_context_state_.last_using_alias_name.clear();
     active_context_state_.last_using_alias_name_text_id = kInvalidText;
   }
-  void set_last_using_alias_name(const QualifiedNameKey& key,
-                                 std::string_view name) {
+  void set_last_using_alias_name(const QualifiedNameKey& key) {
     active_context_state_.last_using_alias_key = key;
-    active_context_state_.last_using_alias_name = std::string(name);
-    active_context_state_.last_using_alias_name_text_id =
-        parser_text_id_for_token(kInvalidText, name);
+    active_context_state_.last_using_alias_name.clear();
+    active_context_state_.last_using_alias_name_text_id = key.base_text_id;
   }
   void set_last_using_alias_name(std::string_view name) {
     active_context_state_.last_using_alias_key = {};

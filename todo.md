@@ -1,20 +1,20 @@
 Status: Active
 Source Idea Path: ideas/open/86_parser_alias_template_structured_identity.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect parser alias/template tables and active-context fields by true identity kind
+Current Step ID: 2
+Current Step Title: Introduce a structured key path for alias-template registration and lookup
 
 # Current Packet
 ## Just Finished
-Completed the Step 1 inspection for parser alias/template identity. The concrete split is: `ParserTemplateState::alias_template_info` and the `template_struct_*_by_key` tables are semantic identity; the `template_struct_defs` / `template_struct_specializations` string maps are legacy bridge fallback; `last_using_alias_name`, `last_resolved_typedef`, and `current_struct_tag` are active-context copies whose `TextId` fields carry the semantic anchor; parse/debug strings stay diagnostics-only.
+Completed Step 2 for alias-template registration. The `using Alias = ...` handoff now records alias-template metadata from the structured `QualifiedNameKey` path by recovering the just-registered typedef through `find_structured_typedef_type(alias_key)`, rather than reading back the rendered alias spelling copy.
 
 ## Suggested Next
-Use `QualifiedNameKey` through `alias_template_key_in_context(...)` as the first structured key family for Step 2, then retarget alias-template registration and lookup to that semantic path before touching any broader template-owned string maps.
+Tighten alias-template application lookup in the parser type resolution path so it prefers the structured alias key before any rendered-name fallback, without widening into the broader `template_struct_*` string-map cleanup.
 
 ## Watchouts
 - Keep the scope inside parser alias/template identity.
 - Do not widen into a repo-wide identity migration.
-- Leave rendered-name recovery in place only as explicit fallback bridge behavior.
+- Treat the legacy string-keyed typedef bindings as bridge fallback only.
 - The template struct string maps still matter as compatibility fallbacks, but they are not the semantic source of truth.
 
 ## Proof

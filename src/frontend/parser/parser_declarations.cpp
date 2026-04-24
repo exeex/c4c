@@ -1569,7 +1569,7 @@ Node* Parser::parse_top_level() {
                 if (using_context_id == 0) {
                     register_typedef_binding(first_name, alias_ts, true);
                 }
-                set_last_using_alias_name(alias_key, qualified);
+                set_last_using_alias_name(alias_key);
                 return nullptr;
             }
             target_name.base_name = std::move(first_name);
@@ -1945,12 +1945,9 @@ Node* Parser::parse_top_level() {
         // If parse_top_level() registered a using-alias, record alias template
         // info so that later Name<args> can rebuild the aliased template struct.
         const QualifiedNameKey alias_key = active_context_state_.last_using_alias_key;
-        const std::string_view alias_name = last_using_alias_name_text();
-        if (alias_key.base_text_id != kInvalidText && !alias_name.empty() &&
-            !template_params.empty()) {
+        if (alias_key.base_text_id != kInvalidText && !template_params.empty()) {
             if (const TypeSpec* aliased_type =
-                    find_visible_typedef_type(alias_key.base_text_id,
-                                             alias_name)) {
+                    find_structured_typedef_type(alias_key)) {
                 ParserAliasTemplateInfo ati;
                 for (size_t i = 0; i < template_params.size(); ++i) {
                     ati.param_names.push_back(template_params[i]);
