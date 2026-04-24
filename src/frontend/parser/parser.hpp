@@ -638,8 +638,6 @@ class Parser {
   bool consume_template_args_before_scope();
   bool consume_member_pointer_owner_prefix();
   bool try_parse_declarator_member_pointer_prefix(TypeSpec& ts);
-  void apply_declarator_pointer_token(TypeSpec& ts, TokenKind pointer_tok,
-                                      bool preserve_array_base);
   bool parse_dependent_typename_specifier(std::string* out_name = nullptr);
   bool try_parse_cpp_scoped_base_type(bool already_have_base, TypeSpec* out_ts);
   bool try_parse_qualified_base_type(TypeSpec* out_ts);
@@ -665,11 +663,6 @@ class Parser {
   bool parse_operator_declarator_name(std::string* out_name);
   bool parse_qualified_declarator_name(std::string* out_name,
                                        TextId* out_name_text_id = nullptr);
-  bool is_grouped_declarator_start() const;
-  bool is_parenthesized_pointer_declarator_start();
-  void parse_pointer_ref_qualifiers(TypeSpec& ts, TokenKind pointer_tok,
-                                    bool preserve_array_base,
-                                    bool consume_pointer_token = true);
   void consume_declarator_post_pointer_qualifiers();
 
   // ── record parsing (struct / union) ──────────────────────────────────────

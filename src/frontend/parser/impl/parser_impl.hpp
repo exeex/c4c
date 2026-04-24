@@ -112,6 +112,15 @@ void parse_declarator_prefix(Parser& parser, TypeSpec& ts,
 void store_declarator_function_pointer_params(
     Parser& parser, Node*** out_params, int* out_n_params, bool* out_variadic,
     const std::vector<Node*>& params, bool variadic);
+void apply_declarator_pointer_token(Parser& parser, TypeSpec& ts,
+                                    TokenKind pointer_tok,
+                                    bool preserve_array_base);
+void parse_pointer_ref_qualifiers(Parser& parser, TypeSpec& ts,
+                                  TokenKind pointer_tok,
+                                  bool preserve_array_base,
+                                  bool consume_pointer_token = true);
+bool is_grouped_declarator_start(Parser& parser);
+bool is_parenthesized_pointer_declarator_start(Parser& parser);
 
 bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);

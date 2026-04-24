@@ -9,14 +9,17 @@ Current Step Title: Move Implementation-Only Method Declarations Behind The Boun
 ## Just Finished
 
 Completed Step 3 declaration-boundary slice by removing the implementation-only
-declarator prefix and function-pointer parameter storage helpers
-`Parser::parse_declarator_prefix` and
-`Parser::store_declarator_function_pointer_params` from public `Parser`
+declarator pointer-token and shape predicate helpers
+`Parser::apply_declarator_pointer_token`,
+`Parser::parse_pointer_ref_qualifiers`,
+`Parser::is_grouped_declarator_start`, and
+`Parser::is_parenthesized_pointer_declarator_start` from public `Parser`
 declarations in `src/frontend/parser/parser.hpp`, adding equivalent private
 `Parser&` helper declarations to
-`src/frontend/parser/impl/parser_impl.hpp`, converting the implementation in
+`src/frontend/parser/impl/parser_impl.hpp`, converting the implementations in
 `src/frontend/parser/parser_types_declarator.cpp` to the private parser
-boundary, and retargeting internal callers to pass the parser explicitly.
+boundary, and retargeting internal parser call sites to pass the parser
+explicitly.
 
 ## Suggested Next
 
@@ -91,11 +94,18 @@ plan, keeping implementation-only declarations behind
   `store_declarator_function_pointer_params` now live behind
   `impl/parser_impl.hpp`; current source/test search found no remaining public
   declarations, member definitions, or external direct member calls.
+- `apply_declarator_pointer_token`, `parse_pointer_ref_qualifiers`,
+  `is_grouped_declarator_start`, and
+  `is_parenthesized_pointer_declarator_start` now live behind
+  `impl/parser_impl.hpp`; current source/test search found no remaining public
+  declarations, member definitions, or external direct member calls.
+- `consume_declarator_post_pointer_qualifiers` remains publicly declared
+  because `tests/frontend/frontend_parser_tests.cpp` calls it directly.
 
 ## Proof
 
-Executor Step 3 focused proof passed for the declarator prefix and
-function-pointer parameter storage declaration-boundary slice:
+Executor Step 3 focused proof passed for the declarator pointer-token and
+shape predicate helper declaration-boundary slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 
 Result: passed. Proof log: `test_after.log`.

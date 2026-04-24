@@ -553,8 +553,10 @@ bool Parser::try_parse_declarator_member_pointer_prefix(TypeSpec& ts) {
     return true;
 }
 
-void Parser::apply_declarator_pointer_token(TypeSpec& ts, TokenKind pointer_tok,
-                                            bool preserve_array_base) {
+void apply_declarator_pointer_token(Parser& parser, TypeSpec& ts,
+                                    TokenKind pointer_tok,
+                                    bool preserve_array_base) {
+    (void)parser;
     if (pointer_tok == TokenKind::AmpAmp) {
         ts.is_rvalue_ref = true;
         return;
@@ -1121,33 +1123,33 @@ bool Parser::parse_qualified_declarator_name(std::string* out_name,
     return true;
 }
 
-bool Parser::is_grouped_declarator_start() const {
-    if (!check(TokenKind::LParen)) return false;
+bool is_grouped_declarator_start(Parser& parser) {
+    if (!parser.check(TokenKind::LParen)) return false;
 
-    int pk = core_input_state_.pos + 1;
-    while (pk < static_cast<int>(core_input_state_.tokens.size()) &&
-           core_input_state_.tokens[pk].kind == TokenKind::KwAttribute) {
+    int pk = parser.core_input_state_.pos + 1;
+    while (pk < static_cast<int>(parser.core_input_state_.tokens.size()) &&
+           parser.core_input_state_.tokens[pk].kind == TokenKind::KwAttribute) {
         ++pk;
-        if (pk < static_cast<int>(core_input_state_.tokens.size()) &&
-            core_input_state_.tokens[pk].kind == TokenKind::LParen) {
+        if (pk < static_cast<int>(parser.core_input_state_.tokens.size()) &&
+            parser.core_input_state_.tokens[pk].kind == TokenKind::LParen) {
             int depth = 1;
             ++pk;
-            while (pk < static_cast<int>(core_input_state_.tokens.size()) && depth > 0) {
-                if (core_input_state_.tokens[pk].kind == TokenKind::LParen) ++depth;
-                else if (core_input_state_.tokens[pk].kind == TokenKind::RParen) --depth;
+            while (pk < static_cast<int>(parser.core_input_state_.tokens.size()) && depth > 0) {
+                if (parser.core_input_state_.tokens[pk].kind == TokenKind::LParen) ++depth;
+                else if (parser.core_input_state_.tokens[pk].kind == TokenKind::RParen) --depth;
                 ++pk;
             }
         }
     }
 
-    bool is_grouped = pk < static_cast<int>(core_input_state_.tokens.size()) &&
-                      core_input_state_.tokens[pk].kind == TokenKind::Identifier;
-    if (is_grouped && pk + 1 < static_cast<int>(core_input_state_.tokens.size())) {
-        const auto next_k = core_input_state_.tokens[pk + 1].kind;
+    bool is_grouped = pk < static_cast<int>(parser.core_input_state_.tokens.size()) &&
+                      parser.core_input_state_.tokens[pk].kind == TokenKind::Identifier;
+    if (is_grouped && pk + 1 < static_cast<int>(parser.core_input_state_.tokens.size())) {
+        const auto next_k = parser.core_input_state_.tokens[pk + 1].kind;
         // Keep parameter-list heads such as `(T&&)` and `(Type<Args>&)` on the
         // surrounding declaration path instead of misrouting them into grouped
         // declarator parsing.
-        if (is_cpp_mode() && looks_like_unresolved_identifier_type_head(pk) &&
+        if (parser.is_cpp_mode() && parser.looks_like_unresolved_identifier_type_head(pk) &&
             (next_k == TokenKind::Amp || next_k == TokenKind::AmpAmp ||
              next_k == TokenKind::Star || next_k == TokenKind::Less ||
              next_k == TokenKind::ColonColon || is_qualifier(next_k))) {
@@ -1159,34 +1161,34 @@ bool Parser::is_grouped_declarator_start() const {
     return is_grouped;
 }
 
-bool Parser::is_parenthesized_pointer_declarator_start() {
-    if (!check(TokenKind::LParen)) return false;
+bool is_parenthesized_pointer_declarator_start(Parser& parser) {
+    if (!parser.check(TokenKind::LParen)) return false;
 
-    int pk = core_input_state_.pos + 1;
-    while (pk < static_cast<int>(core_input_state_.tokens.size()) &&
-           core_input_state_.tokens[pk].kind == TokenKind::KwAttribute) {
+    int pk = parser.core_input_state_.pos + 1;
+    while (pk < static_cast<int>(parser.core_input_state_.tokens.size()) &&
+           parser.core_input_state_.tokens[pk].kind == TokenKind::KwAttribute) {
         ++pk;  // skip __attribute__
-        if (pk < static_cast<int>(core_input_state_.tokens.size()) &&
-            core_input_state_.tokens[pk].kind == TokenKind::LParen) {
+        if (pk < static_cast<int>(parser.core_input_state_.tokens.size()) &&
+            parser.core_input_state_.tokens[pk].kind == TokenKind::LParen) {
             int depth = 1;
             ++pk;
-            while (pk < static_cast<int>(core_input_state_.tokens.size()) && depth > 0) {
-                if (core_input_state_.tokens[pk].kind == TokenKind::LParen) ++depth;
-                else if (core_input_state_.tokens[pk].kind == TokenKind::RParen) --depth;
+            while (pk < static_cast<int>(parser.core_input_state_.tokens.size()) && depth > 0) {
+                if (parser.core_input_state_.tokens[pk].kind == TokenKind::LParen) ++depth;
+                else if (parser.core_input_state_.tokens[pk].kind == TokenKind::RParen) --depth;
                 ++pk;
             }
         }
     }
-    if (pk >= static_cast<int>(core_input_state_.tokens.size())) return false;
+    if (pk >= static_cast<int>(parser.core_input_state_.tokens.size())) return false;
 
-    const TokenKind lookahead = core_input_state_.tokens[pk].kind;
+    const TokenKind lookahead = parser.core_input_state_.tokens[pk].kind;
     if (lookahead == TokenKind::Star || lookahead == TokenKind::Caret ||
-        (is_cpp_mode() &&
+        (parser.is_cpp_mode() &&
          (lookahead == TokenKind::Amp || lookahead == TokenKind::AmpAmp))) {
         return true;
     }
 
-    if (!is_cpp_mode() ||
+    if (!parser.is_cpp_mode() ||
         (lookahead != TokenKind::Identifier &&
          lookahead != TokenKind::ColonColon &&
          lookahead != TokenKind::KwTypename)) {
@@ -1194,21 +1196,23 @@ bool Parser::is_parenthesized_pointer_declarator_start() {
     }
 
     {
-        TentativeParseGuard probe_guard(*this);
-        pos_ = pk;
-        const bool is_member_ptr_fn = consume_member_pointer_owner_prefix();
+        Parser::TentativeParseGuard probe_guard(parser);
+        parser.pos_ = pk;
+        const bool is_member_ptr_fn =
+            parser.consume_member_pointer_owner_prefix();
         // probe_guard restores pos_ to pre-pk state on scope exit
         return is_member_ptr_fn;
     }
 }
 
-void Parser::parse_pointer_ref_qualifiers(TypeSpec& ts, TokenKind pointer_tok,
-                                          bool preserve_array_base,
-                                          bool consume_pointer_token) {
-    if (consume_pointer_token) consume();
-    apply_declarator_pointer_token(ts, pointer_tok, preserve_array_base);
-    while (is_qualifier(cur().kind)) consume();
-    parse_attributes(&ts);
+void parse_pointer_ref_qualifiers(Parser& parser, TypeSpec& ts,
+                                  TokenKind pointer_tok,
+                                  bool preserve_array_base,
+                                  bool consume_pointer_token) {
+    if (consume_pointer_token) parser.consume();
+    apply_declarator_pointer_token(parser, ts, pointer_tok, preserve_array_base);
+    while (is_qualifier(parser.cur().kind)) parser.consume();
+    parser.parse_attributes(&ts);
 }
 
 void Parser::consume_declarator_post_pointer_qualifiers() {
@@ -1247,16 +1251,16 @@ void parse_declarator_prefix(Parser& parser, TypeSpec& ts,
     while (parser.check(TokenKind::Star)) {
         // If the base type already has array dimensions, this star creates a
         // pointer-to-array (e.g. HARD_REG_SET *p where HARD_REG_SET = ulong[2]).
-        parser.parse_pointer_ref_qualifiers(ts, TokenKind::Star,
-                                            /*preserve_array_base=*/true);
+        parse_pointer_ref_qualifiers(parser, ts, TokenKind::Star,
+                                     /*preserve_array_base=*/true);
     }
 
     if (parser.is_cpp_mode() && parser.check(TokenKind::AmpAmp)) {
-        parser.parse_pointer_ref_qualifiers(ts, TokenKind::AmpAmp,
-                                            /*preserve_array_base=*/false);
+        parse_pointer_ref_qualifiers(parser, ts, TokenKind::AmpAmp,
+                                     /*preserve_array_base=*/false);
     } else if (parser.is_cpp_mode() && parser.check(TokenKind::Amp)) {
-        parser.parse_pointer_ref_qualifiers(ts, TokenKind::Amp,
-                                            /*preserve_array_base=*/false);
+        parse_pointer_ref_qualifiers(parser, ts, TokenKind::Amp,
+                                     /*preserve_array_base=*/false);
     }
 
     parser.consume_declarator_post_pointer_qualifiers();
@@ -1275,7 +1279,7 @@ bool try_parse_grouped_declarator(Parser& parser, TypeSpec& ts,
                                   const char** out_name,
                                   TextId* out_name_text_id,
                                   std::vector<long long>* out_dims) {
-    if (!parser.is_grouped_declarator_start()) return false;
+    if (!is_grouped_declarator_start(parser)) return false;
 
     parser.consume();  // (
     if (out_name && parser.check(TokenKind::Identifier)) {
@@ -1416,14 +1420,15 @@ void parse_parenthesized_pointer_declarator_prefix(Parser& parser,
         consumed_member_pointer_prefix = true;
         pointer_tok = TokenKind::Star;
     }
-    parser.parse_pointer_ref_qualifiers(
+    parse_pointer_ref_qualifiers(
+        parser,
         ts, pointer_tok,
         /*preserve_array_base=*/false,
         /*consume_pointer_token=*/!consumed_member_pointer_prefix);
 
     while (parser.check(TokenKind::Star)) {
-        parser.parse_pointer_ref_qualifiers(ts, TokenKind::Star,
-                                            /*preserve_array_base=*/false);
+        parse_pointer_ref_qualifiers(parser, ts, TokenKind::Star,
+                                     /*preserve_array_base=*/false);
     }
 
     parser.consume_declarator_post_pointer_qualifiers();
@@ -1769,7 +1774,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     parse_declarator_prefix(*this, ts, out_is_parameter_pack);
 
     // Check for parenthesised declarator: (*name) or (ATTR *name) — function pointer
-    if (is_parenthesized_pointer_declarator_start()) {
+    if (is_parenthesized_pointer_declarator_start(*this)) {
         parse_parenthesized_pointer_declarator(
             *this,
             ts, out_name,
