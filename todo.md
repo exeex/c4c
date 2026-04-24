@@ -6,10 +6,10 @@ Current Step Title: Retarget template-struct primary registration and lookup to 
 
 # Current Packet
 ## Just Finished
-Step 2 migrated the instantiated-base `parser_types_base.cpp` `origin` caller family away from direct `find_template_struct_primary(origin)` string overload probes. The block now resolves qualified origins through `QualifiedNameRef` and unqualified origins through `current_namespace_context_id()`, `find_parser_text_id(origin)`, and the origin spelling, leaving string-map probing only behind the structured helper fallback path.
+Step 2 migrated the `parser_types_struct.cpp` template-specialization parse probe away from the direct `find_template_struct_primary(*tag)` string overload. The record prelude now preserves the parsed `QualifiedNameRef` for qualified/global tags and uses explicit `current_namespace_context_id()`, `find_parser_text_id(*tag)`, and fallback spelling lookup for unqualified tags.
 
 ## Suggested Next
-Continue Step 2 with a supervisor-selected primary registration or lookup packet outside this instantiated-base family, or move to Step 3 if the remaining primary lookups are accepted as already structured or compatibility-only.
+Continue Step 2 with a supervisor-selected primary registration or lookup packet outside the `parser_types_struct.cpp` specialization probe, or move to Step 3 if the remaining primary lookups are accepted as already structured or compatibility-only.
 
 ## Watchouts
 - Keep the scope inside parser alias/template identity.
@@ -18,6 +18,7 @@ Continue Step 2 with a supervisor-selected primary registration or lookup packet
 - Preserve existing parser behavior while changing the lookup substrate.
 - The `struct T<...>` fall-through path now uses structured primary lookup explicitly; do not reintroduce direct `find_template_struct_primary(ts.tag)` calls there.
 - The instantiated-base path now has no direct `find_template_struct_primary(origin)` calls; keep qualified origin handling on `QualifiedNameRef` rather than rendered-name shortcuts.
+- The template-specialization parse probe now preserves the parsed tag `QualifiedNameRef`; keep qualified/global specialization lookup on that structured name instead of the rendered tag spelling.
 - `find_template_struct_specializations(primary_tpl)` is structured-first inside the helper but currently derives identity from `primary_tpl->name`; leave that for Step 3 unless Step 2 proves a primary-node key is already stored on the node.
 - `instantiated_template_struct_keys` is string-shaped by design today; Step 4 should decide whether it remains an emitted-artifact guard or needs a structured primary component.
 

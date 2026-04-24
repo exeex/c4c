@@ -1851,12 +1851,14 @@ void Parser::parse_record_definition_prelude(
 
     parse_decl_attrs_for_record(line, attr_ts);
 
+    QualifiedNameRef tag_qn;
+    bool has_tag_qn = false;
     if (is_cpp_mode()) {
-        QualifiedNameRef qn;
-        if (peek_qualified_name(&qn, /*allow_global=*/true)) {
-            qn = parse_qualified_name(/*allow_global=*/true);
+        if (peek_qualified_name(&tag_qn, /*allow_global=*/true)) {
+            tag_qn = parse_qualified_name(/*allow_global=*/true);
+            has_tag_qn = true;
             const std::string spelled =
-                qualified_name_text(qn, /*include_global_prefix=*/false);
+                qualified_name_text(tag_qn, /*include_global_prefix=*/false);
             *tag = arena_.strdup(spelled.c_str());
         }
     } else if (check(TokenKind::Identifier)) {
@@ -1900,7 +1902,16 @@ void Parser::parse_record_definition_prelude(
             {
                 TentativeParseGuard guard(*this);
                 try {
-                    const Node* primary_tpl = find_template_struct_primary(*tag);
+                    const Node* primary_tpl = nullptr;
+                    if (has_tag_qn &&
+                        (!tag_qn.qualifier_segments.empty() ||
+                         tag_qn.is_global_qualified)) {
+                        primary_tpl = find_template_struct_primary(tag_qn);
+                    } else {
+                        primary_tpl = find_template_struct_primary(
+                            current_namespace_context_id(),
+                            find_parser_text_id(*tag), *tag);
+                    }
                     if (!parse_template_argument_list(specialization_args,
                                                       primary_tpl)) {
                         throw std::runtime_error(
