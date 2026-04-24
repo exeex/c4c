@@ -10,8 +10,21 @@ Step 4 simplified the redundant duplicate-instantiation guard in `ensure_templat
 
 The function now relies on `struct_tag_def_map` to decide whether injected parsing is needed and no longer builds or checks `instantiated_template_struct_keys` in that bridge. Mangled-name construction and emitted struct-tag spelling are unchanged.
 
+Plan-owner lifecycle decision: keep the active runbook open for one more Step 4 packet. The remaining `instantiated_template_struct_keys` use in `parser_types_base.cpp` is reached only after `primary_tpl`, `tpl_def`, concrete args, specialization selection, and mangled-name construction are resolved, so it is not a primary lookup authority. It is still a direct string-keyed duplicate-emission guard and should be explicitly tightened or documented at the implementation site before closing the template-struct identity runbook.
+
 ## Suggested Next
-Supervisor should decide whether Step 4 has enough proof to close the active runbook or whether the remaining direct emitted-artifact guard in `parser_types_base.cpp` needs a separate packet.
+Execute Step 4 packet: in `parser_types_base.cpp`, tighten or document the direct `instantiated_template_struct_keys` guard as an emitted-artifact duplicate guard only.
+
+Packet scope:
+- keep `make_template_struct_instance_key(primary_tpl, concrete_args)` and `build_template_struct_mangled_name(...)` spelling stable
+- do not route primary or specialization lookup through rendered names
+- do not remove compatibility string maps
+- do not change `ensure_template_struct_instantiated_from_args(...)`, which already uses `struct_tag_def_map` for the injected-parse bridge
+- add the smallest implementation clarification needed so the remaining string set cannot be mistaken for parser identity authority
+
+Proof command:
+
+`bash -lc 'set -o pipefail; cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '\''^frontend_parser_tests$'\'' | tee test_after.log'`
 
 ## Watchouts
 - Keep the scope inside parser alias/template identity.
