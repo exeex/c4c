@@ -1,45 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/91_advanced_prepared_call_authority_and_grouped_width_allocation.md
 Source Plan Path: plan.md
-Current Step ID: 3.2
-Current Step Title: Make Width-Aware Grouped Allocation Decisions Truthful
+Current Step ID: 3.3
+Current Step Title: Make Grouped Spill And Reload Publication Truthful
 Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 3.2 repaired the first truthful grouped-allocation decision seam by making
-target register-pool span generation width-aware for non-vector numeric
-register classes whenever the published pool itself is contiguous, so grouped
-width `> 1` general/float values stop collapsing into scalar-only candidate
-sets. The packet also added focused backend proof that a grouped cross-call GPR
-value on RISC-V now receives a real contiguous callee-saved span and that the
-candidate-span surface publishes truthful grouped general/float spans instead
-of vector-only behavior.
+Step 3.3 proved the grouped spill/reload publication seam through a non-vector
+grouped GPR case, adding focused backend coverage that a width-2 RISC-V
+call-crossing general value can be evicted from the only legal `s1,s2` callee
+span, keep truthful `spill_register_authority`, publish matching grouped
+spill/reload ops, and preserve grouped stack-storage identity through direct
+prepared consumption and printer output instead of vector-only coverage.
 
 ## Suggested Next
 
-Advance to Step 3.3 and repair the first grouped spill/reload publication seam
-that still falls back to scalar-shaped authority after a width-aware grouped
-allocation decision has been made.
+Ask the supervisor whether Step 3.3 should close now or whether a final
+follow-on packet should add grouped float spill/reload parity proof before
+moving on to the remaining grouped-width runbook work.
 
 ## Watchouts
 
-- The Step 3.2 repair only publishes grouped spans when the explicit saved
-  register pool is itself numerically contiguous; sparse pools still truthfully
-  yield no grouped candidate span instead of inventing unavailable units.
-- Grouped allocator consumers should compare/publish occupied span units rather
-  than only base register names when deciding whether an existing assignment
-  already satisfies a grouped destination.
-- Keep the follow-on Step 3.3 work focused on spill/reload publication, not on
-  widening pool policy or reopening call-boundary consumer logic from Step 3.1.
-- Do not reopen idea 90 out-of-SSA follow-on work from this packet.
-- Reject testcase-shaped shortcuts; grouped-width progress still needs to
-  generalize beyond one seeded grouped cross-call fixture.
+- The new grouped general spill fixture needs real post-call pressure to force
+  eviction from the lone width-2 GPR callee span; if that pressure drops, the
+  proof silently becomes a non-spill case again.
+- Grouped spill/reload publication now has direct proof for vector LMUL and
+  width-2 general spans; grouped float spill/reload parity is the remaining
+  obvious sibling if the supervisor wants more Step 3.3 confidence.
+- Do not reopen width-aware pool policy or idea 90 follow-on work from this
+  packet.
 
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-Result: passed after the Step 3.2 repair and focused backend liveness coverage
-for grouped general/float candidate spans plus grouped cross-call GPR
-allocation. Log: `test_after.log`
+Result: passed after adding focused backend liveness, direct prepared-consumer,
+and prepared-printer proof for grouped width-2 general spill/reload
+publication. Log: `test_after.log`
