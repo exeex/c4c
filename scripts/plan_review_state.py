@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -317,6 +318,20 @@ def baseline_candidate_path(baseline_path: Path) -> Path:
     return baseline_path.with_name("test_baseline.new.log")
 
 
+def baseline_archive_dir(root: Path) -> Path:
+    return root / "log"
+
+
+def archive_baseline_candidate_snapshot(candidate_path: Path,
+                                        commit_hash: str) -> Path:
+    root = repo_root()
+    archive_dir = baseline_archive_dir(root)
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    archive_path = archive_dir / f"baseline_{commit_hash}.log"
+    shutil.copyfile(candidate_path, archive_path)
+    return archive_path
+
+
 def run_command(command: list[str], *, check: bool) -> subprocess.CompletedProcess:
     return subprocess.run(
         command,
@@ -477,8 +492,11 @@ def cmd_post_commit(args) -> int:
             or state["test_baseline_counter"] >= state["test_baseline_limit"]
         )
         if needs_new_baseline:
-            refresh_test_baseline_candidate(
+            candidate_path = refresh_test_baseline_candidate(
                 args.baseline, state["test_baseline_regex"]
+            )
+            archive_baseline_candidate_snapshot(
+                candidate_path, current_head_hash()
             )
             state["test_baseline_counter"] = 0
             state["baseline_review_pending"] = True
