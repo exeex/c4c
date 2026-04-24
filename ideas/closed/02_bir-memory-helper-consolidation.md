@@ -96,3 +96,18 @@ this idea changes helper factoring, while the next idea changes dispatch shape.
 - Do not split `coordinator.cpp`.
 - Do not introduce per-family headers.
 - Do not redesign address provenance semantics.
+
+## Closure Note
+
+Closed after the active runbook completed all helper consolidation and boundary
+validation steps. Duplicate scalar layout facts, aggregate byte-offset
+projection, and byte-storage reinterpretation checks were consolidated behind
+`memory_helpers.hpp` where semantics matched. Caller-specific policy and mutable
+map/provenance updates remain in the implementation files, `BirFunctionLowerer`
+remains the memory state owner, and no headers beyond `memory_types.hpp` and
+`memory_helpers.hpp` were introduced.
+
+Close validation used the backend subset:
+`cmake --build --preset default --target c4c_backend && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+Regression guard passed with 97 passed before and after, 0 failed, using
+`--allow-non-decreasing-passed`.
