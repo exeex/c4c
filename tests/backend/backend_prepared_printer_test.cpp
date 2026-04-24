@@ -1910,6 +1910,30 @@ prepare::PreparedControlFlowFunction* find_control_flow_function(
   return nullptr;
 }
 
+prepare::PreparedParallelCopyBundle* find_parallel_copy_bundle(
+    prepare::PreparedBirModule& prepared,
+    const char* function_name,
+    const char* predecessor_label,
+    const char* successor_label) {
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr) {
+    return nullptr;
+  }
+  const auto predecessor_id = prepared.names.block_labels.find(predecessor_label);
+  const auto successor_id = prepared.names.block_labels.find(successor_label);
+  if (predecessor_id == c4c::kInvalidBlockLabel ||
+      successor_id == c4c::kInvalidBlockLabel) {
+    return nullptr;
+  }
+  for (auto& bundle : control_flow->parallel_copy_bundles) {
+    if (bundle.predecessor_label == predecessor_id &&
+        bundle.successor_label == successor_id) {
+      return &bundle;
+    }
+  }
+  return nullptr;
+}
+
 bir::Function* find_function(prepare::PreparedBirModule& prepared, const char* function_name) {
   for (auto& function : prepared.module.functions) {
     if (function.name == function_name) {
@@ -2044,7 +2068,7 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  const auto parallel_copy_prepared = legalize_parallel_copy_cycle_module();
+  auto parallel_copy_prepared = legalize_parallel_copy_cycle_module();
   const std::string parallel_copy_dump = prepare::print(parallel_copy_prepared);
   if (!expect_contains(parallel_copy_dump, "prepared.func @parallel_copy_prepare_contract",
                        "parallel-copy printer function section")) {
@@ -2061,6 +2085,16 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(parallel_copy_dump,
+                       "authority execution_site=predecessor_terminator execution_block=entry",
+                       "acyclic parallel-copy authority")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(parallel_copy_dump,
+                       "authority execution_site=predecessor_terminator execution_block=body",
+                       "cycle-break parallel-copy authority")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(parallel_copy_dump,
                        "step[0] save_destination_to_temp move_index=0 uses_cycle_temp_source=no",
                        "cycle temp save step")) {
     return EXIT_FAILURE;
@@ -2073,6 +2107,24 @@ int main() {
   if (!expect_contains(parallel_copy_dump,
                        "step[2] move move_index=1 uses_cycle_temp_source=yes",
                        "temp-fed move step")) {
+    return EXIT_FAILURE;
+  }
+  auto* mutable_body_bundle = find_parallel_copy_bundle(
+      parallel_copy_prepared, "parallel_copy_prepare_contract", "body", "loop");
+  if (mutable_body_bundle == nullptr) {
+    std::cerr << "[FAIL] missing mutable backedge bundle for printer authority contract\n";
+    return EXIT_FAILURE;
+  }
+  mutable_body_bundle->execution_block_label.reset();
+  const std::string unpublished_parallel_copy_dump = prepare::print(parallel_copy_prepared);
+  if (!expect_contains(unpublished_parallel_copy_dump,
+                       "authority execution_site=predecessor_terminator execution_block=<none>",
+                       "parallel-copy authority after removing publication")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_not_contains(unpublished_parallel_copy_dump,
+                           "authority execution_site=predecessor_terminator execution_block=body",
+                           "recomputed parallel-copy execution block after removing publication")) {
     return EXIT_FAILURE;
   }
 
@@ -2093,6 +2145,18 @@ int main() {
           critical_edge_dump,
           "parallel_copy right -> join execution_site=predecessor_terminator execution_block=right has_cycle=no resolution=acyclic moves=1 steps=1",
           "linear-edge parallel-copy summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          critical_edge_dump,
+          "authority execution_site=critical_edge execution_block=<none>",
+          "critical-edge parallel-copy authority")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          critical_edge_dump,
+          "authority execution_site=predecessor_terminator execution_block=right",
+          "linear-edge parallel-copy authority")) {
     return EXIT_FAILURE;
   }
 

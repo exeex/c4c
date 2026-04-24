@@ -692,19 +692,24 @@ void append_prepared_control_flow(std::ostringstream& out, const PreparedBirModu
     }
 
     for (const auto& bundle : function_cf.parallel_copy_bundles) {
+      const auto execution_block =
+          published_prepared_parallel_copy_execution_block_label(bundle);
       out << "  parallel_copy "
           << maybe_block_label(module.names, bundle.predecessor_label)
           << " -> " << maybe_block_label(module.names, bundle.successor_label)
           << " execution_site="
           << prepared_parallel_copy_execution_site_name(bundle.execution_site)
           << " execution_block="
-          << maybe_block_label(module.names,
-                               published_prepared_parallel_copy_execution_block_label(bundle)
-                                   .value_or(kInvalidBlockLabel))
+          << maybe_block_label(module.names, execution_block.value_or(kInvalidBlockLabel))
           << " has_cycle=" << (bundle.has_cycle ? "yes" : "no")
           << " resolution=" << prepared_parallel_copy_resolution_name(bundle)
           << " moves=" << bundle.moves.size()
           << " steps=" << bundle.steps.size() << "\n";
+      out << "    authority execution_site="
+          << prepared_parallel_copy_execution_site_name(bundle.execution_site)
+          << " execution_block="
+          << maybe_block_label(module.names, execution_block.value_or(kInvalidBlockLabel))
+          << "\n";
       for (std::size_t move_index = 0; move_index < bundle.moves.size(); ++move_index) {
         const auto& move = bundle.moves[move_index];
         out << "    move[" << move_index << "] "

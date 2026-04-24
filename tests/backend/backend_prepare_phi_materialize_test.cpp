@@ -572,6 +572,15 @@ int check_parallel_copy_cycle_contract(const prepare::PreparedBirModule& prepare
           prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator) {
     return fail("expected loop bundles to publish predecessor-terminator execution ownership");
   }
+  const auto entry_execution_block =
+      prepare::published_prepared_parallel_copy_execution_block_label(*entry_bundle);
+  const auto body_execution_block =
+      prepare::published_prepared_parallel_copy_execution_block_label(*body_bundle);
+  if (!entry_execution_block.has_value() || !body_execution_block.has_value() ||
+      prepare::prepared_block_label(prepared.names, *entry_execution_block) != "entry" ||
+      prepare::prepared_block_label(prepared.names, *body_execution_block) != "body") {
+    return fail("expected loop bundles to publish direct execution-block authority");
+  }
   if (entry_bundle->has_cycle || entry_bundle->moves.size() != 2 ||
       entry_bundle->steps.size() != 2) {
     return fail("expected the entry-to-loop bundle to stay acyclic while preserving both phi moves");
@@ -629,6 +638,14 @@ int check_critical_edge_parallel_copy_contract(const prepare::PreparedBirModule&
   if (linear_bundle->execution_site !=
       prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator) {
     return fail("expected the right-to-join bundle to stay predecessor-terminator executable");
+  }
+  const auto critical_execution_block =
+      prepare::published_prepared_parallel_copy_execution_block_label(*critical_bundle);
+  const auto linear_execution_block =
+      prepare::published_prepared_parallel_copy_execution_block_label(*linear_bundle);
+  if (critical_execution_block.has_value() || !linear_execution_block.has_value() ||
+      prepare::prepared_block_label(prepared.names, *linear_execution_block) != "right") {
+    return fail("expected the critical-edge lane to publish direct execution-block authority");
   }
   if (critical_bundle->moves.size() != 1 || critical_bundle->steps.size() != 1 ||
       linear_bundle->moves.size() != 1 || linear_bundle->steps.size() != 1) {

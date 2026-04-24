@@ -47,6 +47,30 @@ prepare::PreparedControlFlowFunction* find_control_flow_function(
   return nullptr;
 }
 
+prepare::PreparedParallelCopyBundle* find_parallel_copy_bundle(
+    prepare::PreparedBirModule& prepared,
+    const char* function_name,
+    const char* predecessor_label,
+    const char* successor_label) {
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr) {
+    return nullptr;
+  }
+  const auto predecessor_id = prepared.names.block_labels.find(predecessor_label);
+  const auto successor_id = prepared.names.block_labels.find(successor_label);
+  if (predecessor_id == c4c::kInvalidBlockLabel ||
+      successor_id == c4c::kInvalidBlockLabel) {
+    return nullptr;
+  }
+  for (auto& bundle : control_flow->parallel_copy_bundles) {
+    if (bundle.predecessor_label == predecessor_id &&
+        bundle.successor_label == successor_id) {
+      return &bundle;
+    }
+  }
+  return nullptr;
+}
+
 const prepare::PreparedBranchCondition* find_branch_condition(
     const prepare::PreparedBirModule& prepared,
     const prepare::PreparedControlFlowFunction& control_flow,
@@ -507,6 +531,56 @@ int check_authoritative_parallel_copy_bundle_ownership(const prepare::PreparedBi
   return 0;
 }
 
+int check_authoritative_parallel_copy_execution_block_publication() {
+  auto prepared = legalize_short_circuit_or_guard_module();
+  auto* true_bundle = find_parallel_copy_bundle(
+      prepared, "short_circuit_or_prepare_contract", "logic.skip.8", "logic.end.10");
+  auto* false_bundle = find_parallel_copy_bundle(
+      prepared, "short_circuit_or_prepare_contract", "logic.rhs.end.9", "logic.end.10");
+  if (true_bundle == nullptr || false_bundle == nullptr) {
+    return fail("expected mutable short-circuit bundles before removing execution-block publication");
+  }
+
+  const auto published_true_execution_block =
+      prepare::published_prepared_parallel_copy_execution_block_label(*true_bundle);
+  const auto published_false_execution_block =
+      prepare::published_prepared_parallel_copy_execution_block_label(*false_bundle);
+  if (!published_true_execution_block.has_value() ||
+      !published_false_execution_block.has_value() ||
+      prepare::prepared_block_label(prepared.names, *published_true_execution_block) !=
+          "logic.skip.8" ||
+      prepare::prepared_block_label(prepared.names, *published_false_execution_block) !=
+          "logic.rhs.end.9") {
+    return fail("expected short-circuit bundles to publish execution-block authority before removal");
+  }
+
+  true_bundle->execution_block_label.reset();
+  false_bundle->execution_block_label.reset();
+
+  const auto* control_flow =
+      find_control_flow_function(prepared, "short_circuit_or_prepare_contract");
+  if (control_flow == nullptr) {
+    return fail("expected prepared control-flow after removing execution-block publication");
+  }
+  const auto authoritative_bundles = prepare::find_authoritative_branch_owned_parallel_copy_bundles(
+      prepared.names, *control_flow, "entry");
+  if (!authoritative_bundles.has_value() ||
+      authoritative_bundles->true_bundle == nullptr ||
+      authoritative_bundles->false_bundle == nullptr) {
+    return fail("expected authoritative bundle lookup to remain available after removing execution-block publication");
+  }
+  if (prepare::published_prepared_parallel_copy_execution_block_label(
+          *authoritative_bundles->true_bundle)
+          .has_value() ||
+      prepare::published_prepared_parallel_copy_execution_block_label(
+          *authoritative_bundles->false_bundle)
+          .has_value()) {
+    return fail("expected authoritative bundle readers to require published execution-block labels instead of recomputing them");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -550,6 +624,10 @@ int main() {
           prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
           "logic.skip.8",
           "logic.rhs.end.9");
+      status != 0) {
+    return status;
+  }
+  if (const int status = check_authoritative_parallel_copy_execution_block_publication();
       status != 0) {
     return status;
   }
