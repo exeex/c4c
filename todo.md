@@ -8,46 +8,54 @@ Current Step Title: Tighten `last_using_alias_name` Around Structured Alias Iden
 
 ## Just Finished
 
-Step 3 is exhausted. The final code packet completed for
-`parser_types_struct.cpp`: member typedef
-registration and constructor/destructor entry gates now use
-`current_struct_tag_text().empty()` instead of direct
-`active_context_state_.current_struct_tag.empty()` checks.
+Step 4 inventory-only packet completed for `last_using_alias_name` active
+context handoff sites.
 
-The existing owner and special-member spelling handoff remains unchanged:
-`current_struct_tag_text()` is still passed to
-`register_struct_member_typedef_binding(...)`, and
-`is_record_special_member_name(...)` still compares against
-`current_struct_tag_text()` plus `struct_source_name`.
+Classification:
+
+- `parser.hpp`: `clear_last_using_alias_name()` resets the structured alias key,
+  fallback spelling, and `TextId` mirror together. `set_last_using_alias_name(
+  const QualifiedNameKey&)` is the structured alias handoff path and preserves
+  `base_text_id` for unqualified alias identity. `set_last_using_alias_name(
+  std::string_view)` and `last_using_alias_name_text()` are fallback spelling /
+  bridge compatibility helpers; no current parser call site uses them.
+- `parser_declarations.cpp`: using-alias registration builds
+  `alias_name_text_id` and `alias_key`, registers the structured typedef
+  binding with that identity, and calls `set_last_using_alias_name(alias_key)`.
+  This is structured alias lookup/handoff, with rendered `first_name` and
+  `qualified` retained for compatibility typedef maps.
+- `parser_declarations.cpp`: the template prelude clears alias handoff state,
+  parses one top-level declaration, reads `last_using_alias_key`, and uses
+  `find_structured_typedef_type(alias_key)` plus
+  `template_state_.alias_template_info[alias_key]`. This is already structured
+  alias-template metadata handoff.
+- `parser_types_base.cpp`: no remaining `last_using_alias_name_text()`,
+  `last_using_alias_name_text_id`, or `last_using_alias_key` consumers in the
+  requested target file.
+- `parser_types_template.cpp`: no remaining `last_using_alias_name_text()`,
+  `last_using_alias_name_text_id`, or `last_using_alias_key` consumers in the
+  requested target file.
 
 ## Suggested Next
 
-Begin Step 4 with an inventory-only packet for `last_using_alias_name` active
-context handoff sites. Classify remaining consumers of
-`last_using_alias_name_text()`, `last_using_alias_name_text_id`, and
-`last_using_alias_key` in:
-
-- `src/frontend/parser/parser.hpp`
-- `src/frontend/parser/parser_declarations.cpp`
-- `src/frontend/parser/parser_types_base.cpp`
-- `src/frontend/parser/parser_types_template.cpp`
-
-The packet should identify the first safe code change that prefers
-`last_using_alias_key` or `last_using_alias_name_text_id` for semantic alias
-identity while keeping rendered alias spelling only as fallback, diagnostic, or
-compatibility bridge data.
+Run one narrow Step 4 code packet in `parser.hpp`: remove the unused string-only
+`set_last_using_alias_name(std::string_view)` fallback setter if the compiler
+confirms no callers remain, and keep `last_using_alias_name_text()` only if the
+next packet chooses to retain an explicit compatibility accessor for future
+fallback spelling. If that removal is accepted, Step 4 can advance to Step 5;
+the live declaration/template-prelude handoff already uses
+`QualifiedNameKey`.
 
 ## Watchouts
 
-- Do not remove the `struct_source_name` comparison in
-  `is_record_special_member_name(...)`; it is the fallback/injected spelling
-  path for template-origin constructor/destructor names.
-- Do not rework `register_struct_member_typedef_binding(...)` storage in this
-  Step 3 cleanup. The current member-owner spelling handoff is intentional; only
-  the raw-string presence gates need tightening.
-- No direct `active_context_state_.current_struct_tag.empty()` gates remain in
-  `parser_types_struct.cpp`; remaining raw `current_struct_tag` state in this
-  file is save/restore fallback support.
+- Do not remove rendered alias spelling passed to `register_typedef_binding(...)`
+  in `parser_declarations.cpp`; that is compatibility bridge data for existing
+  string-keyed maps, not the structured alias-template semantic key.
+- `last_using_alias_name_text_id` is currently written by the structured setter
+  but not read outside `last_using_alias_name_text()`. That makes the next code
+  packet a helper cleanup, not a semantic lookup migration.
+- `parser_types_base.cpp` and `parser_types_template.cpp` have no live Step 4
+  handoff sites after the earlier template-struct cleanup.
 - Do not rework alias-template storage beyond the Step 4 active-context
   handoff boundary.
 - Do not reopen completed template-struct primary/specialization/instantiation
@@ -55,9 +63,7 @@ compatibility bridge data.
 
 ## Proof
 
-Delegated proof passed:
-
-`bash -lc 'set -o pipefail; cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '\''^frontend_parser_tests$'\'' | tee test_after.log'`
+No build required for this inventory-only packet.
 
 Local validation: `git diff --check` passed.
-Proof log: `test_after.log`.
+Proof log: none updated; `test_after.log` was not touched.
