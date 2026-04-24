@@ -8,27 +8,27 @@ Current Step Title: Move the Stack-Layout Coordinator If Clean
 
 ## Just Finished
 
-Completed Step 2: Rename the Stack-Layout Private Index.
+Completed Step 3: Move the Stack-Layout Coordinator If Clean.
 
-Renamed `src/backend/prealloc/stack_layout/support.hpp` to
-`src/backend/prealloc/stack_layout/stack_layout.hpp` with `git mv`.
-Updated the local stack-layout implementation includes and the legitimate
-prealloc callers in `stack_layout.cpp` and `regalloc.cpp`.
+Moved `src/backend/prealloc/stack_layout.cpp` to
+`src/backend/prealloc/stack_layout/coordinator.cpp` with `git mv`.
+Updated the moved coordinator's local includes from top-level prealloc-relative
+paths to the stack-layout directory context:
 
-Verification scan:
-
-- No `*.cpp` or `*.hpp` source under `src/backend/prealloc` includes
-  `stack_layout/support.hpp` or `"support.hpp"`.
-- `src/backend/prealloc/stack_layout/stack_layout.hpp` is the only nested
-  stack-layout private index header.
+- `prealloc.hpp` is now included as `../prealloc.hpp`.
+- `stack_layout/stack_layout.hpp` is now included as `stack_layout.hpp`.
+- `src/backend/CMakeLists.txt` did not need editing; its recursive prealloc
+  source glob discovered the moved coordinator and reconfigured during the
+  proof build.
 
 ## Suggested Next
 
-Execute Step 3: Move the Stack-Layout Coordinator If Clean.
+Execute Step 4: Remove Prealloc-Local Rust Reference Files.
 
-Inspect whether `src/backend/prealloc/stack_layout.cpp` can be mechanically
-moved to `src/backend/prealloc/stack_layout/coordinator.cpp` without changing
-public orchestration declarations or backend behavior.
+Delete the prealloc-local `.rs` reference files under `src/backend/prealloc`
+and update prealloc-local docs/comparison notes that point agents at those
+deleted local Rust files as active guidance. Do not delete
+`ref/claudes-c-compiler/**`.
 
 ## Watchouts
 
@@ -41,9 +41,9 @@ public orchestration declarations or backend behavior.
 - Do not delete `ref/claudes-c-compiler/**`.
 - Do not change backend semantics or testcase expectations.
 - Do not introduce one header per `.cpp`.
-- `src/backend/prealloc/stack_layout/README.md` still mentions the old
-  `support.hpp` reference table entry; leave that for the later docs/Rust
-  reference cleanup unless the supervisor widens ownership.
+- Several docs and local Rust reference comments still mention
+  `stack_layout.cpp`; Step 4 owns the local Rust reference removal and nearby
+  documentation cleanup.
 
 ## Proof
 
@@ -51,8 +51,9 @@ Proof command:
 
 `bash -lc 'cmake --build --preset default --target c4c_backend' > test_after.log 2>&1`
 
-Result: passed. `test_after.log` contains the canonical proof output for this
-packet.
+Result: passed. CMake detected the recursive glob mismatch, reconfigured, built
+`prealloc/stack_layout/coordinator.cpp.o`, and relinked `c4c_backend`.
+`test_after.log` contains the canonical proof output for this packet.
 
 Baseline review: supervisor accepted `test_baseline.new.log` as
 `test_baseline.log`, green for `^backend_` at commit `36442b9d`.
