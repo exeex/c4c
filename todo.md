@@ -3,40 +3,41 @@ Source Idea Path: ideas/open/91_advanced_prepared_call_authority_and_grouped_wid
 Source Plan Path: plan.md
 Current Step ID: 4
 Current Step Title: Prove Consumer Use And Decide Closure
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 3.3 is now complete: grouped spill/reload publication has direct vector,
-grouped GPR, and width-2 float proof, including call-crossing eviction from
-the lone legal grouped callee span, truthful `spill_register_authority`,
-matching grouped spill/reload ops, and preserved grouped stack-storage
-identity across liveness, direct prepared consumption, and prepared-printer
-surfaces.
+Step 4 added direct backend-consumer proof for the remaining advanced
+prepared-call seams: same-module variadic-byval now proves x86 reads the
+published same-module call and byval argument authority directly from consumed
+plans, indirect-callee publication now proves x86 reads the indirect callee,
+preserved carry, and call result directly from consumed plans, and
+memory-return publication now proves x86 reads the explicit sret call-plan
+authority and matching storage-plan visibility through the consumer surface.
 
 ## Suggested Next
 
-Execute Step 4 by treating the grouped-width substeps as complete, using the
-fresh backend build and `^backend_` proof as the current validation baseline,
-and deciding whether any remaining consumer-use gaps still belong to idea 91
-or should be split into follow-on work before closure is considered.
+Use the new Step 4 consumer-use proof plus the reviewer note to make the
+closure decision for idea 91: either accept closure if the advanced prepared
+call coverage is now sufficient, or classify any honest leftover seam into a
+follow-on idea instead of stretching this plan.
 
 ## Watchouts
 
-- Do not close idea 91 directly from Step 3.3 completion alone; Step 4 still
-  owns the final consumer-use review and leftover classification.
-- The supervisor's before/after `^backend_` runs were green, but the
-  monotonic regression-guard script did not produce a closure-ready pass
-  because the strengthened proof lives inside existing backend test binaries
-  rather than increasing the CTest pass count.
-- Keep idea 90 out-of-SSA follow-on work and any width-aware pool-policy
-  redesign outside this Step 4 packet unless the remaining gap is proven to be
-  required for idea 91 closure.
+- This packet stayed test-only; no implementation source changes were needed
+  to make the remaining advanced prepared-call seams visible through direct
+  backend consumers.
+- `tests/backend/backend_x86_route_debug_test.cpp` remains publication/debug
+  coverage rather than the primary Step 4 consumer-use proof surface; the new
+  direct-consumer assertions live in the call-contract and liveness tests.
+- Keep idea 90 out-of-SSA follow-on work and any wider pool-policy redesign
+  outside this closure decision unless the supervisor decides a separate idea
+  is still required.
 
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-Result: baseline commit `14c7bdde` and current `HEAD` both passed; this is the
-current validation baseline for Step 4 closure judgment.
+Result: passed after adding direct x86 consumer-surface assertions for the
+remaining advanced prepared-call seams.
 Log: `test_after.log`

@@ -1,5 +1,6 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
+#include "src/backend/mir/x86/x86.hpp"
 #include "src/backend/prealloc/prepared_printer.hpp"
 #include "src/codegen/lir/ir.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
@@ -70,6 +71,28 @@ const prepare::PreparedLivenessValue* find_liveness_value(
 const prepare::PreparedRegallocValue* find_regalloc_value(
     const prepare::PreparedBirModule& prepared,
     const prepare::PreparedRegallocFunction& function,
+    std::string_view value_name) {
+  for (const auto& value : function.values) {
+    if (prepare::prepared_value_name(prepared.names, value.value_name) == value_name) {
+      return &value;
+    }
+  }
+  return nullptr;
+}
+
+const prepare::PreparedStoragePlanFunction* find_storage_plan_function(
+    const prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  if (function_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  return prepare::find_prepared_storage_plan(prepared, function_id);
+}
+
+const prepare::PreparedStoragePlanValue* find_storage_value(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedStoragePlanFunction& function,
     std::string_view value_name) {
   for (const auto& value : function.values) {
     if (prepare::prepared_value_name(prepared.names, value.value_name) == value_name) {
@@ -4266,6 +4289,79 @@ int check_lowered_same_module_variadic_global_byval_call_abi(
   return 0;
 }
 
+int check_x86_consumer_surface_reads_same_module_variadic_global_byval_authority(
+    const prepare::PreparedBirModule& prepared) {
+  const auto function_id = prepare::resolve_prepared_function_name_id(
+      prepared.names, "lowered_same_module_variadic_global_byval_metadata");
+  const auto* regalloc = find_regalloc_function(
+      prepared, "lowered_same_module_variadic_global_byval_metadata");
+  const auto* call_plans = function_id.has_value()
+                               ? prepare::find_prepared_call_plans(prepared, *function_id)
+                               : nullptr;
+  const auto* storage = find_storage_plan_function(
+      prepared, "lowered_same_module_variadic_global_byval_metadata");
+  if (!function_id.has_value() || regalloc == nullptr || call_plans == nullptr ||
+      storage == nullptr) {
+    return fail(
+        "expected same-module variadic aggregate call to publish regalloc, call, and storage authority");
+  }
+
+  const auto consumed = c4c::backend::x86::consume_plans(
+      prepared, "lowered_same_module_variadic_global_byval_metadata");
+  if (consumed.frame != prepare::find_prepared_frame_plan(prepared, *function_id) ||
+      consumed.dynamic_stack != prepare::find_prepared_dynamic_stack_plan(prepared, *function_id) ||
+      consumed.calls != call_plans || consumed.regalloc != regalloc || consumed.storage != storage) {
+    return fail(
+        "expected x86 to read same-module variadic aggregate call authority directly from prepared plans");
+  }
+
+  const auto* global_byval = find_regalloc_value(prepared, *regalloc, "@gpair");
+  const auto* format_storage = find_storage_value(prepared, *storage, "%format");
+  const auto* call = c4c::backend::x86::find_consumed_call_plan(consumed, 0, 0);
+  const auto* byval_arg =
+      c4c::backend::x86::find_consumed_call_argument_plan(consumed, 0, 0, 1);
+  if (global_byval == nullptr || format_storage == nullptr || call == nullptr || byval_arg == nullptr ||
+      consumed.dynamic_stack != nullptr || call->arguments.size() != 2) {
+    return fail(
+        "expected x86 same-module variadic fixture to expose direct call, argument, and storage authority");
+  }
+
+  const auto* format_arg =
+      c4c::backend::x86::find_consumed_call_argument_plan(consumed, 0, 0, 0);
+  if (format_arg == nullptr || format_arg != &call->arguments.front() || byval_arg != &call->arguments[1]) {
+    return fail(
+        "expected x86 same-module variadic fixture to resolve both arguments through the consumed call selectors");
+  }
+  if (call->wrapper_kind != prepare::PreparedCallWrapperKind::SameModule || call->is_indirect ||
+      call->direct_callee_name != std::optional<std::string>{"myprintf"} ||
+      call->variadic_fpr_arg_register_count != 0 || call->result.has_value()) {
+    return fail("expected x86 same-module variadic fixture to preserve same-module wrapper authority");
+  }
+  if (format_arg->source_value_id != std::optional<prepare::PreparedValueId>{format_storage->value_id} ||
+      format_arg->source_encoding != format_storage->encoding ||
+      format_arg->source_register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{format_storage->bank}) {
+    return fail(
+        "expected x86 same-module variadic fixture to preserve the direct format-argument storage seam");
+  }
+  if (byval_arg->source_value_id != std::optional<prepare::PreparedValueId>{global_byval->value_id} ||
+      byval_arg->source_symbol_name != std::optional<std::string>{"@gpair"} ||
+      byval_arg->source_encoding != prepare::PreparedStorageEncodingKind::SymbolAddress ||
+      byval_arg->value_bank != prepare::PreparedRegisterBank::AggregateAddress ||
+      byval_arg->source_register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr} ||
+      !byval_arg->source_register_name.has_value() ||
+      byval_arg->destination_register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{
+              prepare::PreparedRegisterBank::AggregateAddress} ||
+      !byval_arg->destination_register_name.has_value()) {
+    return fail(
+        "expected x86 same-module variadic fixture to preserve the byval global source and ABI destination directly");
+  }
+
+  return 0;
+}
+
 int check_lowered_call_result_abi(const prepare::PreparedBirModule& prepared) {
   const auto* module_function = find_module_function(prepared, "lowered_call_result_metadata");
   if (module_function == nullptr || module_function->blocks.size() != 1 ||
@@ -4721,6 +4817,77 @@ int check_indirect_call_preservation_publication(const prepare::PreparedBirModul
   return 0;
 }
 
+int check_x86_consumer_surface_reads_indirect_call_preservation_authority(
+    const prepare::PreparedBirModule& prepared) {
+  const auto function_id =
+      prepare::resolve_prepared_function_name_id(prepared.names, "indirect_call_preservation");
+  const auto* regalloc = find_regalloc_function(prepared, "indirect_call_preservation");
+  const auto* storage = find_storage_plan_function(prepared, "indirect_call_preservation");
+  if (!function_id.has_value() || regalloc == nullptr || storage == nullptr) {
+    return fail(
+        "expected indirect_call_preservation to publish regalloc and storage authority");
+  }
+
+  const auto consumed =
+      c4c::backend::x86::consume_plans(prepared, "indirect_call_preservation");
+  if (consumed.frame != prepare::find_prepared_frame_plan(prepared, *function_id) ||
+      consumed.dynamic_stack != prepare::find_prepared_dynamic_stack_plan(prepared, *function_id) ||
+      consumed.calls != prepare::find_prepared_call_plans(prepared, *function_id) ||
+      consumed.regalloc != regalloc || consumed.storage != storage) {
+    return fail(
+        "expected x86 to read indirect-call preservation authority directly from prepared plans");
+  }
+
+  const auto* carry = find_regalloc_value(prepared, *regalloc, "carry");
+  const auto* callee_ptr = find_regalloc_value(prepared, *regalloc, "%callee.ptr");
+  const auto* call_out = find_regalloc_value(prepared, *regalloc, "call.out");
+  const auto* callee_storage = find_storage_value(prepared, *storage, "%callee.ptr");
+  const auto* call = c4c::backend::x86::find_consumed_call_plan(consumed, 0, 2);
+  const auto* arg = c4c::backend::x86::find_consumed_call_argument_plan(consumed, 0, 2, 0);
+  const auto* result = c4c::backend::x86::find_consumed_call_result_plan(consumed, 0, 2);
+  if (carry == nullptr || callee_ptr == nullptr || call_out == nullptr || callee_storage == nullptr ||
+      call == nullptr || arg == nullptr || result == nullptr || consumed.dynamic_stack != nullptr) {
+    return fail(
+        "expected x86 indirect-call fixture to expose direct call, argument, result, and storage authority");
+  }
+
+  if (!call->is_indirect || call->wrapper_kind != prepare::PreparedCallWrapperKind::Indirect ||
+      call->direct_callee_name.has_value() || !call->indirect_callee.has_value() ||
+      arg != &call->arguments.front() || result != &*call->result) {
+    return fail("expected x86 indirect-call fixture to preserve indirect call selectors");
+  }
+  if (call->indirect_callee->value_id != std::optional<prepare::PreparedValueId>{callee_ptr->value_id} ||
+      call->indirect_callee->encoding != callee_storage->encoding ||
+      call->indirect_callee->bank != callee_storage->bank ||
+      !call->indirect_callee->register_name.has_value()) {
+    return fail(
+        "expected x86 indirect-call fixture to preserve the shared indirect-callee storage seam");
+  }
+  if (arg->source_value_id != std::optional<prepare::PreparedValueId>{carry->value_id} ||
+      arg->value_bank != prepare::PreparedRegisterBank::Gpr ||
+      result->destination_value_id != std::optional<prepare::PreparedValueId>{call_out->value_id} ||
+      result->value_bank != prepare::PreparedRegisterBank::Gpr) {
+    return fail(
+        "expected x86 indirect-call fixture to preserve direct argument/result value identity");
+  }
+
+  const auto preserved_it = std::find_if(
+      call->preserved_values.begin(),
+      call->preserved_values.end(),
+      [&](const prepare::PreparedCallPreservedValue& preserved) {
+        return preserved.value_id == carry->value_id;
+      });
+  if (preserved_it == call->preserved_values.end() ||
+      preserved_it->route != prepare::PreparedCallPreservationRoute::CalleeSavedRegister ||
+      preserved_it->register_bank != std::optional<prepare::PreparedRegisterBank>{
+                                   prepare::PreparedRegisterBank::Gpr}) {
+    return fail(
+        "expected x86 indirect-call fixture to preserve carry through the published callee-saved route");
+  }
+
+  return 0;
+}
+
 int check_same_start_priority_ordering(const prepare::PreparedBirModule& prepared) {
   const auto* regalloc = find_regalloc_function(prepared, "same_start_priority");
   if (regalloc == nullptr) {
@@ -5108,6 +5275,11 @@ int main() {
       rc != 0) {
     return rc;
   }
+  if (const int rc = check_x86_consumer_surface_reads_same_module_variadic_global_byval_authority(
+          *lowered_same_module_variadic_global_byval_prepared);
+      rc != 0) {
+    return rc;
+  }
 
   const auto lowered_call_result_prepared = lower_and_prepare_call_result_module();
   if (!lowered_call_result_prepared.has_value()) {
@@ -5202,6 +5374,11 @@ int main() {
       prepare_indirect_call_preservation_module_with_regalloc();
   if (const int rc =
           check_indirect_call_preservation_publication(indirect_call_preservation_prepared);
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_x86_consumer_surface_reads_indirect_call_preservation_authority(
+          indirect_call_preservation_prepared);
       rc != 0) {
     return rc;
   }

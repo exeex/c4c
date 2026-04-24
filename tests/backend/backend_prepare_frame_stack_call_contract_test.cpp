@@ -3330,6 +3330,65 @@ int check_x86_consumer_surface_reads_scalar_call_boundary_authority() {
   return 0;
 }
 
+int check_x86_consumer_surface_reads_memory_return_authority() {
+  const auto prepared = prepare_module(make_memory_return_call_contract_module());
+  const auto function_id =
+      prepare::resolve_prepared_function_name_id(prepared.names, "memory_return_call_contract");
+  if (!function_id.has_value()) {
+    return fail("x86 consumer surface contract: failed to resolve memory_return_call_contract");
+  }
+
+  const auto consumed =
+      c4c::backend::x86::consume_plans(prepared, "memory_return_call_contract");
+  if (consumed.frame != prepare::find_prepared_frame_plan(prepared, *function_id) ||
+      consumed.dynamic_stack != prepare::find_prepared_dynamic_stack_plan(prepared, *function_id) ||
+      consumed.calls != prepare::find_prepared_call_plans(prepared, *function_id) ||
+      consumed.storage != prepare::find_prepared_storage_plan(prepared, *function_id)) {
+    return fail(
+        "x86 consumer surface contract: x86 no longer reads memory-return call authority directly from prepared plans");
+  }
+
+  const auto* sret_storage =
+      consumed.storage == nullptr ? nullptr : find_storage_value(prepared, *consumed.storage, "lv.call.sret.storage");
+  const auto* call = c4c::backend::x86::find_consumed_call_plan(consumed, 0, 0);
+  const auto* scalar_arg =
+      c4c::backend::x86::find_consumed_call_argument_plan(consumed, 0, 0, 1);
+  const auto* storage_object = find_stack_object(prepared, "lv.call.sret.storage");
+  const auto* frame_slot =
+      storage_object == nullptr ? nullptr : find_frame_slot(prepared, storage_object->object_id);
+  if (consumed.dynamic_stack != nullptr || consumed.calls == nullptr || consumed.storage == nullptr ||
+      sret_storage == nullptr || call == nullptr || scalar_arg == nullptr ||
+      storage_object == nullptr || frame_slot == nullptr) {
+    return fail(
+        "x86 consumer surface contract: memory-return fixture no longer exposes direct call/storage authority through x86");
+  }
+
+  if (call->wrapper_kind != prepare::PreparedCallWrapperKind::DirectExternFixedArity ||
+      call->direct_callee_name != std::optional<std::string>{"extern_make_pair"} ||
+      call->result.has_value() || !call->memory_return.has_value() ||
+      scalar_arg != &call->arguments[1]) {
+    return fail(
+        "x86 consumer surface contract: memory-return fixture lost direct fixed-arity call and memory-return shape");
+  }
+  if (scalar_arg->source_encoding != prepare::PreparedStorageEncodingKind::Immediate ||
+      !scalar_arg->source_literal.has_value() ||
+      scalar_arg->source_literal->immediate != 13) {
+    return fail(
+        "x86 consumer surface contract: memory-return fixture lost the scalar argument source consumed by x86");
+  }
+
+  const auto& memory_return = *call->memory_return;
+  if (prepare::prepared_slot_name(prepared.names, memory_return.storage_slot_name) !=
+          "lv.call.sret.storage" ||
+      memory_return.sret_arg_index != std::optional<std::size_t>{0} ||
+      memory_return.slot_id != std::optional<prepare::PreparedFrameSlotId>{frame_slot->slot_id} ||
+      memory_return.stack_offset_bytes != std::optional<std::size_t>{frame_slot->offset_bytes}) {
+    return fail(
+        "x86 consumer surface contract: memory-return fixture lost the shared frame-slot-backed sret storage seam");
+  }
+  return 0;
+}
+
 int check_x86_consumer_surface_reads_nested_dynamic_stack_call_boundary_authority() {
   const auto prepared = prepare_module(make_variadic_nested_dynamic_stack_call_module());
   const auto function_id = prepare::resolve_prepared_function_name_id(
@@ -4714,6 +4773,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_x86_consumer_surface_reads_scalar_call_boundary_authority(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_x86_consumer_surface_reads_memory_return_authority(); rc != 0) {
     return rc;
   }
   if (const int rc = check_x86_consumer_surface_reads_nested_dynamic_stack_call_boundary_authority();
