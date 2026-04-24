@@ -1443,22 +1443,6 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
   return &*it;
 }
 
-[[nodiscard]] std::optional<std::size_t> find_block_index(
-    const PreparedNameTables& names,
-    const bir::Function& function,
-    BlockLabelId block_label_id) {
-  if (block_label_id == kInvalidBlockLabel) {
-    return std::nullopt;
-  }
-  const std::string_view block_label = prepared_block_label(names, block_label_id);
-  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
-    if (function.blocks[block_index].label == block_label) {
-      return block_index;
-    }
-  }
-  return std::nullopt;
-}
-
 [[nodiscard]] std::optional<std::size_t> find_instruction_index_for_named_result(
     const bir::Block& block,
     std::string_view value_name) {
@@ -1502,39 +1486,14 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
   return prefix;
 }
 
-struct PublishedParallelCopyPlacement {
-  std::size_t block_index = 0;
-  std::size_t instruction_index = 0;
-};
-
-[[nodiscard]] std::optional<PublishedParallelCopyPlacement>
-published_out_of_ssa_parallel_copy_placement(const PreparedNameTables& names,
-                                             const bir::Function& function,
-                                             const PreparedParallelCopyBundle& bundle) {
-  const auto execution_block_label = published_prepared_parallel_copy_execution_block_label(bundle);
-  if (!execution_block_label.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto block_index = find_block_index(names, function, *execution_block_label);
-  if (!block_index.has_value()) {
-    return std::nullopt;
-  }
-
-  return PublishedParallelCopyPlacement{
-      .block_index = *block_index,
-      .instruction_index = 0,
-  };
-}
-
 void append_phi_move_resolution(const PreparedNameTables& names,
                                 const bir::Function& function,
                                 const PreparedControlFlowFunction& function_cf,
                                 PreparedRegallocFunction& regalloc_function) {
   for (const auto& bundle : function_cf.parallel_copy_bundles) {
-    const auto published_placement =
-        published_out_of_ssa_parallel_copy_placement(names, function, bundle);
-    if (!published_placement.has_value()) {
+    const auto block_index = published_prepared_parallel_copy_execution_block_index(
+        names, function, bundle);
+    if (!block_index.has_value()) {
       continue;
     }
 
@@ -1561,8 +1520,8 @@ void append_phi_move_resolution(const PreparedNameTables& names,
         append_move_resolution_record(regalloc_function,
                                       *destination,
                                       *destination,
-                                      published_placement->block_index,
-                                      published_placement->instruction_index,
+                                      *block_index,
+                                      0,
                                       false,
                                       PreparedMoveResolutionOpKind::SaveDestinationToTemp,
                                       PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
@@ -1587,8 +1546,8 @@ void append_phi_move_resolution(const PreparedNameTables& names,
           regalloc_function,
           *source,
           *destination,
-          published_placement->block_index,
-          published_placement->instruction_index,
+          *block_index,
+          0,
           step.uses_cycle_temp_source,
           PreparedMoveResolutionOpKind::Move,
           PreparedMoveAuthorityKind::OutOfSsaParallelCopy,

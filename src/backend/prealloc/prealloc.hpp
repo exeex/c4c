@@ -3972,19 +3972,27 @@ struct PreparedBirModule {
   return std::nullopt;
 }
 
+[[nodiscard]] inline std::optional<std::size_t>
+published_prepared_parallel_copy_execution_block_index(
+    const PreparedNameTables& names,
+    const bir::Function& function,
+    const PreparedParallelCopyBundle& parallel_copy_bundle) {
+  const auto execution_block_label =
+      published_prepared_parallel_copy_execution_block_label(parallel_copy_bundle);
+  if (!execution_block_label.has_value()) {
+    return std::nullopt;
+  }
+  return find_prepared_block_index_in_function(names, function, *execution_block_label);
+}
+
 [[nodiscard]] inline const PreparedMoveBundle*
 find_prepared_out_of_ssa_parallel_copy_move_bundle(
     const PreparedNameTables& names,
     const bir::Function& function,
     const PreparedValueLocationFunction& function_locations,
     const PreparedParallelCopyBundle& parallel_copy_bundle) {
-  const auto execution_block_label =
-      published_prepared_parallel_copy_execution_block_label(parallel_copy_bundle);
-  if (!execution_block_label.has_value()) {
-    return nullptr;
-  }
-  const auto block_index =
-      find_prepared_block_index_in_function(names, function, *execution_block_label);
+  const auto block_index = published_prepared_parallel_copy_execution_block_index(
+      names, function, parallel_copy_bundle);
   if (!block_index.has_value()) {
     return nullptr;
   }

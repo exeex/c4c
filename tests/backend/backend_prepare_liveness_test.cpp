@@ -3305,10 +3305,20 @@ int check_phi_join_move_resolution(const prepare::PreparedBirModule& prepared) {
       prepare::published_prepared_parallel_copy_execution_block_label(*left_parallel_copy);
   const auto right_execution_block =
       prepare::published_prepared_parallel_copy_execution_block_label(*right_parallel_copy);
+  const auto left_execution_block_index =
+      prepare::published_prepared_parallel_copy_execution_block_index(
+          prepared.names, *bir_function, *left_parallel_copy);
+  const auto right_execution_block_index =
+      prepare::published_prepared_parallel_copy_execution_block_index(
+          prepared.names, *bir_function, *right_parallel_copy);
   if (!left_execution_block.has_value() || !right_execution_block.has_value() ||
       prepare::prepared_block_label(prepared.names, *left_execution_block) != "left" ||
       prepare::prepared_block_label(prepared.names, *right_execution_block) != "right") {
     return fail("expected each join incoming bundle to publish its predecessor-owned execution block");
+  }
+  if (!left_execution_block_index.has_value() || !right_execution_block_index.has_value() ||
+      *left_execution_block_index != 1 || *right_execution_block_index != 2) {
+    return fail("expected phi join bundles to publish stable execution-block lookup indices");
   }
   const auto* left_move_bundle = prepare::find_prepared_out_of_ssa_parallel_copy_move_bundle(
       prepared.names, *bir_function, *value_locations, *left_parallel_copy);
@@ -3419,9 +3429,15 @@ int check_phi_loop_cycle_move_resolution(const prepare::PreparedBirModule& prepa
   }
   const auto body_execution_block =
       prepare::published_prepared_parallel_copy_execution_block_label(*body_bundle);
+  const auto body_execution_block_index =
+      prepare::published_prepared_parallel_copy_execution_block_index(
+          prepared.names, *bir_function, *body_bundle);
   if (!body_execution_block.has_value() ||
       prepare::prepared_block_label(prepared.names, *body_execution_block) != "body") {
     return fail("expected the loop backedge bundle to publish direct execution-block authority");
+  }
+  if (!body_execution_block_index.has_value() || *body_execution_block_index != 2) {
+    return fail("expected the loop backedge bundle to publish a stable execution-block lookup index");
   }
   if (!is_named_i32(body_bundle->moves[0].source_value, "b") ||
       !is_named_i32(body_bundle->moves[0].destination_value, "a") ||
