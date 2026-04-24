@@ -1,36 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/01_bir-memory-header-vocabulary-extraction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Move Memory Map Aliases
+Current Step ID: Step 3
+Current Step Title: Create Memory Helpers Header
 
 # Current Packet
 
 ## Just Finished
 
-Completed `Step 2: Move Memory Map Aliases` by moving the source-idea memory
-map and set aliases into `src/backend/bir/lir_to_bir/memory/memory_types.hpp`.
-`lowering.hpp` now forwards the existing `BirFunctionLowerer` compatibility
-aliases to the memory vocabulary header, and the lowerer still directly owns
-the memory lowering state fields.
+Completed `Step 3: Create Memory Helpers Header` by adding
+`src/backend/bir/lir_to_bir/memory/memory_helpers.hpp` as the shared private
+declaration surface for pure memory layout/projection helpers. `lowering.hpp`
+now includes that helper index from the local/global memory helper section
+while remaining the complete private `BirFunctionLowerer` index.
 
 ## Suggested Next
 
-Execute `Step 3: Create Memory Helpers Header` by adding
-`src/backend/bir/lir_to_bir/memory/memory_helpers.hpp` for shared pure memory
-layout/projection helper declarations while keeping implementation control flow
-in the existing memory `.cpp` files.
+Execute `Step 4: Consolidate Shared Layout Projection Helpers` by moving or
+consolidating repeated pure helper logic behind `memory_helpers.hpp` where
+semantics match, without moving stateful policy out of the current
+implementation files.
 
 ## Watchouts
 
-- Add only the two allowed memory headers across this initiative:
-  `memory_types.hpp` and `memory_helpers.hpp`; `memory_helpers.hpp` is still
-  pending after Step 2.
+- The two allowed memory headers across this initiative now exist:
+  `memory_types.hpp` and `memory_helpers.hpp`; do not add per-implementation
+  memory headers.
 - Keep `lowering.hpp` as the complete private `BirFunctionLowerer` index.
 - Preserve behavior and testcase expectations.
-- `memory_types.hpp` forward-declares `lir_to_bir_detail::GlobalAddress` so the
-  global-address map aliases can live with the memory vocabulary without moving
-  the non-memory `GlobalAddress` definition.
+- `memory_helpers.hpp` currently indexes declarations only; Step 4 owns any
+  semantic consolidation of repeated layout/projection helper implementations.
 
 ## Proof
 

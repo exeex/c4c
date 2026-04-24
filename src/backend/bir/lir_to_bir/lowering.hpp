@@ -433,9 +433,13 @@ class BirFunctionLowerer {
                                           const LocalArraySlotMap& local_array_slots);
   static std::optional<std::pair<std::size_t, bir::TypeKind>> parse_local_array_type(
       std::string_view text);
-  static bool can_reinterpret_byte_storage_view(std::string_view storage_type_text,
-                                                std::string_view target_type_text,
-                                                const TypeDeclMap& type_decls);
+  // Member declarations are indexed from `memory/memory_helpers.hpp` so
+  // shared pure memory layout/projection helpers have one local surface while
+  // this class remains the complete private lowerer index.
+#define C4C_BACKEND_BIR_LIR_TO_BIR_MEMORY_HELPERS_MEMBERS
+#include "memory/memory_helpers.hpp"
+#undef C4C_BACKEND_BIR_LIR_TO_BIR_MEMORY_HELPERS_MEMBERS
+
   static std::optional<bir::Value> lower_zero_initializer_value(bir::TypeKind type);
   static std::optional<bir::Value> lower_repeated_byte_initializer_value(
       bir::TypeKind type,
@@ -460,48 +464,6 @@ class BirFunctionLowerer {
   static std::optional<std::vector<bir::Value>> collect_global_array_pointer_values(
       const DynamicGlobalPointerArrayAccess& access,
       const GlobalTypes& global_types);
-  static std::optional<AggregateArrayExtent> find_repeated_aggregate_extent_at_offset(
-      std::string_view type_text,
-      std::size_t target_offset,
-      std::string_view repeated_type_text,
-      const TypeDeclMap& type_decls);
-  static std::optional<LocalAggregateGepTarget> resolve_relative_gep_target(
-      std::string_view type_text,
-      std::int64_t base_byte_offset,
-      const c4c::codegen::lir::LirGepOp& gep,
-      const ValueMap& value_aliases,
-      const TypeDeclMap& type_decls);
-  static std::optional<std::size_t> find_pointer_array_length_at_offset(
-      std::string_view type_text,
-      std::size_t target_offset,
-      const TypeDeclMap& type_decls);
-  static std::optional<GlobalAddress> resolve_global_gep_address(
-      std::string_view global_name,
-      std::string_view type_text,
-      const c4c::codegen::lir::LirGepOp& gep,
-      const ValueMap& value_aliases,
-      const TypeDeclMap& type_decls);
-  static std::optional<GlobalAddress> resolve_relative_global_gep_address(
-      const GlobalAddress& base_address,
-      std::string_view type_text,
-      const c4c::codegen::lir::LirGepOp& gep,
-      const ValueMap& value_aliases,
-      const TypeDeclMap& type_decls);
-  static std::optional<DynamicGlobalPointerArrayAccess> resolve_global_dynamic_pointer_array_access(
-      std::string_view global_name,
-      std::string_view base_type_text,
-      std::size_t initial_byte_offset,
-      bool relative_base,
-      const c4c::codegen::lir::LirGepOp& gep,
-      const ValueMap& value_aliases,
-      const TypeDeclMap& type_decls);
-  static std::optional<DynamicGlobalAggregateArrayAccess>
-  resolve_global_dynamic_aggregate_array_access(const GlobalAddress& base_address,
-                                                std::string_view base_type_text,
-                                                const c4c::codegen::lir::LirGepOp& gep,
-                                                const ValueMap& value_aliases,
-                                                const GlobalTypes& global_types,
-                                                const TypeDeclMap& type_decls);
   static void record_pointer_global_object_alias(
       std::string_view result_name,
       const lir_to_bir_detail::GlobalInfo& global_info,
