@@ -1,37 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/92_parser_agent_index_header_hierarchy.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Clean Compatibility Fallout And Documentation
+Current Step ID: 5
+Current Step Title: Final Parser Hierarchy Validation
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 4 by cleaning stale comments, docs, and parser-focused
-test comments left behind by the Step 2/3 file moves.
+Completed plan Step 5 by validating that the final parser hierarchy matches
+the source idea and that the structural movement remains behavior-preserving.
 
-Updated live references that still implied parser implementation files lived at
-the old top-level paths:
-- `src/frontend/parser/parser.hpp` now points implementation navigation at the
-  `impl/` and `impl/types/` files and keeps the public facade role explicit.
-- `src/frontend/parser/impl/parser_impl.hpp` now describes itself as the
-  private index for `impl/*.cpp` translation units.
-- `src/frontend/parser/BOUNDARY_AUDIT.md` now names the moved parser
-  implementation paths.
-- `docs/frontend_compile_time_hotspot_inventory.md` now preserves the original
-  timing data while naming the moved parser translation units.
-- Parser-focused regression comments that named `parser_types_struct.cpp` now
-  name `impl/types/struct.cpp`.
+Acceptance findings:
+- Target parser implementation files exist under `src/frontend/parser/impl/`
+  and `src/frontend/parser/impl/types/`:
+  `core.cpp`, `declarations.cpp`, `expressions.cpp`, `statements.cpp`,
+  `support.cpp`, `types/base.cpp`, `types/declarator.cpp`,
+  `types/struct.cpp`, and `types/template.cpp`.
+- No old moved implementation files remain at top-level under
+  `src/frontend/parser/`.
+- `src/frontend/parser/parser.hpp` does not include
+  `impl/parser_state.hpp`.
+- `src/frontend/parser/parser.hpp` remains the public facade; parser
+  implementation files live under `impl/` and `impl/types/` as intended.
+- Stale old-filename search found no live source, docs, tests, build, or
+  script references outside lifecycle/archive paths.
 
-Lightweight stale-reference search:
+Final stale-reference search:
 
 ```sh
 rg -n "parser_(core|declarations|expressions|statements|support)\\.cpp|parser_types_(base|declarator|struct|template)\\.cpp|src/frontend/parser/(parser_(core|declarations|expressions|statements|support)|parser_types_(base|declarator|struct|template))\\.cpp|src/frontend/parser/(declarations|expressions|statements|types|support|core)\\.cpp" --glob '!plan.md' --glob '!todo.md' --glob '!ideas/**'
 ```
 
-Result: no matches in live source, docs, tests, build files, or scripts outside
-the lifecycle/source-idea/archive paths intentionally excluded above.
+Result: no matches outside lifecycle/archive paths.
 
 ## Suggested Next
 
@@ -45,15 +46,24 @@ close, retire, or continue with a follow-up packet.
 - The stale-reference search intentionally excluded `plan.md`, `todo.md`, and
   `ideas/**` because the active plan/source idea record the historical move map
   and the repository treats closed/draft ideas as archive.
-- No parser semantics, build sources, file moves, `ast.hpp` split, or
-  one-header-per-implementation-file index work was done in this packet.
+- No implementation, parser semantics, build sources, file moves, `ast.hpp`
+  split, or one-header-per-implementation-file index work was done in this
+  packet.
 
 ## Proof
 
-Delegated proof passed:
+Focused parser proof passed:
 
 ```sh
 { cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1
 ```
 
-Proof log: `test_after.log`.
+Result: `frontend_parser_tests` passed 1/1. Proof log: `test_after.log`.
+
+Full suite passed:
+
+```sh
+ctest --test-dir build -j --output-on-failure
+```
+
+Result: 100% tests passed, 0 tests failed out of 2974.
