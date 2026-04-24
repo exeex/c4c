@@ -90,36 +90,9 @@ struct LoadedAssignableValue {
   TypeSpec value_ts{};
 };
 
-struct CallTargetInfo {
-  BuiltinId builtin_id = BuiltinId::Unknown;
-  const BuiltinInfo* builtin = nullptr;
-  std::string fn_name;
-  TypeSpec callee_ts{};
-  std::string callee_val;
-  LinkNameId callee_link_name_id = kInvalidLinkName;
-  TypeSpec ret_spec{};
-  std::string ret_ty;
-  const Function* target_fn = nullptr;
-  const FnPtrSig* callee_fn_ptr_sig = nullptr;
-  std::string callee_type_suffix;
-  bool builtin_special = false;
-};
-
-struct PreparedCallArg {
-  std::vector<OwnedLirTypedCallArg> args;
-  bool skip = false;
-};
-
-struct Amd64CallArgState {
-  int gp_bytes = 0;
-  int sse_bytes = 0;
-};
-
-struct PreparedBuiltinIntArg {
-  std::string value;
-  std::string llvm_ty;
-  bool is_i64 = false;
-};
+#define C4C_CODEGEN_LIR_HIR_TO_LIR_CALL_TYPES
+#include "call/call.hpp"
+#undef C4C_CODEGEN_LIR_HIR_TO_LIR_CALL_TYPES
 
 // ── Parent module orchestration ─────────────────────────────────────────────
 
@@ -446,13 +419,6 @@ class StmtEmitter {
   // ── Lvalue emission ───────────────────────────────────────────────────────
   std::string emit_lval(FnCtx& ctx, ExprId id, TypeSpec& pointee_ts);
   std::string emit_va_list_obj_ptr(FnCtx& ctx, ExprId id, TypeSpec& ts);
-  struct Amd64VaListPtrs {
-    std::string gp_offset_ptr;
-    std::string fp_offset_ptr;
-    std::string overflow_ptr_ptr;
-    std::string reg_save_area_ptr;
-  };
-  Amd64VaListPtrs load_amd64_va_list_ptrs(FnCtx& ctx, const std::string& ap_ptr);
   std::string emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& pts);
   TypeSpec resolve_member_base_type(FnCtx& ctx, ExprId base_id, bool is_arrow);
   MemberFieldAccess resolve_member_field_access(FnCtx& ctx, const MemberExpr& m);
@@ -489,69 +455,14 @@ class StmtEmitter {
   std::string emit_rval_from_access_ptr(FnCtx& ctx, const std::string& ptr,
                                         const TypeSpec& access_ts, const TypeSpec& load_ts,
                                         bool decay_from_array_object);
-  bool callee_needs_va_list_by_value_copy(const CallTargetInfo& call_target,
-                                          size_t arg_index) const;
-  void apply_default_arg_promotion(FnCtx& ctx, std::string& arg, TypeSpec& out_ts,
-                                   const TypeSpec& in_ts);
-  PreparedCallArg prepare_call_arg(FnCtx& ctx, const CallExpr& call,
-                                   const CallTargetInfo& call_target, size_t arg_index,
-                                   Amd64CallArgState* amd64_state);
-  PreparedCallArg prepare_amd64_variadic_aggregate_arg(
-      FnCtx& ctx, const TypeSpec& arg_ts, const std::string& obj_ptr,
-      int payload_sz, Amd64CallArgState* amd64_state);
-  std::vector<OwnedLirTypedCallArg> prepare_call_args(FnCtx& ctx, const CallExpr& call,
-                                                      const CallTargetInfo& call_target);
-  void emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
-                      const std::vector<OwnedLirTypedCallArg>& args);
-  std::string emit_call_with_result(FnCtx& ctx, const CallTargetInfo& call_target,
-                                    const std::vector<OwnedLirTypedCallArg>& args);
-  PreparedBuiltinIntArg prepare_builtin_int_arg(FnCtx& ctx, ExprId arg_id,
-                                                BuiltinId builtin_id);
-  std::string narrow_builtin_int_result(FnCtx& ctx, const PreparedBuiltinIntArg& arg,
-                                        const std::string& value);
-  std::string emit_builtin_ffs_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
-  std::string emit_builtin_ctz_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
-  std::string emit_builtin_clz_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
-  std::string emit_builtin_popcount_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
-  std::string emit_builtin_parity_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
-  std::string emit_builtin_clrsb_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
-  void promote_builtin_fp_predicate_arg(FnCtx& ctx, std::string& value, TypeSpec& value_ts);
-  std::string emit_builtin_fp_predicate_result(FnCtx& ctx, const char* predicate,
-                                               const std::string& fp_ty,
-                                               const std::string& lhs,
-                                               const std::string& rhs);
-  std::string emit_builtin_fp_compare_call(FnCtx& ctx, const CallExpr& call,
-                                           BuiltinId builtin_id);
-  std::string emit_builtin_isunordered_call(FnCtx& ctx, const CallExpr& call);
-  std::string emit_builtin_isnan_call(FnCtx& ctx, ExprId arg_id);
-  std::string emit_builtin_isinf_call(FnCtx& ctx, ExprId arg_id);
-  std::string emit_builtin_isfinite_call(FnCtx& ctx, ExprId arg_id);
-  void promote_builtin_fp_math_arg(FnCtx& ctx, std::string& value, TypeSpec& value_ts,
-                                   BuiltinId builtin_id);
-  std::string emit_builtin_copysign_call(FnCtx& ctx, const CallExpr& call,
-                                         BuiltinId builtin_id);
-  std::string emit_builtin_fabs_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
-  std::string emit_builtin_conj_call(FnCtx& ctx, ExprId arg_id);
-  void promote_builtin_signbit_arg(FnCtx& ctx, std::string& value, TypeSpec& value_ts,
-                                   BuiltinId builtin_id);
-  std::string emit_builtin_signbit_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
-  std::string emit_post_builtin_call(FnCtx& ctx, const CallExpr& call,
-                                     const CallTargetInfo& call_target);
-
-  // Call subdomain entry points. Implementations are indexed from
-  // `hir_to_lir/call/call.hpp`; keep detailed call-only helpers there as that
-  // index is strengthened.
-  std::string emit_amd64_va_arg(FnCtx& ctx, const TypeSpec& res_ts,
-                                const std::string& res_ty, const std::string& ap_ptr);
-  std::string emit_amd64_va_arg_from_registers(
-      FnCtx& ctx, const TypeSpec& res_ts, const std::string& res_ty,
-      const c4c::codegen::llvm_backend::Amd64VarargInfo& layout,
-      const Amd64VaListPtrs& access, const std::string& gp_offset,
-      const std::string& fp_offset);
-  std::string emit_amd64_va_arg_from_overflow(FnCtx& ctx, const TypeSpec& res_ts,
-                                              const std::string& res_ty,
-                                              const Amd64VaListPtrs& access,
-                                              int size_bytes);
+  // ── Call subdomain ───────────────────────────────────────────────────────
+  //
+  // Member declarations are indexed from `hir_to_lir/call/call.hpp` so call
+  // lowering agents have one private entry point for args, target, builtin,
+  // generic call emission, and va_arg helpers.
+#define C4C_CODEGEN_LIR_HIR_TO_LIR_CALL_MEMBERS
+#include "call/call.hpp"
+#undef C4C_CODEGEN_LIR_HIR_TO_LIR_CALL_MEMBERS
 
   // ── Expression subdomain entry points ────────────────────────────────────
   //
@@ -565,7 +476,6 @@ class StmtEmitter {
   const Function* find_local_target_function(LinkNameId link_name_id,
                                              std::string_view fallback_name) const;
   const FnPtrSig* resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& callee_e);
-  CallTargetInfo resolve_call_target_info(FnCtx& ctx, const CallExpr& call, const Expr& e);
   TypeSpec resolve_payload_type(FnCtx& ctx, const DeclRef& r);
   TypeSpec resolve_payload_type(FnCtx& ctx, const BinaryExpr& b);
   TypeSpec resolve_payload_type(FnCtx& ctx, const UnaryExpr& u);
@@ -621,16 +531,6 @@ class StmtEmitter {
 
   // ── Cast ─────────────────────────────────────────────────────────────────
   std::string emit_rval_payload(FnCtx& ctx, const CastExpr& c, const Expr& /*e*/);
-
-  // ── Call ─────────────────────────────────────────────────────────────────
-  std::string emit_rval_payload(FnCtx& ctx, const CallExpr& call, const Expr& e);
-
-  // ── VaArg ────────────────────────────────────────────────────────────────
-  std::string emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::string& ap_ptr, int slot_bytes);
-  std::string emit_aarch64_vaarg_fp_src_ptr(
-      FnCtx& ctx, const std::string& ap_ptr, int reg_slot_bytes, int stack_slot_bytes,
-      int stack_align_bytes);
-  std::string emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const Expr& e);
 
   // ── Ternary ───────────────────────────────────────────────────────────────
   std::string emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, const Expr& e);
