@@ -64,74 +64,76 @@ bool Parser::try_parse_record_access_label() {
     return true;
 }
 
-bool Parser::try_skip_record_friend_member() {
-    if (!(is_cpp_mode() &&
-          (check(TokenKind::KwFriend) ||
-           (check(TokenKind::Identifier) && token_spelling(cur()) == "friend")))) {
+bool try_skip_record_friend_member(Parser& parser) {
+    if (!(parser.is_cpp_mode() &&
+          (parser.check(TokenKind::KwFriend) ||
+           (parser.check(TokenKind::Identifier) &&
+            parser.token_spelling(parser.cur()) == "friend")))) {
         return false;
     }
 
-    consume();
+    parser.consume();
     int angle_depth = 0;
     int paren_depth = 0;
-    while (!at_end()) {
-        if (check(TokenKind::KwOperator) && angle_depth == 0 &&
+    while (!parser.at_end()) {
+        if (parser.check(TokenKind::KwOperator) && angle_depth == 0 &&
             paren_depth == 0) {
             std::string ignored_name;
-            if (parse_operator_declarator_name(&ignored_name)) {
+            if (parser.parse_operator_declarator_name(&ignored_name)) {
                 continue;
             }
         }
-        if (check(TokenKind::Less) && paren_depth == 0) {
+        if (parser.check(TokenKind::Less) && paren_depth == 0) {
             ++angle_depth;
-            consume();
+            parser.consume();
             continue;
         }
-        if (check_template_close() && paren_depth == 0 && angle_depth > 0) {
+        if (parser.check_template_close() && paren_depth == 0 && angle_depth > 0) {
             --angle_depth;
-            match_template_close();
+            parser.match_template_close();
             continue;
         }
-        if (check(TokenKind::LParen)) {
+        if (parser.check(TokenKind::LParen)) {
             ++paren_depth;
-            consume();
+            parser.consume();
             continue;
         }
-        if (check(TokenKind::RParen) && paren_depth > 0) {
+        if (parser.check(TokenKind::RParen) && paren_depth > 0) {
             --paren_depth;
-            consume();
+            parser.consume();
             continue;
         }
-        if (check(TokenKind::LBrace) && angle_depth == 0 && paren_depth == 0) {
-            skip_brace_group();
+        if (parser.check(TokenKind::LBrace) && angle_depth == 0 && paren_depth == 0) {
+            parser.skip_brace_group();
             break;
         }
-        if (check(TokenKind::Semi) && angle_depth == 0 && paren_depth == 0) {
-            consume();
+        if (parser.check(TokenKind::Semi) && angle_depth == 0 && paren_depth == 0) {
+            parser.consume();
             break;
         }
-        if (check(TokenKind::RBrace) && angle_depth == 0 && paren_depth == 0) {
+        if (parser.check(TokenKind::RBrace) && angle_depth == 0 && paren_depth == 0) {
             break;
         }
-        consume();
+        parser.consume();
     }
-    if (check(TokenKind::Assign)) {
-        consume();
-        if (check(TokenKind::KwDelete) || check(TokenKind::KwDefault))
-            consume();
-        match(TokenKind::Semi);
+    if (parser.check(TokenKind::Assign)) {
+        parser.consume();
+        if (parser.check(TokenKind::KwDelete) || parser.check(TokenKind::KwDefault))
+            parser.consume();
+        parser.match(TokenKind::Semi);
     }
     return true;
 }
 
-bool Parser::try_skip_record_static_assert_member(std::vector<Node*>* methods) {
-    if (!check(TokenKind::KwStaticAssert))
+bool try_skip_record_static_assert_member(Parser& parser,
+                                          std::vector<Node*>* methods) {
+    if (!parser.check(TokenKind::KwStaticAssert))
         return false;
 
     if (methods) {
-        methods->push_back(parse_static_assert_declaration());
+        methods->push_back(parser.parse_static_assert_declaration());
     } else {
-        (void)parse_static_assert_declaration();
+        (void)parser.parse_static_assert_declaration();
     }
     return true;
 }
@@ -887,9 +889,9 @@ bool Parser::try_parse_record_enum_member(
     return true;
 }
 
-bool Parser::is_record_special_member_name(
-    const std::string& lex, const std::string& struct_source_name) const {
-    if (lex == current_struct_tag_text()) return true;
+bool is_record_special_member_name(Parser& parser, const std::string& lex,
+                                   const std::string& struct_source_name) {
+    if (lex == parser.current_struct_tag_text()) return true;
     return !struct_source_name.empty() && lex == struct_source_name;
 }
 
@@ -932,8 +934,9 @@ bool Parser::try_parse_record_constructor_member(
     if (probe < static_cast<int>(core_input_state_.tokens.size()) &&
         core_input_state_.tokens[probe].kind == TokenKind::Identifier &&
         is_record_special_member_name(
+            *this,
             std::string(token_spelling(core_input_state_.tokens[probe])),
-                                      struct_source_name) &&
+            struct_source_name) &&
         probe + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
         core_input_state_.tokens[probe + 1].kind == TokenKind::LParen) {
         while (pos_ < probe) {
@@ -945,8 +948,9 @@ bool Parser::try_parse_record_constructor_member(
     }
 
     if (!(check(TokenKind::Identifier) &&
-          is_record_special_member_name(std::string(token_spelling(cur())),
-                                        struct_source_name) &&
+          is_record_special_member_name(
+              *this, std::string(token_spelling(cur())),
+              struct_source_name) &&
           core_input_state_.pos + 1 <
               static_cast<int>(core_input_state_.tokens.size()) &&
           core_input_state_.tokens[core_input_state_.pos + 1].kind ==
@@ -1076,8 +1080,10 @@ bool Parser::try_parse_record_destructor_member(
           core_input_state_.tokens[core_input_state_.pos + 1].kind ==
               TokenKind::Identifier &&
           is_record_special_member_name(
-              std::string(token_spelling(core_input_state_.tokens[core_input_state_.pos + 1])),
-                                        struct_source_name))) {
+              *this,
+              std::string(token_spelling(
+                  core_input_state_.tokens[core_input_state_.pos + 1])),
+              struct_source_name))) {
         return false;
     }
 
@@ -1712,23 +1718,23 @@ bool Parser::try_parse_record_member_with_template_prelude(
     parse_record_template_member_prelude(&tmpl_guard.injected_type_params,
                                          &tmpl_guard.pushed_template_scope);
     parse_optional_cpp20_requires_clause(*this);
-    if (try_skip_record_friend_member()) return true;
-    if (try_skip_record_static_assert_member(methods)) return true;
+    if (try_skip_record_friend_member(*this)) return true;
+    if (try_skip_record_static_assert_member(*this, methods)) return true;
     return try_parse_record_member_dispatch(struct_source_name, fields, methods,
                                             member_typedef_names,
                                             member_typedef_types,
                                             check_dup_field);
 }
 
-bool Parser::begin_record_member_parse() {
-    skip_attributes();
-    return !check(TokenKind::RBrace);
+bool begin_record_member_parse(Parser& parser) {
+    parser.skip_attributes();
+    return !parser.check(TokenKind::RBrace);
 }
 
 bool Parser::try_parse_record_member_prelude(std::vector<Node*>* methods) {
     if (try_parse_record_access_label()) return true;
-    if (try_skip_record_friend_member()) return true;
-    return try_skip_record_static_assert_member(methods);
+    if (try_skip_record_friend_member(*this)) return true;
+    return try_skip_record_static_assert_member(*this, methods);
 }
 
 bool Parser::try_parse_record_member(
@@ -1738,7 +1744,7 @@ bool Parser::try_parse_record_member(
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
-    if (!begin_record_member_parse()) return false;
+    if (!begin_record_member_parse(*this)) return false;
     if (try_parse_record_member_prelude(methods)) return true;
     return try_parse_record_member_with_template_prelude(
         struct_source_name, fields, methods, member_typedef_names,

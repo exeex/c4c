@@ -9,12 +9,13 @@ Current Step Title: Move Implementation-Only Method Declarations Behind The Boun
 ## Just Finished
 
 Completed Step 3 declaration-boundary slice by removing the implementation-only
-`consume_adjacent_string_literal` declaration from public `Parser` in
-`src/frontend/parser/parser.hpp`, adding the equivalent private helper
-declaration to `src/frontend/parser/impl/parser_impl.hpp`, converting the
-definition in `src/frontend/parser/parser_core.cpp` to take `Parser&`, and
-updating implementation call sites in `parser_expressions.cpp` and
-`parser_statements.cpp` to pass `*this` through the private boundary.
+record-member helpers `is_record_special_member_name`,
+`try_skip_record_friend_member`, `try_skip_record_static_assert_member`, and
+`begin_record_member_parse` from public `Parser` declarations in
+`src/frontend/parser/parser.hpp`, adding equivalent private helper declarations
+to `src/frontend/parser/impl/parser_impl.hpp`, and converting definitions and
+call sites in `src/frontend/parser/parser_types_struct.cpp` to pass `Parser&`
+through the private boundary.
 
 ## Suggested Next
 
@@ -35,18 +36,14 @@ plan, keeping implementation-only declarations behind
 - Keep any test-only hooks clearly named and isolated.
 - `Parser` move operations are explicitly deleted in this slice because the
   compatibility boundary keeps public reference members bound into `ParserImpl`.
-- The delegated `rg` query confirms `consume_adjacent_string_literal` is no
-  longer declared on public `Parser`; its declaration lives in
-  `impl/parser_impl.hpp`, with the definition and call sites passing `Parser&`.
+- The delegated `rg` query confirms the four record-member helpers are no
+  longer declared on public `Parser`; their declarations live in
+  `impl/parser_impl.hpp`, with definitions and call sites passing `Parser&`.
 
 ## Proof
 
-Executor Step 3 focused proof passed for the
-`consume_adjacent_string_literal` declaration-boundary slice:
+Executor Step 3 focused proof passed for the record-member helper
+declaration-boundary slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 
-Supervisor acceptance proof then escalated to a matching full-suite run:
-`cmake --build build -j && ctest --test-dir build -j --output-on-failure`
-
-Result: passed, 2974/2974 tests. Regression guard also passed against the
-matching full-suite `test_before.log`.
+Result: passed. Proof log: `test_after.log`.

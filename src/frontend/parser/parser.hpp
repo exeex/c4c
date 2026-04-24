@@ -747,8 +747,6 @@ class Parser {
   bool try_parse_record_enum_member(
       std::vector<Node*>* fields,
       const std::function<void(const char*)>& check_dup_field);
-  bool is_record_special_member_name(
-      const std::string& lex, const std::string& struct_source_name) const;
   bool try_parse_record_constructor_member(
       const std::string& struct_source_name,
       std::vector<Node*>* methods);
@@ -781,7 +779,6 @@ class Parser {
       std::vector<const char*>* member_typedef_names,
       std::vector<TypeSpec>* member_typedef_types,
       const std::function<void(const char*)>& check_dup_field);
-  bool begin_record_member_parse();
   bool try_parse_record_member_prelude(std::vector<Node*>* methods);
   bool try_parse_record_member(
       const std::string& struct_source_name,
@@ -795,8 +792,6 @@ class Parser {
       RecordBodyState* body_state,
       const std::function<void(const char*)>& check_dup_field);
   bool try_parse_record_access_label();
-  bool try_skip_record_friend_member();
-  bool try_skip_record_static_assert_member(std::vector<Node*>* methods);
   RecordMemberRecoveryResult recover_record_member_parse_error(int member_start_pos);
   void parse_record_template_member_prelude(
       std::vector<InjectedTemplateParam>* injected_type_params,
