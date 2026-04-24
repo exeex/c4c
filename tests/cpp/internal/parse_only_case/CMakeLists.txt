@@ -283,3 +283,12 @@ set_tests_properties(cpp_parse_namespace_using_nested_visibility_dump PROPERTIES
   LABELS "internal;positive_case;cpp;parse"
   PASS_REGULAR_EXPRESSION "GlobalVar\\(outer::inner::value\\).*Function\\(bridge::read\\)"
 )
+
+add_test(
+  NAME cpp_parse_namespace_qualified_local_decl_statement_probe_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/namespace_qualified_local_decl_statement_probe_parse.cpp"
+)
+set_tests_properties(cpp_parse_namespace_qualified_local_decl_statement_probe_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Decl\\(local\\).*Var\\(ns::value\\)|Var\\(ns::value\\).*Decl\\(local\\)"
+)

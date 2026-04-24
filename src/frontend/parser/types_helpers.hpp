@@ -21,6 +21,10 @@ bool skip_cpp20_constraint_atom(Parser& parser);
 
 using ParsedTemplateArg = Parser::TemplateArgParseResult;
 
+std::string resolve_qualified_known_type_name(
+    const Parser& parser,
+    const Parser::QualifiedNameRef& qn);
+
 bool match_floatn_keyword_base(std::string_view name, TypeBase* out_base) {
     TypeBase base = TB_INT;
     if (name == "_Float16" || name == "_Float32") {
@@ -103,6 +107,115 @@ bool token_can_follow_value_like_template_arg(TokenKind kind) {
         default:
             return false;
     }
+}
+
+std::string visible_type_head_name(const Parser& parser,
+                                   TextId name_text_id,
+                                   std::string_view name) {
+    if (const TypeSpec* visible_type =
+            parser.find_visible_typedef_type(name_text_id, name)) {
+        if (visible_type->tag && visible_type->tag[0]) {
+            return visible_type->tag;
+        }
+    }
+    return parser.resolve_visible_type_name(name_text_id, name);
+}
+
+std::string visible_type_head_name(const Parser& parser,
+                                   std::string_view name) {
+    return visible_type_head_name(parser, parser.find_parser_text_id(name), name);
+}
+
+bool qualified_name_from_text(const Parser& parser, std::string_view text,
+                              Parser::QualifiedNameRef* out) {
+    if (!out || text.empty()) return false;
+
+    Parser::QualifiedNameRef qn;
+    size_t start = 0;
+    if (text.rfind("::", 0) == 0) {
+        qn.is_global_qualified = true;
+        start = 2;
+    }
+    if (start >= text.size()) return false;
+
+    while (start < text.size()) {
+        const size_t sep = text.find("::", start);
+        const std::string segment =
+            sep == std::string::npos ? std::string(text.substr(start))
+                                     : std::string(text.substr(start, sep - start));
+        if (segment.empty()) return false;
+        const TextId segment_text_id =
+            parser.parser_text_id_for_token(kInvalidText, segment);
+        if (sep == std::string::npos) {
+            qn.base_name = segment;
+            qn.base_text_id = segment_text_id;
+            *out = std::move(qn);
+            return segment_text_id != kInvalidText;
+        }
+        qn.qualifier_segments.push_back(segment);
+        qn.qualifier_text_ids.push_back(segment_text_id);
+        start = sep + 2;
+        if (start >= text.size()) return false;
+    }
+    return false;
+}
+
+Parser::QualifiedNameRef qualified_owner_name(const Parser& parser,
+                                              const Parser::QualifiedNameRef& qn) {
+    Parser::QualifiedNameRef owner_qn;
+    if (qn.qualifier_segments.empty()) return owner_qn;
+
+    owner_qn.is_global_qualified = qn.is_global_qualified;
+    owner_qn.qualifier_segments.assign(qn.qualifier_segments.begin(),
+                                       qn.qualifier_segments.end() - 1);
+    if (!qn.qualifier_text_ids.empty()) {
+        const size_t owner_qualifier_count =
+            qn.qualifier_segments.size() > 0 ? qn.qualifier_segments.size() - 1 : 0;
+        const size_t copy_count =
+            owner_qualifier_count < qn.qualifier_text_ids.size()
+                ? owner_qualifier_count
+                : qn.qualifier_text_ids.size();
+        owner_qn.qualifier_text_ids.assign(
+            qn.qualifier_text_ids.begin(),
+            qn.qualifier_text_ids.begin() + copy_count);
+    }
+
+    owner_qn.base_name = qn.qualifier_segments.back();
+    if (qn.qualifier_text_ids.size() >= qn.qualifier_segments.size()) {
+        owner_qn.base_text_id = qn.qualifier_text_ids[qn.qualifier_segments.size() - 1];
+    } else {
+        owner_qn.base_text_id =
+            parser.parser_text_id_for_token(kInvalidText, owner_qn.base_name);
+    }
+    return owner_qn;
+}
+
+std::string resolve_qualified_owner_type_name(
+    const Parser& parser,
+    const Parser::QualifiedNameRef& qn) {
+    if (qn.qualifier_segments.empty()) return {};
+
+    const Parser::QualifiedNameRef owner_qn = qualified_owner_name(parser, qn);
+    const std::string owner_name =
+        resolve_qualified_known_type_name(parser, owner_qn);
+    if (!owner_name.empty()) return owner_name;
+
+    return std::string(parser.parser_text(owner_qn.base_text_id, owner_qn.base_name));
+}
+
+bool split_qualified_member_type_name(
+    const Parser& parser, std::string_view text,
+    Parser::QualifiedNameRef* owner_qn, std::string* member_name) {
+    Parser::QualifiedNameRef qn;
+    if (!qualified_name_from_text(parser, text, &qn) ||
+        qn.qualifier_segments.empty()) {
+        return false;
+    }
+    if (owner_qn) *owner_qn = qualified_owner_name(parser, qn);
+    if (member_name) {
+        *member_name = std::string(parser.parser_text(qn.base_text_id, qn.base_name));
+    }
+    return true;
 }
 
 void append_qualified_name_tokens(Parser& parser,
@@ -270,16 +383,31 @@ bool instantiate_template_struct_via_injected_parse(
     return ok;
 }
 
-bool is_known_simple_type_head(const Parser& parser, const std::string& name) {
+bool is_known_simple_type_head(const Parser& parser, TextId name_text_id,
+                               std::string_view name) {
     if (match_floatn_keyword_base(name, nullptr)) return true;
-    if (parser.is_template_scope_type_param(name)) return true;
-    if (parser.is_typedef_name(name)) return true;
-    const std::string resolved = parser.resolve_visible_type_name(name);
-    return parser.has_typedef_type(resolved) ||
-           parser.template_struct_defs_.count(name) > 0 ||
-           parser.template_struct_defs_.count(resolved) > 0 ||
-           parser.defined_struct_tags_.count(name) > 0 ||
-           parser.defined_struct_tags_.count(resolved) > 0;
+    if (parser.is_template_scope_type_param(name_text_id, name)) return true;
+    if (parser.is_typedef_name(name_text_id, name)) return true;
+    if (parser.has_visible_typedef_type(name_text_id, name)) return true;
+    const std::string resolved =
+        visible_type_head_name(parser, name_text_id, name);
+    return parser.has_template_struct_primary(
+               parser.current_namespace_context_id(), name_text_id, name) ||
+           (!resolved.empty() &&
+            parser.has_template_struct_primary(
+                parser.current_namespace_context_id(),
+                parser.find_parser_text_id(resolved), resolved)) ||
+           parser.definition_state_.defined_struct_tags.count(
+               std::string(name)) > 0 ||
+           parser.definition_state_.defined_struct_tags.count(resolved) > 0;
+}
+
+bool is_known_simple_visible_type_head(const Parser& parser,
+                                       TextId name_text_id,
+                                       std::string_view name) {
+    return parser.is_typedef_name(name_text_id, name) ||
+           parser.is_template_scope_type_param(name_text_id, name) ||
+           parser.has_visible_typedef_type(name_text_id, name);
 }
 
 bool starts_with_value_like_template_expr(const Parser& parser,
@@ -300,9 +428,10 @@ bool starts_with_value_like_template_expr(const Parser& parser,
     };
 
     bool saw_scope = tokens[start_pos].kind == TokenKind::ColonColon;
+    const Token& first_identifier = tokens[pos];
     const bool first_identifier_is_known_type =
-        is_known_simple_type_head(parser,
-                                  std::string(parser.token_spelling(tokens[pos])));
+        is_known_simple_type_head(parser, first_identifier.text_id,
+                                  parser.token_spelling(first_identifier));
 
     while (pos < static_cast<int>(tokens.size())) {
         const std::string current_name =
@@ -372,33 +501,33 @@ struct QualifiedTypeProbe {
     std::string spelled_name;
 };
 
-std::string spell_qualified_name_for_lookup(const Parser::QualifiedNameRef& qn) {
-    return qn.spelled();
+std::string qualified_name_text(const Parser& parser,
+                                const Parser::QualifiedNameRef& qn,
+                                bool include_global_prefix = true) {
+    return parser.qualified_name_text(qn, include_global_prefix);
 }
 
 std::string resolve_qualified_typedef_name(const Parser& parser,
                                            const Parser::QualifiedNameRef& qn) {
-    std::string resolved = spell_qualified_name_for_lookup(qn);
-    if (!resolved.empty() && parser.has_typedef_type(resolved))
-        return resolved;
-
-    if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
-        int context_id = parser.resolve_namespace_context(qn);
-        if (context_id >= 0) {
-            std::string canonical =
-                parser.canonical_name_in_context(
-                    context_id,
-                    std::string(parser.parser_text(qn.base_text_id, qn.base_name)));
-            if (parser.has_typedef_type(canonical))
-                return canonical;
-        }
-        return {};
+    const bool is_qualified = !qn.qualifier_segments.empty() ||
+                              qn.is_global_qualified;
+    const std::string_view base_name =
+        parser.parser_text(qn.base_text_id, qn.base_name);
+    if (is_qualified) {
+        std::string resolved = parser.resolve_qualified_type_name(qn);
+        if (!resolved.empty() && parser.has_typedef_type(resolved))
+            return resolved;
+    } else {
+        return visible_type_head_name(parser, qn.base_text_id, base_name);
     }
 
-    resolved = parser.resolve_visible_type_name(
-        parser.parser_text(qn.base_text_id, qn.base_name));
-    if (parser.has_typedef_type(resolved))
+    std::string resolved =
+        parser.resolve_visible_type_name(qn.base_text_id, base_name);
+    if (parser.has_visible_typedef_type(qn.base_text_id, base_name))
         return resolved;
+    if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
+        return {};
+    }
     return {};
 }
 
@@ -408,32 +537,32 @@ std::string resolve_qualified_known_type_name(
     std::string resolved = resolve_qualified_typedef_name(parser, qn);
     if (!resolved.empty()) return resolved;
 
-    resolved = spell_qualified_name_for_lookup(qn);
-    if (!resolved.empty() &&
-        (parser.template_struct_defs_.count(resolved) > 0 ||
-         parser.defined_struct_tags_.count(resolved) > 0)) {
-        return resolved;
-    }
-
-    if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
-        const int context_id = parser.resolve_namespace_context(qn);
-        if (context_id >= 0) {
-            std::string canonical =
-                parser.canonical_name_in_context(
-                    context_id,
-                    std::string(parser.parser_text(qn.base_text_id, qn.base_name)));
-            if (parser.template_struct_defs_.count(canonical) > 0 ||
-                parser.defined_struct_tags_.count(canonical) > 0) {
-                return canonical;
-            }
+    const bool is_qualified = !qn.qualifier_segments.empty() ||
+                              qn.is_global_qualified;
+    if (is_qualified) {
+        resolved = parser.resolve_qualified_type_name(qn);
+        if (!resolved.empty() &&
+            (parser.has_template_struct_primary(qn) ||
+             parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {
+            return resolved;
         }
-        return {};
+    } else {
+        resolved = std::string(parser.parser_text(qn.base_text_id, qn.base_name));
+        if (!resolved.empty() &&
+            (parser.has_template_struct_primary(
+                 parser.current_namespace_context_id(), qn.base_text_id,
+                 parser.parser_text(qn.base_text_id, qn.base_name)) ||
+             parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {
+            return resolved;
+        }
     }
 
     resolved = parser.resolve_visible_type_name(
-        parser.parser_text(qn.base_text_id, qn.base_name));
-    if (parser.template_struct_defs_.count(resolved) > 0 ||
-        parser.defined_struct_tags_.count(resolved) > 0) {
+        qn.base_text_id, parser.parser_text(qn.base_text_id, qn.base_name));
+    if (parser.has_template_struct_primary(
+            parser.current_namespace_context_id(),
+            parser.find_parser_text_id(resolved), resolved) ||
+        parser.definition_state_.defined_struct_tags.count(resolved) > 0) {
         return resolved;
     }
     return {};
@@ -443,21 +572,33 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
                                         const Parser::QualifiedNameRef& qn) {
     QualifiedTypeProbe probe;
     probe.resolved_typedef_name = resolve_qualified_known_type_name(parser, qn);
-    if (parser.has_typedef_type(probe.resolved_typedef_name)) {
+    if ((!qn.qualifier_segments.empty() || qn.is_global_qualified)
+            ? parser.has_typedef_type(probe.resolved_typedef_name)
+            : parser.has_visible_typedef_type(qn.base_text_id, qn.base_name)) {
         probe.has_resolved_typedef = true;
         return probe;
     }
-    if (parser.template_struct_defs_.count(probe.resolved_typedef_name) > 0 ||
-        parser.defined_struct_tags_.count(probe.resolved_typedef_name) > 0) {
+    if (parser.has_template_struct_primary(
+            parser.current_namespace_context_id(),
+            parser.find_parser_text_id(probe.resolved_typedef_name),
+            probe.resolved_typedef_name) ||
+        parser.definition_state_.defined_struct_tags.count(
+            probe.resolved_typedef_name) > 0) {
         probe.has_resolved_typedef = true;
         return probe;
     }
 
-    if (qn.qualifier_segments.empty()) return probe;
+    if (qn.qualifier_segments.empty() && !qn.is_global_qualified) return probe;
 
     probe.has_unresolved_qualified_fallback = true;
-    probe.spelled_name = spell_qualified_name_for_lookup(qn);
+    probe.spelled_name = qualified_name_text(parser, qn);
     probe.namespace_context_id = parser.resolve_namespace_context(qn);
+    if (parser.has_template_struct_primary(qn) ||
+        parser.find_template_struct_specializations(qn) != nullptr) {
+        probe.has_resolved_typedef = true;
+        probe.resolved_typedef_name = probe.spelled_name;
+        probe.has_unresolved_qualified_fallback = false;
+    }
     return probe;
 }
 
@@ -595,13 +736,13 @@ bool parse_alignas_specifier(Parser* parser, TypeSpec* ts, int line) {
             Node* align_node = parser->make_node(NK_ALIGNOF_TYPE, line);
             align_node->type = align_ts;
             have_align = eval_const_int(align_node, &align_val,
-                                        &parser->struct_tag_def_map_,
-                                        &parser->const_int_bindings_);
+                                        &parser->definition_state_.struct_tag_def_map,
+                                        &parser->binding_state_.const_int_bindings);
         } else {
             Node* align_expr = parser->parse_assign_expr();
             have_align = eval_const_int(align_expr, &align_val,
-                                        &parser->struct_tag_def_map_,
-                                        &parser->const_int_bindings_);
+                                        &parser->definition_state_.struct_tag_def_map,
+                                        &parser->binding_state_.const_int_bindings);
         }
     }
     parser->expect(TokenKind::RParen);

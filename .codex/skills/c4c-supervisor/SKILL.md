@@ -1,6 +1,6 @@
 ---
 name: c4c-supervisor
-description: Lightweight c4c orchestration shell. Use for the direct user-facing agent that decides whether to call the plan owner, an executor, or a reviewer, checks git status before and after delegation, normalizes canonical regression logs, runs supervisor-side validation, and commits completed coherent slices. This role should stay lightweight and is intended to run on gpt-5.4-mini.
+description: Lightweight c4c orchestration shell. Use for the direct user-facing agent that decides whether to call the plan owner, an executor, or a reviewer, checks git status before and after delegation, normalizes canonical regression logs, runs supervisor-side validation, and commits completed coherent slices. This role should stay lightweight.
 ---
 
 # C4C Supervisor
@@ -11,20 +11,15 @@ This role is an orchestration shell. It chooses the next specialist, reviews
 the returned slice, runs acceptance checks, maintains canonical regression-log
 state, and creates the final commit. It does not own lifecycle rewrites or implementation edits when a matching specialist role exists.
 
-## Model Intent
-
-- default this role to `gpt-5.4-mini`
-- call `c4c-plan-owner` on `gpt-5.4` for lifecycle work
-- call `c4c-executor` on `gpt-5.4` for implementation work
-- call `c4c-reviewer` on `gpt-5.4` for route-drift review
-- use `c4c-divide-and-conquer` when the active route is genuinely stuck and
-  needs a decomposition initiative instead of another repair packet
-
 ## Start Here
 
 1. Read [`AGENTS.md`](/workspaces/c4c/AGENTS.md).
 2. Detect state from `plan.md`, `todo.md`, and `ideas/open/`.
-3. Run [`scripts/plan_change_gap.sh`](/workspaces/c4c/scripts/plan_change_gap.sh).
+3. If [`todo.md`](/workspaces/c4c/todo.md) exists, inspect the current review
+   metadata there and use `scripts/plan_review_state.py show` when you need the
+   local `.plan_review_state.json` state directly.
+   Also scan the top of `todo.md` for reminder lines:
+   `你該做code review了` and `你該做test baseline review了`.
 4. If `plan.md` exists, read the linked source idea before making route,
    review, or acceptance decisions.
 5. When preparing a code packet, read
@@ -49,12 +44,13 @@ state, and creates the final commit. It does not own lifecycle rewrites or imple
 - decide whether `c4c-reviewer` is needed and whether delegated `c4c-executor`
   or `c4c-reviewer` packets should explicitly use `c4c-clang-tools` to save
   token on C++ exploration
-- let executors choose `c4cll-debug-flags` on their own when a packet needs
-  `c4cll` stage-level observation; do not require a supervisor `Tooling` line
-  for normal flag-driven compiler debugging
 - flush completed ready slices before delegating new work
 - watch `todo.md` execution metadata so oversized steps can trigger plan review
   from stable state instead of chat-only judgment
+- treat `todo.md` reminder keywords as explicit post-commit triggers for
+  supervisor-owned follow-up validation
+- own acceptance of `test_baseline.new.log` into `test_baseline.log`; hooks
+  may produce baseline candidates but do not auto-accept them
 
 ## Hard Boundaries
 
@@ -131,7 +127,7 @@ Plan-owner review packet shape for oversized steps:
 ```text
 to_subagent: c4c-plan-owner
 Objective: review whether <Current Step ID> / <Current Step Title> is oversized and rewrite `plan.md` if it should split into numbered substeps
-Trigger: `todo.md` shows Current Step ID = <id>, Current Step Title = <title>, and Plan Review Counter = <n> / <limit>
+Trigger: `todo.md` shows Current Step ID = <id>, Current Step Title = <title>, and the reminder line `你該做code review了`
 Owned Files: plan.md, todo.md
 Do Not Touch: <implementation files, source idea unless durable intent changed>
 Done When: `plan.md` reflects the reviewed step structure and `todo.md` metadata is aligned
@@ -175,9 +171,16 @@ Choose the next specialist with these rules:
   selection and may reuse, refine, or replace that suggestion
 - if route friction can be fixed in `todo.md`, do that before `plan.md`
 - if route friction can be fixed in `plan.md`, do not touch the source idea
-- if `todo.md` shows the same `Current Step ID` has accumulated too many
-  accepted commits relative to its displayed review limit, call
-  `c4c-plan-owner` to review whether that step should split into numbered
+- if `todo.md` contains `你該做code review了` after a commit:
+  run a route-quality/code-review pass before delegating another execution
+  packet; prefer `c4c-reviewer` when the diff is non-trivial or route risk is
+  unclear
+- if `todo.md` contains `你該做test baseline review了` after a commit:
+  review `test_baseline.new.log` against `test_baseline.log` before
+  delegating another execution packet
+- if `todo.md` contains `你該做code review了` and the current route still
+  looks oversized after review:
+  call `c4c-plan-owner` to review whether that step should split into numbered
   substeps
 - if an active plan exists and code must change:
   call `c4c-executor`
@@ -186,51 +189,45 @@ Choose the next specialist with these rules:
 - when a packet will inspect large or cross-linked C++ code:
   decide whether to add a `Tooling` line telling the subagent to use
   `c4c-clang-tools` first for AST-backed queries
-- do not micromanage normal `c4cll` debug-flag choice from the supervisor;
-  executor packets may use `c4cll-debug-flags` at executor discretion unless
-  the packet needs a very specific mandated command
 - call `c4c-reviewer` only for real route risk:
   repeated lifecycle repairs, multiple direction-changing plan commits, packet boundary drift, or explicit drift suspicion
 - do not call `c4c-reviewer` only because commit count is high
-- when repeated collisions suggest the real problem is route shape rather than
-  one more implementation packet, use `c4c-divide-and-conquer` first and then
-  hand any resulting idea/plan switch to `c4c-plan-owner`
 
 Use `c4c-plan-owner` during normal execution only when one of these is true:
 
 - activation, switch, repair, or close is needed
 - the current `plan.md` contract is actually wrong or incomplete
-- `todo.md` shows an oversized current step by review-counter threshold and the
-  route would be clearer as explicit substeps
+- `todo.md` contains `你該做code review了` and the route would be clearer as
+  explicit substeps
 - the current `plan.md` no longer faithfully represents the linked source idea
 - a reviewer explicitly justified route reset
 - a blocker cannot be resolved within the current runbook
 
-Use `c4c-divide-and-conquer` before sending work to `c4c-plan-owner` when all
-of these are true:
-
-- the route is blocked by repeated collisions rather than one fresh failure
-- the current problem can be decomposed into smaller owned seams
-- switching to a new idea under `ideas/open/` is more honest than stretching
-  the existing runbook
-
 Oversized-step trigger:
 
-- read `Current Step ID`, `Current Step Title`, and
-  `Plan Review Counter: <counter> / <review_limit>` from the top of
+- read `Current Step ID` and `Current Step Title` from the top of
   [`todo.md`](/workspaces/c4c/todo.md)
-- treat the displayed counter as the number of accepted supervisor commits that
-  have landed on that same step since `plan.md` was last reviewed for it
-- keep canonical machine state in the local ignored
-  `.plan_review_state.json` file via `scripts/plan_review_state.py`
-- treat the review limit shown in `todo.md` as a mirror of that local state,
-  not as a value configured in skill text
-- let the repo hook update the counter during commit preparation rather than
-  hand-editing it in specialist packets
-- reset the counter when the active step changes or when `plan-owner` rewrites
-  the current step
-- default to calling `c4c-plan-owner` when the displayed counter reaches its
-  displayed review limit and the next packet still points at that step
+- treat the reminder lines emitted by `scripts/plan_review_state.py` as the
+  source of truth for post-commit follow-up
+- if `todo.md` contains `你該做code review了`, perform the code-review /
+  route-review follow-up
+- if `todo.md` contains `你該做test baseline review了`, perform the baseline
+  review follow-up
+- default to handling those reminder lines before sending the next executor
+  packet
+
+Baseline review follow-up:
+
+- treat `test_baseline.new.log` as hook-produced candidate evidence, not an
+  already accepted baseline
+- compare `test_baseline.new.log` to `test_baseline.log`
+- if the candidate is monotonic, accept it with
+  `scripts/plan_review_state.py accept-baseline`
+- if the candidate regresses or is otherwise suspicious, keep the candidate for
+  diagnosis and clear or retain the reminder explicitly with
+  `scripts/plan_review_state.py reject-baseline`
+- do not move `test_baseline.new.log` to `test_baseline.log` by hand outside
+  the supervisor-owned acceptance path
 
 Treat these as overfit-warning signals that normally require reviewer scrutiny
 before acceptance and often require rejection:
@@ -272,8 +269,13 @@ After a specialist returns:
 5. ensure a fresh build happened for code slices
 6. normalize canonical log state before regression guard
 7. if broader validation is warranted and matching logs do not exist, run `c4c-regression-guard`
-8. use `scripts/plan_change_gap.sh` as the quick route-freshness check
-9. inspect deeper git history only if that quick check suggests real route risk
+8. use `todo.md` review metadata plus local `.plan_review_state.json` state as
+   the quick oversized-step / route-friction check
+   If `todo.md` contains `你該做code review了` or
+   `你該做test baseline review了`, treat those as blocking reminders for this
+   loop and satisfy them before dispatching another execution packet.
+9. inspect deeper git history only if that state or the diff suggests real
+   route risk
 10. check both whether the slice matches `plan.md` and whether `plan.md` still
     matches the linked source idea
 11. if executor-written `Suggested Next` in [`todo.md`](/workspaces/c4c/todo.md)
@@ -288,8 +290,8 @@ After a specialist returns:
 15. if the slice is complete, validation is sufficient, and no overfit concern
     remains, commit it promptly
 16. keep `Current Step ID` and `Current Step Title` accurate before commit and
-    rely on the repo hook to update `Plan Review Counter` from local state
-    during commit preparation
+    rely on the repo hook plus local `.plan_review_state.json` state to update
+    post-commit reminders in `todo.md`
 
 Commit guidance:
 

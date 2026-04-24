@@ -4,10 +4,14 @@
 #include <cstring>
 #include <stdexcept>
 
+#include "../../shared/text_ops.hpp"
+
 namespace c4c {
 
 Lexer::Lexer(std::string source, LexProfile profile)
-    : source_(std::move(source)), lex_profile_(profile) {}
+    : source_(std::move(source)),
+      lex_profile_(profile),
+      current_file_id_(intern_file_path(file_table_, "")) {}
 
 std::vector<Token> Lexer::scan_all() {
   std::vector<Token> out;
@@ -100,16 +104,14 @@ char Lexer::advance() {
   return c;
 }
 
-Token Lexer::make_token(TokenKind kind, std::string lexeme, int line, int col) {
-  const TextId text_id =
-      lexeme.empty() ? kInvalidText : text_table_.intern(lexeme);
-  const FileId file_id = file_table_.intern(current_file_);
+Token Lexer::make_token(TokenKind kind, std::string_view lexeme, int line, int col) {
+  const TextId text_id = intern_text(text_table_, lexeme);
   Token token{};
   token.kind = kind;
   token.line = line;
   token.column = col;
   token.text_id = text_id;
-  token.file_id = file_id;
+  token.file_id = current_file_id_;
   return token;
 }
 
@@ -311,7 +313,7 @@ bool Lexer::consume_line_marker() {
   while (!at_end() && peek() != '\n') advance();
   if (!at_end() && peek() == '\n') advance();
 
-  current_file_ = std::move(new_file);
+  current_file_id_ = intern_file_path(file_table_, new_file);
   line_ = new_line;
   column_ = 1;
   return true;

@@ -13,6 +13,36 @@
 
 namespace c4c {
 
+struct ParserFunctionParamScopeGuard {
+    Parser* parser = nullptr;
+    bool active = false;
+
+    ParserFunctionParamScopeGuard(Parser& p, const std::vector<Node*>& params)
+        : parser(&p) {
+        if (params.empty()) return;
+        parser->push_local_binding_scope();
+        active = true;
+        for (Node* param : params) {
+            if (!param || !param->name || !param->name[0]) continue;
+            parser->register_var_type_binding(param->name, param->type);
+        }
+    }
+
+    ~ParserFunctionParamScopeGuard() {
+        if (active) parser->pop_local_binding_scope();
+    }
+};
+
+static void restore_current_struct_tag(Parser& parser, TextId text_id,
+                                       const std::string& fallback) {
+    const std::string_view tag = parser.parser_text(text_id, fallback);
+    if (tag.empty()) {
+        parser.clear_current_struct_tag();
+        return;
+    }
+    parser.set_current_struct_tag(tag);
+}
+
 // ── struct / union parsing ───────────────────────────────────────────────────
 
 bool Parser::try_parse_record_access_label() {
@@ -22,8 +52,10 @@ bool Parser::try_parse_record_access_label() {
            (check(TokenKind::Identifier) &&
             (token_spelling(cur()) == "public" || token_spelling(cur()) == "private" ||
              token_spelling(cur()) == "protected"))) &&
-          pos_ + 1 < static_cast<int>(tokens_.size()) &&
-          tokens_[pos_ + 1].kind == TokenKind::Colon)) {
+          core_input_state_.pos + 1 <
+              static_cast<int>(core_input_state_.tokens.size()) &&
+          core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+              TokenKind::Colon)) {
         return false;
     }
 
@@ -139,7 +171,7 @@ Parser::recover_record_member_parse_error(int member_start_pos) {
 }
 
 void Parser::parse_record_template_member_prelude(
-    std::vector<std::string>* injected_type_params,
+    std::vector<InjectedTemplateParam>* injected_type_params,
     bool* pushed_template_scope) {
     if (pushed_template_scope) *pushed_template_scope = false;
     if (!(is_cpp_mode() && check(TokenKind::KwTemplate)))
@@ -193,10 +225,13 @@ void Parser::parse_record_template_member_prelude(
             consume();
             if (check(TokenKind::Ellipsis)) consume();
             if (check(TokenKind::Identifier)) {
-                std::string pname = std::string(token_spelling(cur()));
+                const std::string pname = std::string(token_spelling(cur()));
+                const TextId pname_text_id =
+                    parser_text_id_for_token(cur().text_id, pname);
                 consume();
-                register_synthesized_typedef_binding(pname);
-                injected_type_params->push_back(std::move(pname));
+                register_synthesized_typedef_binding(pname_text_id, pname);
+                injected_type_params->push_back(
+                    {pname_text_id, arena_.strdup(pname.c_str())});
             }
             if (check(TokenKind::Assign)) {
                 consume();
@@ -245,10 +280,13 @@ void Parser::parse_record_template_member_prelude(
             while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
             if (check(TokenKind::Ellipsis)) consume();
             if (check(TokenKind::Identifier)) {
-                std::string pname = std::string(token_spelling(cur()));
+                const std::string pname = std::string(token_spelling(cur()));
+                const TextId pname_text_id =
+                    parser_text_id_for_token(cur().text_id, pname);
                 consume();
-                register_synthesized_typedef_binding(pname);
-                injected_type_params->push_back(std::move(pname));
+                register_synthesized_typedef_binding(pname_text_id, pname);
+                injected_type_params->push_back(
+                    {pname_text_id, arena_.strdup(pname.c_str())});
             }
             if (check(TokenKind::Assign)) {
                 consume();
@@ -291,10 +329,13 @@ void Parser::parse_record_template_member_prelude(
                     (check(TokenKind::Ellipsis) || check(TokenKind::Identifier))) {
                     if (check(TokenKind::Ellipsis)) consume();
                     if (check(TokenKind::Identifier)) {
-                        std::string pname = std::string(token_spelling(cur()));
+                        const std::string pname = std::string(token_spelling(cur()));
+                        const TextId pname_text_id =
+                            parser_text_id_for_token(cur().text_id, pname);
                         consume();
-                        register_synthesized_typedef_binding(pname);
-                        injected_type_params->push_back(std::move(pname));
+                        register_synthesized_typedef_binding(pname_text_id, pname);
+                        injected_type_params->push_back(
+                            {pname_text_id, arena_.strdup(pname.c_str())});
                     }
                     if (check(TokenKind::Assign)) {
                         consume();
@@ -447,10 +488,13 @@ void Parser::parse_record_template_member_prelude(
                         (check(TokenKind::Ellipsis) || check(TokenKind::Identifier))) {
                         if (check(TokenKind::Ellipsis)) consume();
                         if (check(TokenKind::Identifier)) {
-                            std::string pname = std::string(token_spelling(cur()));
+                            const std::string pname = std::string(token_spelling(cur()));
+                            const TextId pname_text_id =
+                                parser_text_id_for_token(cur().text_id, pname);
                             consume();
-                            register_synthesized_typedef_binding(pname);
-                            injected_type_params->push_back(std::move(pname));
+                            register_synthesized_typedef_binding(pname_text_id, pname);
+                            injected_type_params->push_back(
+                                {pname_text_id, arena_.strdup(pname.c_str())});
                         }
                         if (check(TokenKind::Assign)) {
                             consume();
@@ -510,9 +554,10 @@ void Parser::parse_record_template_member_prelude(
     expect_template_close();
     if (!injected_type_params->empty()) {
         std::vector<TemplateScopeParam> member_params;
-        for (const auto& n : *injected_type_params) {
+        for (const auto& injected : *injected_type_params) {
             TemplateScopeParam p;
-            p.name = arena_.strdup(n.c_str());
+            p.name_text_id = injected.name_text_id;
+            p.name = injected.name;
             p.is_nttp = false;
             member_params.push_back(p);
         }
@@ -527,8 +572,10 @@ void Parser::parse_decl_attrs_for_record(int line, TypeSpec* attr_ts) {
 
     auto skip_cpp11_attrs = [&]() {
         while (check(TokenKind::LBracket) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+               core_input_state_.pos + 1 <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                   TokenKind::LBracket) {
             consume();
             consume();
             int depth = 1;
@@ -638,8 +685,8 @@ bool Parser::try_parse_record_using_member(
 
     consume();
     if (check(TokenKind::Identifier) &&
-        pos_ + 1 < static_cast<int>(tokens_.size()) &&
-        tokens_[pos_ + 1].kind == TokenKind::Assign) {
+        core_input_state_.pos + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::Assign) {
         std::string alias_name = std::string(token_spelling(cur()));
         consume(); // name
         consume(); // '='
@@ -649,9 +696,9 @@ bool Parser::try_parse_record_using_member(
         register_typedef_binding(alias_name, alias_ts, false);
         member_typedef_names->push_back(arena_.strdup(alias_name.c_str()));
         member_typedef_types->push_back(alias_ts);
-        if (!current_struct_tag_.empty()) {
-            std::string scoped = std::string(current_struct_tag_text()) + "::" + alias_name;
-            register_struct_member_typedef_binding(scoped, alias_ts);
+        if (!current_struct_tag_text().empty()) {
+            register_struct_member_typedef_binding(current_struct_tag_text(),
+                                                   alias_name, alias_ts);
         }
         return true;
     }
@@ -682,15 +729,15 @@ bool Parser::try_parse_record_typedef_member(
             const TextId typedef_name_id =
                 parser_text_id_for_token(kInvalidText, name);
             if (typedef_name_id != kInvalidText) {
-                typedef_fn_ptr_info_[typedef_name_id] = {
+                binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
                     fn_ptr_params, n_fn_ptr_params, fn_ptr_variadic};
             }
         }
         member_typedef_names->push_back(name);
         member_typedef_types->push_back(type);
-        if (!current_struct_tag_.empty()) {
-            std::string scoped = std::string(current_struct_tag_text()) + "::" + name;
-            register_struct_member_typedef_binding(scoped, type);
+        if (!current_struct_tag_text().empty()) {
+            register_struct_member_typedef_binding(current_struct_tag_text(),
+                                                   name, type);
         }
     };
 
@@ -733,7 +780,7 @@ bool Parser::try_parse_nested_record_member(
     bool inner_union = (cur().kind == TokenKind::KwUnion);
     consume();
     Node* inner = parse_struct_or_union(inner_union);
-    if (inner) struct_defs_.push_back(inner);
+    if (inner) definition_state_.struct_defs.push_back(inner);
 
     TypeSpec anon_fts{};
     anon_fts.array_size = -1;
@@ -794,7 +841,8 @@ bool Parser::try_parse_record_enum_member(
 
     consume();
     Node* ed = parse_enum();
-    if (ed && parsing_top_level_context_) struct_defs_.push_back(ed);
+    if (ed && active_context_state_.parsing_top_level_context)
+        definition_state_.struct_defs.push_back(ed);
     // After the enum body, there may be one or more field declarators:
     // e.g.  enum { X } x;   or   enum E { A, B } kind;
     // If the next token starts a declarator (not ; or }), parse it.
@@ -820,7 +868,9 @@ bool Parser::try_parse_record_enum_member(
             if (check(TokenKind::Colon)) {
                 consume();
                 Node* bfw = parse_assign_expr();
-                if (bfw) eval_const_int(bfw, &bf_width, &struct_tag_def_map_);
+                if (bfw)
+                    eval_const_int(
+                        bfw, &bf_width, &definition_state_.struct_tag_def_map);
             }
             if (fname) {
                 Node* f = make_node(NK_DECL, cur().line);
@@ -847,27 +897,31 @@ bool Parser::try_parse_record_constructor_member(
     const std::string& struct_source_name,
     std::vector<Node*>* methods) {
     ParseContextGuard trace(this, __func__);
-    if (!(is_cpp_mode() && !current_struct_tag_.empty()))
+    if (!(is_cpp_mode() && !current_struct_tag_text().empty()))
         return false;
 
-    int probe = pos_;
-    while (probe < static_cast<int>(tokens_.size())) {
-        if (tokens_[probe].kind == TokenKind::KwConstexpr ||
-            tokens_[probe].kind == TokenKind::KwConsteval ||
-            (tokens_[probe].kind == TokenKind::Identifier &&
-             token_spelling(tokens_[probe]) == "inline")) {
+    int probe = core_input_state_.pos;
+    while (probe < static_cast<int>(core_input_state_.tokens.size())) {
+        if (core_input_state_.tokens[probe].kind == TokenKind::KwConstexpr ||
+            core_input_state_.tokens[probe].kind == TokenKind::KwConsteval ||
+            (core_input_state_.tokens[probe].kind == TokenKind::Identifier &&
+             token_spelling(core_input_state_.tokens[probe]) == "inline")) {
             ++probe;
             continue;
         }
-        if (tokens_[probe].kind == TokenKind::KwExplicit) {
+        if (core_input_state_.tokens[probe].kind == TokenKind::KwExplicit) {
             ++probe;
-            if (probe < static_cast<int>(tokens_.size()) &&
-                tokens_[probe].kind == TokenKind::LParen) {
+            if (probe < static_cast<int>(core_input_state_.tokens.size()) &&
+                core_input_state_.tokens[probe].kind == TokenKind::LParen) {
                 int depth = 1;
                 ++probe;
-                while (probe < static_cast<int>(tokens_.size()) && depth > 0) {
-                    if (tokens_[probe].kind == TokenKind::LParen) ++depth;
-                    else if (tokens_[probe].kind == TokenKind::RParen) --depth;
+                while (probe < static_cast<int>(core_input_state_.tokens.size()) &&
+                       depth > 0) {
+                    if (core_input_state_.tokens[probe].kind == TokenKind::LParen)
+                        ++depth;
+                    else if (core_input_state_.tokens[probe].kind ==
+                             TokenKind::RParen)
+                        --depth;
                     ++probe;
                 }
             }
@@ -875,12 +929,13 @@ bool Parser::try_parse_record_constructor_member(
         }
         break;
     }
-    if (probe < static_cast<int>(tokens_.size()) &&
-        tokens_[probe].kind == TokenKind::Identifier &&
-        is_record_special_member_name(std::string(token_spelling(tokens_[probe])),
+    if (probe < static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[probe].kind == TokenKind::Identifier &&
+        is_record_special_member_name(
+            std::string(token_spelling(core_input_state_.tokens[probe])),
                                       struct_source_name) &&
-        probe + 1 < static_cast<int>(tokens_.size()) &&
-        tokens_[probe + 1].kind == TokenKind::LParen) {
+        probe + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[probe + 1].kind == TokenKind::LParen) {
         while (pos_ < probe) {
             if (check(TokenKind::KwExplicit))
                 consume_optional_cpp_explicit_specifier(this);
@@ -892,8 +947,10 @@ bool Parser::try_parse_record_constructor_member(
     if (!(check(TokenKind::Identifier) &&
           is_record_special_member_name(std::string(token_spelling(cur())),
                                         struct_source_name) &&
-          pos_ + 1 < static_cast<int>(tokens_.size()) &&
-          tokens_[pos_ + 1].kind == TokenKind::LParen)) {
+          core_input_state_.pos + 1 <
+              static_cast<int>(core_input_state_.tokens.size()) &&
+          core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+              TokenKind::LParen)) {
         return false;
     }
 
@@ -927,7 +984,7 @@ bool Parser::try_parse_record_constructor_member(
     Node* method = make_node(NK_FUNCTION, cur().line);
     method->type.base = TB_VOID;
     method->name = ctor_name;
-    method->execution_domain = execution_domain_;
+    method->execution_domain = pragma_state_.execution_domain;
     method->variadic = variadic;
     method->is_constructor = true;
     method->n_params = static_cast<int>(params.size());
@@ -982,17 +1039,22 @@ bool Parser::try_parse_record_constructor_member(
         }
     }
     if (check(TokenKind::LBrace)) {
+        ParserFunctionParamScopeGuard param_scope(*this, params);
         method->body = parse_block();
     } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+               core_input_state_.pos + 1 <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                   TokenKind::KwDelete) {
         consume();  // '='
         consume();  // 'delete'
         method->is_deleted = true;
         match(TokenKind::Semi);
     } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+               core_input_state_.pos + 1 <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                   TokenKind::KwDefault) {
         consume();  // '='
         consume();  // 'default'
         method->is_defaulted = true;
@@ -1007,12 +1069,14 @@ bool Parser::try_parse_record_constructor_member(
 bool Parser::try_parse_record_destructor_member(
     const std::string& struct_source_name,
     std::vector<Node*>* methods) {
-    if (!(is_cpp_mode() && !current_struct_tag_.empty() &&
+    if (!(is_cpp_mode() && !current_struct_tag_text().empty() &&
           check(TokenKind::Tilde) &&
-          pos_ + 1 < static_cast<int>(tokens_.size()) &&
-          tokens_[pos_ + 1].kind == TokenKind::Identifier &&
+          core_input_state_.pos + 1 <
+              static_cast<int>(core_input_state_.tokens.size()) &&
+          core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+              TokenKind::Identifier &&
           is_record_special_member_name(
-              std::string(token_spelling(tokens_[pos_ + 1])),
+              std::string(token_spelling(core_input_state_.tokens[core_input_state_.pos + 1])),
                                         struct_source_name))) {
         return false;
     }
@@ -1028,21 +1092,25 @@ bool Parser::try_parse_record_destructor_member(
     Node* method = make_node(NK_FUNCTION, cur().line);
     method->type.base = TB_VOID;
     method->name = arena_.strdup(mangled.c_str());
-    method->execution_domain = execution_domain_;
+    method->execution_domain = pragma_state_.execution_domain;
     method->is_destructor = true;
     method->n_params = 0;
     if (check(TokenKind::LBrace)) {
         method->body = parse_block();
     } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+               core_input_state_.pos + 1 <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                   TokenKind::KwDelete) {
         consume();  // '='
         consume();  // 'delete'
         method->is_deleted = true;
         match(TokenKind::Semi);
     } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+               core_input_state_.pos + 1 <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                   TokenKind::KwDefault) {
         consume();  // '='
         consume();  // 'default'
         method->is_defaulted = true;
@@ -1351,7 +1419,7 @@ bool Parser::try_parse_record_method_or_field_member(
         Node* method = make_node(NK_FUNCTION, cur().line);
         method->type = fts;
         method->name = arena_.strdup(op_mangled);
-        method->execution_domain = execution_domain_;
+        method->execution_domain = pragma_state_.execution_domain;
         method->operator_kind = op_kind;
         method->variadic = variadic;
         method->is_const_method = is_method_const;
@@ -1365,17 +1433,22 @@ bool Parser::try_parse_record_method_or_field_member(
             for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
         }
         if (check(TokenKind::LBrace)) {
+            ParserFunctionParamScopeGuard param_scope(*this, params);
             method->body = parse_block();
         } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                   pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                   tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+                   core_input_state_.pos + 1 <
+                       static_cast<int>(core_input_state_.tokens.size()) &&
+                   core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                       TokenKind::KwDelete) {
             consume(); // '='
             consume(); // 'delete'
             method->is_deleted = true;
             match(TokenKind::Semi);
         } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                   pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                   tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+                   core_input_state_.pos + 1 <
+                       static_cast<int>(core_input_state_.tokens.size()) &&
+                   core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                       TokenKind::KwDefault) {
             consume(); // '='
             consume(); // 'default'
             method->is_defaulted = true;
@@ -1469,7 +1542,7 @@ bool Parser::try_parse_record_method_or_field_member(
             Node* method = make_node(NK_FUNCTION, cur().line);
             method->type = cur_fts;
             method->name = fname;
-            method->execution_domain = execution_domain_;
+            method->execution_domain = pragma_state_.execution_domain;
             method->variadic = variadic;
             method->is_const_method = is_method_const;
             method->is_lvalue_ref_method = is_method_lvalue_ref;
@@ -1482,17 +1555,22 @@ bool Parser::try_parse_record_method_or_field_member(
                 for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
             }
             if (check(TokenKind::LBrace)) {
+                ParserFunctionParamScopeGuard param_scope(*this, params);
                 method->body = parse_block();
             } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                       tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+                       core_input_state_.pos + 1 <
+                           static_cast<int>(core_input_state_.tokens.size()) &&
+                       core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                           TokenKind::KwDelete) {
                 consume(); // '='
                 consume(); // 'delete'
                 method->is_deleted = true;
                 match(TokenKind::Semi);
             } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                       tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+                       core_input_state_.pos + 1 <
+                           static_cast<int>(core_input_state_.tokens.size()) &&
+                       core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                           TokenKind::KwDefault) {
                 consume(); // '='
                 consume(); // 'default'
                 method->is_defaulted = true;
@@ -1509,7 +1587,9 @@ bool Parser::try_parse_record_method_or_field_member(
         if (check(TokenKind::Colon)) {
             consume();
             Node* bfw = parse_assign_expr();
-            if (bfw) eval_const_int(bfw, &bf_width, &struct_tag_def_map_);
+            if (bfw)
+                eval_const_int(
+                    bfw, &bf_width, &definition_state_.struct_tag_def_map);
         }
 
         Node* field_init_expr = nullptr;
@@ -1699,7 +1779,7 @@ void Parser::begin_record_body_context(const char* tag,
         register_typedef_name(tag, false);
 
     if (saved_struct_tag)
-        *saved_struct_tag = current_struct_tag_;
+        *saved_struct_tag = active_context_state_.current_struct_tag;
     if (tag && tag[0]) {
         set_current_struct_tag(tag);
     } else {
@@ -1717,7 +1797,11 @@ void Parser::begin_record_body_context(const char* tag,
         return;
 
     register_typedef_name(template_origin_name, false);
-    if (!has_typedef_type(template_origin_name)) {
+    const bool has_existing_template_origin_type =
+        std::strstr(template_origin_name, "::") == nullptr
+            ? has_visible_typedef_type(template_origin_name)
+            : has_typedef_type(template_origin_name);
+    if (!has_existing_template_origin_type) {
         register_tag_type_binding(template_origin_name, TB_STRUCT, tag);
     }
 }
@@ -1744,17 +1828,22 @@ void Parser::parse_record_body_with_context(
     const char* tag,
     const char* template_origin_name,
     RecordBodyState* body_state) {
-    std::string saved_struct_tag = current_struct_tag_;
+    const TextId saved_struct_tag_text_id =
+        active_context_state_.current_struct_tag_text_id;
+    std::string saved_struct_tag = active_context_state_.current_struct_tag;
     std::string struct_source_name;
     begin_record_body_context(tag, template_origin_name, &saved_struct_tag,
                               &struct_source_name);
     parse_record_body(struct_source_name, body_state);
     finish_record_body_context(saved_struct_tag);
+    restore_current_struct_tag(*this, saved_struct_tag_text_id,
+                               saved_struct_tag);
 }
 
 void Parser::finish_record_body_context(const std::string& saved_struct_tag) {
     expect(TokenKind::RBrace);
-    set_current_struct_tag(saved_struct_tag);
+    restore_current_struct_tag(*this, find_parser_text_id(saved_struct_tag),
+                               saved_struct_tag);
 }
 
 void Parser::parse_record_definition_prelude(
@@ -1777,17 +1866,14 @@ void Parser::parse_record_definition_prelude(
 
     parse_decl_attrs_for_record(line, attr_ts);
 
+    QualifiedNameRef tag_qn;
+    bool has_tag_qn = false;
     if (is_cpp_mode()) {
-        QualifiedNameRef qn;
-        if (peek_qualified_name(&qn, /*allow_global=*/true)) {
-            qn = parse_qualified_name(/*allow_global=*/true);
-            std::string spelled;
-            for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-                if (!spelled.empty()) spelled += "::";
-                spelled += qn.qualifier_segments[i];
-            }
-            if (!spelled.empty()) spelled += "::";
-            spelled += qn.base_name;
+        if (peek_qualified_name(&tag_qn, /*allow_global=*/true)) {
+            tag_qn = parse_qualified_name(/*allow_global=*/true);
+            has_tag_qn = true;
+            const std::string spelled =
+                qualified_name_text(tag_qn, /*include_global_prefix=*/false);
             *tag = arena_.strdup(spelled.c_str());
         }
     } else if (check(TokenKind::Identifier)) {
@@ -1797,18 +1883,19 @@ void Parser::parse_record_definition_prelude(
     parse_decl_attrs_for_record(line, attr_ts);
 
     if (*tag && is_cpp_mode() && check(TokenKind::Less)) {
-        int probe = pos_;
+        int probe = core_input_state_.pos;
         int depth = 0;
         bool balanced = false;
-        while (probe < static_cast<int>(tokens_.size())) {
-            if (tokens_[probe].kind == TokenKind::Less) ++depth;
-            else if (tokens_[probe].kind == TokenKind::Greater) {
+        while (probe < static_cast<int>(core_input_state_.tokens.size())) {
+            if (core_input_state_.tokens[probe].kind == TokenKind::Less) ++depth;
+            else if (core_input_state_.tokens[probe].kind == TokenKind::Greater) {
                 if (--depth <= 0) {
                     ++probe;
                     balanced = true;
                     break;
                 }
-            } else if (tokens_[probe].kind == TokenKind::GreaterGreater) {
+            } else if (core_input_state_.tokens[probe].kind ==
+                       TokenKind::GreaterGreater) {
                 depth -= 2;
                 if (depth <= 0) {
                     ++probe;
@@ -1819,17 +1906,27 @@ void Parser::parse_record_definition_prelude(
             ++probe;
         }
         const bool is_specialization =
-            balanced && probe < static_cast<int>(tokens_.size()) &&
-            (tokens_[probe].kind == TokenKind::LBrace ||
-             tokens_[probe].kind == TokenKind::Colon ||
-             tokens_[probe].kind == TokenKind::Semi);
+            balanced &&
+            probe < static_cast<int>(core_input_state_.tokens.size()) &&
+            (core_input_state_.tokens[probe].kind == TokenKind::LBrace ||
+             core_input_state_.tokens[probe].kind == TokenKind::Colon ||
+             core_input_state_.tokens[probe].kind == TokenKind::Semi);
         if (is_specialization) {
             *template_origin_name = arena_.strdup(*tag);
             bool parse_ok = true;
             {
                 TentativeParseGuard guard(*this);
                 try {
-                    const Node* primary_tpl = find_template_struct_primary(*tag);
+                    const Node* primary_tpl = nullptr;
+                    if (has_tag_qn &&
+                        (!tag_qn.qualifier_segments.empty() ||
+                         tag_qn.is_global_qualified)) {
+                        primary_tpl = find_template_struct_primary(tag_qn);
+                    } else {
+                        primary_tpl = find_template_struct_primary(
+                            current_namespace_context_id(),
+                            find_parser_text_id(*tag), *tag);
+                    }
                     if (!parse_template_argument_list(specialization_args,
                                                       primary_tpl)) {
                         throw std::runtime_error(
@@ -1862,7 +1959,7 @@ void Parser::parse_record_definition_prelude(
             (void)parse_ok;
             std::string mangled(*tag);
             mangled += "__spec_";
-            mangled += std::to_string(anon_counter_++);
+            mangled += std::to_string(definition_state_.anon_counter++);
             *tag = arena_.strdup(mangled.c_str());
         }
     }
@@ -1886,12 +1983,14 @@ Node* Parser::parse_record_tag_setup(int line,
         const char* resolved_tag = tag ? *tag : nullptr;
         if (!resolved_tag) {
             char buf[32];
-            snprintf(buf, sizeof(buf), "_anon_%d", anon_counter_++);
+            snprintf(buf, sizeof(buf), "_anon_%d",
+                     definition_state_.anon_counter++);
             resolved_tag = arena_.strdup(buf);
         } else {
-            const std::string qtag =
-                canonical_name_in_context(current_namespace_context_id(),
-                                          resolved_tag);
+            const std::string qtag = bridge_name_in_context(
+                current_namespace_context_id(),
+                parser_text_id_for_token(kInvalidText, resolved_tag),
+                resolved_tag);
             resolved_tag = arena_.strdup(qtag.c_str());
         }
 
@@ -1917,34 +2016,38 @@ Node* Parser::parse_record_tag_setup(int line,
                                       is_union ? TB_UNION : TB_STRUCT,
                                       resolved_tag);
         }
-        if (is_cpp_mode() && parsing_top_level_context_)
-            struct_defs_.push_back(ref);
+        if (is_cpp_mode() && active_context_state_.parsing_top_level_context)
+            definition_state_.struct_defs.push_back(ref);
         return ref;
     }
 
     const char* resolved_tag = tag ? *tag : nullptr;
     if (!resolved_tag) {
         char buf[32];
-        snprintf(buf, sizeof(buf), "_anon_%d", anon_counter_++);
+        snprintf(buf, sizeof(buf), "_anon_%d",
+                 definition_state_.anon_counter++);
         resolved_tag = arena_.strdup(buf);
     } else {
         const std::string qtag =
             std::strstr(resolved_tag, "::")
                 ? std::string(resolved_tag)
-                : canonical_name_in_context(current_namespace_context_id(),
-                                            resolved_tag);
-        if (defined_struct_tags_.count(qtag)) {
-            if (parsing_top_level_context_ && !is_cpp_mode()) {
+                : bridge_name_in_context(
+                      current_namespace_context_id(),
+                      parser_text_id_for_token(kInvalidText, resolved_tag),
+                      resolved_tag);
+        if (definition_state_.defined_struct_tags.count(qtag)) {
+            if (active_context_state_.parsing_top_level_context &&
+                !is_cpp_mode()) {
                 throw std::runtime_error(std::string("redefinition of ") +
                                          (is_union ? "union " : "struct ") +
                                          resolved_tag);
             }
             char buf[64];
             snprintf(buf, sizeof(buf), "%s.__shadow_%d", resolved_tag,
-                     anon_counter_++);
+                     definition_state_.anon_counter++);
             resolved_tag = arena_.strdup(buf);
         }
-        defined_struct_tags_.insert(qtag);
+        definition_state_.defined_struct_tags.insert(qtag);
     }
 
     if (tag)
@@ -1974,7 +2077,7 @@ Node* Parser::build_record_definition_node(
     }
 
     // __attribute__((packed)) => pack_align=1; otherwise use #pragma pack state
-    sd->pack_align = attr_ts.is_packed ? 1 : pack_alignment_;
+    sd->pack_align = attr_ts.is_packed ? 1 : pragma_state_.pack_alignment;
     sd->struct_align = attr_ts.align_bytes;  // __attribute__((aligned(N)))
 
     if (!specialization_args.empty()) {
@@ -2072,12 +2175,14 @@ void Parser::register_record_definition(Node* sd,
     const std::string canonical =
         std::strstr(source_tag, "::")
             ? std::string(source_tag)
-            : canonical_name_in_context(current_namespace_context_id(),
-                                        source_tag);
+            : bridge_name_in_context(
+                  current_namespace_context_id(),
+                  parser_text_id_for_token(kInvalidText, source_tag),
+                  source_tag);
     sd->name = arena_.strdup(canonical.c_str());
     apply_decl_namespace(sd, current_namespace_context_id(), source_tag);
-    struct_tag_def_map_[source_tag] = sd;
-    struct_tag_def_map_[sd->name] = sd;
+    definition_state_.struct_tag_def_map[source_tag] = sd;
+    definition_state_.struct_tag_def_map[sd->name] = sd;
 
     if (!is_cpp_mode() || !(sd->name && sd->name[0]))
         return;
@@ -2098,7 +2203,7 @@ void Parser::finalize_record_definition(
     apply_record_trailing_type_attributes(sd);
     store_record_body_members(sd, body_state);
     register_record_definition(sd, is_union, source_tag);
-    struct_defs_.push_back(sd);
+    definition_state_.struct_defs.push_back(sd);
 }
 
 void Parser::parse_record_definition_body(Node* sd,
@@ -2175,12 +2280,14 @@ Node* Parser::parse_enum() {
     if (!check(TokenKind::LBrace)) {
         if (!tag) {
             char buf[32];
-            snprintf(buf, sizeof(buf), "_anon_enum_%d", anon_counter_++);
+            snprintf(buf, sizeof(buf), "_anon_enum_%d",
+                     definition_state_.anon_counter++);
             tag = arena_.strdup(buf);
         }
         Node* ref = make_node(NK_ENUM_DEF, ln);
-        ref->name = arena_.strdup(canonical_name_in_context(
-            current_namespace_context_id(), tag).c_str());
+        ref->name = arena_.strdup(bridge_name_in_context(
+            current_namespace_context_id(),
+            parser_text_id_for_token(kInvalidText, tag), tag).c_str());
         apply_decl_namespace(ref, current_namespace_context_id(), tag);
         ref->n_enum_variants = -1;
         register_enum_type(tag, ref->name);
@@ -2189,13 +2296,15 @@ Node* Parser::parse_enum() {
 
     if (!tag) {
         char buf[32];
-        snprintf(buf, sizeof(buf), "_anon_enum_%d", anon_counter_++);
+        snprintf(buf, sizeof(buf), "_anon_enum_%d",
+                 definition_state_.anon_counter++);
         tag = arena_.strdup(buf);
     }
 
     Node* ed = make_node(NK_ENUM_DEF, ln);
-    ed->name = arena_.strdup(canonical_name_in_context(
-        current_namespace_context_id(), tag).c_str());
+    ed->name = arena_.strdup(bridge_name_in_context(
+        current_namespace_context_id(), parser_text_id_for_token(kInvalidText, tag),
+        tag).c_str());
     apply_decl_namespace(ed, current_namespace_context_id(), tag);
     register_enum_type(tag, ed->name);
 
@@ -2203,18 +2312,20 @@ Node* Parser::parse_enum() {
 
     std::vector<const char*> names;
     std::vector<long long>   vals;
-    std::unordered_set<std::string> seen_names;
-    std::unordered_map<std::string, long long> local_enum_consts = enum_consts_;
+    std::unordered_set<TextId> seen_names;
+    ParserEnumConstTable local_enum_consts = binding_state_.enum_consts;
     long long cur_val = 0;
 
     while (!at_end() && !check(TokenKind::RBrace)) {
         skip_attributes();
         if (!check(TokenKind::Identifier)) { consume(); continue; }
+        const TextId vname_text_id =
+            parser_text_id_for_token(cur().text_id, token_spelling(cur()));
         const char* vname = arena_.strdup(std::string(token_spelling(cur())));
         std::string vname_s(vname ? vname : "");
-        if (seen_names.count(vname_s))
+        if (vname_text_id != kInvalidText && seen_names.count(vname_text_id))
             throw std::runtime_error("duplicate enumerator: " + vname_s);
-        seen_names.insert(vname_s);
+        if (vname_text_id != kInvalidText) seen_names.insert(vname_text_id);
         consume();
         // Skip __attribute__((...)) between enum constant name and '='
         // e.g. _CLOCK_REALTIME __attribute__((availability(...))) = 0,
@@ -2223,7 +2334,8 @@ Node* Parser::parse_enum() {
         if (match(TokenKind::Assign)) {
             Node* ve = parse_assign_expr();
             if (!eval_enum_expr(ve, local_enum_consts, &vval)) {
-                if (is_cpp_mode() && is_dependent_enum_expr(ve, enum_consts_)) {
+                if (is_cpp_mode() &&
+                    is_dependent_enum_expr(ve, binding_state_.enum_consts)) {
                     vval = 0;  // Placeholder until template/dependent evaluation exists.
                 } else {
                 throw std::runtime_error("enum initializer is not an integer constant expression");
@@ -2236,7 +2348,7 @@ Node* Parser::parse_enum() {
         names.push_back(vname);
         vals.push_back(vval);
         // Track enum constants for subsequent initializers in this enum body.
-        local_enum_consts[std::string(vname)] = vval;
+        if (vname_text_id != kInvalidText) local_enum_consts[vname_text_id] = vval;
         if (!match(TokenKind::Comma)) break;
         // Trailing comma before } is allowed
         if (check(TokenKind::RBrace)) break;
@@ -2254,9 +2366,16 @@ Node* Parser::parse_enum() {
     }
     if (!is_scoped_enum) {
         for (int i = 0; i < ed->n_enum_variants; ++i)
-            enum_consts_[std::string(ed->enum_names[i])] = ed->enum_vals[i];
+            if (ed->enum_names[i] && ed->enum_names[i][0]) {
+                const TextId enum_name_text_id =
+                    parser_text_id_for_token(kInvalidText, ed->enum_names[i]);
+                if (enum_name_text_id != kInvalidText)
+                    binding_state_.enum_consts[enum_name_text_id] =
+                        ed->enum_vals[i];
+            }
     }
-    if (parsing_top_level_context_) struct_defs_.push_back(ed);
+    if (active_context_state_.parsing_top_level_context)
+        definition_state_.struct_defs.push_back(ed);
     return ed;
 }
 
@@ -2267,23 +2386,29 @@ Node* Parser::parse_param() {
     int ln = cur().line;
     auto skip_cpp11_attrs_only = [&]() {
         while (check(TokenKind::LBracket) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+               core_input_state_.pos + 1 <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                   TokenKind::LBracket) {
             consume();
             consume();
             int depth = 1;
             while (!at_end() && depth > 0) {
                 if (check(TokenKind::LBracket) &&
-                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+                    core_input_state_.pos + 1 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::LBracket) {
                     consume();
                     consume();
                     ++depth;
                     continue;
                 }
                 if (check(TokenKind::RBracket) &&
-                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::RBracket) {
+                    core_input_state_.pos + 1 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::RBracket) {
                     consume();
                     consume();
                     --depth;

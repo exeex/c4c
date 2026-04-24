@@ -157,6 +157,268 @@ bool uses_symbol_identity(std::string_view name) {
     return true;
 }
 
+bool should_track_local_binding(const Parser& parser,
+                                TextId name_text_id,
+                                std::string_view name) {
+    return name_text_id != kInvalidText &&
+           parser.lexical_scope_state_.scope_depth() > 0 &&
+           uses_symbol_identity(name);
+}
+
+bool can_probe_local_binding(TextId name_text_id, std::string_view name) {
+    return name_text_id != kInvalidText && uses_symbol_identity(name) &&
+           name.find("::") == std::string_view::npos;
+}
+
+QualifiedNameKey qualified_key_in_context(const Parser& parser, int context_id,
+                                          TextId name_text_id,
+                                          std::string_view fallback_name,
+                                          bool create_missing_path);
+
+std::string render_structured_name(const Parser& parser,
+                                   const QualifiedNameKey& key) {
+    if (key.base_text_id == kInvalidText) return {};
+    const TextTable* texts = parser.shared_lookup_state_.token_texts;
+    if (!texts) return {};
+    return render_qualified_name(key, parser.shared_lookup_state_.parser_name_paths,
+                                 *texts);
+}
+
+std::string render_value_binding_name(const Parser& parser,
+                                      const QualifiedNameKey& key) {
+    if (key.base_text_id == kInvalidText) return {};
+    if (key.is_global_qualified && key.qualifier_path_id == kInvalidNamePath) {
+        return std::string(
+            parser.parser_text(key.base_text_id, std::string_view{}));
+    }
+    return render_structured_name(parser, key);
+}
+
+std::string render_lookup_name_in_context(const Parser& parser, int context_id,
+                                          TextId name_text_id,
+                                          std::string_view fallback_name) {
+    const QualifiedNameKey key = qualified_key_in_context(
+        parser, context_id, name_text_id, fallback_name, true);
+    if (const std::string structured = render_value_binding_name(parser, key);
+        !structured.empty()) {
+        return structured;
+    }
+    return parser.compatibility_namespace_name_in_context(context_id, name_text_id,
+                                                          fallback_name);
+}
+
+bool is_unqualified_lookup_name(std::string_view name) {
+    return !name.empty() && name.find("::") == std::string_view::npos;
+}
+
+QualifiedNameKey find_known_fn_name_key_from_spelling(
+    const Parser& parser, int context_id, TextId name_text_id,
+    std::string_view name);
+
+QualifiedNameKey qualified_key_in_context(const Parser& parser, int context_id,
+                                          TextId name_text_id,
+                                          std::string_view fallback_name,
+                                          bool create_missing_path) {
+    QualifiedNameKey key;
+    if (context_id <= 0 || fallback_name.find("::") != std::string_view::npos) {
+        return find_known_fn_name_key_from_spelling(parser, context_id, name_text_id,
+                                                    fallback_name);
+    }
+
+    key.context_id = 0;
+    key.base_text_id = name_text_id != kInvalidText
+                           ? name_text_id
+                           : parser.parser_text_id_for_token(kInvalidText,
+                                                             fallback_name);
+    if (key.base_text_id == kInvalidText) return key;
+
+    std::vector<int> ancestry;
+    for (int walk = context_id; walk > 0;
+         walk = parser.namespace_state_.namespace_contexts[walk].parent_id) {
+        ancestry.push_back(walk);
+    }
+
+    std::vector<TextId> qualifier_text_ids;
+    for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it) {
+        const Parser::NamespaceContext& ctx =
+            parser.namespace_state_.namespace_contexts[*it];
+        if (ctx.is_anonymous) {
+            qualifier_text_ids.clear();
+            const std::string_view canonical =
+                ctx.canonical_name ? std::string_view(ctx.canonical_name)
+                                   : std::string_view{};
+            size_t segment_start = 0;
+            while (segment_start < canonical.size()) {
+                const size_t sep = canonical.find("::", segment_start);
+                const std::string_view segment =
+                    canonical.substr(segment_start, sep - segment_start);
+                if (!segment.empty()) {
+                    qualifier_text_ids.push_back(
+                        parser.parser_text_id_for_token(kInvalidText, segment));
+                }
+                if (sep == std::string_view::npos) break;
+                segment_start = sep + 2;
+            }
+            continue;
+        }
+        if (ctx.text_id != kInvalidText) qualifier_text_ids.push_back(ctx.text_id);
+    }
+
+    if (qualifier_text_ids.empty()) return key;
+
+    key.qualifier_path_id =
+        create_missing_path
+            ? const_cast<NamePathTable&>(
+                  parser.shared_lookup_state_.parser_name_paths)
+                  .intern(qualifier_text_ids)
+            : parser.shared_lookup_state_.parser_name_paths.find(
+                  qualifier_text_ids);
+    if (key.qualifier_path_id != kInvalidNamePath) return key;
+
+    if (!create_missing_path) {
+        const std::string candidate =
+            parser.compatibility_namespace_name_in_context(context_id, name_text_id,
+                                                           fallback_name);
+        return find_known_fn_name_key_from_spelling(parser, 0, name_text_id,
+                                                    candidate);
+    }
+    return key;
+}
+
+QualifiedNameKey make_struct_member_typedef_key(Parser& parser,
+                                                std::string_view owner_name,
+                                                std::string_view member_name) {
+    QualifiedNameKey key;
+    if (member_name.empty()) return key;
+
+    key.context_id = owner_name.find("::") == std::string_view::npos
+                         ? parser.current_namespace_context_id()
+                         : 0;
+    key.is_global_qualified = owner_name.rfind("::", 0) == 0;
+
+    std::vector<TextId> qualifier_text_ids;
+    size_t segment_start = key.is_global_qualified ? 2 : 0;
+    while (segment_start < owner_name.size()) {
+        const size_t sep = owner_name.find("::", segment_start);
+        if (sep == std::string_view::npos) {
+            const std::string_view segment =
+                owner_name.substr(segment_start);
+            if (!segment.empty()) {
+                qualifier_text_ids.push_back(
+                    parser.parser_text_id_for_token(kInvalidText, segment));
+            }
+            break;
+        }
+        const std::string_view segment =
+            owner_name.substr(segment_start, sep - segment_start);
+        if (!segment.empty()) {
+            qualifier_text_ids.push_back(
+                parser.parser_text_id_for_token(kInvalidText, segment));
+        }
+        segment_start = sep + 2;
+    }
+
+    if (!qualifier_text_ids.empty()) {
+        key.qualifier_path_id =
+            parser.shared_lookup_state_.parser_name_paths.intern(
+                qualifier_text_ids);
+    }
+    key.base_text_id = parser.parser_text_id_for_token(kInvalidText, member_name);
+    return key;
+}
+
+QualifiedNameKey find_known_fn_name_key_from_spelling(
+    const Parser& parser, int context_id, TextId name_text_id,
+    std::string_view name) {
+    QualifiedNameKey key;
+    (void)context_id;
+    key.context_id = 0;
+    if (name.empty()) return key;
+
+    size_t start = 0;
+    if (name.rfind("::", 0) == 0) {
+        key.is_global_qualified = true;
+        start = 2;
+    }
+
+    std::vector<TextId> qualifier_text_ids;
+    size_t segment_start = start;
+    while (segment_start < name.size()) {
+        const size_t sep = name.find("::", segment_start);
+        if (sep == std::string_view::npos) break;
+        const std::string_view segment = name.substr(segment_start, sep - segment_start);
+        if (!segment.empty()) {
+            qualifier_text_ids.push_back(
+                parser.parser_text_id_for_token(kInvalidText, segment));
+        }
+        segment_start = sep + 2;
+    }
+
+    const std::string_view base = name.substr(segment_start);
+    key.base_text_id = name_text_id != kInvalidText &&
+                               !name.empty() &&
+                               name.find("::") == std::string_view::npos
+                           ? name_text_id
+                           : parser.parser_text_id_for_token(kInvalidText, base);
+    if (key.base_text_id == kInvalidText && !base.empty()) {
+        key.base_text_id = parser.find_parser_text_id(base);
+    }
+
+    if (!qualifier_text_ids.empty()) {
+        key.qualifier_path_id =
+            parser.shared_lookup_state_.parser_name_paths.find(qualifier_text_ids);
+    }
+    return key;
+}
+
+QualifiedNameKey intern_known_fn_name_key_from_spelling(
+    Parser& parser, int context_id, TextId name_text_id, std::string_view name) {
+    QualifiedNameKey key = find_known_fn_name_key_from_spelling(
+        parser, context_id, name_text_id, name);
+    if (key.qualifier_path_id == kInvalidNamePath) {
+        std::vector<TextId> qualifier_text_ids;
+        size_t start = name.rfind("::", 0) == 0 ? 2 : 0;
+        size_t segment_start = start;
+        while (segment_start < name.size()) {
+            const size_t sep = name.find("::", segment_start);
+            if (sep == std::string_view::npos) break;
+            const std::string_view segment =
+                name.substr(segment_start, sep - segment_start);
+            if (!segment.empty()) {
+                qualifier_text_ids.push_back(
+                    parser.parser_text_id_for_token(kInvalidText, segment));
+            }
+            segment_start = sep + 2;
+        }
+        if (!qualifier_text_ids.empty()) {
+            key.qualifier_path_id =
+                parser.shared_lookup_state_.parser_name_paths.intern(
+                    qualifier_text_ids);
+        }
+    }
+    return key;
+}
+
+int& visible_typedef_fallback_depth_for(const Parser& parser) {
+    static thread_local std::unordered_map<const Parser*, int> depths;
+    return depths[&parser];
+}
+
+struct VisibleTypedefFallbackGuard {
+    explicit VisibleTypedefFallbackGuard(int& depth) : depth_(depth) {
+        ++depth_;
+    }
+    ~VisibleTypedefFallbackGuard() { --depth_; }
+
+    int& depth_;
+};
+
+bool probe_visible_typedef_name(const Parser& parser, TextId name_text_id,
+                                std::string_view name) {
+    VisibleTypedefFallbackGuard guard(visible_typedef_fallback_depth_for(parser));
+    return parser.has_visible_typedef_type(name_text_id, name);
+}
+
 std::vector<std::string> merge_leading_top_level_qualified_probe(
     const std::vector<Parser::ParseDebugEvent>& parse_debug_events,
     const std::vector<std::string>& summary_stack) {
@@ -256,10 +518,6 @@ const std::string* select_best_parse_summary_leaf(
     return nullptr;
 }
 
-std::string make_namespace_context_key(int parent_id, const std::string& name) {
-    return std::to_string(parent_id) + "::" + name;
-}
-
 std::string build_canonical_namespace_name(const char* parent_name,
                                            const std::string& name) {
     std::string canonical = parent_name ? parent_name : "";
@@ -301,17 +559,17 @@ Parser::SymbolId Parser::symbol_id_for_token(const Token& token) {
 
 std::string_view Parser::token_spelling(const Token& token) const {
     if (token.kind == TokenKind::EndOfFile) return {};
-    if (token_texts_ && token.text_id != kInvalidText) {
-        return token_texts_->lookup(token.text_id);
+    if (shared_lookup_state_.token_texts && token.text_id != kInvalidText) {
+        return shared_lookup_state_.token_texts->lookup(token.text_id);
     }
     throw std::runtime_error("token spelling requested without valid text_id");
 }
 
 void Parser::set_parser_owned_spelling(Token& token, std::string_view spelling) {
-    if (!token_texts_) {
+    if (!shared_lookup_state_.token_texts) {
         throw std::runtime_error("parser-owned token spelling requested without text table");
     }
-    token.text_id = token_texts_->intern(spelling);
+    token.text_id = shared_lookup_state_.token_texts->intern(spelling);
 }
 
 Token Parser::make_injected_token(const Token& seed, TokenKind kind,
@@ -332,64 +590,186 @@ void Parser::populate_qualified_name_symbol_ids(QualifiedNameRef* name) {
         const TextId text_id = parser_text_id_for_token(kInvalidText, segment);
         name->qualifier_text_ids.push_back(text_id);
         name->qualifier_symbol_ids.push_back(
-            parser_name_tables_.intern_identifier(text_id));
+            shared_lookup_state_.parser_name_tables.intern_identifier(text_id));
     }
     name->base_text_id = parser_text_id_for_token(kInvalidText, name->base_name);
     name->base_symbol_id =
         name->base_name.empty()
             ? kInvalidSymbol
-            : parser_name_tables_.intern_identifier(name->base_text_id);
+            : shared_lookup_state_.parser_name_tables.intern_identifier(
+                  name->base_text_id);
 }
 
 bool Parser::has_typedef_name(std::string_view name) const {
     if (!uses_symbol_identity(name)) {
         const TextId id = find_parser_text_id(name);
-        return id != kInvalidText && non_atom_typedefs_.count(id) > 0;
+        return id != kInvalidText &&
+               binding_state_.non_atom_typedefs.count(id) > 0;
     }
-    return parser_name_tables_.is_typedef(
-        parser_name_tables_.find_identifier(name));
+    return shared_lookup_state_.parser_name_tables.is_typedef(
+        shared_lookup_state_.parser_name_tables.find_identifier(name));
 }
 
 bool Parser::has_typedef_type(std::string_view name) const {
+    if (name.find("::") != std::string_view::npos) {
+        const QualifiedNameKey key = known_fn_name_key(
+            0, parser_text_id_for_token(kInvalidText, name), name);
+        if (has_structured_typedef_type(key)) return true;
+    }
     if (!uses_symbol_identity(name)) {
         const TextId id = find_parser_text_id(name);
-        return id != kInvalidText && non_atom_typedef_types_.count(id) > 0;
+        return id != kInvalidText &&
+               binding_state_.non_atom_typedef_types.count(id) > 0;
     }
-    return parser_name_tables_.has_typedef_type(
-        parser_name_tables_.find_identifier(name));
+    return shared_lookup_state_.parser_name_tables.has_typedef_type(
+        shared_lookup_state_.parser_name_tables.find_identifier(name));
 }
 
 const TypeSpec* Parser::find_typedef_type(std::string_view name) const {
+    if (name.find("::") != std::string_view::npos) {
+        const QualifiedNameKey key = known_fn_name_key(
+            0, parser_text_id_for_token(kInvalidText, name), name);
+        if (const TypeSpec* structured = find_structured_typedef_type(key)) {
+            return structured;
+        }
+    }
     if (!uses_symbol_identity(name)) {
         const TextId id = find_parser_text_id(name);
         if (id == kInvalidText) return nullptr;
-        const auto it = non_atom_typedef_types_.find(id);
-        return it == non_atom_typedef_types_.end() ? nullptr : &it->second;
+        const auto it = binding_state_.non_atom_typedef_types.find(id);
+        return it == binding_state_.non_atom_typedef_types.end() ? nullptr
+                                                                 : &it->second;
     }
-    return parser_name_tables_.lookup_typedef_type(
-        parser_name_tables_.find_identifier(name));
+    return shared_lookup_state_.parser_name_tables.lookup_typedef_type(
+        shared_lookup_state_.parser_name_tables.find_identifier(name));
+}
+
+bool Parser::has_structured_typedef_type(const QualifiedNameKey& key) const {
+    return find_structured_typedef_type(key) != nullptr;
+}
+
+const TypeSpec* Parser::find_structured_typedef_type(
+    const QualifiedNameKey& key) const {
+    if (key.base_text_id == kInvalidText) return nullptr;
+    const auto it = binding_state_.struct_typedefs.find(key);
+    return it == binding_state_.struct_typedefs.end() ? nullptr : &it->second;
+}
+
+const ParserAliasTemplateInfo* Parser::find_alias_template_info(
+    const QualifiedNameKey& key) const {
+    if (key.base_text_id == kInvalidText) return nullptr;
+    const auto it = template_state_.alias_template_info.find(key);
+    return it == template_state_.alias_template_info.end() ? nullptr
+                                                           : &it->second;
+}
+
+void Parser::push_local_binding_scope() {
+    lexical_scope_state_.push_scope();
+}
+
+bool Parser::pop_local_binding_scope() {
+    return lexical_scope_state_.pop_scope();
+}
+
+bool Parser::has_local_binding_scope() const {
+    return lexical_scope_state_.scope_depth() > 0;
+}
+
+void Parser::bind_local_typedef(TextId name_text_id, const TypeSpec& type,
+                                bool is_user_typedef) {
+    if (name_text_id == kInvalidText || !has_local_binding_scope()) return;
+    lexical_scope_state_.visible_typedef_types.bind_in_current_scope(
+        LocalNameKey{name_text_id}, type);
+    if (is_user_typedef) {
+        lexical_scope_state_.visible_user_typedefs.bind_in_current_scope(
+            LocalNameKey{name_text_id}, true);
+    }
+}
+
+void Parser::bind_local_value(TextId name_text_id, const TypeSpec& type) {
+    if (name_text_id == kInvalidText || !has_local_binding_scope()) return;
+    lexical_scope_state_.visible_value_types.bind_in_current_scope(
+        LocalNameKey{name_text_id}, type);
+}
+
+const TypeSpec* Parser::find_local_visible_typedef_type(TextId name_text_id) const {
+    if (name_text_id == kInvalidText) return nullptr;
+    if (auto found = lexical_scope_state_.visible_typedef_types
+                         .find_nearest_visible_text_ids(&name_text_id, 1);
+        found) {
+        return found.value;
+    }
+    return nullptr;
+}
+
+const TypeSpec* Parser::find_local_visible_var_type(TextId name_text_id) const {
+    if (name_text_id == kInvalidText) return nullptr;
+    if (auto found = lexical_scope_state_.visible_value_types
+                         .find_nearest_visible_text_ids(&name_text_id, 1);
+        found) {
+        return found.value;
+    }
+    return nullptr;
+}
+
+bool Parser::has_local_visible_user_typedef(TextId name_text_id) const {
+    if (name_text_id == kInvalidText) return false;
+    return lexical_scope_state_.visible_user_typedefs
+        .find_nearest_visible_text_ids(&name_text_id, 1)
+        .found();
+}
+
+bool Parser::has_visible_typedef_type(TextId name_text_id,
+                                      std::string_view name) const {
+    if (const TypeSpec* type = find_visible_typedef_type(name_text_id, name)) {
+        (void)type;
+        return true;
+    }
+    return false;
 }
 
 bool Parser::has_visible_typedef_type(std::string_view name) const {
-    if (has_typedef_type(name)) return true;
-    const std::string resolved = resolve_visible_type_name(name);
-    return resolved != name && has_typedef_type(resolved);
+    return has_visible_typedef_type(find_parser_text_id(name), name);
 }
 
 const TypeSpec* Parser::find_visible_typedef_type(std::string_view name) const {
+    return find_visible_typedef_type(find_parser_text_id(name), name);
+}
+
+const TypeSpec* Parser::find_visible_typedef_type(TextId name_text_id,
+                                                  std::string_view name) const {
+    if (can_probe_local_binding(name_text_id, name)) {
+        if (const TypeSpec* type = find_local_visible_typedef_type(name_text_id)) {
+            return type;
+        }
+    }
     if (const TypeSpec* type = find_typedef_type(name)) return type;
-    const std::string resolved = resolve_visible_type_name(name);
+    const std::string resolved = resolve_visible_type_name(name_text_id, name);
     if (resolved.empty() || resolved == name) return nullptr;
+    const TextId resolved_text_id = find_parser_text_id(resolved);
+    if (can_probe_local_binding(resolved_text_id, resolved)) {
+        if (const TypeSpec* type =
+                find_local_visible_typedef_type(resolved_text_id)) {
+            return type;
+        }
+    }
     return find_typedef_type(resolved);
 }
 
 TypeSpec Parser::resolve_typedef_type_chain(TypeSpec ts) const {
+    auto find_chain_typedef = [&](const char* tag) -> const TypeSpec* {
+        if (!tag || !tag[0]) return nullptr;
+        const std::string_view name(tag);
+        return name.find("::") == std::string_view::npos
+                   ? find_visible_typedef_type(name)
+                   : find_typedef_type(name);
+    };
     for (int depth = 0; depth < 16; ++depth) {
         if (ts.base != TB_TYPEDEF || ts.ptr_level > 0 || ts.array_rank > 0) {
             break;
         }
         if (!ts.tag) break;
-        const TypeSpec* next = find_typedef_type(ts.tag);
+        const TypeSpec* next = find_chain_typedef(ts.tag);
         if (!next) break;
         const bool is_const = ts.is_const;
         const bool is_volatile = ts.is_volatile;
@@ -401,9 +781,16 @@ TypeSpec Parser::resolve_typedef_type_chain(TypeSpec ts) const {
 }
 
 TypeSpec Parser::resolve_struct_like_typedef_type(TypeSpec ts) const {
+    auto find_chain_typedef = [&](const char* tag) -> const TypeSpec* {
+        if (!tag || !tag[0]) return nullptr;
+        const std::string_view name(tag);
+        return name.find("::") == std::string_view::npos
+                   ? find_visible_typedef_type(name)
+                   : find_typedef_type(name);
+    };
     ts = resolve_typedef_type_chain(ts);
     if (ts.base == TB_TYPEDEF && ts.tag) {
-        if (const TypeSpec* typedef_type = find_typedef_type(ts.tag)) {
+        if (const TypeSpec* typedef_type = find_chain_typedef(ts.tag)) {
             ts = *typedef_type;
         }
     }
@@ -447,25 +834,30 @@ bool Parser::are_types_compatible(const TypeSpec& lhs,
 bool Parser::resolves_to_record_ctor_type(TypeSpec ts) const {
     ts = resolve_struct_like_typedef_type(ts);
     if (ts.base == TB_TYPEDEF && ts.tag &&
-        (defined_struct_tags_.count(ts.tag) > 0 ||
-         template_struct_defs_.count(ts.tag) > 0)) {
+        (definition_state_.defined_struct_tags.count(ts.tag) > 0 ||
+         has_template_struct_primary(ts.tag))) {
         return true;
     }
     return ts.base == TB_STRUCT || ts.base == TB_UNION;
 }
 
 bool Parser::is_user_typedef_name(const std::string& name) const {
+    const TextId name_text_id = find_parser_text_id(name);
+    if (has_local_visible_user_typedef(name_text_id)) return true;
     if (!uses_symbol_identity(name)) {
-        const TextId id = find_parser_text_id(name);
-        return id != kInvalidText && non_atom_user_typedefs_.count(id) > 0;
+        return name_text_id != kInvalidText &&
+               binding_state_.non_atom_user_typedefs.count(name_text_id) > 0;
     }
-    const SymbolId id = parser_name_tables_.find_identifier(name);
-    return id != kInvalidSymbol && parser_name_tables_.user_typedefs.count(id) > 0;
+    const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name);
+    return id != kInvalidSymbol &&
+           shared_lookup_state_.parser_name_tables.user_typedefs.count(id) > 0;
 }
 
 bool Parser::has_conflicting_user_typedef_binding(const std::string& name,
                                                   const TypeSpec& type) const {
-    const TypeSpec* existing_typedef = find_typedef_type(name);
+    const TypeSpec* existing_typedef =
+        name.find("::") == std::string::npos ? find_visible_typedef_type(name)
+                                             : find_typedef_type(name);
     return is_user_typedef_name(name) && existing_typedef &&
            !are_types_compatible(*existing_typedef, type);
 }
@@ -475,57 +867,76 @@ void Parser::register_typedef_name(const std::string& name,
     if (!uses_symbol_identity(name)) {
         const TextId id = parser_text_id_for_token(kInvalidText, name);
         if (id == kInvalidText) return;
-        non_atom_typedefs_.insert(id);
-        if (is_user_typedef) non_atom_user_typedefs_.insert(id);
+        binding_state_.non_atom_typedefs.insert(id);
+        if (is_user_typedef) binding_state_.non_atom_user_typedefs.insert(id);
         return;
     }
-    const SymbolId id = parser_name_tables_.intern_identifier(name);
+    const SymbolId id =
+        shared_lookup_state_.parser_name_tables.intern_identifier(name);
     if (id == kInvalidSymbol) return;
-    parser_name_tables_.typedefs.insert(id);
-    if (is_user_typedef) parser_name_tables_.user_typedefs.insert(id);
+    shared_lookup_state_.parser_name_tables.typedefs.insert(id);
+    if (is_user_typedef) shared_lookup_state_.parser_name_tables.user_typedefs.insert(id);
 }
 
 void Parser::register_typedef_binding(const std::string& name,
                                       const TypeSpec& type,
                                       bool is_user_typedef) {
+    const TextId local_name_id = parser_text_id_for_token(kInvalidText, name);
+    if (should_track_local_binding(*this, local_name_id, name)) {
+        bind_local_typedef(local_name_id, type, is_user_typedef);
+        return;
+    }
     if (!uses_symbol_identity(name)) {
         const TextId id = parser_text_id_for_token(kInvalidText, name);
         if (id == kInvalidText) return;
-        non_atom_typedefs_.insert(id);
-        if (is_user_typedef) non_atom_user_typedefs_.insert(id);
-        non_atom_typedef_types_[id] = type;
+        binding_state_.non_atom_typedefs.insert(id);
+        if (is_user_typedef) binding_state_.non_atom_user_typedefs.insert(id);
+        binding_state_.non_atom_typedef_types[id] = type;
         return;
     }
-    const SymbolId id = parser_name_tables_.intern_identifier(name);
+    const SymbolId id =
+        shared_lookup_state_.parser_name_tables.intern_identifier(name);
     if (id == kInvalidSymbol) return;
-    parser_name_tables_.typedefs.insert(id);
-    if (is_user_typedef) parser_name_tables_.user_typedefs.insert(id);
-    parser_name_tables_.typedef_types[id] = type;
+    shared_lookup_state_.parser_name_tables.typedefs.insert(id);
+    if (is_user_typedef) shared_lookup_state_.parser_name_tables.user_typedefs.insert(id);
+    shared_lookup_state_.parser_name_tables.typedef_types[id] = type;
+}
+
+void Parser::unregister_typedef_binding(TextId name_text_id,
+                                        std::string_view fallback_name) {
+    const std::string_view name = parser_text(name_text_id, fallback_name);
+    if (!uses_symbol_identity(name)) {
+        if (name_text_id == kInvalidText) return;
+        binding_state_.non_atom_typedefs.erase(name_text_id);
+        binding_state_.non_atom_user_typedefs.erase(name_text_id);
+        binding_state_.non_atom_typedef_types.erase(name_text_id);
+        return;
+    }
+    const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name);
+    if (id == kInvalidSymbol) return;
+    shared_lookup_state_.parser_name_tables.typedefs.erase(id);
+    shared_lookup_state_.parser_name_tables.user_typedefs.erase(id);
+    shared_lookup_state_.parser_name_tables.typedef_types.erase(id);
 }
 
 void Parser::unregister_typedef_binding(const std::string& name) {
-    if (!uses_symbol_identity(name)) {
-        const TextId id = find_parser_text_id(name);
-        if (id == kInvalidText) return;
-        non_atom_typedefs_.erase(id);
-        non_atom_user_typedefs_.erase(id);
-        non_atom_typedef_types_.erase(id);
-        return;
-    }
-    const SymbolId id = parser_name_tables_.find_identifier(name);
-    if (id == kInvalidSymbol) return;
-    parser_name_tables_.typedefs.erase(id);
-    parser_name_tables_.user_typedefs.erase(id);
-    parser_name_tables_.typedef_types.erase(id);
+    unregister_typedef_binding(find_parser_text_id(name), name);
 }
 
-void Parser::register_synthesized_typedef_binding(const std::string& name) {
+void Parser::register_synthesized_typedef_binding(TextId name_text_id,
+                                                  std::string_view name) {
     TypeSpec synthesized_ts{};
     synthesized_ts.array_size = -1;
     synthesized_ts.inner_rank = -1;
     synthesized_ts.base = TB_TYPEDEF;
-    synthesized_ts.tag = arena_.strdup(name.c_str());
-    register_typedef_binding(name, synthesized_ts, false);
+    synthesized_ts.tag = arena_.strdup(std::string(name).c_str());
+    register_typedef_binding(std::string(parser_text(name_text_id, name)),
+                             synthesized_ts, false);
+}
+
+void Parser::register_synthesized_typedef_binding(const std::string& name) {
+    register_synthesized_typedef_binding(parser_text_id_for_token(kInvalidText, name),
+                                         name);
 }
 
 void Parser::register_tag_type_binding(const std::string& name,
@@ -548,82 +959,331 @@ void Parser::register_tag_type_binding(const std::string& name,
 }
 
 void Parser::cache_typedef_type(const std::string& name, const TypeSpec& type) {
+    const TextId local_name_id = parser_text_id_for_token(kInvalidText, name);
+    if (should_track_local_binding(*this, local_name_id, name)) {
+        bind_local_typedef(local_name_id, type);
+        return;
+    }
     if (!uses_symbol_identity(name)) {
         const TextId id = parser_text_id_for_token(kInvalidText, name);
         if (id == kInvalidText) return;
-        non_atom_typedef_types_[id] = type;
+        binding_state_.non_atom_typedef_types[id] = type;
         return;
     }
-    const SymbolId id = parser_name_tables_.intern_identifier(name);
+    const SymbolId id =
+        shared_lookup_state_.parser_name_tables.intern_identifier(name);
     if (id == kInvalidSymbol) return;
-    parser_name_tables_.typedef_types[id] = type;
+    shared_lookup_state_.parser_name_tables.typedef_types[id] = type;
+}
+
+void Parser::register_struct_member_typedef_binding(
+    std::string_view owner_name, std::string_view member_name,
+    const TypeSpec& type) {
+    const QualifiedNameKey key =
+        make_struct_member_typedef_key(*this, owner_name, member_name);
+    binding_state_.struct_typedefs[key] = type;
+    std::string scoped_name;
+    if (!owner_name.empty()) {
+        scoped_name.assign(owner_name);
+        scoped_name += "::";
+    }
+    scoped_name.append(member_name);
+    register_typedef_binding(scoped_name, type, false);
 }
 
 void Parser::register_struct_member_typedef_binding(
     const std::string& scoped_name, const TypeSpec& type) {
-    struct_typedefs_[scoped_name] = type;
-    register_typedef_binding(scoped_name, type, false);
+    const size_t sep = scoped_name.rfind("::");
+    if (sep == std::string::npos) {
+        register_struct_member_typedef_binding(std::string_view{}, scoped_name,
+                                               type);
+        return;
+    }
+    register_struct_member_typedef_binding(
+        std::string_view(scoped_name.data(), sep),
+        std::string_view(scoped_name.data() + sep + 2,
+                         scoped_name.size() - sep - 2),
+        type);
+}
+
+void Parser::register_structured_typedef_binding_in_context(
+    int context_id, TextId name_text_id, std::string_view fallback_name,
+    const TypeSpec& type) {
+    const QualifiedNameKey key = qualified_key_in_context(
+        *this, context_id, name_text_id, fallback_name, true);
+    if (key.base_text_id == kInvalidText) return;
+    binding_state_.struct_typedefs[key] = type;
 }
 
 bool Parser::has_var_type(const std::string& name) const {
     if (!uses_symbol_identity(name)) {
         const TextId id = find_parser_text_id(name);
-        return id != kInvalidText && non_atom_var_types_.count(id) > 0;
+        return id != kInvalidText &&
+               binding_state_.non_atom_var_types.count(id) > 0;
     }
-    const SymbolId id = parser_name_tables_.find_identifier(name);
-    return id != kInvalidSymbol && parser_name_tables_.var_types.count(id) > 0;
+    const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name);
+    return id != kInvalidSymbol &&
+           shared_lookup_state_.parser_name_tables.var_types.count(id) > 0;
 }
 
 const TypeSpec* Parser::find_var_type(const std::string& name) const {
     if (!uses_symbol_identity(name)) {
         const TextId id = find_parser_text_id(name);
         if (id == kInvalidText) return nullptr;
-        const auto it = non_atom_var_types_.find(id);
-        return it == non_atom_var_types_.end() ? nullptr : &it->second;
+        const auto it = binding_state_.non_atom_var_types.find(id);
+        return it == binding_state_.non_atom_var_types.end() ? nullptr
+                                                             : &it->second;
     }
-    const SymbolId id = parser_name_tables_.find_identifier(name);
+    const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name);
     if (id == kInvalidSymbol) return nullptr;
-    const auto it = parser_name_tables_.var_types.find(id);
-    if (it == parser_name_tables_.var_types.end()) return nullptr;
+    const auto it = shared_lookup_state_.parser_name_tables.var_types.find(id);
+    if (it == shared_lookup_state_.parser_name_tables.var_types.end()) return nullptr;
     return &it->second;
 }
 
-const TypeSpec* Parser::find_visible_var_type(const std::string& name) const {
-    if (const TypeSpec* type = find_var_type(name)) return type;
-    const std::string resolved = resolve_visible_value_name(name);
+const TypeSpec* Parser::find_visible_var_type(TextId name_text_id,
+                                              std::string_view name) const {
+    if (can_probe_local_binding(name_text_id, name)) {
+        if (const TypeSpec* type = find_local_visible_var_type(name_text_id)) {
+            return type;
+        }
+    }
+    if (const TypeSpec* type = find_var_type(std::string(name))) return type;
+    const std::string resolved = resolve_visible_value_name(name_text_id, name);
     if (resolved.empty() || resolved == name) return nullptr;
+    const TextId resolved_text_id = find_parser_text_id(resolved);
+    if (can_probe_local_binding(resolved_text_id, resolved)) {
+        if (const TypeSpec* type = find_local_visible_var_type(resolved_text_id)) {
+            return type;
+        }
+    }
     return find_var_type(resolved);
+}
+
+const TypeSpec* Parser::find_visible_var_type(const std::string& name) const {
+    return find_visible_var_type(find_parser_text_id(name), name);
 }
 
 void Parser::register_var_type_binding(const std::string& name,
                                        const TypeSpec& type) {
+    const TextId local_name_id = parser_text_id_for_token(kInvalidText, name);
+    if (should_track_local_binding(*this, local_name_id, name)) {
+        bind_local_value(local_name_id, type);
+        return;
+    }
     if (!uses_symbol_identity(name)) {
         const TextId id = parser_text_id_for_token(kInvalidText, name);
         if (id == kInvalidText) return;
-        non_atom_var_types_[id] = type;
+        binding_state_.non_atom_var_types[id] = type;
         return;
     }
-    const SymbolId id = parser_name_tables_.intern_identifier(name);
+    const SymbolId id =
+        shared_lookup_state_.parser_name_tables.intern_identifier(name);
     if (id == kInvalidSymbol) return;
-    parser_name_tables_.var_types[id] = type;
+    shared_lookup_state_.parser_name_tables.var_types[id] = type;
+}
+
+QualifiedNameKey Parser::known_fn_name_key(int context_id, TextId name_text_id,
+                                           std::string_view name) const {
+    return find_known_fn_name_key_from_spelling(*this, context_id, name_text_id,
+                                                name);
+}
+
+QualifiedNameKey Parser::intern_semantic_name_key(std::string_view name) {
+    return intern_known_fn_name_key_from_spelling(
+        *this, 0, parser_text_id_for_token(kInvalidText, name), name);
+}
+
+QualifiedNameKey Parser::known_fn_name_key_in_context(
+    int context_id, TextId name_text_id, std::string_view fallback_name) const {
+    return qualified_key_in_context(*this, context_id, name_text_id,
+                                    fallback_name, false);
+}
+
+QualifiedNameKey Parser::struct_typedef_key_in_context(
+    int context_id, TextId name_text_id,
+    std::string_view fallback_name) const {
+    return qualified_key_in_context(*this, context_id, name_text_id,
+                                    fallback_name, false);
+}
+
+QualifiedNameKey Parser::alias_template_key_in_context(
+    int context_id, TextId name_text_id, std::string_view fallback_name) const {
+    return qualified_key_in_context(*this, context_id, name_text_id,
+                                    fallback_name, true);
+}
+
+QualifiedNameKey Parser::qualified_name_key(const QualifiedNameRef& name) {
+    QualifiedNameKey key;
+    key.context_id = 0;
+    key.is_global_qualified = name.is_global_qualified;
+    key.base_text_id = name.base_text_id != kInvalidText
+                           ? name.base_text_id
+                           : parser_text_id_for_token(kInvalidText, name.base_name);
+    if (key.base_text_id == kInvalidText) return key;
+
+    if (!name.qualifier_text_ids.empty()) {
+        key.qualifier_path_id =
+            shared_lookup_state_.parser_name_paths.intern(name.qualifier_text_ids);
+    }
+    return key;
+}
+
+bool Parser::has_known_fn_name(const QualifiedNameKey& key) const {
+    return binding_state_.known_fn_names.count(key) > 0;
 }
 
 bool Parser::has_known_fn_name(const std::string& name) const {
-    return known_fn_names_.count(name) > 0;
+    return has_known_fn_name(
+        known_fn_name_key(0, parser_text_id_for_token(kInvalidText, name), name));
+}
+
+void Parser::register_known_fn_name(const QualifiedNameKey& key) {
+    binding_state_.known_fn_names.insert(key);
 }
 
 void Parser::register_known_fn_name(const std::string& name) {
-    known_fn_names_.insert(name);
+    register_known_fn_name(intern_known_fn_name_key_from_spelling(
+        *this, 0, parser_text_id_for_token(kInvalidText, name), name));
 }
 
-Parser::ParseContextGuard::ParseContextGuard(
+bool Parser::has_structured_concept_name(const QualifiedNameKey& key) const {
+    return key.base_text_id != kInvalidText &&
+           binding_state_.concept_qualified_names.count(key) > 0;
+}
+
+const ParserAliasTemplateInfo* Parser::find_alias_template_info_in_context(
+    int context_id, TextId name_text_id, std::string_view fallback_name) const {
+    if (context_id < 0) return nullptr;
+
+    const QualifiedNameKey key = alias_template_key_in_context(
+        context_id, name_text_id, fallback_name);
+    if (const ParserAliasTemplateInfo* structured =
+            find_alias_template_info(key)) {
+        return structured;
+    }
+
+    const std::string resolved =
+        resolve_visible_type_name(name_text_id, fallback_name);
+    if (!resolved.empty() && resolved != fallback_name) {
+        const TextId resolved_text_id = find_parser_text_id(resolved);
+        const QualifiedNameKey resolved_key = alias_template_key_in_context(
+            context_id, resolved_text_id, resolved);
+        if (const ParserAliasTemplateInfo* structured =
+                find_alias_template_info(resolved_key)) {
+            return structured;
+        }
+    }
+    return nullptr;
+}
+
+void Parser::register_concept_name_in_context(int context_id, TextId name_text_id,
+                                              std::string_view fallback_name) {
+    const QualifiedNameKey key = qualified_key_in_context(
+        *this, context_id, name_text_id, fallback_name, true);
+    if (key.base_text_id == kInvalidText) return;
+    binding_state_.concept_qualified_names.insert(key);
+}
+
+ParserParseContextGuard::ParserParseContextGuard(
     Parser* parser_in, const char* function_name)
     : parser(parser_in) {
     if (parser) parser->push_parse_context(function_name);
 }
 
-Parser::ParseContextGuard::~ParseContextGuard() {
+ParserParseContextGuard::~ParserParseContextGuard() {
     if (parser) parser->pop_parse_context();
+}
+
+ParserTentativeParseGuard::ParserTentativeParseGuard(Parser& p)
+    : parser(p), snapshot(p.save_state()), start_pos(snapshot.lite.pos) {
+    parser.note_tentative_parse_event(ParserTentativeParseMode::Heavy,
+                                      "tentative_enter", start_pos,
+                                      start_pos);
+}
+
+ParserTentativeParseGuard::~ParserTentativeParseGuard() {
+    if (!committed) {
+        parser.note_tentative_parse_event(ParserTentativeParseMode::Heavy,
+                                      "tentative_rollback", start_pos,
+                                          parser.core_input_state_.pos);
+        parser.restore_state(snapshot);
+    }
+}
+
+void ParserTentativeParseGuard::commit() {
+    if (committed) return;
+    parser.note_tentative_parse_event(ParserTentativeParseMode::Heavy,
+                                      "tentative_commit", start_pos,
+                                      parser.core_input_state_.pos);
+    committed = true;
+}
+
+ParserTentativeParseGuardLite::ParserTentativeParseGuardLite(Parser& p)
+    : parser(p), snapshot(p.save_lite_state()), start_pos(snapshot.pos) {
+    parser.note_tentative_parse_event(ParserTentativeParseMode::Lite,
+                                      "tentative_enter", start_pos,
+                                      start_pos);
+}
+
+ParserTentativeParseGuardLite::~ParserTentativeParseGuardLite() {
+    if (!committed) {
+        parser.note_tentative_parse_event(ParserTentativeParseMode::Lite,
+                                          "tentative_rollback", start_pos,
+                                          parser.core_input_state_.pos);
+        parser.restore_lite_state(snapshot);
+    }
+}
+
+void ParserTentativeParseGuardLite::commit() {
+    if (committed) return;
+    parser.note_tentative_parse_event(ParserTentativeParseMode::Lite,
+                                      "tentative_commit", start_pos,
+                                      parser.core_input_state_.pos);
+    committed = true;
+}
+
+ParserLocalVarBindingSuppressionGuard::ParserLocalVarBindingSuppressionGuard(
+    Parser& p)
+    : parser(p), old(p.active_context_state_.suppress_local_var_bindings) {
+    parser.active_context_state_.suppress_local_var_bindings = true;
+}
+
+ParserLocalVarBindingSuppressionGuard::
+    ~ParserLocalVarBindingSuppressionGuard() {
+    parser.active_context_state_.suppress_local_var_bindings = old;
+}
+
+ParserRecordTemplatePreludeGuard::ParserRecordTemplatePreludeGuard(Parser* p)
+    : parser(p) {}
+
+ParserRecordTemplatePreludeGuard::~ParserRecordTemplatePreludeGuard() {
+    if (!parser) return;
+    if (pushed_template_scope &&
+        !parser->template_state_.template_scope_stack.empty()) {
+        parser->template_state_.template_scope_stack.pop_back();
+    }
+    for (const ParserInjectedTemplateParam& param : injected_type_params) {
+        parser->unregister_typedef_binding(param.name_text_id,
+                                           param.name ? param.name : "");
+    }
+}
+
+ParserTemplateDeclarationPreludeGuard::ParserTemplateDeclarationPreludeGuard(
+    Parser* p)
+    : parser(p) {}
+
+ParserTemplateDeclarationPreludeGuard::
+    ~ParserTemplateDeclarationPreludeGuard() {
+    if (!parser) return;
+    if (pushed_template_scope &&
+        !parser->template_state_.template_scope_stack.empty()) {
+        parser->template_state_.template_scope_stack.pop_back();
+    }
+    for (const ParserInjectedTemplateParam& param : injected_type_params) {
+        parser->unregister_typedef_binding(param.name_text_id,
+                                           param.name ? param.name : "");
+    }
 }
 
 Parser::Parser(std::vector<Token> tokens, Arena& arena,
@@ -631,14 +1291,12 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena,
                FileTable* token_files,
                SourceProfile source_profile,
                const std::string& source_file)
-    : tokens_(std::move(tokens)), pos_(0), arena_(arena), source_profile_(source_profile),
-      source_file_(source_file), token_texts_(token_texts), token_files_(token_files),
-      anon_counter_(0), had_error_(false), parsing_top_level_context_(false),
-      last_enum_def_(nullptr) {
-    parser_symbols_.attach_text_table(token_texts_);
-    namespace_contexts_.push_back(
-        NamespaceContext{0, -1, false, arena_.strdup(""), arena_.strdup("")});
-    namespace_stack_.push_back(0);
+    : core_input_state_(std::move(tokens), arena, source_profile, source_file),
+      shared_lookup_state_(token_texts, token_files) {
+    namespace_state_.namespace_contexts.push_back(
+        NamespaceContext{0, -1, false, kInvalidText, arena_.strdup(""),
+                         arena_.strdup("")});
+    namespace_state_.namespace_stack.push_back(0);
     // Pre-seed well-known typedef names from standard / system headers
     // so the parser can disambiguate type-name vs identifier.
     static const char* seed[] = {
@@ -811,87 +1469,94 @@ void Parser::handle_pragma_pack(const std::string& args) {
     // The lexeme has whitespace stripped and contains just the args, e.g. "1", "push,2", "pop", ""
 
     if (args.empty()) {
-        pack_alignment_ = 0;
+        pragma_state_.pack_alignment = 0;
         return;
     }
 
     if (args.substr(0, 4) == "push") {
-        pack_stack_.push_back(pack_alignment_);
+        pragma_state_.pack_stack.push_back(pragma_state_.pack_alignment);
         if (args.size() > 4 && args[4] == ',') {
-            pack_alignment_ = std::stoi(args.substr(5));
+            pragma_state_.pack_alignment = std::stoi(args.substr(5));
         }
     } else if (args.substr(0, 3) == "pop") {
-        if (!pack_stack_.empty()) {
-            pack_alignment_ = pack_stack_.back();
-            pack_stack_.pop_back();
+        if (!pragma_state_.pack_stack.empty()) {
+            pragma_state_.pack_alignment = pragma_state_.pack_stack.back();
+            pragma_state_.pack_stack.pop_back();
         } else {
-            pack_alignment_ = 0;
+            pragma_state_.pack_alignment = 0;
         }
         if (args.size() > 3 && args[3] == ',') {
-            pack_alignment_ = std::stoi(args.substr(4));
+            pragma_state_.pack_alignment = std::stoi(args.substr(4));
         }
     } else {
         // Simple numeric value
-        pack_alignment_ = std::stoi(args);
+        pragma_state_.pack_alignment = std::stoi(args);
     }
 }
 
 void Parser::handle_pragma_exec(const std::string& args) {
     if (args == "host") {
-        execution_domain_ = ExecutionDomain::Host;
+        pragma_state_.execution_domain = ExecutionDomain::Host;
     } else if (args == "device") {
-        execution_domain_ = ExecutionDomain::Device;
+        pragma_state_.execution_domain = ExecutionDomain::Device;
     }
 }
 
 void Parser::set_parser_debug(bool enabled) {
-    parser_debug_channels_ = enabled ? ParseDebugAll : ParseDebugNone;
+    diagnostic_state_.parser_debug_channels =
+        enabled ? ParseDebugAll : ParseDebugNone;
 }
 
 void Parser::set_parser_debug_channels(unsigned channels) {
-    parser_debug_channels_ = channels;
+    diagnostic_state_.parser_debug_channels = channels;
 }
 
 bool Parser::parser_debug_enabled() const {
-    return parser_debug_channels_ != ParseDebugNone;
+    return diagnostic_state_.parser_debug_channels != ParseDebugNone;
 }
 
 bool Parser::parse_debug_event_visible(const char* kind) const {
     if (!parser_debug_enabled()) return false;
-    if (!kind) return (parser_debug_channels_ & ParseDebugGeneral) != 0;
+    if (!kind)
+        return (diagnostic_state_.parser_debug_channels & ParseDebugGeneral) !=
+               0;
     if (std::strncmp(kind, "tentative_", 10) == 0) {
-        return (parser_debug_channels_ & ParseDebugTentative) != 0;
+        return (diagnostic_state_.parser_debug_channels &
+                ParseDebugTentative) != 0;
     }
     if (std::strncmp(kind, "injected_parse_", 15) == 0) {
-        return (parser_debug_channels_ & ParseDebugInjected) != 0;
+        return (diagnostic_state_.parser_debug_channels &
+                ParseDebugInjected) != 0;
     }
-    return (parser_debug_channels_ & ParseDebugGeneral) != 0;
+    return (diagnostic_state_.parser_debug_channels & ParseDebugGeneral) != 0;
 }
 
 void Parser::clear_parse_debug_state() {
-    parse_context_stack_.clear();
-    parse_debug_events_.clear();
-    best_parse_failure_ = ParseFailure{};
-    best_parse_stack_token_index_ = -1;
-    best_parse_stack_trace_.clear();
+    diagnostic_state_.parse_context_stack.clear();
+    diagnostic_state_.parse_debug_events.clear();
+    diagnostic_state_.best_parse_failure = ParseFailure{};
+    diagnostic_state_.best_parse_stack_token_index = -1;
+    diagnostic_state_.best_parse_stack_trace.clear();
 }
 
 void Parser::reset_parse_debug_progress() {
-    parse_debug_started_at_ = {};
-    parse_debug_last_progress_at_ = {};
+    diagnostic_state_.parse_debug_started_at = {};
+    diagnostic_state_.parse_debug_last_progress_at = {};
 }
 
 void Parser::push_parse_context(const char* function_name) {
     ParseContextFrame frame;
     frame.function_name = function_name ? function_name : "";
-    frame.token_index = pos_;
-    parse_context_stack_.push_back(std::move(frame));
+    frame.token_index = core_input_state_.pos;
+    diagnostic_state_.parse_context_stack.push_back(std::move(frame));
     note_parse_debug_event("enter");
 }
 
 void Parser::pop_parse_context() {
     note_parse_debug_event("leave");
-    if (!parse_context_stack_.empty()) parse_context_stack_.pop_back();
+    if (!diagnostic_state_.parse_context_stack.empty()) {
+        diagnostic_state_.parse_context_stack.pop_back();
+    }
 }
 
 void Parser::note_parse_debug_event(const char* kind, const char* detail) {
@@ -904,61 +1569,84 @@ void Parser::note_parse_debug_event_for(const char* kind,
     if (!parser_debug_enabled()) return;
 
     const auto now = std::chrono::steady_clock::now();
-    if (parse_debug_started_at_ == std::chrono::steady_clock::time_point{}) {
-        parse_debug_started_at_ = now;
+    if (diagnostic_state_.parse_debug_started_at ==
+        std::chrono::steady_clock::time_point{}) {
+        diagnostic_state_.parse_debug_started_at = now;
     }
-    if (parse_debug_last_progress_at_ == std::chrono::steady_clock::time_point{}) {
-        parse_debug_last_progress_at_ = now;
+    if (diagnostic_state_.parse_debug_last_progress_at ==
+        std::chrono::steady_clock::time_point{}) {
+        diagnostic_state_.parse_debug_last_progress_at = now;
     }
 
     ParseDebugEvent event;
     event.kind = kind ? kind : "";
     event.detail = detail ? detail : "";
-    event.token_index = !at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1);
-    event.line = !at_end() ? cur().line : (pos_ > 0 ? tokens_[pos_ - 1].line : 1);
+    event.token_index = !at_end()
+                            ? core_input_state_.pos
+                            : (core_input_state_.pos > 0
+                                   ? core_input_state_.pos - 1
+                                   : -1);
+    event.line = !at_end()
+                     ? cur().line
+                     : (core_input_state_.pos > 0
+                            ? core_input_state_.tokens[core_input_state_.pos - 1].line
+                            : 1);
     event.column = !at_end() ? cur().column : 1;
     if (function_name && function_name[0]) {
         event.function_name = function_name;
-    } else if (!parse_context_stack_.empty()) {
-        event.function_name = parse_context_stack_.back().function_name;
+    } else if (!diagnostic_state_.parse_context_stack.empty()) {
+        event.function_name =
+            diagnostic_state_.parse_context_stack.back().function_name;
     }
-    parse_debug_events_.push_back(std::move(event));
-    if (static_cast<int>(parse_debug_events_.size()) > max_parse_debug_events_) {
-        parse_debug_events_.erase(parse_debug_events_.begin());
+    diagnostic_state_.parse_debug_events.push_back(std::move(event));
+    if (static_cast<int>(diagnostic_state_.parse_debug_events.size()) >
+        diagnostic_state_.max_parse_debug_events) {
+        diagnostic_state_.parse_debug_events.erase(
+            diagnostic_state_.parse_debug_events.begin());
     }
     if (kind &&
         (std::strncmp(kind, "tentative_", 10) == 0 ||
          std::strncmp(kind, "injected_parse_", 15) == 0)) {
         return;
     }
-    if (!parse_context_stack_.empty()) {
-        const int token_index = parse_debug_events_.back().token_index;
-        const int token_delta = token_index - best_parse_stack_token_index_;
-        const std::string current_function = parse_context_stack_.back().function_name;
+    if (!diagnostic_state_.parse_context_stack.empty()) {
+        const int token_index =
+            diagnostic_state_.parse_debug_events.back().token_index;
+        const int token_delta =
+            token_index - diagnostic_state_.best_parse_stack_token_index;
+        const std::string current_function =
+            diagnostic_state_.parse_context_stack.back().function_name;
         const bool preserving_wrapper_prefix_snapshot =
             token_delta > 0 &&
-            current_stack_is_prefix_of_best(parse_context_stack_,
-                                            best_parse_stack_trace_);
+            current_stack_is_prefix_of_best(
+                diagnostic_state_.parse_context_stack,
+                diagnostic_state_.best_parse_stack_trace);
         const bool preserving_qualified_type_probe_snapshot =
             token_delta > 0 &&
             (is_top_level_wrapper_failure(current_function) ||
              is_qualified_type_trace_wrapper(current_function)) &&
-            stack_contains_qualified_type_trace(best_parse_stack_trace_);
+            stack_contains_qualified_type_trace(
+                diagnostic_state_.best_parse_stack_trace);
         const bool replace_snapshot =
-            best_parse_stack_token_index_ < 0 ||
+            diagnostic_state_.best_parse_stack_token_index < 0 ||
             (!(preserving_wrapper_prefix_snapshot ||
                preserving_qualified_type_probe_snapshot) &&
              token_delta > 1) ||
             (token_delta > 0 &&
-             parse_context_stack_.size() >= best_parse_stack_trace_.size()) ||
+             diagnostic_state_.parse_context_stack.size() >=
+                 diagnostic_state_.best_parse_stack_trace.size()) ||
             (token_delta == 0 &&
-             parse_context_stack_.size() > best_parse_stack_trace_.size());
+             diagnostic_state_.parse_context_stack.size() >
+                 diagnostic_state_.best_parse_stack_trace.size());
         if (replace_snapshot) {
-            best_parse_stack_token_index_ = token_index;
-            best_parse_stack_trace_.clear();
-            best_parse_stack_trace_.reserve(parse_context_stack_.size());
-            for (const ParseContextFrame& frame : parse_context_stack_) {
-                best_parse_stack_trace_.push_back(frame.function_name);
+            diagnostic_state_.best_parse_stack_token_index = token_index;
+            diagnostic_state_.best_parse_stack_trace.clear();
+            diagnostic_state_.best_parse_stack_trace.reserve(
+                diagnostic_state_.parse_context_stack.size());
+            for (const ParseContextFrame& frame :
+                 diagnostic_state_.parse_context_stack) {
+                diagnostic_state_.best_parse_stack_trace.push_back(
+                    frame.function_name);
             }
         }
     }
@@ -968,41 +1656,46 @@ void Parser::note_parse_debug_event_for(const char* kind,
 
 void Parser::maybe_emit_parse_debug_progress() {
     if (!parser_debug_enabled()) return;
-    if (parse_debug_events_.empty()) return;
+    if (diagnostic_state_.parse_debug_events.empty()) return;
 
     const auto now = std::chrono::steady_clock::now();
     const auto interval =
-        std::chrono::milliseconds(parse_debug_progress_interval_ms_);
-    if (now - parse_debug_last_progress_at_ < interval) return;
+        std::chrono::milliseconds(
+            diagnostic_state_.parse_debug_progress_interval_ms);
+    if (now - diagnostic_state_.parse_debug_last_progress_at < interval) return;
 
-    const ParseDebugEvent& event = parse_debug_events_.back();
+    const ParseDebugEvent& event = diagnostic_state_.parse_debug_events.back();
     const auto elapsed_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(
-            now - parse_debug_started_at_)
+            now - diagnostic_state_.parse_debug_started_at)
             .count();
     fprintf(stderr,
             "[pdebug] progress elapsed_ms=%lld token_index=%d line=%d col=%d",
             static_cast<long long>(elapsed_ms), event.token_index, event.line,
             event.column);
     if (event.token_index >= 0 &&
-        event.token_index < static_cast<int>(tokens_.size()) &&
-        token_files_ && tokens_[event.token_index].file_id != kInvalidFile) {
+        event.token_index < static_cast<int>(core_input_state_.tokens.size()) &&
+        shared_lookup_state_.token_files &&
+        core_input_state_.tokens[event.token_index].file_id != kInvalidFile) {
         fprintf(stderr, " file=%s",
-                std::string(token_files_->lookup(tokens_[event.token_index].file_id)).c_str());
+                std::string(shared_lookup_state_.token_files->lookup(
+                                core_input_state_.tokens[event.token_index].file_id))
+                    .c_str());
     }
     if (!event.function_name.empty()) {
         fprintf(stderr, " fn=%s", event.function_name.c_str());
     }
     if (event.token_index >= 0 &&
-        event.token_index < static_cast<int>(tokens_.size())) {
+        event.token_index < static_cast<int>(core_input_state_.tokens.size())) {
         fprintf(stderr, " token_kind=%s token='%s'",
-                token_kind_name(tokens_[event.token_index].kind),
-                std::string(token_spelling(tokens_[event.token_index])).c_str());
+                token_kind_name(core_input_state_.tokens[event.token_index].kind),
+                std::string(token_spelling(
+                    core_input_state_.tokens[event.token_index])).c_str());
     }
     fprintf(stderr, "\n");
     fflush(stderr);
 
-    parse_debug_last_progress_at_ = now;
+    diagnostic_state_.parse_debug_last_progress_at = now;
 }
 
 void Parser::note_tentative_parse_event(TentativeParseMode mode,
@@ -1013,19 +1706,21 @@ void Parser::note_tentative_parse_event(TentativeParseMode mode,
     switch (mode) {
         case TentativeParseMode::Heavy:
             if (std::strcmp(kind, "tentative_enter") == 0)
-                counter = &tentative_parse_stats_.heavy_enter;
+                counter = &diagnostic_state_.tentative_parse_stats.heavy_enter;
             else if (std::strcmp(kind, "tentative_commit") == 0)
-                counter = &tentative_parse_stats_.heavy_commit;
+                counter = &diagnostic_state_.tentative_parse_stats.heavy_commit;
             else if (std::strcmp(kind, "tentative_rollback") == 0)
-                counter = &tentative_parse_stats_.heavy_rollback;
+                counter =
+                    &diagnostic_state_.tentative_parse_stats.heavy_rollback;
             break;
         case TentativeParseMode::Lite:
             if (std::strcmp(kind, "tentative_enter") == 0)
-                counter = &tentative_parse_stats_.lite_enter;
+                counter = &diagnostic_state_.tentative_parse_stats.lite_enter;
             else if (std::strcmp(kind, "tentative_commit") == 0)
-                counter = &tentative_parse_stats_.lite_commit;
+                counter = &diagnostic_state_.tentative_parse_stats.lite_commit;
             else if (std::strcmp(kind, "tentative_rollback") == 0)
-                counter = &tentative_parse_stats_.lite_rollback;
+                counter =
+                    &diagnostic_state_.tentative_parse_stats.lite_rollback;
             break;
     }
     if (counter) ++(*counter);
@@ -1041,22 +1736,32 @@ void Parser::note_parse_failure(const char* expected,
     ParseFailure failure;
     failure.active = true;
     failure.committed = committed;
-    failure.token_index = !at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1);
+    failure.token_index = !at_end()
+                              ? core_input_state_.pos
+                              : (core_input_state_.pos > 0
+                                     ? core_input_state_.pos - 1
+                                     : -1);
     failure.token_kind = !at_end() ? cur().kind : TokenKind::EndOfFile;
-    failure.line = !at_end() ? cur().line : (pos_ > 0 ? tokens_[pos_ - 1].line : 1);
+    failure.line = !at_end()
+                       ? cur().line
+                       : (core_input_state_.pos > 0
+                              ? core_input_state_.tokens[core_input_state_.pos - 1].line
+                              : 1);
     failure.column = !at_end() ? cur().column : 1;
     failure.expected = expected ? expected : "";
     failure.got = at_end() ? "<eof>" : token_spelling(cur());
     failure.detail = detail ? detail : "";
-    if (!parse_context_stack_.empty()) {
-        failure.function_name = parse_context_stack_.back().function_name;
+    if (!diagnostic_state_.parse_context_stack.empty()) {
+        failure.function_name =
+            diagnostic_state_.parse_context_stack.back().function_name;
     }
-    for (const ParseContextFrame& frame : parse_context_stack_) {
+    for (const ParseContextFrame& frame : diagnostic_state_.parse_context_stack) {
         failure.stack_trace.push_back(frame.function_name);
     }
 
-    if (should_replace_best_parse_failure(best_parse_failure_, failure)) {
-        best_parse_failure_ = std::move(failure);
+    if (should_replace_best_parse_failure(diagnostic_state_.best_parse_failure,
+                                          failure)) {
+        diagnostic_state_.best_parse_failure = std::move(failure);
     }
 
     note_parse_debug_event(committed ? "fail" : "soft_fail", detail);
@@ -1068,111 +1773,129 @@ void Parser::note_parse_failure_message(const char* detail, bool committed) {
 
 std::vector<std::string> Parser::best_debug_summary_stack() const {
     const bool top_level_wrapper_failure =
-        is_top_level_wrapper_failure(best_parse_failure_.function_name);
+        is_top_level_wrapper_failure(
+            diagnostic_state_.best_parse_failure.function_name);
     std::vector<std::string> summary_stack;
-    if (best_parse_stack_trace_.size() > best_parse_failure_.stack_trace.size() &&
-        (best_parse_stack_token_index_ >= best_parse_failure_.token_index ||
+    if (diagnostic_state_.best_parse_stack_trace.size() >
+            diagnostic_state_.best_parse_failure.stack_trace.size() &&
+        (diagnostic_state_.best_parse_stack_token_index >=
+             diagnostic_state_.best_parse_failure.token_index ||
          top_level_wrapper_failure)) {
-        std::vector<std::string> candidate = best_parse_stack_trace_;
-        if (best_parse_failure_.function_name == "parse_top_level" &&
+        std::vector<std::string> candidate =
+            diagnostic_state_.best_parse_stack_trace;
+        if (diagnostic_state_.best_parse_failure.function_name ==
+                "parse_top_level" &&
             !candidate.empty() &&
             is_qualified_type_trace_leaf(candidate.back())) {
             candidate.pop_back();
         }
         size_t common_prefix = 0;
         while (common_prefix < candidate.size() &&
-               common_prefix < best_parse_failure_.stack_trace.size() &&
+               common_prefix <
+                   diagnostic_state_.best_parse_failure.stack_trace.size() &&
                candidate[common_prefix] ==
-                   best_parse_failure_.stack_trace[common_prefix]) {
+                   diagnostic_state_.best_parse_failure
+                       .stack_trace[common_prefix]) {
             ++common_prefix;
         }
         if (top_level_wrapper_failure && common_prefix > 0 &&
             common_prefix < candidate.size() &&
-            best_parse_failure_.function_name ==
+            diagnostic_state_.best_parse_failure.function_name ==
                 "parse_top_level_parameter_list") {
             std::vector<std::string> merged = candidate;
             merged.insert(merged.end(),
-                          best_parse_failure_.stack_trace.begin() + common_prefix,
-                          best_parse_failure_.stack_trace.end());
+                          diagnostic_state_.best_parse_failure.stack_trace
+                                  .begin() +
+                              common_prefix,
+                          diagnostic_state_.best_parse_failure.stack_trace.end());
             summary_stack = normalize_summary_stack(merged);
-            return merge_leading_top_level_qualified_probe(parse_debug_events_,
-                                                           summary_stack);
+            return merge_leading_top_level_qualified_probe(
+                diagnostic_state_.parse_debug_events, summary_stack);
         }
-        if (!best_parse_failure_.function_name.empty() &&
+        if (!diagnostic_state_.best_parse_failure.function_name.empty() &&
             std::find(candidate.begin(),
                       candidate.end(),
-                      best_parse_failure_.function_name) !=
+                      diagnostic_state_.best_parse_failure.function_name) !=
                 candidate.end()) {
             summary_stack = normalize_summary_stack(candidate);
-            return merge_leading_top_level_qualified_probe(parse_debug_events_,
-                                                           summary_stack);
+            return merge_leading_top_level_qualified_probe(
+                diagnostic_state_.parse_debug_events, summary_stack);
         }
-        if (best_parse_failure_.function_name == "parse_top_level" &&
+        if (diagnostic_state_.best_parse_failure.function_name ==
+                "parse_top_level" &&
             !candidate.empty()) {
             summary_stack = normalize_summary_stack(candidate);
-            return merge_leading_top_level_qualified_probe(parse_debug_events_,
-                                                           summary_stack);
+            return merge_leading_top_level_qualified_probe(
+                diagnostic_state_.parse_debug_events, summary_stack);
         }
     }
-    summary_stack = normalize_summary_stack(best_parse_failure_.stack_trace);
-    return merge_leading_top_level_qualified_probe(parse_debug_events_,
-                                                   summary_stack);
+    summary_stack = normalize_summary_stack(
+        diagnostic_state_.best_parse_failure.stack_trace);
+    return merge_leading_top_level_qualified_probe(
+        diagnostic_state_.parse_debug_events, summary_stack);
 }
 
 std::string Parser::format_best_parse_failure() const {
-    if (!best_parse_failure_.active) return {};
+    if (!diagnostic_state_.best_parse_failure.active) return {};
 
     std::ostringstream oss;
     const std::vector<std::string> summary_stack = best_debug_summary_stack();
     const std::string* summary_leaf =
-        select_best_parse_summary_leaf(summary_stack, best_parse_failure_);
+        select_best_parse_summary_leaf(summary_stack,
+                                       diagnostic_state_.best_parse_failure);
     if (summary_leaf && !summary_leaf->empty()) {
         oss << "parse_fn=" << *summary_leaf;
-    } else if (!best_parse_failure_.function_name.empty()) {
-        oss << "parse_fn=" << best_parse_failure_.function_name;
+    } else if (!diagnostic_state_.best_parse_failure.function_name.empty()) {
+        oss << "parse_fn=" << diagnostic_state_.best_parse_failure.function_name;
     }
-    if (best_parse_failure_.committed) {
+    if (diagnostic_state_.best_parse_failure.committed) {
         if (oss.tellp() > 0) oss << " ";
         oss << "phase=committed";
     }
-    if (!best_parse_failure_.expected.empty()) {
+    if (!diagnostic_state_.best_parse_failure.expected.empty()) {
         if (oss.tellp() > 0) oss << " ";
-        oss << "expected=" << best_parse_failure_.expected;
-        oss << " got='" << best_parse_failure_.got << "'";
+        oss << "expected=" << diagnostic_state_.best_parse_failure.expected;
+        oss << " got='" << diagnostic_state_.best_parse_failure.got << "'";
     } else {
         if (oss.tellp() > 0) oss << " ";
-        oss << "got='" << best_parse_failure_.got << "'";
+        oss << "got='" << diagnostic_state_.best_parse_failure.got << "'";
     }
-    if (!best_parse_failure_.detail.empty()) {
+    if (!diagnostic_state_.best_parse_failure.detail.empty()) {
         if (oss.tellp() > 0) oss << " ";
-        oss << "detail=\"" << best_parse_failure_.detail << "\"";
+        oss << "detail=\"" << diagnostic_state_.best_parse_failure.detail
+            << "\"";
     }
     if (parser_debug_enabled()) {
         if (oss.tellp() > 0) oss << " ";
-        oss << "token_index=" << best_parse_failure_.token_index
-            << " token_kind=" << token_kind_name(best_parse_failure_.token_kind)
+        oss << "token_index=" << diagnostic_state_.best_parse_failure.token_index
+            << " token_kind="
+            << token_kind_name(diagnostic_state_.best_parse_failure.token_kind)
             << " token_window=\""
-            << format_parse_failure_token_window(best_parse_failure_) << "\"";
+            << format_parse_failure_token_window(
+                   diagnostic_state_.best_parse_failure)
+            << "\"";
     }
     return oss.str();
 }
 
 std::string Parser::format_parse_failure_token_window(
     const ParseFailure& failure) const {
-    if (tokens_.empty()) return {};
+    if (core_input_state_.tokens.empty()) return {};
 
     const int center =
         failure.token_index >= 0
-            ? std::min(failure.token_index, static_cast<int>(tokens_.size()) - 1)
-            : static_cast<int>(tokens_.size()) - 1;
+            ? std::min(failure.token_index,
+                       static_cast<int>(core_input_state_.tokens.size()) - 1)
+            : static_cast<int>(core_input_state_.tokens.size()) - 1;
     const int start = std::max(0, center - 2);
     const int end =
-        std::min(static_cast<int>(tokens_.size()) - 1, center + 2);
+        std::min(static_cast<int>(core_input_state_.tokens.size()) - 1, center + 2);
 
     std::ostringstream oss;
     for (int i = start; i <= end; ++i) {
         if (i > start) oss << " | ";
-        oss << format_debug_token_entry(tokens_[i], token_spelling(tokens_[i]),
+        oss << format_debug_token_entry(core_input_state_.tokens[i],
+                                        token_spelling(core_input_state_.tokens[i]),
                                         i, i == center);
     }
     return oss.str();
@@ -1191,18 +1914,18 @@ std::string Parser::format_tentative_parse_detail(TentativeParseMode mode,
         int count = 0;
         if (mode == TentativeParseMode::Heavy) {
             if (std::strcmp(kind, "tentative_enter") == 0)
-                count = tentative_parse_stats_.heavy_enter;
+                count = diagnostic_state_.tentative_parse_stats.heavy_enter;
             else if (std::strcmp(kind, "tentative_commit") == 0)
-                count = tentative_parse_stats_.heavy_commit;
+                count = diagnostic_state_.tentative_parse_stats.heavy_commit;
             else if (std::strcmp(kind, "tentative_rollback") == 0)
-                count = tentative_parse_stats_.heavy_rollback;
+                count = diagnostic_state_.tentative_parse_stats.heavy_rollback;
         } else {
             if (std::strcmp(kind, "tentative_enter") == 0)
-                count = tentative_parse_stats_.lite_enter;
+                count = diagnostic_state_.tentative_parse_stats.lite_enter;
             else if (std::strcmp(kind, "tentative_commit") == 0)
-                count = tentative_parse_stats_.lite_commit;
+                count = diagnostic_state_.tentative_parse_stats.lite_commit;
             else if (std::strcmp(kind, "tentative_rollback") == 0)
-                count = tentative_parse_stats_.lite_rollback;
+                count = diagnostic_state_.tentative_parse_stats.lite_rollback;
         }
         if (count > 0) oss << " count=" << count;
     }
@@ -1210,9 +1933,11 @@ std::string Parser::format_tentative_parse_detail(TentativeParseMode mode,
 }
 
 void Parser::dump_parse_debug_trace() const {
-    if (!parser_debug_enabled() || parse_debug_events_.empty()) return;
+    if (!parser_debug_enabled() || diagnostic_state_.parse_debug_events.empty()) {
+        return;
+    }
     bool has_visible_event = false;
-    for (const ParseDebugEvent& event : parse_debug_events_) {
+    for (const ParseDebugEvent& event : diagnostic_state_.parse_debug_events) {
         if (parse_debug_event_visible(event.kind.c_str())) {
             has_visible_event = true;
             break;
@@ -1220,11 +1945,16 @@ void Parser::dump_parse_debug_trace() const {
     }
     if (!has_visible_event) return;
     fprintf(stderr, "%s:%d:%d: note: parser debug trace follows\n",
-            best_parse_failure_.active ? diag_file_at(best_parse_failure_.token_index)
-                                       : source_file_.c_str(),
-            best_parse_failure_.active ? best_parse_failure_.line : 1,
-            best_parse_failure_.active ? best_parse_failure_.column : 1);
-    for (const ParseDebugEvent& event : parse_debug_events_) {
+            diagnostic_state_.best_parse_failure.active
+                ? diag_file_at(diagnostic_state_.best_parse_failure.token_index)
+                                       : core_input_state_.source_file.c_str(),
+            diagnostic_state_.best_parse_failure.active
+                ? diagnostic_state_.best_parse_failure.line
+                : 1,
+            diagnostic_state_.best_parse_failure.active
+                ? diagnostic_state_.best_parse_failure.column
+                : 1);
+    for (const ParseDebugEvent& event : diagnostic_state_.parse_debug_events) {
         if (!parse_debug_event_visible(event.kind.c_str())) continue;
         fprintf(stderr, "[pdebug] kind=%s",
                 event.kind.c_str());
@@ -1235,7 +1965,7 @@ void Parser::dump_parse_debug_trace() const {
         fprintf(stderr, "\n");
     }
     const std::vector<std::string> summary_stack = best_debug_summary_stack();
-    if (best_parse_failure_.active && !summary_stack.empty()) {
+    if (diagnostic_state_.best_parse_failure.active && !summary_stack.empty()) {
         const std::vector<const std::string*> compact_stack =
             collapse_adjacent_stack_frames(summary_stack);
         fprintf(stderr, "[pdebug] stack:");
@@ -1247,41 +1977,45 @@ void Parser::dump_parse_debug_trace() const {
 }
 
 const char* Parser::diag_file_at(int token_index) const {
-    if (token_index >= 0 && token_index < static_cast<int>(tokens_.size()) &&
-        token_files_ && tokens_[token_index].file_id != kInvalidFile) {
-        const std::string file = std::string(token_files_->lookup(tokens_[token_index].file_id));
+    if (token_index >= 0 &&
+        token_index < static_cast<int>(core_input_state_.tokens.size()) &&
+        shared_lookup_state_.token_files &&
+        core_input_state_.tokens[token_index].file_id != kInvalidFile) {
+        const std::string file = std::string(
+            shared_lookup_state_.token_files->lookup(
+                core_input_state_.tokens[token_index].file_id));
         if (!file.empty()) return arena_.strdup(file);
     }
-    return source_file_.c_str();
+    return core_input_state_.source_file.c_str();
 }
 
 void Parser::handle_pragma_gcc_visibility(const std::string& args) {
     // Lexeme format: "push,<visibility>" or "pop"
     if (args == "pop") {
-        if (!visibility_stack_.empty()) {
-            visibility_ = visibility_stack_.back();
-            visibility_stack_.pop_back();
+        if (!pragma_state_.visibility_stack.empty()) {
+            pragma_state_.visibility = pragma_state_.visibility_stack.back();
+            pragma_state_.visibility_stack.pop_back();
         } else {
-            visibility_ = 0;  // default
+            pragma_state_.visibility = 0;  // default
         }
     } else if (args.substr(0, 5) == "push,") {
-        visibility_stack_.push_back(visibility_);
+        pragma_state_.visibility_stack.push_back(pragma_state_.visibility);
         const std::string vis = args.substr(5);
-        if (vis == "hidden") visibility_ = 1;
-        else if (vis == "protected") visibility_ = 2;
-        else visibility_ = 0;  // "default" or unknown → default
+        if (vis == "hidden") pragma_state_.visibility = 1;
+        else if (vis == "protected") pragma_state_.visibility = 2;
+        else pragma_state_.visibility = 0;  // "default" or unknown → default
     }
 }
 
 // ── token cursor helpers ──────────────────────────────────────────────────────
 
 const Token& Parser::cur() const {
-    return tokens_[pos_];
+    return core_input_state_.tokens[core_input_state_.pos];
 }
 
 const Token& Parser::peek(int offset) const {
-    int idx = pos_ + offset;
-    if (idx < 0 || idx >= (int)tokens_.size()) {
+    int idx = core_input_state_.pos + offset;
+    if (idx < 0 || idx >= (int)core_input_state_.tokens.size()) {
         static Token eof = [] {
             Token token{};
             token.kind = TokenKind::EndOfFile;
@@ -1289,29 +2023,35 @@ const Token& Parser::peek(int offset) const {
         }();
         return eof;
     }
-    return tokens_[idx];
+    return core_input_state_.tokens[idx];
 }
 
 const Token& Parser::consume() {
-    const Token& t = tokens_[pos_];
-    if (pos_ + 1 < (int)tokens_.size()) ++pos_;
+    const Token& t = core_input_state_.tokens[core_input_state_.pos];
+    if (core_input_state_.pos + 1 < (int)core_input_state_.tokens.size())
+        ++core_input_state_.pos;
     return t;
 }
 
 bool Parser::at_end() const {
-    if (pos_ < 0 || pos_ >= static_cast<int>(tokens_.size())) return true;
-    return tokens_[pos_].kind == TokenKind::EndOfFile;
+    if (core_input_state_.pos < 0 ||
+        core_input_state_.pos >= static_cast<int>(core_input_state_.tokens.size()))
+        return true;
+    return core_input_state_.tokens[core_input_state_.pos].kind ==
+           TokenKind::EndOfFile;
 }
 
 bool Parser::check(TokenKind k) const {
-    if (pos_ < 0 || pos_ >= static_cast<int>(tokens_.size())) return false;
-    return tokens_[pos_].kind == k;
+    if (core_input_state_.pos < 0 ||
+        core_input_state_.pos >= static_cast<int>(core_input_state_.tokens.size()))
+        return false;
+    return core_input_state_.tokens[core_input_state_.pos].kind == k;
 }
 
 bool Parser::peek_next_is(TokenKind k) const {
-    int idx = pos_ + 1;
-    if (idx >= (int)tokens_.size()) return false;
-    return tokens_[idx].kind == k;
+    int idx = core_input_state_.pos + 1;
+    if (idx >= (int)core_input_state_.tokens.size()) return false;
+    return core_input_state_.tokens[idx].kind == k;
 }
 
 bool Parser::match(TokenKind k) {
@@ -1319,142 +2059,268 @@ bool Parser::match(TokenKind k) {
     return false;
 }
 
-std::string Parser::qualify_name(const std::string& name) const {
-    if (name.empty()) return name;
+std::string Parser::qualify_name(TextId name_text_id,
+                                 std::string_view name) const {
+    if (name.empty()) return {};
     const int context_id = current_namespace_context_id();
-    if (context_id <= 0) return name;
-    if (name.find("::") != std::string::npos) return name;
-    return canonical_name_in_context(context_id, name);
+    if (context_id <= 0) return std::string(name);
+    if (name.find("::") != std::string::npos) return std::string(name);
+    return bridge_name_in_context(context_id, name_text_id, name);
 }
 
-const char* Parser::qualify_name_arena(const char* name) {
+std::string Parser::qualify_name(const std::string& name) const {
+    return qualify_name(parser_text_id_for_token(kInvalidText, name), name);
+}
+
+const char* Parser::qualify_name_arena(TextId name_text_id, const char* name) {
     if (!name || !name[0]) return name;
-    std::string qualified = qualify_name(name);
+    std::string qualified = qualify_name(name_text_id, name);
     if (qualified == name) return name;
     return arena_.strdup(qualified.c_str());
 }
 
-std::string Parser::resolve_visible_value_name(const std::string& name) const {
+const char* Parser::qualify_name_arena(const char* name) {
+    return qualify_name_arena(parser_text_id_for_token(kInvalidText, name), name);
+}
+
+std::string Parser::resolve_visible_value_name(TextId name_text_id,
+                                               std::string_view name) const {
+    if (can_probe_local_binding(name_text_id, name) &&
+        find_local_visible_var_type(name_text_id)) {
+        return std::string(name);
+    }
+    const std::string spelled(name);
     return resolve_visible_name_from_namespace_stack(
-        namespace_stack_, name, [&](int context_id, std::string* resolved) {
-            auto alias_it = using_value_aliases_.find(context_id);
-            if (alias_it != using_value_aliases_.end()) {
-                auto value_it = alias_it->second.find(name);
-                if (value_it != alias_it->second.end()) {
-                    *resolved = value_it->second;
+        namespace_state_.namespace_stack, spelled,
+        [&](int context_id, std::string* resolved) {
+            if (lookup_using_value_alias(context_id, name_text_id, spelled,
+                                         resolved)) {
+                return true;
+            }
+            return lookup_value_in_context(context_id, name_text_id, spelled,
+                                           resolved);
+        });
+}
+
+std::string Parser::resolve_visible_value_name(const std::string& name) const {
+    return resolve_visible_value_name(find_parser_text_id(name), name);
+}
+
+std::string Parser::resolve_visible_type_name(TextId name_text_id,
+                                              std::string_view name) const {
+    if (can_probe_local_binding(name_text_id, name) &&
+        find_local_visible_typedef_type(name_text_id)) {
+        return std::string(name);
+    }
+    const std::string spelled(name);
+    return resolve_visible_name_from_namespace_stack(
+        namespace_state_.namespace_stack, spelled,
+        [&](int context_id, std::string* resolved) {
+            if (lookup_using_value_alias(context_id, name_text_id, spelled,
+                                         resolved)) {
+                const TextId resolved_text_id = find_parser_text_id(*resolved);
+                if (resolved->find("::") != std::string::npos) {
+                    if (has_typedef_type(*resolved)) {
+                        return true;
+                    }
+                    if (lookup_type_in_context(context_id, resolved_text_id,
+                                               *resolved, resolved)) {
+                        return true;
+                    }
+                    return false;
+                }
+                if (lookup_type_in_context(context_id, resolved_text_id, *resolved,
+                                           resolved)) {
                     return true;
                 }
+                if (resolved->find("::") == std::string::npos) {
+                    if (resolved_text_id != kInvalidText &&
+                        find_local_visible_typedef_type(resolved_text_id)) {
+                        return true;
+                    }
+                    if (probe_visible_typedef_name(*this, resolved_text_id,
+                                                   *resolved)) {
+                        return true;
+                    }
+                }
             }
-            return lookup_value_in_context(context_id, name, resolved);
+            return lookup_type_in_context(context_id, name_text_id, spelled,
+                                          resolved);
         });
 }
 
 std::string Parser::resolve_visible_type_name(std::string_view name) const {
+    return resolve_visible_type_name(find_parser_text_id(name), name);
+}
+
+std::string Parser::resolve_visible_concept_name(TextId name_text_id,
+                                                 std::string_view name) const {
+    if (name_text_id != kInvalidText && is_unqualified_lookup_name(name) &&
+        binding_state_.concept_name_text_ids.count(name_text_id) > 0) {
+        return std::string(name);
+    }
     const std::string spelled(name);
     return resolve_visible_name_from_namespace_stack(
-        namespace_stack_, spelled,
+        namespace_state_.namespace_stack, spelled,
         [&](int context_id, std::string* resolved) {
-            auto alias_it = using_value_aliases_.find(context_id);
-            if (alias_it != using_value_aliases_.end()) {
-                auto value_it = alias_it->second.find(spelled);
-                if (value_it != alias_it->second.end() &&
-                    has_typedef_type(value_it->second)) {
-                    *resolved = value_it->second;
-                    return true;
-                }
-            }
-            return lookup_type_in_context(context_id, spelled, resolved);
+            return lookup_concept_in_context(context_id, name_text_id, spelled,
+                                             resolved);
         });
 }
 
 std::string Parser::resolve_visible_concept_name(const std::string& name) const {
-    return resolve_visible_name_from_namespace_stack(
-        namespace_stack_, name, [&](int context_id, std::string* resolved) {
-            return lookup_concept_in_context(context_id, name, resolved);
-        });
+    return resolve_visible_concept_name(find_parser_text_id(name), name);
 }
 
 bool Parser::is_concept_name(const std::string& name) const {
     if (name.empty()) return false;
-    if (concept_names_.count(name) > 0) return true;
-    return concept_names_.count(resolve_visible_concept_name(name)) > 0;
+    const TextId name_text_id = find_parser_text_id(name);
+    if (name.find("::") != std::string::npos &&
+        has_structured_concept_name(known_fn_name_key(0, name_text_id, name))) {
+        return true;
+    }
+    if (name_text_id != kInvalidText && is_unqualified_lookup_name(name) &&
+        binding_state_.concept_name_text_ids.count(name_text_id) > 0) {
+        return true;
+    }
+    const std::string resolved = resolve_visible_concept_name(name_text_id, name);
+    return resolved != name;
 }
 
 void Parser::refresh_current_namespace_bridge() {
-    current_namespace_.clear();
-    for (size_t i = 1; i < namespace_stack_.size(); ++i) {
-        const NamespaceContext& ctx = namespace_contexts_[namespace_stack_[i]];
+    namespace_state_.current_namespace.clear();
+    for (size_t i = 1; i < namespace_state_.namespace_stack.size(); ++i) {
+        const NamespaceContext& ctx =
+            namespace_state_.namespace_contexts[namespace_state_.namespace_stack[i]];
         if (!ctx.canonical_name || !ctx.canonical_name[0]) continue;
-        current_namespace_ = ctx.canonical_name;
+        namespace_state_.current_namespace = ctx.canonical_name;
     }
 }
 
 int Parser::current_namespace_context_id() const {
-    if (namespace_stack_.empty()) return 0;
-    return namespace_stack_.back();
+    if (namespace_state_.namespace_stack.empty()) return 0;
+    return namespace_state_.namespace_stack.back();
 }
 
-int Parser::ensure_named_namespace_context(int parent_id, const std::string& name) {
-    const std::string key = make_namespace_context_key(parent_id, name);
-    auto it = named_namespace_contexts_.find(key);
-    if (it != named_namespace_contexts_.end()) return it->second;
+int Parser::find_named_namespace_child(int parent_id, TextId text_id) const {
+    if (text_id == kInvalidText) return -1;
+    auto parent_it = namespace_state_.named_namespace_children.find(parent_id);
+    if (parent_it == namespace_state_.named_namespace_children.end()) return -1;
+    auto child_it = parent_it->second.find(text_id);
+    if (child_it == parent_it->second.end()) return -1;
+    return child_it->second;
+}
 
-    const NamespaceContext& parent = namespace_contexts_[parent_id];
+int Parser::ensure_named_namespace_context(int parent_id, TextId text_id,
+                                           const std::string& name) {
+    if (text_id == kInvalidText) {
+        text_id = parser_text_id_for_token(kInvalidText, name);
+    }
+    const int existing = find_named_namespace_child(parent_id, text_id);
+    if (existing >= 0) return existing;
+
+    const NamespaceContext& parent = namespace_state_.namespace_contexts[parent_id];
     std::string canonical =
         build_canonical_namespace_name(parent.canonical_name, name);
 
-    const int id = static_cast<int>(namespace_contexts_.size());
-    namespace_contexts_.push_back(
-        NamespaceContext{id, parent_id, false, arena_.strdup(name.c_str()),
+    const int id = static_cast<int>(namespace_state_.namespace_contexts.size());
+    namespace_state_.namespace_contexts.push_back(
+        NamespaceContext{id, parent_id, false, text_id, arena_.strdup(name.c_str()),
                          arena_.strdup(canonical.c_str())});
-    named_namespace_contexts_[key] = id;
+    namespace_state_.named_namespace_children[parent_id][text_id] = id;
     return id;
 }
 
 int Parser::create_anonymous_namespace_context(int parent_id) {
-    const NamespaceContext& parent = namespace_contexts_[parent_id];
+    const NamespaceContext& parent = namespace_state_.namespace_contexts[parent_id];
     std::string canonical = build_canonical_namespace_name(
-        parent.canonical_name, "__anon_ns_" + std::to_string(anon_counter_++));
+        parent.canonical_name,
+        "__anon_ns_" + std::to_string(definition_state_.anon_counter++));
 
-    const int id = static_cast<int>(namespace_contexts_.size());
-    namespace_contexts_.push_back(
-        NamespaceContext{id, parent_id, true, arena_.strdup(""),
+    const int id = static_cast<int>(namespace_state_.namespace_contexts.size());
+    namespace_state_.namespace_contexts.push_back(
+        NamespaceContext{id, parent_id, true, kInvalidText, arena_.strdup(""),
                          arena_.strdup(canonical.c_str())});
-    anonymous_namespace_children_[parent_id].push_back(id);
+    namespace_state_.anonymous_namespace_children[parent_id].push_back(id);
     return id;
 }
 
 void Parser::push_namespace_context(int context_id) {
-    namespace_stack_.push_back(context_id);
+    namespace_state_.namespace_stack.push_back(context_id);
     refresh_current_namespace_bridge();
 }
 
 void Parser::pop_namespace_context() {
-    if (namespace_stack_.size() > 1) namespace_stack_.pop_back();
+    if (namespace_state_.namespace_stack.size() > 1) {
+        namespace_state_.namespace_stack.pop_back();
+    }
     refresh_current_namespace_bridge();
 }
 
 std::string Parser::canonical_name_in_context(int context_id, const std::string& name) const {
     if (name.empty()) return name;
     if (context_id <= 0) return name;
-    const NamespaceContext& ctx = namespace_contexts_[context_id];
+    const NamespaceContext& ctx = namespace_state_.namespace_contexts[context_id];
     if (!ctx.canonical_name || !ctx.canonical_name[0]) return name;
     return std::string(ctx.canonical_name) + "::" + name;
+}
+
+std::string Parser::compatibility_namespace_name_in_context(
+    int context_id, TextId name_text_id, std::string_view fallback_name) const {
+    std::string name(parser_text(name_text_id, fallback_name));
+    if (name.empty() || context_id <= 0) return name;
+
+    std::vector<int> ancestry;
+    for (int walk = context_id; walk > 0;
+         walk = namespace_state_.namespace_contexts[walk].parent_id) {
+        ancestry.push_back(walk);
+    }
+
+    std::string qualified;
+    for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it) {
+        const NamespaceContext& ctx = namespace_state_.namespace_contexts[*it];
+        if (ctx.is_anonymous) {
+            if (ctx.canonical_name && ctx.canonical_name[0]) {
+                qualified.assign(ctx.canonical_name);
+            }
+            continue;
+        }
+
+        const std::string_view segment =
+            parser_text(ctx.text_id, ctx.display_name ? ctx.display_name : "");
+        if (segment.empty()) continue;
+        if (!qualified.empty()) qualified += "::";
+        qualified += segment;
+    }
+
+    if (qualified.empty()) return name;
+    qualified += "::";
+    qualified += name;
+    return qualified;
+}
+
+std::string Parser::bridge_name_in_context(int context_id, TextId name_text_id,
+                                           std::string_view fallback_name) const {
+    return render_lookup_name_in_context(*this, context_id, name_text_id,
+                                         fallback_name);
 }
 
 int Parser::resolve_namespace_context(const QualifiedNameRef& name) const {
     auto follow_path = [&](int start_id) -> int {
         int context_id = start_id;
-        for (const std::string& segment : name.qualifier_segments) {
-            const std::string key = make_namespace_context_key(context_id, segment);
-            auto it = named_namespace_contexts_.find(key);
-            if (it == named_namespace_contexts_.end()) return -1;
-            context_id = it->second;
+        for (size_t i = 0; i < name.qualifier_segments.size(); ++i) {
+            const TextId segment_text_id =
+                i < name.qualifier_text_ids.size()
+                    ? name.qualifier_text_ids[i]
+                    : kInvalidText;
+            if (segment_text_id == kInvalidText) return -1;
+            context_id = find_named_namespace_child(context_id, segment_text_id);
+            if (context_id < 0) return -1;
         }
         return context_id;
     };
 
-    return resolve_namespace_id_from_stack(namespace_stack_,
+    return resolve_namespace_id_from_stack(namespace_state_.namespace_stack,
                                            name.is_global_qualified,
                                            follow_path);
 }
@@ -1462,103 +2328,257 @@ int Parser::resolve_namespace_context(const QualifiedNameRef& name) const {
 int Parser::resolve_namespace_name(const QualifiedNameRef& name) const {
     auto follow_name = [&](int start_id) -> int {
         int context_id = start_id;
-        for (const std::string& segment : name.qualifier_segments) {
-            const std::string key = make_namespace_context_key(context_id, segment);
-            auto it = named_namespace_contexts_.find(key);
-            if (it == named_namespace_contexts_.end()) return -1;
-            context_id = it->second;
+        for (size_t i = 0; i < name.qualifier_segments.size(); ++i) {
+            const TextId segment_text_id =
+                i < name.qualifier_text_ids.size()
+                    ? name.qualifier_text_ids[i]
+                    : kInvalidText;
+            if (segment_text_id == kInvalidText) return -1;
+            context_id = find_named_namespace_child(context_id, segment_text_id);
+            if (context_id < 0) return -1;
         }
-        const std::string final_key =
-            make_namespace_context_key(context_id, name.base_name);
-        auto it = named_namespace_contexts_.find(final_key);
-        if (it == named_namespace_contexts_.end()) return -1;
-        return it->second;
+        const TextId base_text_id =
+            name.base_text_id != kInvalidText ? name.base_text_id
+                                              : kInvalidText;
+        if (base_text_id == kInvalidText) return -1;
+        return find_named_namespace_child(context_id, base_text_id);
     };
 
-    return resolve_namespace_id_from_stack(namespace_stack_,
+    return resolve_namespace_id_from_stack(namespace_state_.namespace_stack,
                                            name.is_global_qualified,
                                            follow_name);
 }
 
-bool Parser::lookup_value_in_context(int context_id, const std::string& name,
+std::string Parser::qualified_name_text(const QualifiedNameRef& name,
+                                        bool include_global_prefix) const {
+    std::string qualified;
+    if (include_global_prefix && name.is_global_qualified) qualified = "::";
+    for (size_t i = 0; i < name.qualifier_segments.size(); ++i) {
+        if (!qualified.empty() && qualified != "::") qualified += "::";
+        const TextId segment_text_id =
+            i < name.qualifier_text_ids.size() ? name.qualifier_text_ids[i]
+                                               : kInvalidText;
+        qualified += parser_text(segment_text_id, name.qualifier_segments[i]);
+    }
+    if (!qualified.empty() && qualified != "::") qualified += "::";
+    qualified += parser_text(name.base_text_id, name.base_name);
+    return qualified;
+}
+
+std::string Parser::resolve_qualified_value_name(
+    const QualifiedNameRef& name) const {
+    const std::string base_name =
+        std::string(parser_text(name.base_text_id, name.base_name));
+    if (name.qualifier_segments.empty()) {
+        return name.is_global_qualified
+                   ? base_name
+                   : resolve_visible_value_name(name.base_text_id, base_name);
+    }
+
+    const int context_id = resolve_namespace_context(name);
+    if (context_id < 0) return {};
+
+    std::string alias_name;
+    if (lookup_using_value_alias(context_id, name.base_text_id, base_name,
+                                 &alias_name)) {
+        return alias_name;
+    }
+
+    std::string resolved;
+    if (lookup_value_in_context(context_id, name.base_text_id, base_name,
+                                &resolved)) {
+        return resolved;
+    }
+    return {};
+}
+
+std::string Parser::resolve_qualified_type_name(
+    const QualifiedNameRef& name) const {
+    const std::string base_name =
+        std::string(parser_text(name.base_text_id, name.base_name));
+    if (name.qualifier_segments.empty()) {
+        return name.is_global_qualified
+                   ? base_name
+                   : resolve_visible_type_name(name.base_text_id, base_name);
+    }
+
+    const int context_id = resolve_namespace_context(name);
+    if (context_id < 0) return {};
+    std::string resolved;
+    if (lookup_type_in_context(context_id, name.base_text_id, base_name,
+                               &resolved)) {
+        return resolved;
+    }
+    return {};
+}
+
+bool Parser::lookup_using_value_alias(int context_id, TextId name_text_id,
+                                      std::string_view fallback_name,
+                                      std::string* resolved) const {
+    if (!resolved) return false;
+    if (name_text_id == kInvalidText) {
+        name_text_id = find_parser_text_id(fallback_name);
+    }
+    if (name_text_id == kInvalidText) return false;
+
+    const auto alias_it = namespace_state_.using_value_aliases.find(context_id);
+    if (alias_it == namespace_state_.using_value_aliases.end()) return false;
+    const auto value_it = alias_it->second.find(name_text_id);
+    if (value_it == alias_it->second.end()) return false;
+    const ParserNamespaceState::UsingValueAlias& alias = value_it->second;
+    if (const std::string structured =
+            render_value_binding_name(*this, alias.target_key);
+        !structured.empty()) {
+        *resolved = structured;
+        return true;
+    }
+    *resolved = alias.compatibility_name;
+    return true;
+}
+
+bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
+                                     std::string_view name,
                                      std::string* resolved) const {
-    const std::string candidate = canonical_name_in_context(context_id, name);
-    if (has_var_type(candidate) || has_known_fn_name(candidate)) {
+    const QualifiedNameKey candidate_key =
+        known_fn_name_key_in_context(context_id, name_text_id, name);
+    if (has_known_fn_name(candidate_key)) {
+        *resolved = render_structured_name(*this, candidate_key);
+        return !resolved->empty();
+    }
+
+    const std::string structured_candidate =
+        render_value_binding_name(*this, candidate_key);
+    if (!structured_candidate.empty() && has_var_type(structured_candidate)) {
+        *resolved = structured_candidate;
+        return true;
+    }
+    const std::string fallback_name(name);
+    if (context_id == 0) {
+        const QualifiedNameKey global_key =
+            known_fn_name_key_in_context(0, name_text_id, fallback_name);
+        if (has_known_fn_name(global_key)) {
+            *resolved = render_structured_name(*this, global_key);
+            return !resolved->empty();
+        }
+        if (has_var_type(fallback_name)) {
+            *resolved = name;
+            return true;
+        }
+    }
+
+    auto anon_it = namespace_state_.anonymous_namespace_children.find(context_id);
+    if (anon_it != namespace_state_.anonymous_namespace_children.end()) {
+        for (int anon_id : anon_it->second) {
+            if (lookup_value_in_context(anon_id, name_text_id, name, resolved))
+                return true;
+        }
+    }
+
+    auto using_it = namespace_state_.using_namespace_contexts.find(context_id);
+    if (using_it != namespace_state_.using_namespace_contexts.end()) {
+        for (int imported_id : using_it->second) {
+            if (lookup_value_in_context(imported_id, name_text_id, name,
+                                        resolved)) {
+                return true;
+            }
+        }
+    }
+
+    const std::string candidate =
+        render_lookup_name_in_context(*this, context_id, name_text_id, name);
+    if (has_var_type(candidate)) {
         *resolved = candidate;
         return true;
-    }
-    if (context_id == 0 && (has_var_type(name) || has_known_fn_name(name))) {
-        *resolved = name;
-        return true;
-    }
-
-    auto anon_it = anonymous_namespace_children_.find(context_id);
-    if (anon_it != anonymous_namespace_children_.end()) {
-        for (int anon_id : anon_it->second) {
-            if (lookup_value_in_context(anon_id, name, resolved)) return true;
-        }
-    }
-
-    auto using_it = using_namespace_contexts_.find(context_id);
-    if (using_it != using_namespace_contexts_.end()) {
-        for (int imported_id : using_it->second) {
-            if (lookup_value_in_context(imported_id, name, resolved)) return true;
-        }
     }
     return false;
 }
 
-bool Parser::lookup_type_in_context(int context_id, const std::string& name,
+bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
+                                    std::string_view name,
                                     std::string* resolved) const {
-    const std::string candidate = canonical_name_in_context(context_id, name);
+    const QualifiedNameKey candidate_key =
+        struct_typedef_key_in_context(context_id, name_text_id, name);
+    if (find_structured_typedef_type(candidate_key)) {
+        *resolved = render_structured_name(*this, candidate_key);
+        if (resolved->empty()) {
+            *resolved = bridge_name_in_context(context_id, name_text_id, name);
+        }
+        return true;
+    }
+    if (context_id == 0 && name.find("::") == std::string_view::npos &&
+        visible_typedef_fallback_depth_for(*this) == 0) {
+        if (find_local_visible_typedef_type(name_text_id)) {
+            *resolved = name;
+            return true;
+        }
+        if (probe_visible_typedef_name(*this, name_text_id, name)) {
+            *resolved = name;
+            return true;
+        }
+    }
+
+    auto anon_it = namespace_state_.anonymous_namespace_children.find(context_id);
+    if (anon_it != namespace_state_.anonymous_namespace_children.end()) {
+        for (int anon_id : anon_it->second) {
+            if (lookup_type_in_context(anon_id, name_text_id, name, resolved))
+                return true;
+        }
+    }
+
+    auto using_it = namespace_state_.using_namespace_contexts.find(context_id);
+    if (using_it != namespace_state_.using_namespace_contexts.end()) {
+        for (int imported_id : using_it->second) {
+            if (lookup_type_in_context(imported_id, name_text_id, name, resolved))
+                return true;
+        }
+    }
+    const std::string candidate =
+        bridge_name_in_context(context_id, name_text_id, name);
     if (has_typedef_type(candidate)) {
         *resolved = candidate;
         return true;
     }
-    if (context_id == 0 && has_typedef_type(name)) {
-        *resolved = name;
-        return true;
-    }
-
-    auto anon_it = anonymous_namespace_children_.find(context_id);
-    if (anon_it != anonymous_namespace_children_.end()) {
-        for (int anon_id : anon_it->second) {
-            if (lookup_type_in_context(anon_id, name, resolved)) return true;
-        }
-    }
-
-    auto using_it = using_namespace_contexts_.find(context_id);
-    if (using_it != using_namespace_contexts_.end()) {
-        for (int imported_id : using_it->second) {
-            if (lookup_type_in_context(imported_id, name, resolved)) return true;
-        }
-    }
     return false;
 }
 
-bool Parser::lookup_concept_in_context(int context_id, const std::string& name,
+bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
+                                       std::string_view name,
                                        std::string* resolved) const {
-    const std::string candidate = canonical_name_in_context(context_id, name);
-    if (concept_names_.count(candidate)) {
-        *resolved = candidate;
+    if (!resolved) return false;
+    if (name_text_id == kInvalidText) {
+        name_text_id = find_parser_text_id(name);
+    }
+    if (context_id == 0 && name_text_id != kInvalidText &&
+        is_unqualified_lookup_name(name) &&
+        binding_state_.concept_name_text_ids.count(name_text_id) > 0) {
+        *resolved = std::string(name);
         return true;
     }
-    if (context_id == 0 && concept_names_.count(name)) {
-        *resolved = name;
+    const QualifiedNameKey candidate_key =
+        known_fn_name_key_in_context(context_id, name_text_id, name);
+    if (has_structured_concept_name(candidate_key)) {
+        *resolved = render_structured_name(*this, candidate_key);
+        if (resolved->empty()) {
+            *resolved = bridge_name_in_context(context_id, name_text_id, name);
+        }
         return true;
     }
 
-    auto anon_it = anonymous_namespace_children_.find(context_id);
-    if (anon_it != anonymous_namespace_children_.end()) {
+    auto anon_it = namespace_state_.anonymous_namespace_children.find(context_id);
+    if (anon_it != namespace_state_.anonymous_namespace_children.end()) {
         for (int anon_id : anon_it->second) {
-            if (lookup_concept_in_context(anon_id, name, resolved)) return true;
+            if (lookup_concept_in_context(anon_id, name_text_id, name, resolved))
+                return true;
         }
     }
 
-    auto using_it = using_namespace_contexts_.find(context_id);
-    if (using_it != using_namespace_contexts_.end()) {
+    auto using_it = namespace_state_.using_namespace_contexts.find(context_id);
+    if (using_it != namespace_state_.using_namespace_contexts.end()) {
         for (int imported_id : using_it->second) {
-            if (lookup_concept_in_context(imported_id, name, resolved)) return true;
+            if (lookup_concept_in_context(imported_id, name_text_id, name,
+                                          resolved)) {
+                return true;
+            }
         }
     }
     return false;
@@ -1567,26 +2587,27 @@ bool Parser::lookup_concept_in_context(int context_id, const std::string& name,
 bool Parser::peek_qualified_name(QualifiedNameRef* out, bool allow_global) const {
     if (!out) return false;
     QualifiedNameRef result;
-    int p = pos_;
-    if (allow_global && p < static_cast<int>(tokens_.size()) &&
-        tokens_[p].kind == TokenKind::ColonColon) {
+    const auto& tokens = core_input_state_.tokens;
+    int p = core_input_state_.pos;
+    if (allow_global && p < static_cast<int>(tokens.size()) &&
+        tokens[p].kind == TokenKind::ColonColon) {
         result.is_global_qualified = true;
         ++p;
     }
-    if (p >= static_cast<int>(tokens_.size()) || tokens_[p].kind != TokenKind::Identifier) {
+    if (p >= static_cast<int>(tokens.size()) || tokens[p].kind != TokenKind::Identifier) {
         return false;
     }
-    result.base_name = std::string(token_spelling(tokens_[p]));
-    result.base_text_id = parser_text_id_for_token(tokens_[p].text_id, result.base_name);
+    result.base_name = std::string(token_spelling(tokens[p]));
+    result.base_text_id = parser_text_id_for_token(tokens[p].text_id, result.base_name);
     ++p;
-    while (p + 1 < static_cast<int>(tokens_.size()) &&
-           tokens_[p].kind == TokenKind::ColonColon &&
-           tokens_[p + 1].kind == TokenKind::Identifier) {
+    while (p + 1 < static_cast<int>(tokens.size()) &&
+           tokens[p].kind == TokenKind::ColonColon &&
+           tokens[p + 1].kind == TokenKind::Identifier) {
         result.qualifier_segments.push_back(result.base_name);
         result.qualifier_text_ids.push_back(result.base_text_id);
-        result.base_name = std::string(token_spelling(tokens_[p + 1]));
+        result.base_name = std::string(token_spelling(tokens[p + 1]));
         result.base_text_id =
-            parser_text_id_for_token(tokens_[p + 1].text_id, result.base_name);
+            parser_text_id_for_token(tokens[p + 1].text_id, result.base_name);
         p += 2;
     }
     *out = std::move(result);
@@ -1614,8 +2635,10 @@ void Parser::apply_qualified_name(Node* node, const QualifiedNameRef& qn,
     node->is_global_qualified = qn.is_global_qualified;
     node->unqualified_text_id = qn.base_text_id;
     node->unqualified_name =
-        arena_.strdup(std::string(token_texts_ && qn.base_text_id != kInvalidText
-                                      ? token_texts_->lookup(qn.base_text_id)
+        arena_.strdup(std::string(shared_lookup_state_.token_texts &&
+                                          qn.base_text_id != kInvalidText
+                                      ? shared_lookup_state_.token_texts->lookup(
+                                            qn.base_text_id)
                                       : std::string_view(qn.base_name))
                           .c_str());
     node->n_qualifier_segments = static_cast<int>(qn.qualifier_segments.size());
@@ -1624,9 +2647,11 @@ void Parser::apply_qualified_name(Node* node, const QualifiedNameRef& qn,
         node->qualifier_text_ids = arena_.alloc_array<TextId>(node->n_qualifier_segments);
         for (int i = 0; i < node->n_qualifier_segments; ++i) {
             const std::string_view segment =
-                token_texts_ && i < static_cast<int>(qn.qualifier_text_ids.size()) &&
+                shared_lookup_state_.token_texts &&
+                        i < static_cast<int>(qn.qualifier_text_ids.size()) &&
                         qn.qualifier_text_ids[i] != kInvalidText
-                    ? token_texts_->lookup(qn.qualifier_text_ids[i])
+                    ? shared_lookup_state_.token_texts->lookup(
+                          qn.qualifier_text_ids[i])
                     : std::string_view(qn.qualifier_segments[i]);
             node->qualifier_segments[i] =
                 arena_.strdup(std::string(segment).c_str());
@@ -1650,8 +2675,9 @@ void Parser::apply_decl_namespace(Node* node, int context_id, const char* unqual
         parser_text_id_for_token(kInvalidText, unqualified_name ? unqualified_name : "");
 
     std::vector<const char*> segments;
-    for (int walk = context_id; walk > 0; walk = namespace_contexts_[walk].parent_id) {
-        const NamespaceContext& ctx = namespace_contexts_[walk];
+    for (int walk = context_id; walk > 0;
+         walk = namespace_state_.namespace_contexts[walk].parent_id) {
+        const NamespaceContext& ctx = namespace_state_.namespace_contexts[walk];
         if (ctx.is_anonymous || !ctx.display_name || !ctx.display_name[0]) continue;
         segments.push_back(ctx.display_name);
     }
@@ -1693,25 +2719,28 @@ bool Parser::parse_greater_than_in_template_list(bool consume_last_token) {
 
     if (check(TokenKind::GreaterGreater)) {
         // Consume one > and leave the second > in the token stream.
-        token_mutations_.push_back({pos_, tokens_[pos_]});
-        tokens_[pos_].kind = TokenKind::Greater;
-        set_parser_owned_spelling(tokens_[pos_], ">");
+        core_input_state_.token_mutations.push_back(
+            {core_input_state_.pos, core_input_state_.tokens[core_input_state_.pos]});
+        core_input_state_.tokens[core_input_state_.pos].kind = TokenKind::Greater;
+        set_parser_owned_spelling(core_input_state_.tokens[core_input_state_.pos], ">");
         return true;
     }
 
     if (check(TokenKind::GreaterEqual)) {
         // Consume one > and leave = in the token stream.
-        token_mutations_.push_back({pos_, tokens_[pos_]});
-        tokens_[pos_].kind = TokenKind::Assign;
-        set_parser_owned_spelling(tokens_[pos_], "=");
+        core_input_state_.token_mutations.push_back(
+            {core_input_state_.pos, core_input_state_.tokens[core_input_state_.pos]});
+        core_input_state_.tokens[core_input_state_.pos].kind = TokenKind::Assign;
+        set_parser_owned_spelling(core_input_state_.tokens[core_input_state_.pos], "=");
         return true;
     }
 
     if (check(TokenKind::GreaterGreaterAssign)) {
         // Consume one > and leave >= in the token stream.
-        token_mutations_.push_back({pos_, tokens_[pos_]});
-        tokens_[pos_].kind = TokenKind::GreaterEqual;
-        set_parser_owned_spelling(tokens_[pos_], ">=");
+        core_input_state_.token_mutations.push_back(
+            {core_input_state_.pos, core_input_state_.tokens[core_input_state_.pos]});
+        core_input_state_.tokens[core_input_state_.pos].kind = TokenKind::GreaterEqual;
+        set_parser_owned_spelling(core_input_state_.tokens[core_input_state_.pos], ">=");
         return true;
     }
 
@@ -1738,41 +2767,50 @@ void Parser::skip_until(TokenKind k) {
 
 Node* Parser::parse() {
     std::vector<Node*> items;
-    had_error_ = false;
-    parse_error_count_ = 0;
+    diagnostic_state_.had_error = false;
+    diagnostic_state_.parse_error_count = 0;
     int no_progress_steps = 0;
     reset_parse_debug_progress();
 
     while (!at_end()) {
         Node* item = nullptr;
-        int loop_start_pos = pos_;
+        int loop_start_pos = core_input_state_.pos;
         clear_parse_debug_state();
         try {
             item = parse_top_level();
         } catch (const std::exception& e) {
             // Parse error: emit stable diagnostic and try to recover.
-            int err_idx = best_parse_failure_.active
-                              ? best_parse_failure_.token_index
-                              : (!at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1));
-            int err_line = best_parse_failure_.active
-                               ? best_parse_failure_.line
-                               : ((!at_end()) ? cur().line : (pos_ > 0 ? tokens_[pos_-1].line : 1));
-            int err_col  = best_parse_failure_.active
-                               ? best_parse_failure_.column
+            int err_idx = diagnostic_state_.best_parse_failure.active
+                              ? diagnostic_state_.best_parse_failure.token_index
+                              : (!at_end()
+                                     ? core_input_state_.pos
+                                     : (core_input_state_.pos > 0
+                                            ? core_input_state_.pos - 1
+                                            : -1));
+            int err_line = diagnostic_state_.best_parse_failure.active
+                               ? diagnostic_state_.best_parse_failure.line
+                               : ((!at_end())
+                                      ? cur().line
+                                      : (core_input_state_.pos > 0
+                                             ? core_input_state_.tokens[core_input_state_.pos - 1].line
+                                             : 1));
+            int err_col  = diagnostic_state_.best_parse_failure.active
+                               ? diagnostic_state_.best_parse_failure.column
                                : ((!at_end()) ? cur().column : 1);
             std::string diag = format_best_parse_failure();
             fprintf(stderr, "%s:%d:%d: error: %s\n",
                     diag_file_at(err_idx), err_line, err_col,
                     diag.empty() ? e.what() : diag.c_str());
             dump_parse_debug_trace();
-            had_error_ = true;
-            ++parse_error_count_;
-            if (parse_error_count_ >= max_parse_errors_) {
+            diagnostic_state_.had_error = true;
+            ++diagnostic_state_.parse_error_count;
+            if (diagnostic_state_.parse_error_count >=
+                diagnostic_state_.max_parse_errors) {
                 fprintf(stderr, "%s:%d:%d: error: too many errors emitted, stopping now\n",
                         diag_file_at(err_idx), err_line, err_col);
                 break;
             }
-            if (pos_ == loop_start_pos && !at_end()) consume();
+            if (core_input_state_.pos == loop_start_pos && !at_end()) consume();
             while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace)) {
                 consume();
             }
@@ -1780,26 +2818,27 @@ Node* Parser::parse() {
             no_progress_steps = 0;
             continue;
         }
-        if (pos_ == loop_start_pos && !at_end()) {
-            had_error_ = true;
+        if (core_input_state_.pos == loop_start_pos && !at_end()) {
+            diagnostic_state_.had_error = true;
             ++no_progress_steps;
             note_parse_failure_message("unexpected token with no parse progress");
             std::string diag = format_best_parse_failure();
             fprintf(stderr, "%s:%d:%d: error: unexpected token '%s'\n",
-                    diag_file_at(pos_), cur().line, cur().column,
+                    diag_file_at(core_input_state_.pos), cur().line, cur().column,
                     std::string(token_spelling(cur())).c_str());
             if (!diag.empty()) {
                 fprintf(stderr, "%s:%d:%d: note: %s\n",
-                        diag_file_at(pos_), cur().line, cur().column,
+                        diag_file_at(core_input_state_.pos), cur().line, cur().column,
                         diag.c_str());
             }
             dump_parse_debug_trace();
             consume();
-            ++parse_error_count_;
-            if (no_progress_steps >= max_no_progress_steps_) {
+            ++diagnostic_state_.parse_error_count;
+            if (no_progress_steps >= diagnostic_state_.max_no_progress_steps) {
                 fprintf(stderr, "%s:%d:%d: error: too many errors emitted, stopping now\n",
-                        diag_file_at(!at_end() ? pos_ : static_cast<int>(tokens_.size()) - 1),
-                        !at_end() ? cur().line : tokens_.back().line,
+                        diag_file_at(!at_end() ? core_input_state_.pos
+                                               : static_cast<int>(core_input_state_.tokens.size()) - 1),
+                        !at_end() ? cur().line : core_input_state_.tokens.back().line,
                         !at_end() ? cur().column : 1);
                 break;
             }
@@ -1811,7 +2850,7 @@ Node* Parser::parse() {
 
     // Prepend collected struct/enum definitions (so IR builder sees them first)
     std::vector<Node*> all;
-    for (Node* sd : struct_defs_) all.push_back(sd);
+    for (Node* sd : definition_state_.struct_defs) all.push_back(sd);
     for (Node* it : items)        all.push_back(it);
 
     Node* prog = make_node(NK_PROGRAM, 0);
@@ -1831,24 +2870,30 @@ Node* Parser::make_node(NodeKind k, int line) {
     n->kind = k;
     n->line = line;
     n->column = 1;
-    n->file = arena_.strdup(source_file_);
+    n->file = arena_.strdup(core_input_state_.source_file);
     int loc_index = -1;
-    if (pos_ >= 0 && pos_ < static_cast<int>(tokens_.size()) &&
-        tokens_[pos_].line == line) {
-        loc_index = pos_;
-    } else if (pos_ > 0 && pos_ - 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ - 1].line == line) {
-        loc_index = pos_ - 1;
-    } else if (pos_ >= 0 && pos_ < static_cast<int>(tokens_.size())) {
-        loc_index = pos_;
-    } else if (!tokens_.empty()) {
-        loc_index = static_cast<int>(tokens_.size()) - 1;
+    if (core_input_state_.pos >= 0 &&
+        core_input_state_.pos < static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[core_input_state_.pos].line == line) {
+        loc_index = core_input_state_.pos;
+    } else if (core_input_state_.pos > 0 &&
+               core_input_state_.pos - 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos - 1].line == line) {
+        loc_index = core_input_state_.pos - 1;
+    } else if (core_input_state_.pos >= 0 &&
+               core_input_state_.pos < static_cast<int>(core_input_state_.tokens.size())) {
+        loc_index = core_input_state_.pos;
+    } else if (!core_input_state_.tokens.empty()) {
+        loc_index = static_cast<int>(core_input_state_.tokens.size()) - 1;
     }
-    if (loc_index >= 0 && loc_index < static_cast<int>(tokens_.size())) {
-        n->column = tokens_[loc_index].column;
-        if (token_files_ && tokens_[loc_index].file_id != kInvalidFile) {
-            const std::string file =
-                std::string(token_files_->lookup(tokens_[loc_index].file_id));
+    if (loc_index >= 0 &&
+        loc_index < static_cast<int>(core_input_state_.tokens.size())) {
+        n->column = core_input_state_.tokens[loc_index].column;
+        if (shared_lookup_state_.token_files &&
+            core_input_state_.tokens[loc_index].file_id != kInvalidFile) {
+            const std::string file = std::string(
+                shared_lookup_state_.token_files->lookup(
+                    core_input_state_.tokens[loc_index].file_id));
             if (!file.empty()) n->file = arena_.strdup(file);
         }
     }

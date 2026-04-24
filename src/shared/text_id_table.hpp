@@ -9,20 +9,24 @@
 namespace c4c {
 
 using TextId = uint32_t;
+using SymbolId = uint32_t;
 using LinkNameId = uint32_t;
 using MemberSymbolId = uint32_t;
 using FunctionNameId = uint32_t;
 using BlockLabelId = uint32_t;
 using ValueNameId = uint32_t;
 using SlotNameId = uint32_t;
+using AnonTypeId = uint32_t;
 
 constexpr TextId kInvalidText = 0;
+constexpr SymbolId kInvalidSymbol = 0;
 constexpr LinkNameId kInvalidLinkName = 0;
 constexpr MemberSymbolId kInvalidMemberSymbol = 0;
 constexpr FunctionNameId kInvalidFunctionName = 0;
 constexpr BlockLabelId kInvalidBlockLabel = 0;
 constexpr ValueNameId kInvalidValueName = 0;
 constexpr SlotNameId kInvalidSlotName = 0;
+constexpr AnonTypeId kInvalidAnonType = 0;
 
 // Generic stable-id table keyed by a caller-provided value type.
 template <typename Id, Id InvalidId, typename Key>
@@ -82,6 +86,7 @@ struct StringIdTable {
 
     const size_t offset = bytes_.size();
     bytes_.insert(bytes_.end(), text.begin(), text.end());
+    bytes_.push_back('\0');
     slices_by_id_.push_back(Slice{offset, text.size()});
 
     const Id id = static_cast<Id>(slices_by_id_.size());
@@ -93,6 +98,12 @@ struct StringIdTable {
     if (id == InvalidId || id > slices_by_id_.size()) return {};
     const Slice& slice = slices_by_id_[id - 1];
     return std::string_view(bytes_.data() + slice.offset, slice.len);
+  }
+
+  const char* c_str(Id id) const {
+    if (id == InvalidId || id > slices_by_id_.size()) return "";
+    const Slice& slice = slices_by_id_[id - 1];
+    return bytes_.data() + slice.offset;
   }
 
   size_t size() const { return slices_by_id_.size(); }
@@ -129,6 +140,7 @@ struct PathIdTable : KeyIdTable<Id, InvalidId, std::string> {
 };
 
 using TextTable = StringIdTable<TextId, kInvalidText>;
+using SymbolTable = StringIdTable<SymbolId, kInvalidSymbol>;
 
 // Semantic ids reuse TextTable storage so domain-specific name tables can carry
 // meaning without owning duplicate spelling bytes.
@@ -180,5 +192,6 @@ using FunctionNameTable = SemanticNameTable<FunctionNameId, kInvalidFunctionName
 using BlockLabelTable = SemanticNameTable<BlockLabelId, kInvalidBlockLabel>;
 using ValueNameTable = SemanticNameTable<ValueNameId, kInvalidValueName>;
 using SlotNameTable = SemanticNameTable<SlotNameId, kInvalidSlotName>;
+using AnonTypeTable = KeyIdTable<AnonTypeId, kInvalidAnonType, TextId>;
 
 }  // namespace c4c

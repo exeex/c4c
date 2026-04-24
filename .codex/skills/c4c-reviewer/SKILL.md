@@ -1,6 +1,6 @@
 ---
 name: c4c-reviewer
-description: "c4c review specialist. Use when a delegated message starts with `to_subagent: c4c-reviewer` or when the supervisor needs an independent review of whether the current implementation path is still aligned with the active plan by comparing the git diff from the relevant `plan.md` history point to `HEAD`. This role is intended to run on gpt-5.4."
+description: "c4c review specialist. Use when a delegated message starts with `to_subagent: c4c-reviewer` or when the supervisor needs an independent review of whether the current implementation path is still aligned with the active plan by comparing the git diff from the relevant `plan.md` history point to `HEAD`."
 ---
 
 # C4C Reviewer
@@ -13,10 +13,6 @@ edit code, rewrite lifecycle files, or create the final commit.
 Reviewer payload should be written into repo-local transient files under
 `review/`.
 
-## Model Intent
-
-- default this role to `gpt-5.4`
-
 ## Start Here
 
 1. Confirm the first delegated line is `to_subagent: c4c-reviewer`.
@@ -27,8 +23,9 @@ Reviewer payload should be written into repo-local transient files under
    [`todo.md`](/workspaces/c4c/todo.md) so you know the active goal,
    guardrails, and current slice.
 5. Read the source idea linked from [`plan.md`](/workspaces/c4c/plan.md).
-6. Run [`scripts/plan_change_gap.sh`](/workspaces/c4c/scripts/plan_change_gap.sh)
-   as the quick checkpoint probe.
+6. Use `scripts/plan_review_state.py show` only when you need the local
+   `.plan_review_state.json` context behind the mirrored review metadata in
+   [`todo.md`](/workspaces/c4c/todo.md).
 7. Determine the review base from git history on `plan.md`, not from metadata
    written inside `plan.md`.
 
@@ -48,7 +45,7 @@ If Blocked: stop and report the exact history ambiguity
 
 The review base must come from git history.
 
-1. Run `scripts/plan_change_gap.sh` first, then inspect
+1. Inspect
    `git log --oneline --extended-regexp --grep='\[[^]]*plan[^]]*\]' -- plan.md todo.md ideas/open/`.
 2. Prefer commits whose subjects use the canonical compact lifecycle scope tags
    such as `[plan]`, `[plan+idea]`, and `[todo_only]`, then use the remaining

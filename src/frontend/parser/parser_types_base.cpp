@@ -66,8 +66,8 @@ static std::vector<std::string> split_template_arg_ref_text(
 bool Parser::is_type_start() const {
     TokenKind k = cur().kind;
     if (k == TokenKind::LBracket &&
-        pos_ + 1 < static_cast<int>(tokens_.size()) &&
-        tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+        core_input_state_.pos + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::LBracket) {
         return true;
     }
     if (is_type_kw(k)) return true;
@@ -79,45 +79,55 @@ bool Parser::is_type_start() const {
     if (k == TokenKind::KwStaticAssert) return false;
     if (k == TokenKind::KwTypename) return true;
     if (k == TokenKind::Identifier) {
+        const TextId name_text_id = cur().text_id;
         const std::string name(token_spelling(cur()));
         if (is_concept_name(name)) return false;
-        if (starts_with_value_like_template_expr(*this, tokens_, pos_)) return false;
+        if (find_local_visible_typedef_type(name_text_id)) return true;
+        if (starts_with_value_like_template_expr(*this, core_input_state_.tokens,
+                                                 core_input_state_.pos)) return false;
         if (match_floatn_keyword_base(name, nullptr)) return true;
-        if (is_template_scope_type_param(name)) return true;
-        if (is_typedef_name(name)) return true;
-        if (has_visible_typedef_type(name)) return true;
+        if (is_known_simple_visible_type_head(*this, name_text_id, name)) return true;
         // C++ fallback: identifier followed by < is likely a template type if
         // the name is registered as a template struct, or if we're inside a
         // struct body where namespace-scoped template names may not resolve.
         if (is_cpp_mode() &&
-            pos_ + 1 < static_cast<int>(tokens_.size()) &&
-            tokens_[pos_ + 1].kind == TokenKind::Less &&
-            (find_template_struct_primary(name) ||
-             find_template_struct_primary(resolve_visible_type_name(name)) ||
+            core_input_state_.pos + 1 <
+                static_cast<int>(core_input_state_.tokens.size()) &&
+            core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                TokenKind::Less &&
+            (find_template_struct_primary(current_namespace_context_id(),
+                                          name_text_id, name) ||
+             find_template_struct_primary(
+                 current_namespace_context_id(),
+                 find_parser_text_id(visible_type_head_name(*this, name)),
+                 visible_type_head_name(*this, name)) ||
              !current_struct_tag_text().empty())) return true;
         // Keep declaration probes aligned with parse_base_type(): even when
         // template-type registration was lost, `Identifier<...>` should still
         // be allowed to enter type parsing so the unresolved-template fallback
         // can recover declarations such as `holder<T> value`.
         if (is_cpp_mode() &&
-            pos_ + 1 < static_cast<int>(tokens_.size()) &&
-            tokens_[pos_ + 1].kind == TokenKind::Less) return true;
+            core_input_state_.pos + 1 <
+                static_cast<int>(core_input_state_.tokens.size()) &&
+            core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                TokenKind::Less) return true;
     }
     if (k == TokenKind::ColonColon) {
         QualifiedNameRef qn;
         if (peek_qualified_name(&qn, true)) {
             const QualifiedTypeProbe probe = probe_qualified_type(*this, qn);
             const int after_pos =
-                pos_ + (qn.is_global_qualified ? 1 : 0) +
+                core_input_state_.pos + (qn.is_global_qualified ? 1 : 0) +
                 2 * static_cast<int>(qn.qualifier_segments.size()) + 1;
             const TokenKind trailing_kind =
-                after_pos < static_cast<int>(tokens_.size())
-                    ? tokens_[after_pos].kind
+                after_pos < static_cast<int>(core_input_state_.tokens.size())
+                    ? core_input_state_.tokens[after_pos].kind
                     : TokenKind::EndOfFile;
             if (!probe.has_resolved_typedef &&
                 probe.has_unresolved_qualified_fallback &&
                 trailing_kind == TokenKind::Less &&
-                starts_with_value_like_template_expr(*this, tokens_, pos_)) {
+                starts_with_value_like_template_expr(*this, core_input_state_.tokens,
+                                                     core_input_state_.pos)) {
                 return false;
             }
             if (trailing_kind == TokenKind::LParen &&
@@ -131,22 +141,24 @@ bool Parser::is_type_start() const {
     }
     // C++ qualified type: StructName::TypedefName or ns::ns2::Type
     if (k == TokenKind::Identifier &&
-        pos_ + 2 < static_cast<int>(tokens_.size()) &&
-        tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
-        tokens_[pos_ + 2].kind == TokenKind::Identifier) {
+        core_input_state_.pos + 2 < static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::ColonColon &&
+        core_input_state_.tokens[core_input_state_.pos + 2].kind == TokenKind::Identifier) {
         QualifiedNameRef qn;
         if (peek_qualified_name(&qn, false)) {
             const QualifiedTypeProbe probe = probe_qualified_type(*this, qn);
             const int after_pos =
-                pos_ + 1 + 2 * static_cast<int>(qn.qualifier_segments.size());
+                core_input_state_.pos + 1 +
+                2 * static_cast<int>(qn.qualifier_segments.size());
             const TokenKind trailing_kind =
-                after_pos < static_cast<int>(tokens_.size())
-                    ? tokens_[after_pos].kind
+                after_pos < static_cast<int>(core_input_state_.tokens.size())
+                    ? core_input_state_.tokens[after_pos].kind
                     : TokenKind::EndOfFile;
             if (!probe.has_resolved_typedef &&
                 probe.has_unresolved_qualified_fallback &&
                 trailing_kind == TokenKind::Less &&
-                starts_with_value_like_template_expr(*this, tokens_, pos_)) {
+                starts_with_value_like_template_expr(*this, core_input_state_.tokens,
+                                                     core_input_state_.pos)) {
                 return false;
             }
             if (trailing_kind == TokenKind::LParen &&
@@ -165,31 +177,37 @@ bool Parser::can_start_parameter_type() const {
     if (is_type_start()) return true;
     if (!is_cpp_mode()) return false;
 
-    if (looks_like_unresolved_identifier_type_head(pos_)) return true;
-
-    if (check(TokenKind::Identifier) &&
-        pos_ + 1 < static_cast<int>(tokens_.size()) &&
-        tokens_[pos_ + 1].kind == TokenKind::Identifier) {
+    if (looks_like_unresolved_identifier_type_head(core_input_state_.pos)) return true;
+    if (looks_like_unresolved_parenthesized_parameter_type_head(
+            core_input_state_.pos)) {
         return true;
     }
 
     if (check(TokenKind::Identifier) &&
-        pos_ + 1 < static_cast<int>(tokens_.size()) &&
-        (tokens_[pos_ + 1].kind == TokenKind::Amp ||
-         tokens_[pos_ + 1].kind == TokenKind::AmpAmp)) {
+        core_input_state_.pos + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::Identifier) {
         return true;
     }
 
     if (check(TokenKind::Identifier) &&
-        pos_ + 1 < static_cast<int>(tokens_.size()) &&
-        tokens_[pos_ + 1].kind == TokenKind::Less) {
+        core_input_state_.pos + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+        (core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::Amp ||
+         core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::AmpAmp)) {
+        return true;
+    }
+
+    if (check(TokenKind::Identifier) &&
+        core_input_state_.pos + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::Less) {
         return true;
     }
 
     if (!(check(TokenKind::ColonColon) ||
           (check(TokenKind::Identifier) &&
-           pos_ + 1 < static_cast<int>(tokens_.size()) &&
-           tokens_[pos_ + 1].kind == TokenKind::ColonColon))) {
+           core_input_state_.pos + 1 <
+               static_cast<int>(core_input_state_.tokens.size()) &&
+           core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+               TokenKind::ColonColon))) {
         return false;
     }
 
@@ -197,24 +215,115 @@ bool Parser::can_start_parameter_type() const {
     if (!peek_qualified_name(&qn, true)) return false;
 
     const int after_pos =
-        pos_ + (qn.is_global_qualified ? 1 : 0) +
+        core_input_state_.pos + (qn.is_global_qualified ? 1 : 0) +
         2 * static_cast<int>(qn.qualifier_segments.size()) + 1;
-    return after_pos < static_cast<int>(tokens_.size()) &&
-           (tokens_[after_pos].kind == TokenKind::Less ||
-            (tokens_[after_pos].kind == TokenKind::LParen &&
+    return after_pos < static_cast<int>(core_input_state_.tokens.size()) &&
+           (core_input_state_.tokens[after_pos].kind == TokenKind::Less ||
+            (core_input_state_.tokens[after_pos].kind == TokenKind::LParen &&
              starts_parenthesized_member_pointer_declarator(*this, after_pos)));
+}
+
+int Parser::classify_visible_value_or_type_head(int pos, int* after_pos) {
+    if (after_pos) *after_pos = pos;
+    if (pos < 0 || pos >= static_cast<int>(core_input_state_.tokens.size())) {
+        return 0;
+    }
+
+    const TokenKind first_kind = core_input_state_.tokens[pos].kind;
+    if (first_kind != TokenKind::Identifier &&
+        first_kind != TokenKind::ColonColon) {
+        return 0;
+    }
+
+    const int saved_pos = core_input_state_.pos;
+    core_input_state_.pos = pos;
+
+    QualifiedNameRef qn;
+    const bool parsed_qn = peek_qualified_name(&qn,
+                                               first_kind == TokenKind::ColonColon);
+    core_input_state_.pos = saved_pos;
+    if (!parsed_qn || (!qn.is_global_qualified &&
+                       qn.qualifier_segments.empty())) {
+        if (first_kind != TokenKind::Identifier) return 0;
+        if (after_pos) *after_pos = pos + 1;
+
+        const Token& head_tok = core_input_state_.tokens[pos];
+        const std::string head_name = std::string(token_spelling(head_tok));
+        if (find_visible_var_type(head_tok.text_id, head_name)) return 1;
+        if (has_known_fn_name(head_name)) return 1;
+        if (is_cpp_mode() && !current_struct_tag_text().empty()) {
+            std::string current_member_name(current_struct_tag_text());
+            current_member_name += "::";
+            current_member_name += head_name;
+            if (has_known_fn_name(current_member_name)) return 1;
+        }
+
+        const std::string resolved_value =
+            resolve_visible_value_name(head_tok.text_id, head_name);
+        if (!resolved_value.empty() &&
+            has_known_fn_name(resolved_value)) {
+            return 1;
+        }
+
+        if (is_known_simple_visible_type_head(*this, head_tok.text_id,
+                                              head_name)) {
+            return -1;
+        }
+        const std::string resolved_type =
+            resolve_visible_type_name(head_tok.text_id, head_name);
+        if (!resolved_type.empty()) return -1;
+        return 0;
+    }
+
+    int after_name_pos = pos;
+    if (qn.is_global_qualified) ++after_name_pos;
+    after_name_pos += 1 + 2 * static_cast<int>(qn.qualifier_segments.size());
+    if (after_pos) *after_pos = after_name_pos;
+
+    if (!resolve_qualified_value_name(qn).empty()) return 1;
+    if (!resolve_qualified_type_name(qn).empty()) return -1;
+    // Declaration-side probes keep unresolved qualified heads on the type side
+    // unless structured value lookup proves they are expression-like.
+    return -1;
+}
+
+int Parser::classify_visible_value_or_type_starter(int pos, int* after_pos) {
+    int after_name_pos = pos;
+    const int head_kind =
+        classify_visible_value_or_type_head(pos, &after_name_pos);
+    if (after_pos) *after_pos = after_name_pos;
+    if (head_kind == 0) return 0;
+
+    const TokenKind first_kind = core_input_state_.tokens[pos].kind;
+    const bool has_qualified_head =
+        first_kind == TokenKind::ColonColon || after_name_pos != pos + 1;
+    if (!has_qualified_head) return head_kind;
+
+    if (after_name_pos >= static_cast<int>(core_input_state_.tokens.size())) {
+        return 0;
+    }
+
+    const TokenKind tail_kind = core_input_state_.tokens[after_name_pos].kind;
+    if (tail_kind != TokenKind::LParen &&
+        !(tail_kind == TokenKind::Less &&
+          starts_with_value_like_template_expr(
+              *this, core_input_state_.tokens, pos))) {
+        return 0;
+    }
+
+    return head_kind;
 }
 
 bool Parser::looks_like_unresolved_identifier_type_head(int pos) const {
     if (!is_cpp_mode()) return false;
-    if (pos < 0 || pos >= static_cast<int>(tokens_.size())) return false;
-    if (tokens_[pos].kind != TokenKind::Identifier) return false;
-    if (is_concept_name(std::string(token_spelling(tokens_[pos])))) return false;
+    if (pos < 0 || pos >= static_cast<int>(core_input_state_.tokens.size())) return false;
+    if (core_input_state_.tokens[pos].kind != TokenKind::Identifier) return false;
+    if (is_concept_name(std::string(token_spelling(core_input_state_.tokens[pos])))) return false;
 
     const int next = pos + 1;
-    if (next >= static_cast<int>(tokens_.size())) return false;
+    if (next >= static_cast<int>(core_input_state_.tokens.size())) return false;
 
-    switch (tokens_[next].kind) {
+    switch (core_input_state_.tokens[next].kind) {
         case TokenKind::Identifier:
         case TokenKind::Amp:
         case TokenKind::AmpAmp:
@@ -228,7 +337,60 @@ bool Parser::looks_like_unresolved_identifier_type_head(int pos) const {
             break;
     }
 
-    return is_qualifier(tokens_[next].kind);
+    return is_qualifier(core_input_state_.tokens[next].kind);
+}
+
+bool Parser::looks_like_unresolved_parenthesized_parameter_type_head(int pos) const {
+    if (!is_cpp_mode()) return false;
+    if (pos < 0 || pos >= static_cast<int>(core_input_state_.tokens.size())) return false;
+    if (core_input_state_.tokens[pos].kind != TokenKind::Identifier) return false;
+
+    const Token& head_tok = core_input_state_.tokens[pos];
+    const TextId head_text_id = head_tok.text_id;
+    const std::string head_name = std::string(token_spelling(head_tok));
+    if (is_concept_name(head_name)) return false;
+    if (is_known_simple_visible_type_head(*this, head_text_id, head_name)) return false;
+    if (find_visible_var_type(head_text_id, head_name)) return false;
+
+    const int lparen = pos + 1;
+    if (lparen >= static_cast<int>(core_input_state_.tokens.size()) ||
+        core_input_state_.tokens[lparen].kind != TokenKind::LParen) {
+        return false;
+    }
+
+    int inner = lparen + 1;
+    if (inner >= static_cast<int>(core_input_state_.tokens.size())) return false;
+
+    int grouped_depth = 0;
+    while (inner < static_cast<int>(core_input_state_.tokens.size()) &&
+           core_input_state_.tokens[inner].kind == TokenKind::LParen) {
+        ++grouped_depth;
+        ++inner;
+    }
+
+    while (inner < static_cast<int>(core_input_state_.tokens.size()) &&
+           (core_input_state_.tokens[inner].kind == TokenKind::Star ||
+            core_input_state_.tokens[inner].kind == TokenKind::Amp ||
+            core_input_state_.tokens[inner].kind == TokenKind::AmpAmp)) {
+        ++inner;
+    }
+
+    if (inner >= static_cast<int>(core_input_state_.tokens.size()) ||
+        core_input_state_.tokens[inner].kind != TokenKind::Identifier) {
+        return false;
+    }
+    ++inner;
+
+    for (int i = 0; i < grouped_depth; ++i) {
+        if (inner >= static_cast<int>(core_input_state_.tokens.size()) ||
+            core_input_state_.tokens[inner].kind != TokenKind::RParen) {
+            return false;
+        }
+        ++inner;
+    }
+
+    return inner < static_cast<int>(core_input_state_.tokens.size()) &&
+           core_input_state_.tokens[inner].kind == TokenKind::RParen;
 }
 
 // ── skip helpers ─────────────────────────────────────────────────────────────
@@ -260,11 +422,16 @@ void Parser::skip_attributes() {
         if (check(TokenKind::LParen)) skip_paren_group();  // double-paren
     }
     // C++11 [[attribute]] syntax
-    while (check(TokenKind::LBracket) && pos_ + 1 < tokens_.size() &&
-           tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+    while (check(TokenKind::LBracket) &&
+           core_input_state_.pos + 1 <
+               static_cast<int>(core_input_state_.tokens.size()) &&
+           core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+               TokenKind::LBracket) {
         consume(); consume(); // [[
         int depth = 1;
-        while (pos_ < tokens_.size() && depth > 0) {
+        while (core_input_state_.pos <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               depth > 0) {
             if (check(TokenKind::LBracket)) ++depth;
             else if (check(TokenKind::RBracket)) --depth;
             if (depth > 0) consume();
@@ -341,8 +508,10 @@ void Parser::parse_attributes(TypeSpec* ts) {
                         Node* align_expr = parse_assign_expr();
                         long long align_val = 0;
                         if (align_expr &&
-                            eval_const_int(align_expr, &align_val, &struct_tag_def_map_,
-                                           &const_int_bindings_) &&
+                            eval_const_int(
+                                align_expr, &align_val,
+                                &definition_state_.struct_tag_def_map,
+                                &binding_state_.const_int_bindings) &&
                             align_val > 0) {
                             align = align_val;
                         }
@@ -358,8 +527,9 @@ void Parser::parse_attributes(TypeSpec* ts) {
                     consume();
                     Node* sz_expr = parse_assign_expr();
                     long long sz_val = 0;
-                    eval_const_int(sz_expr, &sz_val, &struct_tag_def_map_,
-                                   &const_int_bindings_);
+                    eval_const_int(sz_expr, &sz_val,
+                                   &definition_state_.struct_tag_def_map,
+                                   &binding_state_.const_int_bindings);
                     expect(TokenKind::RParen);
                     apply_vector_size_attr(sz_val);
                 }
@@ -401,7 +571,7 @@ void Parser::skip_asm() {
 // ── type parsing ──────────────────────────────────────────────────────────────
 
 TypeSpec Parser::parse_base_type() {
-    last_enum_def_ = nullptr;
+    definition_state_.last_enum_def = nullptr;
     TypeSpec ts{};
     ts.array_size = -1;
     ts.array_rank = 0;
@@ -527,16 +697,33 @@ TypeSpec Parser::parse_base_type() {
             [&](const std::string& tag, const std::string& member,
                 TypeSpec* out) -> bool {
                 if (tag.empty() || member.empty() || !out) return false;
+                auto lookup_typedef_for_name =
+                    [&](std::string_view name) -> const TypeSpec* {
+                        return name.find("::") == std::string_view::npos
+                                   ? find_visible_typedef_type(name)
+                                   : find_typedef_type(name);
+                    };
                 auto resolve_struct_like = [&](TypeSpec ts) -> TypeSpec {
                     ts = resolve_typedef_type_chain(ts);
                     if (ts.base == TB_TYPEDEF && ts.tag) {
-                        if (const TypeSpec* nested = find_typedef_type(ts.tag)) {
+                        if (const TypeSpec* nested =
+                                lookup_typedef_for_name(ts.tag)) {
                             ts = *nested;
                         }
                     }
                     return ts;
                 };
                 auto try_lookup = [&](const std::string& scoped) -> bool {
+                    QualifiedNameRef scoped_qn;
+                    if (qualified_name_from_text(*this, scoped, &scoped_qn)) {
+                        const QualifiedNameKey scoped_key =
+                            qualified_name_key(scoped_qn);
+                        if (const TypeSpec* structured =
+                                find_structured_typedef_type(scoped_key)) {
+                            *out = *structured;
+                            return true;
+                        }
+                    }
                     const TypeSpec* type = find_typedef_type(scoped);
                     if (!type) return false;
                     *out = *type;
@@ -601,11 +788,15 @@ TypeSpec Parser::parse_base_type() {
                         const Node* primary_tpl = nullptr;
                         if (owner->template_origin_name && owner->template_origin_name[0]) {
                             primary_tpl = find_template_struct_primary(
+                                current_namespace_context_id(),
+                                find_parser_text_id(owner->template_origin_name),
                                 owner->template_origin_name);
                         } else if (is_primary_template_struct_def(owner)) {
                             primary_tpl = owner;
                         } else if (owner->name && owner->name[0]) {
-                            primary_tpl = find_template_struct_primary(owner->name);
+                            primary_tpl = find_template_struct_primary(
+                                current_namespace_context_id(),
+                                find_parser_text_id(owner->name), owner->name);
                         }
                         if (!primary_tpl) return false;
 
@@ -693,13 +884,15 @@ TypeSpec Parser::parse_base_type() {
                         return false;
                     };
                 std::string resolved_tag = tag;
-                if (const TypeSpec* typedef_type = find_typedef_type(tag)) {
+                if (const TypeSpec* typedef_type = lookup_typedef_for_name(tag)) {
                     TypeSpec resolved = resolve_struct_like(*typedef_type);
                     if (resolved.tag && resolved.tag[0])
                         resolved_tag = resolved.tag;
                 }
-                auto def_it = struct_tag_def_map_.find(resolved_tag);
-                if (def_it == struct_tag_def_map_.end() || !def_it->second) return false;
+                auto def_it = definition_state_.struct_tag_def_map.find(resolved_tag);
+                if (def_it == definition_state_.struct_tag_def_map.end() ||
+                    !def_it->second)
+                    return false;
                 const Node* sdef = def_it->second;
                 if (try_selected_specialization_member_typedefs(sdef))
                     return true;
@@ -986,6 +1179,7 @@ TypeSpec Parser::parse_base_type() {
             case TokenKind::KwTypename:
             case TokenKind::Identifier:
                 {
+                    const TextId name_text_id = cur().text_id;
                     const std::string_view name = token_spelling(cur());
                     if (parse_builtin_transform_type(&ts)) {
                         base_set = true;
@@ -1007,11 +1201,13 @@ TypeSpec Parser::parse_base_type() {
                             has_struct || has_union || has_enum || base_set;
                         const bool simple_unqualified_known_type_head =
                             k == TokenKind::Identifier &&
-                            !(pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                              tokens_[pos_ + 1].kind == TokenKind::ColonColon) &&
-                            (is_typedef_name(name) ||
-                             is_template_scope_type_param(name) ||
-                             has_visible_typedef_type(name));
+                            !(core_input_state_.pos + 1 <
+                                  static_cast<int>(core_input_state_.tokens.size()) &&
+                              core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                                  TokenKind::ColonColon) &&
+                            is_known_simple_visible_type_head(*this,
+                                                              name_text_id,
+                                                              name);
                         if (!simple_unqualified_known_type_head &&
                             try_parse_cpp_scoped_base_type(already_have_base, &ts)) {
                             has_typedef = true;
@@ -1023,9 +1219,8 @@ TypeSpec Parser::parse_base_type() {
                         done = true;
                         break;
                     }
-                    if (is_typedef_name(name) ||
-                        is_template_scope_type_param(name) ||
-                        has_visible_typedef_type(name)) {
+                    if (is_known_simple_visible_type_head(*this, cur().text_id,
+                                                          name)) {
                         // If we've already seen concrete type specifiers/modifiers,
                         // this identifier is the declarator name (e.g. `int s;` even
                         // when `s` is also a typedef name in outer scope).
@@ -1037,9 +1232,12 @@ TypeSpec Parser::parse_base_type() {
                         // after the pointee type: `R C::*member`. In that shape the
                         // class name belongs to the declarator, not the base type.
                         if (is_cpp_mode() &&
-                            pos_ + 2 < static_cast<int>(tokens_.size()) &&
-                            tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
-                            tokens_[pos_ + 2].kind == TokenKind::Star) {
+                            core_input_state_.pos + 2 <
+                                static_cast<int>(core_input_state_.tokens.size()) &&
+                            core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                                TokenKind::ColonColon &&
+                            core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                                TokenKind::Star) {
                             done = true;
                             break;
                         }
@@ -1054,7 +1252,7 @@ TypeSpec Parser::parse_base_type() {
                                !(has_signed || has_unsigned || has_short || long_count > 0 ||
                                  has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
                                  has_struct || has_union || has_enum || base_set) &&
-                               looks_like_unresolved_identifier_type_head(pos_)) {
+                               looks_like_unresolved_identifier_type_head(core_input_state_.pos)) {
                         // C++ unresolved simple type in a declarator or parameter:
                         // treat identifier spellings such as `Box value`,
                         // `Box& value`, `Box* value`, `Box const& value`, and
@@ -1095,7 +1293,9 @@ TypeSpec Parser::parse_base_type() {
         // just like 'Pair<int>' does via the typedef path. If the tag matches a known
         // template struct and '<' follows, fall through to the template instantiation
         // code below instead of returning immediately.
-        if (!(is_cpp_mode() && ts.tag && find_template_struct_primary(ts.tag) &&
+        if (!(is_cpp_mode() && ts.tag &&
+              find_template_struct_primary(current_namespace_context_id(),
+                                           find_parser_text_id(ts.tag), ts.tag) &&
               check(TokenKind::Less))) {
             return ts;
         }
@@ -1109,9 +1309,9 @@ TypeSpec Parser::parse_base_type() {
     }
     if (has_enum) {
         Node* ed = parse_enum();
-        last_enum_def_ = ed;
+        definition_state_.last_enum_def = ed;
         if (ed && ed->name) {
-            if (const TypeSpec* typedef_type = find_typedef_type(ed->name)) {
+            if (const TypeSpec* typedef_type = find_visible_typedef_type(ed->name)) {
                 ts = *typedef_type;
             }
         }
@@ -1129,7 +1329,9 @@ TypeSpec Parser::parse_base_type() {
     // Template struct instantiation for 'struct Pair<int>' syntax (has_struct fall-through).
     // ts.base is already TB_STRUCT and ts.tag is the template name.
     if (has_struct && is_cpp_mode() && ts.tag &&
-        find_template_struct_primary(ts.tag) && check(TokenKind::Less)) {
+        find_template_struct_primary(current_namespace_context_id(),
+                                     find_parser_text_id(ts.tag), ts.tag) &&
+        check(TokenKind::Less)) {
         // Reuse the typedef-path template instantiation by setting has_typedef and
         // preparing ts as if the typedef had been resolved.
         has_typedef = true;
@@ -1141,7 +1343,12 @@ TypeSpec Parser::parse_base_type() {
         // Try to resolve the typedef to its underlying TypeSpec
         const char* tname = ts.tag;
         if (tname) {
-            if (const TypeSpec* typedef_type = find_typedef_type(tname)) {
+            const bool is_unqualified_typedef =
+                std::strstr(tname, "::") == nullptr;
+            const TypeSpec* typedef_type =
+                is_unqualified_typedef ? find_visible_typedef_type(tname)
+                                       : find_typedef_type(tname);
+            if (typedef_type) {
                 // Resolve: use the stored TypeSpec, preserving qualifiers from this context
                 bool save_const = ts.is_const, save_vol = ts.is_volatile;
                 ts = *typedef_type;
@@ -1151,26 +1358,32 @@ TypeSpec Parser::parse_base_type() {
                 set_last_resolved_typedef(tname);
                 // Alias template application: e.g. bool_constant<expr> → integral_constant<bool, expr>
                 if (is_cpp_mode() && check(TokenKind::Less)) {
-                    auto ati_it = alias_template_info_.find(tname);
-                    if (ati_it == alias_template_info_.end()) {
-                        const std::string resolved_alias_name =
-                            resolve_visible_type_name(tname);
-                        if (!resolved_alias_name.empty())
-                            ati_it = alias_template_info_.find(resolved_alias_name);
+                    const QualifiedNameKey alias_key = alias_template_key_in_context(
+                        current_namespace_context_id(),
+                        active_context_state_.last_resolved_typedef_text_id,
+                        tname);
+                    const ParserAliasTemplateInfo* ati =
+                        find_alias_template_info(alias_key);
+                    if (!ati) {
+                        // Legacy rendered-name recovery stays fallback-only once the
+                        // structured alias key probe has been exhausted.
+                        ati = find_alias_template_info_in_context(
+                            current_namespace_context_id(),
+                            active_context_state_.last_resolved_typedef_text_id,
+                            tname);
                     }
-                    if (ati_it != alias_template_info_.end()) {
-                        const AliasTemplateInfo& ati = ati_it->second;
-                        const std::string alias_template_name = ati_it->first;
+                    if (ati) {
+                        const std::string alias_template_name(tname);
                         TentativeParseGuard alias_guard(*this);
                         std::vector<TemplateArgParseResult> alias_args;
                         auto alias_args_match = [&](const std::vector<TemplateArgParseResult>& args)
                             -> bool {
                             size_t ai = 0;
-                            for (size_t pi = 0; pi < ati.param_names.size(); ++pi) {
+                            for (size_t pi = 0; pi < ati->param_names.size(); ++pi) {
                                 const bool is_pack =
-                                    pi < ati.param_is_pack.size() && ati.param_is_pack[pi];
+                                    pi < ati->param_is_pack.size() && ati->param_is_pack[pi];
                                 const bool expects_value =
-                                    pi < ati.param_is_nttp.size() && ati.param_is_nttp[pi];
+                                    pi < ati->param_is_nttp.size() && ati->param_is_nttp[pi];
                                 if (is_pack) {
                                     while (ai < args.size()) {
                                         if (args[ai].is_value != expects_value) return false;
@@ -1180,8 +1393,8 @@ TypeSpec Parser::parse_base_type() {
                                 }
                                 if (ai >= args.size()) {
                                     const bool has_default =
-                                        pi < ati.param_has_default.size() &&
-                                        ati.param_has_default[pi];
+                                        pi < ati->param_has_default.size() &&
+                                        ati->param_has_default[pi];
                                     if (!has_default) return false;
                                     continue;
                                 }
@@ -1193,7 +1406,7 @@ TypeSpec Parser::parse_base_type() {
                         if (!parse_template_argument_list(
                                 &alias_args,
                                 nullptr,
-                                &ati.param_is_nttp) ||
+                                &ati->param_is_nttp) ||
                             !alias_args_match(alias_args)) {
                             // alias_guard restores pos_ on scope exit
                         } else {
@@ -1201,34 +1414,34 @@ TypeSpec Parser::parse_base_type() {
                             std::vector<TemplateArgParseResult> resolved_alias_args =
                                 alias_args;
                             for (size_t pi = resolved_alias_args.size();
-                                 pi < ati.param_names.size(); ++pi) {
+                                 pi < ati->param_names.size(); ++pi) {
                                 const bool is_pack =
-                                    pi < ati.param_is_pack.size() && ati.param_is_pack[pi];
+                                    pi < ati->param_is_pack.size() && ati->param_is_pack[pi];
                                 if (is_pack) break;
                                 const bool has_default =
-                                    pi < ati.param_has_default.size() &&
-                                    ati.param_has_default[pi];
+                                    pi < ati->param_has_default.size() &&
+                                    ati->param_has_default[pi];
                                 if (!has_default) {
                                     alias_parse_ok = false;
                                     break;
                                 }
                                 TemplateArgParseResult default_arg;
                                 default_arg.is_value =
-                                    pi < ati.param_is_nttp.size() &&
-                                    ati.param_is_nttp[pi];
+                                    pi < ati->param_is_nttp.size() &&
+                                    ati->param_is_nttp[pi];
                                 if (default_arg.is_value) {
-                                    if (pi >= ati.param_default_values.size() ||
-                                        ati.param_default_values[pi] == LLONG_MIN) {
+                                    if (pi >= ati->param_default_values.size() ||
+                                        ati->param_default_values[pi] == LLONG_MIN) {
                                         alias_parse_ok = false;
                                         break;
                                     }
-                                    default_arg.value = ati.param_default_values[pi];
+                                    default_arg.value = ati->param_default_values[pi];
                                 } else {
-                                    if (pi >= ati.param_default_types.size()) {
+                                    if (pi >= ati->param_default_types.size()) {
                                         alias_parse_ok = false;
                                         break;
                                     }
-                                    default_arg.type = ati.param_default_types[pi];
+                                    default_arg.type = ati->param_default_types[pi];
                                 }
                                 resolved_alias_args.push_back(default_arg);
                             }
@@ -1245,11 +1458,11 @@ TypeSpec Parser::parse_base_type() {
 
                             std::unordered_map<std::string, std::string> subst;
                             size_t bound_arg_index = 0;
-                            for (size_t pi = 0; pi < ati.param_names.size(); ++pi) {
+                            for (size_t pi = 0; pi < ati->param_names.size(); ++pi) {
                                 const bool is_pack =
-                                    pi < ati.param_is_pack.size() && ati.param_is_pack[pi];
+                                    pi < ati->param_is_pack.size() && ati->param_is_pack[pi];
                                 const bool expects_value =
-                                    pi < ati.param_is_nttp.size() && ati.param_is_nttp[pi];
+                                    pi < ati->param_is_nttp.size() && ati->param_is_nttp[pi];
                                 if (is_pack) {
                                     std::string packed_refs;
                                     while (bound_arg_index < resolved_alias_args.size()) {
@@ -1265,7 +1478,7 @@ TypeSpec Parser::parse_base_type() {
                                         ++bound_arg_index;
                                     }
                                     if (!alias_parse_ok) break;
-                                    subst[ati.param_names[pi]] = packed_refs;
+                                    subst[ati->param_names[pi]] = packed_refs;
                                     continue;
                                 }
                                 if (bound_arg_index >= resolved_alias_args.size()) {
@@ -1277,7 +1490,7 @@ TypeSpec Parser::parse_base_type() {
                                     alias_parse_ok = false;
                                     break;
                                 }
-                                subst[ati.param_names[pi]] =
+                                subst[ati->param_names[pi]] =
                                     render_template_arg_ref(
                                         resolved_alias_args[bound_arg_index]);
                                 ++bound_arg_index;
@@ -1290,7 +1503,7 @@ TypeSpec Parser::parse_base_type() {
                                 // alias_guard restores pos_ on scope exit
                             } else {
                             // Substitute alias params in the aliased type.
-                                ts = ati.aliased_type;
+                                ts = ati->aliased_type;
                                 auto split_template_arg_refs =
                                     [&](const std::string& refs)
                                     -> std::vector<std::string> {
@@ -1437,8 +1650,11 @@ TypeSpec Parser::parse_base_type() {
                                             *out = parsed;
                                             return true;
                                         }
-                                        if (const TypeSpec* typedef_type =
-                                                find_typedef_type(ref)) {
+                                        const TypeSpec* typedef_type =
+                                            ref.find("::") == std::string::npos
+                                                ? find_visible_typedef_type(ref)
+                                                : find_typedef_type(ref);
+                                        if (typedef_type) {
                                             parsed.type = *typedef_type;
                                             *out = parsed;
                                             return true;
@@ -1574,129 +1790,41 @@ TypeSpec Parser::parse_base_type() {
                                             arena_.strdup(member_name.c_str());
                                         return true;
                                     };
-                                auto resolve_alias_member_type =
-                                    [&](const std::string& owner_name,
-                                        const std::string& member_name) -> bool {
-                                        if (owner_name.empty() || member_name.empty())
-                                            return false;
-                                        const std::string owner_lookup_name =
-                                            (ts.tpl_struct_origin &&
-                                             ts.deferred_member_type_name &&
-                                             member_name == ts.deferred_member_type_name)
-                                                ? std::string(ts.tpl_struct_origin)
-                                                : owner_name;
-                                        const Node* primary_tpl =
-                                            find_template_struct_primary(
-                                                owner_lookup_name);
-                                        if (!primary_tpl) {
-                                            const std::string resolved_owner =
-                                                resolve_visible_type_name(
-                                                    owner_lookup_name);
-                                            if (!resolved_owner.empty())
-                                                primary_tpl =
-                                                    find_template_struct_primary(
-                                                        resolved_owner);
-                                        }
-                                        if (!primary_tpl) {
-                                            const std::string canonical_owner =
-                                                canonical_name_in_context(
-                                                    current_namespace_context_id(),
-                                                    owner_lookup_name);
-                                            primary_tpl =
-                                                find_template_struct_primary(
-                                                    canonical_owner);
-                                        }
-                                        if (!primary_tpl) return false;
-
-                                        std::vector<ParsedTemplateArg> actual_args;
-                                        if (!build_transformed_owner_args(
-                                                owner_lookup_name, &actual_args))
-                                            return false;
-
-                                        std::vector<std::pair<std::string, TypeSpec>> type_bindings;
-                                        std::vector<std::pair<std::string, long long>> nttp_bindings;
-                                        const std::vector<Node*>* specializations =
-                                            find_template_struct_specializations(primary_tpl);
-                                        if (!specializations) {
-                                            auto it =
-                                                template_struct_specializations_.find(
-                                                    owner_lookup_name);
-                                            if (it != template_struct_specializations_.end())
-                                                specializations = &it->second;
-                                        }
-                                        const Node* selected =
-                                            select_template_struct_pattern_for_args(
-                                                actual_args, primary_tpl,
-                                                specializations, &type_bindings,
-                                                &nttp_bindings);
-                                        if (!selected || selected->n_member_typedefs <= 0)
-                                            return false;
-                                        for (int mi = 0; mi < selected->n_member_typedefs; ++mi) {
-                                            const char* member = selected->member_typedef_names[mi];
-                                            if (!member || member_name != member) continue;
-                                            ts = selected->member_typedef_types[mi];
-                                            bool substituted = false;
-                                            for (const auto& [pname, pts] : type_bindings) {
-                                                if (ts.base == TB_TYPEDEF && ts.tag &&
-                                                    std::string(ts.tag) == pname) {
-                                                    const int outer_ptr_level =
-                                                        ts.ptr_level;
-                                                    const bool outer_lref =
-                                                        ts.is_lvalue_ref;
-                                                    const bool outer_rref =
-                                                        ts.is_rvalue_ref;
-                                                    const bool outer_const =
-                                                        ts.is_const;
-                                                    const bool outer_volatile =
-                                                        ts.is_volatile;
-                                                    ts = pts;
-                                                    ts.ptr_level += outer_ptr_level;
-                                                    ts.is_lvalue_ref =
-                                                        ts.is_lvalue_ref || outer_lref;
-                                                    ts.is_rvalue_ref =
-                                                        !ts.is_lvalue_ref &&
-                                                        (ts.is_rvalue_ref ||
-                                                         outer_rref);
-                                                    ts.is_const =
-                                                        ts.is_const || outer_const;
-                                                    ts.is_volatile =
-                                                        ts.is_volatile ||
-                                                        outer_volatile;
-                                                    substituted = true;
-                                                    break;
-                                                }
-                                            }
-                                            if (!substituted && ts.base == TB_TYPEDEF &&
-                                                ts.tag && member_name == "type" &&
-                                                type_bindings.size() == 1) {
-                                                ts = type_bindings.front().second;
-                                            }
-                                            return true;
-                                        }
-                                        return false;
-                                    };
-
                                 bool resolved_alias_member = false;
                                 {
+                                    QualifiedNameRef owner_qn;
+                                    QualifiedNameRef derived_owner_qn;
                                     std::string owner_name;
                                     std::string member_name;
                                     auto derive_alias_owner_and_member =
                                         [&](const std::string& alias_name)
                                         -> std::pair<std::string, std::string> {
-                                            const size_t alias_sep =
-                                                alias_name.rfind("::");
+                                            QualifiedNameRef alias_qn;
+                                            if (!qualified_name_from_text(
+                                                    *this, alias_name, &alias_qn)) {
+                                                return {"", ""};
+                                            }
                                             std::string alias_base =
-                                                alias_sep == std::string::npos
-                                                    ? alias_name
-                                                    : alias_name.substr(alias_sep + 2);
+                                                std::string(parser_text(
+                                                    alias_qn.base_text_id,
+                                                    alias_qn.base_name));
                                             if (alias_base.size() > 2 &&
                                                 alias_base.substr(alias_base.size() - 2) == "_t") {
+                                                // Compatibility bridge: map legacy `_t`
+                                                // spellings back onto `foo::type` when a
+                                                // structured owner/member spelling is not
+                                                // already available.
+                                                alias_qn.base_name = alias_base.substr(
+                                                    0, alias_base.size() - 2);
+                                                alias_qn.base_text_id =
+                                                    parser_text_id_for_token(
+                                                        kInvalidText,
+                                                        alias_qn.base_name);
+                                                derived_owner_qn = alias_qn;
                                                 return {
-                                                    alias_sep == std::string::npos
-                                                        ? alias_base.substr(0, alias_base.size() - 2)
-                                                        : alias_name.substr(0, alias_sep + 2) +
-                                                              alias_base.substr(
-                                                                  0, alias_base.size() - 2),
+                                                    derived_owner_qn.spelled(
+                                                        derived_owner_qn
+                                                            .is_global_qualified),
                                                     "type"};
                                             }
                                             return {"", ""};
@@ -1750,12 +1878,176 @@ TypeSpec Parser::parse_base_type() {
                                             }
                                             return false;
                                         };
+                                    auto resolve_alias_member_type =
+                                        [&](const std::string& owner_name,
+                                            const QualifiedNameRef* owner_name_qn,
+                                            const std::string& member_name) -> bool {
+                                        if (owner_name.empty() || member_name.empty())
+                                            return false;
+                                        const std::string owner_lookup_name =
+                                            (ts.tpl_struct_origin &&
+                                             ts.deferred_member_type_name &&
+                                             member_name == ts.deferred_member_type_name)
+                                                ? std::string(ts.tpl_struct_origin)
+                                                : owner_name;
+                                        QualifiedNameRef owner_lookup_qn;
+                                        const QualifiedNameRef* owner_lookup_qn_ptr =
+                                            nullptr;
+                                        if (ts.tpl_struct_origin &&
+                                            ts.deferred_member_type_name &&
+                                            member_name == ts.deferred_member_type_name) {
+                                            if (qualified_name_from_text(
+                                                    *this, owner_lookup_name,
+                                                    &owner_lookup_qn)) {
+                                                owner_lookup_qn_ptr =
+                                                    &owner_lookup_qn;
+                                            }
+                                        } else if (owner_name_qn &&
+                                                   owner_name_qn->base_text_id !=
+                                                       kInvalidText) {
+                                            owner_lookup_qn = *owner_name_qn;
+                                            owner_lookup_qn_ptr =
+                                                &owner_lookup_qn;
+                                        } else if (qualified_name_from_text(
+                                                       *this, owner_lookup_name,
+                                                       &owner_lookup_qn)) {
+                                            owner_lookup_qn_ptr =
+                                                &owner_lookup_qn;
+                                        }
+
+                                        const Node* primary_tpl =
+                                            owner_lookup_qn_ptr
+                                                ? find_template_struct_primary(
+                                                      *owner_lookup_qn_ptr)
+                                                : find_template_struct_primary(
+                                                      current_namespace_context_id(),
+                                                      find_parser_text_id(
+                                                          owner_lookup_name),
+                                                      owner_lookup_name);
+                                        std::string resolved_owner;
+                                        if (!primary_tpl && owner_lookup_qn_ptr) {
+                                            resolved_owner =
+                                                resolve_qualified_known_type_name(
+                                                    *this, *owner_lookup_qn_ptr);
+                                            if (!resolved_owner.empty()) {
+                                                primary_tpl =
+                                                    find_template_struct_primary(
+                                                        current_namespace_context_id(),
+                                                        find_parser_text_id(
+                                                            resolved_owner),
+                                                        resolved_owner);
+                                            }
+                                        } else if (!primary_tpl) {
+                                            resolved_owner =
+                                                resolve_visible_type_name(
+                                                    owner_lookup_name);
+                                            if (!resolved_owner.empty()) {
+                                                primary_tpl =
+                                                    find_template_struct_primary(
+                                                        current_namespace_context_id(),
+                                                        find_parser_text_id(
+                                                            resolved_owner),
+                                                        resolved_owner);
+                                            }
+                                        }
+                                        if (!primary_tpl &&
+                                            owner_lookup_name.find("::") ==
+                                                std::string::npos) {
+                                            const std::string canonical_owner =
+                                                bridge_name_in_context(
+                                                    current_namespace_context_id(),
+                                                    parser_text_id_for_token(
+                                                        kInvalidText,
+                                                        owner_lookup_name),
+                                                    owner_lookup_name);
+                                            primary_tpl =
+                                                find_template_struct_primary(
+                                                    current_namespace_context_id(),
+                                                    find_parser_text_id(
+                                                        canonical_owner),
+                                                    canonical_owner);
+                                        }
+                                        if (!primary_tpl) return false;
+
+                                        std::vector<ParsedTemplateArg> actual_args;
+                                        if (!build_transformed_owner_args(
+                                                owner_lookup_name, &actual_args))
+                                            return false;
+
+                                        std::vector<std::pair<std::string, TypeSpec>>
+                                            type_bindings;
+                                        std::vector<std::pair<std::string, long long>>
+                                            nttp_bindings;
+                                        const std::vector<Node*>* specializations =
+                                            find_template_struct_specializations(
+                                                primary_tpl);
+                                        const Node* selected =
+                                            select_template_struct_pattern_for_args(
+                                                actual_args, primary_tpl,
+                                                specializations, &type_bindings,
+                                                &nttp_bindings);
+                                        if (!selected || selected->n_member_typedefs <=
+                                                             0)
+                                            return false;
+                                        for (int mi = 0;
+                                             mi < selected->n_member_typedefs; ++mi) {
+                                            const char* member =
+                                                selected->member_typedef_names[mi];
+                                            if (!member || member_name != member)
+                                                continue;
+                                            ts = selected->member_typedef_types[mi];
+                                            bool substituted = false;
+                                            for (const auto& [pname, pts] :
+                                                 type_bindings) {
+                                                if (ts.base == TB_TYPEDEF &&
+                                                    ts.tag &&
+                                                    std::string(ts.tag) == pname) {
+                                                    const int outer_ptr_level =
+                                                        ts.ptr_level;
+                                                    const bool outer_lref =
+                                                        ts.is_lvalue_ref;
+                                                    const bool outer_rref =
+                                                        ts.is_rvalue_ref;
+                                                    const bool outer_const =
+                                                        ts.is_const;
+                                                    const bool outer_volatile =
+                                                        ts.is_volatile;
+                                                    ts = pts;
+                                                    ts.ptr_level +=
+                                                        outer_ptr_level;
+                                                    ts.is_lvalue_ref =
+                                                        ts.is_lvalue_ref ||
+                                                        outer_lref;
+                                                    ts.is_rvalue_ref =
+                                                        !ts.is_lvalue_ref &&
+                                                        (ts.is_rvalue_ref ||
+                                                         outer_rref);
+                                                    ts.is_const =
+                                                        ts.is_const ||
+                                                        outer_const;
+                                                    ts.is_volatile =
+                                                        ts.is_volatile ||
+                                                        outer_volatile;
+                                                    substituted = true;
+                                                    break;
+                                                }
+                                            }
+                                            if (!substituted &&
+                                                ts.base == TB_TYPEDEF && ts.tag &&
+                                                member_name == "type" &&
+                                                type_bindings.size() == 1) {
+                                                ts = type_bindings.front().second;
+                                            }
+                                            return true;
+                                        }
+                                        return false;
+                                    };
                                     if (ts.base == TB_TYPEDEF && ts.tag) {
-                                        std::string tag_text = ts.tag;
-                                        const size_t member_pos = tag_text.rfind("::");
-                                        if (member_pos != std::string::npos) {
-                                            owner_name = tag_text.substr(0, member_pos);
-                                            member_name = tag_text.substr(member_pos + 2);
+                                        if (split_qualified_member_type_name(
+                                                *this, ts.tag, &owner_qn,
+                                                &member_name)) {
+                                            owner_name = owner_qn.spelled(
+                                                owner_qn.is_global_qualified);
                                         }
                                     }
                                     if (!owner_name.empty() && !member_name.empty())
@@ -1763,8 +2055,11 @@ TypeSpec Parser::parse_base_type() {
                                             (has_dependent_owner_args(owner_name) &&
                                              preserve_deferred_alias_member(
                                                  owner_name, member_name)) ||
-                                            apply_unary_alias_transform(owner_name, member_name) ||
-                                            resolve_alias_member_type(owner_name, member_name);
+                                            resolve_alias_member_type(
+                                                owner_name, &owner_qn,
+                                                member_name) ||
+                                            apply_unary_alias_transform(
+                                                owner_name, member_name);
                                     if (!resolved_alias_member &&
                                         ts.deferred_member_type_name &&
                                         ((ts.tpl_struct_origin &&
@@ -1782,6 +2077,9 @@ TypeSpec Parser::parse_base_type() {
                                         (!owner_name.empty() && !member_name.empty());
                                     if (!resolved_alias_member &&
                                         can_try_derived_alias_member) {
+                                        // Bridge-only fallback for legacy alias-name
+                                        // recovery once the structured owner/member path
+                                        // has already failed.
                                         auto [derived_owner, derived_member] =
                                             derive_alias_owner_and_member(alias_template_name);
                                         if (!derived_owner.empty() && !derived_member.empty())
@@ -1794,7 +2092,9 @@ TypeSpec Parser::parse_base_type() {
                                                 apply_unary_alias_transform(
                                                     derived_owner, derived_member) ||
                                                 resolve_alias_member_type(
-                                                    derived_owner, derived_member);
+                                                    derived_owner,
+                                                    &derived_owner_qn,
+                                                    derived_member);
                                         if (!resolved_alias_member &&
                                             !derived_owner.empty() &&
                                             !derived_member.empty()) {
@@ -1813,9 +2113,9 @@ TypeSpec Parser::parse_base_type() {
                                 if (!resolved_alias_member) {
                                     for (size_t ai = 0;
                                          ai < resolved_alias_args.size(); ++ai) {
-                                        if (ati.param_is_nttp[ai]) continue;
+                                        if (ati->param_is_nttp[ai]) continue;
                                         if (ts.base == TB_TYPEDEF && ts.tag &&
-                                            std::string(ts.tag) == ati.param_names[ai]) {
+                                            std::string(ts.tag) == ati->param_names[ai]) {
                                             const bool outer_lref = ts.is_lvalue_ref;
                                             const bool outer_rref = ts.is_rvalue_ref;
                                             const bool outer_const = ts.is_const;
@@ -1854,12 +2154,40 @@ TypeSpec Parser::parse_base_type() {
                             }
                     }
                 }
-            } else if (is_cpp_mode() && find_template_struct_primary(tname)) {
+            } else if (is_cpp_mode() &&
+                       find_template_struct_primary(current_namespace_context_id(),
+                                                    active_context_state_
+                                                        .last_resolved_typedef_text_id,
+                                                    tname)) {
                 // Qualified names such as `ns::Template<T>` may resolve directly
                 // to a template primary without first passing through typedef
                 // registration. Reuse the existing template-struct
                 // instantiation/member-suffix path below.
                 ts.base = TB_STRUCT;
+            }
+            if (is_cpp_mode() && ts.tag && ts.tag[0] &&
+                check(TokenKind::ColonColon) &&
+                core_input_state_.pos + 1 <
+                    static_cast<int>(core_input_state_.tokens.size()) &&
+                core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                    TokenKind::Identifier) {
+                std::string member(
+                    token_spelling(core_input_state_.tokens[core_input_state_.pos + 1]));
+                TypeSpec resolved{};
+                if (lookup_struct_member_typedef_recursive(ts.tag, member, &resolved)) {
+                    consume();  // ::
+                    consume();  // member
+                    bool save_const = ts.is_const, save_vol = ts.is_volatile;
+                    ts = resolved;
+                    ts.is_const |= save_const;
+                    ts.is_volatile |= save_vol;
+                    return ts;
+                } else if (ts.tpl_struct_origin || (ts.tag && ts.tag[0])) {
+                    consume();  // ::
+                    consume();  // member
+                    ts.deferred_member_type_name = arena_.strdup(member.c_str());
+                    return ts;
+                }
             }
             // Dependent template-template parameter application:
                 // template<template<typename...> class Op> using X = Op<int>;
@@ -1879,9 +2207,14 @@ TypeSpec Parser::parse_base_type() {
                 }
                 // Template struct instantiation: Pair<int> or Array<int, 4> in type context.
                 if (is_cpp_mode() && ts.base == TB_STRUCT && ts.tag &&
-                    find_template_struct_primary(ts.tag) && check(TokenKind::Less)) {
+                    find_template_struct_primary(
+                        current_namespace_context_id(),
+                        find_parser_text_id(ts.tag), ts.tag) &&
+                    check(TokenKind::Less)) {
                     std::string tpl_name = ts.tag;
-                    const Node* primary_tpl = find_template_struct_primary(tpl_name);
+                    const Node* primary_tpl = find_template_struct_primary(
+                        current_namespace_context_id(),
+                        find_parser_text_id(tpl_name), tpl_name);
                     std::vector<ParsedTemplateArg> actual_args;
                     if (!parse_template_argument_list(&actual_args, primary_tpl)) return ts;
                     for (auto& arg : actual_args) {
@@ -1954,7 +2287,8 @@ TypeSpec Parser::parse_base_type() {
                                     if (actual_args[pi].nttp_name &&
                                         std::strncmp(actual_args[pi].nttp_name, "$expr:", 6) == 0) {
                                         std::vector<Token> expr_toks = lex_template_expr_text(
-                                            actual_args[pi].nttp_name + 6, source_profile_);
+                                            actual_args[pi].nttp_name + 6,
+                                            core_input_state_.source_profile);
                                         long long ev = 0;
                                         if (eval_deferred_nttp_expr_tokens(
                                                 tpl_name, expr_toks,
@@ -1985,7 +2319,7 @@ TypeSpec Parser::parse_base_type() {
                                            primary_tpl->template_param_default_exprs[sz]) {
                                     std::vector<Token> expr_toks = lex_template_expr_text(
                                         primary_tpl->template_param_default_exprs[sz],
-                                        source_profile_);
+                                        core_input_state_.source_profile);
                                     if (eval_deferred_nttp_expr_tokens(tpl_name, expr_toks,
                                                                        prelim_tb, prelim_nb, &ev)) {
                                         da.value = ev;
@@ -2044,7 +2378,7 @@ TypeSpec Parser::parse_base_type() {
                                            primary_tpl->template_param_default_exprs[i]) {
                                     std::vector<Token> expr_toks = lex_template_expr_text(
                                         primary_tpl->template_param_default_exprs[i],
-                                        source_profile_);
+                                        core_input_state_.source_profile);
                                     if (eval_deferred_nttp_expr_tokens(tpl_name, expr_toks,
                                                                        type_bindings, nttp_bindings,
                                                                        &eval_val)) {
@@ -2074,7 +2408,7 @@ TypeSpec Parser::parse_base_type() {
                         }
                         concrete_args.push_back(arg);
                     }
-                    const std::string instance_key =
+                    const std::string emitted_instance_key =
                         make_template_struct_instance_key(primary_tpl, concrete_args);
 
                     // Build mangled name from the concrete family arguments.
@@ -2170,9 +2504,13 @@ TypeSpec Parser::parse_base_type() {
                         return ts;
                     }
 
-                    // Instantiate if not already done
-                    if (!instantiated_template_struct_keys_.count(instance_key)) {
-                        instantiated_template_struct_keys_.insert(instance_key);
+                    // Structured primary/specialization selection has already
+                    // resolved tpl_def. This string key is only a duplicate
+                    // guard for emitting the concrete struct definition.
+                    if (!template_state_.instantiated_template_struct_keys.count(
+                            emitted_instance_key)) {
+                        template_state_.instantiated_template_struct_keys.insert(
+                            emitted_instance_key);
                         // Create a concrete NK_STRUCT_DEF with substituted field types
                         Node* inst = make_node(NK_STRUCT_DEF, tpl_def->line);
                         inst->name = arena_.strdup(mangled.c_str());
@@ -2199,6 +2537,19 @@ TypeSpec Parser::parse_base_type() {
                                 // Resolve pending template base types: e.g. is_const<T> → is_const<const int>
                                 if (inst->base_types[bi].tpl_struct_origin) {
                                     std::string origin = inst->base_types[bi].tpl_struct_origin;
+                                    auto find_instantiated_base_primary =
+                                        [&]() -> const Node* {
+                                        QualifiedNameRef origin_qn;
+                                        if (qualified_name_from_text(
+                                                *this, origin, &origin_qn) &&
+                                            (!origin_qn.qualifier_segments.empty() ||
+                                             origin_qn.is_global_qualified)) {
+                                            return find_template_struct_primary(origin_qn);
+                                        }
+                                        return find_template_struct_primary(
+                                            current_namespace_context_id(),
+                                            find_parser_text_id(origin), origin);
+                                    };
                                     auto type_mentions_bound_param =
                                         [&](const TypeSpec& candidate) -> bool {
                                             if (candidate.base == TB_TYPEDEF &&
@@ -2210,10 +2561,12 @@ TypeSpec Parser::parse_base_type() {
                                                 }
                                             }
                                             return false;
-                                        };
+                                    };
+                                    const Node* base_primary =
+                                        find_instantiated_base_primary();
                                     if (inst->base_types[bi].tpl_struct_args.data &&
                                         inst->base_types[bi].tpl_struct_args.size > 0 &&
-                                        find_template_struct_primary(origin)) {
+                                        base_primary) {
                                         bool can_use_typed_args = true;
                                         std::vector<ParsedTemplateArg> base_args;
                                         base_args.reserve(
@@ -2244,8 +2597,6 @@ TypeSpec Parser::parse_base_type() {
                                             base_args.push_back(base_arg);
                                         }
                                         if (can_use_typed_args) {
-                                            const Node* base_primary =
-                                                find_template_struct_primary(origin);
                                             std::vector<std::pair<std::string, TypeSpec>>
                                                 base_prelim_tb;
                                             std::vector<std::pair<std::string, long long>>
@@ -2305,7 +2656,8 @@ TypeSpec Parser::parse_base_type() {
                                                         "template_base_instantiation",
                                                         &inst->base_types[bi])) {
                                                     if (!inst->base_types[bi].tag &&
-                                                        struct_tag_def_map_.count(base_mangled)) {
+                                                        definition_state_.struct_tag_def_map.count(
+                                                            base_mangled)) {
                                                         inst->base_types[bi] = TypeSpec{};
                                                         inst->base_types[bi].array_size = -1;
                                                         inst->base_types[bi].inner_rank = -1;
@@ -2391,7 +2743,9 @@ TypeSpec Parser::parse_base_type() {
                                                             }
                                                         }
                                                     }
-                                                    Lexer expr_lexer(expr_text, lex_profile_from(source_profile_));
+                                                    Lexer expr_lexer(
+                                                        expr_text,
+                                                        lex_profile_from(core_input_state_.source_profile));
                                                     std::vector<Token> expr_toks = expr_lexer.scan_all();
                                                     if (!expr_toks.empty() &&
                                                         expr_toks.back().kind == TokenKind::EndOfFile) {
@@ -2433,11 +2787,11 @@ TypeSpec Parser::parse_base_type() {
                                         set_template_arg_debug_refs_text(
                                             &inst->base_types[bi], updated_refs);
                                     }
-                                    if (all_resolved && find_template_struct_primary(origin)) {
+                                    base_primary = find_instantiated_base_primary();
+                                    if (all_resolved && base_primary) {
                                         // Build ParsedTemplateArg list from resolved parts
                                         // and fill in deferred NTTP defaults, then trigger
                                         // a proper template instantiation.
-                                        const Node* base_primary = find_template_struct_primary(origin);
                                         std::vector<ParsedTemplateArg> base_args;
                                         for (int pi = 0; pi < (int)new_arg_parts.size() &&
                                              pi < base_primary->n_template_params; ++pi) {
@@ -2490,7 +2844,7 @@ TypeSpec Parser::parse_base_type() {
                                                                base_primary->template_param_default_exprs[bsz]) {
                                                         std::vector<Token> expr_toks = lex_template_expr_text(
                                                             base_primary->template_param_default_exprs[bsz],
-                                                            source_profile_);
+                                                            core_input_state_.source_profile);
                                                         if (eval_deferred_nttp_expr_tokens(origin, expr_toks,
                                                                                            base_prelim_tb, base_prelim_nb,
                                                                                            &ev)) {
@@ -2521,7 +2875,8 @@ TypeSpec Parser::parse_base_type() {
                                                 "template_base_instantiation",
                                                 &inst->base_types[bi])) {
                                             if (!inst->base_types[bi].tag &&
-                                                struct_tag_def_map_.count(base_mangled)) {
+                                                definition_state_.struct_tag_def_map.count(
+                                                    base_mangled)) {
                                                 inst->base_types[bi] = TypeSpec{};
                                                 inst->base_types[bi].array_size = -1;
                                                 inst->base_types[bi].inner_rank = -1;
@@ -2529,7 +2884,8 @@ TypeSpec Parser::parse_base_type() {
                                                 inst->base_types[bi].tag =
                                                     arena_.strdup(base_mangled.c_str());
                                             }
-                                        } else if (struct_tag_def_map_.count(base_mangled)) {
+                                        } else if (definition_state_.struct_tag_def_map.count(
+                                                       base_mangled)) {
                                             inst->base_types[bi] = TypeSpec{};
                                             inst->base_types[bi].array_size = -1;
                                             inst->base_types[bi].inner_rank = -1;
@@ -2656,10 +3012,9 @@ TypeSpec Parser::parse_base_type() {
                                 inst->member_typedef_types[ti] = member_ts;
                                 if (inst->member_typedef_names[ti] &&
                                     inst->member_typedef_names[ti][0]) {
-                                    std::string scoped =
-                                        mangled + "::" + inst->member_typedef_names[ti];
                                     register_struct_member_typedef_binding(
-                                        scoped, member_ts);
+                                        mangled, inst->member_typedef_names[ti],
+                                        member_ts);
                                 }
                             }
                         }
@@ -2775,9 +3130,9 @@ TypeSpec Parser::parse_base_type() {
                                 inst->children[mi] = new_m;
                             }
                         }
-                        struct_defs_.push_back(inst);
-                        struct_tag_def_map_[mangled] = inst;
-                        defined_struct_tags_.insert(mangled);
+                        definition_state_.struct_defs.push_back(inst);
+                        definition_state_.struct_tag_def_map[mangled] = inst;
+                        definition_state_.defined_struct_tags.insert(mangled);
                     }
                     ts.tag = arena_.strdup(mangled.c_str());
                 }
@@ -2806,9 +3161,11 @@ TypeSpec Parser::parse_base_type() {
                 // Handle TemplateStruct<Args>::member suffix (e.g. bool_constant<true>::type).
                 // Resolve the member as a typedef within the instantiated struct.
                 if (is_cpp_mode() && check(TokenKind::ColonColon) &&
-                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::Identifier) {
-                    std::string member(token_spelling(tokens_[pos_ + 1]));
+                    core_input_state_.pos + 1 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::Identifier) {
+                    std::string member(token_spelling(core_input_state_.tokens[core_input_state_.pos + 1]));
                     const bool should_preserve_deferred_template_member =
                         ts.tpl_struct_origin && ts.tpl_struct_args.size > 0 &&
                         member == "type";
@@ -2827,8 +3184,11 @@ TypeSpec Parser::parse_base_type() {
                         // The resolved typedef's tag might be the template name, not the instantiation.
                         // If the resolved type is the same template origin, use the instantiation tag.
                         if (resolved.base == TB_STRUCT && resolved.tag) {
-                            auto inst_it = struct_tag_def_map_.find(ts.tag);
-                            if (inst_it != struct_tag_def_map_.end() && inst_it->second &&
+                            auto inst_it =
+                                definition_state_.struct_tag_def_map.find(ts.tag);
+                            if (inst_it !=
+                                    definition_state_.struct_tag_def_map.end() &&
+                                inst_it->second &&
                                 inst_it->second->template_origin_name &&
                                 std::string(resolved.tag) == inst_it->second->template_origin_name) {
                                 resolved.tag = ts.tag;

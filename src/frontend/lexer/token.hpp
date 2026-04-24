@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 #include "source_profile.hpp"
 #include "../../shared/text_id_table.hpp"
@@ -201,17 +202,17 @@ const char *token_kind_name(TokenKind kind);
 // Returns the keyword TokenKind for a given identifier string, or
 // TokenKind::Identifier if not a keyword. gnu_extensions enables bare
 // "asm"/"typeof".
-TokenKind keyword_from_string(const std::string &s, bool gnu_extensions = true,
+TokenKind keyword_from_string(std::string_view s, bool gnu_extensions = true,
                               LexProfile profile = LexProfile::C);
 
 // Returns true when the spelling matches a Clang-style builtin type trait
 // entry tracked by the frontend registry, including array/expression/transform
 // traits.
-bool is_builtin_type_trait_name(const std::string &s);
+bool is_builtin_type_trait_name(std::string_view s);
 
 // Returns true when the current parser intentionally supports the builtin
 // trait spelling. Builtins that are known but not yet wired through the parser
 // should return false so callers can emit a stable "not implemented" error.
-bool is_parser_supported_builtin_type_trait_name(const std::string &s);
+bool is_parser_supported_builtin_type_trait_name(std::string_view s);
 
 }  // namespace c4c

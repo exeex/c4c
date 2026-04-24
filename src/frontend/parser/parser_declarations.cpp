@@ -1,11 +1,56 @@
 #include "parser.hpp"
+#include "lexer.hpp"
 
 #include <climits>
 #include <sstream>
 #include <cstring>
 #include <stdexcept>
 
+#define finalize_pending_operator_name finalize_pending_operator_name_types_helpers
+#define is_cpp20_requires_clause_decl_boundary \
+    is_cpp20_requires_clause_decl_boundary_types_helpers
+#define skip_cpp20_constraint_atom skip_cpp20_constraint_atom_types_helpers
+#define parse_optional_cpp20_requires_clause parse_optional_cpp20_requires_clause_types_helpers
+#define parse_optional_cpp20_trailing_requires_clause \
+    parse_optional_cpp20_trailing_requires_clause_types_helpers
+#include "types_helpers.hpp"
+#undef finalize_pending_operator_name
+#undef is_cpp20_requires_clause_decl_boundary
+#undef skip_cpp20_constraint_atom
+#undef parse_optional_cpp20_requires_clause
+#undef parse_optional_cpp20_trailing_requires_clause
+
 namespace c4c {
+
+struct ParserFunctionParamScopeGuard {
+    Parser* parser = nullptr;
+    bool active = false;
+
+    ParserFunctionParamScopeGuard(Parser& p, const std::vector<Node*>& params)
+        : parser(&p) {
+        if (params.empty()) return;
+        parser->push_local_binding_scope();
+        active = true;
+        for (Node* param : params) {
+            if (!param || !param->name || !param->name[0]) continue;
+            parser->register_var_type_binding(param->name, param->type);
+        }
+    }
+
+    ~ParserFunctionParamScopeGuard() {
+        if (active) parser->pop_local_binding_scope();
+    }
+};
+
+static void restore_current_struct_tag(Parser& parser, TextId text_id,
+                                       const std::string& fallback) {
+    const std::string_view tag = parser.parser_text(text_id, fallback);
+    if (tag.empty()) {
+        parser.clear_current_struct_tag();
+        return;
+    }
+    parser.set_current_struct_tag(tag);
+}
 
 static void finalize_pending_operator_name(std::string& name, size_t param_count) {
     if (name.find("operator_star_pending") != std::string::npos) {
@@ -75,11 +120,12 @@ static bool template_param_expr_continues_after_greater(TokenKind k) {
 static void skip_template_param_default_expr(Parser& parser,
                                              bool track_brackets_and_braces,
                                              int* out_start_pos = nullptr) {
-    if (out_start_pos) *out_start_pos = parser.pos_;
+    if (out_start_pos) *out_start_pos = parser.core_input_state_.pos;
 
     auto is_expr_continuation = [&](int p) -> bool {
-        if (p >= static_cast<int>(parser.tokens_.size())) return false;
-        return template_param_expr_continues_after_greater(parser.tokens_[p].kind);
+        if (p >= static_cast<int>(parser.core_input_state_.tokens.size())) return false;
+        return template_param_expr_continues_after_greater(
+            parser.core_input_state_.tokens[p].kind);
     };
 
     int depth = 0;
@@ -90,7 +136,10 @@ static void skip_template_param_default_expr(Parser& parser,
             ++depth;
         } else if (parser.check(TokenKind::Greater)) {
             if (depth == 0) {
-                if (is_expr_continuation(parser.pos_ + 1)) { parser.consume(); continue; }
+                if (is_expr_continuation(parser.core_input_state_.pos + 1)) {
+                    parser.consume();
+                    continue;
+                }
                 break;
             }
             --depth;
@@ -100,11 +149,18 @@ static void skip_template_param_default_expr(Parser& parser,
             if (depth > 0) --depth;
         } else if (parser.check(TokenKind::GreaterGreater)) {
             if (depth == 0) {
-                if (is_expr_continuation(parser.pos_ + 1)) { parser.consume(); continue; }
+                if (is_expr_continuation(parser.core_input_state_.pos + 1)) {
+                    parser.consume();
+                    continue;
+                }
                 break;
             }
             if (depth == 1) {
-                if (is_expr_continuation(parser.pos_ + 1)) { depth = 0; parser.consume(); continue; }
+                if (is_expr_continuation(parser.core_input_state_.pos + 1)) {
+                    depth = 0;
+                    parser.consume();
+                    continue;
+                }
                 parser.parse_greater_than_in_template_list(false);
                 break;
             }
@@ -141,6 +197,15 @@ bool is_internal_typedef_name(const char* name) {
     return name && name[0] == '_' && name[1] == '_';
 }
 
+bool is_same_visible_type_name(Parser& parser, TextId lhs_text_id,
+                               std::string_view lhs, TextId rhs_text_id,
+                               std::string_view rhs) {
+    if (lhs.empty() || rhs.empty()) return false;
+    if (lhs == rhs) return true;
+    return parser.resolve_visible_type_name(lhs_text_id, lhs) ==
+           parser.resolve_visible_type_name(rhs_text_id, rhs);
+}
+
 bool is_cpp20_requires_clause_record_decl_boundary(TokenKind kind) {
     switch (kind) {
         case TokenKind::KwStruct:
@@ -157,12 +222,15 @@ bool is_cpp20_requires_clause_decl_boundary(Parser& parser) {
     if (parser.at_end()) return true;
     TokenKind kind = parser.cur().kind;
     if (kind == TokenKind::Identifier) {
-        if (parser.pos_ > 0 &&
-            parser.tokens_[parser.pos_ - 1].kind == TokenKind::ColonColon) {
+        if (parser.core_input_state_.pos > 0 &&
+            parser.core_input_state_.tokens[parser.core_input_state_.pos - 1].kind ==
+                TokenKind::ColonColon) {
             return false;
         }
-        if (parser.pos_ + 1 < static_cast<int>(parser.tokens_.size()) &&
-            parser.tokens_[parser.pos_ + 1].kind == TokenKind::Less) {
+        if (parser.core_input_state_.pos + 1 <
+                static_cast<int>(parser.core_input_state_.tokens.size()) &&
+            parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
+                TokenKind::Less) {
             return false;
         }
         return true;
@@ -195,6 +263,9 @@ bool try_skip_cpp_concept_declaration(Parser& parser) {
     if (!parser.check(TokenKind::Identifier)) {
         throw std::runtime_error("expected concept name");
     }
+    const TextId concept_name_text_id =
+        parser.parser_text_id_for_token(parser.cur().text_id,
+                                        parser.token_spelling(parser.cur()));
     const std::string concept_name = std::string(parser.token_spelling(parser.cur()));
     parser.consume();  // concept identifier
     parser.expect(TokenKind::Assign);
@@ -203,11 +274,11 @@ bool try_skip_cpp_concept_declaration(Parser& parser) {
     // constraint-expression on the right-hand side of `concept Name = ...;`.
     (void)parser.parse_expr();
     parser.expect(TokenKind::Semi);
-    parser.concept_names_.insert(concept_name);
-    const std::string qualified =
-        parser.canonical_name_in_context(parser.current_namespace_context_id(),
-                                         concept_name);
-    parser.concept_names_.insert(qualified);
+    if (concept_name_text_id != kInvalidText) {
+        parser.binding_state_.concept_name_text_ids.insert(concept_name_text_id);
+    }
+    parser.register_concept_name_in_context(
+        parser.current_namespace_context_id(), concept_name_text_id, concept_name);
     return true;
 }
 
@@ -308,15 +379,16 @@ bool using_alias_consumed_following_declaration(Parser& parser,
 
     const int last_token_pos = alias_type_end_pos - 1;
     if (last_token_pos < alias_type_pos ||
-        parser.tokens_[last_token_pos].kind != TokenKind::Identifier ||
-        parser.tokens_[last_token_pos].line == recovery_line) {
+        parser.core_input_state_.tokens[last_token_pos].kind !=
+            TokenKind::Identifier ||
+        parser.core_input_state_.tokens[last_token_pos].line == recovery_line) {
         return false;
     }
 
     int depth = 0;
-    const int candidate_line = parser.tokens_[last_token_pos].line;
+    const int candidate_line = parser.core_input_state_.tokens[last_token_pos].line;
     for (int i = alias_type_pos; i < last_token_pos; ++i) {
-        TokenKind kind = parser.tokens_[i].kind;
+        TokenKind kind = parser.core_input_state_.tokens[i].kind;
         if (kind == TokenKind::Less || kind == TokenKind::LParen ||
             kind == TokenKind::LBracket) {
             ++depth;
@@ -334,10 +406,11 @@ bool using_alias_consumed_following_declaration(Parser& parser,
         }
         if (depth == 0 &&
             i > alias_type_pos &&
-            parser.tokens_[i - 1].kind == TokenKind::ColonColon) {
+            parser.core_input_state_.tokens[i - 1].kind == TokenKind::ColonColon) {
             continue;
         }
-        if (depth == 0 && parser.tokens_[i].line == candidate_line &&
+        if (depth == 0 &&
+            parser.core_input_state_.tokens[i].line == candidate_line &&
             is_top_level_decl_recovery_boundary(kind)) {
             return true;
         }
@@ -521,23 +594,29 @@ Node* Parser::parse_local_decl() {
     int ln = cur().line;
     auto skip_cpp11_attrs_only = [&]() {
         while (check(TokenKind::LBracket) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+               core_input_state_.pos + 1 <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                   TokenKind::LBracket) {
             consume();
             consume();
             int depth = 1;
             while (!at_end() && depth > 0) {
                 if (check(TokenKind::LBracket) &&
-                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+                    core_input_state_.pos + 1 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::LBracket) {
                     consume();
                     consume();
                     ++depth;
                     continue;
                 }
                 if (check(TokenKind::RBracket) &&
-                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::RBracket) {
+                    core_input_state_.pos + 1 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::RBracket) {
                     consume();
                     consume();
                     --depth;
@@ -587,22 +666,15 @@ Node* Parser::parse_local_decl() {
         if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
         if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
         if (!ts.tag) return true;
-        if (is_cpp_mode() && !current_struct_tag_.empty()) {
-            const std::string current_tag(current_struct_tag_text());
-            const std::string qualified_current_tag = qualify_name(current_tag);
-            const std::string spelled_tag = ts.tag;
-            const std::string qualified_spelled_tag = qualify_name(spelled_tag);
-            if (current_tag == spelled_tag ||
-                current_tag == qualified_spelled_tag ||
-                qualified_current_tag == spelled_tag ||
-                qualified_current_tag == qualified_spelled_tag)
-                return false;
-            if (resolve_visible_type_name(spelled_tag) == current_tag ||
-                resolve_visible_type_name(spelled_tag) == qualified_current_tag)
+        if (is_cpp_mode() && !active_context_state_.current_struct_tag.empty()) {
+            if (is_same_visible_type_name(
+                    *this, active_context_state_.current_struct_tag_text_id,
+                    current_struct_tag_text(), find_parser_text_id(ts.tag),
+                    ts.tag))
                 return false;
         }
-        auto it = struct_tag_def_map_.find(ts.tag);
-        if (it == struct_tag_def_map_.end()) return true;
+        auto it = definition_state_.struct_tag_def_map.find(ts.tag);
+        if (it == definition_state_.struct_tag_def_map.end()) return true;
         Node* def = it->second;
         return !def || def->n_fields < 0;
     };
@@ -611,12 +683,14 @@ Node* Parser::parse_local_decl() {
         // Simple typedef: typedef base_type name[...];
         // Also handles typedef base_type (*fn_name)(...);
         const char* tdname = nullptr;
+        TextId tdname_text_id = kInvalidText;
         TypeSpec ts_copy = base_ts;
         Node** td_fn_ptr_params = nullptr;
         int td_n_fn_ptr_params = 0;
         bool td_fn_ptr_variadic = false;
         parse_declarator(ts_copy, &tdname, &td_fn_ptr_params,
-                         &td_n_fn_ptr_params, &td_fn_ptr_variadic);
+                         &td_n_fn_ptr_params, &td_fn_ptr_variadic, nullptr,
+                         nullptr, nullptr, nullptr, &tdname_text_id);
         if (tdname) {
             if (!is_cpp_mode() && !is_internal_typedef_name(tdname) &&
                 has_conflicting_user_typedef_binding(tdname, ts_copy))
@@ -626,9 +700,11 @@ Node* Parser::parse_local_decl() {
             // Phase C: store fn_ptr param info for typedef'd function pointers.
             if (ts_copy.is_fn_ptr && (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic)) {
                 const TextId typedef_name_id =
-                    parser_text_id_for_token(kInvalidText, tdname);
+                    tdname_text_id != kInvalidText
+                        ? tdname_text_id
+                        : parser_text_id_for_token(kInvalidText, tdname);
                 if (typedef_name_id != kInvalidText) {
-                    typedef_fn_ptr_info_[typedef_name_id] = {
+                    binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
                         td_fn_ptr_params, td_n_fn_ptr_params, td_fn_ptr_variadic};
                 }
             }
@@ -637,11 +713,14 @@ Node* Parser::parse_local_decl() {
         while (match(TokenKind::Comma)) {
             TypeSpec ts2 = base_ts;
             const char* tdn2 = nullptr;
+            TextId tdn2_text_id = kInvalidText;
             Node** td2_fn_ptr_params = nullptr;
             int td2_n_fn_ptr_params = 0;
             bool td2_fn_ptr_variadic = false;
             parse_declarator(ts2, &tdn2, &td2_fn_ptr_params,
-                             &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
+                             &td2_n_fn_ptr_params, &td2_fn_ptr_variadic,
+                             nullptr, nullptr, nullptr, nullptr,
+                             &tdn2_text_id);
             if (tdn2) {
                 if (!is_cpp_mode() && !is_internal_typedef_name(tdn2) &&
                     has_conflicting_user_typedef_binding(tdn2, ts2))
@@ -650,9 +729,11 @@ Node* Parser::parse_local_decl() {
                                          !is_internal_typedef_name(tdn2));
                 if (ts2.is_fn_ptr && (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic)) {
                     const TextId typedef_name_id =
-                        parser_text_id_for_token(kInvalidText, tdn2);
+                        tdn2_text_id != kInvalidText
+                            ? tdn2_text_id
+                            : parser_text_id_for_token(kInvalidText, tdn2);
                     if (typedef_name_id != kInvalidText) {
-                        typedef_fn_ptr_info_[typedef_name_id] = {
+                        binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
                             td2_fn_ptr_params, td2_n_fn_ptr_params, td2_fn_ptr_variadic};
                     }
                 }
@@ -661,7 +742,8 @@ Node* Parser::parse_local_decl() {
         match(TokenKind::Semi);
         // Keep enum definition nodes for `typedef enum { ... } T;` so
         // downstream semantic passes can bind enumerator constants.
-        if (base_ts.base == TB_ENUM && last_enum_def_) return last_enum_def_;
+        if (base_ts.base == TB_ENUM && definition_state_.last_enum_def)
+            return definition_state_.last_enum_def;
         return make_node(NK_EMPTY, ln);
     }
 
@@ -670,8 +752,8 @@ Node* Parser::parse_local_decl() {
         (base_ts.base == TB_STRUCT || base_ts.base == TB_UNION ||
          base_ts.base == TB_ENUM)) {
         consume();  // consume ;
-        if (base_ts.base == TB_ENUM && last_enum_def_) {
-            return last_enum_def_;
+        if (base_ts.base == TB_ENUM && definition_state_.last_enum_def) {
+            return definition_state_.last_enum_def;
         }
         return make_node(NK_EMPTY, ln);
     }
@@ -701,24 +783,58 @@ Node* Parser::parse_local_decl() {
         if (check(TokenKind::LParen)) {
             bool parsed_as_function_decl = false;
             if (is_cpp_mode() && vname) {
+                enum class CtorInitVisibleHeadHandoff {
+                    None,
+                    PreferCtorInit,
+                    PreferFunctionDecl,
+                };
+
                 bool single_value_arg = false;
-                if (pos_ + 2 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::Identifier &&
-                    tokens_[pos_ + 2].kind == TokenKind::RParen) {
-                    const std::string arg_name = std::string(token_spelling(tokens_[pos_ + 1]));
-                    const std::string resolved_type_name =
-                        resolve_visible_type_name(arg_name);
+                if (core_input_state_.pos + 2 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::Identifier &&
+                    core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                        TokenKind::RParen) {
+                    const Token& arg_tok = core_input_state_.tokens[core_input_state_.pos + 1];
+                    const TextId arg_text_id = arg_tok.text_id;
+                    const std::string arg_name = std::string(token_spelling(arg_tok));
                     const bool arg_is_type =
-                        is_typedef_name(arg_name) ||
-                        has_visible_typedef_type(arg_name) ||
-                        struct_tag_def_map_.count(arg_name) > 0 ||
-                        struct_tag_def_map_.count(resolved_type_name) > 0;
+                        is_known_simple_visible_type_head(*this, arg_text_id, arg_name);
                     single_value_arg = !arg_is_type;
                 }
+                // Keep zero-arg identifier calls on the expression side when
+                // the callee head is not already known as a type. This avoids
+                // misreading direct-init such as `bool flag(IsPositive());` as
+                // a function declaration while preserving the classic vexing
+                // parse for known type heads.
+                if (!single_value_arg && is_cpp_mode() &&
+                    core_input_state_.pos + 4 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::Identifier &&
+                    core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                        TokenKind::LParen &&
+                    core_input_state_.tokens[core_input_state_.pos + 3].kind ==
+                        TokenKind::RParen &&
+                    core_input_state_.tokens[core_input_state_.pos + 4].kind ==
+                        TokenKind::RParen) {
+                    const Token& arg_tok =
+                        core_input_state_.tokens[core_input_state_.pos + 1];
+                    const std::string arg_name =
+                        std::string(token_spelling(arg_tok));
+                    if (!is_known_simple_visible_type_head(*this, arg_tok.text_id,
+                                                           arg_name)) {
+                        single_value_arg = true;
+                    }
+                }
                 auto can_use_lite_ctor_init_probe = [&]() -> bool {
-                    if (pos_ + 1 >= static_cast<int>(tokens_.size())) return false;
+                    if (core_input_state_.pos + 1 >=
+                        static_cast<int>(core_input_state_.tokens.size())) {
+                        return false;
+                    }
 
-                    switch (tokens_[pos_ + 1].kind) {
+                    switch (core_input_state_.tokens[core_input_state_.pos + 1].kind) {
                         case TokenKind::IntLit:
                         case TokenKind::FloatLit:
                         case TokenKind::CharLit:
@@ -745,34 +861,109 @@ Node* Parser::parse_local_decl() {
                         case TokenKind::KwUnion:
                         case TokenKind::KwEnum:
                         case TokenKind::KwTypename:
-                        case TokenKind::ColonColon:
                         case TokenKind::RParen:
                             return false;
                         case TokenKind::Identifier: {
-                            const std::string arg_name = std::string(token_spelling(tokens_[pos_ + 1]));
-                            const std::string resolved_type_name =
-                                resolve_visible_type_name(arg_name);
+                            const Token& arg_tok =
+                                core_input_state_.tokens[core_input_state_.pos + 1];
+                            const TextId arg_text_id = arg_tok.text_id;
+                            const std::string arg_name = std::string(token_spelling(arg_tok));
                             const bool arg_is_type =
-                                is_template_scope_type_param(arg_name) ||
-                                is_typedef_name(arg_name) ||
-                                has_visible_typedef_type(arg_name) ||
-                                struct_tag_def_map_.count(arg_name) > 0 ||
-                                struct_tag_def_map_.count(resolved_type_name) > 0;
+                                is_known_simple_visible_type_head(*this, arg_text_id, arg_name);
                             if (arg_is_type) return false;
                             if (single_value_arg) return true;
-                            if (pos_ + 2 < static_cast<int>(tokens_.size()) &&
-                                (tokens_[pos_ + 2].kind == TokenKind::ColonColon ||
-                                 tokens_[pos_ + 2].kind == TokenKind::Less)) {
+                            if (classify_visible_value_or_type_head(
+                                    core_input_state_.pos + 1) > 0) {
+                                return true;
+                            }
+                            // If the first argument already has unresolved
+                            // parameter-type shape, use the heavy tentative
+                            // parse so any parser-side scope/bookkeeping
+                            // mutations roll back cleanly on a ctor-init path.
+                            if (looks_like_unresolved_identifier_type_head(
+                                    core_input_state_.pos + 1)) {
+                                return false;
+                            }
+                            if (looks_like_unresolved_parenthesized_parameter_type_head(
+                                    core_input_state_.pos + 1)) {
+                                return false;
+                            }
+                            if (core_input_state_.pos + 2 <
+                                    static_cast<int>(core_input_state_.tokens.size()) &&
+                                (core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                                     TokenKind::ColonColon ||
+                                 core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                                     TokenKind::Less)) {
                                 return false;
                             }
                             return true;
                         }
+                        case TokenKind::ColonColon:
+                            return classify_visible_value_or_type_head(
+                                       core_input_state_.pos + 1) > 0;
                         default:
                             return false;
                     }
                 };
 
+                auto classify_ctor_init_visible_head_handoff =
+                    [&]() -> CtorInitVisibleHeadHandoff {
+                    const int visible_head_kind =
+                        classify_visible_value_or_type_head(
+                            core_input_state_.pos + 1);
+                    if (visible_head_kind > 0) {
+                        return CtorInitVisibleHeadHandoff::PreferCtorInit;
+                    }
+                    if (visible_head_kind < 0) {
+                        return CtorInitVisibleHeadHandoff::PreferFunctionDecl;
+                    }
+                    return CtorInitVisibleHeadHandoff::None;
+                };
+
                 auto probe_ctor_vs_function_decl = [&]() -> bool {
+                    if (core_input_state_.pos + 3 <
+                            static_cast<int>(core_input_state_.tokens.size()) &&
+                        core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                            TokenKind::Identifier &&
+                        !is_known_simple_visible_type_head(
+                            *this,
+                            core_input_state_.tokens[core_input_state_.pos + 1].text_id,
+                            token_spelling(
+                                core_input_state_.tokens[core_input_state_.pos + 1])) &&
+                        (core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                             TokenKind::Amp ||
+                         core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                             TokenKind::AmpAmp ||
+                         core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                             TokenKind::Star) &&
+                        core_input_state_.tokens[core_input_state_.pos + 3].kind ==
+                            TokenKind::Identifier) {
+                        return false;
+                    }
+                    if (single_value_arg) {
+                        return false;
+                    }
+                    const CtorInitVisibleHeadHandoff visible_head_handoff =
+                        classify_ctor_init_visible_head_handoff();
+                    if (visible_head_handoff ==
+                        CtorInitVisibleHeadHandoff::PreferCtorInit) {
+                        return false;
+                    }
+                    if (visible_head_handoff ==
+                        CtorInitVisibleHeadHandoff::PreferFunctionDecl) {
+                        return true;
+                    }
+                    if (core_input_state_.pos + 2 <
+                            static_cast<int>(core_input_state_.tokens.size()) &&
+                        core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                            TokenKind::Identifier &&
+                        core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                            TokenKind::Identifier &&
+                        looks_like_unresolved_identifier_type_head(
+                            core_input_state_.pos + 1)) {
+                        return true;
+                    }
+
                     std::vector<Node*> probe_params;
                     std::vector<const char*> probe_knr_names;
                     bool probe_variadic = false;
@@ -869,7 +1060,7 @@ Node* Parser::parse_local_decl() {
                 d->fn_ptr_variadic = info->variadic;
             }
         }
-        if (vname && !suppress_local_var_bindings_) {
+        if (vname && !active_context_state_.suppress_local_var_bindings) {
             register_var_type_binding(vname, ts);
         }
         decls.push_back(d);
@@ -958,31 +1149,37 @@ Node* Parser::parse_top_level() {
         bool old;
         explicit TopLevelFlagGuard(bool& r) : ref(r), old(r) { ref = true; }
         ~TopLevelFlagGuard() { ref = old; }
-    } top_level_guard(parsing_top_level_context_);
+    } top_level_guard(active_context_state_.parsing_top_level_context);
 
     int ln = cur().line;
     if (at_end()) return nullptr;
     auto skip_cpp11_attrs_only = [&]() -> bool {
         bool consumed_any = false;
         while (check(TokenKind::LBracket) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+               core_input_state_.pos + 1 <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                   TokenKind::LBracket) {
             consumed_any = true;
             consume();
             consume();
             int depth = 1;
             while (!at_end() && depth > 0) {
                 if (check(TokenKind::LBracket) &&
-                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+                    core_input_state_.pos + 1 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::LBracket) {
                     consume();
                     consume();
                     ++depth;
                     continue;
                 }
                 if (check(TokenKind::RBracket) &&
-                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::RBracket) {
+                    core_input_state_.pos + 1 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::RBracket) {
                     consume();
                     consume();
                     --depth;
@@ -1016,10 +1213,16 @@ Node* Parser::parse_top_level() {
 
         int context_id = current_namespace_context_id();
         if (has_name) {
-            for (const std::string& segment : ns_name.qualifier_segments) {
-                context_id = ensure_named_namespace_context(context_id, segment);
+            for (size_t i = 0; i < ns_name.qualifier_segments.size(); ++i) {
+                const TextId segment_text_id =
+                    i < ns_name.qualifier_text_ids.size()
+                        ? ns_name.qualifier_text_ids[i]
+                        : kInvalidText;
+                context_id = ensure_named_namespace_context(
+                    context_id, segment_text_id, ns_name.qualifier_segments[i]);
             }
-            context_id = ensure_named_namespace_context(context_id, ns_name.base_name);
+            context_id = ensure_named_namespace_context(
+                context_id, ns_name.base_text_id, ns_name.base_name);
         } else {
             context_id = create_anonymous_namespace_context(context_id);
         }
@@ -1058,7 +1261,7 @@ Node* Parser::parse_top_level() {
             if (target_context < 0) {
                 throw std::runtime_error("unknown namespace in using-directive");
             }
-            using_namespace_contexts_[using_context_id].push_back(target_context);
+            namespace_state_.using_namespace_contexts[using_context_id].push_back(target_context);
             recover_top_level_decl_terminator_or_boundary(*this, ln);
             return nullptr;
         }
@@ -1066,12 +1269,14 @@ Node* Parser::parse_top_level() {
         if (!check(TokenKind::Identifier) && !check(TokenKind::ColonColon))
             throw std::runtime_error("expected identifier after 'using'");
 
-        std::string target;
+        QualifiedNameRef target_name;
         if (match(TokenKind::ColonColon)) {
-            target = "::";
+            target_name.is_global_qualified = true;
             if (!check(TokenKind::Identifier))
                 throw std::runtime_error("expected identifier after '::'");
-            target += token_spelling(cur());
+            target_name.base_name = std::string(token_spelling(cur()));
+            target_name.base_text_id =
+                parser_text_id_for_token(cur().text_id, target_name.base_name);
             consume();
         } else {
             std::string first_name = std::string(token_spelling(cur()));
@@ -1083,16 +1288,20 @@ Node* Parser::parse_top_level() {
                 try {
                     alias_ts = parse_type_name();
                     if (!alias_ts.tpl_struct_origin &&
-                        alias_type_pos < pos_ &&
-                        tokens_[alias_type_pos].kind == TokenKind::KwTypename) {
+                        alias_type_pos < core_input_state_.pos &&
+                        core_input_state_.tokens[alias_type_pos].kind ==
+                            TokenKind::KwTypename) {
                         auto skip_balanced_template_args = [&](int* pos) -> bool {
-                            if (!pos || *pos < 0 || *pos >= static_cast<int>(tokens_.size()) ||
-                                tokens_[*pos].kind != TokenKind::Less) {
+                            if (!pos ||
+                                *pos < 0 ||
+                                *pos >=
+                                    static_cast<int>(core_input_state_.tokens.size()) ||
+                                core_input_state_.tokens[*pos].kind != TokenKind::Less) {
                                 return false;
                             }
                             int depth = 0;
-                            while (*pos < static_cast<int>(tokens_.size())) {
-                                const TokenKind kind = tokens_[*pos].kind;
+                            while (*pos < static_cast<int>(core_input_state_.tokens.size())) {
+                                const TokenKind kind = core_input_state_.tokens[*pos].kind;
                                 if (kind == TokenKind::Less) {
                                     ++depth;
                                     ++(*pos);
@@ -1116,7 +1325,9 @@ Node* Parser::parse_top_level() {
                         };
                         auto join_token_lexemes = [&](int start, int end) -> std::string {
                             std::string out;
-                            for (int i = start; i < end; ++i) out += token_spelling(tokens_[i]);
+                            for (int i = start; i < end; ++i) {
+                                out += token_spelling(core_input_state_.tokens[i]);
+                            }
                             return out;
                         };
                         auto split_template_arg_token_ranges =
@@ -1128,7 +1339,7 @@ Node* Parser::parse_top_level() {
                             int bracket_depth = 0;
                             int brace_depth = 0;
                             for (int i = start; i < end; ++i) {
-                                switch (tokens_[i].kind) {
+                                switch (core_input_state_.tokens[i].kind) {
                                     case TokenKind::Less: ++angle_depth; break;
                                     case TokenKind::Greater:
                                         if (angle_depth > 0) --angle_depth;
@@ -1165,14 +1376,16 @@ Node* Parser::parse_top_level() {
                         std::function<std::string(int, int)> encode_template_arg_ref_tokens =
                             [&](int start, int end) -> std::string {
                             while (start < end &&
-                                   (tokens_[start].kind == TokenKind::KwTypename ||
-                                    tokens_[start].kind == TokenKind::KwClass)) {
+                                   (core_input_state_.tokens[start].kind ==
+                                        TokenKind::KwTypename ||
+                                    core_input_state_.tokens[start].kind ==
+                                        TokenKind::KwClass)) {
                                 ++start;
                             }
                             if (start >= end) return {};
 
                             for (int i = start; i < end; ++i) {
-                                if (tokens_[i].kind != TokenKind::Less) continue;
+                                if (core_input_state_.tokens[i].kind != TokenKind::Less) continue;
                                 int probe = i;
                                 if (!skip_balanced_template_args(&probe) || probe > end) {
                                     break;
@@ -1192,69 +1405,92 @@ Node* Parser::parse_top_level() {
                                 return "@" + owner + ":" + inner_refs;
                             }
 
-                            if (tokens_[start].kind == TokenKind::IntLit ||
-                                tokens_[start].kind == TokenKind::FloatLit ||
-                                tokens_[start].kind == TokenKind::CharLit ||
-                                tokens_[start].kind == TokenKind::KwTrue ||
-                                tokens_[start].kind == TokenKind::KwFalse) {
+                            if (core_input_state_.tokens[start].kind == TokenKind::IntLit ||
+                                core_input_state_.tokens[start].kind == TokenKind::FloatLit ||
+                                core_input_state_.tokens[start].kind == TokenKind::CharLit ||
+                                core_input_state_.tokens[start].kind == TokenKind::KwTrue ||
+                                core_input_state_.tokens[start].kind == TokenKind::KwFalse) {
                                 return join_token_lexemes(start, end);
                             }
 
                             std::string prefix;
                             while (start < end &&
-                                   (tokens_[start].kind == TokenKind::KwConst ||
-                                    tokens_[start].kind == TokenKind::KwVolatile)) {
-                                if (tokens_[start].kind == TokenKind::KwConst)
+                                   (core_input_state_.tokens[start].kind == TokenKind::KwConst ||
+                                    core_input_state_.tokens[start].kind ==
+                                        TokenKind::KwVolatile)) {
+                                if (core_input_state_.tokens[start].kind == TokenKind::KwConst)
                                     prefix += "const_";
-                                if (tokens_[start].kind == TokenKind::KwVolatile)
+                                if (core_input_state_.tokens[start].kind ==
+                                    TokenKind::KwVolatile)
                                     prefix += "volatile_";
                                 ++start;
                             }
 
                             std::string base;
                             while (start < end &&
-                                   (tokens_[start].kind == TokenKind::Identifier ||
-                                    tokens_[start].kind == TokenKind::ColonColon)) {
-                                base += token_spelling(tokens_[start]);
+                                   (core_input_state_.tokens[start].kind ==
+                                        TokenKind::Identifier ||
+                                    core_input_state_.tokens[start].kind ==
+                                        TokenKind::ColonColon)) {
+                                base += token_spelling(core_input_state_.tokens[start]);
                                 ++start;
                             }
                             if (base.empty()) return join_token_lexemes(start, end);
 
                             std::string suffix;
                             for (int i = start; i < end; ++i) {
-                                if (tokens_[i].kind == TokenKind::Star) suffix += "_ptr";
-                                if (tokens_[i].kind == TokenKind::Amp) suffix += "_ref";
-                                if (tokens_[i].kind == TokenKind::AmpAmp) suffix += "_rref";
+                                if (core_input_state_.tokens[i].kind == TokenKind::Star)
+                                    suffix += "_ptr";
+                                if (core_input_state_.tokens[i].kind == TokenKind::Amp)
+                                    suffix += "_ref";
+                                if (core_input_state_.tokens[i].kind == TokenKind::AmpAmp)
+                                    suffix += "_rref";
                             }
                             return prefix + base + suffix;
                         };
 
                         int probe = alias_type_pos + 1;  // skip typename
-                        if (probe < pos_ && tokens_[probe].kind == TokenKind::ColonColon)
+                        bool owner_global_qualified = false;
+                        if (probe < core_input_state_.pos &&
+                            core_input_state_.tokens[probe].kind ==
+                                TokenKind::ColonColon) {
+                            owner_global_qualified = true;
                             ++probe;
+                        }
                         std::vector<std::string> qualifier_segments;
+                        std::vector<TextId> qualifier_text_ids;
                         int owner_template_arg_start = -1;
                         int owner_template_arg_end = -1;
                         std::string member_name;
-                        while (probe < pos_) {
-                            if (tokens_[probe].kind != TokenKind::Identifier) break;
+                        while (probe < core_input_state_.pos) {
+                            if (core_input_state_.tokens[probe].kind != TokenKind::Identifier)
+                                break;
+                            const Token& segment_token = core_input_state_.tokens[probe];
                             const std::string segment =
-                                std::string(token_spelling(tokens_[probe]));
+                                std::string(token_spelling(segment_token));
+                            const TextId segment_text_id =
+                                parser_text_id_for_token(segment_token.text_id, segment);
                             ++probe;
-                            if (probe < pos_ && tokens_[probe].kind == TokenKind::Less) {
+                            if (probe < core_input_state_.pos &&
+                                core_input_state_.tokens[probe].kind == TokenKind::Less) {
                                 owner_template_arg_start = probe;
                                 if (!skip_balanced_template_args(&probe)) break;
                                 owner_template_arg_end = probe;
                             }
-                            if (probe < pos_ && tokens_[probe].kind == TokenKind::ColonColon) {
+                            if (probe < core_input_state_.pos &&
+                                core_input_state_.tokens[probe].kind ==
+                                    TokenKind::ColonColon) {
                                 ++probe;
-                                if (probe < pos_ &&
-                                    tokens_[probe].kind == TokenKind::KwTemplate) {
+                                if (probe < core_input_state_.pos &&
+                                    core_input_state_.tokens[probe].kind ==
+                                        TokenKind::KwTemplate) {
                                     ++probe;
                                 }
-                                if (probe < pos_ &&
-                                    tokens_[probe].kind == TokenKind::Identifier) {
+                                if (probe < core_input_state_.pos &&
+                                    core_input_state_.tokens[probe].kind ==
+                                        TokenKind::Identifier) {
                                     qualifier_segments.push_back(segment);
+                                    qualifier_text_ids.push_back(segment_text_id);
                                     continue;
                                 }
                             }
@@ -1266,20 +1502,19 @@ Node* Parser::parse_top_level() {
                             owner_template_arg_start >= 0 &&
                             owner_template_arg_end > owner_template_arg_start &&
                             !member_name.empty()) {
-                            std::string owner_name = qualifier_segments.back();
-                            if (qualifier_segments.size() > 1) {
-                                QualifiedNameRef owner_ns_qn;
-                                owner_ns_qn.qualifier_segments.assign(
-                                    qualifier_segments.begin(),
-                                    qualifier_segments.end() - 1);
-                                const int context_id =
-                                    resolve_namespace_context(owner_ns_qn);
-                                if (context_id >= 0) {
-                                    owner_name =
-                                        canonical_name_in_context(context_id, owner_name);
-                                }
-                            }
-                            owner_name = resolve_visible_type_name(owner_name);
+                            QualifiedNameRef owner_qn;
+                            owner_qn.is_global_qualified = owner_global_qualified;
+                            owner_qn.qualifier_segments.assign(
+                                qualifier_segments.begin(),
+                                qualifier_segments.end() - 1);
+                            owner_qn.qualifier_text_ids.assign(
+                                qualifier_text_ids.begin(),
+                                qualifier_text_ids.end() - 1);
+                            owner_qn.base_name = qualifier_segments.back();
+                            owner_qn.base_text_id = qualifier_text_ids.back();
+
+                            std::string owner_name =
+                                resolve_qualified_known_type_name(*this, owner_qn);
 
                             std::string owner_arg_refs;
                             const auto owner_ranges = split_template_arg_token_ranges(
@@ -1332,46 +1567,92 @@ Node* Parser::parse_top_level() {
                     recover_top_level_using_alias_or_boundary(*this, ln);
                     return nullptr;
                 }
-                const std::string qualified = canonical_name_in_context(using_context_id, first_name);
+                const TextId alias_name_text_id =
+                    parser_text_id_for_token(kInvalidText, first_name);
+                const QualifiedNameKey alias_key = alias_template_key_in_context(
+                    using_context_id, alias_name_text_id, first_name);
+                const std::string qualified = bridge_name_in_context(
+                    using_context_id, alias_name_text_id, first_name);
+                register_structured_typedef_binding_in_context(
+                    using_context_id, alias_name_text_id, first_name, alias_ts);
                 register_typedef_binding(qualified, alias_ts, true);
                 if (using_context_id == 0) {
                     register_typedef_binding(first_name, alias_ts, true);
                 }
-                set_last_using_alias_name(qualified);
+                set_last_using_alias_name(alias_key);
                 return nullptr;
             }
-            target = first_name;
+            target_name.base_name = std::move(first_name);
+            target_name.base_text_id =
+                parser_text_id_for_token(kInvalidText, target_name.base_name);
         }
         while (match(TokenKind::ColonColon)) {
             if (!check(TokenKind::Identifier))
                 throw std::runtime_error("expected identifier after '::'");
-            target += "::";
-            target += token_spelling(cur());
+            target_name.qualifier_segments.push_back(target_name.base_name);
+            target_name.qualifier_text_ids.push_back(target_name.base_text_id);
+            target_name.base_name = std::string(token_spelling(cur()));
+            target_name.base_text_id =
+                parser_text_id_for_token(cur().text_id, target_name.base_name);
             consume();
         }
 
-        const std::string lookup_target =
-            (target.rfind("::", 0) == 0) ? target.substr(2) : target;
-        const size_t last_sep = target.rfind("::");
         const std::string imported_name =
-            (last_sep == std::string::npos) ? target : target.substr(last_sep + 2);
-        if (const TypeSpec* imported_typedef = find_typedef_type(lookup_target)) {
-            const std::string imported_key =
-                canonical_name_in_context(using_context_id, imported_name);
-            register_typedef_binding(imported_key, *imported_typedef, true);
-            if (using_context_id == 0) {
-                register_typedef_binding(imported_name, *imported_typedef, true);
+            std::string(parser_text(target_name.base_text_id, target_name.base_name));
+        const std::string imported_type_name =
+            resolve_qualified_type_name(target_name);
+        if (!imported_type_name.empty()) {
+            if (const TypeSpec* imported_typedef =
+                    find_typedef_type(imported_type_name)) {
+                const std::string imported_key = bridge_name_in_context(
+                    using_context_id, target_name.base_text_id, imported_name);
+                register_structured_typedef_binding_in_context(
+                    using_context_id, target_name.base_text_id, imported_name,
+                    *imported_typedef);
+                register_typedef_binding(imported_key, *imported_typedef, true);
+                if (using_context_id == 0) {
+                    register_typedef_binding(imported_name, *imported_typedef, true);
+                }
+                recover_top_level_decl_terminator_or_boundary(*this, ln);
+                return nullptr;
             }
-        } else {
-            const std::string imported_key =
-                canonical_name_in_context(using_context_id, imported_name);
-            if (const TypeSpec* imported_var = find_var_type(lookup_target)) {
-                register_var_type_binding(imported_key, *imported_var);
+        }
+
+        const QualifiedNameKey imported_value_key = qualified_name_key(target_name);
+        const std::string imported_key = bridge_name_in_context(
+            using_context_id, target_name.base_text_id, imported_name);
+        std::string imported_value_name;
+        if (shared_lookup_state_.token_texts) {
+            imported_value_name = render_qualified_name(
+                imported_value_key, shared_lookup_state_.parser_name_paths,
+                *shared_lookup_state_.token_texts);
+        }
+        const TypeSpec* imported_var = nullptr;
+        if (!imported_value_name.empty()) {
+            imported_var = find_var_type(imported_value_name);
+        }
+        if (!imported_var) {
+            imported_value_name = resolve_qualified_value_name(target_name);
+            if (imported_value_name.empty()) {
+                imported_value_name = qualified_name_text(target_name);
             }
-            if (has_known_fn_name(lookup_target)) {
-                register_known_fn_name(imported_key);
+            if (imported_value_name.empty()) {
+                imported_value_name = imported_key;
+                if (imported_value_name.rfind("::", 0) == 0) {
+                    imported_value_name.erase(0, 2);
+                }
             }
-            using_value_aliases_[using_context_id][imported_name] = lookup_target;
+            imported_var = find_var_type(imported_value_name);
+        }
+        {
+            if (imported_var) register_var_type_binding(imported_key, *imported_var);
+            if (has_known_fn_name(imported_value_key)) {
+                register_known_fn_name(known_fn_name_key_in_context(
+                    using_context_id, target_name.base_text_id, imported_name));
+            }
+            namespace_state_.using_value_aliases[using_context_id]
+                                               [target_name.base_text_id] = {
+                imported_value_key, imported_value_name};
         }
         recover_top_level_decl_terminator_or_boundary(*this, ln);
         return nullptr;
@@ -1384,16 +1665,20 @@ Node* Parser::parse_top_level() {
         // Explicit template specialization: template<> RetType name<Args>(...) { ... }
         if (check(TokenKind::Greater)) {
             consume();  // consume >
-            bool saved_spec = parsing_explicit_specialization_;
-            parsing_explicit_specialization_ = true;
-            size_t struct_defs_before = struct_defs_.size();
+            bool saved_spec =
+                active_context_state_.parsing_explicit_specialization;
+            active_context_state_.parsing_explicit_specialization = true;
+            size_t struct_defs_before = definition_state_.struct_defs.size();
             Node* spec = parse_top_level();
-            parsing_explicit_specialization_ = saved_spec;
-            if (struct_defs_.size() > struct_defs_before) {
-                Node* last_sd = struct_defs_.back();
+            active_context_state_.parsing_explicit_specialization = saved_spec;
+            if (definition_state_.struct_defs.size() > struct_defs_before) {
+                Node* last_sd = definition_state_.struct_defs.back();
                 if (last_sd && last_sd->kind == NK_STRUCT_DEF &&
                     last_sd->template_origin_name && last_sd->n_template_args > 0) {
                     register_template_struct_specialization(
+                        current_namespace_context_id(),
+                        parser_text_id_for_token(
+                            kInvalidText, last_sd->template_origin_name),
                         last_sd->template_origin_name, last_sd);
                 }
             }
@@ -1418,8 +1703,11 @@ Node* Parser::parse_top_level() {
                     pname = make_anon_template_param_name(arena_, false, template_params.size());
                 }
                 if (pname && pname[0]) {
-                    register_synthesized_typedef_binding(pname);
-                    template_prelude_guard.injected_type_params.emplace_back(pname);
+                    const TextId pname_text_id =
+                        parser_text_id_for_token(kInvalidText, pname);
+                    register_synthesized_typedef_binding(pname_text_id, pname);
+                    template_prelude_guard.injected_type_params.push_back(
+                        {pname_text_id, pname});
                 }
                 template_params.push_back(pname);
                 template_param_nttp.push_back(false);
@@ -1651,6 +1939,8 @@ Node* Parser::parse_top_level() {
             std::vector<TemplateScopeParam> scope_params;
             for (size_t i = 0; i < template_params.size(); ++i) {
                 TemplateScopeParam p;
+                p.name_text_id = parser_text_id_for_token(kInvalidText,
+                                                          template_params[i]);
                 p.name = template_params[i];
                 p.is_nttp = template_param_nttp[i];
                 scope_params.push_back(p);
@@ -1659,16 +1949,16 @@ Node* Parser::parse_top_level() {
             template_prelude_guard.pushed_template_scope = true;
         }
 
-        size_t struct_defs_before = struct_defs_.size();
+        size_t struct_defs_before = definition_state_.struct_defs.size();
         clear_last_using_alias_name();
         Node* templated = parse_top_level();
         // If parse_top_level() registered a using-alias, record alias template
         // info so that later Name<args> can rebuild the aliased template struct.
-        const std::string_view alias_name = last_using_alias_name_text();
-        if (!alias_name.empty() && !template_params.empty()) {
+        const QualifiedNameKey alias_key = active_context_state_.last_using_alias_key;
+        if (alias_key.base_text_id != kInvalidText && !template_params.empty()) {
             if (const TypeSpec* aliased_type =
-                    find_typedef_type(alias_name)) {
-                AliasTemplateInfo ati;
+                    find_structured_typedef_type(alias_key)) {
+                ParserAliasTemplateInfo ati;
                 for (size_t i = 0; i < template_params.size(); ++i) {
                     ati.param_names.push_back(template_params[i]);
                     ati.param_is_nttp.push_back(template_param_nttp[i]);
@@ -1678,7 +1968,7 @@ Node* Parser::parse_top_level() {
                     ati.param_default_values.push_back(template_param_default_values[i]);
                 }
                 ati.aliased_type = *aliased_type;
-                alias_template_info_[std::string(alias_name)] = std::move(ati);
+                template_state_.alias_template_info[alias_key] = std::move(ati);
             }
             clear_last_using_alias_name();
         }
@@ -1705,7 +1995,8 @@ Node* Parser::parse_top_level() {
             if (n->name && !deferred_nttp_defaults.empty()) {
                 for (auto& [idx, toks] : deferred_nttp_defaults) {
                     std::string key = std::string(n->name) + ":" + std::to_string(idx);
-                    nttp_default_expr_tokens_[key] = std::move(toks);
+                    template_state_.nttp_default_expr_tokens[key] =
+                        std::move(toks);
                 }
             }
         };
@@ -1718,33 +2009,40 @@ Node* Parser::parse_top_level() {
             attach_template_params(templated);
         }
         // Template struct definitions: struct Pair { ... } was parsed inside the
-        // recursive parse_top_level() call and stored in struct_defs_, while
+        // recursive parse_top_level() call and stored in
+        // definition_state_.struct_defs, while
         // `templated` is NK_EMPTY (struct-only declaration).  Find the struct
         // def and attach template params to it.  Only consider structs that were
         // added during THIS template parse (not pre-existing instantiated structs).
-        if (struct_defs_.size() > struct_defs_before) {
-            Node* last_sd = struct_defs_.back();
+        if (definition_state_.struct_defs.size() > struct_defs_before) {
+            Node* last_sd = definition_state_.struct_defs.back();
             if (last_sd && last_sd->kind == NK_STRUCT_DEF &&
                 last_sd->template_origin_name && last_sd->n_template_args > 0) {
                 if (!template_params.empty() && last_sd->n_template_params == 0)
                     attach_template_params(last_sd);
                 register_template_struct_specialization(
+                    current_namespace_context_id(),
+                    parser_text_id_for_token(
+                        kInvalidText, last_sd->template_origin_name),
                     last_sd->template_origin_name, last_sd);
             } else if (last_sd && last_sd->kind == NK_STRUCT_DEF &&
                        !template_params.empty()) {
                 if (last_sd->n_template_params == 0)
                     attach_template_params(last_sd);
-                register_template_struct_primary(last_sd->name, last_sd);
+                register_template_struct_primary(
+                    current_namespace_context_id(),
+                    parser_text_id_for_token(kInvalidText, last_sd->name),
+                    last_sd->name, last_sd);
                 // In C++ mode, register the template struct name as a typedef
                 // so it's recognized as a type start for Pair<int> syntax.
                 register_tag_type_binding(last_sd->name, TB_STRUCT,
                                           last_sd->name);
                 // If inside a namespace, also register ns::Name so
                 // qualified references like std::vector<int> work.
-                const std::string qn =
-                    canonical_name_in_context(current_namespace_context_id(), last_sd->name);
+                const std::string qn = bridge_name_in_context(
+                    current_namespace_context_id(), find_parser_text_id(last_sd->name),
+                    last_sd->name);
                 register_tag_type_binding(qn, TB_STRUCT, last_sd->name);
-                register_template_struct_primary(qn, last_sd);
             }
         }
         return templated;
@@ -1881,14 +2179,15 @@ Node* Parser::parse_top_level() {
 
         auto probe_skip_optional_template_id = [&](int* probe_pos) -> bool {
             if (!probe_pos) return false;
-            if (*probe_pos >= static_cast<int>(tokens_.size()) ||
-                tokens_[*probe_pos].kind != TokenKind::Less) {
+            if (*probe_pos >= static_cast<int>(core_input_state_.tokens.size()) ||
+                core_input_state_.tokens[*probe_pos].kind != TokenKind::Less) {
                 return true;
             }
             int depth = 1;
             ++(*probe_pos);
-            while (*probe_pos < static_cast<int>(tokens_.size()) && depth > 0) {
-                const TokenKind kind = tokens_[*probe_pos].kind;
+            while (*probe_pos < static_cast<int>(core_input_state_.tokens.size()) &&
+                   depth > 0) {
+                const TokenKind kind = core_input_state_.tokens[*probe_pos].kind;
                 if (kind == TokenKind::Less) {
                     ++depth;
                     ++(*probe_pos);
@@ -1928,27 +2227,28 @@ Node* Parser::parse_top_level() {
                 if (out_is_ctor) *out_is_ctor = false;
 
                 int probe = saved_special_member_pos;
-                if (probe < static_cast<int>(tokens_.size()) &&
-                    tokens_[probe].kind == TokenKind::ColonColon) {
+                if (probe < static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[probe].kind == TokenKind::ColonColon) {
                     ++probe;
                 }
-                if (probe >= static_cast<int>(tokens_.size()) ||
-                    tokens_[probe].kind != TokenKind::Identifier) {
+                if (probe >= static_cast<int>(core_input_state_.tokens.size()) ||
+                    core_input_state_.tokens[probe].kind != TokenKind::Identifier) {
                     return false;
                 }
 
                 std::string owner;
                 while (true) {
                     const std::string seg =
-                        std::string(token_spelling(tokens_[probe]));
+                        std::string(token_spelling(core_input_state_.tokens[probe]));
                     ++probe;
                     if (!probe_skip_optional_template_id(&probe)) {
                         return false;
                     }
 
-                    if (probe + 1 < static_cast<int>(tokens_.size()) &&
-                        tokens_[probe].kind == TokenKind::ColonColon &&
-                        tokens_[probe + 1].kind == TokenKind::KwOperator) {
+                    if (probe + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+                        core_input_state_.tokens[probe].kind == TokenKind::ColonColon &&
+                        core_input_state_.tokens[probe + 1].kind ==
+                            TokenKind::KwOperator) {
                         if (!owner.empty()) owner += "::";
                         owner += seg;
                         if (out_owner) *out_owner = owner;
@@ -1957,15 +2257,19 @@ Node* Parser::parse_top_level() {
                         return true;
                     }
 
-                    if (probe + 1 < static_cast<int>(tokens_.size()) &&
-                        tokens_[probe].kind == TokenKind::ColonColon &&
-                        tokens_[probe + 1].kind == TokenKind::Identifier) {
+                    if (probe + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
+                        core_input_state_.tokens[probe].kind == TokenKind::ColonColon &&
+                        core_input_state_.tokens[probe + 1].kind ==
+                            TokenKind::Identifier) {
                         const std::string next_name =
-                            std::string(token_spelling(tokens_[probe + 1]));
+                            std::string(
+                                token_spelling(core_input_state_.tokens[probe + 1]));
                         int terminal_probe = probe + 2;
                         if (next_name == seg &&
-                            terminal_probe < static_cast<int>(tokens_.size()) &&
-                            tokens_[terminal_probe].kind == TokenKind::LParen) {
+                            terminal_probe <
+                                static_cast<int>(core_input_state_.tokens.size()) &&
+                            core_input_state_.tokens[terminal_probe].kind ==
+                                TokenKind::LParen) {
                             if (!owner.empty()) owner += "::";
                             owner += seg;
                             if (out_owner) *out_owner = owner;
@@ -2005,8 +2309,10 @@ Node* Parser::parse_top_level() {
                         check(TokenKind::ColonColon) &&
                         peek(1).kind == TokenKind::Identifier &&
                         token_spelling(peek(1)) == seg &&
-                        pos_ + 2 < static_cast<int>(tokens_.size()) &&
-                        tokens_[pos_ + 2].kind == TokenKind::LParen) {
+                        core_input_state_.pos + 2 <
+                            static_cast<int>(core_input_state_.tokens.size()) &&
+                        core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                            TokenKind::LParen) {
                         return true;
                     }
 
@@ -2036,14 +2342,21 @@ Node* Parser::parse_top_level() {
             expect(TokenKind::KwOperator);
 
             // Enter owner scope for out-of-class operator definition.
-            std::string saved_tag_op = current_struct_tag_;
+            const TextId saved_tag_op_text_id =
+                active_context_state_.current_struct_tag_text_id;
+            const std::string saved_tag_op_fallback =
+                active_context_state_.current_struct_tag;
             set_current_struct_tag(qualified_owner);
-            if (!template_scope_stack_.empty() &&
-                template_scope_stack_.back().kind == TemplateScopeKind::FreeFunctionTemplate &&
-                (find_template_struct_primary(qualified_owner) ||
-                 template_struct_defs_.count(qualified_owner))) {
-                template_scope_stack_.back().kind = TemplateScopeKind::EnclosingClass;
-                template_scope_stack_.back().owner_struct_tag = qualified_owner;
+            if (!template_state_.template_scope_stack.empty() &&
+                template_state_.template_scope_stack.back().kind ==
+                    TemplateScopeKind::FreeFunctionTemplate &&
+                find_template_struct_primary(
+                    current_namespace_context_id(),
+                    find_parser_text_id(qualified_owner), qualified_owner)) {
+                template_state_.template_scope_stack.back().kind =
+                    TemplateScopeKind::EnclosingClass;
+                template_state_.template_scope_stack.back().owner_struct_tag =
+                    qualified_owner;
             }
 
             TypeSpec conv_ts = parse_base_type();
@@ -2121,8 +2434,8 @@ Node* Parser::parse_top_level() {
             fn->is_lvalue_ref_method = is_lvalue_ref_method;
             fn->is_rvalue_ref_method = is_rvalue_ref_method;
             fn->linkage_spec = linkage_spec;
-            fn->visibility = visibility_;
-            fn->execution_domain = execution_domain_;
+            fn->visibility = pragma_state_.visibility;
+            fn->execution_domain = pragma_state_.execution_domain;
             fn->n_params = static_cast<int>(params.size());
             if (fn->n_params > 0) {
                 fn->params = arena_.alloc_array<Node*>(fn->n_params);
@@ -2130,20 +2443,25 @@ Node* Parser::parse_top_level() {
             }
 
             if (check(TokenKind::LBrace)) {
-                bool saved_top = parsing_top_level_context_;
-                parsing_top_level_context_ = false;
+                ParserFunctionParamScopeGuard param_scope(*this, params);
+                bool saved_top = active_context_state_.parsing_top_level_context;
+                active_context_state_.parsing_top_level_context = false;
                 fn->body = parse_block();
-                parsing_top_level_context_ = saved_top;
+                active_context_state_.parsing_top_level_context = saved_top;
             } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                       tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+                       core_input_state_.pos + 1 <
+                           static_cast<int>(core_input_state_.tokens.size()) &&
+                       core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                           TokenKind::KwDelete) {
                 consume();
                 consume();
                 fn->is_deleted = true;
                 match(TokenKind::Semi);
             } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                       tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+                       core_input_state_.pos + 1 <
+                           static_cast<int>(core_input_state_.tokens.size()) &&
+                       core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                           TokenKind::KwDefault) {
                 consume();
                 consume();
                 fn->is_defaulted = true;
@@ -2151,8 +2469,9 @@ Node* Parser::parse_top_level() {
             } else {
                 match(TokenKind::Semi);
             }
-            known_fn_names_.insert(qualified_op_name);
-            set_current_struct_tag(saved_tag_op);
+            register_known_fn_name(qualified_op_name);
+            restore_current_struct_tag(*this, saved_tag_op_text_id,
+                                       saved_tag_op_fallback);
             return fn;
         }
 
@@ -2170,14 +2489,21 @@ Node* Parser::parse_top_level() {
                 qualified_ctor_name += ctor_name;
 
                 // Enter owner scope for out-of-class constructor definition.
-                std::string saved_tag_ctor = current_struct_tag_;
+                const TextId saved_tag_ctor_text_id =
+                    active_context_state_.current_struct_tag_text_id;
+                const std::string saved_tag_ctor_fallback =
+                    active_context_state_.current_struct_tag;
                 set_current_struct_tag(qualified_owner);
-                if (!template_scope_stack_.empty() &&
-                    template_scope_stack_.back().kind == TemplateScopeKind::FreeFunctionTemplate &&
-                    (find_template_struct_primary(qualified_owner) ||
-                     template_struct_defs_.count(qualified_owner))) {
-                    template_scope_stack_.back().kind = TemplateScopeKind::EnclosingClass;
-                    template_scope_stack_.back().owner_struct_tag = qualified_owner;
+                if (!template_state_.template_scope_stack.empty() &&
+                    template_state_.template_scope_stack.back().kind ==
+                        TemplateScopeKind::FreeFunctionTemplate &&
+                    find_template_struct_primary(
+                        current_namespace_context_id(),
+                        find_parser_text_id(qualified_owner), qualified_owner)) {
+                    template_state_.template_scope_stack.back().kind =
+                        TemplateScopeKind::EnclosingClass;
+                    template_state_.template_scope_stack.back().owner_struct_tag =
+                        qualified_owner;
                 }
 
                 consume();  // (
@@ -2234,8 +2560,8 @@ Node* Parser::parse_top_level() {
                 fn->is_consteval = is_consteval;
                 fn->is_constructor = true;
                 fn->linkage_spec = linkage_spec;
-                fn->visibility = visibility_;
-                fn->execution_domain = execution_domain_;
+                fn->visibility = pragma_state_.visibility;
+                fn->execution_domain = pragma_state_.execution_domain;
                 fn->n_params = static_cast<int>(params.size());
                 if (fn->n_params > 0) {
                     fn->params = arena_.alloc_array<Node*>(fn->n_params);
@@ -2260,20 +2586,26 @@ Node* Parser::parse_top_level() {
                 }
 
                 if (check(TokenKind::LBrace)) {
-                    bool saved_top = parsing_top_level_context_;
-                    parsing_top_level_context_ = false;
+                    ParserFunctionParamScopeGuard param_scope(*this, params);
+                    bool saved_top =
+                        active_context_state_.parsing_top_level_context;
+                    active_context_state_.parsing_top_level_context = false;
                     fn->body = parse_block();
-                    parsing_top_level_context_ = saved_top;
+                    active_context_state_.parsing_top_level_context = saved_top;
                 } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                           pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                           tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+                           core_input_state_.pos + 1 <
+                               static_cast<int>(core_input_state_.tokens.size()) &&
+                           core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                               TokenKind::KwDelete) {
                     consume();
                     consume();
                     fn->is_deleted = true;
                     match(TokenKind::Semi);
                 } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                           pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                           tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+                           core_input_state_.pos + 1 <
+                               static_cast<int>(core_input_state_.tokens.size()) &&
+                           core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                               TokenKind::KwDefault) {
                     consume();
                     consume();
                     fn->is_defaulted = true;
@@ -2281,8 +2613,9 @@ Node* Parser::parse_top_level() {
                 } else {
                     match(TokenKind::Semi);
                 }
-                known_fn_names_.insert(qualified_ctor_name);
-                set_current_struct_tag(saved_tag_ctor);
+                register_known_fn_name(qualified_ctor_name);
+                restore_current_struct_tag(*this, saved_tag_ctor_text_id,
+                                           saved_tag_ctor_fallback);
                 return fn;
             }
         }
@@ -2293,8 +2626,9 @@ Node* Parser::parse_top_level() {
     if (!is_type_start()) {
         if (is_typedef) {
             if (check(TokenKind::Identifier)) {
+                const TextId name_text_id = cur().text_id;
                 const std::string spelled = std::string(token_spelling(cur()));
-                if (is_template_scope_type_param(spelled)) {
+                if (is_template_scope_type_param(name_text_id, spelled)) {
                     base_ts.array_size = -1;
                     base_ts.array_rank = 0;
                     for (int i = 0; i < 8; ++i) base_ts.array_dims[i] = -1;
@@ -2304,8 +2638,19 @@ Node* Parser::parse_top_level() {
                     goto top_level_base_ready;
                 }
                 if (const TypeSpec* typedef_type =
-                        find_visible_typedef_type(spelled)) {
+                        find_visible_typedef_type(cur().text_id, spelled)) {
                     base_ts = *typedef_type;
+                    consume();
+                    goto top_level_base_ready;
+                }
+                if (is_cpp_mode() &&
+                    looks_like_unresolved_identifier_type_head(
+                        core_input_state_.pos)) {
+                    base_ts.array_size = -1;
+                    base_ts.array_rank = 0;
+                    for (int i = 0; i < 8; ++i) base_ts.array_dims[i] = -1;
+                    base_ts.base = TB_TYPEDEF;
+                    base_ts.tag = arena_.strdup(spelled.c_str());
                     consume();
                     goto top_level_base_ready;
                 }
@@ -2370,43 +2715,40 @@ top_level_base_ready:
     }
 
     // Phase C: save the return-type typedef name for fn_ptr propagation to NK_FUNCTION.
-    const TextId ret_typedef_name_id = last_resolved_typedef_text_id_;
+    const TextId ret_typedef_name_id =
+        active_context_state_.last_resolved_typedef_text_id;
 
     auto is_incomplete_object_type = [&](const TypeSpec& ts) -> bool {
         if (ts.ptr_level > 0) return false;
         if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
         if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
         if (!ts.tag) return true;
-        if (is_cpp_mode() && !current_struct_tag_.empty()) {
-            const std::string current_tag(current_struct_tag_text());
-            const std::string qualified_current_tag = qualify_name(current_tag);
-            const std::string spelled_tag = ts.tag;
-            const std::string qualified_spelled_tag = qualify_name(spelled_tag);
-            if (current_tag == spelled_tag ||
-                current_tag == qualified_spelled_tag ||
-                qualified_current_tag == spelled_tag ||
-                qualified_current_tag == qualified_spelled_tag)
-                return false;
-            if (resolve_visible_type_name(spelled_tag) == current_tag ||
-                resolve_visible_type_name(spelled_tag) == qualified_current_tag)
+        if (is_cpp_mode() && !active_context_state_.current_struct_tag.empty()) {
+            if (is_same_visible_type_name(
+                    *this, active_context_state_.current_struct_tag_text_id,
+                    current_struct_tag_text(), find_parser_text_id(ts.tag),
+                    ts.tag))
                 return false;
         }
-        auto it = struct_tag_def_map_.find(ts.tag);
-        if (it == struct_tag_def_map_.end()) return true;
+        auto it = definition_state_.struct_tag_def_map.find(ts.tag);
+        if (it == definition_state_.struct_tag_def_map.end()) return true;
         Node* def = it->second;
         return !def || def->n_fields < 0;
     };
     if (is_typedef) {
         // Local typedef
         const char* tdname = nullptr;
+        TextId tdname_text_id = kInvalidText;
         TypeSpec ts_copy = base_ts;
         Node** td_fn_ptr_params = nullptr;
         int td_n_fn_ptr_params = 0;
         bool td_fn_ptr_variadic = false;
         parse_declarator(ts_copy, &tdname, &td_fn_ptr_params,
-                         &td_n_fn_ptr_params, &td_fn_ptr_variadic);
+                         &td_n_fn_ptr_params, &td_fn_ptr_variadic, nullptr,
+                         nullptr, nullptr, nullptr, &tdname_text_id);
         if (tdname) {
-            const char* scoped_tdname = qualify_name_arena(tdname);
+            const char* scoped_tdname =
+                qualify_name_arena(tdname_text_id, tdname);
             if (!is_cpp_mode() && !is_internal_typedef_name(tdname) &&
                 has_conflicting_user_typedef_binding(tdname, ts_copy))
                 throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdname);
@@ -2417,9 +2759,11 @@ top_level_base_ready:
             }
             if (ts_copy.is_fn_ptr && (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic)) {
                 const TextId typedef_name_id =
-                    parser_text_id_for_token(kInvalidText, tdname);
+                    tdname_text_id != kInvalidText
+                        ? tdname_text_id
+                        : parser_text_id_for_token(kInvalidText, tdname);
                 if (typedef_name_id != kInvalidText) {
-                    typedef_fn_ptr_info_[typedef_name_id] = {
+                    binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
                         td_fn_ptr_params, td_n_fn_ptr_params, td_fn_ptr_variadic};
                 }
             }
@@ -2427,13 +2771,17 @@ top_level_base_ready:
         while (match(TokenKind::Comma)) {
             TypeSpec ts2 = base_ts;
             const char* tdn2 = nullptr;
+            TextId tdn2_text_id = kInvalidText;
             Node** td2_fn_ptr_params = nullptr;
             int td2_n_fn_ptr_params = 0;
             bool td2_fn_ptr_variadic = false;
             parse_declarator(ts2, &tdn2, &td2_fn_ptr_params,
-                             &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
+                             &td2_n_fn_ptr_params, &td2_fn_ptr_variadic,
+                             nullptr, nullptr, nullptr, nullptr,
+                             &tdn2_text_id);
             if (tdn2) {
-                const char* scoped_tdn2 = qualify_name_arena(tdn2);
+                const char* scoped_tdn2 =
+                    qualify_name_arena(tdn2_text_id, tdn2);
                 if (!is_cpp_mode() && !is_internal_typedef_name(tdn2) &&
                     has_conflicting_user_typedef_binding(tdn2, ts2))
                     throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdn2);
@@ -2444,9 +2792,11 @@ top_level_base_ready:
                 }
                 if (ts2.is_fn_ptr && (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic)) {
                     const TextId typedef_name_id =
-                        parser_text_id_for_token(kInvalidText, tdn2);
+                        tdn2_text_id != kInvalidText
+                            ? tdn2_text_id
+                            : parser_text_id_for_token(kInvalidText, tdn2);
                     if (typedef_name_id != kInvalidText) {
-                        typedef_fn_ptr_info_[typedef_name_id] = {
+                        binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
                             td2_fn_ptr_params, td2_n_fn_ptr_params, td2_fn_ptr_variadic};
                     }
                 }
@@ -2472,6 +2822,7 @@ top_level_base_ready:
     // Preserve typedef array dims: apply_decl_dims prepends declarator dims to base typedef dims.
     ts.array_size_expr = nullptr;
     const char* decl_name = nullptr;
+    TextId decl_name_text_id = kInvalidText;
     Node** decl_fn_ptr_params = nullptr;
     int decl_n_fn_ptr_params = 0;
     bool decl_fn_ptr_variadic = false;
@@ -2502,6 +2853,8 @@ top_level_base_ready:
         }
         skip_attributes();
         if (check(TokenKind::Identifier)) {
+            decl_name_text_id =
+                parser_text_id_for_token(cur().text_id, token_spelling(cur()));
             decl_name = arena_.strdup(std::string(token_spelling(cur())));
             consume();
         }
@@ -2534,6 +2887,8 @@ top_level_base_ready:
                 break;
             }
             if (check(TokenKind::Identifier)) {
+                decl_name_text_id = parser_text_id_for_token(
+                    cur().text_id, token_spelling(cur()));
                 decl_name = arena_.strdup(std::string(token_spelling(cur())));
                 consume();
             }
@@ -2657,7 +3012,8 @@ top_level_base_ready:
     } else {
     parse_declarator(ts, &decl_name, &decl_fn_ptr_params, &decl_n_fn_ptr_params,
                      &decl_fn_ptr_variadic, nullptr, &decl_ret_fn_ptr_params,
-                     &decl_n_ret_fn_ptr_params, &decl_ret_fn_ptr_variadic);
+                     &decl_n_ret_fn_ptr_params, &decl_ret_fn_ptr_variadic,
+                     &decl_name_text_id);
     if (is_incomplete_object_type(ts) && !check(TokenKind::LParen)) {
         throw std::runtime_error(std::string("object has incomplete type: ") + (ts.tag ? ts.tag : "<anonymous>"));
     }
@@ -2666,8 +3022,8 @@ top_level_base_ready:
     // Owner-aware scope: if the declarator produced a qualified name like
     // "vector::set_capacity", detect the owner struct and re-enter its scope
     // so member typedefs are visible during parameter/body parsing.
-    // We save/restore current_struct_tag_ via a scope guard so all exit paths
-    // are covered.
+    // We save/restore current_struct_tag via TextId plus fallback spelling so
+    // all exit paths keep structured context metadata intact.
     std::string qualified_owner_tag;
     auto enter_owner_scope = [&]() {
         if (!is_cpp_mode() || !decl_name) return;
@@ -2678,21 +3034,31 @@ top_level_base_ready:
         set_current_struct_tag(qualified_owner_tag);
         // If the owner is a known template struct and we have an active
         // FreeFunctionTemplate scope, relabel it as EnclosingClass.
-        if (!template_scope_stack_.empty() &&
-            template_scope_stack_.back().kind == TemplateScopeKind::FreeFunctionTemplate) {
-            if (find_template_struct_primary(qualified_owner_tag) ||
-                template_struct_defs_.count(qualified_owner_tag)) {
-                template_scope_stack_.back().kind = TemplateScopeKind::EnclosingClass;
-                template_scope_stack_.back().owner_struct_tag = qualified_owner_tag;
+        if (!template_state_.template_scope_stack.empty() &&
+            template_state_.template_scope_stack.back().kind ==
+                TemplateScopeKind::FreeFunctionTemplate) {
+            if (find_template_struct_primary(
+                    current_namespace_context_id(),
+                    find_parser_text_id(qualified_owner_tag),
+                    qualified_owner_tag)) {
+                template_state_.template_scope_stack.back().kind =
+                    TemplateScopeKind::EnclosingClass;
+                template_state_.template_scope_stack.back().owner_struct_tag =
+                    qualified_owner_tag;
             }
         }
     };
-    std::string saved_struct_tag_for_qualified = current_struct_tag_;
+    const TextId saved_struct_tag_text_id_for_qualified =
+        active_context_state_.current_struct_tag_text_id;
+    const std::string saved_struct_tag_fallback_for_qualified =
+        active_context_state_.current_struct_tag;
     enter_owner_scope();
     // Helper to restore struct tag before returning from this function.
     auto restore_owner_scope = [&]() {
         if (!qualified_owner_tag.empty())
-            set_current_struct_tag(saved_struct_tag_for_qualified);
+            restore_current_struct_tag(
+                *this, saved_struct_tag_text_id_for_qualified,
+                saved_struct_tag_fallback_for_qualified);
     };
 
     // Explicit template specialization: parse <type_args> after function name.
@@ -2701,7 +3067,8 @@ top_level_base_ready:
     std::vector<TypeSpec> spec_arg_types;
     std::vector<bool> spec_arg_is_value;
     std::vector<long long> spec_arg_values;
-    if (parsing_explicit_specialization_ && decl_name && check(TokenKind::Less)) {
+    if (active_context_state_.parsing_explicit_specialization && decl_name &&
+        check(TokenKind::Less)) {
         consume();  // <
         while (!at_end() && !check(TokenKind::Greater)) {
             // Try to parse as type first (int, long, char, etc.)
@@ -2713,9 +3080,13 @@ top_level_base_ready:
             } else if (check(TokenKind::IntLit) || check(TokenKind::CharLit) ||
                        (is_cpp_mode() &&
                         (check(TokenKind::KwTrue) || check(TokenKind::KwFalse))) ||
-                       (check(TokenKind::Minus) && pos_ + 1 < (int)tokens_.size() &&
-                        (tokens_[pos_ + 1].kind == TokenKind::IntLit ||
-                         tokens_[pos_ + 1].kind == TokenKind::CharLit))) {
+                       (check(TokenKind::Minus) &&
+                        core_input_state_.pos + 1 <
+                            static_cast<int>(core_input_state_.tokens.size()) &&
+                        (core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                             TokenKind::IntLit ||
+                         core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                             TokenKind::CharLit))) {
                 // NTTP value
                 long long sign = 1;
                 if (match(TokenKind::Minus)) sign = -1;
@@ -2757,35 +3128,40 @@ top_level_base_ready:
         auto tail_is_attr_or_asm_only = [&](int begin, int end) -> bool {
             int i = begin;
             auto skip_parens = [&](int start) -> int {
-                if (start >= end || tokens_[start].kind != TokenKind::LParen) return -1;
+                if (start >= end ||
+                    core_input_state_.tokens[start].kind != TokenKind::LParen) {
+                    return -1;
+                }
                 int depth = 0;
                 int j = start;
                 while (j < end) {
-                    if (tokens_[j].kind == TokenKind::LParen) ++depth;
-                    else if (tokens_[j].kind == TokenKind::RParen && --depth == 0) return j + 1;
+                    if (core_input_state_.tokens[j].kind == TokenKind::LParen) ++depth;
+                    else if (core_input_state_.tokens[j].kind == TokenKind::RParen &&
+                             --depth == 0)
+                        return j + 1;
                     ++j;
                 }
                 return -1;
             };
             auto skip_cpp11_attrs = [&](int start) -> int {
                 if (start + 1 >= end ||
-                    tokens_[start].kind != TokenKind::LBracket ||
-                    tokens_[start + 1].kind != TokenKind::LBracket) {
+                    core_input_state_.tokens[start].kind != TokenKind::LBracket ||
+                    core_input_state_.tokens[start + 1].kind != TokenKind::LBracket) {
                     return -1;
                 }
                 int depth = 1;
                 int j = start + 2;
                 while (j < end) {
                     if (j + 1 < end &&
-                        tokens_[j].kind == TokenKind::LBracket &&
-                        tokens_[j + 1].kind == TokenKind::LBracket) {
+                        core_input_state_.tokens[j].kind == TokenKind::LBracket &&
+                        core_input_state_.tokens[j + 1].kind == TokenKind::LBracket) {
                         ++depth;
                         j += 2;
                         continue;
                     }
                     if (j + 1 < end &&
-                        tokens_[j].kind == TokenKind::RBracket &&
-                        tokens_[j + 1].kind == TokenKind::RBracket) {
+                        core_input_state_.tokens[j].kind == TokenKind::RBracket &&
+                        core_input_state_.tokens[j + 1].kind == TokenKind::RBracket) {
                         --depth;
                         j += 2;
                         if (depth == 0) return j;
@@ -2797,33 +3173,36 @@ top_level_base_ready:
             };
 
             while (i < end) {
-                if (tokens_[i].kind == TokenKind::KwAttribute) {
+                if (core_input_state_.tokens[i].kind == TokenKind::KwAttribute) {
                     ++i;
                     i = skip_parens(i);
-                    if (i < 0 || i >= end || tokens_[i].kind != TokenKind::LParen) return false;
+                    if (i < 0 || i >= end ||
+                        core_input_state_.tokens[i].kind != TokenKind::LParen) {
+                        return false;
+                    }
                     i = skip_parens(i);
                     if (i < 0) return false;
                     continue;
                 }
-                if (tokens_[i].kind == TokenKind::LBracket) {
+                if (core_input_state_.tokens[i].kind == TokenKind::LBracket) {
                     i = skip_cpp11_attrs(i);
                     if (i < 0) return false;
                     continue;
                 }
-                if (tokens_[i].kind == TokenKind::KwAsm) {
+                if (core_input_state_.tokens[i].kind == TokenKind::KwAsm) {
                     ++i;
                     while (i < end &&
-                           (tokens_[i].kind == TokenKind::KwVolatile ||
-                            tokens_[i].kind == TokenKind::KwInline ||
-                            tokens_[i].kind == TokenKind::KwGoto)) {
+                           (core_input_state_.tokens[i].kind == TokenKind::KwVolatile ||
+                            core_input_state_.tokens[i].kind == TokenKind::KwInline ||
+                            core_input_state_.tokens[i].kind == TokenKind::KwGoto)) {
                         ++i;
                     }
                     i = skip_parens(i);
                     if (i < 0) return false;
                     continue;
                 }
-                if (tokens_[i].kind == TokenKind::KwExtension ||
-                    tokens_[i].kind == TokenKind::KwNoreturn) {
+                if (core_input_state_.tokens[i].kind == TokenKind::KwExtension ||
+                    core_input_state_.tokens[i].kind == TokenKind::KwNoreturn) {
                     ++i;
                     continue;
                 }
@@ -2848,7 +3227,8 @@ top_level_base_ready:
         return make_node(NK_EMPTY, ln);
     }
 
-    const char* scoped_decl_name = qualify_name_arena(decl_name);
+    const char* scoped_decl_name =
+        qualify_name_arena(decl_name_text_id, decl_name);
 
     // Handle function-returning-fptr: int (* f1(a, b))(c, d) { body }
     // Params were already parsed into fptr_fn_params; now look for { body }.
@@ -2856,10 +3236,11 @@ top_level_base_ready:
         parse_attributes(&ts); skip_asm(); parse_attributes(&ts); skip_attributes();
         parse_optional_cpp20_trailing_requires_clause(*this);
         if (check(TokenKind::LBrace)) {
-            bool saved_top = parsing_top_level_context_;
-            parsing_top_level_context_ = false;
+            ParserFunctionParamScopeGuard param_scope(*this, fptr_fn_params);
+            bool saved_top = active_context_state_.parsing_top_level_context;
+            active_context_state_.parsing_top_level_context = false;
             Node* body = parse_block();
-            parsing_top_level_context_ = saved_top;
+            active_context_state_.parsing_top_level_context = saved_top;
             Node* fn = make_node(NK_FUNCTION, ln);
             fn->type      = ts;
             fn->name      = scoped_decl_name;
@@ -2871,8 +3252,8 @@ top_level_base_ready:
             fn->is_constexpr = is_constexpr;
             fn->is_consteval = is_consteval;
             fn->linkage_spec = linkage_spec;
-            fn->visibility = visibility_;
-            fn->execution_domain = execution_domain_;
+            fn->visibility = pragma_state_.visibility;
+            fn->execution_domain = pragma_state_.execution_domain;
             fn->body      = body;
             fn->n_params  = (int)fptr_fn_params.size();
             if (fn->n_params > 0) {
@@ -2883,7 +3264,7 @@ top_level_base_ready:
             fn->ret_fn_ptr_params   = decl_fn_ptr_params;
             fn->n_ret_fn_ptr_params = decl_n_fn_ptr_params;
             fn->ret_fn_ptr_variadic = decl_fn_ptr_variadic;
-            known_fn_names_.insert(scoped_decl_name);
+            register_known_fn_name(scoped_decl_name);
             restore_owner_scope();
             return fn;
         }
@@ -2900,8 +3281,8 @@ top_level_base_ready:
         fn->is_constexpr = is_constexpr;
         fn->is_consteval = is_consteval;
         fn->linkage_spec = linkage_spec;
-        fn->visibility = visibility_;
-        fn->execution_domain = execution_domain_;
+        fn->visibility = pragma_state_.visibility;
+        fn->execution_domain = pragma_state_.execution_domain;
         fn->body      = nullptr;
         fn->n_params  = (int)fptr_fn_params.size();
         if (fn->n_params > 0) {
@@ -2912,7 +3293,7 @@ top_level_base_ready:
         fn->ret_fn_ptr_params   = decl_fn_ptr_params;
         fn->n_ret_fn_ptr_params = decl_n_fn_ptr_params;
         fn->ret_fn_ptr_variadic = decl_fn_ptr_variadic;
-        known_fn_names_.insert(scoped_decl_name);
+        register_known_fn_name(scoped_decl_name);
         restore_owner_scope();
         return fn;
     }
@@ -2938,7 +3319,8 @@ top_level_base_ready:
             std::string adjusted_name(decl_name);
             finalize_pending_operator_name(adjusted_name, params.size());
             decl_name = arena_.strdup(adjusted_name.c_str());
-            scoped_decl_name = qualify_name_arena(decl_name);
+            decl_name_text_id = kInvalidText;
+            scoped_decl_name = qualify_name_arena(decl_name_text_id, decl_name);
         }
         parse_attributes(&ts);
         skip_asm();
@@ -3063,11 +3445,12 @@ top_level_base_ready:
         };
 
         if (check(TokenKind::LBrace)) {
+            ParserFunctionParamScopeGuard param_scope(*this, params);
             // Function definition
-            bool saved_top = parsing_top_level_context_;
-            parsing_top_level_context_ = false;
+            bool saved_top = active_context_state_.parsing_top_level_context;
+            active_context_state_.parsing_top_level_context = false;
             Node* body = parse_block();
-            parsing_top_level_context_ = saved_top;
+            active_context_state_.parsing_top_level_context = saved_top;
             Node* fn = make_node(NK_FUNCTION, ln);
             fn->type      = ts;
             fn->name      = scoped_decl_name;
@@ -3082,8 +3465,8 @@ top_level_base_ready:
             fn->is_lvalue_ref_method = is_lvalue_ref_method;
             fn->is_rvalue_ref_method = is_rvalue_ref_method;
             fn->linkage_spec = linkage_spec;
-            fn->visibility = visibility_;
-            fn->execution_domain = execution_domain_;
+            fn->visibility = pragma_state_.visibility;
+            fn->execution_domain = pragma_state_.execution_domain;
             fn->body      = body;
             fn->n_params  = (int)params.size();
             if (fn->n_params > 0) {
@@ -3092,7 +3475,7 @@ top_level_base_ready:
             }
             propagate_ret_fn_ptr(fn);
             attach_spec_args(fn);
-            known_fn_names_.insert(scoped_decl_name);
+            register_known_fn_name(scoped_decl_name);
             restore_owner_scope();
             return fn;
         }
@@ -3113,8 +3496,8 @@ top_level_base_ready:
         fn->is_lvalue_ref_method = is_lvalue_ref_method;
         fn->is_rvalue_ref_method = is_rvalue_ref_method;
         fn->linkage_spec = linkage_spec;
-        fn->visibility = visibility_;
-        fn->execution_domain = execution_domain_;
+        fn->visibility = pragma_state_.visibility;
+        fn->execution_domain = pragma_state_.execution_domain;
         fn->body      = nullptr;  // declaration only
         fn->n_params  = (int)params.size();
         if (fn->n_params > 0) {
@@ -3123,7 +3506,7 @@ top_level_base_ready:
         }
         propagate_ret_fn_ptr(fn);
         attach_spec_args(fn);
-        known_fn_names_.insert(scoped_decl_name);
+        register_known_fn_name(scoped_decl_name);
         restore_owner_scope();
         return fn;
     }
@@ -3131,7 +3514,8 @@ top_level_base_ready:
     // Global variable (possibly with initializer and multiple declarators)
     std::vector<Node*> gvars;
 
-    auto make_gvar = [&](TypeSpec gts, const char* gname, const char* source_name, Node* ginit,
+    auto make_gvar = [&](TypeSpec gts, const char* gname, const char* source_name,
+                         TextId source_name_text_id, Node* ginit,
                          Node** fn_ptr_params, int n_fn_ptr_params,
                          bool fn_ptr_variadic,
                          Node** ret_fn_ptr_params = nullptr,
@@ -3154,8 +3538,8 @@ top_level_base_ready:
         gv->is_constexpr = is_constexpr;
         gv->is_consteval = false;
         gv->linkage_spec = linkage_spec;
-        gv->visibility = visibility_;
-        gv->execution_domain = execution_domain_;
+        gv->visibility = pragma_state_.visibility;
+        gv->execution_domain = pragma_state_.execution_domain;
         gv->fn_ptr_params = fn_ptr_params;
         gv->n_fn_ptr_params = n_fn_ptr_params;
         gv->fn_ptr_variadic = fn_ptr_variadic;
@@ -3176,10 +3560,16 @@ top_level_base_ready:
             !gv->type.is_lvalue_ref && !gv->type.is_rvalue_ref &&
             gv->type.ptr_level == 0 && gv->type.array_rank == 0) {
             long long cv = 0;
-            if (eval_const_int(ginit, &cv, &struct_tag_def_map_, &const_int_bindings_)) {
-                const_int_bindings_[gname] = cv;
-                if (source_name && std::strcmp(source_name, gname) != 0)
-                    const_int_bindings_[source_name] = cv;
+            if (eval_const_int(ginit, &cv, &definition_state_.struct_tag_def_map,
+                               &binding_state_.const_int_bindings)) {
+                const TextId binding_name_text_id =
+                    source_name_text_id != kInvalidText
+                        ? source_name_text_id
+                        : parser_text_id_for_token(
+                              kInvalidText, source_name ? source_name : "");
+                if (binding_name_text_id != kInvalidText) {
+                    binding_state_.const_int_bindings[binding_name_text_id] = cv;
+                }
             }
         }
         return gv;
@@ -3190,7 +3580,8 @@ top_level_base_ready:
         (is_cpp_mode() && check(TokenKind::LBrace))) {
         first_init = parse_initializer();
     }
-    gvars.push_back(make_gvar(ts, scoped_decl_name, decl_name, first_init, decl_fn_ptr_params,
+    gvars.push_back(make_gvar(ts, scoped_decl_name, decl_name, decl_name_text_id,
+                              first_init, decl_fn_ptr_params,
                               decl_n_fn_ptr_params, decl_fn_ptr_variadic,
                               decl_ret_fn_ptr_params, decl_n_ret_fn_ptr_params,
                               decl_ret_fn_ptr_variadic));
@@ -3200,18 +3591,21 @@ top_level_base_ready:
         // Preserve typedef ptr_level and array dims for each additional declarator.
         ts2.array_size_expr = nullptr;
         const char* n2 = nullptr;
+        TextId n2_text_id = kInvalidText;
         Node** fn_ptr_params2 = nullptr;
         int n_fn_ptr_params2 = 0;
         bool fn_ptr_variadic2 = false;
-        parse_declarator(ts2, &n2, &fn_ptr_params2, &n_fn_ptr_params2, &fn_ptr_variadic2);
+        parse_declarator(ts2, &n2, &fn_ptr_params2, &n_fn_ptr_params2,
+                         &fn_ptr_variadic2, nullptr, nullptr, nullptr, nullptr,
+                         &n2_text_id);
         skip_attributes();
         skip_asm();
         Node* init2 = nullptr;
         if (match(TokenKind::Assign) ||
             (is_cpp_mode() && check(TokenKind::LBrace))) init2 = parse_initializer();
         if (n2) {
-            const char* scoped_n2 = qualify_name_arena(n2);
-            gvars.push_back(make_gvar(ts2, scoped_n2, n2, init2,
+            const char* scoped_n2 = qualify_name_arena(n2_text_id, n2);
+            gvars.push_back(make_gvar(ts2, scoped_n2, n2, n2_text_id, init2,
                                           fn_ptr_params2, n_fn_ptr_params2,
                                           fn_ptr_variadic2));
         }

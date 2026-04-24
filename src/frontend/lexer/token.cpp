@@ -1,21 +1,10 @@
 #include "token.hpp"
 
+#include "../../shared/text_ops.hpp"
+
 namespace c4c {
 
 namespace {
-
-bool starts_with(const std::string& s, const char* prefix) {
-  const size_t prefix_len = std::char_traits<char>::length(prefix);
-  return s.size() >= prefix_len && s.compare(0, prefix_len, prefix) == 0;
-}
-
-bool string_in_list(const std::string& s, const char* const* items,
-                    size_t count) {
-  for (size_t i = 0; i < count; ++i) {
-    if (s == items[i]) return true;
-  }
-  return false;
-}
 
 // Clang TokenKinds.def TYPE_TRAIT_{1,2,N}, ARRAY_TYPE_TRAIT, and
 // EXPRESSION_TRAIT spellings. Transform type traits are also tracked so the
@@ -304,7 +293,7 @@ const char *token_kind_name(TokenKind kind) {
 // keyword_from_string: map identifier text to its keyword TokenKind.
 // Returns TokenKind::Identifier when the string is not a keyword.
 // Pure-C backport note: replace std::string param with const char* + strlen.
-TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
+TokenKind keyword_from_string(std::string_view s, bool gnu_extensions,
                               LexProfile profile) {
   // Fast-reject: all C/GCC/cpp keywords start with one of these chars.
   if (s.empty()) return TokenKind::Identifier;
@@ -449,17 +438,17 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
   return TokenKind::Identifier;
 }
 
-bool is_builtin_type_trait_name(const std::string &s) {
-  return string_in_list(s, kBuiltinTypeTraitNames,
-                        sizeof(kBuiltinTypeTraitNames) /
-                            sizeof(kBuiltinTypeTraitNames[0]));
+bool is_builtin_type_trait_name(std::string_view s) {
+  return text_in_list(s, kBuiltinTypeTraitNames,
+                      sizeof(kBuiltinTypeTraitNames) /
+                          sizeof(kBuiltinTypeTraitNames[0]));
 }
 
-bool is_parser_supported_builtin_type_trait_name(const std::string &s) {
+bool is_parser_supported_builtin_type_trait_name(std::string_view s) {
   if (!is_builtin_type_trait_name(s)) return false;
   if (s == "__builtin_types_compatible_p") return true;
   if (s == "__is_lvalue_expr" || s == "__is_rvalue_expr") return false;
-  if (starts_with(s, "__is_") || starts_with(s, "__has_")) return true;
+  if (text_starts_with(s, "__is_") || text_starts_with(s, "__has_")) return true;
   return false;
 }
 

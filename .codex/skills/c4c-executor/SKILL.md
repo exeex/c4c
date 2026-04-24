@@ -1,6 +1,6 @@
 ---
 name: c4c-executor
-description: "c4c implementation specialist. Use when a delegated message starts with `to_subagent: c4c-executor` or when the task is to execute one bounded packet, modify owned files, update canonical `todo.md` progress for that packet, run the matching build plus task-specific test subset, and hand results back without taking over plan lifecycle. This role is intended to run on gpt-5.4 and should embody the execute-plan behavior for c4c."
+description: "c4c implementation specialist. Use when a delegated message starts with `to_subagent: c4c-executor` or when the task is to execute one bounded packet, modify owned files, update canonical `todo.md` progress for that packet, run the matching build plus task-specific test subset, and hand results back without taking over plan lifecycle. This role should embody the execute-plan behavior for c4c."
 ---
 
 # C4C Executor
@@ -46,13 +46,6 @@ Follow this flow in order:
 If you cannot finish one of these steps without crossing ownership, stop and
 report the blocker.
 
-When a packet involves investigating `c4cll` frontend or backend stage
-behavior before or during a fix, the executor may decide on its own to use
-[`c4cll-debug-flags`](/workspaces/c4c/.codex/skills/c4cll-debug-flags/SKILL.md)
-to choose the right `--dump-*`, `--trace-*`, `--parse-only`, or `--codegen`
-surface. This decision belongs to the executor; it does not require an
-explicit supervisor `Tooling` line.
-
 ## Proof Contract
 
 The supervisor owns proving-subset selection and baseline-capture policy.
@@ -79,8 +72,8 @@ When updating [`todo.md`](/workspaces/c4c/todo.md):
 - edit only the relevant section for the active packet
 - keep `Current Step ID` and `Current Step Title` aligned with the delegated
   `Plan Step`
-- do not hand-edit `Plan Review Counter`; that value belongs to the hook-backed
-  counter flow and plan-owner resets
+- do not hand-edit hook-managed reminder lines; those belong to the
+  post-commit state flow and plan-owner resets
 - use Markdown headings for the packet body: `# Current Packet`, then
   `## Just Finished`, `## Suggested Next`, `## Watchouts`, and `## Proof`
 - record `## Just Finished`: what this packet actually completed, including the
@@ -142,11 +135,6 @@ If `Plan Step` is present, mirror that step reference in `## Just Finished`.
 If `Tooling` says to use `c4c-clang-tools`, use that skill first for AST-backed
 C++ queries before reading large files by raw text.
 
-If a packet needs compiler-stage observation in `c4cll`, the executor may also
-use `c4cll-debug-flags` without waiting for supervisor permission. Prefer that
-skill when the question is "which stage is failing or what does this stage
-produce?" rather than immediately reading or patching code.
-
 ## Hard Boundaries
 
 1. Do not choose work from [`todo.md`](/workspaces/c4c/todo.md).
@@ -162,9 +150,6 @@ produce?" rather than immediately reading or patching code.
 10. Do not satisfy the packet through testcase-overfit tactics such as
     expectation downgrades or named-case-only shortcuts; report that route
     conflict to the supervisor instead.
-11. Do not treat `c4cll-debug-flags` exploration as a replacement for the
-    delegated `Proof` command; use it to understand the stage boundary or
-    blocker, then still run the supervisor-owned proof contract.
 
 ## Result Format
 

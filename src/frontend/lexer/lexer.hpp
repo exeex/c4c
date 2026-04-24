@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "token.hpp"
@@ -28,7 +29,7 @@ class Lexer {
   void skip_whitespace_and_comments();
   bool consume_line_marker();
 
-  Token make_token(TokenKind kind, std::string lexeme, int line, int col);
+  Token make_token(TokenKind kind, std::string_view lexeme, int line, int col);
   Token scan_identifier_or_keyword();
   Token scan_number();
   Token scan_string(std::string prefix = {});
@@ -45,7 +46,7 @@ class Lexer {
   std::size_t index_ = 0;
   int line_   = 1;
   int column_ = 1;
-  std::string current_file_;
+  FileId current_file_id_ = kInvalidFile;
 
   // Pending pragma tokens detected during whitespace/comment skipping.
   bool has_pending_pragma_pack_ = false;

@@ -32,6 +32,9 @@ option(ENABLE_CPP_CLANG_EXTERNAL_TESTS
 option(ENABLE_CPP_EASTL_EXTERNAL_TESTS
     "Register curated external EASTL C++ subset tests"
     ON)
+option(ENABLE_C_TESTSUITE_BACKEND_TESTS
+    "Register c-testsuite backend execution tests such as x86_backend/aarch64_backend"
+    OFF)
 
 # ── Auto-detect vendored roots ────────────────────────────────────────────────
 
@@ -71,7 +74,9 @@ add_custom_target(ctest_core
 
 add_subdirectory(frontend)
 add_subdirectory(preprocessor)
-add_subdirectory(backend)
+if(ENABLE_C4C_BACKEND)
+  add_subdirectory(backend)
+endif()
 add_subdirectory(c/internal)
 add_subdirectory(cpp/internal)
 add_subdirectory(c/external)

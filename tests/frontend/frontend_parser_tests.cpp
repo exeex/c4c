@@ -81,7 +81,8 @@ void test_parser_reuses_symbol_ids_for_repeated_identifier_text_ids() {
               "repeated identifier text ids should reuse one SymbolId");
   expect_eq(parser.symbol_spelling(first), "Value",
             "parser symbol table should recover identifier spelling");
-  expect_true(parser.parser_symbols_.texts_ == &lexer.text_table(),
+  expect_true(parser.shared_lookup_state_.parser_symbols.texts_ ==
+                  &lexer.text_table(),
               "parser symbol table should reuse the shared lexer text table");
 }
 
@@ -126,15 +127,17 @@ void test_parser_string_wrappers_use_symbol_id_keyed_name_tables() {
   parser.register_var_type_binding("counter", var_ts);
 
   const c4c::Parser::SymbolId typedef_symbol =
-      parser.parser_name_tables_.find_identifier("Value");
+      parser.shared_lookup_state_.parser_name_tables.find_identifier("Value");
   const c4c::Parser::SymbolId var_symbol =
-      parser.parser_name_tables_.find_identifier("counter");
+      parser.shared_lookup_state_.parser_name_tables.find_identifier("counter");
 
   expect_true(typedef_symbol != c4c::Parser::kInvalidSymbol,
               "typedef wrapper should intern a valid SymbolId");
-  expect_true(parser.parser_name_tables_.is_typedef(typedef_symbol),
+  expect_true(parser.shared_lookup_state_.parser_name_tables.is_typedef(
+                  typedef_symbol),
               "typedef wrapper should store membership by SymbolId");
-  expect_true(parser.parser_name_tables_.user_typedefs.count(typedef_symbol) == 1,
+  expect_true(parser.shared_lookup_state_.parser_name_tables.user_typedefs.count(
+                  typedef_symbol) == 1,
               "user typedef wrapper should track user typedef membership by SymbolId");
   expect_true(parser.has_typedef_name("Value"),
               "string-facing typedef lookup should still work");
@@ -143,14 +146,18 @@ void test_parser_string_wrappers_use_symbol_id_keyed_name_tables() {
   expect_true(parser.find_typedef_type("Value") != nullptr &&
                   parser.find_typedef_type("Value")->base == c4c::TB_INT,
               "typedef type wrapper should recover the stored TypeSpec");
-  expect_true(parser.parser_name_tables_.lookup_typedef_type(typedef_symbol) != nullptr &&
-                  parser.parser_name_tables_.lookup_typedef_type(typedef_symbol)->base ==
+  expect_true(parser.shared_lookup_state_.parser_name_tables.lookup_typedef_type(
+                  typedef_symbol) != nullptr &&
+                  parser.shared_lookup_state_.parser_name_tables
+                          .lookup_typedef_type(typedef_symbol)
+                          ->base ==
                       c4c::TB_INT,
               "symbol-keyed typedef map should recover the stored TypeSpec");
 
   expect_true(var_symbol != c4c::Parser::kInvalidSymbol,
               "var-type wrapper should intern a valid SymbolId");
-  expect_true(parser.parser_name_tables_.var_types.count(var_symbol) == 1,
+  expect_true(parser.shared_lookup_state_.parser_name_tables.var_types.count(
+                  var_symbol) == 1,
               "var-type wrapper should store var bindings by SymbolId");
   expect_true(parser.has_var_type("counter"),
               "string-facing var-type lookup should still work");
@@ -177,7 +184,8 @@ void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {
 
   parser.register_typedef_binding("Keep", keep_ts, false);
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
-  const size_t typedef_count_before = parser.parser_name_tables_.typedefs.size();
+  const size_t typedef_count_before =
+      parser.shared_lookup_state_.parser_name_tables.typedefs.size();
   const auto snapshot = parser.save_state();
   parser.register_typedef_binding("Temp", temp_ts, true);
   parser.register_var_type_binding("scratch", temp_ts);
@@ -189,7 +197,8 @@ void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {
               "restore_state should roll back typedefs added after the snapshot");
   expect_true(!parser.has_var_type("scratch"),
               "restore_state should roll back var bindings added after the snapshot");
-  expect_eq_int(static_cast<int>(parser.parser_name_tables_.typedefs.size()),
+  expect_eq_int(
+      static_cast<int>(parser.shared_lookup_state_.parser_name_tables.typedefs.size()),
                 static_cast<int>(typedef_count_before),
                 "heavy snapshot restore should reset typedef membership to the snapshot");
 #else
@@ -227,7 +236,7 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
   var_ts.base = c4c::TB_DOUBLE;
 
   const int symbol_count_before =
-      static_cast<int>(parser.parser_symbols_.size());
+      static_cast<int>(parser.shared_lookup_state_.parser_symbols.size());
 
   parser.register_typedef_binding("ns::Type", typedef_ts, true);
   parser.register_var_type_binding("ns::value", var_ts);
@@ -244,13 +253,15 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
   expect_true(parser.find_var_type("ns::value") != nullptr &&
                   parser.find_var_type("ns::value")->base == c4c::TB_DOUBLE,
               "qualified value lookup should recover the stored TypeSpec");
-  expect_true(parser.parser_name_tables_.find_identifier("ns::Type") ==
+  expect_true(parser.shared_lookup_state_.parser_name_tables.find_identifier(
+                  "ns::Type") ==
                   c4c::Parser::kInvalidSymbol,
               "qualified typedef names should not intern composed strings");
-  expect_true(parser.parser_name_tables_.find_identifier("ns::value") ==
+  expect_true(parser.shared_lookup_state_.parser_name_tables.find_identifier(
+                  "ns::value") ==
                   c4c::Parser::kInvalidSymbol,
               "qualified value names should not intern composed strings");
-  expect_eq_int(static_cast<int>(parser.parser_symbols_.size()),
+  expect_eq_int(static_cast<int>(parser.shared_lookup_state_.parser_symbols.size()),
                 symbol_count_before,
                 "qualified bindings should not change the atom-symbol table size");
 
@@ -280,17 +291,19 @@ void test_parser_last_using_alias_name_prefers_text_id_storage() {
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
 
   parser.set_last_using_alias_name("ns::Alias");
-  expect_true(parser.last_using_alias_name_text_id_ != c4c::kInvalidText,
+  expect_true(parser.active_context_state_.last_using_alias_name_text_id !=
+                  c4c::kInvalidText,
               "using-alias bookkeeping should retain a valid TextId");
   expect_eq(parser.last_using_alias_name_text(), "ns::Alias",
             "using-alias bookkeeping should resolve through the parser text table");
 
-  parser.last_using_alias_name_ = "corrupted";
+  parser.active_context_state_.last_using_alias_name = "corrupted";
   expect_eq(parser.last_using_alias_name_text(), "ns::Alias",
             "using-alias bookkeeping should prefer the TextId carrier over raw string storage");
 
   parser.clear_last_using_alias_name();
-  expect_true(parser.last_using_alias_name_text_id_ == c4c::kInvalidText,
+  expect_true(parser.active_context_state_.last_using_alias_name_text_id ==
+                  c4c::kInvalidText,
               "clearing using-alias bookkeeping should drop the TextId carrier");
   expect_true(parser.last_using_alias_name_text().empty(),
               "clearing using-alias bookkeeping should leave no visible alias text");
@@ -455,9 +468,23 @@ void test_parser_type_start_probes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ConceptName"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
   };
-  parser.concept_names_.insert("ConceptName");
+  const c4c::TextId concept_text_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ConceptName");
+  parser.binding_state_.concept_name_text_ids.insert(concept_text_id);
   expect_true(!parser.looks_like_unresolved_identifier_type_head(0),
               "identifier-type probes should use parser-owned spelling when excluding concept names");
+
+  const c4c::TextId ns_text_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
+  const int ns_context_id =
+      parser.ensure_named_namespace_context(0, ns_text_id, "ns");
+  const c4c::TextId qualified_concept_text_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ScopedConcept");
+  parser.register_concept_name_in_context(ns_context_id,
+                                          qualified_concept_text_id,
+                                          "ScopedConcept");
+  expect_true(parser.is_concept_name("ns::ScopedConcept"),
+              "qualified concept lookup should use structured concept keys");
 }
 
 void test_parser_exception_specs_and_attributes_use_token_spelling() {
@@ -625,12 +652,36 @@ void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
   };
   parser.pos_ = 0;
-  parser.last_resolved_typedef_.clear();
+  parser.clear_last_resolved_typedef();
   c4c::TypeSpec alias_ts = parser.parse_base_type();
   expect_true(alias_ts.base == c4c::TB_INT,
               "parse_base_type should resolve typedef names via parser-owned spelling");
-  expect_eq(parser.last_resolved_typedef_, "TypeAlias",
+  expect_eq(parser.active_context_state_.last_resolved_typedef, "TypeAlias",
             "typedef resolution should preserve the parser-owned identifier spelling");
+
+  c4c::TypeSpec local_alias_ts{};
+  local_alias_ts.array_size = -1;
+  local_alias_ts.inner_rank = -1;
+  local_alias_ts.base = c4c::TB_DOUBLE;
+  const c4c::TextId local_alias_text = texts.intern("LocalAlias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(local_alias_text, local_alias_ts);
+
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "LocalAlias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+  };
+  parser.pos_ = 0;
+  parser.clear_last_resolved_typedef();
+  c4c::TypeSpec local_alias_result = parser.parse_base_type();
+  expect_true(local_alias_result.base == c4c::TB_DOUBLE,
+              "parse_base_type should resolve scope-local typedef names through the lexical scope facade");
+  expect_eq(parser.active_context_state_.last_resolved_typedef, "LocalAlias",
+            "scope-local typedef resolution should preserve the parser-owned identifier spelling");
+  expect_eq(parser.token_spelling(parser.cur()), "value",
+            "scope-local typedef resolution should leave the declarator token in place");
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
 
   parser.tokens_ = {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ForwardDecl"),
@@ -642,6 +693,1283 @@ void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
               "unresolved identifier fallback should produce a placeholder type tag");
   expect_eq(unresolved_ts.tag, "ForwardDecl",
             "unresolved identifier fallback should use parser-owned spelling");
+}
+
+void test_parser_is_type_start_uses_local_visible_typedef_scope() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_DOUBLE;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+  };
+  parser.pos_ = 0;
+
+  expect_true(parser.is_type_start(),
+              "type-head probes should consult parser-local visible typedef bindings before spelling-based fallback");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_local_visible_typedef_cast_uses_scope_lookup() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "1"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+  };
+  parser.pos_ = 0;
+  parser.clear_last_resolved_typedef();
+
+  c4c::Node* expr = parser.parse_unary();
+
+  expect_true(expr != nullptr && expr->kind == c4c::NK_CAST,
+              "local visible typedef casts should parse through the scope-local typedef facade");
+  expect_true(expr->type.base == c4c::TB_INT,
+              "local visible typedef casts should recover the bound typedef type");
+  expect_true(expr->left != nullptr && expr->left->kind == c4c::NK_INT_LIT &&
+                  expr->left->ival == 1,
+              "local visible typedef casts should keep the cast operand intact");
+  expect_eq(parser.active_context_state_.last_resolved_typedef, "Alias",
+            "local visible typedef casts should preserve the visible typedef spelling");
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_decode_type_ref_text_uses_local_visible_scope_lookup() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  c4c::TypeSpec decoded{};
+  expect_true(parser.decode_type_ref_text("Alias", &decoded),
+              "type-ref decoding should consult parser-local visible typedef bindings");
+  expect_true(decoded.base == c4c::TB_INT,
+              "type-ref decoding should recover the bound local visible typedef type");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_dependent_typename_uses_local_visible_owner_alias() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  c4c::Node* owner = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  owner->name = arena.strdup("Box");
+  owner->member_typedef_names = arena.alloc_array<const char*>(1);
+  owner->member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  owner->n_member_typedefs = 1;
+  owner->member_typedef_names[0] = arena.strdup("type");
+  owner->member_typedef_types[0].array_size = -1;
+  owner->member_typedef_types[0].inner_rank = -1;
+  owner->member_typedef_types[0].base = c4c::TB_INT;
+  parser.definition_state_.struct_tag_def_map["Box"] = owner;
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_STRUCT;
+  alias_ts.tag = arena.strdup("Box");
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::KwTypename, "typename"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "type"),
+  };
+  parser.pos_ = 0;
+
+  std::string resolved_name;
+  expect_true(parser.parse_dependent_typename_specifier(&resolved_name),
+              "dependent typename parsing should accept a scope-local owner alias");
+
+  expect_eq(resolved_name, "Alias::type",
+            "dependent typename parsing should preserve the cached alias-member spelling");
+  expect_true(parser.find_typedef_type(resolved_name) != nullptr &&
+                  parser.find_typedef_type(resolved_name)->base == c4c::TB_INT,
+              "dependent typename parsing should resolve a scope-local owner alias through the visible typedef facade");
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_is_typedef_name_uses_local_visible_scope_lookup() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  expect_true(parser.is_typedef_name("Alias"),
+              "typedef-name probes should treat parser-local visible bindings as typedefs");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_conflicting_user_typedef_binding_uses_local_visible_scope_lookup() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::C);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  c4c::TypeSpec different_ts = alias_ts;
+  different_ts.base = c4c::TB_FLOAT;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+  const c4c::Parser::SymbolId alias_symbol =
+      parser.shared_lookup_state_.parser_name_tables.intern_identifier("Alias");
+  parser.shared_lookup_state_.parser_name_tables.user_typedefs.insert(alias_symbol);
+
+  expect_true(!parser.has_conflicting_user_typedef_binding("Alias", alias_ts),
+              "typedef conflict checks should accept matching scope-local visible typedefs");
+  expect_true(parser.has_conflicting_user_typedef_binding("Alias", different_ts),
+              "typedef conflict checks should reject incompatible scope-local visible typedefs");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_record_body_context_keeps_visible_template_origin_lookup_local() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  expect_true(parser.find_typedef_type("Alias") == nullptr,
+              "local visible typedef fixtures should not populate the flat typedef table");
+
+  std::string saved_struct_tag;
+  std::string struct_source_name;
+  parser.begin_record_body_context("Widget", "Alias", &saved_struct_tag,
+                                   &struct_source_name);
+
+  expect_eq(struct_source_name, "Alias",
+            "record body setup should preserve the template origin spelling");
+  expect_true(parser.find_typedef_type("Alias") == nullptr,
+              "record body setup should not synthesize a flat typedef binding when a visible local alias already exists");
+  const c4c::TypeSpec* visible_alias = parser.find_visible_typedef_type("Alias");
+  expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
+              "record body setup should continue resolving the template origin through the visible typedef facade");
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_visible_type_alias_uses_scope_local_typedef_facade() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  const c4c::TextId target_text = texts.intern("Target");
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(target_text, target_ts);
+  parser.namespace_state_.using_value_aliases[0][alias_text] = {
+      parser.intern_semantic_name_key("Target"), "corrupted"};
+
+  expect_eq(parser.resolve_visible_type_name("Alias"), "Target",
+            "unqualified value aliases should resolve through the visible typedef facade when the target is scope-local");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_visible_type_alias_resolves_scope_local_target_type() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  const c4c::TextId target_text = texts.intern("Target");
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(target_text, target_ts);
+  parser.namespace_state_.using_value_aliases[0][alias_text] = {
+      parser.intern_semantic_name_key("Target"), "corrupted"};
+
+  const c4c::TypeSpec* visible_alias = parser.find_visible_typedef_type("Alias");
+  expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
+              "visible typedef aliases should resolve scope-local target types through the visible facade");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_visible_type_alias_uses_token_text_id_scope_lookup() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  const c4c::TextId target_text = texts.intern("Target");
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(target_text, target_ts);
+  parser.namespace_state_.using_value_aliases[0][alias_text] = {
+      parser.intern_semantic_name_key("Target"), "corrupted"};
+
+  const c4c::TypeSpec* visible_alias =
+      parser.find_visible_typedef_type(alias_text, "Alias");
+  expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
+              "token TextId visible typedef probes should consult the local lexical scope first");
+  expect_eq(parser.resolve_visible_type_name(alias_text, "Alias"), "Target",
+            "token TextId visible typedef probes should still resolve through the visible alias facade");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_visible_type_alias_keeps_qualified_target_resolution() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.register_typedef_binding("ns::Target", target_ts, true);
+  parser.namespace_state_.using_value_aliases[0][alias_text] = {
+      parser.intern_semantic_name_key("ns::Target"), "corrupted"};
+
+  expect_eq(parser.resolve_visible_type_name("Alias"), "ns::Target",
+            "qualified value aliases should keep namespace-qualified typedef resolution intact");
+  const c4c::TypeSpec* visible_alias = parser.find_visible_typedef_type("Alias");
+  expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
+              "qualified value aliases should still resolve through the existing namespace-visible path");
+}
+
+void test_parser_resolve_typedef_type_chain_uses_local_visible_scope_lookup() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_TYPEDEF;
+  alias_ts.tag = arena.strdup("Target");
+
+  const c4c::TextId target_text = texts.intern("Target");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(target_text, target_ts);
+
+  const c4c::TypeSpec resolved = parser.resolve_typedef_type_chain(alias_ts);
+  expect_true(resolved.base == c4c::TB_INT,
+              "typedef-chain resolution should re-probe local visible typedef targets before flat lookup");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_using_value_import_keeps_structured_target_key() {
+  c4c::Lexer lexer("using ns::Target;\n", c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+  parser.register_var_type_binding("ns::Target", target_ts);
+
+  (void)parser.parse_top_level();
+
+  const c4c::TextId alias_text = parser.find_parser_text_id("Target");
+  expect_true(alias_text != c4c::kInvalidText,
+              "using-import fixture should intern the alias text");
+  auto alias_it = parser.namespace_state_.using_value_aliases[0].find(alias_text);
+  expect_true(alias_it != parser.namespace_state_.using_value_aliases[0].end(),
+              "using-import fixture should record a value-alias entry");
+  alias_it->second.compatibility_name = "corrupted";
+  expect_eq(parser.resolve_visible_value_name("Target"), "ns::Target",
+            "using-import lookup should prefer the structured target key over the compatibility bridge");
+}
+
+void test_parser_global_using_value_import_keeps_global_target_resolution() {
+  c4c::Lexer lexer("using ::Target;\n", c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+  parser.register_var_type_binding("Target", target_ts);
+
+  (void)parser.parse_top_level();
+
+  const c4c::TextId alias_text = parser.find_parser_text_id("Target");
+  expect_true(alias_text != c4c::kInvalidText,
+              "global using-import fixture should intern the alias text");
+  auto alias_it = parser.namespace_state_.using_value_aliases[0].find(alias_text);
+  expect_true(alias_it != parser.namespace_state_.using_value_aliases[0].end(),
+              "global using-import fixture should record a value-alias entry");
+  alias_it->second.compatibility_name = "corrupted";
+  expect_eq(parser.resolve_visible_value_name("Target"), "Target",
+            "global using-import lookup should keep the global target spelling instead of introducing a leading scope bridge");
+}
+
+void test_parser_visible_value_alias_resolves_scope_local_target_type() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  const c4c::TextId target_text = texts.intern("Target");
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_value(target_text, target_ts);
+  parser.namespace_state_.using_value_aliases[0][alias_text] = {
+      parser.intern_semantic_name_key("Target"), "corrupted"};
+
+  const c4c::TypeSpec* visible_alias = parser.find_visible_var_type("Alias");
+  expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
+              "visible value aliases should resolve scope-local target types through the visible facade");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible value scope");
+}
+
+void test_parser_register_local_bindings_keep_flat_tables_empty() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  c4c::TypeSpec value_ts{};
+  value_ts.array_size = -1;
+  value_ts.inner_rank = -1;
+  value_ts.base = c4c::TB_DOUBLE;
+
+  parser.push_local_binding_scope();
+  parser.register_typedef_binding("Alias", alias_ts, true);
+  parser.register_var_type_binding("value", value_ts);
+
+  expect_true(parser.find_typedef_type("Alias") == nullptr,
+              "local typedef registration should keep the flat typedef table empty");
+  expect_true(parser.find_visible_typedef_type("Alias") != nullptr &&
+                  parser.find_visible_typedef_type("Alias")->base == c4c::TB_INT,
+              "local typedef registration should resolve through lexical scope storage");
+  expect_true(parser.find_var_type("value") == nullptr,
+              "local value registration should keep the flat value table empty");
+  expect_true(parser.find_visible_var_type("value") != nullptr &&
+                  parser.find_visible_var_type("value")->base == c4c::TB_DOUBLE,
+              "local value registration should resolve through lexical scope storage");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local binding scope");
+  expect_true(parser.find_visible_typedef_type("Alias") == nullptr,
+              "popping the local scope should remove lexical typedef visibility");
+  expect_true(parser.find_visible_var_type("value") == nullptr,
+              "popping the local scope should remove lexical value visibility");
+}
+
+void test_parser_if_condition_decl_uses_local_visible_typedef_scope() {
+  c4c::Lexer lexer("if (Alias value = 0) { }\n", c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  c4c::Node* stmt = parser.parse_stmt();
+  expect_true(stmt != nullptr && stmt->kind == c4c::NK_BLOCK,
+              "if-condition declarations should parse as a scoped block when they introduce a declaration");
+  expect_eq_int(stmt->n_children, 2,
+                "if-condition declaration blocks should contain the declaration and the wrapped if statement");
+  expect_true(stmt->children[0] != nullptr &&
+                  stmt->children[0]->kind == c4c::NK_DECL,
+              "if-condition declarations should materialize a declaration node in the scoped block");
+  expect_true(stmt->children[1] != nullptr &&
+                  stmt->children[1]->kind == c4c::NK_IF,
+              "if-condition declaration blocks should wrap the parsed if statement");
+  expect_true(stmt->children[0]->type.base == c4c::TB_INT,
+              "if-condition declaration types should resolve through the bound local typedef");
+  expect_eq(stmt->children[0]->name, "value",
+            "if-condition declarations should preserve the declarator spelling");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_if_condition_decl_scope_does_not_leak_bindings() {
+  c4c::Lexer lexer("if (Alias value = 0) value = 1; else value = 2;\n"
+                   "value = 3;\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  c4c::Node* stmt = parser.parse_stmt();
+  expect_true(stmt != nullptr && stmt->kind == c4c::NK_BLOCK,
+              "if-condition declaration scope should still parse as a synthetic block");
+  expect_true(stmt->children[1] != nullptr &&
+                  stmt->children[1]->kind == c4c::NK_IF,
+              "if-condition declaration scope should keep the wrapped if node");
+  expect_true(parser.find_var_type("value") == nullptr,
+              "if-condition declarations should not leak through the flat var table");
+  expect_true(parser.find_visible_var_type("value") == nullptr,
+              "if-condition declaration scope should pop after the statement finishes");
+
+  c4c::Node* trailing = parser.parse_stmt();
+  expect_true(trailing != nullptr,
+              "parsing should continue after the if-condition declaration scope ends");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_for_init_decl_uses_loop_lifetime_local_scope() {
+  c4c::Lexer lexer("for (Alias value = 0; value < 2; ++value) { value = 1; }\n"
+                   "value = 3;\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  c4c::Node* stmt = parser.parse_stmt();
+  expect_true(stmt != nullptr && stmt->kind == c4c::NK_FOR,
+              "for init declarations should parse as a for-statement node");
+  expect_true(stmt->init != nullptr && stmt->init->kind == c4c::NK_DECL,
+              "for init declarations should materialize a declaration node");
+  expect_true(stmt->body != nullptr && stmt->body->kind == c4c::NK_BLOCK,
+              "for init declarations should keep the loop body attached");
+  expect_true(parser.find_visible_var_type("value") == nullptr,
+              "for init declaration bindings should not leak after the loop");
+
+  c4c::Node* trailing = parser.parse_stmt();
+  expect_true(trailing != nullptr,
+              "parsing should continue after the for init declaration scope ends");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_while_condition_decl_uses_loop_lifetime_local_scope() {
+  c4c::Lexer lexer("while (Alias value = 1) { value = 2; }\n"
+                   "value = 3;\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  c4c::Node* stmt = parser.parse_stmt();
+  expect_true(stmt != nullptr && stmt->kind == c4c::NK_BLOCK,
+              "while-condition declarations should parse as a synthetic block");
+  expect_eq_int(stmt->n_children, 2,
+                "while-condition declaration blocks should contain the declaration and the wrapped while statement");
+  expect_true(stmt->children[0] != nullptr &&
+                  stmt->children[0]->kind == c4c::NK_DECL,
+              "while-condition declarations should materialize a declaration node");
+  expect_true(stmt->children[1] != nullptr &&
+                  stmt->children[1]->kind == c4c::NK_WHILE,
+              "while-condition declaration blocks should wrap the parsed while statement");
+  expect_true(stmt->children[1]->body != nullptr &&
+                  stmt->children[1]->body->kind == c4c::NK_BLOCK,
+              "while-condition declarations should keep the loop body attached");
+  expect_true(parser.find_visible_var_type("value") == nullptr,
+              "while-condition declaration bindings should not leak after the loop");
+
+  c4c::Node* trailing = parser.parse_stmt();
+  expect_true(trailing != nullptr,
+              "parsing should continue after the while-condition declaration scope ends");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_range_for_decl_uses_loop_lifetime_local_scope() {
+  c4c::Lexer lexer("for (Alias value : items) { value = 1; }\n"
+                   "value = 3;\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  c4c::Node* stmt = parser.parse_stmt();
+  expect_true(stmt != nullptr && stmt->kind == c4c::NK_RANGE_FOR,
+              "range-for declarations should parse as a range-for node");
+  expect_true(stmt->init != nullptr && stmt->init->kind == c4c::NK_DECL,
+              "range-for declarations should materialize a declaration node");
+  expect_true(stmt->body != nullptr && stmt->body->kind == c4c::NK_BLOCK,
+              "range-for declarations should keep the loop body attached");
+  expect_true(parser.find_visible_var_type("value") == nullptr,
+              "range-for declaration bindings should not leak after the loop");
+
+  c4c::Node* trailing = parser.parse_stmt();
+  expect_true(trailing != nullptr,
+              "parsing should continue after the range-for declaration scope ends");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_switch_condition_decl_uses_case_scope_without_leaking() {
+  c4c::Lexer lexer("switch (Alias value = 1) { default: value = 2; }\n"
+                   "value = 3;\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  c4c::Node* stmt = parser.parse_stmt();
+  expect_true(stmt != nullptr && stmt->kind == c4c::NK_BLOCK,
+              "switch-condition declarations should parse as a synthetic block");
+  expect_eq_int(stmt->n_children, 2,
+                "switch-condition declaration blocks should contain the declaration and the wrapped switch statement");
+  expect_true(stmt->children[0] != nullptr &&
+                  stmt->children[0]->kind == c4c::NK_DECL,
+              "switch-condition declarations should materialize a declaration node");
+  expect_true(stmt->children[1] != nullptr &&
+                  stmt->children[1]->kind == c4c::NK_SWITCH,
+              "switch-condition declaration blocks should wrap the parsed switch statement");
+  expect_true(stmt->children[1]->body != nullptr &&
+                  stmt->children[1]->body->kind == c4c::NK_BLOCK,
+              "switch-condition declarations should keep the switch body attached");
+  expect_true(parser.find_visible_var_type("value") == nullptr,
+              "switch-condition declaration bindings should not leak after the statement finishes");
+
+  c4c::Node* trailing = parser.parse_stmt();
+  expect_true(trailing != nullptr,
+              "parsing should continue after the switch-condition declaration scope ends");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback() {
+  c4c::Lexer lexer("typedef ForwardDecl Alias;\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* decl = parser.parse_top_level();
+  expect_true(decl == nullptr,
+              "top-level typedef fallback should stay bookkeeping-only after registering the alias");
+
+  const c4c::TypeSpec* alias_ts = parser.find_typedef_type("Alias");
+  expect_true(alias_ts != nullptr && alias_ts->base == c4c::TB_TYPEDEF,
+              "top-level typedef fallback should register the alias in the parser typedef table");
+  expect_eq(alias_ts->tag, "ForwardDecl",
+            "registered top-level typedef aliases should keep the unresolved placeholder base");
+}
+
+void test_parser_block_local_bindings_do_not_leak_into_later_ctor_init_probes() {
+  c4c::Lexer lexer("struct Box { Box(int); };\n"
+                   "int main() {\n"
+                   "  {\n"
+                   "    typedef int Alias;\n"
+                   "    int source = 7;\n"
+                   "  }\n"
+                   "  Box alias_copy(Alias(other));\n"
+                   "  Box value(source(other));\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "block-local leak regression should parse as a program");
+  expect_eq_int(program->n_children, 2,
+                "the block-local leak regression should contain the record definition and main");
+
+  c4c::Node* main_fn = program->children[1];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the block-local leak regression should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 3,
+                "main should retain the inner block plus both post-block ambiguous declarations");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_BLOCK,
+              "the inner scope should remain an explicit block");
+  expect_true(main_fn->body->children[1] != nullptr &&
+                  main_fn->body->children[1]->kind == c4c::NK_EMPTY,
+              "out-of-scope typedef names should not survive into later ctor-init probes");
+  expect_true(main_fn->body->children[2] != nullptr &&
+                  main_fn->body->children[2]->kind == c4c::NK_EMPTY,
+              "out-of-scope value names should not survive into later ctor-init probes");
+}
+
+void test_parser_local_ctor_init_probe_balances_unresolved_param_and_value_expr_shapes() {
+  c4c::Lexer lexer("struct Box { Box(int); };\n"
+                   "int main() {\n"
+                   "  Box copy(Value other);\n"
+                   "  Box value(source & other);\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "balanced ctor-init probe regression should parse as a program");
+  expect_eq_int(program->n_children, 2,
+                "the regression program should contain the record definition and main");
+
+  c4c::Node* main_fn = program->children[1];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the regression program should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 2,
+                "main should retain both ambiguous local declarations");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_EMPTY,
+              "unresolved named-parameter forms should remain function declarations");
+  expect_true(main_fn->body->children[1] != nullptr &&
+                  main_fn->body->children[1]->kind == c4c::NK_DECL,
+              "value-expression direct-init forms should stay declarations");
+  expect_eq(main_fn->body->children[1]->name, "value",
+            "value-expression direct-init forms should keep their declarator spelling");
+}
+
+void test_parser_local_ctor_init_probe_balances_parenthesized_param_and_value_call_shapes() {
+  c4c::Lexer lexer("struct Box { Box(int); };\n"
+                   "int main() {\n"
+                   "  int source;\n"
+                   "  Box copy(Value(other));\n"
+                   "  Box value(source(other));\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "parenthesized ctor-init probe regression should parse as a program");
+  expect_eq_int(program->n_children, 2,
+                "the parenthesized regression program should contain the record definition and main");
+
+  c4c::Node* main_fn = program->children[1];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the parenthesized regression program should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 3,
+                "main should retain the local source declaration and both ambiguous declarations");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_DECL,
+              "the local source declaration should remain a declaration");
+  expect_true(main_fn->body->children[1] != nullptr &&
+                  main_fn->body->children[1]->kind == c4c::NK_EMPTY,
+              "parenthesized unresolved named-parameter forms should remain function declarations");
+  expect_true(main_fn->body->children[2] != nullptr &&
+                  main_fn->body->children[2]->kind == c4c::NK_DECL,
+              "known visible value call-like forms should stay declarations");
+  expect_eq(main_fn->body->children[2]->name, "value",
+            "known visible value call-like forms should keep their declarator spelling");
+}
+
+void test_parser_local_ctor_init_probe_preserves_visible_head_handoff_boundary() {
+  c4c::Lexer lexer("struct Box { Box(int); };\n"
+                   "int source(int value) { return value; }\n"
+                   "namespace ns {\n"
+                   "int sink(int value) { return value; }\n"
+                   "}\n"
+                   "int main() {\n"
+                   "  int payload = 7;\n"
+                   "  Box copy(Value(other));\n"
+                   "  Box value(source(payload));\n"
+                   "  Box qualified_copy(ns::Value(other));\n"
+                   "  Box qualified_value(ns::sink(payload));\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "visible-head handoff regression should parse as a program");
+  expect_eq_int(program->n_children, 4,
+                "the visible-head handoff regression should contain the record, helper, namespace, and main");
+
+  c4c::Node* main_fn = program->children[3];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the visible-head handoff regression should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 5,
+                "main should retain the payload declaration and the focused handoff declarations");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_DECL,
+              "the payload declaration should remain a declaration");
+  expect_true(main_fn->body->children[1] != nullptr &&
+                  main_fn->body->children[1]->kind == c4c::NK_EMPTY,
+              "visible type heads should remain function declarations at the handoff boundary");
+  expect_true(main_fn->body->children[2] != nullptr &&
+                  main_fn->body->children[2]->kind == c4c::NK_DECL,
+              "visible value heads should stay ctor-init declarations at the handoff boundary");
+  expect_eq(main_fn->body->children[2]->name, "value",
+            "visible value handoff declarations should keep their declarator spelling");
+  expect_true(main_fn->body->children[3] != nullptr &&
+                  main_fn->body->children[3]->kind == c4c::NK_EMPTY,
+              "qualified visible type heads should remain function declarations at the handoff boundary");
+  expect_true(main_fn->body->children[4] != nullptr &&
+                  main_fn->body->children[4]->kind == c4c::NK_DECL,
+              "qualified visible value heads should stay ctor-init declarations at the handoff boundary");
+  expect_eq(main_fn->body->children[4]->name, "qualified_value",
+            "qualified visible value handoff declarations should keep their declarator spelling");
+}
+
+void test_parser_local_ctor_init_probe_balances_grouped_pointer_param_and_value_call_shapes() {
+  c4c::Lexer lexer("struct Box { Box(int*); };\n"
+                   "int deref(int* p) { return p ? *p : 0; }\n"
+                   "int main() {\n"
+                   "  int payload = 7;\n"
+                   "  int* source = &payload;\n"
+                   "  Box copy(Value((*other)));\n"
+                   "  Box value(source((*other)));\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "grouped pointer ctor-init probe regression should parse as a program");
+  expect_eq_int(program->n_children, 3,
+                "the grouped-pointer regression program should contain the record, helper, and main");
+
+  c4c::Node* main_fn = program->children[2];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the grouped-pointer regression program should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 4,
+                "main should retain the local payload/source declarations and both ambiguous declarations");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_DECL,
+              "the payload declaration should remain a declaration");
+  expect_true(main_fn->body->children[1] != nullptr &&
+                  main_fn->body->children[1]->kind == c4c::NK_DECL,
+              "the source pointer declaration should remain a declaration");
+  expect_true(main_fn->body->children[2] != nullptr &&
+                  main_fn->body->children[2]->kind == c4c::NK_EMPTY,
+              "grouped pointer unresolved named-parameter forms should remain function declarations");
+  expect_true(main_fn->body->children[3] != nullptr &&
+                  main_fn->body->children[3]->kind == c4c::NK_DECL,
+              "known visible value grouped-call forms should stay declarations");
+  expect_eq(main_fn->body->children[3]->name, "value",
+            "known visible value grouped-call forms should keep their declarator spelling");
+}
+
+void test_parser_local_ctor_init_probe_balances_template_param_and_value_call_shapes() {
+  c4c::Lexer lexer("struct Box { Box(int); };\n"
+                   "template<typename T>\n"
+                   "int source(T value) { return value; }\n"
+                   "int main() {\n"
+                   "  int payload = 7;\n"
+                   "  Box copy(Value<int>(other));\n"
+                   "  Box value(source<int>(payload));\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "template ctor-init probe regression should parse as a program");
+  expect_eq_int(program->n_children, 3,
+                "the template regression program should contain the record, helper, and main");
+
+  c4c::Node* main_fn = program->children[2];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the template regression program should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 3,
+                "main should retain the payload declaration and both ambiguous declarations");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_DECL,
+              "the payload declaration should remain a declaration");
+  expect_true(main_fn->body->children[1] != nullptr &&
+                  main_fn->body->children[1]->kind == c4c::NK_EMPTY,
+              "template-headed unresolved named-parameter forms should remain function declarations");
+  expect_true(main_fn->body->children[2] != nullptr &&
+                  main_fn->body->children[2]->kind == c4c::NK_DECL,
+              "known visible value template-call forms should stay declarations");
+  expect_eq(main_fn->body->children[2]->name, "value",
+            "known visible value template-call forms should keep their declarator spelling");
+}
+
+void test_parser_local_ctor_init_probe_balances_qualified_param_and_value_call_shapes() {
+  c4c::Lexer lexer("struct Box { Box(int); };\n"
+                   "namespace ns {\n"
+                   "template<typename T>\n"
+                   "int source(T value) { return value; }\n"
+                   "int sink(int value) { return value; }\n"
+                   "}\n"
+                   "int main() {\n"
+                   "  int payload = 7;\n"
+                   "  Box copy(ns::Value(other));\n"
+                   "  Box templ_copy(ns::Value<int>(other));\n"
+                   "  Box value(ns::sink(payload));\n"
+                   "  Box templ_value(ns::source<int>(payload));\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "qualified ctor-init probe regression should parse as a program");
+  expect_eq_int(program->n_children, 3,
+                "the qualified regression program should contain the record, namespace contents, and main");
+
+  c4c::Node* main_fn = program->children[2];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the qualified regression program should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 5,
+                "main should retain the payload declaration plus both qualified ambiguous pairs");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_DECL,
+              "the payload declaration should remain a declaration");
+  expect_true(main_fn->body->children[1] != nullptr &&
+                  main_fn->body->children[1]->kind == c4c::NK_EMPTY,
+              "qualified unresolved named-parameter forms should remain function declarations");
+  expect_true(main_fn->body->children[2] != nullptr &&
+                  main_fn->body->children[2]->kind == c4c::NK_EMPTY,
+              "qualified template-headed unresolved named-parameter forms should remain function declarations");
+  expect_true(main_fn->body->children[3] != nullptr &&
+                  main_fn->body->children[3]->kind == c4c::NK_DECL,
+              "qualified visible value call-like forms should stay declarations");
+  expect_eq(main_fn->body->children[3]->name, "value",
+            "qualified visible value call-like forms should keep their declarator spelling");
+  expect_true(main_fn->body->children[4] != nullptr &&
+                  main_fn->body->children[4]->kind == c4c::NK_DECL,
+              "qualified visible value template-call forms should stay declarations");
+  expect_eq(main_fn->body->children[4]->name, "templ_value",
+            "qualified visible value template-call forms should keep their declarator spelling");
+}
+
+void test_parser_local_ctor_init_probe_balances_qualified_member_access_value_shapes() {
+  c4c::Lexer lexer("struct Box { Box(int); };\n"
+                   "namespace ns {\n"
+                   "struct Payload {\n"
+                   "  int value;\n"
+                   "};\n"
+                   "Payload payload;\n"
+                   "}\n"
+                   "int main() {\n"
+                   "  Box copy(ns::Value(other));\n"
+                   "  Box value(ns::payload.value);\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "qualified member-access ctor-init regression should parse as a program");
+  expect_eq_int(program->n_children, 4,
+                "the qualified member-access regression should contain the record, namespace payload items, and main");
+
+  c4c::Node* main_fn = program->children[3];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the qualified member-access regression should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 2,
+                "main should retain both ambiguous qualified constructor-style declarations");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_EMPTY,
+              "qualified unresolved named-parameter forms should remain function declarations");
+  expect_true(main_fn->body->children[1] != nullptr &&
+                  main_fn->body->children[1]->kind == c4c::NK_DECL,
+              "qualified visible member-access forms should stay declarations");
+  expect_eq(main_fn->body->children[1]->name, "value",
+            "qualified visible member-access forms should keep their declarator spelling");
+}
+
+void test_parser_out_of_class_ctor_body_keeps_parameter_scope_for_ctor_init_probe() {
+  c4c::Lexer lexer("struct Box {\n"
+                   "  Box(int source);\n"
+                   "};\n"
+                   "Box::Box(int source) {\n"
+                   "  Box value(source(other));\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "out-of-class constructor body regression should parse as a program");
+  expect_eq_int(program->n_children, 2,
+                "the out-of-class constructor body regression should contain the record and constructor definition");
+
+  c4c::Node* ctor_fn = program->children[1];
+  expect_true(ctor_fn != nullptr && ctor_fn->kind == c4c::NK_FUNCTION,
+              "the out-of-class constructor body regression should include a parsed constructor");
+  expect_true(ctor_fn->body != nullptr && ctor_fn->body->kind == c4c::NK_BLOCK,
+              "the constructor definition should keep its block body");
+  expect_eq_int(ctor_fn->body->n_children, 1,
+                "the constructor body should retain the ambiguous value-like declaration");
+  expect_true(ctor_fn->body->children[0] != nullptr &&
+                  ctor_fn->body->children[0]->kind == c4c::NK_DECL,
+              "constructor parameters should remain visible while parsing the body");
+  expect_eq(ctor_fn->body->children[0]->name, "value",
+            "the constructor body should keep the declarator spelling for the value-like declaration");
+}
+
+void test_parser_stmt_disambiguates_global_qualified_template_call_as_expr() {
+  c4c::Lexer lexer("namespace api {\n"
+                   "template<typename T>\n"
+                   "int source(T value) { return value; }\n"
+                   "}\n"
+                   "int main() {\n"
+                   "  int payload = 7;\n"
+                   "  ::api::source<int>(payload);\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "global-qualified template call regression should parse as a program");
+  expect_eq_int(program->n_children, 2,
+                "the global-qualified template regression should contain the namespace contents and main");
+
+  c4c::Node* main_fn = program->children[1];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the global-qualified template regression should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 2,
+                "main should retain the local payload declaration and the expression statement");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_DECL,
+              "the payload declaration should remain a declaration");
+  expect_true(main_fn->body->children[1] != nullptr &&
+                  main_fn->body->children[1]->kind == c4c::NK_EXPR_STMT,
+              "global-qualified template calls should stay expression statements");
+}
+
+void test_parser_stmt_disambiguates_global_qualified_operator_call_as_expr() {
+  c4c::Lexer lexer("struct BaseImpl {\n"
+                   "  BaseImpl& operator=(const BaseImpl&) { return *this; }\n"
+                   "};\n"
+                   "int main() {\n"
+                   "  BaseImpl lhs;\n"
+                   "  BaseImpl rhs;\n"
+                   "  ::BaseImpl::operator=(lhs, rhs);\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "global-qualified operator regression should parse as a program");
+  expect_eq_int(program->n_children, 2,
+                "the global-qualified operator regression should contain the record and main");
+
+  c4c::Node* main_fn = program->children[1];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the global-qualified operator regression should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 3,
+                "main should retain the local declarations and the operator expression statement");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_DECL,
+              "the lhs declaration should remain a declaration");
+  expect_true(main_fn->body->children[1] != nullptr &&
+                  main_fn->body->children[1]->kind == c4c::NK_DECL,
+              "the rhs declaration should remain a declaration");
+  expect_true(main_fn->body->children[2] != nullptr &&
+                  main_fn->body->children[2]->kind == c4c::NK_EXPR_STMT,
+              "global-qualified operator calls should stay expression statements");
+}
+
+void test_parser_stmt_prefers_expression_for_member_access_after_visible_type_head() {
+  c4c::Lexer lexer("typedef int allocator;\n"
+                   "int main() {\n"
+                   "  allocator.construct(1);\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "member-access after a visible type head should parse as a program");
+  expect_eq_int(program->n_children, 1,
+                "the member-access regression should retain the parsed main function");
+
+  c4c::Node* main_fn = program->children[0];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the member-access regression should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 1,
+                "main should retain the member-access expression statement");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_EXPR_STMT,
+              "member-access after a visible type head should stay an expression statement");
+}
+
+void test_parser_stmt_disambiguates_qualified_visible_value_member_access_as_expr() {
+  c4c::Lexer lexer("namespace api {\n"
+                   "struct Payload {\n"
+                   "  int value;\n"
+                   "};\n"
+                   "Payload payload;\n"
+                   "}\n"
+                   "int main() {\n"
+                   "  return api::payload.value;\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "qualified visible-value member access regression should parse as a program");
+  expect_eq_int(program->n_children, 3,
+                "the qualified visible-value member access regression should contain the namespace and main");
+
+  c4c::Node* main_fn = program->children[2];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the qualified visible-value member access regression should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 1,
+                "main should retain the return statement");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_RETURN,
+              "qualified visible-value member access should remain on the expression path");
+}
+
+void test_parser_stmt_disambiguates_qualified_visible_value_member_access_assignment_as_expr() {
+  c4c::Lexer lexer("namespace api {\n"
+                   "struct Payload {\n"
+                   "  int value;\n"
+                   "};\n"
+                   "Payload payload;\n"
+                   "}\n"
+                   "int main() {\n"
+                   "  api::payload.value = 9;\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "qualified visible-value member assignment regression should parse as a program");
+  expect_eq_int(program->n_children, 3,
+                "the qualified visible-value member assignment regression should contain the namespace and main");
+
+  c4c::Node* main_fn = program->children[2];
+  expect_true(main_fn != nullptr && main_fn->kind == c4c::NK_FUNCTION,
+              "the qualified visible-value member assignment regression should include a parsed main function");
+  expect_true(main_fn->body != nullptr && main_fn->body->kind == c4c::NK_BLOCK,
+              "main should parse with a block body");
+  expect_eq_int(main_fn->body->n_children, 1,
+                "main should retain the member assignment statement");
+  expect_true(main_fn->body->children[0] != nullptr &&
+                  main_fn->body->children[0]->kind == c4c::NK_EXPR_STMT,
+              "qualified visible-value member assignments should remain on the expression path");
 }
 
 void test_parser_template_member_suffix_probe_uses_token_spelling() {
@@ -701,6 +2029,214 @@ void test_parser_template_type_arg_probes_use_token_spelling() {
   parser.pop_template_scope();
 }
 
+void test_parser_template_scope_type_param_prefers_text_id_over_spelling() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId param_text = texts.intern("T");
+  const c4c::TextId other_text = texts.intern("Other");
+  parser.push_template_scope(
+      c4c::Parser::TemplateScopeKind::FreeFunctionTemplate,
+      {{.name_text_id = param_text, .name = "corrupted"}});
+
+  expect_true(parser.is_template_scope_type_param(param_text, "corrupted"),
+              "template-scope lookup should match the semantic TextId even when spelling is stale");
+  expect_true(!parser.is_template_scope_type_param(other_text, "T"),
+              "template-scope lookup should not fall back to spelling when a TextId is already available");
+  parser.pop_template_scope();
+
+  parser.push_template_scope(
+      c4c::Parser::TemplateScopeKind::FreeFunctionTemplate,
+      {{.name = "T"}});
+  expect_true(parser.is_template_scope_type_param("T"),
+              "spelling-only template-scope lookups should still work when no TextId is available");
+  parser.pop_template_scope();
+}
+
+void test_parser_template_type_arg_uses_visible_scope_local_alias() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  const c4c::TextId target_text = texts.intern("Target");
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(target_text, target_ts);
+  parser.namespace_state_.using_value_aliases[0][alias_text] = {
+      parser.intern_semantic_name_key("Target"), "corrupted"};
+
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+  };
+  c4c::Parser::TemplateArgParseResult arg{};
+  expect_true(parser.try_parse_template_type_arg(&arg),
+              "template type-argument probes should treat visible lexical aliases as type heads");
+  expect_true(!arg.is_value,
+              "visible lexical aliases should stay classified as type arguments");
+  expect_true(arg.type.base == c4c::TB_INT,
+              "visible lexical aliases should resolve to the bound scope-local type");
+  expect_true(arg.type.tag == nullptr,
+              "visible lexical alias type-argument parsing should not fabricate a flat typedef tag");
+  expect_eq_int(parser.pos_, 1,
+                "visible lexical alias type-argument parsing should stop before the template close");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_synthesized_typedef_binding_unregisters_by_text_id() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId synth_text_id = texts.intern("SynthParam");
+  parser.register_synthesized_typedef_binding(synth_text_id, "corrupted");
+  expect_true(parser.is_typedef_name(synth_text_id, "SynthParam"),
+              "synthesized typedef registration should prefer the semantic TextId");
+
+  parser.unregister_typedef_binding(synth_text_id, "still_corrupted");
+  expect_true(!parser.is_typedef_name(synth_text_id, "SynthParam"),
+              "synthesized typedef cleanup should remove the semantic TextId binding");
+}
+
+void test_parser_template_type_arg_prefers_local_visible_typedef_text_id() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  c4c::TypeSpec global_alias_ts{};
+  global_alias_ts.array_size = -1;
+  global_alias_ts.inner_rank = -1;
+  global_alias_ts.base = c4c::TB_CHAR;
+  parser.register_typedef_binding("Alias", global_alias_ts, true);
+
+  c4c::TypeSpec local_alias_ts{};
+  local_alias_ts.array_size = -1;
+  local_alias_ts.inner_rank = -1;
+  local_alias_ts.base = c4c::TB_DOUBLE;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, local_alias_ts);
+  parser.tokens_ = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+  };
+  parser.pos_ = 0;
+
+  c4c::Parser::TemplateArgParseResult arg{};
+  expect_true(parser.try_parse_template_type_arg(&arg),
+              "template type-argument probes should prefer the local visible typedef TextId path before spelling-based fallback");
+  expect_true(!arg.is_value,
+              "local visible typedef template arguments should stay classified as type arguments");
+  expect_true(arg.type.base == c4c::TB_DOUBLE,
+              "local visible typedef template arguments should resolve to the local binding");
+  expect_eq_int(parser.pos_, 1,
+                "local visible typedef template arguments should stop before the template close");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+
+  const std::vector<c4c::Token> toks = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "__is_same"),
+      parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Comma, ","),
+      parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
+      parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
+  };
+
+  long long value = 0;
+  expect_true(parser.eval_deferred_nttp_expr_tokens("Trait", toks, {}, {}, &value),
+              "deferred NTTP builtin traits should resolve scope-local aliases through token TextId lookup");
+  expect_eq_int(value, 1,
+                "deferred NTTP builtin traits should treat the scope-local alias as the bound type");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
+void test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases() {
+  c4c::Lexer lexer(
+      "template<typename T>\n"
+      "struct Trait { static constexpr int value = 7; };\n",
+      c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  (void)parser.parse_top_level();
+  expect_true(parser.find_template_struct_primary("Trait") != nullptr,
+              "template member lookup fixture should register the template primary");
+
+  c4c::TypeSpec alias_ts{};
+  alias_ts.array_size = -1;
+  alias_ts.inner_rank = -1;
+  alias_ts.base = c4c::TB_INT;
+
+  c4c::TypeSpec trait_alias_ts{};
+  trait_alias_ts.array_size = -1;
+  trait_alias_ts.inner_rank = -1;
+  trait_alias_ts.base = c4c::TB_STRUCT;
+  trait_alias_ts.tag = arena.strdup("Trait");
+
+  const c4c::TextId alias_text = lexer.text_table().intern("Alias");
+  const c4c::TextId trait_alias_text = lexer.text_table().intern("AliasTrait");
+  parser.push_local_binding_scope();
+  parser.bind_local_typedef(alias_text, alias_ts);
+  parser.bind_local_typedef(trait_alias_text, trait_alias_ts);
+
+  const std::vector<c4c::Token> toks = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "AliasTrait"),
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+  };
+
+  long long value = 0;
+  expect_true(parser.eval_deferred_nttp_expr_tokens("Trait", toks, {}, {}, &value),
+              "deferred NTTP member lookup should resolve scope-local template aliases and template arguments through token TextId lookup");
+  expect_eq_int(value, 7,
+                "deferred NTTP member lookup should preserve the instantiated static member value");
+
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible typedef scope");
+}
+
 void test_parser_alias_template_value_probes_use_token_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -708,7 +2244,9 @@ void test_parser_alias_template_value_probes_use_token_spelling() {
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
-  parser.alias_template_info_["Alias"] = {};
+  parser.template_state_.alias_template_info[parser.alias_template_key_in_context(
+      parser.current_namespace_context_id(), parser.find_parser_text_id("Alias"),
+      "Alias")] = {};
   parser.tokens_ = {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
       parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
@@ -728,9 +2266,14 @@ void test_parser_alias_template_value_probes_use_token_spelling() {
   alias_ts.array_size = -1;
   alias_ts.inner_rank = -1;
   alias_ts.base = c4c::TB_INT;
+  const c4c::TextId alias_text = resolved_texts.intern("Alias");
   resolved_parser.register_typedef_binding("ns::Alias", alias_ts, true);
-  resolved_parser.using_value_aliases_[0]["Alias"] = "ns::Alias";
-  resolved_parser.alias_template_info_["ns::Alias"] = {};
+  resolved_parser.namespace_state_.using_value_aliases[0][alias_text] = {
+      resolved_parser.intern_semantic_name_key("ns::Alias"), "corrupted"};
+  resolved_parser.template_state_.alias_template_info
+      [resolved_parser.alias_template_key_in_context(
+          resolved_parser.current_namespace_context_id(),
+          resolved_parser.find_parser_text_id("ns::Alias"), "ns::Alias")] = {};
   resolved_parser.tokens_ = {
       resolved_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
       resolved_parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
@@ -741,6 +2284,31 @@ void test_parser_alias_template_value_probes_use_token_spelling() {
   };
   expect_true(!resolved_parser.is_clearly_value_template_arg(nullptr, 0),
               "resolved alias-template probes should use parser-owned spelling");
+}
+
+void test_parser_alias_template_info_prefers_structured_key_over_recovery() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  const c4c::QualifiedNameKey alias_key = parser.alias_template_key_in_context(
+      parser.current_namespace_context_id(), alias_text, "Alias");
+  c4c::ParserAliasTemplateInfo info;
+  info.param_names = {"T"};
+  info.aliased_type.array_size = -1;
+  info.aliased_type.inner_rank = -1;
+  info.aliased_type.base = c4c::TB_INT;
+  parser.template_state_.alias_template_info[alias_key] = info;
+  parser.namespace_state_.using_value_aliases[0][alias_text] = {
+      parser.intern_semantic_name_key("Bridge"), "Bridge"};
+
+  const c4c::ParserAliasTemplateInfo* found =
+      parser.find_alias_template_info_in_context(
+          parser.current_namespace_context_id(), alias_text, "Alias");
+  expect_true(found != nullptr && found->aliased_type.base == c4c::TB_INT,
+              "alias-template info lookup should prefer the structured key before any rendered-name recovery");
 }
 
 void test_parser_typename_template_parameter_probe_uses_token_spelling() {
@@ -819,9 +2387,53 @@ int main() {
   test_parser_exception_specs_and_attributes_use_token_spelling();
   test_parser_typeof_like_probes_use_token_spelling();
   test_parser_parse_base_type_identifier_probes_use_token_spelling();
+  test_parser_is_type_start_uses_local_visible_typedef_scope();
+  test_parser_local_visible_typedef_cast_uses_scope_lookup();
+  test_parser_decode_type_ref_text_uses_local_visible_scope_lookup();
+  test_parser_dependent_typename_uses_local_visible_owner_alias();
+  test_parser_is_typedef_name_uses_local_visible_scope_lookup();
+  test_parser_conflicting_user_typedef_binding_uses_local_visible_scope_lookup();
+  test_parser_record_body_context_keeps_visible_template_origin_lookup_local();
+  test_parser_visible_type_alias_uses_scope_local_typedef_facade();
+  test_parser_visible_type_alias_resolves_scope_local_target_type();
+  test_parser_visible_type_alias_uses_token_text_id_scope_lookup();
+  test_parser_visible_type_alias_keeps_qualified_target_resolution();
+  test_parser_resolve_typedef_type_chain_uses_local_visible_scope_lookup();
+  test_parser_using_value_import_keeps_structured_target_key();
+  test_parser_global_using_value_import_keeps_global_target_resolution();
+  test_parser_visible_value_alias_resolves_scope_local_target_type();
+  test_parser_register_local_bindings_keep_flat_tables_empty();
+  test_parser_if_condition_decl_uses_local_visible_typedef_scope();
+  test_parser_if_condition_decl_scope_does_not_leak_bindings();
+  test_parser_for_init_decl_uses_loop_lifetime_local_scope();
+  test_parser_while_condition_decl_uses_loop_lifetime_local_scope();
+  test_parser_range_for_decl_uses_loop_lifetime_local_scope();
+  test_parser_switch_condition_decl_uses_case_scope_without_leaking();
+  test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback();
+  test_parser_block_local_bindings_do_not_leak_into_later_ctor_init_probes();
+  test_parser_local_ctor_init_probe_balances_unresolved_param_and_value_expr_shapes();
+  test_parser_local_ctor_init_probe_balances_parenthesized_param_and_value_call_shapes();
+  test_parser_local_ctor_init_probe_preserves_visible_head_handoff_boundary();
+  test_parser_local_ctor_init_probe_balances_grouped_pointer_param_and_value_call_shapes();
+  test_parser_local_ctor_init_probe_balances_template_param_and_value_call_shapes();
+  test_parser_local_ctor_init_probe_balances_qualified_param_and_value_call_shapes();
+  test_parser_local_ctor_init_probe_balances_qualified_member_access_value_shapes();
+  test_parser_out_of_class_ctor_body_keeps_parameter_scope_for_ctor_init_probe();
+  test_parser_stmt_disambiguates_global_qualified_template_call_as_expr();
+  test_parser_stmt_disambiguates_global_qualified_operator_call_as_expr();
+  test_parser_stmt_prefers_expression_for_member_access_after_visible_type_head();
+  test_parser_stmt_disambiguates_qualified_visible_value_member_access_as_expr();
+  test_parser_stmt_disambiguates_qualified_visible_value_member_access_assignment_as_expr();
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
+  test_parser_template_scope_type_param_prefers_text_id_over_spelling();
+  test_parser_template_type_arg_uses_visible_scope_local_alias();
+  test_parser_synthesized_typedef_binding_unregisters_by_text_id();
+  test_parser_template_type_arg_prefers_local_visible_typedef_text_id();
+  test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias();
+  test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases();
   test_parser_alias_template_value_probes_use_token_spelling();
+  test_parser_alias_template_info_prefers_structured_key_over_recovery();
   test_parser_typename_template_parameter_probe_uses_token_spelling();
   test_parser_post_pointer_qualifier_probes_use_token_spelling();
   test_parser_qualified_declarator_name_uses_token_spelling();

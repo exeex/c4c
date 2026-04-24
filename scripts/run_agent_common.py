@@ -37,7 +37,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--cli",
         choices=("claude", "codex", "auto"),
-        default=os.environ.get("AGENT_CLI", "claude"),
+        default=os.environ.get("AGENT_CLI", "codex"),
         help="Agent CLI backend to use. Defaults to AGENT_CLI or 'claude'.",
     )
     parser.add_argument(

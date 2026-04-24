@@ -7,6 +7,7 @@ typedef int result_t;
 int adjust(int x) {
     result_t result_t = x;
     result_t = x + 1;
+    result_t(result_t);
     return result_t;
 }
 

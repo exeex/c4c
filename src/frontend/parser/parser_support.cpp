@@ -8,22 +8,23 @@ namespace c4c {
 // ── ParserSnapshot save / restore ────────────────────────────────────────────
 
 Parser::ParserSymbolTables& Parser::parser_symbol_tables() {
-    return parser_name_tables_;
+    return shared_lookup_state_.parser_name_tables;
 }
 
 const Parser::ParserSymbolTables& Parser::parser_symbol_tables() const {
-    return parser_name_tables_;
+    return shared_lookup_state_.parser_name_tables;
 }
 
 Parser::ParserLiteSnapshot Parser::save_lite_state() const {
     ParserLiteSnapshot snap;
     snap.pos = pos_;
-    if (last_resolved_typedef_text_id_ != kInvalidText) {
+    if (active_context_state_.last_resolved_typedef_text_id != kInvalidText) {
         snap.last_resolved_typedef.kind = TentativeTextRefKind::TextId;
-        snap.last_resolved_typedef.text_id = last_resolved_typedef_text_id_;
+        snap.last_resolved_typedef.text_id =
+            active_context_state_.last_resolved_typedef_text_id;
     }
-    snap.template_arg_expr_depth = template_arg_expr_depth_;
-    snap.token_mutation_count = token_mutations_.size();
+    snap.template_arg_expr_depth = active_context_state_.template_arg_expr_depth;
+    snap.token_mutation_count = core_input_state_.token_mutations.size();
     return snap;
 }
 
@@ -31,15 +32,18 @@ void Parser::restore_lite_state(const ParserLiteSnapshot& snap) {
     pos_ = snap.pos;
     clear_last_resolved_typedef();
     if (snap.last_resolved_typedef.kind == TentativeTextRefKind::TextId &&
-        snap.last_resolved_typedef.text_id != kInvalidText && token_texts_) {
-        set_last_resolved_typedef(
-            token_texts_->lookup(snap.last_resolved_typedef.text_id));
+        snap.last_resolved_typedef.text_id != kInvalidText &&
+        shared_lookup_state_.token_texts) {
+        set_last_resolved_typedef(shared_lookup_state_.token_texts->lookup(
+            snap.last_resolved_typedef.text_id));
     }
-    template_arg_expr_depth_ = snap.template_arg_expr_depth;
-    while (token_mutations_.size() > snap.token_mutation_count) {
-        const TokenMutation& mutation = token_mutations_.back();
+    active_context_state_.template_arg_expr_depth =
+        snap.template_arg_expr_depth;
+    while (core_input_state_.token_mutations.size() > snap.token_mutation_count) {
+        const TokenMutation& mutation =
+            core_input_state_.token_mutations.back();
         tokens_[mutation.pos] = mutation.token;
-        token_mutations_.pop_back();
+        core_input_state_.token_mutations.pop_back();
     }
 }
 
@@ -48,10 +52,11 @@ Parser::ParserSnapshot Parser::save_state() const {
     snap.lite = save_lite_state();
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
     snap.symbol_tables = parser_symbol_tables();
-    snap.non_atom_typedefs = non_atom_typedefs_;
-    snap.non_atom_user_typedefs = non_atom_user_typedefs_;
-    snap.non_atom_typedef_types = non_atom_typedef_types_;
-    snap.non_atom_var_types = non_atom_var_types_;
+    snap.non_atom_typedefs = binding_state_.non_atom_typedefs;
+    snap.non_atom_user_typedefs = binding_state_.non_atom_user_typedefs;
+    snap.non_atom_typedef_types = binding_state_.non_atom_typedef_types;
+    snap.non_atom_var_types = binding_state_.non_atom_var_types;
+    snap.lexical_scope_state = lexical_scope_state_;
 #endif
     return snap;
 }
@@ -60,27 +65,45 @@ void Parser::restore_state(const ParserSnapshot& snap) {
     restore_lite_state(snap.lite);
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
     parser_symbol_tables() = snap.symbol_tables;
-    parser_name_tables_.symbols = &parser_symbols_;
-    non_atom_typedefs_ = snap.non_atom_typedefs;
-    non_atom_user_typedefs_ = snap.non_atom_user_typedefs;
-    non_atom_typedef_types_ = snap.non_atom_typedef_types;
-    non_atom_var_types_ = snap.non_atom_var_types;
+    shared_lookup_state_.parser_name_tables.symbols =
+        &shared_lookup_state_.parser_symbols;
+    binding_state_.non_atom_typedefs = snap.non_atom_typedefs;
+    binding_state_.non_atom_user_typedefs = snap.non_atom_user_typedefs;
+    binding_state_.non_atom_typedef_types = snap.non_atom_typedef_types;
+    binding_state_.non_atom_var_types = snap.non_atom_var_types;
+    lexical_scope_state_ = snap.lexical_scope_state;
 #endif
 }
 
 
-bool eval_enum_expr(Node* n, const std::unordered_map<std::string, long long>& consts,
-                           long long* out) {
+static bool lookup_enum_const_value(const Node* n,
+                                    const ParserEnumConstTable& consts,
+                                    long long* out) {
+    if (!n || !out) return false;
+    if (n->unqualified_text_id != kInvalidText) {
+        const auto it = consts.find(n->unqualified_text_id);
+        if (it != consts.end()) {
+            *out = it->second;
+            return true;
+        }
+        return false;
+    }
+    if (n->name) {
+        // Compatibility fallback for AST nodes that still only carry spelling.
+        // Enum initializer identifiers should normally arrive with unqualified_text_id.
+    }
+    return false;
+}
+
+bool eval_enum_expr(Node* n, const ParserEnumConstTable& consts, long long* out) {
     if (!n || !out) return false;
     if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) { *out = n->ival; return true; }
     if (n->kind == NK_VAR && n->name) {
-        auto it = consts.find(n->name);
-        if (it != consts.end()) { *out = it->second; return true; }
-        return false;
+        return lookup_enum_const_value(n, consts, out);
     }
     if (n->kind == NK_CAST && n->left) return eval_enum_expr(n->left, consts, out);
     if (n->kind == NK_SIZEOF_TYPE) {
-        if (n->type.base == TB_TYPEDEF && n->type.tag && consts.count(n->type.tag) == 0) {
+        if (n->type.base == TB_TYPEDEF && n->type.tag) {
             return false;  // dependent or unresolved type
         }
         *out = sizeof_type_spec(n->type);
@@ -117,15 +140,16 @@ bool eval_enum_expr(Node* n, const std::unordered_map<std::string, long long>& c
 }
 
 bool is_dependent_enum_expr(Node* n,
-                            const std::unordered_map<std::string, long long>& consts) {
+                            const ParserEnumConstTable& consts) {
     if (!n) return false;
     if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) return false;
     if (n->kind == NK_VAR && n->name) {
-        if (consts.count(n->name) > 0) return false;
+        long long ignored = 0;
+        if (lookup_enum_const_value(n, consts, &ignored)) return false;
         return true;
     }
     if (n->kind == NK_SIZEOF_TYPE) {
-        return n->type.base == TB_TYPEDEF && n->type.tag && consts.count(n->type.tag) == 0;
+        return n->type.base == TB_TYPEDEF && n->type.tag;
     }
     if (n->kind == NK_SIZEOF_EXPR) {
         return true;
@@ -234,6 +258,9 @@ long long alignof_type_spec(const TypeSpec& ts) {
     return align_base(effective_scalar_base(ts), ts.ptr_level);
 }
 
+bool eval_const_int(Node* n, long long* out,
+    const std::unordered_map<std::string, Node*>* struct_map,
+    const std::unordered_map<TextId, long long>* named_consts);
 bool eval_const_int(Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* struct_map,
     const std::unordered_map<std::string, long long>* named_consts);
@@ -357,6 +384,101 @@ static bool compute_offsetof(const char* tag, const char* field_name,
                 if (f->type.array_dims[d] > 0) sz *= f->type.array_dims[d];
         }
         offset += sz;
+    }
+    return false;
+}
+
+template <typename NamedConstTable>
+static bool lookup_unqualified_const_int_binding(
+    const Node* n, const NamedConstTable* named_consts, long long* out) {
+    if (!n || !named_consts || !out) return false;
+    if (n->is_global_qualified || n->n_qualifier_segments != 0 ||
+        n->unqualified_text_id == kInvalidText) {
+        return false;
+    }
+    const auto it = named_consts->find(n->unqualified_text_id);
+    if (it == named_consts->end()) return false;
+    *out = it->second;
+    return true;
+}
+
+bool eval_const_int(Node* n, long long* out,
+    const std::unordered_map<std::string, Node*>* struct_map,
+    const std::unordered_map<TextId, long long>* named_consts) {
+    if (!n) return false;
+    if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) {
+        *out = n->ival;
+        return true;
+    }
+    if (n->kind == NK_VAR && n->name) {
+        return lookup_unqualified_const_int_binding(n, named_consts, out);
+    }
+    if (n->kind == NK_CAST && n->left) {
+        return eval_const_int(n->left, out, struct_map, named_consts);
+    }
+    if (n->kind == NK_OFFSETOF) {
+        if (n->type.base == TB_STRUCT || n->type.base == TB_UNION) {
+            return compute_offsetof(n->type.tag, n->name, struct_map, out);
+        }
+        return false;
+    }
+    if (n->kind == NK_ALIGNOF_TYPE) {
+        *out = field_align(n->type, struct_map);
+        return true;
+    }
+    if (n->kind == NK_SIZEOF_TYPE) {
+        long long sz = sizeof_type_spec(n->type);
+        if ((n->type.base == TB_STRUCT || n->type.base == TB_UNION) && n->type.tag) {
+            sz = struct_sizeof(n->type.tag, struct_map);
+        }
+        if (n->type.array_rank > 0) {
+            for (int i = 0; i < n->type.array_rank; ++i)
+                if (n->type.array_dims[i] > 0) sz *= n->type.array_dims[i];
+        }
+        *out = sz;
+        return true;
+    }
+    if (n->kind == NK_SIZEOF_EXPR) {
+        return false;
+    }
+    if (n->kind == NK_SIZEOF_PACK) {
+        return false;
+    }
+    if (n->kind == NK_UNARY && n->op && n->left) {
+        long long v;
+        if (!eval_const_int(n->left, &v, struct_map, named_consts)) return false;
+        if (strcmp(n->op, "-") == 0) { *out = -v; return true; }
+        if (strcmp(n->op, "+") == 0) { *out = v; return true; }
+        if (strcmp(n->op, "~") == 0) { *out = ~v; return true; }
+        if (strcmp(n->op, "!") == 0) { *out = !v; return true; }
+    }
+    if (n->kind == NK_BINOP && n->op) {
+        long long l, r;
+        if (!eval_const_int(n->left, &l, struct_map, named_consts)) return false;
+        if (!eval_const_int(n->right, &r, struct_map, named_consts)) return false;
+        if (strcmp(n->op, "+")  == 0) { *out = l + r; return true; }
+        if (strcmp(n->op, "-")  == 0) { *out = l - r; return true; }
+        if (strcmp(n->op, "*")  == 0) { *out = l * r; return true; }
+        if (strcmp(n->op, "/")  == 0 && r != 0) { *out = l / r; return true; }
+        if (strcmp(n->op, "%")  == 0 && r != 0) { *out = l % r; return true; }
+        if (strcmp(n->op, "<<") == 0) { *out = l << r; return true; }
+        if (strcmp(n->op, ">>") == 0) { *out = l >> r; return true; }
+        if (strcmp(n->op, "&")  == 0) { *out = l & r;  return true; }
+        if (strcmp(n->op, "|")  == 0) { *out = l | r;  return true; }
+        if (strcmp(n->op, "^")  == 0) { *out = l ^ r;  return true; }
+        if (strcmp(n->op, "<")  == 0) { *out = l < r;  return true; }
+        if (strcmp(n->op, "<=") == 0) { *out = l <= r; return true; }
+        if (strcmp(n->op, ">")  == 0) { *out = l > r;  return true; }
+        if (strcmp(n->op, ">=") == 0) { *out = l >= r; return true; }
+        if (strcmp(n->op, "==") == 0) { *out = l == r; return true; }
+        if (strcmp(n->op, "!=") == 0) { *out = l != r; return true; }
+        if (strcmp(n->op, "&&") == 0) { *out = (l && r); return true; }
+        if (strcmp(n->op, "||") == 0) { *out = (l || r); return true; }
+    }
+    if (n->kind == NK_TERNARY && n->cond && n->then_ && n->else_) {
+        long long c;
+        if (!eval_const_int(n->cond, &c, struct_map, named_consts)) return false;
+        return eval_const_int(c ? n->then_ : n->else_, out, struct_map, named_consts);
     }
     return false;
 }

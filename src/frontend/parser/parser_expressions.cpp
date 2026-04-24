@@ -83,7 +83,9 @@ Node* Parser::parse_expr() {
 Node* Parser::parse_assign_expr() {
     ParseContextGuard trace(this, __func__);
     Node* lhs = parse_ternary();
-    if (template_arg_expr_depth_ > 0 && check_template_close()) return lhs;
+    if (active_context_state_.template_arg_expr_depth > 0 &&
+        check_template_close())
+        return lhs;
     int ln = cur().line;
     TokenKind k = cur().kind;
     const char* op = nullptr;
@@ -140,7 +142,9 @@ Node* Parser::parse_ternary() {
 Node* Parser::parse_binary(int min_prec) {
     Node* lhs = parse_unary();
     while (true) {
-        if (template_arg_expr_depth_ > 0 && check_template_close()) break;
+        if (active_context_state_.template_arg_expr_depth > 0 &&
+            check_template_close())
+            break;
         int prec = bin_prec(cur().kind);
         if (prec < min_prec) break;
         TokenKind k = cur().kind;
@@ -179,18 +183,20 @@ Node* Parser::parse_sizeof_pack_expr(int ln) {
     expect(TokenKind::Ellipsis);
     expect(TokenKind::LParen);
 
-    int pack_start = pos_;
+    int pack_start = core_input_state_.pos;
     Node* pack_expr = nullptr;
     if (!check(TokenKind::RParen)) {
         pack_expr = parse_assign_expr();
     }
-    int pack_end = pos_;
+    int pack_end = core_input_state_.pos;
 
     expect(TokenKind::RParen);
 
     std::string pack_text;
-    for (int i = pack_start; i < pack_end && i < static_cast<int>(tokens_.size()); ++i) {
-        pack_text += token_spelling(tokens_[i]);
+    for (int i = pack_start; i < pack_end &&
+                    i < static_cast<int>(core_input_state_.tokens.size());
+         ++i) {
+        pack_text += token_spelling(core_input_state_.tokens[i]);
     }
 
     Node* n = make_node(NK_SIZEOF_PACK, ln);
@@ -274,8 +280,10 @@ Node* Parser::parse_unary() {
             consume();  // consume 'delete'
             bool is_array = false;
             if (check(TokenKind::LBracket) &&
-                pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                tokens_[pos_ + 1].kind == TokenKind::RBracket) {
+                core_input_state_.pos + 1 <
+                    static_cast<int>(core_input_state_.tokens.size()) &&
+                core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                    TokenKind::RBracket) {
                 consume();  // '['
                 consume();  // ']'
                 is_array = true;
@@ -302,7 +310,8 @@ Node* Parser::parse_unary() {
                     TentativeParseGuardLite guard(*this);
                     consume();  // consume (
                     if (is_type_start() ||
-                        starts_qualified_member_pointer_type_id(*this, pos_)) {
+                        starts_qualified_member_pointer_type_id(
+                            *this, core_input_state_.pos)) {
                         TypeSpec ts = parse_type_name();
                         expect(TokenKind::RParen);
                         guard.commit();
@@ -340,7 +349,8 @@ Node* Parser::parse_unary() {
             consume();
             expect(TokenKind::LParen);
             if (is_type_start() ||
-                starts_qualified_member_pointer_type_id(*this, pos_)) {
+                starts_qualified_member_pointer_type_id(
+                    *this, core_input_state_.pos)) {
                 TypeSpec ts = parse_type_name();
                 expect(TokenKind::RParen);
                 Node* n = make_node(NK_ALIGNOF_TYPE, ln);
@@ -607,8 +617,10 @@ bool Parser::try_parse_operator_function_id(std::string& out_name) {
 
     if (match(TokenKind::KwNew)) {
         if (check(TokenKind::LBracket) &&
-            pos_ + 1 < static_cast<int>(tokens_.size()) &&
-            tokens_[pos_ + 1].kind == TokenKind::RBracket) {
+            core_input_state_.pos + 1 <
+                static_cast<int>(core_input_state_.tokens.size()) &&
+            core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                TokenKind::RBracket) {
             consume();
             consume();
             out_name = "operator_new_array";
@@ -620,8 +632,10 @@ bool Parser::try_parse_operator_function_id(std::string& out_name) {
 
     if (match(TokenKind::KwDelete)) {
         if (check(TokenKind::LBracket) &&
-            pos_ + 1 < static_cast<int>(tokens_.size()) &&
-            tokens_[pos_ + 1].kind == TokenKind::RBracket) {
+            core_input_state_.pos + 1 <
+                static_cast<int>(core_input_state_.tokens.size()) &&
+            core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                TokenKind::RBracket) {
             consume();
             consume();
             out_name = "operator_delete_array";
@@ -744,13 +758,18 @@ Node* Parser::parse_primary() {
         TentativeParseGuard guard(*this);
         std::string qualified_name;
         std::string qualifier_owner;
+        TextId qualifier_owner_text_id = kInvalidText;
 
         if (match(TokenKind::ColonColon))
             qualified_name = "::";
 
         while (check(TokenKind::Identifier) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::ColonColon) {
+               core_input_state_.pos + 1 <
+                   static_cast<int>(core_input_state_.tokens.size()) &&
+                core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                   TokenKind::ColonColon) {
+            if (qualifier_owner.empty())
+                qualifier_owner_text_id = cur().text_id;
             if (qualifier_owner.empty())
                 qualifier_owner = token_spelling(cur());
             if (!qualified_name.empty() &&
@@ -769,14 +788,18 @@ Node* Parser::parse_primary() {
 
         if (qualified_name == "::")
             qualified_name.clear();
-        if (!qualifier_owner.empty() && !current_struct_tag_.empty() &&
+        if (!qualifier_owner.empty() &&
+            !active_context_state_.current_struct_tag.empty() &&
             check(TokenKind::LParen)) {
             const std::string current_tag(current_struct_tag_text());
             const std::string resolved_owner =
-                resolve_visible_type_name(qualifier_owner);
-            if (has_typedef_type(qualifier_owner) ||
+                visible_type_head_name(
+                    *this, qualifier_owner_text_id,
+                    parser_text(qualifier_owner_text_id, qualifier_owner));
+            if (has_visible_typedef_type(qualifier_owner_text_id,
+                                         qualifier_owner) ||
                 (!resolved_owner.empty() &&
-                 (has_typedef_type(resolved_owner) ||
+                 (has_visible_typedef_type(resolved_owner) ||
                   resolved_owner == current_tag ||
                   qualifier_owner == current_tag))) {
                 // Inside a method body, `BaseAlias::operator...(args)` names a
@@ -800,27 +823,29 @@ Node* Parser::parse_primary() {
     auto has_balanced_template_id_ahead = [&]() -> bool {
         if (!is_cpp_mode()) return true;
 
-        int probe = pos_;
-        if (probe < static_cast<int>(tokens_.size()) &&
-            tokens_[probe].kind == TokenKind::ColonColon) {
+        int probe = core_input_state_.pos;
+        if (probe < static_cast<int>(core_input_state_.tokens.size()) &&
+            core_input_state_.tokens[probe].kind == TokenKind::ColonColon) {
             ++probe;
         }
 
         bool saw_template_args = false;
-        while (probe < static_cast<int>(tokens_.size())) {
-            if (tokens_[probe].kind == TokenKind::KwTemplate) ++probe;
-            if (probe >= static_cast<int>(tokens_.size()) ||
-                tokens_[probe].kind != TokenKind::Identifier) {
+        while (probe < static_cast<int>(core_input_state_.tokens.size())) {
+            if (core_input_state_.tokens[probe].kind == TokenKind::KwTemplate)
+                ++probe;
+            if (probe >= static_cast<int>(core_input_state_.tokens.size()) ||
+                core_input_state_.tokens[probe].kind !=
+                    TokenKind::Identifier) {
                 return true;
             }
             ++probe;
 
-            if (probe < static_cast<int>(tokens_.size()) &&
-                tokens_[probe].kind == TokenKind::Less) {
+            if (probe < static_cast<int>(core_input_state_.tokens.size()) &&
+                core_input_state_.tokens[probe].kind == TokenKind::Less) {
                 saw_template_args = true;
                 int depth = 0;
-                while (probe < static_cast<int>(tokens_.size())) {
-                    TokenKind k = tokens_[probe].kind;
+                while (probe < static_cast<int>(core_input_state_.tokens.size())) {
+                    TokenKind k = core_input_state_.tokens[probe].kind;
                     if (k == TokenKind::Less) {
                         ++depth;
                         ++probe;
@@ -850,8 +875,9 @@ Node* Parser::parse_primary() {
                 }
                 if (depth > 0) return false;
 
-                if (probe >= static_cast<int>(tokens_.size())) return false;
-                TokenKind after_template = tokens_[probe].kind;
+                if (probe >= static_cast<int>(core_input_state_.tokens.size()))
+                    return false;
+                TokenKind after_template = core_input_state_.tokens[probe].kind;
                 if (after_template == TokenKind::EqualEqual ||
                     after_template == TokenKind::BangEqual ||
                     after_template == TokenKind::LessEqual ||
@@ -870,8 +896,8 @@ Node* Parser::parse_primary() {
                 }
             }
 
-            if (probe < static_cast<int>(tokens_.size()) &&
-                tokens_[probe].kind == TokenKind::ColonColon) {
+            if (probe < static_cast<int>(core_input_state_.tokens.size()) &&
+                core_input_state_.tokens[probe].kind == TokenKind::ColonColon) {
                 ++probe;
                 continue;
             }
@@ -879,9 +905,10 @@ Node* Parser::parse_primary() {
         }
 
         if (!saw_template_args) return true;
-        if (probe >= static_cast<int>(tokens_.size())) return false;
+        if (probe >= static_cast<int>(core_input_state_.tokens.size()))
+            return false;
 
-        switch (tokens_[probe].kind) {
+        switch (core_input_state_.tokens[probe].kind) {
             case TokenKind::LParen:
             case TokenKind::Star:
             case TokenKind::Amp:
@@ -902,8 +929,10 @@ Node* Parser::parse_primary() {
 
     auto parse_gcc_type_trait_builtin = [&]() -> Node* {
         if (!check(TokenKind::Identifier) ||
-            pos_ + 1 >= static_cast<int>(tokens_.size()) ||
-            tokens_[pos_ + 1].kind != TokenKind::LParen) {
+            core_input_state_.pos + 1 >=
+                static_cast<int>(core_input_state_.tokens.size()) ||
+            core_input_state_.tokens[core_input_state_.pos + 1].kind !=
+                TokenKind::LParen) {
             return nullptr;
         }
 
@@ -1128,7 +1157,8 @@ Node* Parser::parse_primary() {
         // NOTE: This site saves tokens_ in addition to pos_ (for template edge cases).
         // TentativeParseGuard does not snapshot tokens_, so manual save/restore is kept here.
         if ((is_type_start() ||
-             starts_qualified_member_pointer_type_id(*this, pos_)) &&
+             starts_qualified_member_pointer_type_id(
+                 *this, core_input_state_.pos)) &&
             has_balanced_template_id_ahead()) {
             int save_pos = pos_;
             std::vector<Token> saved_tokens = tokens_;
@@ -1142,8 +1172,9 @@ Node* Parser::parse_primary() {
                 if (is_cpp_mode()) {
                     int rp_pos = pos_;  // points at ')'
                     int after_rp = rp_pos + 1;
-                    if (after_rp < static_cast<int>(tokens_.size())) {
-                        auto ak = tokens_[after_rp].kind;
+                    if (after_rp <
+                        static_cast<int>(core_input_state_.tokens.size())) {
+                        auto ak = core_input_state_.tokens[after_rp].kind;
                         if (ak == TokenKind::RParen || ak == TokenKind::Semi ||
                             ak == TokenKind::Comma || ak == TokenKind::RBrace ||
                             ak == TokenKind::RBracket || ak == TokenKind::Colon ||
@@ -1215,39 +1246,80 @@ Node* Parser::parse_primary() {
 
     // C++ ::new expression (global-qualified new)
     if (is_cpp_mode() && check(TokenKind::ColonColon) &&
-        pos_ + 1 < static_cast<int>(tokens_.size()) &&
-        tokens_[pos_ + 1].kind == TokenKind::KwNew) {
+        core_input_state_.pos + 1 <
+            static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+            TokenKind::KwNew) {
         consume(); // consume '::'
         return parse_new_expr(ln, true /*global_qualified*/);
     }
 
     // Global-qualified identifier (::name or ::ns::name)
     if (is_cpp_mode() && check(TokenKind::ColonColon) &&
-        pos_ + 1 < static_cast<int>(tokens_.size()) &&
-        tokens_[pos_ + 1].kind == TokenKind::Identifier) {
+        core_input_state_.pos + 1 <
+            static_cast<int>(core_input_state_.tokens.size()) &&
+        core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+            TokenKind::Identifier) {
         QualifiedNameRef qn = parse_qualified_name(true);
-        const std::string_view base_name =
-            parser_text(qn.base_text_id, qn.base_name);
-        std::string qualified_name(base_name);
-        if (!qn.qualifier_segments.empty()) {
-            int context_id = resolve_namespace_context(qn);
-            if (context_id >= 0) {
-                qualified_name =
-                    canonical_name_in_context(context_id, std::string(base_name));
-            } else {
-                qualified_name.clear();
-                for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-                    qualified_name += qn.qualifier_segments[i];
-                    qualified_name += "::";
-                }
-                qualified_name += base_name;
-            }
+        std::string qualified_name = resolve_qualified_value_name(qn);
+        if (qualified_name.empty()) {
+            qualified_name = qualified_name_text(
+                qn, true /* include_global_prefix */);
         }
         const char* nm = arena_.strdup(qualified_name.c_str());
-        Node* var_node = make_node(NK_VAR, ln);
-        var_node->name = nm;
-        apply_qualified_name(var_node, qn, nm);
-        return parse_postfix(var_node);
+        Node* ident = make_node(NK_VAR, ln);
+        ident->name = nm;
+        apply_qualified_name(ident, qn, nm);
+        if (is_cpp_mode() && check(TokenKind::Less)) {
+            TentativeParseGuard guard(*this);
+            std::vector<TemplateArgParseResult> parsed_args;
+            if (parse_template_argument_list(&parsed_args)) {
+                auto is_valid_after_template = [&]() -> bool {
+                    if (check(TokenKind::LParen) || check(TokenKind::ColonColon) ||
+                        check(TokenKind::LBrace)) return true;
+                    if (check(TokenKind::RParen) || check(TokenKind::Semi) ||
+                        check(TokenKind::Comma) || check(TokenKind::Ellipsis) ||
+                        check(TokenKind::RBracket) || check_template_close() ||
+                        check(TokenKind::RBrace)) return true;
+                    if (check(TokenKind::Pipe) || check(TokenKind::PipePipe) ||
+                        check(TokenKind::AmpAmp) || check(TokenKind::Amp) ||
+                        check(TokenKind::Question) || check(TokenKind::Colon) ||
+                        check(TokenKind::EqualEqual) || check(TokenKind::BangEqual) ||
+                        check(TokenKind::LessEqual) || check(TokenKind::GreaterEqual) ||
+                        check(TokenKind::Plus) || check(TokenKind::Minus) ||
+                        check(TokenKind::Star) || check(TokenKind::Slash) ||
+                        check(TokenKind::Percent) || check(TokenKind::Assign) ||
+                        check(TokenKind::Dot) || check(TokenKind::Arrow)) return true;
+                    return false;
+                };
+                if (is_valid_after_template()) {
+                    guard.commit();
+                    ident->has_template_args = true;
+                    ident->n_template_args = static_cast<int>(parsed_args.size());
+                    ident->template_arg_types =
+                        arena_.alloc_array<TypeSpec>(ident->n_template_args);
+                    ident->template_arg_is_value =
+                        arena_.alloc_array<bool>(ident->n_template_args);
+                    ident->template_arg_values =
+                        arena_.alloc_array<long long>(ident->n_template_args);
+                    ident->template_arg_nttp_names =
+                        arena_.alloc_array<const char*>(ident->n_template_args);
+                    ident->template_arg_exprs =
+                        arena_.alloc_array<Node*>(ident->n_template_args);
+                    for (int i = 0; i < ident->n_template_args; ++i) {
+                        ident->template_arg_types[i] = parsed_args[i].type;
+                        ident->template_arg_is_value[i] = parsed_args[i].is_value;
+                        ident->template_arg_values[i] = parsed_args[i].value;
+                        ident->template_arg_nttp_names[i] =
+                            parsed_args[i].nttp_name;
+                        ident->template_arg_exprs[i] = parsed_args[i].expr;
+                    }
+                    ident->is_concept_id =
+                        is_concept_name(ident->name ? ident->name : "");
+                }
+            }
+        }
+        return parse_postfix(ident);
     }
 
     // Identifier / label address
@@ -1258,15 +1330,19 @@ Node* Parser::parse_primary() {
             parser_text(qn.base_text_id, qn.base_name);
         const std::string direct_resolved_type_name =
             qn.qualifier_segments.empty()
-                ? resolve_visible_type_name(qn_base_name)
+                ? resolve_visible_type_name(qn.base_text_id, qn_base_name)
                 : std::string();
         if (is_cpp_mode() && qn.qualifier_segments.empty() &&
             check(TokenKind::LParen)) {
             const TypeSpec* direct_typedef =
-                find_typedef_type(direct_resolved_type_name);
+                find_visible_typedef_type(qn.base_text_id, qn_base_name);
             if (direct_typedef) {
                 TypeSpec cast_ts = *direct_typedef;
-                set_last_resolved_typedef(direct_resolved_type_name);
+                const std::string visible_typedef_name =
+                    direct_resolved_type_name.empty()
+                        ? std::string(qn_base_name)
+                        : direct_resolved_type_name;
+                set_last_resolved_typedef(visible_typedef_name);
                 consume();
                 std::vector<Node*> args;
                 if (!check(TokenKind::RParen)) {
@@ -1314,15 +1390,21 @@ Node* Parser::parse_primary() {
             [&](const QualifiedNameRef& type_qn) -> bool {
             if (type_qn.qualifier_segments.empty()) return false;
 
-            const std::string first_qualifier =
-                resolve_visible_type_name(
-                    parser_text(type_qn.qualifier_text_ids.front(),
-                                type_qn.qualifier_segments.front()));
-            if (first_qualifier.empty()) return false;
+            const QualifiedNameRef owner_qn =
+                qualified_owner_name(*this, type_qn);
+            const std::string owner_name =
+                resolve_qualified_owner_type_name(*this, type_qn);
+            if (owner_name.empty()) return false;
 
-            return has_typedef_type(first_qualifier) ||
-                   template_struct_defs_.count(first_qualifier) > 0 ||
-                   defined_struct_tags_.count(first_qualifier) > 0;
+            if (owner_qn.qualifier_segments.empty() &&
+                !owner_qn.is_global_qualified &&
+                has_visible_typedef_type(owner_qn.base_text_id, owner_qn.base_name)) {
+                return true;
+            }
+
+            return has_template_struct_primary(owner_qn) ||
+                   has_typedef_type(owner_name) ||
+                   definition_state_.defined_struct_tags.count(owner_name) > 0;
         };
         if (is_cpp_mode() && (check(TokenKind::Less) || check(TokenKind::LParen))) {
             const QualifiedTypeProbe type_probe = probe_qualified_type(*this, qn);
@@ -1334,8 +1416,19 @@ Node* Parser::parse_primary() {
                 qualified_name_starts_from_type_owner(qn)) {
                 pos_ = ident_start;
                 std::vector<Token> saved_tokens = tokens_;
-                std::string saved_typedef = last_resolved_typedef_;
-                TextId saved_typedef_text_id = last_resolved_typedef_text_id_;
+                const std::string saved_typedef_fallback =
+                    active_context_state_.last_resolved_typedef;
+                const TextId saved_typedef_text_id =
+                    active_context_state_.last_resolved_typedef_text_id;
+                auto restore_last_resolved_typedef = [&]() {
+                    clear_last_resolved_typedef();
+                    if (saved_typedef_text_id != kInvalidText) {
+                        set_last_resolved_typedef(parser_text(
+                            saved_typedef_text_id, saved_typedef_fallback));
+                    } else if (!saved_typedef_fallback.empty()) {
+                        set_last_resolved_typedef(saved_typedef_fallback);
+                    }
+                };
                 TypeSpec cast_ts = parse_base_type();
                 while (check(TokenKind::Star)) {
                     consume();
@@ -1352,8 +1445,7 @@ Node* Parser::parse_primary() {
                     starts_parenthesized_member_pointer_declarator(*this, pos_)) {
                     pos_ = ident_start;
                     tokens_ = saved_tokens;
-                    last_resolved_typedef_ = saved_typedef;
-                    last_resolved_typedef_text_id_ = saved_typedef_text_id;
+                    restore_last_resolved_typedef();
                     qn = parse_qualified_name(false);
                 } else if (check(TokenKind::LParen)) {
                     consume();
@@ -1395,36 +1487,14 @@ Node* Parser::parse_primary() {
                 }
                 pos_ = ident_start;
                 tokens_ = saved_tokens;
-                last_resolved_typedef_ = saved_typedef;
-                last_resolved_typedef_text_id_ = saved_typedef_text_id;
+                restore_last_resolved_typedef();
                 qn = parse_qualified_name(false);
             }
         }
-        std::string qualified_name;
-        if (!qn.qualifier_segments.empty()) {
-            int context_id = resolve_namespace_context(qn);
-            if (context_id >= 0) {
-                auto alias_it = using_value_aliases_.find(context_id);
-                if (alias_it != using_value_aliases_.end()) {
-                    auto value_it = alias_it->second.find(std::string(qn_base_name));
-                    if (value_it != alias_it->second.end()) {
-                        qualified_name = value_it->second;
-                    }
-                }
-                if (qualified_name.empty()) {
-                    qualified_name =
-                        canonical_name_in_context(context_id, std::string(qn_base_name));
-                }
-            } else {
-                for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-                    if (i) qualified_name += "::";
-                    qualified_name += qn.qualifier_segments[i];
-                }
-                if (!qualified_name.empty()) qualified_name += "::";
-                qualified_name += qn_base_name;
-            }
-        } else {
-            qualified_name = resolve_visible_value_name(std::string(qn_base_name));
+        std::string qualified_name = resolve_qualified_value_name(qn);
+        if (qualified_name.empty()) {
+            qualified_name = qualified_name_text(
+                qn, true /* include_global_prefix */);
         }
         const char* nm = arena_.strdup(qualified_name.c_str());
         const BuiltinId builtin_id = builtin_id_from_name(nm);
@@ -1451,7 +1521,8 @@ Node* Parser::parse_primary() {
             off->type = base_ts;
             off->name = arena_.strdup(field_path);
             long long cv = 0;
-            if (eval_const_int(off, &cv, &struct_tag_def_map_)) return make_int_lit(cv, ln);
+            if (eval_const_int(off, &cv, &definition_state_.struct_tag_def_map))
+                return make_int_lit(cv, ln);
             return off;
         }
         // __builtin_types_compatible_p(type1, type2) — evaluate at parse time
@@ -1649,21 +1720,11 @@ Node* Parser::parse_primary() {
                         !(pos_ + 3 < static_cast<int>(tokens_.size()) &&
                           tokens_[pos_ + 3].kind == TokenKind::Less)) {
                         QualifiedNameRef operand_name = parse_qualified_name(false);
-                        const std::string_view operand_base_name =
-                            parser_text(operand_name.base_text_id,
-                                        operand_name.base_name);
-                        std::string qualified_name;
-                        int context_id = resolve_namespace_context(operand_name);
-                        if (context_id >= 0) {
-                            qualified_name = canonical_name_in_context(
-                                context_id, std::string(operand_base_name));
-                        } else {
-                            for (size_t i = 0; i < operand_name.qualifier_segments.size(); ++i) {
-                                if (i) qualified_name += "::";
-                                qualified_name += operand_name.qualifier_segments[i];
-                            }
-                            if (!qualified_name.empty()) qualified_name += "::";
-                            qualified_name += operand_base_name;
+                        std::string qualified_name =
+                            resolve_qualified_value_name(operand_name);
+                        if (qualified_name.empty()) {
+                            qualified_name = qualified_name_text(
+                                operand_name, true /* include_global_prefix */);
                         }
                         const char* nm = arena_.strdup(qualified_name.c_str());
                         arg = make_var(nm, ln);
