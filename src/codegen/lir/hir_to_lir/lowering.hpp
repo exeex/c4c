@@ -19,6 +19,14 @@
 #include <utility>
 #include <vector>
 
+// Private implementation index for `src/codegen/lir/hir_to_lir/`.
+//
+// Agents working on parent-level HIR-to-LIR lowering should start here for the
+// shared lowering context, module orchestration helpers, constant initializer
+// support, and the common StmtEmitter surface. Keep call-only and expression-
+// only helper details in `call/call.hpp` and `expr/expr.hpp`; this header should
+// name those subdomains without becoming their declaration dump.
+
 namespace c4c::codegen::llvm_backend {
 struct Amd64VarargInfo;
 }
@@ -34,6 +42,8 @@ using namespace c4c::codegen::llvm_helpers;
 // Import shared FnCtx / BlockMeta from codegen::shared into this namespace.
 using c4c::codegen::FnCtx;
 using c4c::codegen::BlockMeta;
+
+// ── Shared lowering context ────────────────────────────────────────────────
 
 struct BitfieldAccess {
   int bit_width = -1;
@@ -111,7 +121,7 @@ struct PreparedBuiltinIntArg {
   bool is_i64 = false;
 };
 
-// ── Private module-level lowering helpers ───────────────────────────────────
+// ── Parent module orchestration ─────────────────────────────────────────────
 
 /// Deduplicate globals: prefer entries with explicit initializers; among
 /// equals, prefer later entries (last-wins for extern/tentative semantics).
@@ -154,6 +164,8 @@ std::string block_lbl(BlockId id);
 
 /// Create a new LIR block with the given label and make it current in ctx.
 void emit_lbl(FnCtx& ctx, const std::string& lbl);
+
+// ── Constant initializer lowering ──────────────────────────────────────────
 
 /// Standalone constant-initializer emitter for global variables.
 /// Owns all const-eval logic previously in HirEmitter; depends only on
@@ -240,6 +252,10 @@ class ConstInitEmitter {
 
 namespace stmt_emitter_detail {
 
+// Common helpers shared by parent lowering plus statement, lvalue, expression,
+// and call subdomains. More specialized call or expression helpers belong in
+// their subdomain indexes.
+
 inline constexpr int kAmd64GpAreaBytes = 48;
 inline constexpr int kAmd64FpAreaBytes = 176;
 
@@ -296,6 +312,8 @@ int round_up_to(int value, int align);
 int object_align_bytes(const Module& mod, const TypeSpec& ts);
 
 }  // namespace stmt_emitter_detail
+
+// ── Statement/lvalue core and subdomain entry points ───────────────────────
 
 class StmtEmitter {
  public:
@@ -519,6 +537,10 @@ class StmtEmitter {
   std::string emit_builtin_signbit_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
   std::string emit_post_builtin_call(FnCtx& ctx, const CallExpr& call,
                                      const CallTargetInfo& call_target);
+
+  // Call subdomain entry points. Implementations are indexed from
+  // `hir_to_lir/call/call.hpp`; keep detailed call-only helpers there as that
+  // index is strengthened.
   std::string emit_amd64_va_arg(FnCtx& ctx, const TypeSpec& res_ts,
                                 const std::string& res_ty, const std::string& ap_ptr);
   std::string emit_amd64_va_arg_from_registers(
@@ -531,7 +553,10 @@ class StmtEmitter {
                                               const Amd64VaListPtrs& access,
                                               int size_bytes);
 
-  // ── Rvalue emission ───────────────────────────────────────────────────────
+  // ── Expression subdomain entry points ────────────────────────────────────
+  //
+  // Implementations are indexed from `hir_to_lir/expr/expr.hpp`; keep detailed
+  // expression-only helpers there as that index is strengthened.
 
   // Recursively resolve the C type of an expression from HIR structure.
   // The AST doesn't annotate types on NK_BINOP/NK_VAR nodes, so we infer.
