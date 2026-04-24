@@ -8,39 +8,42 @@ Current Step Title: Tighten `last_resolved_typedef` Around `TextId`
 
 ## Just Finished
 
-Step 2 code packet completed for the qualified-type tentative parse rollback in
-`parser_expressions.cpp`.
+Step 2 audit packet completed for the remaining `last_resolved_typedef` call
+sites in `parser_types_base.cpp` and `parser_declarations.cpp`.
 
-The local rollback now treats `last_resolved_typedef_text_id` as the
-authoritative saved identity: it clears typedef state, rehydrates spelling
-through `parser_text(saved_typedef_text_id, saved_typedef_fallback)`, and
-restores through `set_last_resolved_typedef(...)`. The saved string mirror is
-kept only as fallback text recovery when no valid `TextId` is available.
+`parser_declarations.cpp` already hands return-type typedef metadata to
+function declarations through `last_resolved_typedef_text_id`. In
+`parser_types_base.cpp`, the typedef-resolution path sets
+`last_resolved_typedef` from the resolved typedef spelling, then immediately
+uses `last_resolved_typedef_text_id` for alias-template key lookup,
+fallback alias-template probing, qualified template-struct primary lookup, and
+transformed-owner propagated typedef metadata. The remaining spelling uses are
+lookup input, fallback spelling, or bridge compatibility for existing helper
+APIs, not semantic metadata authority.
 
 ## Suggested Next
 
-Continue Step 2 with a narrow audit packet for the remaining
-`last_resolved_typedef` call sites in `parser_types_base.cpp` and
-`parser_declarations.cpp`, confirming that semantic lookup and metadata handoff
-stay on `last_resolved_typedef_text_id` and that any spelling use is fallback
-only.
+Step 2 can advance to Step 3. Use an inventory-only packet for
+`current_struct_tag` active-context mirror cleanup, classifying where
+structured `current_struct_tag_text_id` already drives visibility or ownership
+and where spelling still drives owner registration, injected/member context, or
+diagnostic fallback.
 
 ## Watchouts
 
 - This packet intentionally did not change alias-template storage,
   template-struct lookup, or typedef visibility table semantics.
-- `set_last_resolved_typedef(...)` recomputes the stored `TextId` from the
-  recovered spelling, matching the existing tentative snapshot restore model in
-  `parser_support.cpp`.
+- `set_last_resolved_typedef(...)` remains the only direct writer in the
+  audited Step 2 path; it recomputes the stored `TextId` from spelling and all
+  audited semantic handoff sites read the `TextId` field.
 - `current_struct_tag` remains the higher-risk family because several paths
   still use spelling for owner registration and injected/member contexts.
 
 ## Proof
 
-Delegated proof passed:
-`bash -lc 'set -o pipefail; cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '\''^frontend_parser_tests$'\'' | tee test_after.log'`
+No build required for this audit-only packet.
 
-Additional local validation passed:
+Local validation passed:
 `git diff --check`
 
-Proof log path: `test_after.log`.
+Proof log path: none updated; `test_after.log` was not touched.
