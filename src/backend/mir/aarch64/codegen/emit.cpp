@@ -2,7 +2,6 @@
 
 #include "../../backend.hpp"
 #include "../../../bir/bir.hpp"
-#include "../../../bir/call_decode.hpp"
 #include "../../../bir/lir_to_bir.hpp"
 #include "../../generation.hpp"
 #include "../../stack_layout/analysis.hpp"
