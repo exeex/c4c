@@ -889,6 +889,8 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .source_base_value_name = std::nullopt,
               .source_pointer_byte_delta = std::nullopt,
               .destination_register_name = std::nullopt,
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {},
               .destination_register_bank = std::nullopt,
               .destination_stack_offset_bytes = std::nullopt,
           };
@@ -898,6 +900,9 @@ void populate_call_plans(PreparedBirModule& prepared) {
                                                           arg_index);
               binding != nullptr) {
             arg_plan.destination_register_name = binding->destination_register_name;
+            arg_plan.destination_contiguous_width = binding->destination_contiguous_width;
+            arg_plan.destination_occupied_register_names =
+                binding->destination_occupied_register_names;
             arg_plan.destination_stack_offset_bytes = binding->destination_stack_offset_bytes;
             if (binding->destination_register_name.has_value()) {
               arg_plan.destination_register_bank = arg_plan.value_bank;
@@ -971,9 +976,13 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .destination_storage_kind = PreparedMoveStorageKind::None,
               .destination_value_id = std::nullopt,
               .source_register_name = std::nullopt,
+              .source_contiguous_width = 1,
+              .source_occupied_register_names = {},
               .source_register_bank = std::nullopt,
               .source_stack_offset_bytes = std::nullopt,
               .destination_register_name = std::nullopt,
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {},
               .destination_register_bank = std::nullopt,
               .destination_slot_id = std::nullopt,
               .destination_stack_offset_bytes = std::nullopt,
@@ -985,6 +994,9 @@ void populate_call_plans(PreparedBirModule& prepared) {
               binding != nullptr) {
             result_plan.source_storage_kind = binding->destination_storage_kind;
             result_plan.source_register_name = binding->destination_register_name;
+            result_plan.source_contiguous_width = binding->destination_contiguous_width;
+            result_plan.source_occupied_register_names =
+                binding->destination_occupied_register_names;
             result_plan.source_stack_offset_bytes = binding->destination_stack_offset_bytes;
             if (binding->destination_register_name.has_value()) {
               result_plan.source_register_bank = result_plan.value_bank;

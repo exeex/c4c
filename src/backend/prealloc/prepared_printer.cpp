@@ -366,6 +366,26 @@ void append_register_occupancy(std::ostringstream& out,
   }
 }
 
+void append_register_span_summary(std::ostringstream& out,
+                                  std::string_view register_name,
+                                  std::size_t contiguous_width,
+                                  const std::vector<std::string>& occupied_register_names) {
+  out << register_name;
+  if (contiguous_width > 1 || occupied_register_names.size() > 1) {
+    out << "/w" << contiguous_width;
+    if (!occupied_register_names.empty()) {
+      out << "[";
+      for (std::size_t index = 0; index < occupied_register_names.size(); ++index) {
+        if (index != 0) {
+          out << ",";
+        }
+        out << occupied_register_names[index];
+      }
+      out << "]";
+    }
+  }
+}
+
 void append_clobbered_register_summary(std::ostringstream& out,
                                        const PreparedClobberedRegister& clobbered) {
   out << prepared_register_bank_name(clobbered.bank) << ":" << clobbered.register_name
@@ -478,7 +498,10 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
           append_call_arg_source_summary(out, module.names, arg);
           out << " to=";
           if (arg.destination_register_name.has_value()) {
-            out << *arg.destination_register_name;
+            append_register_span_summary(out,
+                                         *arg.destination_register_name,
+                                         arg.destination_contiguous_width,
+                                         arg.destination_occupied_register_names);
           } else if (arg.destination_stack_offset_bytes.has_value()) {
             out << "stack+" << *arg.destination_stack_offset_bytes;
           } else {
@@ -491,7 +514,11 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
           out << "    result bank=" << prepared_register_bank_name(result.value_bank)
               << " from=" << move_storage_kind_name(result.source_storage_kind);
           if (result.source_register_name.has_value()) {
-            out << ":" << *result.source_register_name;
+            out << ":";
+            append_register_span_summary(out,
+                                         *result.source_register_name,
+                                         result.source_contiguous_width,
+                                         result.source_occupied_register_names);
           } else if (result.source_stack_offset_bytes.has_value()) {
             out << ":stack+" << *result.source_stack_offset_bytes;
           } else {
@@ -499,7 +526,11 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
           }
           out << " to=" << move_storage_kind_name(result.destination_storage_kind);
           if (result.destination_register_name.has_value()) {
-            out << ":" << *result.destination_register_name;
+            out << ":";
+            append_register_span_summary(out,
+                                         *result.destination_register_name,
+                                         result.destination_contiguous_width,
+                                         result.destination_occupied_register_names);
           } else if (result.destination_stack_offset_bytes.has_value()) {
             out << ":stack+" << *result.destination_stack_offset_bytes;
           }
@@ -910,6 +941,12 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         if (arg.destination_register_name.has_value()) {
           out << " dest_reg=" << *arg.destination_register_name;
         }
+        if (arg.destination_contiguous_width > 1 ||
+            arg.destination_occupied_register_names.size() > 1) {
+          append_register_occupancy(out,
+                                    arg.destination_contiguous_width,
+                                    arg.destination_occupied_register_names);
+        }
         out << " dest_bank=" << maybe_register_bank(arg.destination_register_bank);
         if (arg.destination_stack_offset_bytes.has_value()) {
           out << " dest_stack_offset=" << *arg.destination_stack_offset_bytes;
@@ -931,9 +968,21 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         if (result.source_stack_offset_bytes.has_value()) {
           out << " source_stack_offset=" << *result.source_stack_offset_bytes;
         }
+        if (result.source_contiguous_width > 1 ||
+            result.source_occupied_register_names.size() > 1) {
+          append_register_occupancy(out,
+                                    result.source_contiguous_width,
+                                    result.source_occupied_register_names);
+        }
         out << " source_bank=" << maybe_register_bank(result.source_register_bank);
         if (result.destination_register_name.has_value()) {
           out << " dest_reg=" << *result.destination_register_name;
+        }
+        if (result.destination_contiguous_width > 1 ||
+            result.destination_occupied_register_names.size() > 1) {
+          append_register_occupancy(out,
+                                    result.destination_contiguous_width,
+                                    result.destination_occupied_register_names);
         }
         out << " dest_bank=" << maybe_register_bank(result.destination_register_bank);
         if (result.destination_slot_id.has_value()) {

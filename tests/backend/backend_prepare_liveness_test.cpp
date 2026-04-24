@@ -1346,6 +1346,7 @@ prepare::PreparedBirModule prepare_grouped_call_boundary_move_module_with_regall
   options.run_regalloc = true;
   prepare::BirPreAlloc regalloc_planner(std::move(seeded), options);
   regalloc_planner.run_regalloc();
+  regalloc_planner.publish_contract_plans();
   return std::move(regalloc_planner.prepared());
 }
 
@@ -3419,6 +3420,18 @@ int check_grouped_call_boundary_move_resolution(const prepare::PreparedBirModule
       arg_binding->destination_occupied_register_names != std::vector<std::string>{"a0", "a1"}) {
     return fail("expected grouped call-argument ABI bindings to preserve grouped register authority");
   }
+  const auto* call_arg_plans =
+      prepare::find_prepared_call_plans(prepared, call_arg_function->function_name);
+  if (call_arg_plans == nullptr || call_arg_plans->calls.size() != 1 ||
+      call_arg_plans->calls.front().arguments.size() != 1) {
+    return fail("expected grouped call-argument fixture to publish call plans");
+  }
+  const auto& arg_plan = call_arg_plans->calls.front().arguments.front();
+  if (arg_plan.destination_register_name != std::optional<std::string>{"a0"} ||
+      arg_plan.destination_contiguous_width != 2 ||
+      arg_plan.destination_occupied_register_names != std::vector<std::string>{"a0", "a1"}) {
+    return fail("expected call plans to preserve grouped call-argument ABI span authority");
+  }
 
   const auto* grouped_call_result =
       find_regalloc_value(prepared, *call_result_function, "grouped.call.result");
@@ -3457,6 +3470,18 @@ int check_grouped_call_boundary_move_resolution(const prepare::PreparedBirModule
       result_binding->destination_occupied_register_names != std::vector<std::string>{"a0", "a1"}) {
     return fail("expected grouped call-result ABI bindings to preserve grouped register authority");
   }
+  const auto* call_result_plans =
+      prepare::find_prepared_call_plans(prepared, call_result_function->function_name);
+  if (call_result_plans == nullptr || call_result_plans->calls.size() != 1 ||
+      !call_result_plans->calls.front().result.has_value()) {
+    return fail("expected grouped call-result fixture to publish call plans");
+  }
+  const auto& result_plan = *call_result_plans->calls.front().result;
+  if (result_plan.source_register_name != std::optional<std::string>{"a0"} ||
+      result_plan.source_contiguous_width != 2 ||
+      result_plan.source_occupied_register_names != std::vector<std::string>{"a0", "a1"}) {
+    return fail("expected call plans to preserve grouped call-result ABI span authority");
+  }
 
   const auto* grouped_ret =
       find_regalloc_value(prepared, *return_function, "grouped.ret.value");
@@ -3473,6 +3498,29 @@ int check_grouped_call_boundary_move_resolution(const prepare::PreparedBirModule
       return_move->destination_contiguous_width != 2 ||
       return_move->destination_occupied_register_names != std::vector<std::string>{"a0", "a1"}) {
     return fail("expected grouped returns to publish the full ABI register span");
+  }
+
+  const std::string prepared_dump = prepare::print(prepared);
+  const auto arg_summary_pos =
+      prepared_dump.find("callsite block=0 inst=1 wrapper=direct_extern_fixed_arity");
+  if (arg_summary_pos == std::string::npos ||
+      prepared_dump.find("to=a0/w2[a0,a1]", arg_summary_pos) == std::string::npos) {
+    return fail("expected prepared summary to publish grouped call-argument span authority");
+  }
+  if (prepared_dump.find("result bank=gpr from=register:a0/w2[a0,a1]") == std::string::npos) {
+    return fail("expected prepared summary to publish grouped call-result source span authority");
+  }
+  const auto arg_detail_pos = prepared_dump.find("arg index=0 value_bank=gpr");
+  if (arg_detail_pos == std::string::npos ||
+      prepared_dump.find("dest_reg=a0 width=2 units=a0,a1", arg_detail_pos) == std::string::npos) {
+    return fail("expected prepared call-plan detail to publish grouped call-argument span authority");
+  }
+  const auto result_detail_pos =
+      prepared_dump.find("result value_bank=gpr source_storage=register");
+  if (result_detail_pos == std::string::npos ||
+      prepared_dump.find("source_reg=a0", result_detail_pos) == std::string::npos ||
+      prepared_dump.find("width=2 units=a0,a1", result_detail_pos) == std::string::npos) {
+    return fail("expected prepared call-plan detail to publish grouped call-result span authority");
   }
 
   return 0;

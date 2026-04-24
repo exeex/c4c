@@ -903,6 +903,8 @@ struct PreparedCallArgumentPlan {
   std::optional<ValueNameId> source_base_value_name;
   std::optional<std::int64_t> source_pointer_byte_delta;
   std::optional<std::string> destination_register_name;
+  std::size_t destination_contiguous_width = 1;
+  std::vector<std::string> destination_occupied_register_names;
   std::optional<PreparedRegisterBank> destination_register_bank;
   std::optional<std::size_t> destination_stack_offset_bytes;
 };
@@ -914,9 +916,13 @@ struct PreparedCallResultPlan {
   PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
   std::optional<PreparedValueId> destination_value_id;
   std::optional<std::string> source_register_name;
+  std::size_t source_contiguous_width = 1;
+  std::vector<std::string> source_occupied_register_names;
   std::optional<PreparedRegisterBank> source_register_bank;
   std::optional<std::size_t> source_stack_offset_bytes;
   std::optional<std::string> destination_register_name;
+  std::size_t destination_contiguous_width = 1;
+  std::vector<std::string> destination_occupied_register_names;
   std::optional<PreparedRegisterBank> destination_register_bank;
   std::optional<PreparedFrameSlotId> destination_slot_id;
   std::optional<std::size_t> destination_stack_offset_bytes;
