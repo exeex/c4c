@@ -55,6 +55,9 @@ void parse_record_template_member_prelude(
     std::vector<Parser::InjectedTemplateParam>* injected_type_params,
     bool* pushed_template_scope);
 void parse_decl_attrs_for_record(Parser& parser, int line, TypeSpec* attr_ts);
+void skip_record_base_specifier_tail(Parser& parser);
+bool try_parse_record_base_specifier(Parser& parser, TypeSpec* base_ts);
+void parse_record_base_clause(Parser& parser, std::vector<TypeSpec>* base_types);
 
 bool lexeme_is_imaginary(const char* s);
 long long parse_int_lexeme(const char* s);

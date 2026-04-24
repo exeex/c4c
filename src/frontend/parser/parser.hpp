@@ -791,9 +791,6 @@ class Parser {
       const std::string& struct_source_name,
       RecordBodyState* body_state,
       const std::function<void(const char*)>& check_dup_field);
-  void skip_record_base_specifier_tail();
-  bool try_parse_record_base_specifier(TypeSpec* base_ts);
-  void parse_record_base_clause(std::vector<TypeSpec>* base_types);
   void parse_record_definition_prelude(
       int line,
       TypeSpec* attr_ts,

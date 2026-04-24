@@ -653,82 +653,84 @@ void parse_decl_attrs_for_record(Parser& parser, int line, TypeSpec* attr_ts) {
     skip_cpp11_attrs();
 }
 
-void Parser::skip_record_base_specifier_tail() {
-    while (!check(TokenKind::LBrace) && !check(TokenKind::Comma) &&
-           !check(TokenKind::RBrace) && !at_end()) {
+void skip_record_base_specifier_tail(Parser& parser) {
+    while (!parser.check(TokenKind::LBrace) && !parser.check(TokenKind::Comma) &&
+           !parser.check(TokenKind::RBrace) && !parser.at_end()) {
         int angle_depth = 0;
         int paren_depth = 0;
-        while (!at_end()) {
-            if (check(TokenKind::LBrace) && angle_depth == 0 &&
+        while (!parser.at_end()) {
+            if (parser.check(TokenKind::LBrace) && angle_depth == 0 &&
                 paren_depth == 0) {
                 break;
             }
-            if (check(TokenKind::Comma) && angle_depth == 0 &&
+            if (parser.check(TokenKind::Comma) && angle_depth == 0 &&
                 paren_depth == 0) {
                 break;
             }
-            if (check(TokenKind::Less) && paren_depth == 0)
+            if (parser.check(TokenKind::Less) && paren_depth == 0)
                 ++angle_depth;
-            else if (check(TokenKind::Greater) &&
+            else if (parser.check(TokenKind::Greater) &&
                      paren_depth == 0 && angle_depth > 0)
                 --angle_depth;
-            else if (check(TokenKind::GreaterGreater) &&
+            else if (parser.check(TokenKind::GreaterGreater) &&
                      paren_depth == 0 && angle_depth > 0) {
                 angle_depth -= std::min(angle_depth, 2);
-                consume();
+                parser.consume();
                 continue;
-            } else if (check(TokenKind::LParen))
+            } else if (parser.check(TokenKind::LParen))
                 ++paren_depth;
-            else if (check(TokenKind::RParen) && paren_depth > 0)
+            else if (parser.check(TokenKind::RParen) && paren_depth > 0)
                 --paren_depth;
-            consume();
+            parser.consume();
         }
         break;
     }
 }
 
-bool Parser::try_parse_record_base_specifier(TypeSpec* base_ts) {
-    while (check(TokenKind::KwPublic) || check(TokenKind::KwPrivate) ||
-           check(TokenKind::KwProtected) || check(TokenKind::KwVirtual) ||
-           (check(TokenKind::Identifier) &&
-            (token_spelling(cur()) == "public" || token_spelling(cur()) == "private" ||
-             token_spelling(cur()) == "protected" || token_spelling(cur()) == "virtual"))) {
-        consume();
+bool try_parse_record_base_specifier(Parser& parser, TypeSpec* base_ts) {
+    while (parser.check(TokenKind::KwPublic) || parser.check(TokenKind::KwPrivate) ||
+           parser.check(TokenKind::KwProtected) || parser.check(TokenKind::KwVirtual) ||
+           (parser.check(TokenKind::Identifier) &&
+            (parser.token_spelling(parser.cur()) == "public" ||
+             parser.token_spelling(parser.cur()) == "private" ||
+             parser.token_spelling(parser.cur()) == "protected" ||
+             parser.token_spelling(parser.cur()) == "virtual"))) {
+        parser.consume();
     }
 
     try {
-        TypeSpec parsed_base = parse_base_type();
-        while (check(TokenKind::Star)) {
-            consume();
+        TypeSpec parsed_base = parser.parse_base_type();
+        while (parser.check(TokenKind::Star)) {
+            parser.consume();
             parsed_base.ptr_level++;
         }
-        if (check(TokenKind::AmpAmp)) {
-            consume();
+        if (parser.check(TokenKind::AmpAmp)) {
+            parser.consume();
             parsed_base.is_rvalue_ref = true;
-        } else if (check(TokenKind::Amp)) {
-            consume();
+        } else if (parser.check(TokenKind::Amp)) {
+            parser.consume();
             parsed_base.is_lvalue_ref = true;
         }
-        skip_record_base_specifier_tail();
+        skip_record_base_specifier_tail(parser);
         if (base_ts)
             *base_ts = parsed_base;
         return true;
     } catch (...) {
-        skip_record_base_specifier_tail();
+        skip_record_base_specifier_tail(parser);
         return false;
     }
 }
 
-void Parser::parse_record_base_clause(std::vector<TypeSpec>* base_types) {
-    if (!base_types || !is_cpp_mode() || !check(TokenKind::Colon))
+void parse_record_base_clause(Parser& parser, std::vector<TypeSpec>* base_types) {
+    if (!base_types || !parser.is_cpp_mode() || !parser.check(TokenKind::Colon))
         return;
 
-    consume();
-    while (!at_end() && !check(TokenKind::LBrace)) {
+    parser.consume();
+    while (!parser.at_end() && !parser.check(TokenKind::LBrace)) {
         TypeSpec base_ts{};
-        if (try_parse_record_base_specifier(&base_ts))
+        if (try_parse_record_base_specifier(parser, &base_ts))
             base_types->push_back(base_ts);
-        if (!match(TokenKind::Comma))
+        if (!parser.match(TokenKind::Comma))
             break;
     }
 }
@@ -2031,7 +2033,7 @@ void Parser::parse_record_definition_prelude(
         consume();
     }
 
-    parse_record_base_clause(base_types);
+    parse_record_base_clause(*this, base_types);
 }
 
 Node* Parser::parse_record_tag_setup(int line,
