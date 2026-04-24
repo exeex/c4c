@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/93_hir_agent_index_header_hierarchy.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Create Private HIR Implementation Boundary
+Current Step ID: 3
+Current Step Title: Add Expression And Statement Subdomain Indexes
 
 # Current Packet
 
