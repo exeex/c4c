@@ -197,6 +197,7 @@ class Parser {
   // ── parser diagnostics / debug tracing ───────────────────────────────────
   void set_parser_debug(bool enabled);
   void set_parser_debug_channels(unsigned channels);
+  bool had_parse_error() const;
   bool parser_debug_enabled() const;
   bool parse_debug_event_visible(const char* kind) const;
   void clear_parse_debug_state();

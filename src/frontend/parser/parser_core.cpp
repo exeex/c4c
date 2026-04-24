@@ -1520,6 +1520,10 @@ void Parser::set_parser_debug_channels(unsigned channels) {
     diagnostic_state_.parser_debug_channels = channels;
 }
 
+bool Parser::had_parse_error() const {
+    return diagnostic_state_.had_error;
+}
+
 bool Parser::parser_debug_enabled() const {
     return diagnostic_state_.parser_debug_channels != ParseDebugNone;
 }
