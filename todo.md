@@ -8,18 +8,25 @@ Current Step Title: Reclassify Top-Level LIR Headers
 
 ## Just Finished
 
-Lifecycle activation created the active runbook and initialized executor state
-for Step 1.
+Step 1 from `plan.md` completed the top-level LIR header classification:
+`ir.hpp` is documented as the public LIR package index, `call_args.hpp` and
+`call_args_ops.hpp` are documented as exported call helper surfaces, and
+`operands.hpp` / `types.hpp` are documented as model subheaders re-exported
+through `ir.hpp`.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: inspect top-level LIR header users, classify
-exported surfaces versus model subheaders, make the smallest structural/header
-edits needed, and build `c4c_codegen`.
+Execute Step 2 from `plan.md`: inspect external HIR-to-LIR callers, make
+`src/codegen/lir/hir_to_lir.hpp` the public entry header, and keep private
+lowering internals behind nested HIR-to-LIR indexes.
 
 ## Watchouts
 
-- Keep the work structural and navigational.
+- Step 1 found no need to move `operands.hpp` or `types.hpp`; they are direct
+  model subheaders used by `ir.hpp`, with `operands.hpp` also used by
+  `call_args.hpp`.
+- `call_args.hpp` intentionally stays independent of `LirCallOp`; use
+  `call_args_ops.hpp` when code operates on concrete LIR call ops.
 - Do not change HIR-to-LIR semantics, LIR semantics, printer output, verifier
   behavior, or testcase expectations.
 - Do not introduce one header per `.cpp`.
@@ -28,4 +35,6 @@ edits needed, and build `c4c_codegen`.
 
 ## Proof
 
-Not run; lifecycle activation only.
+Passed: `cmake --build --preset default --target c4c_codegen`
+
+Proof log: `test_after.log`

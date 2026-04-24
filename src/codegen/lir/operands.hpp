@@ -1,5 +1,11 @@
 #pragma once
 
+// LIR model subheader for typed operand text.
+//
+// `ir.hpp` re-exports this as part of the public LIR package index. Direct
+// includes are reserved for small model helpers such as `call_args.hpp` that do
+// not otherwise need the full LIR instruction model.
+
 #include <ostream>
 #include <optional>
 #include <string>

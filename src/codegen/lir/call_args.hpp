@@ -1,5 +1,11 @@
 #pragma once
 
+// Exported LIR call-argument model helpers.
+//
+// This header is intentionally independent of `LirCallOp`: include it when a
+// caller needs to parse, format, or own typed call argument text without pulling
+// in the full LIR IR index.
+
 #include "operands.hpp"
 
 #include <array>

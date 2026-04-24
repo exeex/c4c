@@ -1,5 +1,11 @@
 #pragma once
 
+// LIR model subheader for typed LLVM-ish type text and opcode predicates.
+//
+// `ir.hpp` re-exports this as part of the public LIR package index. Keep direct
+// includes limited to model-level helpers that do not otherwise need the full
+// LIR instruction model.
+
 #include <ostream>
 #include <cstdint>
 #include <optional>

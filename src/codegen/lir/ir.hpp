@@ -1,5 +1,12 @@
 #pragma once
 
+// Public LIR package index.
+//
+// External codegen and backend users should include this header for the LIR
+// data model plus printer/verifier entry points. `operands.hpp` and
+// `types.hpp` remain top-level model subheaders because this index uses their
+// typed wrappers throughout the instruction definitions.
+
 // ── LIR: Low-level IR between HIR and LLVM text emission ────────────────────
 //
 // This header defines the minimal LIR data model for the HIR→LIR→Printer
