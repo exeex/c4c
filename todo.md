@@ -3,25 +3,24 @@ Source Idea Path: ideas/open/91_advanced_prepared_call_authority_and_grouped_wid
 Source Plan Path: plan.md
 Current Step ID: 3.1
 Current Step Title: Make Grouped Call-Boundary Consumers Read Published Span Authority
-Plan Review Counter: 1 / 6
+Plan Review Counter: 2 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 3.1 now exposes direct x86 call-boundary selectors for prepared call
-plans, arguments, and results keyed by block/instruction identity instead of
-forcing downstream consumers to reopen scalar ABI register reconstruction.
-The grouped call-boundary contract now proves x86 reads published grouped
-argument destination spans and grouped call-result source spans directly for a
-grouped cross-call fixture while preserving the existing grouped
-preserved/clobber/storage consumer checks.
+Step 3.1 now makes the x86 module-emitter comments and route-debug trace report
+grouped call-argument destination spans and grouped call-result source spans
+directly from prepared call-plan authority. The grouped cross-call proof now
+checks those consumer-facing summaries alongside the existing
+saved/preserved/clobber/storage reporting so the call-boundary surface stays
+anchored to published span metadata.
 
 ## Suggested Next
 
-Advance Step 3.1 by tightening the next x86 bounded helper or emitter adapter
-that still accepts scalar ABI register callbacks for call argument/result
-selection instead of consuming the prepared grouped call-boundary selectors
-directly.
+Advance Step 3.1 by moving the next remaining x86 call-boundary helper or dump
+surface that still talks in scalar ABI register terms onto the prepared grouped
+argument/result span fields directly, or close Step 3.1 if no honest consumer
+surface remains beyond proof tightening.
 
 ## Watchouts
 
@@ -39,7 +38,8 @@ directly.
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-Result: passed after adding direct x86 prepared call-boundary selectors and
-proving grouped argument/result span consumption through the x86 consumer
-surface.
+Result: passed after teaching the x86 module-emitter comments and route-debug
+surface to report grouped call argument/result spans directly from prepared
+call-plan authority, with focused contract coverage for both grouped
+call-boundary and grouped spill/reload summaries.
 Log: `test_after.log`

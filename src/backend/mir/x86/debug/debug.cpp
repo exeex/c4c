@@ -42,6 +42,17 @@ std::string render_grouped_span(c4c::backend::prepare::PreparedRegisterBank bank
   return out.str();
 }
 
+std::string render_optional_grouped_span(
+    std::optional<c4c::backend::prepare::PreparedRegisterBank> bank,
+    std::optional<std::string_view> register_name,
+    std::size_t contiguous_width,
+    const std::vector<std::string>& occupied_register_names) {
+  return render_grouped_span(bank.value_or(c4c::backend::prepare::PreparedRegisterBank::None),
+                             register_name,
+                             contiguous_width,
+                             occupied_register_names);
+}
+
 void append_grouped_authority(std::ostringstream& out,
                               const c4c::backend::prepare::PreparedBirModule& module,
                               c4c::FunctionNameId function_name,
@@ -55,6 +66,8 @@ void append_grouped_authority(std::ostringstream& out,
   std::size_t grouped_saved = 0;
   std::size_t grouped_preserved = 0;
   std::size_t grouped_clobbered = 0;
+  std::size_t grouped_call_argument_spans = 0;
+  std::size_t grouped_call_result_spans = 0;
   std::size_t grouped_spills = 0;
   std::size_t grouped_reloads = 0;
   std::size_t grouped_storage = 0;
@@ -70,6 +83,17 @@ void append_grouped_authority(std::ostringstream& out,
 
   if (call_plans != nullptr) {
     for (const auto& call : call_plans->calls) {
+      for (const auto& argument : call.arguments) {
+        if (is_grouped_span(argument.destination_contiguous_width,
+                            argument.destination_occupied_register_names)) {
+          ++grouped_call_argument_spans;
+        }
+      }
+      if (call.result.has_value() &&
+          is_grouped_span(call.result->source_contiguous_width,
+                          call.result->source_occupied_register_names)) {
+        ++grouped_call_result_spans;
+      }
       for (const auto& preserved : call.preserved_values) {
         if (!is_grouped_span(preserved.contiguous_width, preserved.occupied_register_names)) {
           continue;
@@ -113,6 +137,7 @@ void append_grouped_authority(std::ostringstream& out,
   }
 
   if (grouped_saved == 0 && grouped_preserved == 0 && grouped_clobbered == 0 &&
+      grouped_call_argument_spans == 0 && grouped_call_result_spans == 0 &&
       grouped_spills == 0 && grouped_reloads == 0 && grouped_storage == 0) {
     return;
   }
@@ -120,6 +145,8 @@ void append_grouped_authority(std::ostringstream& out,
   out << "  grouped authority: saved=" << grouped_saved
       << " preserved=" << grouped_preserved
       << " clobbered=" << grouped_clobbered
+      << " call_args=" << grouped_call_argument_spans
+      << " call_results=" << grouped_call_result_spans
       << " spills=" << grouped_spills
       << " reloads=" << grouped_reloads
       << " storage=" << grouped_storage << "\n";
@@ -146,6 +173,44 @@ void append_grouped_authority(std::ostringstream& out,
   if (call_plans != nullptr) {
     for (std::size_t call_index = 0; call_index < call_plans->calls.size(); ++call_index) {
       const auto& call = call_plans->calls[call_index];
+      for (const auto& argument : call.arguments) {
+        if (!is_grouped_span(argument.destination_contiguous_width,
+                             argument.destination_occupied_register_names)) {
+          continue;
+        }
+        out << "    grouped arg call#" << call_index
+            << " arg#" << argument.arg_index;
+        if (argument.source_value_id.has_value()) {
+          out << " source_value_id=" << *argument.source_value_id;
+        }
+        out << " dest_span="
+            << render_optional_grouped_span(argument.destination_register_bank,
+                                            argument.destination_register_name.has_value()
+                                                ? std::optional<std::string_view>{
+                                                      *argument.destination_register_name}
+                                                : std::nullopt,
+                                            argument.destination_contiguous_width,
+                                            argument.destination_occupied_register_names)
+            << "\n";
+      }
+      if (call.result.has_value() &&
+          is_grouped_span(call.result->source_contiguous_width,
+                          call.result->source_occupied_register_names)) {
+        const auto& result = *call.result;
+        out << "    grouped result call#" << call_index;
+        if (result.destination_value_id.has_value()) {
+          out << " destination_value_id=" << *result.destination_value_id;
+        }
+        out << " source_span="
+            << render_optional_grouped_span(result.source_register_bank,
+                                            result.source_register_name.has_value()
+                                                ? std::optional<std::string_view>{
+                                                      *result.source_register_name}
+                                                : std::nullopt,
+                                            result.source_contiguous_width,
+                                            result.source_occupied_register_names)
+            << "\n";
+      }
       for (const auto& preserved : call.preserved_values) {
         if (!is_grouped_span(preserved.contiguous_width, preserved.occupied_register_names)) {
           continue;

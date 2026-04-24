@@ -3362,10 +3362,42 @@ int check_x86_module_emitter_reads_grouped_spill_reload_authority() {
               }
               return count;
             }();
+  const auto grouped_call_argument_count =
+      consumed.calls == nullptr
+          ? std::size_t{0}
+          : [&]() {
+              std::size_t count = 0;
+              for (const auto& call : consumed.calls->calls) {
+                count += static_cast<std::size_t>(std::count_if(
+                    call.arguments.begin(),
+                    call.arguments.end(),
+                    [&is_grouped](const prepare::PreparedCallArgumentPlan& argument) {
+                      return is_grouped(argument.destination_contiguous_width,
+                                        argument.destination_occupied_register_names);
+                    }));
+              }
+              return count;
+            }();
+  const auto grouped_call_result_count =
+      consumed.calls == nullptr
+          ? std::size_t{0}
+          : [&]() {
+              std::size_t count = 0;
+              for (const auto& call : consumed.calls->calls) {
+                if (call.result.has_value() &&
+                    is_grouped(call.result->source_contiguous_width,
+                               call.result->source_occupied_register_names)) {
+                  ++count;
+                }
+              }
+              return count;
+            }();
   const auto expected_summary =
       std::string("    # grouped authority: saved=") + std::to_string(grouped_saved_count) +
       " preserved=" + std::to_string(grouped_preserved_count) +
       " clobbered=" + std::to_string(grouped_clobbered_count) +
+      " call_args=" + std::to_string(grouped_call_argument_count) +
+      " call_results=" + std::to_string(grouped_call_result_count) +
       " spills=" + std::to_string(grouped_spill_count) +
       " reloads=" + std::to_string(grouped_reload_count) +
       " storage=" + std::to_string(grouped_storage_count);
@@ -3486,6 +3518,19 @@ int check_x86_module_emitter_reads_grouped_call_boundary_authority() {
       [&is_grouped](const prepare::PreparedClobberedRegister& clobber) {
         return is_grouped(clobber.contiguous_width, clobber.occupied_register_names);
       }));
+  const auto grouped_call_argument_count = static_cast<std::size_t>(std::count_if(
+      call_plan.arguments.begin(),
+      call_plan.arguments.end(),
+      [&is_grouped](const prepare::PreparedCallArgumentPlan& argument) {
+        return is_grouped(argument.destination_contiguous_width,
+                          argument.destination_occupied_register_names);
+      }));
+  const auto grouped_call_result_count =
+      call_plan.result.has_value() &&
+              is_grouped(call_plan.result->source_contiguous_width,
+                         call_plan.result->source_occupied_register_names)
+          ? std::size_t{1}
+          : std::size_t{0};
   const auto grouped_storage_count = static_cast<std::size_t>(std::count_if(
       consumed.storage->values.begin(),
       consumed.storage->values.end(),
@@ -3497,6 +3542,8 @@ int check_x86_module_emitter_reads_grouped_call_boundary_authority() {
       std::string("    # grouped authority: saved=") + std::to_string(grouped_saved_count) +
       " preserved=" + std::to_string(grouped_preserved_count) +
       " clobbered=" + std::to_string(grouped_clobbered_count) +
+      " call_args=" + std::to_string(grouped_call_argument_count) +
+      " call_results=" + std::to_string(grouped_call_result_count) +
       " spills=0 reloads=0" +
       " storage=" + std::to_string(grouped_storage_count);
   const auto expected_saved =
@@ -3537,6 +3584,58 @@ int check_x86_module_emitter_reads_grouped_call_boundary_authority() {
       asm_text.find(expected_storage) == std::string::npos) {
     return fail(
         "x86 module emitter contract: grouped call-boundary comments no longer consume direct prepared authority");
+  }
+
+  auto grouped_boundary_prepared = prepare_grouped_riscv_module_with_overrides(
+      make_cross_call_preservation_contract_module(),
+      {{"pre.only", 2}, {"call.out", 2}, {"carry", 2}});
+  grouped_boundary_prepared.target_profile = x86_target_profile();
+  grouped_boundary_prepared.module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto grouped_boundary_asm =
+      c4c::backend::x86::api::emit_prepared_module(grouped_boundary_prepared);
+  const auto grouped_boundary_consumed =
+      c4c::backend::x86::consume_plans(grouped_boundary_prepared, "cross_call_preservation_contract");
+  const auto* grouped_boundary_call =
+      c4c::backend::x86::find_consumed_call_plan(grouped_boundary_consumed, 0, 2);
+  const auto* grouped_boundary_arg =
+      c4c::backend::x86::find_consumed_call_argument_plan(grouped_boundary_consumed, 0, 2, 0);
+  const auto* grouped_boundary_result =
+      c4c::backend::x86::find_consumed_call_result_plan(grouped_boundary_consumed, 0, 2);
+  if (grouped_boundary_call == nullptr || grouped_boundary_arg == nullptr ||
+      grouped_boundary_result == nullptr ||
+      !grouped_boundary_arg->source_value_id.has_value() ||
+      !grouped_boundary_result->destination_value_id.has_value()) {
+    return fail(
+        "x86 module emitter contract: grouped argument/result fixture lost direct grouped boundary authority");
+  }
+  const auto expected_boundary_arg =
+      std::string("    # grouped arg call#0 arg#") +
+      std::to_string(grouped_boundary_arg->arg_index) +
+      " source_value_id=" + std::to_string(*grouped_boundary_arg->source_value_id) +
+      " dest_span=" +
+      grouped_span_summary(grouped_boundary_arg->destination_register_bank.value_or(
+                               prepare::PreparedRegisterBank::None),
+                           grouped_boundary_arg->destination_register_name.has_value()
+                               ? std::optional<std::string_view>(
+                                     std::string_view(*grouped_boundary_arg->destination_register_name))
+                               : std::nullopt,
+                           grouped_boundary_arg->destination_contiguous_width,
+                           grouped_boundary_arg->destination_occupied_register_names);
+  const auto expected_boundary_result =
+      std::string("    # grouped result call#0 destination_value_id=") +
+      std::to_string(*grouped_boundary_result->destination_value_id) + " source_span=" +
+      grouped_span_summary(grouped_boundary_result->source_register_bank.value_or(
+                               prepare::PreparedRegisterBank::None),
+                           grouped_boundary_result->source_register_name.has_value()
+                               ? std::optional<std::string_view>(
+                                     std::string_view(*grouped_boundary_result->source_register_name))
+                               : std::nullopt,
+                           grouped_boundary_result->source_contiguous_width,
+                           grouped_boundary_result->source_occupied_register_names);
+  if (grouped_boundary_asm.find(expected_boundary_arg) == std::string::npos ||
+      grouped_boundary_asm.find(expected_boundary_result) == std::string::npos) {
+    return fail(
+        "x86 module emitter contract: grouped call argument/result comments no longer consume direct prepared authority");
   }
   return 0;
 }
@@ -3612,6 +3711,19 @@ int check_x86_route_debug_reads_grouped_call_boundary_authority() {
       [&is_grouped](const prepare::PreparedClobberedRegister& clobber) {
         return is_grouped(clobber.contiguous_width, clobber.occupied_register_names);
       }));
+  const auto grouped_call_argument_count = static_cast<std::size_t>(std::count_if(
+      call_plan.arguments.begin(),
+      call_plan.arguments.end(),
+      [&is_grouped](const prepare::PreparedCallArgumentPlan& argument) {
+        return is_grouped(argument.destination_contiguous_width,
+                          argument.destination_occupied_register_names);
+      }));
+  const auto grouped_call_result_count =
+      call_plan.result.has_value() &&
+              is_grouped(call_plan.result->source_contiguous_width,
+                         call_plan.result->source_occupied_register_names)
+          ? std::size_t{1}
+          : std::size_t{0};
   const auto grouped_storage_count = static_cast<std::size_t>(std::count_if(
       storage->values.begin(),
       storage->values.end(),
@@ -3622,6 +3734,8 @@ int check_x86_route_debug_reads_grouped_call_boundary_authority() {
       std::string("grouped authority: saved=") + std::to_string(grouped_saved_count) +
       " preserved=" + std::to_string(grouped_preserved_count) +
       " clobbered=" + std::to_string(grouped_clobbered_count) +
+      " call_args=" + std::to_string(grouped_call_argument_count) +
+      " call_results=" + std::to_string(grouped_call_result_count) +
       " spills=0 reloads=0" +
       " storage=" + std::to_string(grouped_storage_count);
   if (summary.find(expected_summary) == std::string::npos) {
@@ -3664,6 +3778,110 @@ int check_x86_route_debug_reads_grouped_call_boundary_authority() {
       trace.find(expected_storage) == std::string::npos) {
     return fail(
         "x86 route debug contract: trace no longer reads grouped saved/preserved/clobber/storage authority directly");
+  }
+
+  const auto grouped_boundary_prepared = prepare_grouped_riscv_module_with_overrides(
+      make_cross_call_preservation_contract_module(),
+      {{"pre.only", 2}, {"call.out", 2}, {"carry", 2}});
+  const auto grouped_boundary_summary = c4c::backend::x86::summarize_prepared_module_routes(
+      grouped_boundary_prepared, "cross_call_preservation_contract");
+  const auto grouped_boundary_trace = c4c::backend::x86::trace_prepared_module_routes(
+      grouped_boundary_prepared, "cross_call_preservation_contract");
+  const auto grouped_boundary_consumed =
+      c4c::backend::x86::consume_plans(grouped_boundary_prepared, "cross_call_preservation_contract");
+  const auto* grouped_boundary_call =
+      c4c::backend::x86::find_consumed_call_plan(grouped_boundary_consumed, 0, 2);
+  const auto* grouped_boundary_arg =
+      c4c::backend::x86::find_consumed_call_argument_plan(grouped_boundary_consumed, 0, 2, 0);
+  const auto* grouped_boundary_result =
+      c4c::backend::x86::find_consumed_call_result_plan(grouped_boundary_consumed, 0, 2);
+  if (grouped_boundary_consumed.calls == nullptr || grouped_boundary_call == nullptr ||
+      grouped_boundary_arg == nullptr || grouped_boundary_result == nullptr ||
+      !grouped_boundary_arg->source_value_id.has_value() ||
+      !grouped_boundary_result->destination_value_id.has_value()) {
+    return fail(
+        "x86 route debug contract: grouped argument/result fixture lost direct grouped boundary authority");
+  }
+  const auto grouped_boundary_saved_count = grouped_boundary_consumed.frame == nullptr
+                                                ? std::size_t{0}
+                                                : static_cast<std::size_t>(std::count_if(
+                                                      grouped_boundary_consumed.frame->saved_callee_registers.begin(),
+                                                      grouped_boundary_consumed.frame->saved_callee_registers.end(),
+                                                      [&is_grouped](const prepare::PreparedSavedRegister& saved) {
+                                                        return is_grouped(saved.contiguous_width,
+                                                                          saved.occupied_register_names);
+                                                      }));
+  const auto grouped_boundary_preserved_count = static_cast<std::size_t>(std::count_if(
+      grouped_boundary_call->preserved_values.begin(),
+      grouped_boundary_call->preserved_values.end(),
+      [&is_grouped](const prepare::PreparedCallPreservedValue& preserved) {
+        return is_grouped(preserved.contiguous_width, preserved.occupied_register_names);
+      }));
+  const auto grouped_boundary_clobbered_count = static_cast<std::size_t>(std::count_if(
+      grouped_boundary_call->clobbered_registers.begin(),
+      grouped_boundary_call->clobbered_registers.end(),
+      [&is_grouped](const prepare::PreparedClobberedRegister& clobber) {
+        return is_grouped(clobber.contiguous_width, clobber.occupied_register_names);
+      }));
+  const auto grouped_boundary_call_argument_count = static_cast<std::size_t>(std::count_if(
+      grouped_boundary_call->arguments.begin(),
+      grouped_boundary_call->arguments.end(),
+      [&is_grouped](const prepare::PreparedCallArgumentPlan& argument) {
+        return is_grouped(argument.destination_contiguous_width,
+                          argument.destination_occupied_register_names);
+      }));
+  const auto grouped_boundary_call_result_count =
+      grouped_boundary_call->result.has_value() &&
+              is_grouped(grouped_boundary_call->result->source_contiguous_width,
+                         grouped_boundary_call->result->source_occupied_register_names)
+          ? std::size_t{1}
+          : std::size_t{0};
+  const auto grouped_boundary_storage_count = grouped_boundary_consumed.storage == nullptr
+                                                  ? std::size_t{0}
+                                                  : static_cast<std::size_t>(std::count_if(
+                                                        grouped_boundary_consumed.storage->values.begin(),
+                                                        grouped_boundary_consumed.storage->values.end(),
+                                                        [&is_grouped](const prepare::PreparedStoragePlanValue& value) {
+                                                          return is_grouped(value.contiguous_width,
+                                                                            value.occupied_register_names);
+                                                        }));
+  const auto expected_boundary_summary =
+      std::string("grouped authority: saved=") + std::to_string(grouped_boundary_saved_count) +
+      " preserved=" + std::to_string(grouped_boundary_preserved_count) +
+      " clobbered=" + std::to_string(grouped_boundary_clobbered_count) +
+      " call_args=" + std::to_string(grouped_boundary_call_argument_count) +
+      " call_results=" + std::to_string(grouped_boundary_call_result_count) +
+      " spills=0 reloads=0" +
+      " storage=" + std::to_string(grouped_boundary_storage_count);
+  const auto expected_boundary_arg =
+      std::string("grouped arg call#0 arg#") +
+      std::to_string(grouped_boundary_arg->arg_index) +
+      " source_value_id=" + std::to_string(*grouped_boundary_arg->source_value_id) +
+      " dest_span=" +
+      grouped_span_summary(grouped_boundary_arg->destination_register_bank.value_or(
+                               prepare::PreparedRegisterBank::None),
+                           grouped_boundary_arg->destination_register_name.has_value()
+                               ? std::optional<std::string_view>(
+                                     std::string_view(*grouped_boundary_arg->destination_register_name))
+                               : std::nullopt,
+                           grouped_boundary_arg->destination_contiguous_width,
+                           grouped_boundary_arg->destination_occupied_register_names);
+  const auto expected_boundary_result =
+      std::string("grouped result call#0 destination_value_id=") +
+      std::to_string(*grouped_boundary_result->destination_value_id) + " source_span=" +
+      grouped_span_summary(grouped_boundary_result->source_register_bank.value_or(
+                               prepare::PreparedRegisterBank::None),
+                           grouped_boundary_result->source_register_name.has_value()
+                               ? std::optional<std::string_view>(
+                                     std::string_view(*grouped_boundary_result->source_register_name))
+                               : std::nullopt,
+                           grouped_boundary_result->source_contiguous_width,
+                           grouped_boundary_result->source_occupied_register_names);
+  if (grouped_boundary_summary.find(expected_boundary_summary) == std::string::npos ||
+      grouped_boundary_trace.find(expected_boundary_arg) == std::string::npos ||
+      grouped_boundary_trace.find(expected_boundary_result) == std::string::npos) {
+    return fail(
+        "x86 route debug contract: grouped argument/result summaries no longer read direct prepared boundary authority");
   }
   return 0;
 }
@@ -3749,11 +3967,43 @@ int check_x86_route_debug_reads_grouped_spill_reload_authority() {
               }
               return count;
             }();
+  const auto grouped_call_argument_count =
+      consumed.calls == nullptr
+          ? std::size_t{0}
+          : [&]() {
+              std::size_t count = 0;
+              for (const auto& call : consumed.calls->calls) {
+                count += static_cast<std::size_t>(std::count_if(
+                    call.arguments.begin(),
+                    call.arguments.end(),
+                    [&is_grouped](const prepare::PreparedCallArgumentPlan& argument) {
+                      return is_grouped(argument.destination_contiguous_width,
+                                        argument.destination_occupied_register_names);
+                    }));
+              }
+              return count;
+            }();
+  const auto grouped_call_result_count =
+      consumed.calls == nullptr
+          ? std::size_t{0}
+          : [&]() {
+              std::size_t count = 0;
+              for (const auto& call : consumed.calls->calls) {
+                if (call.result.has_value() &&
+                    is_grouped(call.result->source_contiguous_width,
+                               call.result->source_occupied_register_names)) {
+                  ++count;
+                }
+              }
+              return count;
+            }();
 
   const auto expected_summary =
       std::string("grouped authority: saved=") + std::to_string(grouped_saved_count) +
       " preserved=" + std::to_string(grouped_preserved_count) +
       " clobbered=" + std::to_string(grouped_clobbered_count) +
+      " call_args=" + std::to_string(grouped_call_argument_count) +
+      " call_results=" + std::to_string(grouped_call_result_count) +
       " spills=" + std::to_string(grouped_spill_count) +
       " reloads=" + std::to_string(grouped_reload_count) +
       " storage=" + std::to_string(grouped_storage_count);
