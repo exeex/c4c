@@ -1287,6 +1287,94 @@ prepare::PreparedBirModule legalize_multi_defined_global_function_pointer_reject
   return prepare_module(std::move(module));
 }
 
+prepare::PreparedBirModule legalize_memory_return_focus_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  bir::Function callee;
+  callee.name = "extern_make_pair";
+  callee.is_declaration = true;
+  callee.return_type = bir::TypeKind::Void;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "ret.sret",
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Memory,
+          .sret_pointer = true,
+      },
+      .is_sret = true,
+  });
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "seed",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(callee));
+
+  bir::Function caller;
+  caller.name = "memory_return_focus_contract";
+  caller.return_type = bir::TypeKind::I32;
+  caller.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.call.sret.storage",
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "extern_make_pair",
+      .args = {
+          bir::Value::named(bir::TypeKind::Ptr, "lv.call.sret.storage"),
+          bir::Value::immediate_i32(13),
+      },
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::I32},
+      .arg_abi = {
+          bir::CallArgAbiInfo{
+              .type = bir::TypeKind::Ptr,
+              .size_bytes = 8,
+              .align_bytes = 4,
+              .primary_class = bir::AbiValueClass::Memory,
+              .sret_pointer = true,
+          },
+          bir::CallArgAbiInfo{
+              .type = bir::TypeKind::I32,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .primary_class = bir::AbiValueClass::Integer,
+              .passed_in_register = true,
+          },
+      },
+      .return_type_name = "pair",
+      .return_type = bir::TypeKind::Void,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Void,
+          .primary_class = bir::AbiValueClass::Memory,
+          .returned_in_memory = true,
+      },
+      .sret_storage_name = "lv.call.sret.storage",
+  });
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  caller.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(caller));
+  return prepare_module(std::move(module));
+}
+
 bool expect_contains(const std::string& text,
                      const std::string& needle,
                      const char* description) {
@@ -1456,6 +1544,16 @@ int main() {
   const std::string multi_defined_global_function_pointer_rejection_trace =
       c4c::backend::x86::trace_prepared_module_routes(
           multi_defined_global_function_pointer_rejection);
+  const auto memory_return_focus = legalize_memory_return_focus_module();
+  const c4c::backend::BackendOptions memory_return_focus_options{
+      .target_profile = x86_target_profile(),
+      .route_debug_focus_function = "memory_return_focus_contract",
+      .route_debug_focus_value = "lv.call.sret.storage",
+  };
+  const std::string focused_memory_return_prepared_dump = c4c::backend::dump_module(
+      c4c::backend::BackendModuleInput{memory_return_focus.module},
+      memory_return_focus_options,
+      c4c::backend::BackendDumpStage::PreparedBir);
 
   if (!expect_equal(backend_semantic_dump,
                     c4c::backend::bir::print(prepared.module),
@@ -1538,7 +1636,31 @@ int main() {
                        "module-level rejection summary header") ||
       !expect_contains(multi_defined_global_function_pointer_rejection_trace,
                        "x86 route trace",
-                       "module-level rejection trace header")) {
+                       "module-level rejection trace header") ||
+      !expect_contains(focused_memory_return_prepared_dump,
+                       "focus function: memory_return_focus_contract",
+                       "focused memory-return prepared dump function header") ||
+      !expect_contains(focused_memory_return_prepared_dump,
+                       "focus value: lv.call.sret.storage",
+                       "focused memory-return prepared dump value header") ||
+      !expect_contains(focused_memory_return_prepared_dump,
+                       "prepared.summary @memory_return_focus_contract",
+                       "focused memory-return prepared dump summary") ||
+      !expect_contains(focused_memory_return_prepared_dump,
+                       "callsite block=0 inst=0 wrapper=direct_extern_fixed_arity callee=extern_make_pair variadic_fpr_args=0 args=1 memory_return=lv.call.sret.storage memory_home=frame_slot sret_arg=0",
+                       "focused memory-return prepared dump callsite summary") ||
+      !expect_contains(focused_memory_return_prepared_dump,
+                       "call block_index=0 inst_index=0 wrapper_kind=direct_extern_fixed_arity variadic_fpr_arg_register_count=0 indirect=no callee=extern_make_pair memory_return=lv.call.sret.storage memory_encoding=frame_slot sret_arg_index=0",
+                       "focused memory-return prepared dump call-plan detail") ||
+      !expect_contains(focused_memory_return_prepared_dump,
+                       "storage lv.call.sret.storage value_id=",
+                       "focused memory-return prepared dump storage detail")) {
+    return EXIT_FAILURE;
+  }
+  if (focused_memory_return_prepared_dump.find("arg index=1 value_bank=gpr source_encoding=immediate source_literal=13") !=
+      std::string::npos) {
+    std::cerr << "[FAIL] focused memory-return prepared dump kept unrelated immediate argument detail\n";
+    std::cerr << "--- text ---\n" << focused_memory_return_prepared_dump << "\n";
     return EXIT_FAILURE;
   }
 
