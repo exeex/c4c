@@ -604,7 +604,11 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                 : nullptr;
         if (!visible_dep_typedef &&
             !has_visible_typedef_type(qn.base_text_id, dep_name)) {
-            resolved = resolve_visible_type_name(qn.base_text_id, dep_name);
+            const VisibleNameResult visible_type =
+                resolve_visible_type(qn.base_text_id, dep_name);
+            if (visible_type) {
+                resolved = visible_name_spelling(visible_type);
+            }
         }
         if (!visible_dep_typedef && !has_typedef_type(resolved)) {
             bool preserved_template_owner_member = false;

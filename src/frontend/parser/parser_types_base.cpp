@@ -269,9 +269,7 @@ int Parser::classify_visible_value_or_type_head(int pos, int* after_pos) {
                                               head_name)) {
             return -1;
         }
-        const std::string resolved_type =
-            resolve_visible_type_name(head_tok.text_id, head_name);
-        if (!resolved_type.empty()) return -1;
+        if (resolve_visible_type(head_tok.text_id, head_name)) return -1;
         return 0;
     }
 
@@ -281,7 +279,7 @@ int Parser::classify_visible_value_or_type_head(int pos, int* after_pos) {
     if (after_pos) *after_pos = after_name_pos;
 
     if (!resolve_qualified_value_name(qn).empty()) return 1;
-    if (!resolve_qualified_type_name(qn).empty()) return -1;
+    if (resolve_qualified_type(qn)) return -1;
     // Declaration-side probes keep unresolved qualified heads on the type side
     // unless structured value lookup proves they are expression-like.
     return -1;
@@ -1243,7 +1241,11 @@ TypeSpec Parser::parse_base_type() {
                         }
                         if (!already_have_base) {
                             has_typedef = true;
-                            const std::string resolved = resolve_visible_type_name(name);
+                            const VisibleNameResult visible_type =
+                                resolve_visible_type(name);
+                            const std::string resolved =
+                                visible_type ? visible_name_spelling(visible_type)
+                                             : std::string(name);
                             ts.tag = arena_.strdup(resolved.c_str());
                             consume();
                         }
@@ -1938,15 +1940,18 @@ TypeSpec Parser::parse_base_type() {
                                                         resolved_owner);
                                             }
                                         } else if (!primary_tpl) {
-                                            resolved_owner =
-                                                resolve_visible_type_name(
+                                            const VisibleNameResult visible_owner =
+                                                resolve_visible_type(
                                                     owner_lookup_name);
-                                            if (!resolved_owner.empty()) {
+                                            resolved_owner =
+                                                visible_name_spelling(
+                                                    visible_owner);
+                                            if (visible_owner &&
+                                                !resolved_owner.empty()) {
                                                 primary_tpl =
                                                     find_template_struct_primary(
-                                                        current_namespace_context_id(),
-                                                        find_parser_text_id(
-                                                            resolved_owner),
+                                                        visible_owner.context_id,
+                                                        visible_owner.base_text_id,
                                                         resolved_owner);
                                             }
                                         }

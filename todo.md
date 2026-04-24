@@ -8,33 +8,37 @@ Current Step Title: Retarget Visible Type Lookup
 
 ## Just Finished
 
-Step 2 introduced the structured visible-name carrier and first type-only
-structured resolver path.
+Step 3 retargeted additional visible type consumers outside the initial
+carrier packet so semantic checks consume `VisibleNameResult` before rendering
+compatibility spelling.
 
 Files changed:
 
-- `src/frontend/parser/parser.hpp`: added `VisibleNameKind`,
-  `VisibleNameSource`, `VisibleNameResult`, structured type resolver
-  declarations, a structured `lookup_type_in_context` overload, and
-  `visible_name_spelling(...)` for compatibility rendering.
-- `src/frontend/parser/parser_core.cpp`: implemented
-  `resolve_visible_type(...)`, `resolve_qualified_type(...)`, structured
-  `lookup_type_in_context(...)`, compatibility wrappers for
-  `resolve_visible_type_name(...)`, `resolve_qualified_type_name(...)`, and
-  string-returning `lookup_type_in_context(...)`; retargeted
-  `find_visible_typedef_type(...)` to consume the structured result first.
-- `src/frontend/parser/types_helpers.hpp`: moved direct type probes in
-  `visible_type_head_name(...)`, `resolve_qualified_typedef_name(...)`, and
-  `resolve_qualified_known_type_name(...)` to the structured type resolver
-  where practical while preserving rendered compatibility spelling at the
-  existing string boundaries.
+- `src/frontend/parser/parser_core.cpp`: retargeted alias-template info
+  lookup to derive the follow-up key from `resolve_visible_type(...)` context
+  and `base_text_id` instead of reparsing rendered spelling.
+- `src/frontend/parser/parser_declarations.cpp`: made visible type equality
+  compare structured keys when available, and made top-level using type import
+  prefer `resolve_qualified_type(...)` plus `find_structured_typedef_type(...)`
+  before falling back to compatibility spelling.
+- `src/frontend/parser/parser_expressions.cpp`: kept typedef-cast AST spelling
+  at the boundary while resolving the direct type through
+  `resolve_visible_type(...)`.
+- `src/frontend/parser/parser_types_base.cpp`: changed type/value
+  disambiguation and template-owner follow-through to test structured type
+  results instead of non-empty compatibility strings.
+- `src/frontend/parser/parser_types_declarator.cpp`: retargeted dependent
+  typename fallback resolution to use `resolve_visible_type(...)` and render
+  only for the output spelling.
+- `src/frontend/parser/parser_types_template.cpp`: moved template primary,
+  specialization, and deferred NTTP owner lookup follow-through onto
+  structured type result context and `base_text_id`.
 
 ## Suggested Next
 
-Next coherent packet: retarget additional visible type consumers outside the
-initial `parser_core.cpp` / `types_helpers.hpp` path, especially
-alias-template, declarator, struct/type, and expression disambiguation callers
-that still request rendered type names directly before semantic checks.
+Next coherent packet: move to Step 4 value/concept visible-name result
+retargeting, keeping type spelling wrappers as compatibility surfaces unless a
+new caller is proven to need semantic identity.
 
 ## Watchouts
 
@@ -51,6 +55,13 @@ that still request rendered type names directly before semantic checks.
   `UsingAlias`, but a later packet should publish the alias target key directly.
 - Global qualified unqualified spelling such as `::T` remains a compatibility
   fallback in the structured wrapper to preserve existing string behavior.
+- Remaining `resolve_visible_type_name(...)` and
+  `resolve_qualified_type_name(...)` references are the compatibility wrapper
+  definitions themselves. Direct `find_visible_typedef_type(...)` callers are
+  intentionally type-object consumers, and helpers such as
+  `visible_type_head_name(...)` / `resolve_qualified_known_type_name(...)`
+  remain string-returning AST, fallback, or bridge boundaries over structured
+  lookup.
 
 ## Proof
 

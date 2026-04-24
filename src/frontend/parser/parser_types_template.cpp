@@ -44,12 +44,12 @@ Node* Parser::find_template_struct_primary(
         alias_template_key_in_context(context_id, name_text_id, fallback_name);
     if (Node* node = lookup_structured(key)) return node;
 
-    const std::string resolved =
-        resolve_visible_type_name(name_text_id, fallback_name);
-    if (!resolved.empty() && resolved != fallback_name) {
-        const TextId resolved_text_id = find_parser_text_id(resolved);
+    const VisibleNameResult resolved_type =
+        resolve_visible_type(name_text_id, fallback_name);
+    const std::string resolved = visible_name_spelling(resolved_type);
+    if (resolved_type && !resolved.empty() && resolved != fallback_name) {
         const QualifiedNameKey resolved_key = alias_template_key_in_context(
-            context_id, resolved_text_id, resolved);
+            resolved_type.context_id, resolved_type.base_text_id, resolved);
         if (Node* node = lookup_structured(resolved_key)) return node;
     }
 
@@ -119,12 +119,12 @@ const std::vector<Node*>* Parser::find_template_struct_specializations(
         return specializations;
     }
 
-    const std::string resolved =
-        resolve_visible_type_name(name_text_id, fallback_name);
-    if (!resolved.empty() && resolved != fallback_name) {
-        const TextId resolved_text_id = find_parser_text_id(resolved);
+    const VisibleNameResult resolved_type =
+        resolve_visible_type(name_text_id, fallback_name);
+    const std::string resolved = visible_name_spelling(resolved_type);
+    if (resolved_type && !resolved.empty() && resolved != fallback_name) {
         const QualifiedNameKey resolved_key = alias_template_key_in_context(
-            context_id, resolved_text_id, resolved);
+            resolved_type.context_id, resolved_type.base_text_id, resolved);
         if (!(resolved_key == key)) {
             if (const auto* specializations = lookup_structured(resolved_key)) {
                 return specializations;
@@ -779,13 +779,14 @@ bool Parser::eval_deferred_nttp_expr_tokens(
             }
         }
         if (!ref_primary) {
-            const std::string visible_name =
-                resolve_visible_type_name(ref_tpl_name_text_id, ref_tpl_name);
-            if (!visible_name.empty()) {
+            const VisibleNameResult visible_type =
+                resolve_visible_type(ref_tpl_name_text_id, ref_tpl_name);
+            const std::string visible_name = visible_name_spelling(visible_type);
+            if (visible_type && !visible_name.empty()) {
                 resolved_ref_tpl_name = visible_name;
                 ref_primary = find_template_struct_primary(
-                    current_namespace_context_id(),
-                    find_parser_text_id(resolved_ref_tpl_name),
+                    visible_type.context_id,
+                    visible_type.base_text_id,
                     resolved_ref_tpl_name);
             }
         }

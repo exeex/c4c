@@ -1328,10 +1328,10 @@ Node* Parser::parse_primary() {
         QualifiedNameRef qn = parse_qualified_name(false);
         const std::string_view qn_base_name =
             parser_text(qn.base_text_id, qn.base_name);
-        const std::string direct_resolved_type_name =
+        const VisibleNameResult direct_resolved_type =
             qn.qualifier_segments.empty()
-                ? resolve_visible_type_name(qn.base_text_id, qn_base_name)
-                : std::string();
+                ? resolve_visible_type(qn.base_text_id, qn_base_name)
+                : VisibleNameResult{};
         if (is_cpp_mode() && qn.qualifier_segments.empty() &&
             check(TokenKind::LParen)) {
             const TypeSpec* direct_typedef =
@@ -1339,9 +1339,9 @@ Node* Parser::parse_primary() {
             if (direct_typedef) {
                 TypeSpec cast_ts = *direct_typedef;
                 const std::string visible_typedef_name =
-                    direct_resolved_type_name.empty()
+                    !direct_resolved_type
                         ? std::string(qn_base_name)
-                        : direct_resolved_type_name;
+                        : visible_name_spelling(direct_resolved_type);
                 set_last_resolved_typedef(visible_typedef_name);
                 consume();
                 std::vector<Node*> args;
@@ -1359,7 +1359,7 @@ Node* Parser::parse_primary() {
                 if (record_ctor_like || multi_arg_typedef_cast) {
                     Node* callee =
                         make_var(cast_ts.tag ? cast_ts.tag
-                                             : direct_resolved_type_name.c_str(),
+                                             : visible_typedef_name.c_str(),
                                  ln);
                     Node* call = make_node(NK_CALL, ln);
                     call->left = callee;

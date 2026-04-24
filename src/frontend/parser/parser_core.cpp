@@ -1169,12 +1169,12 @@ const ParserAliasTemplateInfo* Parser::find_alias_template_info_in_context(
         return structured;
     }
 
-    const std::string resolved =
-        resolve_visible_type_name(name_text_id, fallback_name);
-    if (!resolved.empty() && resolved != fallback_name) {
-        const TextId resolved_text_id = find_parser_text_id(resolved);
+    const VisibleNameResult resolved_type =
+        resolve_visible_type(name_text_id, fallback_name);
+    const std::string resolved = visible_name_spelling(resolved_type);
+    if (resolved_type && !resolved.empty() && resolved != fallback_name) {
         const QualifiedNameKey resolved_key = alias_template_key_in_context(
-            context_id, resolved_text_id, resolved);
+            resolved_type.context_id, resolved_type.base_text_id, resolved);
         if (const ParserAliasTemplateInfo* structured =
                 find_alias_template_info(resolved_key)) {
             return structured;

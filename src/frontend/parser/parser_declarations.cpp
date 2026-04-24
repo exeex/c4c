@@ -202,8 +202,17 @@ bool is_same_visible_type_name(Parser& parser, TextId lhs_text_id,
                                std::string_view rhs) {
     if (lhs.empty() || rhs.empty()) return false;
     if (lhs == rhs) return true;
-    return parser.resolve_visible_type_name(lhs_text_id, lhs) ==
-           parser.resolve_visible_type_name(rhs_text_id, rhs);
+    const Parser::VisibleNameResult lhs_type =
+        parser.resolve_visible_type(lhs_text_id, lhs);
+    const Parser::VisibleNameResult rhs_type =
+        parser.resolve_visible_type(rhs_text_id, rhs);
+    if (!lhs_type || !rhs_type) return false;
+    if (lhs_type.key.base_text_id != kInvalidText &&
+        rhs_type.key.base_text_id != kInvalidText) {
+        return lhs_type.key == rhs_type.key;
+    }
+    return parser.visible_name_spelling(lhs_type) ==
+           parser.visible_name_spelling(rhs_type);
 }
 
 bool is_cpp20_requires_clause_record_decl_boundary(TokenKind kind) {
@@ -1599,11 +1608,17 @@ Node* Parser::parse_top_level() {
 
         const std::string imported_name =
             std::string(parser_text(target_name.base_text_id, target_name.base_name));
-        const std::string imported_type_name =
-            resolve_qualified_type_name(target_name);
-        if (!imported_type_name.empty()) {
-            if (const TypeSpec* imported_typedef =
-                    find_typedef_type(imported_type_name)) {
+        const VisibleNameResult imported_type =
+            resolve_qualified_type(target_name);
+        if (imported_type) {
+            const TypeSpec* imported_typedef =
+                find_structured_typedef_type(imported_type.key);
+            const std::string imported_type_name =
+                visible_name_spelling(imported_type);
+            if (!imported_typedef && !imported_type_name.empty()) {
+                imported_typedef = find_typedef_type(imported_type_name);
+            }
+            if (imported_typedef) {
                 const std::string imported_key = bridge_name_in_context(
                     using_context_id, target_name.base_text_id, imported_name);
                 register_structured_typedef_binding_in_context(
