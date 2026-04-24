@@ -4,7 +4,7 @@ Status: Open
 Created: 2026-04-24
 Last Updated: 2026-04-24
 Parent Ideas:
-- [87_parser_visible_name_resolution_structured_result.md](/workspaces/c4c/ideas/open/87_parser_visible_name_resolution_structured_result.md)
+- [87_parser_visible_name_resolution_structured_result.md](/workspaces/c4c/ideas/closed/87_parser_visible_name_resolution_structured_result.md)
 
 ## Goal
 
@@ -210,7 +210,7 @@ include paths, app entry includes, or shared frontend infrastructure.
 This idea is structural and should not absorb the semantic parser identity
 work in:
 
-- [87_parser_visible_name_resolution_structured_result.md](/workspaces/c4c/ideas/open/87_parser_visible_name_resolution_structured_result.md)
+- [87_parser_visible_name_resolution_structured_result.md](/workspaces/c4c/ideas/closed/87_parser_visible_name_resolution_structured_result.md)
 
 If both ideas are active candidates, prefer not to mix semantic lookup
 representation changes with header hierarchy movement in the same code slice.
