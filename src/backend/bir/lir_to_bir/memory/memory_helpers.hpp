@@ -27,6 +27,11 @@ static std::optional<AggregateArrayExtent> find_repeated_aggregate_extent_at_off
     std::size_t target_offset,
     std::string_view repeated_type_text,
     const TypeDeclMap& type_decls);
+static std::optional<AggregateArrayExtent> find_nested_repeated_aggregate_extent_at_offset(
+    std::string_view type_text,
+    std::size_t target_offset,
+    std::string_view repeated_type_text,
+    const TypeDeclMap& type_decls);
 static std::optional<LocalAggregateGepTarget> resolve_relative_gep_target(
     std::string_view type_text,
     std::int64_t base_byte_offset,

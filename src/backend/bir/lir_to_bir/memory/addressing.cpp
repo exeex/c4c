@@ -14,6 +14,94 @@ using lir_to_bir_detail::compute_aggregate_type_layout;
 using lir_to_bir_detail::parse_typed_operand;
 using lir_to_bir_detail::resolve_index_operand;
 
+namespace {
+
+std::optional<BirFunctionLowerer::AggregateArrayExtent>
+find_repeated_aggregate_extent_at_offset_impl(
+    std::string_view type_text,
+    std::size_t target_offset,
+    std::string_view repeated_type_text,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    bool include_struct_field_runs) {
+  const auto layout = compute_aggregate_type_layout(type_text, type_decls);
+  if (layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
+      target_offset >= layout.size_bytes) {
+    return std::nullopt;
+  }
+
+  switch (layout.kind) {
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Array: {
+      const auto element_layout =
+          compute_aggregate_type_layout(layout.element_type_text, type_decls);
+      if (element_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
+          element_layout.size_bytes == 0) {
+        return std::nullopt;
+      }
+      const auto element_index = target_offset / element_layout.size_bytes;
+      if (element_index >= layout.array_count) {
+        return std::nullopt;
+      }
+      const auto nested_offset = target_offset % element_layout.size_bytes;
+      if (nested_offset == 0 &&
+          c4c::codegen::lir::trim_lir_arg_text(layout.element_type_text) ==
+              c4c::codegen::lir::trim_lir_arg_text(repeated_type_text)) {
+        return BirFunctionLowerer::AggregateArrayExtent{
+            .element_count = layout.array_count - element_index,
+            .element_stride_bytes = element_layout.size_bytes,
+        };
+      }
+      return find_repeated_aggregate_extent_at_offset_impl(
+          layout.element_type_text, nested_offset, repeated_type_text, type_decls, include_struct_field_runs);
+    }
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Struct:
+      for (std::size_t index = 0; index < layout.fields.size(); ++index) {
+        const auto field_begin = layout.fields[index].byte_offset;
+        const auto field_end =
+            index + 1 < layout.fields.size() ? layout.fields[index + 1].byte_offset
+                                             : layout.size_bytes;
+        if (target_offset < field_begin || target_offset >= field_end) {
+          continue;
+        }
+        const auto field_layout =
+            compute_aggregate_type_layout(layout.fields[index].type_text, type_decls);
+        if (include_struct_field_runs && target_offset == field_begin &&
+            field_layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid &&
+            field_layout.size_bytes != 0 &&
+            c4c::codegen::lir::trim_lir_arg_text(layout.fields[index].type_text) ==
+                c4c::codegen::lir::trim_lir_arg_text(repeated_type_text)) {
+          std::size_t repeated_count = 0;
+          for (std::size_t repeated_index = index;
+               repeated_index < layout.fields.size();
+               ++repeated_index) {
+            if (c4c::codegen::lir::trim_lir_arg_text(layout.fields[repeated_index].type_text) !=
+                    c4c::codegen::lir::trim_lir_arg_text(repeated_type_text) ||
+                layout.fields[repeated_index].byte_offset !=
+                    field_begin + repeated_count * field_layout.size_bytes) {
+              break;
+            }
+            ++repeated_count;
+          }
+          if (repeated_count != 0) {
+            return BirFunctionLowerer::AggregateArrayExtent{
+                .element_count = repeated_count,
+                .element_stride_bytes = field_layout.size_bytes,
+            };
+          }
+        }
+        return find_repeated_aggregate_extent_at_offset_impl(layout.fields[index].type_text,
+                                                             target_offset - field_begin,
+                                                             repeated_type_text,
+                                                             type_decls,
+                                                             include_struct_field_runs);
+      }
+      return std::nullopt;
+    default:
+      return std::nullopt;
+  }
+}
+
+}  // namespace
+
 bool BirFunctionLowerer::can_reinterpret_byte_storage_view(
     std::string_view storage_type_text,
     std::string_view target_type_text,
@@ -36,79 +124,18 @@ BirFunctionLowerer::find_repeated_aggregate_extent_at_offset(
     std::size_t target_offset,
     std::string_view repeated_type_text,
     const TypeDeclMap& type_decls) {
-  const auto layout = compute_aggregate_type_layout(type_text, type_decls);
-  if (layout.kind == AggregateTypeLayout::Kind::Invalid || target_offset >= layout.size_bytes) {
-    return std::nullopt;
-  }
+  return find_repeated_aggregate_extent_at_offset_impl(
+      type_text, target_offset, repeated_type_text, type_decls, true);
+}
 
-  switch (layout.kind) {
-    case AggregateTypeLayout::Kind::Array: {
-      const auto element_layout =
-          compute_aggregate_type_layout(layout.element_type_text, type_decls);
-      if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
-          element_layout.size_bytes == 0) {
-        return std::nullopt;
-      }
-      const auto element_index = target_offset / element_layout.size_bytes;
-      if (element_index >= layout.array_count) {
-        return std::nullopt;
-      }
-      const auto nested_offset = target_offset % element_layout.size_bytes;
-      if (nested_offset == 0 &&
-          c4c::codegen::lir::trim_lir_arg_text(layout.element_type_text) ==
-              c4c::codegen::lir::trim_lir_arg_text(repeated_type_text)) {
-        return AggregateArrayExtent{
-            .element_count = layout.array_count - element_index,
-            .element_stride_bytes = element_layout.size_bytes,
-        };
-      }
-      return find_repeated_aggregate_extent_at_offset(
-          layout.element_type_text, nested_offset, repeated_type_text, type_decls);
-    }
-    case AggregateTypeLayout::Kind::Struct:
-      for (std::size_t index = 0; index < layout.fields.size(); ++index) {
-        const auto field_begin = layout.fields[index].byte_offset;
-        const auto field_end =
-            index + 1 < layout.fields.size() ? layout.fields[index + 1].byte_offset
-                                             : layout.size_bytes;
-        if (target_offset < field_begin || target_offset >= field_end) {
-          continue;
-        }
-        const auto field_layout =
-            compute_aggregate_type_layout(layout.fields[index].type_text, type_decls);
-        if (target_offset == field_begin &&
-            field_layout.kind != AggregateTypeLayout::Kind::Invalid &&
-            field_layout.size_bytes != 0 &&
-            c4c::codegen::lir::trim_lir_arg_text(layout.fields[index].type_text) ==
-                c4c::codegen::lir::trim_lir_arg_text(repeated_type_text)) {
-          std::size_t repeated_count = 0;
-          for (std::size_t repeated_index = index;
-               repeated_index < layout.fields.size();
-               ++repeated_index) {
-            if (c4c::codegen::lir::trim_lir_arg_text(layout.fields[repeated_index].type_text) !=
-                    c4c::codegen::lir::trim_lir_arg_text(repeated_type_text) ||
-                layout.fields[repeated_index].byte_offset !=
-                    field_begin + repeated_count * field_layout.size_bytes) {
-              break;
-            }
-            ++repeated_count;
-          }
-          if (repeated_count != 0) {
-            return AggregateArrayExtent{
-                .element_count = repeated_count,
-                .element_stride_bytes = field_layout.size_bytes,
-            };
-          }
-        }
-        return find_repeated_aggregate_extent_at_offset(layout.fields[index].type_text,
-                                                        target_offset - field_begin,
-                                                        repeated_type_text,
-                                                        type_decls);
-      }
-      return std::nullopt;
-    default:
-      return std::nullopt;
-  }
+std::optional<BirFunctionLowerer::AggregateArrayExtent>
+BirFunctionLowerer::find_nested_repeated_aggregate_extent_at_offset(
+    std::string_view type_text,
+    std::size_t target_offset,
+    std::string_view repeated_type_text,
+    const TypeDeclMap& type_decls) {
+  return find_repeated_aggregate_extent_at_offset_impl(
+      type_text, target_offset, repeated_type_text, type_decls, false);
 }
 
 std::optional<BirFunctionLowerer::LocalAggregateGepTarget>
