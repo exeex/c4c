@@ -1,5 +1,5 @@
-// parser_types_struct.cpp — struct/union/enum parsing, parse_param
-#include "impl/parser_impl.hpp"
+// struct.cpp — struct/union/enum parsing, parse_param
+#include "../parser_impl.hpp"
 #include "lexer.hpp"
 
 #include <climits>
@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <unordered_set>
 
-#include "impl/types/types_helpers.hpp"
+#include "types_helpers.hpp"
 
 namespace c4c {
 

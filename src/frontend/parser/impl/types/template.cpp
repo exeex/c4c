@@ -1,5 +1,5 @@
-// parser_types_template.cpp — template registry, NTTP evaluation
-#include "impl/parser_impl.hpp"
+// template.cpp — template registry, NTTP evaluation
+#include "../parser_impl.hpp"
 #include "lexer.hpp"
 
 #include <climits>
@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <unordered_set>
 
-#include "impl/types/types_helpers.hpp"
+#include "types_helpers.hpp"
 
 namespace c4c {
 

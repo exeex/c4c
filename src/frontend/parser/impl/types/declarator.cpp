@@ -1,5 +1,5 @@
-// parser_types_declarator.cpp — declarator parsing, template argument parsing
-#include "impl/parser_impl.hpp"
+// declarator.cpp — declarator parsing, template argument parsing
+#include "../parser_impl.hpp"
 #include "lexer.hpp"
 
 #include <climits>
@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <unordered_set>
 
-#include "impl/types/types_helpers.hpp"
+#include "types_helpers.hpp"
 
 namespace c4c {
 

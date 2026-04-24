@@ -1,5 +1,5 @@
-// parser_types_base.cpp — base type parsing, skip helpers, parse_base_type
-#include "impl/parser_impl.hpp"
+// base.cpp — base type parsing, skip helpers, parse_base_type
+#include "../parser_impl.hpp"
 #include "lexer.hpp"
 
 #include <climits>
@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <unordered_set>
 
-#include "impl/types/types_helpers.hpp"
+#include "types_helpers.hpp"
 
 namespace c4c {
 
