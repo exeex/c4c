@@ -33,6 +33,7 @@ bool is_dependent_enum_expr(Node* n, const ParserEnumConstTable& consts);
 TypeBase effective_scalar_base(const TypeSpec& ts);
 long long align_base(TypeBase b, int ptr_level);
 Node* parse_enum(Parser& parser);
+Node* parse_param(Parser& parser);
 
 bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);

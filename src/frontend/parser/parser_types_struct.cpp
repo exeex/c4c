@@ -1034,7 +1034,7 @@ bool try_parse_record_constructor_member(
             }
             if (parser.check(TokenKind::RParen)) break;
             if (!parser.can_start_parameter_type()) break;
-            Node* p = parser.parse_param();
+            Node* p = parse_param(parser);
             if (p) params.push_back(p);
             if (parser.check(TokenKind::Ellipsis)) {
                 variadic = true;
@@ -1438,7 +1438,7 @@ bool try_parse_record_method_or_field_member(
                 if (parser.check(TokenKind::Ellipsis)) { variadic = true; parser.consume(); break; }
                 if (parser.check(TokenKind::RParen)) break;
                 if (!parser.can_start_parameter_type()) break;
-                Node* p = parser.parse_param();
+                Node* p = parse_param(parser);
                 if (p) params.push_back(p);
                 if (parser.check(TokenKind::Ellipsis)) { variadic = true; parser.consume(); break; }
                 if (!parser.match(TokenKind::Comma)) break;
@@ -1572,7 +1572,7 @@ bool try_parse_record_method_or_field_member(
                     }
                     if (parser.check(TokenKind::RParen)) break;
                     if (!parser.can_start_parameter_type()) break;
-                    Node* p = parser.parse_param();
+                    Node* p = parse_param(parser);
                     if (p) params.push_back(p);
                     if (parser.check(TokenKind::Ellipsis)) {
                         variadic = true;
@@ -2492,91 +2492,91 @@ Node* parse_enum(Parser& parser) {
 
 // ── parameter parsing ─────────────────────────────────────────────────────────
 
-Node* Parser::parse_param() {
-    ParseContextGuard trace(this, __func__);
-    int ln = cur().line;
+Node* parse_param(Parser& parser) {
+    Parser::ParseContextGuard trace(&parser, __func__);
+    int ln = parser.cur().line;
     auto skip_cpp11_attrs_only = [&]() {
-        while (check(TokenKind::LBracket) &&
-               core_input_state_.pos + 1 <
-                   static_cast<int>(core_input_state_.tokens.size()) &&
-               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+        while (parser.check(TokenKind::LBracket) &&
+               parser.core_input_state_.pos + 1 <
+                   static_cast<int>(parser.core_input_state_.tokens.size()) &&
+               parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                    TokenKind::LBracket) {
-            consume();
-            consume();
+            parser.consume();
+            parser.consume();
             int depth = 1;
-            while (!at_end() && depth > 0) {
-                if (check(TokenKind::LBracket) &&
-                    core_input_state_.pos + 1 <
-                        static_cast<int>(core_input_state_.tokens.size()) &&
-                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+            while (!parser.at_end() && depth > 0) {
+                if (parser.check(TokenKind::LBracket) &&
+                    parser.core_input_state_.pos + 1 <
+                        static_cast<int>(parser.core_input_state_.tokens.size()) &&
+                    parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                         TokenKind::LBracket) {
-                    consume();
-                    consume();
+                    parser.consume();
+                    parser.consume();
                     ++depth;
                     continue;
                 }
-                if (check(TokenKind::RBracket) &&
-                    core_input_state_.pos + 1 <
-                        static_cast<int>(core_input_state_.tokens.size()) &&
-                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                if (parser.check(TokenKind::RBracket) &&
+                    parser.core_input_state_.pos + 1 <
+                        static_cast<int>(parser.core_input_state_.tokens.size()) &&
+                    parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                         TokenKind::RBracket) {
-                    consume();
-                    consume();
+                    parser.consume();
+                    parser.consume();
                     --depth;
                     continue;
                 }
-                consume();
+                parser.consume();
             }
         }
     };
 
     skip_cpp11_attrs_only();
-    if (check(TokenKind::Ellipsis)) {
+    if (parser.check(TokenKind::Ellipsis)) {
         // variadic marker — handled by caller
-        consume();
+        parser.consume();
         return nullptr;
     }
-    if (check(TokenKind::KwStatic)) {
+    if (parser.check(TokenKind::KwStatic)) {
         throw std::runtime_error(
             std::string("invalid use of storage class 'static' in parameter declaration at line ") +
-            std::to_string(cur().line));
+            std::to_string(parser.cur().line));
     }
-    TypeSpec pts = parse_base_type();
+    TypeSpec pts = parser.parse_base_type();
     const char* pname = nullptr;
     Node** fn_ptr_params = nullptr;
     int n_fn_ptr_params = 0;
     bool fn_ptr_variadic = false;
     bool is_parameter_pack = false;
-    parse_declarator(pts, &pname, &fn_ptr_params, &n_fn_ptr_params, &fn_ptr_variadic,
-                     &is_parameter_pack);
+    parser.parse_declarator(pts, &pname, &fn_ptr_params, &n_fn_ptr_params,
+                            &fn_ptr_variadic, &is_parameter_pack);
     skip_cpp11_attrs_only();
-    parse_plain_function_declarator_suffix(
+    parser.parse_plain_function_declarator_suffix(
         pts, /*decay_to_function_pointer=*/true);
-    skip_attributes();
+    parser.skip_attributes();
 
     // C++ default parameter value: skip '= expr' (balanced, stopping at , or ) at depth 0)
-    if (check(TokenKind::Assign)) {
-        consume(); // eat '='
+    if (parser.check(TokenKind::Assign)) {
+        parser.consume(); // eat '='
         int depth = 0;
-        while (!at_end()) {
-            if (check(TokenKind::LParen) || check(TokenKind::LBracket) ||
-                check(TokenKind::LBrace)) {
+        while (!parser.at_end()) {
+            if (parser.check(TokenKind::LParen) || parser.check(TokenKind::LBracket) ||
+                parser.check(TokenKind::LBrace)) {
                 ++depth;
-                consume();
-            } else if (check(TokenKind::RParen) || check(TokenKind::RBracket) ||
-                       check(TokenKind::RBrace)) {
+                parser.consume();
+            } else if (parser.check(TokenKind::RParen) || parser.check(TokenKind::RBracket) ||
+                       parser.check(TokenKind::RBrace)) {
                 if (depth == 0) break;
                 --depth;
-                consume();
-            } else if (check(TokenKind::Comma) && depth == 0) {
+                parser.consume();
+            } else if (parser.check(TokenKind::Comma) && depth == 0) {
                 break;
             } else {
-                consume();
+                parser.consume();
             }
         }
     }
 
-    Node* p = make_node(NK_DECL, ln);
+    Node* p = parser.make_node(NK_DECL, ln);
     p->type = pts;
     p->name = pname ? pname : nullptr;
     p->fn_ptr_params = fn_ptr_params;
@@ -2585,7 +2585,8 @@ Node* Parser::parse_param() {
     p->is_parameter_pack = is_parameter_pack;
     // Phase C: propagate fn_ptr params from typedef if not set by declarator.
     if (pts.is_fn_ptr && n_fn_ptr_params == 0 && !fn_ptr_variadic) {
-        if (const FnPtrTypedefInfo* info = find_current_typedef_fn_ptr_info()) {
+        if (const Parser::FnPtrTypedefInfo* info =
+                parser.find_current_typedef_fn_ptr_info()) {
             p->fn_ptr_params = info->params;
             p->n_fn_ptr_params = info->n_params;
             p->fn_ptr_variadic = info->variadic;

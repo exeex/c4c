@@ -9,13 +9,14 @@ Current Step Title: Move Implementation-Only Method Declarations Behind The Boun
 ## Just Finished
 
 Completed Step 3 declaration-boundary slice by removing the implementation-only
-enum parser entry from public `Parser` declarations in
+parameter parser entry from public `Parser` declarations in
 `src/frontend/parser/parser.hpp`, adding the equivalent private
-`parse_enum(Parser& parser)` declaration to
+`parse_param(Parser& parser)` declaration to
 `src/frontend/parser/impl/parser_impl.hpp`, and retargeting the definition plus
-internal call sites in `src/frontend/parser/parser_types_struct.cpp` and
-`src/frontend/parser/parser_types_base.cpp` to pass `Parser&` through the
-private parser implementation boundary.
+internal call sites in `src/frontend/parser/parser_types_struct.cpp`,
+`src/frontend/parser/parser_declarations.cpp`, and
+`src/frontend/parser/parser_types_declarator.cpp` to pass `Parser&` through
+the private parser implementation boundary.
 
 ## Suggested Next
 
@@ -41,10 +42,12 @@ plan, keeping implementation-only declarations behind
   outer record-definition helpers had no external source or test references.
 - `parse_enum` now lives behind `impl/parser_impl.hpp`; current source search
   found only parser implementation call sites.
+- `parse_param` now lives behind `impl/parser_impl.hpp`; current source search
+  found only parser implementation call sites.
 
 ## Proof
 
-Executor Step 3 focused proof passed for the enum parser entry
+Executor Step 3 focused proof passed for the parameter parser entry
 declaration-boundary slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 

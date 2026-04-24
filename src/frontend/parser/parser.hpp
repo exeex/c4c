@@ -740,9 +740,6 @@ class Parser {
                                  std::string* saved_struct_tag,
                                  std::string* struct_source_name);
 
-  // ── parameter parsing ─────────────────────────────────────────────────────
-  Node* parse_param();
-
   // ── expression parsing (Pratt) ────────────────────────────────────────────
   Node* parse_expr();            // comma-level
   Node* parse_assign_expr();     // assignment / ternary

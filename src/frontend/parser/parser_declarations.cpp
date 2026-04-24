@@ -1121,7 +1121,7 @@ void Parser::parse_top_level_parameter_list(
                 break;
             }
             if (!can_start_parameter_type()) break;
-            Node* p = parse_param();
+            Node* p = parse_param(*this);
             if (p && out_params) out_params->push_back(p);
             if (check(TokenKind::Ellipsis)) {
                 if (out_variadic) *out_variadic = true;
@@ -2408,7 +2408,7 @@ Node* Parser::parse_top_level() {
                     if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
                     if (check(TokenKind::RParen)) break;
                     if (!can_start_parameter_type()) break;
-                    Node* p = parse_param();
+                    Node* p = parse_param(*this);
                     if (p) params.push_back(p);
                     if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
                     if (!match(TokenKind::Comma)) break;
@@ -2531,7 +2531,7 @@ Node* Parser::parse_top_level() {
                         if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
                         if (check(TokenKind::RParen)) break;
                         if (!can_start_parameter_type()) break;
-                        Node* p = parse_param();
+                        Node* p = parse_param(*this);
                         if (p) params.push_back(p);
                         if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
                         if (!match(TokenKind::Comma)) break;
@@ -2924,7 +2924,7 @@ top_level_base_ready:
                             if (match(TokenKind::Comma)) continue;
                             break;
                         }
-                        Node* p = parse_param();
+                        Node* p = parse_param(*this);
                         if (p) fptr_fn_params.push_back(p);
                         if (!match(TokenKind::Comma)) break;
                     }
@@ -2948,7 +2948,7 @@ top_level_base_ready:
                             if (match(TokenKind::Comma)) continue;
                             break;
                         }
-                        Node* p = parse_param();
+                        Node* p = parse_param(*this);
                         if (p) inner_ret_params.push_back(p);
                         if (!match(TokenKind::Comma)) break;
                     }
@@ -2982,7 +2982,7 @@ top_level_base_ready:
                         if (match(TokenKind::Comma)) continue;
                         break;
                     }
-                    Node* p = parse_param();
+                    Node* p = parse_param(*this);
                     if (p) fptr_fn_params.push_back(p);
                     if (!match(TokenKind::Comma)) break;
                 }
@@ -3007,7 +3007,7 @@ top_level_base_ready:
                         if (match(TokenKind::Comma)) continue;
                         break;
                     }
-                    Node* p = parse_param();
+                    Node* p = parse_param(*this);
                     if (p) pointed_fn_params.push_back(p);
                     if (!match(TokenKind::Comma)) break;
                 }

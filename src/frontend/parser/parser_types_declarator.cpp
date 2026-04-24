@@ -1343,7 +1343,7 @@ void Parser::parse_declarator_parameter_list(
                 if (match(TokenKind::Comma)) continue;
                 break;
             }
-            Node* p = parse_param();
+            Node* p = parse_param(*this);
             if (p && out_params) out_params->push_back(p);
             if (!match(TokenKind::Comma)) break;
         }
