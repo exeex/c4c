@@ -97,7 +97,7 @@ std::size_t prepared_block_predecessor_count(const PreparedControlFlowFunction& 
   return predecessor_count;
 }
 
-PreparedParallelCopyExecutionSite classify_parallel_copy_execution_site(
+PreparedParallelCopyExecutionSite classify_join_transfer_parallel_copy_execution_site(
     const PreparedControlFlowFunction& function_control_flow,
     BlockLabelId predecessor_label,
     BlockLabelId successor_label) {
@@ -108,11 +108,11 @@ PreparedParallelCopyExecutionSite classify_parallel_copy_execution_site(
   const std::size_t successor_predecessors =
       prepared_block_predecessor_count(function_control_flow, successor_label);
 
+  // `out_of_ssa` currently publishes parallel-copy bundles only from join-transfer edge
+  // transfers. Those transfers always target a join block, so producer-published
+  // `successor_entry` bundles remain unreachable until a non-join publication path exists.
   if (predecessor_successors > 1 && successor_predecessors > 1) {
     return PreparedParallelCopyExecutionSite::CriticalEdge;
-  }
-  if (predecessor_successors > 1) {
-    return PreparedParallelCopyExecutionSite::SuccessorEntry;
   }
   return PreparedParallelCopyExecutionSite::PredecessorTerminator;
 }
@@ -132,9 +132,8 @@ struct MoveState {
   PreparedParallelCopyBundle bundle{
       .predecessor_label = predecessor_label,
       .successor_label = successor_label,
-      .execution_site = classify_parallel_copy_execution_site(function_control_flow,
-                                                              predecessor_label,
-                                                              successor_label),
+      .execution_site = classify_join_transfer_parallel_copy_execution_site(
+          function_control_flow, predecessor_label, successor_label),
       .moves = std::move(moves),
   };
   std::vector<MoveState> states;

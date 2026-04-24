@@ -310,8 +310,10 @@ int check_two_way_branch_join_control_flow_contract(const prepare::PreparedBirMo
   if (control_flow == nullptr) {
     return fail("expected legalize to publish prepared control-flow metadata for the joined branch lane");
   }
-  if (control_flow->branch_conditions.size() != 1 || control_flow->join_transfers.size() != 1) {
-    return fail("expected the joined branch lane to publish one branch-condition and one join-transfer record");
+  if (control_flow->branch_conditions.size() != 1 || control_flow->join_transfers.size() != 1 ||
+      control_flow->parallel_copy_bundles.size() != 2) {
+    return fail(
+        "expected the joined branch lane to publish one branch-condition, one join-transfer, and two edge bundles");
   }
 
   const auto& branch_condition = control_flow->branch_conditions.front();
@@ -364,6 +366,31 @@ int check_two_way_branch_join_control_flow_contract(const prepare::PreparedBirMo
       *authoritative_true_lane != *join_transfer.source_true_incoming_label ||
       *authoritative_false_lane != *join_transfer.source_false_incoming_label) {
     return fail("expected prepared control-flow blocks to reproduce the authoritative joined-branch incoming ownership");
+  }
+
+  const auto* zero_bundle =
+      find_parallel_copy_bundle(prepared, function_name, "is_zero", "join");
+  const auto* nonzero_bundle =
+      find_parallel_copy_bundle(prepared, function_name, "is_nonzero", "join");
+  if (zero_bundle == nullptr || nonzero_bundle == nullptr) {
+    return fail("expected joined branch metadata to publish one bundle per predecessor edge");
+  }
+  if (zero_bundle->execution_site !=
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator ||
+      nonzero_bundle->execution_site !=
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator) {
+    return fail(
+        "expected select-materialized join bundles to stay predecessor-terminator-owned instead of publishing successor-entry ownership");
+  }
+  if (zero_bundle->moves.size() != 1 || zero_bundle->steps.size() != 1 ||
+      nonzero_bundle->moves.size() != 1 || nonzero_bundle->steps.size() != 1) {
+    return fail("expected joined branch bundles to preserve one move and one step per predecessor edge");
+  }
+  if (!is_named_i32(zero_bundle->moves.front().source_value, "zero.adjusted") ||
+      !is_named_i32(zero_bundle->moves.front().destination_value, "merge") ||
+      !is_named_i32(nonzero_bundle->moves.front().source_value, "nonzero.adjusted") ||
+      !is_named_i32(nonzero_bundle->moves.front().destination_value, "merge")) {
+    return fail("expected joined branch bundles to preserve the authoritative source-to-join mapping");
   }
 
   return 0;
