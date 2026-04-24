@@ -1,7 +1,13 @@
 # Parser Scope TextId Binding Lookup
 
-Status: Open
-Last Updated: 2026-04-23
+Status: Complete
+Last Updated: 2026-04-24
+
+## Closure Note
+
+The runbook reached step 7, and the broader parser/frontend proof passed
+(`267/267`). The remaining work was lifecycle handling, so the idea is now
+archived as complete.
 
 ## Goal
 
