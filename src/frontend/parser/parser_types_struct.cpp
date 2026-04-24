@@ -13,6 +13,26 @@
 
 namespace c4c {
 
+struct ParserFunctionParamScopeGuard {
+    Parser* parser = nullptr;
+    bool active = false;
+
+    ParserFunctionParamScopeGuard(Parser& p, const std::vector<Node*>& params)
+        : parser(&p) {
+        if (params.empty()) return;
+        parser->push_local_binding_scope();
+        active = true;
+        for (Node* param : params) {
+            if (!param || !param->name || !param->name[0]) continue;
+            parser->register_var_type_binding(param->name, param->type);
+        }
+    }
+
+    ~ParserFunctionParamScopeGuard() {
+        if (active) parser->pop_local_binding_scope();
+    }
+};
+
 // ── struct / union parsing ───────────────────────────────────────────────────
 
 bool Parser::try_parse_record_access_label() {
@@ -1009,6 +1029,7 @@ bool Parser::try_parse_record_constructor_member(
         }
     }
     if (check(TokenKind::LBrace)) {
+        ParserFunctionParamScopeGuard param_scope(*this, params);
         method->body = parse_block();
     } else if (is_cpp_mode() && check(TokenKind::Assign) &&
                core_input_state_.pos + 1 <
@@ -1402,6 +1423,7 @@ bool Parser::try_parse_record_method_or_field_member(
             for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
         }
         if (check(TokenKind::LBrace)) {
+            ParserFunctionParamScopeGuard param_scope(*this, params);
             method->body = parse_block();
         } else if (is_cpp_mode() && check(TokenKind::Assign) &&
                    core_input_state_.pos + 1 <
@@ -1523,6 +1545,7 @@ bool Parser::try_parse_record_method_or_field_member(
                 for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
             }
             if (check(TokenKind::LBrace)) {
+                ParserFunctionParamScopeGuard param_scope(*this, params);
                 method->body = parse_block();
             } else if (is_cpp_mode() && check(TokenKind::Assign) &&
                        core_input_state_.pos + 1 <

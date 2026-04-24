@@ -22,6 +22,26 @@
 
 namespace c4c {
 
+struct ParserFunctionParamScopeGuard {
+    Parser* parser = nullptr;
+    bool active = false;
+
+    ParserFunctionParamScopeGuard(Parser& p, const std::vector<Node*>& params)
+        : parser(&p) {
+        if (params.empty()) return;
+        parser->push_local_binding_scope();
+        active = true;
+        for (Node* param : params) {
+            if (!param || !param->name || !param->name[0]) continue;
+            parser->register_var_type_binding(param->name, param->type);
+        }
+    }
+
+    ~ParserFunctionParamScopeGuard() {
+        if (active) parser->pop_local_binding_scope();
+    }
+};
+
 static void finalize_pending_operator_name(std::string& name, size_t param_count) {
     if (name.find("operator_star_pending") != std::string::npos) {
         name.replace(name.find("operator_star_pending"),
@@ -2378,6 +2398,7 @@ Node* Parser::parse_top_level() {
             }
 
             if (check(TokenKind::LBrace)) {
+                ParserFunctionParamScopeGuard param_scope(*this, params);
                 bool saved_top = active_context_state_.parsing_top_level_context;
                 active_context_state_.parsing_top_level_context = false;
                 fn->body = parse_block();
@@ -3157,6 +3178,7 @@ top_level_base_ready:
         parse_attributes(&ts); skip_asm(); parse_attributes(&ts); skip_attributes();
         parse_optional_cpp20_trailing_requires_clause(*this);
         if (check(TokenKind::LBrace)) {
+            ParserFunctionParamScopeGuard param_scope(*this, fptr_fn_params);
             bool saved_top = active_context_state_.parsing_top_level_context;
             active_context_state_.parsing_top_level_context = false;
             Node* body = parse_block();
@@ -3365,6 +3387,7 @@ top_level_base_ready:
         };
 
         if (check(TokenKind::LBrace)) {
+            ParserFunctionParamScopeGuard param_scope(*this, params);
             // Function definition
             bool saved_top = active_context_state_.parsing_top_level_context;
             active_context_state_.parsing_top_level_context = false;
