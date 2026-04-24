@@ -2667,6 +2667,106 @@ prepare::PreparedBirModule prepare_vector_grouped_cross_call_module_with_regallo
   return std::move(regalloc_planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_general_grouped_cross_call_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function decl;
+  decl.name = "int_sink";
+  decl.is_declaration = true;
+  decl.return_type = bir::TypeKind::Void;
+  decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "arg0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  module.functions.push_back(std::move(decl));
+
+  bir::Function function;
+  function.name = "general_grouped_cross_call";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.gcarry",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.arg",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.local",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "carry.pre"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.gcarry"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "p.arg"),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "int_sink",
+      .args = {bir::Value::named(bir::TypeKind::I32, "p.arg")},
+      .arg_types = {bir::TypeKind::I32},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "post.local"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.local"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "p.local"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "out"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "carry.pre"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "post.local"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "out"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  planner.run_stack_layout();
+  planner.run_liveness();
+  auto seeded = std::move(planner.prepared());
+  set_register_group_override(seeded, "general_grouped_cross_call", "carry.pre",
+                              prepare::PreparedRegisterClass::General, 2);
+
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = true;
+  prepare::BirPreAlloc regalloc_planner(std::move(seeded), options);
+  regalloc_planner.run_regalloc();
+  return std::move(regalloc_planner.prepared());
+}
+
 int check_phi_predecessor_edge_liveness(const prepare::PreparedBirModule& prepared) {
   if (!prepared.stack_layout.objects.empty()) {
     return fail("expected no stack-layout objects for the phi-only test function");
@@ -4288,6 +4388,25 @@ int check_vector_span_candidate_legality() {
   return 0;
 }
 
+int check_scalar_grouped_span_candidate_legality() {
+  const auto profile = riscv_target_profile();
+  const auto general_spans =
+      prepare::callee_saved_register_spans(profile, prepare::PreparedRegisterClass::General, 2);
+  const auto float_spans =
+      prepare::callee_saved_register_spans(profile, prepare::PreparedRegisterClass::Float, 2);
+
+  if (general_spans.size() != 1 ||
+      general_spans[0].occupied_register_names != std::vector<std::string>{"s1", "s2"}) {
+    return fail("expected grouped general candidate spans to preserve contiguous callee units");
+  }
+  if (float_spans.size() != 1 ||
+      float_spans[0].occupied_register_names != std::vector<std::string>{"fs1", "fs2"}) {
+    return fail("expected grouped float candidate spans to preserve contiguous callee units");
+  }
+
+  return 0;
+}
+
 int check_grouped_contract_occupancy_metadata(const prepare::PreparedBirModule& prepared) {
   const auto* regalloc = find_regalloc_function(prepared, "float_linear_scan");
   if (regalloc == nullptr) {
@@ -4392,6 +4511,45 @@ int check_vector_grouped_cross_call(const prepare::PreparedBirModule& prepared) 
   if (spans_overlap(vcarry->assigned_register->occupied_register_names,
                     local->assigned_register->occupied_register_names)) {
     return fail("expected caller and callee grouped vector assignments to stay disjoint");
+  }
+
+  return 0;
+}
+
+int check_general_grouped_cross_call(const prepare::PreparedBirModule& prepared) {
+  const auto* regalloc = find_regalloc_function(prepared, "general_grouped_cross_call");
+  if (regalloc == nullptr) {
+    return fail("expected regalloc output for general_grouped_cross_call");
+  }
+
+  const auto* gcarry = find_regalloc_value(prepared, *regalloc, "carry.pre");
+  const auto* local = find_regalloc_value(prepared, *regalloc, "post.local");
+  if (gcarry == nullptr || local == nullptr) {
+    return fail("expected grouped general cross-call values in regalloc output");
+  }
+  if (!gcarry->crosses_call || gcarry->register_group_width != 2 ||
+      !gcarry->assigned_register.has_value()) {
+    return fail("expected call-crossing grouped general value to keep its grouped seed");
+  }
+  if (local->crosses_call || !local->assigned_register.has_value()) {
+    return fail("expected non-crossing general local value to receive a caller-pool assignment");
+  }
+
+  const auto callee_m2_spans = prepare::callee_saved_register_spans(
+      prepared.target_profile, prepare::PreparedRegisterClass::General, 2);
+  const auto caller_m1_spans = prepare::caller_saved_register_spans(
+      prepared.target_profile, prepare::PreparedRegisterClass::General, 1);
+  if (gcarry->assigned_register->contiguous_width != 2 ||
+      !contains_register_span(callee_m2_spans, gcarry->assigned_register->occupied_register_names)) {
+    return fail("expected call-crossing grouped general value to use a legal callee span");
+  }
+  if (local->assigned_register->contiguous_width != 1 ||
+      !contains_register_span(caller_m1_spans, local->assigned_register->occupied_register_names)) {
+    return fail("expected non-crossing general local value to stay in the caller pool");
+  }
+  if (spans_overlap(gcarry->assigned_register->occupied_register_names,
+                    local->assigned_register->occupied_register_names)) {
+    return fail("expected grouped general callee spans to stay disjoint from caller assignments");
   }
 
   return 0;
@@ -4593,12 +4751,19 @@ int main() {
   if (const int rc = check_vector_span_candidate_legality(); rc != 0) {
     return rc;
   }
+  if (const int rc = check_scalar_grouped_span_candidate_legality(); rc != 0) {
+    return rc;
+  }
   const auto vector_grouped_prepared = prepare_vector_grouped_linear_scan_module_with_regalloc();
   if (const int rc = check_vector_grouped_linear_scan(vector_grouped_prepared); rc != 0) {
     return rc;
   }
   const auto vector_grouped_cross_call_prepared = prepare_vector_grouped_cross_call_module_with_regalloc();
   if (const int rc = check_vector_grouped_cross_call(vector_grouped_cross_call_prepared); rc != 0) {
+    return rc;
+  }
+  const auto general_grouped_cross_call_prepared = prepare_general_grouped_cross_call_module_with_regalloc();
+  if (const int rc = check_general_grouped_cross_call(general_grouped_cross_call_prepared); rc != 0) {
     return rc;
   }
   return 0;

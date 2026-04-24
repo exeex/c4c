@@ -1,5 +1,6 @@
 #include "target_register_profile.hpp"
 
+#include <charconv>
 #include <array>
 #include <string>
 
@@ -238,6 +239,68 @@ template <std::size_t N>
   return spans;
 }
 
+[[nodiscard]] std::optional<std::pair<std::string_view, std::size_t>> split_trailing_register_index(
+    std::string_view register_name) {
+  std::size_t digit_start = register_name.size();
+  while (digit_start > 0 && std::isdigit(static_cast<unsigned char>(register_name[digit_start - 1])) != 0) {
+    --digit_start;
+  }
+  if (digit_start == register_name.size()) {
+    return std::nullopt;
+  }
+
+  std::size_t parsed_index = 0;
+  const char* begin = register_name.data() + digit_start;
+  const char* end = register_name.data() + register_name.size();
+  const auto result = std::from_chars(begin, end, parsed_index);
+  if (result.ec != std::errc{} || result.ptr != end) {
+    return std::nullopt;
+  }
+  return std::pair<std::string_view, std::size_t>{register_name.substr(0, digit_start), parsed_index};
+}
+
+[[nodiscard]] std::vector<PreparedRegisterCandidateSpan> contiguous_pool_spans(
+    const std::vector<std::string_view>& register_names,
+    std::size_t contiguous_width) {
+  if (contiguous_width == 0 || register_names.size() < contiguous_width) {
+    return {};
+  }
+  if (contiguous_width == 1) {
+    return singleton_spans(register_names);
+  }
+
+  std::vector<PreparedRegisterCandidateSpan> spans;
+  for (std::size_t base_index = 0; base_index + contiguous_width <= register_names.size(); ++base_index) {
+    const auto base = split_trailing_register_index(register_names[base_index]);
+    if (!base.has_value()) {
+      continue;
+    }
+
+    PreparedRegisterCandidateSpan span{
+        .register_name = std::string(register_names[base_index]),
+        .contiguous_width = contiguous_width,
+        .occupied_register_names = {},
+    };
+    span.occupied_register_names.reserve(contiguous_width);
+    span.occupied_register_names.push_back(std::string(register_names[base_index]));
+
+    bool contiguous = true;
+    for (std::size_t offset = 1; offset < contiguous_width; ++offset) {
+      const auto unit = split_trailing_register_index(register_names[base_index + offset]);
+      if (!unit.has_value() || unit->first != base->first || unit->second != base->second + offset) {
+        contiguous = false;
+        break;
+      }
+      span.occupied_register_names.push_back(std::string(register_names[base_index + offset]));
+    }
+
+    if (contiguous) {
+      spans.push_back(std::move(span));
+    }
+  }
+  return spans;
+}
+
 [[nodiscard]] std::vector<PreparedRegisterCandidateSpan> register_spans_for_pool(
     const c4c::TargetProfile& target_profile,
     PreparedRegisterClass reg_class,
@@ -275,10 +338,7 @@ template <std::size_t N>
 
   const auto registers = caller_pool ? caller_saved_registers(target_profile, reg_class)
                                      : callee_saved_registers(target_profile, reg_class);
-  if (contiguous_width != 1) {
-    return {};
-  }
-  return singleton_spans(registers);
+  return contiguous_pool_spans(registers, contiguous_width);
 }
 
 }  // namespace
