@@ -3319,6 +3319,83 @@ int check_lowered_same_module_variadic_global_byval_call_abi(
         "expected same-module variadic aggregate call to preserve explicit byval ABI metadata");
   }
 
+  const auto* regalloc = find_regalloc_function(
+      prepared, "lowered_same_module_variadic_global_byval_metadata");
+  if (regalloc == nullptr) {
+    return fail("expected regalloc output for lowered_same_module_variadic_global_byval_metadata");
+  }
+
+  const auto* call_plans = prepare::find_prepared_call_plans(prepared, regalloc->function_name);
+  if (call_plans == nullptr || call_plans->calls.size() != 1) {
+    return fail(
+        "expected lowered_same_module_variadic_global_byval_metadata to publish one prepared call plan");
+  }
+
+  const auto* global_byval = find_regalloc_value(prepared, *regalloc, "@gpair");
+  if (global_byval == nullptr) {
+    return fail(
+        "expected lowered_same_module_variadic_global_byval_metadata to publish the global byval source");
+  }
+
+  const auto& call_plan = call_plans->calls.front();
+  if (call_plan.wrapper_kind != prepare::PreparedCallWrapperKind::SameModule ||
+      call_plan.variadic_fpr_arg_register_count != 0 || call_plan.is_indirect ||
+      !call_plan.direct_callee_name.has_value() || *call_plan.direct_callee_name != "myprintf" ||
+      call_plan.indirect_callee.has_value() || call_plan.arguments.size() != 2) {
+    return fail("expected same-module variadic aggregate call to publish same-module call-plan authority");
+  }
+  if (!call_plan.arguments[1].source_register_name.has_value()) {
+    return fail(
+        "expected same-module variadic aggregate call to keep the byval source materialized on the shared storage seam");
+  }
+  if (!call_plan.arguments[1].destination_register_name.has_value()) {
+    return fail(
+        "expected same-module variadic aggregate call to publish a concrete ABI destination for the byval argument");
+  }
+  if (call_plan.arguments[1].value_bank != prepare::PreparedRegisterBank::AggregateAddress ||
+      call_plan.arguments[1].source_encoding != prepare::PreparedStorageEncodingKind::SymbolAddress ||
+      call_plan.arguments[1].source_value_id !=
+          std::optional<prepare::PreparedValueId>{global_byval->value_id} ||
+      call_plan.arguments[1].source_symbol_name != std::optional<std::string>{"@gpair"} ||
+      call_plan.arguments[1].source_register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr} ||
+      call_plan.arguments[1].destination_register_bank !=
+          std::optional<prepare::PreparedRegisterBank>{
+              prepare::PreparedRegisterBank::AggregateAddress}) {
+    return fail(
+        "expected same-module variadic aggregate call to publish the symbol-backed byval argument authority");
+  }
+
+  const std::string prepared_dump = prepare::print(prepared);
+  const std::string summary_arg_prefix =
+      "arg1 bank=aggregate_address from=symbol_address:@gpair to=";
+  const auto summary_arg_pos = prepared_dump.find(summary_arg_prefix);
+  const std::string detail_arg_prefix =
+      "arg index=1 value_bank=aggregate_address source_encoding=symbol_address";
+  const auto detail_arg_pos = prepared_dump.find(detail_arg_prefix);
+  if (prepared_dump.find(
+          "callsite block=0 inst=0 wrapper=same_module callee=myprintf variadic_fpr_args=0 args=2") ==
+          std::string::npos ||
+      summary_arg_pos == std::string::npos) {
+    return fail(
+        "expected prepared printer summary to publish same-module variadic byval call authority");
+  }
+  if (prepared_dump.find('\n', summary_arg_pos + summary_arg_prefix.size()) ==
+      summary_arg_pos + summary_arg_prefix.size()) {
+    return fail(
+        "expected prepared printer summary to publish a concrete ABI destination for the same-module variadic byval argument");
+  }
+  if (prepared_dump.find(
+          "call block_index=0 inst_index=0 wrapper_kind=same_module variadic_fpr_arg_register_count=0 indirect=no callee=myprintf") ==
+          std::string::npos ||
+      detail_arg_pos == std::string::npos ||
+      prepared_dump.find("source_symbol=@gpair", detail_arg_pos) == std::string::npos ||
+      prepared_dump.find("dest_bank=aggregate_address", detail_arg_pos) == std::string::npos ||
+      prepared_dump.find("dest_reg=", detail_arg_pos) == std::string::npos) {
+    return fail(
+        "expected prepared printer call-plan detail to publish same-module variadic byval authority");
+  }
+
   return 0;
 }
 
