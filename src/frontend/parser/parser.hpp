@@ -323,6 +323,9 @@ class Parser {
   void set_parser_owned_spelling(Token& token, std::string_view spelling);
   Token make_injected_token(const Token& seed, TokenKind kind,
                             std::string_view spelling);
+  void replace_token_stream_for_testing(std::vector<Token> tokens, int pos = 0);
+  int token_cursor_for_testing() const;
+  const Token& token_at_for_testing(int index) const;
   SymbolId symbol_id_for_token_text(TextId token_text_id,
                                     std::string_view fallback = {}) {
     return shared_lookup_state_.parser_name_tables.intern_identifier(

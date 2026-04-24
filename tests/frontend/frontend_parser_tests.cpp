@@ -377,15 +377,15 @@ void test_parser_injected_token_helpers_preserve_qualified_name_spelling() {
   c4c::Token seed{};
   seed.line = 7;
   seed.column = 3;
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ns"),
       parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Value"),
-  };
+  });
 
-  expect_true(parser.tokens_[0].text_id != c4c::kInvalidText,
+  expect_true(parser.token_at_for_testing(0).text_id != c4c::kInvalidText,
               "injected identifier tokens should receive a stable text id");
-  expect_eq(parser.token_spelling(parser.tokens_[0]), "ns",
+  expect_eq(parser.token_spelling(parser.token_at_for_testing(0)), "ns",
             "parser token spelling helper should recover injected identifier spelling");
 
   c4c::Parser::QualifiedNameRef qn;
@@ -394,7 +394,7 @@ void test_parser_injected_token_helpers_preserve_qualified_name_spelling() {
   expect_eq(qn.spelled(), "ns::Value",
             "qualified-name peeking should preserve helper-built injected spelling");
 
-  const c4c::Parser::SymbolId symbol = parser.symbol_id_for_token(parser.tokens_[2]);
+  const c4c::Parser::SymbolId symbol = parser.symbol_id_for_token(parser.token_at_for_testing(2));
   expect_true(symbol != c4c::Parser::kInvalidSymbol,
               "helper-built injected identifier tokens should intern to a SymbolId");
   expect_eq(parser.symbol_spelling(symbol), "Value",
@@ -408,14 +408,14 @@ void test_parser_value_like_template_lookahead_uses_token_spelling() {
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
 
   c4c::Token seed{};
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Trait"),
       parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
       parser.make_injected_token(seed, c4c::TokenKind::IntLit, "0"),
       parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
       parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
-  };
+  });
   expect_true(parser.is_clearly_value_template_arg(nullptr, 0),
               "value-like template lookahead should read parser-owned token spelling");
 }
@@ -427,12 +427,12 @@ void test_parser_capture_template_arg_expr_uses_token_spelling() {
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
 
   c4c::Token seed{};
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Value"),
       parser.make_injected_token(seed, c4c::TokenKind::Plus, "+"),
       parser.make_injected_token(seed, c4c::TokenKind::IntLit, "1"),
       parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
-  };
+  });
   c4c::Parser::TemplateArgParseResult arg{};
   expect_true(parser.capture_template_arg_expr(0, &arg),
               "template arg expression capture should succeed for injected tokens");
@@ -440,7 +440,7 @@ void test_parser_capture_template_arg_expr_uses_token_spelling() {
               "captured template arg expression should preserve text in nttp_name");
   expect_eq(arg.nttp_name, "$expr:Value+1",
             "template arg expression capture should use parser-owned token spelling");
-  expect_eq_int(parser.pos_, 3,
+  expect_eq_int(parser.token_cursor_for_testing(), 3,
                 "template arg expression capture should stop before template close");
 }
 
@@ -457,17 +457,17 @@ void test_parser_type_start_probes_use_token_spelling() {
   parser.register_typedef_binding("TypeAlias", typedef_ts, true);
 
   c4c::Token seed{};
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "TypeAlias"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
-  };
+  });
   expect_true(parser.is_type_start(),
               "type-start classification should use parser-owned identifier spelling");
 
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ConceptName"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
-  };
+  });
   const c4c::TextId concept_text_id =
       parser.parser_text_id_for_token(c4c::kInvalidText, "ConceptName");
   parser.binding_state_.concept_name_text_ids.insert(concept_text_id);
@@ -494,21 +494,20 @@ void test_parser_exception_specs_and_attributes_use_token_spelling() {
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "noexcept"),
       parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
-  };
+  });
   parser.skip_attributes();
-  expect_eq_int(parser.pos_, 4,
+  expect_eq_int(parser.token_cursor_for_testing(), 4,
                 "attribute skipping should consume identifier-spelled noexcept clauses");
   expect_eq(parser.token_spelling(parser.cur()), "after",
             "attribute skipping should leave the next token in place");
 
-  parser.pos_ = 0;
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "noexcept"),
       parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
@@ -518,9 +517,9 @@ void test_parser_exception_specs_and_attributes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "TypeAlias"),
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
-  };
+  });
   parser.skip_exception_spec();
-  expect_eq_int(parser.pos_, 8,
+  expect_eq_int(parser.token_cursor_for_testing(), 8,
                 "exception-spec skipping should consume identifier-spelled noexcept/throw clauses");
   expect_eq(parser.token_spelling(parser.cur()), "after",
             "exception-spec skipping should leave the next token in place");
@@ -528,8 +527,7 @@ void test_parser_exception_specs_and_attributes_use_token_spelling() {
   c4c::TypeSpec ts{};
   ts.array_size = -1;
   ts.inner_rank = -1;
-  parser.pos_ = 0;
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::KwAttribute, "__attribute__"),
       parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
       parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
@@ -539,7 +537,7 @@ void test_parser_exception_specs_and_attributes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
-  };
+  });
   parser.parse_attributes(&ts);
   expect_eq_int(ts.align_bytes, 32,
                 "GNU attribute parsing should use parser-owned attribute spellings");
@@ -564,49 +562,45 @@ void test_parser_typeof_like_probes_use_token_spelling() {
   value_ts.base = c4c::TB_DOUBLE;
   parser.register_var_type_binding("value", value_ts);
 
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "__underlying_type"),
       parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "TypeAlias"),
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
-  };
-  parser.pos_ = 0;
+  });
   (void)parser.parse_base_type();
-  expect_eq_int(parser.pos_, 4,
+  expect_eq_int(parser.token_cursor_for_testing(), 4,
                 "builtin transform parsing should use parser-owned builtin spellings");
   expect_eq(parser.token_spelling(parser.cur()), "after",
             "builtin transform parsing should leave the next token in place");
 
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::KwTypeof, "typeof"),
       parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "nullptr"),
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
-  };
-  parser.pos_ = 0;
+  });
   c4c::TypeSpec nullptr_ts = parser.parse_base_type();
   expect_true(nullptr_ts.base == c4c::TB_VOID && nullptr_ts.ptr_level == 1,
               "typeof-like nullptr probes should use parser-owned spellings");
 
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::KwTypeof, "typeof"),
       parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
-  };
-  parser.pos_ = 0;
+  });
   c4c::TypeSpec value_operand_ts = parser.parse_base_type();
   expect_true(value_operand_ts.base == c4c::TB_DOUBLE,
               "typeof-like identifier operand probes should use parser-owned spellings");
 
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::KwTypeof, "typeof"),
       parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
       parser.make_injected_token(seed, c4c::TokenKind::FloatLit, "1.0f"),
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
-  };
-  parser.pos_ = 0;
+  });
   c4c::TypeSpec float_operand_ts = parser.parse_base_type();
   expect_true(float_operand_ts.base == c4c::TB_FLOAT,
               "typeof-like float literal suffix probes should use parser-owned spellings");
@@ -619,22 +613,20 @@ void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "__float128"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "gnu_value"),
-  };
-  parser.pos_ = 0;
+  });
   c4c::TypeSpec gnu_floatn_ts = parser.parse_base_type();
   expect_true(gnu_floatn_ts.base == c4c::TB_LONGDOUBLE,
               "parse_base_type should map GNU __float128 spelling onto the fixed-width float path");
   expect_eq(parser.token_spelling(parser.cur()), "gnu_value",
             "__float128 parsing should leave the declarator token in place");
 
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "_Float128"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
-  };
-  parser.pos_ = 0;
+  });
   c4c::TypeSpec floatn_ts = parser.parse_base_type();
   expect_true(floatn_ts.base == c4c::TB_LONGDOUBLE,
               "parse_base_type should use parser-owned spelling for fixed-width float keywords");
@@ -647,11 +639,10 @@ void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
   typedef_ts.base = c4c::TB_INT;
   parser.register_typedef_binding("TypeAlias", typedef_ts, true);
 
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "TypeAlias"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
-  };
-  parser.pos_ = 0;
+  });
   parser.clear_last_resolved_typedef();
   c4c::TypeSpec alias_ts = parser.parse_base_type();
   expect_true(alias_ts.base == c4c::TB_INT,
@@ -667,11 +658,10 @@ void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
   parser.push_local_binding_scope();
   parser.bind_local_typedef(local_alias_text, local_alias_ts);
 
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "LocalAlias"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
-  };
-  parser.pos_ = 0;
+  });
   parser.clear_last_resolved_typedef();
   c4c::TypeSpec local_alias_result = parser.parse_base_type();
   expect_true(local_alias_result.base == c4c::TB_DOUBLE,
@@ -683,11 +673,10 @@ void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
   expect_true(parser.pop_local_binding_scope(),
               "test fixture should balance the local visible typedef scope");
 
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ForwardDecl"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
-  };
-  parser.pos_ = 0;
+  });
   c4c::TypeSpec unresolved_ts = parser.parse_base_type();
   expect_true(unresolved_ts.tag != nullptr,
               "unresolved identifier fallback should produce a placeholder type tag");
@@ -710,11 +699,10 @@ void test_parser_is_type_start_uses_local_visible_typedef_scope() {
   const c4c::TextId alias_text = texts.intern("Alias");
   parser.push_local_binding_scope();
   parser.bind_local_typedef(alias_text, alias_ts);
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
-  };
-  parser.pos_ = 0;
+  });
 
   expect_true(parser.is_type_start(),
               "type-head probes should consult parser-local visible typedef bindings before spelling-based fallback");
@@ -738,13 +726,12 @@ void test_parser_local_visible_typedef_cast_uses_scope_lookup() {
   const c4c::TextId alias_text = texts.intern("Alias");
   parser.push_local_binding_scope();
   parser.bind_local_typedef(alias_text, alias_ts);
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
       parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
       parser.make_injected_token(seed, c4c::TokenKind::IntLit, "1"),
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
-  };
-  parser.pos_ = 0;
+  });
   parser.clear_last_resolved_typedef();
 
   c4c::Node* expr = parser.parse_unary();
@@ -814,13 +801,12 @@ void test_parser_dependent_typename_uses_local_visible_owner_alias() {
   const c4c::TextId alias_text = texts.intern("Alias");
   parser.push_local_binding_scope();
   parser.bind_local_typedef(alias_text, alias_ts);
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::KwTypename, "typename"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
       parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "type"),
-  };
-  parser.pos_ = 0;
+  });
 
   std::string resolved_name;
   expect_true(parser.parse_dependent_typename_specifier(&resolved_name),
@@ -1987,15 +1973,14 @@ void test_parser_template_member_suffix_probe_uses_token_spelling() {
               "template struct fixture should register before injected suffix probing");
 
   c4c::Token seed{};
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Trait"),
       parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
       parser.make_injected_token(seed, c4c::TokenKind::IntLit, "0"),
       parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
       parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "type"),
-  };
-  parser.pos_ = 0;
+  });
   const c4c::TypeSpec member_ts = parser.parse_base_type();
   expect_true(member_ts.base == c4c::TB_INT,
               "template-member suffix probes should use parser-owned spelling");
@@ -2011,10 +1996,10 @@ void test_parser_template_type_arg_probes_use_token_spelling() {
   parser.push_template_scope(
       c4c::Parser::TemplateScopeKind::FreeFunctionTemplate,
       {{.name = "T", .is_nttp = false}});
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "T"),
       parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
-  };
+  });
   c4c::Parser::TemplateArgParseResult arg{};
   expect_true(parser.try_parse_template_type_arg(&arg),
               "template type-argument probes should use parser-owned spelling");
@@ -2024,7 +2009,7 @@ void test_parser_template_type_arg_probes_use_token_spelling() {
               "template scope type parameters should parse as placeholder typedef types");
   expect_eq(arg.type.tag, "T",
             "template type-argument parsing should preserve the parser-owned spelling");
-  expect_eq_int(parser.pos_, 1,
+  expect_eq_int(parser.token_cursor_for_testing(), 1,
                 "template type-argument parsing should stop before the template close");
   parser.pop_template_scope();
 }
@@ -2074,10 +2059,10 @@ void test_parser_template_type_arg_uses_visible_scope_local_alias() {
   parser.namespace_state_.using_value_aliases[0][alias_text] = {
       parser.intern_semantic_name_key("Target"), "corrupted"};
 
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
       parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
-  };
+  });
   c4c::Parser::TemplateArgParseResult arg{};
   expect_true(parser.try_parse_template_type_arg(&arg),
               "template type-argument probes should treat visible lexical aliases as type heads");
@@ -2087,7 +2072,7 @@ void test_parser_template_type_arg_uses_visible_scope_local_alias() {
               "visible lexical aliases should resolve to the bound scope-local type");
   expect_true(arg.type.tag == nullptr,
               "visible lexical alias type-argument parsing should not fabricate a flat typedef tag");
-  expect_eq_int(parser.pos_, 1,
+  expect_eq_int(parser.token_cursor_for_testing(), 1,
                 "visible lexical alias type-argument parsing should stop before the template close");
 
   expect_true(parser.pop_local_binding_scope(),
@@ -2131,11 +2116,10 @@ void test_parser_template_type_arg_prefers_local_visible_typedef_text_id() {
   const c4c::TextId alias_text = texts.intern("Alias");
   parser.push_local_binding_scope();
   parser.bind_local_typedef(alias_text, local_alias_ts);
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
       parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
-  };
-  parser.pos_ = 0;
+  });
 
   c4c::Parser::TemplateArgParseResult arg{};
   expect_true(parser.try_parse_template_type_arg(&arg),
@@ -2144,7 +2128,7 @@ void test_parser_template_type_arg_prefers_local_visible_typedef_text_id() {
               "local visible typedef template arguments should stay classified as type arguments");
   expect_true(arg.type.base == c4c::TB_DOUBLE,
               "local visible typedef template arguments should resolve to the local binding");
-  expect_eq_int(parser.pos_, 1,
+  expect_eq_int(parser.token_cursor_for_testing(), 1,
                 "local visible typedef template arguments should stop before the template close");
 
   expect_true(parser.pop_local_binding_scope(),
@@ -2174,7 +2158,7 @@ void test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias() {
       parser.make_injected_token(seed, c4c::TokenKind::Comma, ","),
       parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
-  };
+  });
 
   long long value = 0;
   expect_true(parser.eval_deferred_nttp_expr_tokens("Trait", toks, {}, {}, &value),
@@ -2225,7 +2209,7 @@ void test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases() 
       parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
       parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
-  };
+  });
 
   long long value = 0;
   expect_true(parser.eval_deferred_nttp_expr_tokens("Trait", toks, {}, {}, &value),
@@ -2247,14 +2231,14 @@ void test_parser_alias_template_value_probes_use_token_spelling() {
   parser.template_state_.alias_template_info[parser.alias_template_key_in_context(
       parser.current_namespace_context_id(), parser.find_parser_text_id("Alias"),
       "Alias")] = {};
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
       parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
       parser.make_injected_token(seed, c4c::TokenKind::IntLit, "0"),
       parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
       parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
-  };
+  });
   expect_true(!parser.is_clearly_value_template_arg(nullptr, 0),
               "direct alias-template probes should use parser-owned spelling");
 
@@ -2274,14 +2258,14 @@ void test_parser_alias_template_value_probes_use_token_spelling() {
       [resolved_parser.alias_template_key_in_context(
           resolved_parser.current_namespace_context_id(),
           resolved_parser.find_parser_text_id("ns::Alias"), "ns::Alias")] = {};
-  resolved_parser.tokens_ = {
+  resolved_parser.replace_token_stream_for_testing({
       resolved_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
       resolved_parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
       resolved_parser.make_injected_token(seed, c4c::TokenKind::IntLit, "0"),
       resolved_parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
       resolved_parser.make_injected_token(seed, c4c::TokenKind::LParen, "("),
       resolved_parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
-  };
+  });
   expect_true(!resolved_parser.is_clearly_value_template_arg(nullptr, 0),
               "resolved alias-template probes should use parser-owned spelling");
 }
@@ -2318,11 +2302,11 @@ void test_parser_typename_template_parameter_probe_uses_token_spelling() {
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::KwTypename, "typename"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "T"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "typename"),
-  };
+  });
   expect_true(parser.classify_typename_template_parameter() ==
                   c4c::Parser::TypenameTemplateParamKind::TypeParameter,
               "typename template-parameter probe should use parser-owned spelling");
@@ -2335,11 +2319,11 @@ void test_parser_post_pointer_qualifier_probes_use_token_spelling() {
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "_Nullable"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "restrict"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
-  };
+  });
   parser.consume_declarator_post_pointer_qualifiers();
 
   expect_eq(parser.token_spelling(parser.cur()), "after",
@@ -2353,14 +2337,14 @@ void test_parser_qualified_declarator_name_uses_token_spelling() {
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
-  parser.tokens_ = {
+  parser.replace_token_stream_for_testing({
       parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "ns"),
       parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "inner"),
       parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Value"),
-  };
+  });
   std::string qualified_name;
   expect_true(parser.parse_qualified_declarator_name(&qualified_name),
               "qualified declarator names should parse from injected token spelling");

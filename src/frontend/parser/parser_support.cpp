@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <cstdlib>
+#include <utility>
 
 namespace c4c {
 
@@ -13,6 +14,19 @@ Parser::ParserSymbolTables& Parser::parser_symbol_tables() {
 
 const Parser::ParserSymbolTables& Parser::parser_symbol_tables() const {
     return shared_lookup_state_.parser_name_tables;
+}
+
+void Parser::replace_token_stream_for_testing(std::vector<Token> tokens, int pos) {
+    tokens_ = std::move(tokens);
+    pos_ = pos;
+}
+
+int Parser::token_cursor_for_testing() const {
+    return pos_;
+}
+
+const Token& Parser::token_at_for_testing(int index) const {
+    return tokens_.at(static_cast<size_t>(index));
 }
 
 Parser::ParserLiteSnapshot Parser::save_lite_state() const {
