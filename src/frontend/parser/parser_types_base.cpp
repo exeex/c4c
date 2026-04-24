@@ -2408,7 +2408,7 @@ TypeSpec Parser::parse_base_type() {
                         }
                         concrete_args.push_back(arg);
                     }
-                    const std::string instance_key =
+                    const std::string emitted_instance_key =
                         make_template_struct_instance_key(primary_tpl, concrete_args);
 
                     // Build mangled name from the concrete family arguments.
@@ -2504,11 +2504,13 @@ TypeSpec Parser::parse_base_type() {
                         return ts;
                     }
 
-                    // Instantiate if not already done
+                    // Structured primary/specialization selection has already
+                    // resolved tpl_def. This string key is only a duplicate
+                    // guard for emitting the concrete struct definition.
                     if (!template_state_.instantiated_template_struct_keys.count(
-                            instance_key)) {
+                            emitted_instance_key)) {
                         template_state_.instantiated_template_struct_keys.insert(
-                            instance_key);
+                            emitted_instance_key);
                         // Create a concrete NK_STRUCT_DEF with substituted field types
                         Node* inst = make_node(NK_STRUCT_DEF, tpl_def->line);
                         inst->name = arena_.strdup(mangled.c_str());

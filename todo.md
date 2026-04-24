@@ -6,25 +6,12 @@ Current Step Title: Narrow instantiation and mangled-name bridge behavior around
 
 # Current Packet
 ## Just Finished
-Step 4 simplified the redundant duplicate-instantiation guard in `ensure_template_struct_instantiated_from_args(...)`.
+Step 4 tightened the remaining direct `instantiated_template_struct_keys` guard in `parser_types_base.cpp`.
 
-The function now relies on `struct_tag_def_map` to decide whether injected parsing is needed and no longer builds or checks `instantiated_template_struct_keys` in that bridge. Mangled-name construction and emitted struct-tag spelling are unchanged.
-
-Plan-owner lifecycle decision: keep the active runbook open for one more Step 4 packet. The remaining `instantiated_template_struct_keys` use in `parser_types_base.cpp` is reached only after `primary_tpl`, `tpl_def`, concrete args, specialization selection, and mangled-name construction are resolved, so it is not a primary lookup authority. It is still a direct string-keyed duplicate-emission guard and should be explicitly tightened or documented at the implementation site before closing the template-struct identity runbook.
+The guard now uses an `emitted_instance_key` local and documents that structured primary/specialization selection has already resolved `tpl_def`; the string set is only a duplicate guard for emitting the concrete struct definition. Mangled-name construction, emitted struct-tag spelling, primary lookup, and specialization selection are unchanged.
 
 ## Suggested Next
-Execute Step 4 packet: in `parser_types_base.cpp`, tighten or document the direct `instantiated_template_struct_keys` guard as an emitted-artifact duplicate guard only.
-
-Packet scope:
-- keep `make_template_struct_instance_key(primary_tpl, concrete_args)` and `build_template_struct_mangled_name(...)` spelling stable
-- do not route primary or specialization lookup through rendered names
-- do not remove compatibility string maps
-- do not change `ensure_template_struct_instantiated_from_args(...)`, which already uses `struct_tag_def_map` for the injected-parse bridge
-- add the smallest implementation clarification needed so the remaining string set cannot be mistaken for parser identity authority
-
-Proof command:
-
-`bash -lc 'set -o pipefail; cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '\''^frontend_parser_tests$'\'' | tee test_after.log'`
+Supervisor should run the lifecycle decision for this active runbook: Step 4's remaining emitted-artifact guard clarification is complete.
 
 ## Watchouts
 - Keep the scope inside parser alias/template identity.
@@ -37,8 +24,8 @@ Proof command:
 - `instantiated_template_struct_keys` is string-shaped by design today; Step 4 should decide whether it remains an emitted-artifact guard or needs a structured primary component.
 - Step 3 specialization selection call sites now visibly use primary-node lookup when `primary_tpl` is available in `parser_types_base.cpp` and `parser_types_template.cpp`; keep any future `QualifiedNameRef` specialization callers only where no primary node exists.
 - Do not change mangled-name spelling in Step 4 unless a concrete semantic bug requires it; those names are emitted artifacts and struct-tag keys.
-- `instantiated_template_struct_keys` should not become a parser identity authority. If kept, document or tighten it as a duplicate-emission guard that is reached only after primary-node/specialization selection.
-- This packet intentionally did not change `build_template_struct_mangled_name(...)`, `template_name` injected-parse spelling, or the direct concrete-struct emission path in `parser_types_base.cpp`.
+- `instantiated_template_struct_keys` remains string-shaped by design, but its remaining direct guard is now explicitly scoped as post-selection duplicate emission protection.
+- This packet intentionally did not change `build_template_struct_mangled_name(...)`, `template_name` injected-parse spelling, or concrete struct emission behavior.
 
 ## Proof
 Ran delegated proof:
