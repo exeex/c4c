@@ -262,70 +262,20 @@ class Parser {
   bool looks_like_unresolved_identifier_type_head(int pos) const;
   bool looks_like_unresolved_parenthesized_parameter_type_head(int pos) const;
   TextId parser_text_id_for_token(TextId token_text_id,
-                                  std::string_view fallback = {}) const {
-    if (token_text_id != kInvalidText) return token_text_id;
-    if (fallback.empty()) return kInvalidText;
-    return shared_lookup_state_.token_texts
-               ? shared_lookup_state_.token_texts->intern(fallback)
-               : kInvalidText;
-  }
-  TextId find_parser_text_id(std::string_view text) const {
-    if (text.empty() || !shared_lookup_state_.token_texts) return kInvalidText;
-    return shared_lookup_state_.token_texts->find(text);
-  }
+                                  std::string_view fallback = {}) const;
+  TextId find_parser_text_id(std::string_view text) const;
   std::string_view parser_text(TextId text_id,
-                               std::string_view fallback = {}) const {
-    if (shared_lookup_state_.token_texts && text_id != kInvalidText) {
-      return shared_lookup_state_.token_texts->lookup(text_id);
-    }
-    return fallback;
-  }
-  void clear_current_struct_tag() {
-    active_context_state_.current_struct_tag.clear();
-    active_context_state_.current_struct_tag_text_id = kInvalidText;
-  }
-  void set_current_struct_tag(std::string_view tag) {
-    active_context_state_.current_struct_tag = std::string(tag);
-    active_context_state_.current_struct_tag_text_id =
-        parser_text_id_for_token(kInvalidText, tag);
-  }
-  std::string_view current_struct_tag_text() const {
-    return parser_text(active_context_state_.current_struct_tag_text_id,
-                       active_context_state_.current_struct_tag);
-  }
-  void clear_last_resolved_typedef() {
-    active_context_state_.last_resolved_typedef.clear();
-    active_context_state_.last_resolved_typedef_text_id = kInvalidText;
-  }
-  void set_last_resolved_typedef(std::string_view name) {
-    active_context_state_.last_resolved_typedef = std::string(name);
-    active_context_state_.last_resolved_typedef_text_id =
-        parser_text_id_for_token(kInvalidText, name);
-  }
-  void clear_last_using_alias_name() {
-    active_context_state_.last_using_alias_key = {};
-    active_context_state_.last_using_alias_name.clear();
-    active_context_state_.last_using_alias_name_text_id = kInvalidText;
-  }
-  void set_last_using_alias_name(const QualifiedNameKey& key) {
-    active_context_state_.last_using_alias_key = key;
-    active_context_state_.last_using_alias_name.clear();
-    active_context_state_.last_using_alias_name_text_id = key.base_text_id;
-  }
-  std::string_view last_using_alias_name_text() const {
-    return parser_text(active_context_state_.last_using_alias_name_text_id,
-                       active_context_state_.last_using_alias_name);
-  }
-  const FnPtrTypedefInfo* find_typedef_fn_ptr_info(TextId text_id) const {
-    if (text_id == kInvalidText) return nullptr;
-    const auto it = binding_state_.typedef_fn_ptr_info.find(text_id);
-    return it == binding_state_.typedef_fn_ptr_info.end() ? nullptr
-                                                          : &it->second;
-  }
-  const FnPtrTypedefInfo* find_current_typedef_fn_ptr_info() const {
-    return find_typedef_fn_ptr_info(
-        active_context_state_.last_resolved_typedef_text_id);
-  }
+                               std::string_view fallback = {}) const;
+  void clear_current_struct_tag();
+  void set_current_struct_tag(std::string_view tag);
+  std::string_view current_struct_tag_text() const;
+  void clear_last_resolved_typedef();
+  void set_last_resolved_typedef(std::string_view name);
+  void clear_last_using_alias_name();
+  void set_last_using_alias_name(const QualifiedNameKey& key);
+  std::string_view last_using_alias_name_text() const;
+  const FnPtrTypedefInfo* find_typedef_fn_ptr_info(TextId text_id) const;
+  const FnPtrTypedefInfo* find_current_typedef_fn_ptr_info() const;
   std::string_view token_spelling(const Token& token) const;
   void set_parser_owned_spelling(Token& token, std::string_view spelling);
   Token make_injected_token(const Token& seed, TokenKind kind,
@@ -357,15 +307,10 @@ class Parser {
   void replace_last_using_alias_name_fallback_for_testing(std::string name);
   std::string_view last_resolved_typedef_text() const;
   SymbolId symbol_id_for_token_text(TextId token_text_id,
-                                    std::string_view fallback = {}) {
-    return shared_lookup_state_.parser_name_tables.intern_identifier(
-        parser_text_id_for_token(token_text_id, fallback));
-  }
+                                    std::string_view fallback = {});
   SymbolId symbol_id_for_token(const Token& token);
   void populate_qualified_name_symbol_ids(QualifiedNameRef* name);
-  std::string_view symbol_spelling(SymbolId id) const {
-    return shared_lookup_state_.parser_symbols.spelling(id);
-  }
+  std::string_view symbol_spelling(SymbolId id) const;
   bool has_typedef_name(std::string_view name) const;
   bool is_typedef_name(TextId name_text_id, std::string_view name) const;
   bool has_typedef_type(std::string_view name) const;
@@ -431,10 +376,7 @@ class Parser {
   void register_concept_name_in_context(int context_id, TextId name_text_id,
                                         std::string_view fallback_name);
   bool is_typedef_name(std::string_view s) const;
-  bool is_cpp_mode() const {
-    return core_input_state_.source_profile == SourceProfile::CppSubset ||
-           core_input_state_.source_profile == SourceProfile::C4;
-  }
+  bool is_cpp_mode() const;
 
   // ── namespace resolution / qualified-name plumbing ───────────────────────
   void refresh_current_namespace_bridge();

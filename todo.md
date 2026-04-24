@@ -8,38 +8,36 @@ Current Step Title: Separate Facade Types From Private State Carriers
 
 ## Just Finished
 
-Completed the first Step 5 facade-type split by adding
-`src/frontend/parser/parser_types.hpp` and moving facade-facing parser type
-definitions out of `src/frontend/parser/impl/parser_state.hpp`: symbol table
-types, token mutation, function-pointer typedef info, namespace/qualified-name
-refs, template argument/scope records, record body/recovery records, parse
-debug/failure records, tentative-parse mode/text-ref records, alias-template
-info, and enum/const-int binding table aliases. `parser.hpp` now includes this
-public type layer before the private state header; `parser_state.hpp` includes
-the same layer and retains the private state carriers and guard/snapshot
-definitions.
+Completed the next Step 5 facade boundary slice by moving the remaining
+`parser.hpp` inline helper bodies that dereferenced private parser carriers into
+`src/frontend/parser/parser_support.cpp`, which includes
+`impl/parser_impl.hpp`. The moved helpers cover parser text lookup/interning,
+current struct tag state, last resolved typedef state, last using-alias state,
+function-pointer typedef lookup, parser symbol interning/spelling, and C++ mode
+detection through `core_input_state_.source_profile`. `parser.hpp` now only
+declares those methods; its only remaining inline method body is
+`VisibleNameResult::operator bool()`, which does not touch private state.
 
-Remaining `parser.hpp` dependencies on `impl/parser_state.hpp` are classified:
-public facade API now separated into `parser_types.hpp`; explicit parser-test
-hooks still include state-adjacent signatures such as
-`parser_symbol_tables()`, token cursor replacement/inspection hooks,
-`register_*_for_testing()`, and alias-template test registration; parser-private
-state exposure still forcing the private include includes the `Parser` reference
-members to `ParserCoreInputState`, `ParserSharedLookupState`,
-`ParserBindingState`, `ParserDefinitionState`, `ParserTemplateState`,
-`ParserLexicalScopeState`, `ParserActiveContextState`, `ParserNamespaceState`,
-`ParserDiagnosticState`, and `ParserPragmaState`, plus inline methods in
-`parser.hpp` that read or mutate those carriers. Guard/snapshot aliases
-(`ParserLiteSnapshot`, `ParserSnapshot`, `TentativeParseStats`,
-`TentativeParseGuard*`, and parse-context/local-var/template prelude guards)
-remain state-backed and are bounded Step 6 candidates.
+Remaining `parser.hpp` dependencies on `impl/parser_state.hpp` are now
+declaration/type-shape dependencies rather than inline private-state logic:
+the `Parser` object still exposes reference members to private carriers
+(`ParserCoreInputState`, `ParserSharedLookupState`, `ParserBindingState`,
+`ParserDefinitionState`, `ParserTemplateState`, `ParserLexicalScopeState`,
+`ParserActiveContextState`, `ParserNamespaceState`, `ParserDiagnosticState`,
+and `ParserPragmaState`), and the public class still aliases/declares
+state-backed snapshot and guard types (`ParserLiteSnapshot`, `ParserSnapshot`,
+`TentativeParseStats`, `TentativeParseGuard*`, parse-context guard,
+local-var-binding suppression guard, and template prelude guards). Those names
+are what still force the private include unless the next packet replaces the
+include with narrow forward declarations or moves those state-backed surfaces
+behind implementation-only APIs.
 
 ## Suggested Next
 
-Next executor packet: continue Step 5/Step 6 boundary tightening by moving
-inline `parser.hpp` helpers that dereference private state carriers behind
-`impl/parser_impl.hpp` or out-of-line definitions, then reassess whether
-`parser.hpp` can drop `impl/parser_state.hpp` without changing parser behavior.
+Next executor packet: test whether `parser.hpp` can replace
+`impl/parser_state.hpp` with narrow forward declarations for the remaining
+private carrier, snapshot, and guard names, or identify the smallest public
+surface that must move before that include can be removed.
 
 ## Watchouts
 
@@ -47,6 +45,9 @@ inline `parser.hpp` helpers that dereference private state carriers behind
   expectations.
 - `parser.hpp` still includes `impl/parser_state.hpp`; this packet intentionally
   did not force final include removal.
+- A source search now finds no `parser.hpp` inline methods that read/write
+  `shared_lookup_state_`, `active_context_state_`, `binding_state_`,
+  `core_input_state_`, or the other private state carrier members.
 - The new `parser_types.hpp` still includes AST/token definitions because the
   separated facade-facing records contain `TypeSpec`, `Node*`, `Token`, and
   `TokenKind`.
@@ -65,7 +66,7 @@ inline `parser.hpp` helpers that dereference private state carriers behind
 
 ## Proof
 
-Executor Step 5 focused proof passed for the facade-type split:
+Executor Step 5 focused proof passed for the inline-helper move:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 
 Result: passed. Proof log: `test_after.log`.
