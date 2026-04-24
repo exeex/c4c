@@ -15,6 +15,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -109,6 +110,50 @@ struct PreparedBuiltinIntArg {
   std::string llvm_ty;
   bool is_i64 = false;
 };
+
+// ── Private module-level lowering helpers ───────────────────────────────────
+
+/// Deduplicate globals: prefer entries with explicit initializers; among
+/// equals, prefer later entries (last-wins for extern/tentative semantics).
+/// Returns indices into mod.globals of the "best" entry per name, in original
+/// order.
+std::vector<size_t> dedup_globals(const Module& mod);
+
+/// Deduplicate functions: prefer definitions (non-empty blocks) over
+/// declarations. Skips non-materialized functions. Returns indices into
+/// mod.functions of the "best" entry per name, in original order.
+std::vector<size_t> dedup_functions(const Module& mod);
+
+/// Build LLVM struct/union type declaration strings from the HIR module's
+/// struct definitions.
+std::vector<std::string> build_type_decls(const Module& mod);
+
+/// Build the LLVM IR signature text for a function (define/declare line).
+/// Ownership of signature construction belongs to hir_to_lir, not StmtEmitter.
+std::string build_fn_signature(const Module& mod, const Function& fn);
+
+/// Compute the HIR block iteration order for a function: entry block first,
+/// then remaining blocks in their original order.
+std::vector<const Block*> build_block_order(const Function& fn);
+
+/// Find parameter indices that are modified (assigned to, incremented, or
+/// address-taken) anywhere in the function body.
+std::unordered_set<uint32_t> find_modified_params(const Module& mod, const Function& fn);
+
+/// Returns true if the function has any VLA (variable-length array) locals.
+bool fn_has_vla_locals(const Function& fn);
+
+/// Hoist alloca instructions for all locals and spilled parameters.
+void hoist_allocas(FnCtx& ctx, const Module& mod, const Function& fn);
+
+/// Initialize a FnCtx for the given function.
+FnCtx init_fn_ctx(const Module& mod, const Function& fn);
+
+/// Map a HIR BlockId to its LLVM IR label string.
+std::string block_lbl(BlockId id);
+
+/// Create a new LIR block with the given label and make it current in ctx.
+void emit_lbl(FnCtx& ctx, const std::string& lbl);
 
 /// Standalone constant-initializer emitter for global variables.
 /// Owns all const-eval logic previously in HirEmitter; depends only on
