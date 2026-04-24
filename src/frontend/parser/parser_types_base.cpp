@@ -1767,139 +1767,37 @@ TypeSpec Parser::parse_base_type() {
                                             arena_.strdup(member_name.c_str());
                                         return true;
                                     };
-                                auto resolve_alias_member_type =
-                                    [&](const std::string& owner_name,
-                                        const std::string& member_name) -> bool {
-                                        if (owner_name.empty() || member_name.empty())
-                                            return false;
-                                        const std::string owner_lookup_name =
-                                            (ts.tpl_struct_origin &&
-                                             ts.deferred_member_type_name &&
-                                             member_name == ts.deferred_member_type_name)
-                                                ? std::string(ts.tpl_struct_origin)
-                                                : owner_name;
-                                        const Node* primary_tpl =
-                                            find_template_struct_primary(
-                                                current_namespace_context_id(),
-                                                find_parser_text_id(owner_lookup_name),
-                                                owner_lookup_name);
-                                        if (!primary_tpl) {
-                                            const std::string resolved_owner =
-                                                resolve_visible_type_name(
-                                                    owner_lookup_name);
-                                            if (!resolved_owner.empty())
-                                                primary_tpl =
-                                                    find_template_struct_primary(
-                                                        current_namespace_context_id(),
-                                                        find_parser_text_id(resolved_owner),
-                                                        resolved_owner);
-                                        }
-                                        if (!primary_tpl) {
-                                            if (owner_lookup_name.find("::") ==
-                                                std::string::npos) {
-                                                const std::string canonical_owner =
-                                                    bridge_name_in_context(
-                                                        current_namespace_context_id(),
-                                                        parser_text_id_for_token(
-                                                            kInvalidText,
-                                                            owner_lookup_name),
-                                                        owner_lookup_name);
-                                                primary_tpl =
-                                                    find_template_struct_primary(
-                                                        current_namespace_context_id(),
-                                                        find_parser_text_id(canonical_owner),
-                                                        canonical_owner);
-                                            }
-                                        }
-                                        if (!primary_tpl) return false;
-
-                                        std::vector<ParsedTemplateArg> actual_args;
-                                        if (!build_transformed_owner_args(
-                                                owner_lookup_name, &actual_args))
-                                            return false;
-
-                        std::vector<std::pair<std::string, TypeSpec>> type_bindings;
-                        std::vector<std::pair<std::string, long long>> nttp_bindings;
-                        const std::vector<Node*>* specializations =
-                                            find_template_struct_specializations(
-                                                current_namespace_context_id(),
-                                                find_parser_text_id(
-                                                    owner_lookup_name),
-                                                owner_lookup_name,
-                                                primary_tpl);
-                                        const Node* selected =
-                                            select_template_struct_pattern_for_args(
-                                                actual_args, primary_tpl,
-                                                specializations, &type_bindings,
-                                                &nttp_bindings);
-                                        if (!selected || selected->n_member_typedefs <= 0)
-                                            return false;
-                                        for (int mi = 0; mi < selected->n_member_typedefs; ++mi) {
-                                            const char* member = selected->member_typedef_names[mi];
-                                            if (!member || member_name != member) continue;
-                                            ts = selected->member_typedef_types[mi];
-                                            bool substituted = false;
-                                            for (const auto& [pname, pts] : type_bindings) {
-                                                if (ts.base == TB_TYPEDEF && ts.tag &&
-                                                    std::string(ts.tag) == pname) {
-                                                    const int outer_ptr_level =
-                                                        ts.ptr_level;
-                                                    const bool outer_lref =
-                                                        ts.is_lvalue_ref;
-                                                    const bool outer_rref =
-                                                        ts.is_rvalue_ref;
-                                                    const bool outer_const =
-                                                        ts.is_const;
-                                                    const bool outer_volatile =
-                                                        ts.is_volatile;
-                                                    ts = pts;
-                                                    ts.ptr_level += outer_ptr_level;
-                                                    ts.is_lvalue_ref =
-                                                        ts.is_lvalue_ref || outer_lref;
-                                                    ts.is_rvalue_ref =
-                                                        !ts.is_lvalue_ref &&
-                                                        (ts.is_rvalue_ref ||
-                                                         outer_rref);
-                                                    ts.is_const =
-                                                        ts.is_const || outer_const;
-                                                    ts.is_volatile =
-                                                        ts.is_volatile ||
-                                                        outer_volatile;
-                                                    substituted = true;
-                                                    break;
-                                                }
-                                            }
-                                            if (!substituted && ts.base == TB_TYPEDEF &&
-                                                ts.tag && member_name == "type" &&
-                                                type_bindings.size() == 1) {
-                                                ts = type_bindings.front().second;
-                                            }
-                                            return true;
-                                        }
-                                        return false;
-                                    };
-
                                 bool resolved_alias_member = false;
                                 {
+                                    QualifiedNameRef owner_qn;
+                                    QualifiedNameRef derived_owner_qn;
                                     std::string owner_name;
                                     std::string member_name;
                                     auto derive_alias_owner_and_member =
                                         [&](const std::string& alias_name)
                                         -> std::pair<std::string, std::string> {
-                                            const size_t alias_sep =
-                                                alias_name.rfind("::");
+                                            QualifiedNameRef alias_qn;
+                                            if (!qualified_name_from_text(
+                                                    *this, alias_name, &alias_qn)) {
+                                                return {"", ""};
+                                            }
                                             std::string alias_base =
-                                                alias_sep == std::string::npos
-                                                    ? alias_name
-                                                    : alias_name.substr(alias_sep + 2);
+                                                std::string(parser_text(
+                                                    alias_qn.base_text_id,
+                                                    alias_qn.base_name));
                                             if (alias_base.size() > 2 &&
                                                 alias_base.substr(alias_base.size() - 2) == "_t") {
+                                                alias_qn.base_name = alias_base.substr(
+                                                    0, alias_base.size() - 2);
+                                                alias_qn.base_text_id =
+                                                    parser_text_id_for_token(
+                                                        kInvalidText,
+                                                        alias_qn.base_name);
+                                                derived_owner_qn = alias_qn;
                                                 return {
-                                                    alias_sep == std::string::npos
-                                                        ? alias_base.substr(0, alias_base.size() - 2)
-                                                        : alias_name.substr(0, alias_sep + 2) +
-                                                              alias_base.substr(
-                                                                  0, alias_base.size() - 2),
+                                                    derived_owner_qn.spelled(
+                                                        derived_owner_qn
+                                                            .is_global_qualified),
                                                     "type"};
                                             }
                                             return {"", ""};
@@ -1953,12 +1851,194 @@ TypeSpec Parser::parse_base_type() {
                                             }
                                             return false;
                                         };
+                                    auto resolve_alias_member_type =
+                                        [&](const std::string& owner_name,
+                                            const QualifiedNameRef* owner_name_qn,
+                                            const std::string& member_name) -> bool {
+                                        if (owner_name.empty() || member_name.empty())
+                                            return false;
+                                        const std::string owner_lookup_name =
+                                            (ts.tpl_struct_origin &&
+                                             ts.deferred_member_type_name &&
+                                             member_name == ts.deferred_member_type_name)
+                                                ? std::string(ts.tpl_struct_origin)
+                                                : owner_name;
+                                        QualifiedNameRef owner_lookup_qn;
+                                        const QualifiedNameRef* owner_lookup_qn_ptr =
+                                            nullptr;
+                                        if (ts.tpl_struct_origin &&
+                                            ts.deferred_member_type_name &&
+                                            member_name == ts.deferred_member_type_name) {
+                                            if (qualified_name_from_text(
+                                                    *this, owner_lookup_name,
+                                                    &owner_lookup_qn)) {
+                                                owner_lookup_qn_ptr =
+                                                    &owner_lookup_qn;
+                                            }
+                                        } else if (owner_name_qn &&
+                                                   owner_name_qn->base_text_id !=
+                                                       kInvalidText) {
+                                            owner_lookup_qn = *owner_name_qn;
+                                            owner_lookup_qn_ptr =
+                                                &owner_lookup_qn;
+                                        } else if (qualified_name_from_text(
+                                                       *this, owner_lookup_name,
+                                                       &owner_lookup_qn)) {
+                                            owner_lookup_qn_ptr =
+                                                &owner_lookup_qn;
+                                        }
+
+                                        const Node* primary_tpl =
+                                            owner_lookup_qn_ptr
+                                                ? find_template_struct_primary(
+                                                      *owner_lookup_qn_ptr)
+                                                : find_template_struct_primary(
+                                                      current_namespace_context_id(),
+                                                      find_parser_text_id(
+                                                          owner_lookup_name),
+                                                      owner_lookup_name);
+                                        std::string resolved_owner;
+                                        if (!primary_tpl && owner_lookup_qn_ptr) {
+                                            resolved_owner =
+                                                resolve_qualified_known_type_name(
+                                                    *this, *owner_lookup_qn_ptr);
+                                            if (!resolved_owner.empty()) {
+                                                primary_tpl =
+                                                    find_template_struct_primary(
+                                                        current_namespace_context_id(),
+                                                        find_parser_text_id(
+                                                            resolved_owner),
+                                                        resolved_owner);
+                                            }
+                                        } else if (!primary_tpl) {
+                                            resolved_owner =
+                                                resolve_visible_type_name(
+                                                    owner_lookup_name);
+                                            if (!resolved_owner.empty()) {
+                                                primary_tpl =
+                                                    find_template_struct_primary(
+                                                        current_namespace_context_id(),
+                                                        find_parser_text_id(
+                                                            resolved_owner),
+                                                        resolved_owner);
+                                            }
+                                        }
+                                        if (!primary_tpl &&
+                                            owner_lookup_name.find("::") ==
+                                                std::string::npos) {
+                                            const std::string canonical_owner =
+                                                bridge_name_in_context(
+                                                    current_namespace_context_id(),
+                                                    parser_text_id_for_token(
+                                                        kInvalidText,
+                                                        owner_lookup_name),
+                                                    owner_lookup_name);
+                                            primary_tpl =
+                                                find_template_struct_primary(
+                                                    current_namespace_context_id(),
+                                                    find_parser_text_id(
+                                                        canonical_owner),
+                                                    canonical_owner);
+                                        }
+                                        if (!primary_tpl) return false;
+
+                                        std::vector<ParsedTemplateArg> actual_args;
+                                        if (!build_transformed_owner_args(
+                                                owner_lookup_name, &actual_args))
+                                            return false;
+
+                                        std::vector<std::pair<std::string, TypeSpec>>
+                                            type_bindings;
+                                        std::vector<std::pair<std::string, long long>>
+                                            nttp_bindings;
+                                        const std::vector<Node*>* specializations =
+                                            owner_lookup_qn_ptr
+                                                ? find_template_struct_specializations(
+                                                      *owner_lookup_qn_ptr,
+                                                      primary_tpl)
+                                                : find_template_struct_specializations(
+                                                      current_namespace_context_id(),
+                                                      find_parser_text_id(
+                                                          owner_lookup_name),
+                                                      owner_lookup_name,
+                                                      primary_tpl);
+                                        if (!specializations &&
+                                            !resolved_owner.empty() &&
+                                            resolved_owner != owner_lookup_name) {
+                                            specializations =
+                                                find_template_struct_specializations(
+                                                    current_namespace_context_id(),
+                                                    find_parser_text_id(
+                                                        resolved_owner),
+                                                    resolved_owner, primary_tpl);
+                                        }
+                                        const Node* selected =
+                                            select_template_struct_pattern_for_args(
+                                                actual_args, primary_tpl,
+                                                specializations, &type_bindings,
+                                                &nttp_bindings);
+                                        if (!selected || selected->n_member_typedefs <=
+                                                             0)
+                                            return false;
+                                        for (int mi = 0;
+                                             mi < selected->n_member_typedefs; ++mi) {
+                                            const char* member =
+                                                selected->member_typedef_names[mi];
+                                            if (!member || member_name != member)
+                                                continue;
+                                            ts = selected->member_typedef_types[mi];
+                                            bool substituted = false;
+                                            for (const auto& [pname, pts] :
+                                                 type_bindings) {
+                                                if (ts.base == TB_TYPEDEF &&
+                                                    ts.tag &&
+                                                    std::string(ts.tag) == pname) {
+                                                    const int outer_ptr_level =
+                                                        ts.ptr_level;
+                                                    const bool outer_lref =
+                                                        ts.is_lvalue_ref;
+                                                    const bool outer_rref =
+                                                        ts.is_rvalue_ref;
+                                                    const bool outer_const =
+                                                        ts.is_const;
+                                                    const bool outer_volatile =
+                                                        ts.is_volatile;
+                                                    ts = pts;
+                                                    ts.ptr_level +=
+                                                        outer_ptr_level;
+                                                    ts.is_lvalue_ref =
+                                                        ts.is_lvalue_ref ||
+                                                        outer_lref;
+                                                    ts.is_rvalue_ref =
+                                                        !ts.is_lvalue_ref &&
+                                                        (ts.is_rvalue_ref ||
+                                                         outer_rref);
+                                                    ts.is_const =
+                                                        ts.is_const ||
+                                                        outer_const;
+                                                    ts.is_volatile =
+                                                        ts.is_volatile ||
+                                                        outer_volatile;
+                                                    substituted = true;
+                                                    break;
+                                                }
+                                            }
+                                            if (!substituted &&
+                                                ts.base == TB_TYPEDEF && ts.tag &&
+                                                member_name == "type" &&
+                                                type_bindings.size() == 1) {
+                                                ts = type_bindings.front().second;
+                                            }
+                                            return true;
+                                        }
+                                        return false;
+                                    };
                                     if (ts.base == TB_TYPEDEF && ts.tag) {
-                                        std::string tag_text = ts.tag;
-                                        const size_t member_pos = tag_text.rfind("::");
-                                        if (member_pos != std::string::npos) {
-                                            owner_name = tag_text.substr(0, member_pos);
-                                            member_name = tag_text.substr(member_pos + 2);
+                                        if (split_qualified_member_type_name(
+                                                *this, ts.tag, &owner_qn,
+                                                &member_name)) {
+                                            owner_name = owner_qn.spelled(
+                                                owner_qn.is_global_qualified);
                                         }
                                     }
                                     if (!owner_name.empty() && !member_name.empty())
@@ -1967,7 +2047,9 @@ TypeSpec Parser::parse_base_type() {
                                              preserve_deferred_alias_member(
                                                  owner_name, member_name)) ||
                                             apply_unary_alias_transform(owner_name, member_name) ||
-                                            resolve_alias_member_type(owner_name, member_name);
+                                            resolve_alias_member_type(
+                                                owner_name, &owner_qn,
+                                                member_name);
                                     if (!resolved_alias_member &&
                                         ts.deferred_member_type_name &&
                                         ((ts.tpl_struct_origin &&
@@ -1997,7 +2079,9 @@ TypeSpec Parser::parse_base_type() {
                                                 apply_unary_alias_transform(
                                                     derived_owner, derived_member) ||
                                                 resolve_alias_member_type(
-                                                    derived_owner, derived_member);
+                                                    derived_owner,
+                                                    &derived_owner_qn,
+                                                    derived_member);
                                         if (!resolved_alias_member &&
                                             !derived_owner.empty() &&
                                             !derived_member.empty()) {

@@ -126,6 +126,40 @@ std::string visible_type_head_name(const Parser& parser,
     return visible_type_head_name(parser, parser.find_parser_text_id(name), name);
 }
 
+bool qualified_name_from_text(const Parser& parser, std::string_view text,
+                              Parser::QualifiedNameRef* out) {
+    if (!out || text.empty()) return false;
+
+    Parser::QualifiedNameRef qn;
+    size_t start = 0;
+    if (text.rfind("::", 0) == 0) {
+        qn.is_global_qualified = true;
+        start = 2;
+    }
+    if (start >= text.size()) return false;
+
+    while (start < text.size()) {
+        const size_t sep = text.find("::", start);
+        const std::string segment =
+            sep == std::string::npos ? std::string(text.substr(start))
+                                     : std::string(text.substr(start, sep - start));
+        if (segment.empty()) return false;
+        const TextId segment_text_id =
+            parser.parser_text_id_for_token(kInvalidText, segment);
+        if (sep == std::string::npos) {
+            qn.base_name = segment;
+            qn.base_text_id = segment_text_id;
+            *out = std::move(qn);
+            return segment_text_id != kInvalidText;
+        }
+        qn.qualifier_segments.push_back(segment);
+        qn.qualifier_text_ids.push_back(segment_text_id);
+        start = sep + 2;
+        if (start >= text.size()) return false;
+    }
+    return false;
+}
+
 Parser::QualifiedNameRef qualified_owner_name(const Parser& parser,
                                               const Parser::QualifiedNameRef& qn) {
     Parser::QualifiedNameRef owner_qn;
@@ -167,6 +201,21 @@ std::string resolve_qualified_owner_type_name(
     if (!owner_name.empty()) return owner_name;
 
     return std::string(parser.parser_text(owner_qn.base_text_id, owner_qn.base_name));
+}
+
+bool split_qualified_member_type_name(
+    const Parser& parser, std::string_view text,
+    Parser::QualifiedNameRef* owner_qn, std::string* member_name) {
+    Parser::QualifiedNameRef qn;
+    if (!qualified_name_from_text(parser, text, &qn) ||
+        qn.qualifier_segments.empty()) {
+        return false;
+    }
+    if (owner_qn) *owner_qn = qualified_owner_name(parser, qn);
+    if (member_name) {
+        *member_name = std::string(parser.parser_text(qn.base_text_id, qn.base_name));
+    }
+    return true;
 }
 
 void append_qualified_name_tokens(Parser& parser,
