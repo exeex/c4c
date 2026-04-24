@@ -6,16 +6,12 @@ Current Step Title: Narrow instantiation and mangled-name bridge behavior around
 
 # Current Packet
 ## Just Finished
-Step 4 inventory classified the template-struct instantiation and mangled-name bridge uses:
+Step 4 simplified the redundant duplicate-instantiation guard in `ensure_template_struct_instantiated_from_args(...)`.
 
-- `ParserTemplateState::instantiated_template_struct_keys` is currently an emitted-artifact guard. It is string-shaped and only prevents duplicate concrete `NK_STRUCT_DEF` emission in the direct template-type parse path; it is not used to find primaries, select specializations, or resolve semantic template identity.
-- `make_template_struct_instance_key(primary_tpl, args)` is an emitted-artifact guard key builder. It uses the already-resolved `primary_tpl` node plus canonical argument text, so the caller has crossed the structured identity boundary before the string key is built.
-- `build_template_struct_mangled_name(template_name, primary_tpl, selected_tpl, args)` is emitted artifact construction. It returns an explicit full-specialization name when selected, otherwise builds the concrete struct tag/mangled name from the selected family spelling and primary parameter order. This output is intentionally used for `struct_tag_def_map`, `defined_struct_tags`, `TypeSpec::tag`, and injected parse spelling.
-- `ensure_template_struct_instantiated_from_args(...)` is the main compatibility bridge. Its semantic selection path now starts from `primary_tpl` and `find_template_struct_specializations(primary_tpl)`, then emits or probes by mangled struct tag. The remaining `template_name` parameter is output/injected-parse spelling, not specialization lookup authority.
-- The transformed-owner direct instantiation path in `parser_types_base.cpp` still has one local duplicate-emission guard that checks/inserts `instantiated_template_struct_keys` before cloning and registering a concrete struct. That use is also an emitted-artifact guard because `primary_tpl`, `tpl_def`, and concrete args are already resolved before the key is built.
+The function now relies on `struct_tag_def_map` to decide whether injected parsing is needed and no longer builds or checks `instantiated_template_struct_keys` in that bridge. Mangled-name construction and emitted struct-tag spelling are unchanged.
 
 ## Suggested Next
-First safe Step 4 code packet: simplify the redundant duplicate-instantiation guard in `ensure_template_struct_instantiated_from_args(...)`. The current branch is nested under `!struct_tag_def_map.count(*out_mangled)` and then tests `!instantiated_template_struct_keys.count(instance_key) || !struct_tag_def_map.count(*out_mangled)`, making the key check ineffective for skipping injected parse. A narrow cleanup should either remove that redundant key test there or insert/check the key consistently only as an emitted-artifact guard after successful concrete emission, while leaving `template_name` and mangled output unchanged.
+Supervisor should decide whether Step 4 has enough proof to close the active runbook or whether the remaining direct emitted-artifact guard in `parser_types_base.cpp` needs a separate packet.
 
 ## Watchouts
 - Keep the scope inside parser alias/template identity.
@@ -29,13 +25,13 @@ First safe Step 4 code packet: simplify the redundant duplicate-instantiation gu
 - Step 3 specialization selection call sites now visibly use primary-node lookup when `primary_tpl` is available in `parser_types_base.cpp` and `parser_types_template.cpp`; keep any future `QualifiedNameRef` specialization callers only where no primary node exists.
 - Do not change mangled-name spelling in Step 4 unless a concrete semantic bug requires it; those names are emitted artifacts and struct-tag keys.
 - `instantiated_template_struct_keys` should not become a parser identity authority. If kept, document or tighten it as a duplicate-emission guard that is reached only after primary-node/specialization selection.
-- Step 4 may close without larger code if the supervisor decides redundant-key cleanup is not worth changing behavior; the inventory found no remaining rendered-name lookup needed for instantiation decisions once `primary_tpl` is available.
+- This packet intentionally did not change `build_template_struct_mangled_name(...)`, `template_name` injected-parse spelling, or the direct concrete-struct emission path in `parser_types_base.cpp`.
 
 ## Proof
-No build required for this inventory-only packet.
-
 Ran delegated proof:
 
-`git diff --check`
+`bash -lc 'set -o pipefail; cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '\''^frontend_parser_tests$'\'' | tee test_after.log'`
 
-Result: passed. No proof log updated; `test_after.log` was not touched.
+Result: passed. `test_after.log` updated.
+
+Also ran `git diff --check`; result: passed.

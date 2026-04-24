@@ -285,9 +285,6 @@ bool Parser::ensure_template_struct_instantiated_from_args(
     *out_mangled = build_template_struct_mangled_name(
         template_name, primary_tpl, selected, args);
 
-    const std::string instance_key =
-        make_template_struct_instance_key(primary_tpl, args);
-
     // Typed fast path: an explicit full specialization already exists as a
     // concrete struct node, so we can register/use it directly without
     // rebuilding tokens and reparsing the instantiation spelling.
@@ -309,13 +306,10 @@ bool Parser::ensure_template_struct_instantiated_from_args(
     }
 
     if (!definition_state_.struct_tag_def_map.count(*out_mangled)) {
-        if (!template_state_.instantiated_template_struct_keys.count(instance_key) ||
-            !definition_state_.struct_tag_def_map.count(*out_mangled)) {
-            if (!instantiate_template_struct_via_injected_parse(
-                    *this, template_name, args, line, debug_reason,
-                    out_resolved)) {
-                return false;
-            }
+        if (!instantiate_template_struct_via_injected_parse(
+                *this, template_name, args, line, debug_reason,
+                out_resolved)) {
+            return false;
         }
     }
 
