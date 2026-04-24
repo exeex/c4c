@@ -116,6 +116,9 @@ void apply_declarator_pointer_token(Parser& parser, TypeSpec& ts,
                                     TokenKind pointer_tok,
                                     bool preserve_array_base);
 bool try_parse_declarator_member_pointer_prefix(Parser& parser, TypeSpec& ts);
+bool parse_qualified_declarator_name(Parser& parser, std::string* out_name,
+                                     TextId* out_name_text_id = nullptr);
+void consume_declarator_post_pointer_qualifiers(Parser& parser);
 void parse_pointer_ref_qualifiers(Parser& parser, TypeSpec& ts,
                                   TokenKind pointer_tok,
                                   bool preserve_array_base,

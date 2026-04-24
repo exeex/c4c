@@ -9,12 +9,13 @@ Current Step Title: Retarget Callers And Test Hooks
 ## Just Finished
 
 Completed Step 4 test-hook isolation slice by removing the test-only
-`Parser::parse_unary` expression hook from public `Parser` declarations in
-`src/frontend/parser/parser.hpp`, adding the equivalent private-boundary
-`parse_unary(Parser&)` declaration to
-`src/frontend/parser/impl/parser_impl.hpp`, converting the implementation in
-`src/frontend/parser/parser_expressions.cpp` to the private helper form, and
-retargeting parser implementation and frontend parser test callers to pass the
+`Parser::consume_declarator_post_pointer_qualifiers` and
+`Parser::parse_qualified_declarator_name` declarator hooks from public `Parser`
+declarations in `src/frontend/parser/parser.hpp`, adding equivalent
+private-boundary `Parser&` helper declarations to
+`src/frontend/parser/impl/parser_impl.hpp`, converting the implementations in
+`src/frontend/parser/parser_types_declarator.cpp` to private helper form, and
+retargeting parser implementation plus frontend parser test callers to pass the
 parser explicitly.
 
 ## Suggested Next
@@ -34,18 +35,15 @@ owner handling.
 - Keep implementation-only declarations behind
   `src/frontend/parser/impl/parser_impl.hpp` where practical.
 - Keep any test-only hooks clearly named and isolated.
-- `consume_declarator_post_pointer_qualifiers` remains publicly declared
-  because `tests/frontend/frontend_parser_tests.cpp` calls it directly.
-- `parse_qualified_declarator_name` remains publicly declared because
-  `tests/frontend/frontend_parser_tests.cpp` calls it directly.
 - `tests/frontend/frontend_parser_tests.cpp` now explicitly includes
-  `impl/parser_impl.hpp` for the private `parse_unary(Parser&)` test hook.
-- Current source search found no remaining `Parser::parse_unary` declaration or
-  direct member call in the owned parser implementation/test files.
+  `impl/parser_impl.hpp` for private parser test hooks.
+- Current source search found no remaining `Parser::consume_declarator_post_pointer_qualifiers`
+  or `Parser::parse_qualified_declarator_name` declaration or direct member call
+  in the owned parser implementation/test files.
 
 ## Proof
 
-Executor Step 4 focused proof passed for the `parse_unary` test-hook isolation
+Executor Step 4 focused proof passed for the declarator test-hook isolation
 slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 

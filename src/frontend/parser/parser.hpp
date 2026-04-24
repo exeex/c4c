@@ -658,9 +658,6 @@ class Parser {
                         bool* out_ret_fn_ptr_variadic = nullptr,
                         TextId* out_name_text_id = nullptr);
   bool parse_operator_declarator_name(std::string* out_name);
-  bool parse_qualified_declarator_name(std::string* out_name,
-                                       TextId* out_name_text_id = nullptr);
-  void consume_declarator_post_pointer_qualifiers();
 
   // ── record parsing (struct / union) ──────────────────────────────────────
   // Test-facing record body context hook; implementation-only record helpers

@@ -2323,7 +2323,7 @@ void test_parser_post_pointer_qualifier_probes_use_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "restrict"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
   });
-  parser.consume_declarator_post_pointer_qualifiers();
+  c4c::consume_declarator_post_pointer_qualifiers(parser);
 
   expect_eq(parser.token_spelling(parser.cur()), "after",
             "post-pointer qualifier probes should use parser-owned spelling");
@@ -2345,7 +2345,7 @@ void test_parser_qualified_declarator_name_uses_token_spelling() {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Value"),
   });
   std::string qualified_name;
-  expect_true(parser.parse_qualified_declarator_name(&qualified_name),
+  expect_true(c4c::parse_qualified_declarator_name(parser, &qualified_name),
               "qualified declarator names should parse from injected token spelling");
   expect_eq(qualified_name, "::ns::inner::Value",
             "qualified declarator names should materialize parser-owned spelling");

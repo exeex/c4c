@@ -1064,8 +1064,8 @@ bool Parser::parse_operator_declarator_name(std::string* out_name) {
     return true;
 }
 
-bool Parser::parse_qualified_declarator_name(std::string* out_name,
-                                             TextId* out_name_text_id) {
+bool parse_qualified_declarator_name(Parser& parser, std::string* out_name,
+                                     TextId* out_name_text_id) {
     if (!out_name) return false;
     if (out_name_text_id) *out_name_text_id = kInvalidText;
 
@@ -1082,33 +1082,36 @@ bool Parser::parse_qualified_declarator_name(std::string* out_name,
         }
     };
 
-    if (match(TokenKind::ColonColon))
+    if (parser.match(TokenKind::ColonColon))
         qualified_name = "::";
 
-    if (check(TokenKind::KwOperator)) {
-        parsed_qualified = parse_operator_declarator_name(&qualified_name);
-    } else if (check(TokenKind::Identifier)) {
+    if (parser.check(TokenKind::KwOperator)) {
+        parsed_qualified =
+            parser.parse_operator_declarator_name(&qualified_name);
+    } else if (parser.check(TokenKind::Identifier)) {
         name_text_id =
-            parser_text_id_for_token(cur().text_id, token_spelling(cur()));
-        qualified_name += token_spelling(cur());
-        consume();
+            parser.parser_text_id_for_token(
+                parser.cur().text_id, parser.token_spelling(parser.cur()));
+        qualified_name += parser.token_spelling(parser.cur());
+        parser.consume();
         parsed_qualified = true;
         is_unqualified_identifier = true;
-        consume_template_args_before_scope();
+        parser.consume_template_args_before_scope();
     }
 
-    while (parsed_qualified && match(TokenKind::ColonColon)) {
+    while (parsed_qualified && parser.match(TokenKind::ColonColon)) {
         is_unqualified_identifier = false;
         name_text_id = kInvalidText;
         append_scope_sep();
-        if (check(TokenKind::Identifier)) {
-            qualified_name += token_spelling(cur());
-            consume();
-            consume_template_args_before_scope();
+        if (parser.check(TokenKind::Identifier)) {
+            qualified_name += parser.token_spelling(parser.cur());
+            parser.consume();
+            parser.consume_template_args_before_scope();
             continue;
         }
-        if (check(TokenKind::KwOperator)) {
-            parsed_qualified = parse_operator_declarator_name(&qualified_name);
+        if (parser.check(TokenKind::KwOperator)) {
+            parsed_qualified =
+                parser.parse_operator_declarator_name(&qualified_name);
             break;
         }
         parsed_qualified = false;
@@ -1215,20 +1218,20 @@ void parse_pointer_ref_qualifiers(Parser& parser, TypeSpec& ts,
     parser.parse_attributes(&ts);
 }
 
-void Parser::consume_declarator_post_pointer_qualifiers() {
-    while (check(TokenKind::Identifier)) {
-        const std::string_view lex = token_spelling(cur());
+void consume_declarator_post_pointer_qualifiers(Parser& parser) {
+    while (parser.check(TokenKind::Identifier)) {
+        const std::string_view lex = parser.token_spelling(parser.cur());
         if (lex == "_Nullable" || lex == "_Nonnull" ||
             lex == "_Null_unspecified" || lex == "__nullable" ||
             lex == "__nonnull" || lex == "__restrict" ||
             lex == "restrict" || lex == "const" || lex == "volatile") {
-            consume();
+            parser.consume();
         } else {
             break;
         }
     }
 
-    while (is_qualifier(cur().kind)) consume();
+    while (is_qualifier(parser.cur().kind)) parser.consume();
 }
 
 void parse_declarator_prefix(Parser& parser, TypeSpec& ts,
@@ -1263,7 +1266,7 @@ void parse_declarator_prefix(Parser& parser, TypeSpec& ts,
                                      /*preserve_array_base=*/false);
     }
 
-    parser.consume_declarator_post_pointer_qualifiers();
+    consume_declarator_post_pointer_qualifiers(parser);
 
     // C++ template parameter pack declarator: `Args&&... args`
     // or `Ts... value`. The ellipsis belongs to the declarator, not the
@@ -1313,8 +1316,8 @@ void parse_normal_declarator_tail(Parser& parser, TypeSpec& ts,
          parser.check(TokenKind::KwOperator))) {
         Parser::TentativeParseGuard guard(parser);
         std::string qualified_name;
-        if (parser.parse_qualified_declarator_name(&qualified_name,
-                                                   out_name_text_id)) {
+        if (parse_qualified_declarator_name(parser, &qualified_name,
+                                            out_name_text_id)) {
             *out_name = parser.arena_.strdup(qualified_name.c_str());
             guard.commit();
         }
@@ -1431,7 +1434,7 @@ void parse_parenthesized_pointer_declarator_prefix(Parser& parser,
                                      /*preserve_array_base=*/false);
     }
 
-    parser.consume_declarator_post_pointer_qualifiers();
+    consume_declarator_post_pointer_qualifiers(parser);
 
     if (parser.is_cpp_mode()) {
         if (parser.check(TokenKind::AmpAmp)) {
