@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/93_hir_agent_index_header_hierarchy.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Move Compile-Time And Follow-Up Transform Boundary
+Current Step ID: 6
+Current Step Title: Clarify Inspection Support
 
 # Current Packet
 
