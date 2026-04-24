@@ -7,22 +7,19 @@ Current Step Title: Re-run focused parser proof and widen only if the blast radi
 # Current Packet
 
 ## Just Finished
-Completed the step-6 cleanup by keeping the visible type/value helpers
-`TextId`-first while restoring the namespace-local declaration path that was
-misclassified by the concept gate. The bridge-string fallback remains
-compatibility-only at the tail of the lookup helpers.
+Completed plan step 7 by running the broader parser/frontend proof after the
+step-6 repair. The requested build/test subset finished cleanly and confirmed
+the current diff does not regress parser/frontend coverage.
 
 ## Suggested Next
-Run the step-7 proof with broader parser/frontend coverage before treating the
-route as finished.
+Escalate to supervisor review for acceptance and lifecycle handling now that
+the step-7 proof is green.
 
 ## Watchouts
-Keep `known_fn_names` and `struct_typedefs` on their structured path. The
-concept gate must not fall back to treating visible typedefs as concepts again.
-The earlier narrow subset passed, but it was not sufficient for the current
-diff breadth.
+The proof was broader than the earlier narrow subset and it passed 267/267.
+If anything still blocks closeout, it should be a lifecycle or review decision,
+not a missing parser/frontend proof.
 
 ## Proof
-Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_positive_sema_namespace_struct_type_basic_cpp|cpp_positive_sema_record_member_enum_parse_cpp)$'` and wrote the combined output to `test_after.log`.
-The subset passed, but the review noted that broader parser/frontend proof is
-still needed before this plan can be accepted as complete.
+Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_cxx_.*|cpp_positive_sema_.*_(parse|frontend)_cpp)$'` and wrote the combined output to `test_after.log`.
+The build was a no-op and `ctest` passed 267/267 tests.
