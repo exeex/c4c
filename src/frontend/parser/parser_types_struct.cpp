@@ -33,6 +33,16 @@ struct ParserFunctionParamScopeGuard {
     }
 };
 
+static void restore_current_struct_tag(Parser& parser, TextId text_id,
+                                       const std::string& fallback) {
+    const std::string_view tag = parser.parser_text(text_id, fallback);
+    if (tag.empty()) {
+        parser.clear_current_struct_tag();
+        return;
+    }
+    parser.set_current_struct_tag(tag);
+}
+
 // ── struct / union parsing ───────────────────────────────────────────────────
 
 bool Parser::try_parse_record_access_label() {
@@ -1818,17 +1828,22 @@ void Parser::parse_record_body_with_context(
     const char* tag,
     const char* template_origin_name,
     RecordBodyState* body_state) {
+    const TextId saved_struct_tag_text_id =
+        active_context_state_.current_struct_tag_text_id;
     std::string saved_struct_tag = active_context_state_.current_struct_tag;
     std::string struct_source_name;
     begin_record_body_context(tag, template_origin_name, &saved_struct_tag,
                               &struct_source_name);
     parse_record_body(struct_source_name, body_state);
     finish_record_body_context(saved_struct_tag);
+    restore_current_struct_tag(*this, saved_struct_tag_text_id,
+                               saved_struct_tag);
 }
 
 void Parser::finish_record_body_context(const std::string& saved_struct_tag) {
     expect(TokenKind::RBrace);
-    set_current_struct_tag(saved_struct_tag);
+    restore_current_struct_tag(*this, find_parser_text_id(saved_struct_tag),
+                               saved_struct_tag);
 }
 
 void Parser::parse_record_definition_prelude(

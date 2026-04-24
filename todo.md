@@ -8,26 +8,23 @@ Current Step Title: Tighten `current_struct_tag` Access
 
 ## Just Finished
 
-Step 3 code packet completed for `parser_declarations.cpp` owner-scope
+Step 3 code packet completed for `parser_types_struct.cpp` record-body
 `current_struct_tag` save/restore paths.
 
-The out-of-class operator, out-of-class constructor, and qualified declarator
-owner-scope paths now snapshot both
+`parse_record_body_with_context(...)` now snapshots both
 `active_context_state_.current_struct_tag_text_id` and fallback spelling before
-entering the qualified owner scope. They restore through a shared accessor-based
-rehydration helper instead of restoring from the raw string alone.
+entering the record body. `finish_record_body_context(...)` restores through a
+TextId-aware helper, and the wrapper performs the final rehydration from the
+saved TextId plus fallback spelling after the closing brace is consumed.
 
-`qualified_owner`, `qualified_owner_tag`, and `owner_struct_tag` spelling
-behavior remains unchanged for emitted/member names and template-scope owner
-relabeling.
+Constructor/destructor injected-name comparisons and `struct_source_name`
+fallback spelling remain unchanged.
 
 ## Suggested Next
 
-Next Step 3 packet: audit and tighten `parser_types_struct.cpp` record-body
-`current_struct_tag` save/restore around `begin_record_body_context(...)`,
-`finish_record_body_context(...)`, and `parse_record_body_with_context(...)`,
-while preserving constructor/destructor injected-name comparisons and
-`struct_source_name` fallback spelling.
+Next Step 3 packet: audit the remaining `current_struct_tag_text()` and
+spelling-keyed owner/member registration uses in `parser_types_struct.cpp` and
+decide whether Step 3 needs one more bounded cleanup or can advance.
 
 ## Watchouts
 
@@ -36,9 +33,8 @@ while preserving constructor/destructor injected-name comparisons and
   `struct_source_name` for template-origin/injected spellings.
 - `register_struct_member_typedef_binding(...)` remains spelling-keyed; changing
   it is a separate owner-registration packet, not the first safe cleanup.
-- `parser_declarations.cpp` still intentionally feeds qualified owner spelling
-  into emitted function names and `owner_struct_tag`; this packet only changed
-  context restoration metadata.
+- `finish_record_body_context(...)` keeps its existing signature; the exact
+  saved TextId is preserved and restored by `parse_record_body_with_context(...)`.
 
 ## Proof
 
