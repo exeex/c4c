@@ -1401,7 +1401,9 @@ Node* Parser::parse_primary() {
 
             return has_visible_typedef_type(first_qualifier_text_id,
                                             first_qualifier) ||
-                   template_state_.template_struct_defs.count(first_qualifier) > 0 ||
+                   has_template_struct_primary(current_namespace_context_id(),
+                                               first_qualifier_text_id,
+                                               first_qualifier) ||
                    definition_state_.defined_struct_tags.count(first_qualifier) >
                        0;
         };

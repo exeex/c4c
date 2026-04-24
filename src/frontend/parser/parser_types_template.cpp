@@ -13,6 +13,17 @@
 
 namespace c4c {
 
+bool Parser::has_template_struct_primary(
+    int context_id, TextId name_text_id, std::string_view fallback_name) const {
+    return find_template_struct_primary(context_id, name_text_id, fallback_name) !=
+           nullptr;
+}
+
+bool Parser::has_template_struct_primary(std::string_view name) const {
+    return has_template_struct_primary(
+        current_namespace_context_id(), find_parser_text_id(name), name);
+}
+
 Node* Parser::find_template_struct_primary(
     int context_id, TextId name_text_id, std::string_view fallback_name) const {
     if (context_id < 0) return nullptr;

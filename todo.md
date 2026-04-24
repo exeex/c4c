@@ -6,10 +6,10 @@ Current Step Title: Migrate one template-owned lookup family at a time
 
 # Current Packet
 ## Just Finished
-Finished another Step 4 template-owned lookup family by adding a structured `QualifiedNameKey` specialization registry, registering template-struct specializations through parser context instead of only spelled primary names, and switching the nearby parser-owned specialization selection path to that structured lookup while leaving the legacy string map as an explicit bridge.
+Finished another Step 4 parser-owned lookup cleanup by routing template-primary presence checks in helper/type-probe paths through `find_template_struct_primary(...)`, so parser-side template-owned lookup now prefers the structured `QualifiedNameKey` registry before falling back to legacy string tables that remain as explicit bridges for untouched call sites.
 
 ## Suggested Next
-Keep Step 4 on the same route by narrowing the remaining compatibility-only direct string-table probes around template-owned parser lookup, then move to Step 5 once specialization and alias-application bridge paths are clearly separated.
+Keep Step 4 on the same route by replacing the remaining non-parser helper direct probes into `template_struct_defs` with structured-first checks or dedicated wrappers, then move to Step 5 once alias-application heuristics are the main bridge-only holdout.
 
 ## Watchouts
 - Keep the work limited to the active parser/frontend scope.

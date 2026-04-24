@@ -827,7 +827,7 @@ bool Parser::resolves_to_record_ctor_type(TypeSpec ts) const {
     ts = resolve_struct_like_typedef_type(ts);
     if (ts.base == TB_TYPEDEF && ts.tag &&
         (definition_state_.defined_struct_tags.count(ts.tag) > 0 ||
-         template_state_.template_struct_defs.count(ts.tag) > 0)) {
+         has_template_struct_primary(ts.tag))) {
         return true;
     }
     return ts.base == TB_STRUCT || ts.base == TB_UNION;

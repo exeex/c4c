@@ -475,6 +475,9 @@ class Parser {
       const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
       const std::vector<std::pair<std::string, long long>>& nttp_bindings,
       long long* out);
+  bool has_template_struct_primary(int context_id, TextId name_text_id,
+                                   std::string_view fallback_name) const;
+  bool has_template_struct_primary(std::string_view name) const;
   Node* find_template_struct_primary(int context_id, TextId name_text_id,
                                      std::string_view fallback_name) const;
   Node* find_template_struct_primary(const std::string& name) const;

@@ -295,9 +295,12 @@ bool is_known_simple_type_head(const Parser& parser, TextId name_text_id,
     if (parser.has_visible_typedef_type(name_text_id, name)) return true;
     const std::string resolved =
         visible_type_head_name(parser, name_text_id, name);
-    return parser.template_state_.template_struct_defs.count(
-               std::string(name)) > 0 ||
-           parser.template_state_.template_struct_defs.count(resolved) > 0 ||
+    return parser.has_template_struct_primary(
+               parser.current_namespace_context_id(), name_text_id, name) ||
+           (!resolved.empty() &&
+            parser.has_template_struct_primary(
+                parser.current_namespace_context_id(),
+                parser.find_parser_text_id(resolved), resolved)) ||
            parser.definition_state_.defined_struct_tags.count(
                std::string(name)) > 0 ||
            parser.definition_state_.defined_struct_tags.count(resolved) > 0;
@@ -443,14 +446,18 @@ std::string resolve_qualified_known_type_name(
     if (is_qualified) {
         resolved = parser.resolve_qualified_type_name(qn);
         if (!resolved.empty() &&
-            (parser.template_state_.template_struct_defs.count(resolved) > 0 ||
+            (parser.has_template_struct_primary(
+                 parser.current_namespace_context_id(),
+                 parser.find_parser_text_id(resolved), resolved) ||
              parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {
             return resolved;
         }
     } else {
         resolved = std::string(parser.parser_text(qn.base_text_id, qn.base_name));
         if (!resolved.empty() &&
-            (parser.template_state_.template_struct_defs.count(resolved) > 0 ||
+            (parser.has_template_struct_primary(
+                 parser.current_namespace_context_id(), qn.base_text_id,
+                 parser.parser_text(qn.base_text_id, qn.base_name)) ||
              parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {
             return resolved;
         }
@@ -458,7 +465,9 @@ std::string resolve_qualified_known_type_name(
 
     resolved = parser.resolve_visible_type_name(
         qn.base_text_id, parser.parser_text(qn.base_text_id, qn.base_name));
-    if (parser.template_state_.template_struct_defs.count(resolved) > 0 ||
+    if (parser.has_template_struct_primary(
+            parser.current_namespace_context_id(),
+            parser.find_parser_text_id(resolved), resolved) ||
         parser.definition_state_.defined_struct_tags.count(resolved) > 0) {
         return resolved;
     }
@@ -475,8 +484,10 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
         probe.has_resolved_typedef = true;
         return probe;
     }
-    if (parser.template_state_.template_struct_defs.count(
-            probe.resolved_typedef_name) > 0 ||
+    if (parser.has_template_struct_primary(
+            parser.current_namespace_context_id(),
+            parser.find_parser_text_id(probe.resolved_typedef_name),
+            probe.resolved_typedef_name) ||
         parser.definition_state_.defined_struct_tags.count(
             probe.resolved_typedef_name) > 0) {
         probe.has_resolved_typedef = true;
