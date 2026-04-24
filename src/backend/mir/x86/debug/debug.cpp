@@ -1,9 +1,11 @@
 #include "debug.hpp"
 
+#include "../x86.hpp"
 #include "../abi/abi.hpp"
 
 #include "../../../prealloc/prealloc.hpp"
 
+#include <algorithm>
 #include <sstream>
 
 namespace c4c::backend::x86::debug {
@@ -44,14 +46,17 @@ void append_grouped_authority(std::ostringstream& out,
                               const c4c::backend::prepare::PreparedBirModule& module,
                               c4c::FunctionNameId function_name,
                               bool trace) {
-  const auto* frame_plan = c4c::backend::prepare::find_prepared_frame_plan(module, function_name);
-  const auto* call_plans = c4c::backend::prepare::find_prepared_call_plans(module, function_name);
-  const auto* storage_plan =
-      c4c::backend::prepare::find_prepared_storage_plan(module, function_name);
+  const auto consumed = c4c::backend::x86::consume_plans(module, function_name);
+  const auto* frame_plan = consumed.frame;
+  const auto* call_plans = consumed.calls;
+  const auto* regalloc = consumed.regalloc;
+  const auto* storage_plan = consumed.storage;
 
   std::size_t grouped_saved = 0;
   std::size_t grouped_preserved = 0;
   std::size_t grouped_clobbered = 0;
+  std::size_t grouped_spills = 0;
+  std::size_t grouped_reloads = 0;
   std::size_t grouped_storage = 0;
 
   if (frame_plan != nullptr) {
@@ -89,14 +94,34 @@ void append_grouped_authority(std::ostringstream& out,
     }
   }
 
+  if (regalloc != nullptr) {
+    for (const auto& op : regalloc->spill_reload_ops) {
+      if (!is_grouped_span(op.contiguous_width, op.occupied_register_names)) {
+        continue;
+      }
+      switch (op.op_kind) {
+        case c4c::backend::prepare::PreparedSpillReloadOpKind::Spill:
+          ++grouped_spills;
+          break;
+        case c4c::backend::prepare::PreparedSpillReloadOpKind::Reload:
+          ++grouped_reloads;
+          break;
+        case c4c::backend::prepare::PreparedSpillReloadOpKind::Rematerialize:
+          break;
+      }
+    }
+  }
+
   if (grouped_saved == 0 && grouped_preserved == 0 && grouped_clobbered == 0 &&
-      grouped_storage == 0) {
+      grouped_spills == 0 && grouped_reloads == 0 && grouped_storage == 0) {
     return;
   }
 
   out << "  grouped authority: saved=" << grouped_saved
       << " preserved=" << grouped_preserved
       << " clobbered=" << grouped_clobbered
+      << " spills=" << grouped_spills
+      << " reloads=" << grouped_reloads
       << " storage=" << grouped_storage << "\n";
 
   if (!trace) {
@@ -174,6 +199,45 @@ void append_grouped_authority(std::ostringstream& out,
                                  value.contiguous_width,
                                  value.occupied_register_names)
           << "\n";
+    }
+  }
+
+  if (regalloc != nullptr) {
+    for (const auto& op : regalloc->spill_reload_ops) {
+      if (!is_grouped_span(op.contiguous_width, op.occupied_register_names)) {
+        continue;
+      }
+      if (op.op_kind != c4c::backend::prepare::PreparedSpillReloadOpKind::Spill &&
+          op.op_kind != c4c::backend::prepare::PreparedSpillReloadOpKind::Reload) {
+        continue;
+      }
+      out << "    grouped "
+          << c4c::backend::prepare::prepared_spill_reload_op_kind_name(op.op_kind)
+          << " value_id=" << op.value_id;
+      if (const auto value_it = std::find_if(
+              regalloc->values.begin(),
+              regalloc->values.end(),
+              [&op](const c4c::backend::prepare::PreparedRegallocValue& value) {
+                return value.value_id == op.value_id;
+              });
+          value_it != regalloc->values.end()) {
+        out << " value="
+            << c4c::backend::prepare::prepared_value_name(module.names, value_it->value_name);
+      }
+      out << " span="
+          << render_grouped_span(op.register_bank,
+                                 op.register_name.has_value()
+                                     ? std::optional<std::string_view>{*op.register_name}
+                                     : std::nullopt,
+                                 op.contiguous_width,
+                                 op.occupied_register_names);
+      if (op.slot_id.has_value()) {
+        out << " slot_id=#" << *op.slot_id;
+      }
+      if (op.stack_offset_bytes.has_value()) {
+        out << " stack_offset=" << *op.stack_offset_bytes;
+      }
+      out << "\n";
     }
   }
 }

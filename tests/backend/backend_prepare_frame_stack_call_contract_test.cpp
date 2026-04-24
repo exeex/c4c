@@ -3276,6 +3276,7 @@ int check_x86_route_debug_reads_grouped_call_boundary_authority() {
       std::string("grouped authority: saved=") + std::to_string(grouped_saved_count) +
       " preserved=" + std::to_string(grouped_preserved_count) +
       " clobbered=" + std::to_string(grouped_clobbered_count) +
+      " spills=0 reloads=0" +
       " storage=" + std::to_string(grouped_storage_count);
   if (summary.find(expected_summary) == std::string::npos) {
     return fail("x86 route debug contract: summary no longer reports grouped authority counts");
@@ -3317,6 +3318,172 @@ int check_x86_route_debug_reads_grouped_call_boundary_authority() {
       trace.find(expected_storage) == std::string::npos) {
     return fail(
         "x86 route debug contract: trace no longer reads grouped saved/preserved/clobber/storage authority directly");
+  }
+  return 0;
+}
+
+int check_x86_route_debug_reads_grouped_spill_reload_authority() {
+  const auto prepared = prepare_grouped_spill_reload_contract_module();
+  const auto summary =
+      c4c::backend::x86::summarize_prepared_module_routes(prepared, "grouped_spill_reload_contract");
+  const auto trace =
+      c4c::backend::x86::trace_prepared_module_routes(prepared, "grouped_spill_reload_contract");
+  const auto consumed = c4c::backend::x86::consume_plans(prepared, "grouped_spill_reload_contract");
+
+  if (consumed.regalloc == nullptr || consumed.storage == nullptr) {
+    return fail("x86 route debug contract: grouped spill/reload fixture no longer exposes regalloc and storage authority");
+  }
+  const auto* carry = find_storage_value(prepared, *consumed.storage, "carry");
+  if (carry == nullptr) {
+    return fail("x86 route debug contract: grouped spill/reload fixture lost grouped storage value authority");
+  }
+
+  const auto is_grouped = [](std::size_t contiguous_width,
+                             const std::vector<std::string>& occupied_register_names) {
+    return contiguous_width > 1 || occupied_register_names.size() > 1;
+  };
+  const auto grouped_spill_count = static_cast<std::size_t>(std::count_if(
+      consumed.regalloc->spill_reload_ops.begin(),
+      consumed.regalloc->spill_reload_ops.end(),
+      [&is_grouped](const prepare::PreparedSpillReloadOp& op) {
+        return op.op_kind == prepare::PreparedSpillReloadOpKind::Spill &&
+               is_grouped(op.contiguous_width, op.occupied_register_names);
+      }));
+  const auto grouped_reload_count = static_cast<std::size_t>(std::count_if(
+      consumed.regalloc->spill_reload_ops.begin(),
+      consumed.regalloc->spill_reload_ops.end(),
+      [&is_grouped](const prepare::PreparedSpillReloadOp& op) {
+        return op.op_kind == prepare::PreparedSpillReloadOpKind::Reload &&
+               is_grouped(op.contiguous_width, op.occupied_register_names);
+      }));
+  const auto grouped_storage_count = static_cast<std::size_t>(std::count_if(
+      consumed.storage->values.begin(),
+      consumed.storage->values.end(),
+      [&is_grouped](const prepare::PreparedStoragePlanValue& value) {
+        return is_grouped(value.contiguous_width, value.occupied_register_names);
+      }));
+  const auto grouped_saved_count = consumed.frame == nullptr
+                                       ? std::size_t{0}
+                                       : static_cast<std::size_t>(std::count_if(
+                                             consumed.frame->saved_callee_registers.begin(),
+                                             consumed.frame->saved_callee_registers.end(),
+                                             [&is_grouped](const prepare::PreparedSavedRegister& saved) {
+                                               return is_grouped(saved.contiguous_width,
+                                                                 saved.occupied_register_names);
+                                             }));
+  const auto grouped_preserved_count =
+      consumed.calls == nullptr
+          ? std::size_t{0}
+          : [&]() {
+              std::size_t count = 0;
+              for (const auto& call : consumed.calls->calls) {
+                count += static_cast<std::size_t>(std::count_if(
+                    call.preserved_values.begin(),
+                    call.preserved_values.end(),
+                    [&is_grouped](const prepare::PreparedCallPreservedValue& preserved) {
+                      return is_grouped(preserved.contiguous_width,
+                                        preserved.occupied_register_names);
+                    }));
+              }
+              return count;
+            }();
+  const auto grouped_clobbered_count =
+      consumed.calls == nullptr
+          ? std::size_t{0}
+          : [&]() {
+              std::size_t count = 0;
+              for (const auto& call : consumed.calls->calls) {
+                count += static_cast<std::size_t>(std::count_if(
+                    call.clobbered_registers.begin(),
+                    call.clobbered_registers.end(),
+                    [&is_grouped](const prepare::PreparedClobberedRegister& clobber) {
+                      return is_grouped(clobber.contiguous_width,
+                                        clobber.occupied_register_names);
+                    }));
+              }
+              return count;
+            }();
+
+  const auto expected_summary =
+      std::string("grouped authority: saved=") + std::to_string(grouped_saved_count) +
+      " preserved=" + std::to_string(grouped_preserved_count) +
+      " clobbered=" + std::to_string(grouped_clobbered_count) +
+      " spills=" + std::to_string(grouped_spill_count) +
+      " reloads=" + std::to_string(grouped_reload_count) +
+      " storage=" + std::to_string(grouped_storage_count);
+  if (summary.find(expected_summary) == std::string::npos) {
+    return fail(
+        "x86 route debug contract: summary no longer reports grouped spill/reload authority counts");
+  }
+
+  const auto spill_it = std::find_if(
+      consumed.regalloc->spill_reload_ops.begin(),
+      consumed.regalloc->spill_reload_ops.end(),
+      [&is_grouped](const prepare::PreparedSpillReloadOp& op) {
+        return op.op_kind == prepare::PreparedSpillReloadOpKind::Spill &&
+               is_grouped(op.contiguous_width, op.occupied_register_names);
+      });
+  if (spill_it == consumed.regalloc->spill_reload_ops.end()) {
+    return fail("x86 route debug contract: grouped spill/reload fixture lost grouped spill authority");
+  }
+  const auto reload_it = std::find_if(
+      consumed.regalloc->spill_reload_ops.begin(),
+      consumed.regalloc->spill_reload_ops.end(),
+      [spill_it](const prepare::PreparedSpillReloadOp& op) {
+        return op.op_kind == prepare::PreparedSpillReloadOpKind::Reload &&
+               op.value_id == spill_it->value_id &&
+               op.register_bank == spill_it->register_bank &&
+               op.register_name == spill_it->register_name &&
+               op.contiguous_width == spill_it->contiguous_width &&
+               op.occupied_register_names == spill_it->occupied_register_names &&
+               op.slot_id == spill_it->slot_id &&
+               op.stack_offset_bytes == spill_it->stack_offset_bytes;
+      });
+  if (reload_it == consumed.regalloc->spill_reload_ops.end()) {
+    return fail(
+        "x86 route debug contract: grouped spill/reload fixture lost grouped reload authority");
+  }
+
+  const auto* spill_value = find_regalloc_value(*consumed.regalloc, spill_it->value_id);
+  if (spill_value == nullptr) {
+    return fail("x86 route debug contract: grouped spill/reload fixture lost grouped regalloc value authority");
+  }
+
+  const auto expected_spill =
+      std::string("grouped spill value_id=") + std::to_string(spill_it->value_id) + " value=" +
+      std::string(prepare::prepared_value_name(prepared.names, spill_value->value_name)) + " span=" +
+      grouped_span_summary(spill_it->register_bank,
+                           spill_it->register_name.has_value()
+                               ? std::optional<std::string_view>{*spill_it->register_name}
+                               : std::nullopt,
+                           spill_it->contiguous_width,
+                           spill_it->occupied_register_names) +
+      " slot_id=#" + std::to_string(*spill_it->slot_id) + " stack_offset=" +
+      std::to_string(*spill_it->stack_offset_bytes);
+  const auto expected_reload =
+      std::string("grouped reload value_id=") + std::to_string(reload_it->value_id) + " value=" +
+      std::string(prepare::prepared_value_name(prepared.names, spill_value->value_name)) + " span=" +
+      grouped_span_summary(reload_it->register_bank,
+                           reload_it->register_name.has_value()
+                               ? std::optional<std::string_view>{*reload_it->register_name}
+                               : std::nullopt,
+                           reload_it->contiguous_width,
+                           reload_it->occupied_register_names) +
+      " slot_id=#" + std::to_string(*reload_it->slot_id) + " stack_offset=" +
+      std::to_string(*reload_it->stack_offset_bytes);
+  const auto expected_storage =
+      std::string("grouped storage value=carry span=") +
+      grouped_span_summary(carry->bank,
+                           carry->register_name.has_value()
+                               ? std::optional<std::string_view>{*carry->register_name}
+                               : std::nullopt,
+                           carry->contiguous_width,
+                           carry->occupied_register_names);
+  if (trace.find(expected_spill) == std::string::npos ||
+      trace.find(expected_reload) == std::string::npos ||
+      trace.find(expected_storage) == std::string::npos) {
+    return fail(
+        "x86 route debug contract: trace no longer reads grouped spill/reload/storage authority directly");
   }
   return 0;
 }
@@ -3484,6 +3651,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_x86_route_debug_reads_grouped_call_boundary_authority(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_x86_route_debug_reads_grouped_spill_reload_authority(); rc != 0) {
     return rc;
   }
   if (const int rc = check_variadic_nested_dynamic_stack_call_contract(); rc != 0) {
