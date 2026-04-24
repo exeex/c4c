@@ -319,6 +319,8 @@ struct ParserDefinitionState {
 struct ParserTemplateState {
   std::unordered_map<QualifiedNameKey, Node*, QualifiedNameKeyHash>
       template_struct_defs_by_key;
+  std::unordered_map<QualifiedNameKey, std::vector<Node*>, QualifiedNameKeyHash>
+      template_struct_specializations_by_key;
   std::unordered_map<std::string, Node*> template_struct_defs;
   std::unordered_map<std::string, std::vector<Node*>>
       template_struct_specializations;

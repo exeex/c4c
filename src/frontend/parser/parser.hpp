@@ -479,6 +479,9 @@ class Parser {
                                      std::string_view fallback_name) const;
   Node* find_template_struct_primary(const std::string& name) const;
   const std::vector<Node*>* find_template_struct_specializations(
+      int context_id, TextId name_text_id, std::string_view fallback_name,
+      const Node* primary_tpl = nullptr) const;
+  const std::vector<Node*>* find_template_struct_specializations(
       const Node* primary_tpl) const;
   const Node* select_template_struct_pattern_for_args(
       const std::vector<TemplateArgParseResult>& args,
@@ -490,6 +493,9 @@ class Parser {
                                         std::string_view fallback_name,
                                         Node* node);
   void register_template_struct_primary(const std::string& name, Node* node);
+  void register_template_struct_specialization(
+      int context_id, TextId primary_name_text_id,
+      std::string_view primary_name, Node* node);
   void register_template_struct_specialization(const char* primary_name, Node* node);
   bool parse_next_template_argument(std::vector<TemplateArgParseResult>* out_args,
                                     const Node* primary_tpl, int arg_idx,

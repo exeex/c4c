@@ -6,16 +6,16 @@ Current Step Title: Migrate one template-owned lookup family at a time
 
 # Current Packet
 ## Just Finished
-Finished Step 4 for the primary template struct registration/lookup family by adding a structured `QualifiedNameKey` registry path, registering primary templates through parser context instead of only spelled names, and switching the nearby parser-owned primary lookups to that structured path while leaving the legacy string table as an explicit compatibility bridge for unowned parser consumers.
+Finished another Step 4 template-owned lookup family by adding a structured `QualifiedNameKey` specialization registry, registering template-struct specializations through parser context instead of only spelled primary names, and switching the nearby parser-owned specialization selection path to that structured lookup while leaving the legacy string map as an explicit bridge.
 
 ## Suggested Next
-Migrate the next template-owned lookup family on the same route, with specializations and remaining compatibility-only direct string-table probes as the likely next bounded packet.
+Keep Step 4 on the same route by narrowing the remaining compatibility-only direct string-table probes around template-owned parser lookup, then move to Step 5 once specialization and alias-application bridge paths are clearly separated.
 
 ## Watchouts
 - Keep the work limited to the active parser/frontend scope.
 - Keep registration and lookup aligned to one structured key path at a time.
-- Preserve the legacy string table only as a bridge for parser files outside this packet that still probe `template_struct_defs` directly.
-- Avoid widening this packet into template specialization identity or non-parser HIR template registries.
+- Preserve the legacy string tables only as bridges for parser files outside the current packet that still probe them directly.
+- Avoid widening this packet into non-parser HIR template registries or unrelated alias-application cleanup before Step 5.
 - Watch for namespace-sensitive lookups that still arrive through raw rendered names in unowned parser files.
 
 ## Proof

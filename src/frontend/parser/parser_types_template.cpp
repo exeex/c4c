@@ -53,13 +53,64 @@ Node* Parser::find_template_struct_primary(const std::string& name) const {
 }
 
 const std::vector<Node*>* Parser::find_template_struct_specializations(
+    int context_id, TextId name_text_id, std::string_view fallback_name,
+    const Node* primary_tpl) const {
+    auto lookup_structured =
+        [&](const QualifiedNameKey& key) -> const std::vector<Node*>* {
+        if (key.base_text_id == kInvalidText) return nullptr;
+        auto it = template_state_.template_struct_specializations_by_key.find(key);
+        return it != template_state_.template_struct_specializations_by_key.end()
+                   ? &it->second
+                   : nullptr;
+    };
+
+    const QualifiedNameKey key =
+        alias_template_key_in_context(context_id, name_text_id, fallback_name);
+    if (const auto* specializations = lookup_structured(key)) {
+        return specializations;
+    }
+
+    const std::string resolved =
+        resolve_visible_type_name(name_text_id, fallback_name);
+    if (!resolved.empty() && resolved != fallback_name) {
+        const TextId resolved_text_id = find_parser_text_id(resolved);
+        const QualifiedNameKey resolved_key = alias_template_key_in_context(
+            context_id, resolved_text_id, resolved);
+        if (!(resolved_key == key)) {
+            if (const auto* specializations = lookup_structured(resolved_key)) {
+                return specializations;
+            }
+        }
+    }
+
+    if (primary_tpl && primary_tpl->name && primary_tpl->name[0]) {
+        auto it = template_state_.template_struct_specializations.find(
+            primary_tpl->name);
+        if (it != template_state_.template_struct_specializations.end()) {
+            return &it->second;
+        }
+    }
+
+    auto it = template_state_.template_struct_specializations.find(
+        std::string(fallback_name));
+    if (it != template_state_.template_struct_specializations.end()) {
+        return &it->second;
+    }
+    if (!resolved.empty() && resolved != fallback_name) {
+        it = template_state_.template_struct_specializations.find(resolved);
+        if (it != template_state_.template_struct_specializations.end()) {
+            return &it->second;
+        }
+    }
+    return nullptr;
+}
+
+const std::vector<Node*>* Parser::find_template_struct_specializations(
     const Node* primary_tpl) const {
     if (!primary_tpl || !primary_tpl->name) return nullptr;
-    auto it = template_state_.template_struct_specializations.find(
-        primary_tpl->name);
-    return it != template_state_.template_struct_specializations.end()
-               ? &it->second
-               : nullptr;
+    return find_template_struct_specializations(
+        current_namespace_context_id(), find_parser_text_id(primary_tpl->name),
+        primary_tpl->name, primary_tpl);
 }
 
 const Node* Parser::select_template_struct_pattern_for_args(
@@ -106,16 +157,38 @@ void Parser::register_template_struct_primary(
 }
 
 void Parser::register_template_struct_specialization(const char* primary_name, Node* node) {
-    if (!primary_name || !primary_name[0] || !node) return;
-    template_state_.template_struct_specializations[primary_name].push_back(
+    register_template_struct_specialization(
+        current_namespace_context_id(),
+        parser_text_id_for_token(kInvalidText, primary_name), primary_name,
         node);
+}
+
+void Parser::register_template_struct_specialization(
+    int context_id, TextId primary_name_text_id, std::string_view primary_name,
+    Node* node) {
+    if (primary_name.empty() || !node) return;
+    const QualifiedNameKey key = alias_template_key_in_context(
+        context_id, primary_name_text_id, primary_name);
+    if (key.base_text_id != kInvalidText) {
+        template_state_.template_struct_specializations_by_key[key].push_back(
+            node);
+    }
+
+    template_state_.template_struct_specializations[std::string(primary_name)]
+        .push_back(node);
     if (!node->name) return;
-    if (std::strstr(primary_name, "::")) return;
+    if (primary_name.find("::") != std::string_view::npos) return;
     std::string spelled_name = node->name;
     const size_t scope_sep = spelled_name.rfind("::");
     if (scope_sep == std::string::npos) return;
     std::string qualified_primary =
-        spelled_name.substr(0, scope_sep + 2) + primary_name;
+        spelled_name.substr(0, scope_sep + 2) + std::string(primary_name);
+    const QualifiedNameKey qualified_key = alias_template_key_in_context(
+        context_id, find_parser_text_id(qualified_primary), qualified_primary);
+    if (qualified_key.base_text_id != kInvalidText && !(qualified_key == key)) {
+        template_state_.template_struct_specializations_by_key[qualified_key]
+            .push_back(node);
+    }
     template_state_.template_struct_specializations[qualified_primary]
         .push_back(node);
 }
@@ -132,7 +205,9 @@ bool Parser::ensure_template_struct_instantiated_from_args(
 
     std::vector<std::pair<std::string, TypeSpec>> type_bindings;
     std::vector<std::pair<std::string, long long>> nttp_bindings;
-    const auto* specializations = find_template_struct_specializations(primary_tpl);
+    const auto* specializations = find_template_struct_specializations(
+        current_namespace_context_id(), find_parser_text_id(template_name),
+        template_name, primary_tpl);
     const Node* selected = select_template_struct_pattern_for_args(
         args, primary_tpl, specializations, &type_bindings, &nttp_bindings);
     if (!selected) return false;

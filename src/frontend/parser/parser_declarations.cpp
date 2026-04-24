@@ -1670,6 +1670,9 @@ Node* Parser::parse_top_level() {
                 if (last_sd && last_sd->kind == NK_STRUCT_DEF &&
                     last_sd->template_origin_name && last_sd->n_template_args > 0) {
                     register_template_struct_specialization(
+                        current_namespace_context_id(),
+                        parser_text_id_for_token(
+                            kInvalidText, last_sd->template_origin_name),
                         last_sd->template_origin_name, last_sd);
                 }
             }
@@ -2015,6 +2018,9 @@ Node* Parser::parse_top_level() {
                 if (!template_params.empty() && last_sd->n_template_params == 0)
                     attach_template_params(last_sd);
                 register_template_struct_specialization(
+                    current_namespace_context_id(),
+                    parser_text_id_for_token(
+                        kInvalidText, last_sd->template_origin_name),
                     last_sd->template_origin_name, last_sd);
             } else if (last_sd && last_sd->kind == NK_STRUCT_DEF &&
                        !template_params.empty()) {

@@ -1818,19 +1818,15 @@ TypeSpec Parser::parse_base_type() {
                                                 owner_lookup_name, &actual_args))
                                             return false;
 
-                                        std::vector<std::pair<std::string, TypeSpec>> type_bindings;
-                                        std::vector<std::pair<std::string, long long>> nttp_bindings;
-                                        const std::vector<Node*>* specializations =
-                                            find_template_struct_specializations(primary_tpl);
-                                        if (!specializations) {
-                                            auto it =
-                                                template_state_.template_struct_specializations.find(
-                                                    owner_lookup_name);
-                                            if (it !=
-                                                template_state_
-                                                    .template_struct_specializations.end())
-                                                specializations = &it->second;
-                                        }
+                        std::vector<std::pair<std::string, TypeSpec>> type_bindings;
+                        std::vector<std::pair<std::string, long long>> nttp_bindings;
+                        const std::vector<Node*>* specializations =
+                                            find_template_struct_specializations(
+                                                current_namespace_context_id(),
+                                                find_parser_text_id(
+                                                    owner_lookup_name),
+                                                owner_lookup_name,
+                                                primary_tpl);
                                         const Node* selected =
                                             select_template_struct_pattern_for_args(
                                                 actual_args, primary_tpl,
