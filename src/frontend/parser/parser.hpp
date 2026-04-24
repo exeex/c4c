@@ -882,31 +882,4 @@ class Parser {
   Node* make_block(Node** stmts, int n, int line);
 };
 
-bool eval_enum_expr(Node* n, const ParserEnumConstTable& consts, long long* out);
-bool is_dependent_enum_expr(Node* n, const ParserEnumConstTable& consts);
-TypeBase effective_scalar_base(const TypeSpec& ts);
-long long sizeof_base(TypeBase b);
-long long align_base(TypeBase b, int ptr_level);
-long long sizeof_type_spec(const TypeSpec& ts);
-long long alignof_type_spec(const TypeSpec& ts);
-bool eval_const_int(Node* n, long long* out,
-                    const std::unordered_map<std::string, Node*>* struct_map = nullptr,
-                    const std::unordered_map<TextId, long long>* named_consts = nullptr);
-bool eval_const_int(Node* n, long long* out,
-                    const std::unordered_map<std::string, Node*>* struct_map,
-                    const std::unordered_map<std::string, long long>* named_consts);
-
-bool is_qualifier(TokenKind k);
-bool is_storage_class(TokenKind k);
-bool is_type_kw(TokenKind k);
-
-bool lexeme_is_imaginary(const char* s);
-long long parse_int_lexeme(const char* s);
-double parse_float_lexeme(const char* s);
-
-TypeSpec resolve_typedef_chain(TypeSpec ts,
-                               const std::unordered_map<std::string, TypeSpec>& tmap);
-bool types_compatible_p(TypeSpec a, TypeSpec b,
-                        const std::unordered_map<std::string, TypeSpec>& tmap);
-
 }  // namespace c4c

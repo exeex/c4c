@@ -22,7 +22,7 @@
 
 #include "hir_lowering.hpp"
 #include "type_utils.hpp"
-#include "../parser/parser.hpp"
+#include "../parser/parser_support.hpp"
 
 #include <algorithm>
 #include <cctype>
