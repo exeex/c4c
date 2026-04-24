@@ -737,10 +737,8 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                         owner_qn.base_name = owner_tag;
                         owner_qn.base_text_id = owner_segment_text_id(owner_start);
                         const std::string resolved_owner_tag =
-                            resolve_qualified_type_name(owner_qn);
-                        if (!resolved_owner_tag.empty()) {
-                            owner_tag = resolved_owner_tag;
-                        }
+                            resolve_qualified_known_type_name(*this, owner_qn);
+                        if (!resolved_owner_tag.empty()) owner_tag = resolved_owner_tag;
                         const TypeSpec* owner_typedef =
                             owner_tag.find("::") == std::string::npos
                                 ? find_visible_typedef_type(owner_qn.base_text_id,

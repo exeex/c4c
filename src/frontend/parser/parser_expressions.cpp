@@ -1390,22 +1390,21 @@ Node* Parser::parse_primary() {
             [&](const QualifiedNameRef& type_qn) -> bool {
             if (type_qn.qualifier_segments.empty()) return false;
 
-            const TextId first_qualifier_text_id =
-                type_qn.qualifier_text_ids.front();
-            const std::string first_qualifier =
-                visible_type_head_name(
-                    *this, first_qualifier_text_id,
-                    parser_text(first_qualifier_text_id,
-                                type_qn.qualifier_segments.front()));
-            if (first_qualifier.empty()) return false;
+            const QualifiedNameRef owner_qn =
+                qualified_owner_name(*this, type_qn);
+            const std::string owner_name =
+                resolve_qualified_owner_type_name(*this, type_qn);
+            if (owner_name.empty()) return false;
 
-            return has_visible_typedef_type(first_qualifier_text_id,
-                                            first_qualifier) ||
-                   has_template_struct_primary(current_namespace_context_id(),
-                                               first_qualifier_text_id,
-                                               first_qualifier) ||
-                   definition_state_.defined_struct_tags.count(first_qualifier) >
-                       0;
+            if (owner_qn.qualifier_segments.empty() &&
+                !owner_qn.is_global_qualified &&
+                has_visible_typedef_type(owner_qn.base_text_id, owner_qn.base_name)) {
+                return true;
+            }
+
+            return has_template_struct_primary(owner_qn) ||
+                   has_typedef_type(owner_name) ||
+                   definition_state_.defined_struct_tags.count(owner_name) > 0;
         };
         if (is_cpp_mode() && (check(TokenKind::Less) || check(TokenKind::LParen))) {
             const QualifiedTypeProbe type_probe = probe_qualified_type(*this, qn);

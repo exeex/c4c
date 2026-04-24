@@ -1504,11 +1504,7 @@ Node* Parser::parse_top_level() {
                             owner_qn.base_text_id = qualifier_text_ids.back();
 
                             std::string owner_name =
-                                resolve_qualified_type_name(owner_qn);
-                            if (owner_name.empty()) {
-                                owner_name = resolve_visible_type_name(
-                                    owner_qn.base_text_id, owner_qn.base_name);
-                            }
+                                resolve_qualified_known_type_name(*this, owner_qn);
 
                             std::string owner_arg_refs;
                             const auto owner_ranges = split_template_arg_token_ranges(

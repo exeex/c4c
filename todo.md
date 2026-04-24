@@ -6,10 +6,10 @@ Current Step Title: Migrate one template-owned lookup family at a time
 
 # Current Packet
 ## Just Finished
-Finished another Step 4 parser-owned lookup cleanup by adding `QualifiedNameRef`-aware template-primary and specialization probes, then routing qualified helper/type-probe checks through those structured namespace/owner lookups instead of rebuilding rendered names and re-probing through `current_namespace_context_id()`. Followed that with the hook-exposed frontend parser fixture repair so alias-template probe tests now seed `alias_template_info` with the same structured key family the parser uses in production.
+Finished another Step 4 parser-owned lookup cleanup by factoring shared owner-prefix extraction/resolution around `QualifiedNameRef`, then routing the remaining declaration/expression owner probes through that structured path instead of re-deriving owner names from the first qualifier or ad-hoc visible-type fallback. This keeps `ns::Owner::member`-style owner detection aligned with the same structured template/type identity helpers already used by the parser template lookup path.
 
 ## Suggested Next
-Keep Step 4 on the same route by converting the remaining qualified template-owner/member probes in declarator/expression paths to the new structured overloads, then move to Step 5 once alias-application heuristics are the main bridge-only holdout.
+Keep Step 4 on the same route by converting the remaining alias-member owner/member probes in `parser_types_base.cpp` away from rendered owner-tag recovery and onto the same structured owner resolution helper, then move to Step 5 once alias-application heuristics are the main bridge-only holdout.
 
 ## Watchouts
 - Keep the work limited to the active parser/frontend scope.

@@ -21,6 +21,10 @@ bool skip_cpp20_constraint_atom(Parser& parser);
 
 using ParsedTemplateArg = Parser::TemplateArgParseResult;
 
+std::string resolve_qualified_known_type_name(
+    const Parser& parser,
+    const Parser::QualifiedNameRef& qn);
+
 bool match_floatn_keyword_base(std::string_view name, TypeBase* out_base) {
     TypeBase base = TB_INT;
     if (name == "_Float16" || name == "_Float32") {
@@ -120,6 +124,49 @@ std::string visible_type_head_name(const Parser& parser,
 std::string visible_type_head_name(const Parser& parser,
                                    std::string_view name) {
     return visible_type_head_name(parser, parser.find_parser_text_id(name), name);
+}
+
+Parser::QualifiedNameRef qualified_owner_name(const Parser& parser,
+                                              const Parser::QualifiedNameRef& qn) {
+    Parser::QualifiedNameRef owner_qn;
+    if (qn.qualifier_segments.empty()) return owner_qn;
+
+    owner_qn.is_global_qualified = qn.is_global_qualified;
+    owner_qn.qualifier_segments.assign(qn.qualifier_segments.begin(),
+                                       qn.qualifier_segments.end() - 1);
+    if (!qn.qualifier_text_ids.empty()) {
+        const size_t owner_qualifier_count =
+            qn.qualifier_segments.size() > 0 ? qn.qualifier_segments.size() - 1 : 0;
+        const size_t copy_count =
+            owner_qualifier_count < qn.qualifier_text_ids.size()
+                ? owner_qualifier_count
+                : qn.qualifier_text_ids.size();
+        owner_qn.qualifier_text_ids.assign(
+            qn.qualifier_text_ids.begin(),
+            qn.qualifier_text_ids.begin() + copy_count);
+    }
+
+    owner_qn.base_name = qn.qualifier_segments.back();
+    if (qn.qualifier_text_ids.size() >= qn.qualifier_segments.size()) {
+        owner_qn.base_text_id = qn.qualifier_text_ids[qn.qualifier_segments.size() - 1];
+    } else {
+        owner_qn.base_text_id =
+            parser.parser_text_id_for_token(kInvalidText, owner_qn.base_name);
+    }
+    return owner_qn;
+}
+
+std::string resolve_qualified_owner_type_name(
+    const Parser& parser,
+    const Parser::QualifiedNameRef& qn) {
+    if (qn.qualifier_segments.empty()) return {};
+
+    const Parser::QualifiedNameRef owner_qn = qualified_owner_name(parser, qn);
+    const std::string owner_name =
+        resolve_qualified_known_type_name(parser, owner_qn);
+    if (!owner_name.empty()) return owner_name;
+
+    return std::string(parser.parser_text(owner_qn.base_text_id, owner_qn.base_name));
 }
 
 void append_qualified_name_tokens(Parser& parser,
