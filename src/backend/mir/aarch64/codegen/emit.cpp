@@ -8,7 +8,7 @@
 #include "../../stack_layout/regalloc_helpers.hpp"
 #include "../../stack_layout/slot_assignment.hpp"
 #include "../../../codegen/lir/call_args.hpp"
-#include "../../../codegen/lir/lir_printer.hpp"
+#include "../../../codegen/lir/ir.hpp"
 
 #include <array>
 #include <charconv>

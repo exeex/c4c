@@ -1,4 +1,4 @@
-#include "../lowering.hpp"
+#include "call.hpp"
 #include "../../../llvm/calling_convention.hpp"
 
 namespace c4c::codegen::lir {

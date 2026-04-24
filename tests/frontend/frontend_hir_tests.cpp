@@ -2,7 +2,7 @@
 #include "hir_to_lir.hpp"
 #include "hir/hir_ir.hpp"
 #include "hir/hir_printer.hpp"
-#include "lir_printer.hpp"
+#include "ir.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "sema.hpp"

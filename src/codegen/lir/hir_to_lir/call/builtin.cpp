@@ -1,4 +1,4 @@
-#include "../lowering.hpp"
+#include "call.hpp"
 #include "call_args_ops.hpp"
 
 namespace c4c::codegen::lir {

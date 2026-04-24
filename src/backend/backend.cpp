@@ -5,7 +5,7 @@
 #include "mir/x86/x86.hpp"
 #include "prealloc/prepared_printer.hpp"
 
-#include "../codegen/lir/lir_printer.hpp"
+#include "../codegen/lir/ir.hpp"
 
 #include <algorithm>
 #include <optional>
