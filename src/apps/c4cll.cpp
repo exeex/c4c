@@ -24,6 +24,7 @@
 #include "preprocessor.hpp"
 #include "sema.hpp"
 #include "hir.hpp"
+#include "hir_printer.hpp"
 #include "compile_time_engine.hpp"
 #include "inline_expand.hpp"
 #include "source_profile.hpp"

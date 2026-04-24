@@ -17,14 +17,15 @@
 // - hir.cpp: facade entry point and pipeline-stage coordination
 // - impl/hir_impl.hpp + impl/lowerer.hpp: private HIR lowering internals
 // - compile_time_engine.{hpp,cpp}: deferred compile-time fixpoint execution
-// - hir_printer.{hpp,cpp}: textual summaries and debug printing
+// - hir.cpp: public build entry point and textual summary formatting
+// - hir_printer.{hpp,cpp}: inspection/debug dump formatting; include
+//   impl/inspect/inspect.hpp or hir_printer.hpp explicitly when needed
 
 #include <string>
 
 #include "../../target_profile.hpp"
 #include "ast.hpp"
 #include "canonical_symbol.hpp"
-#include "hir_printer.hpp"
 #include "hir_ir.hpp"
 
 namespace c4c::hir {

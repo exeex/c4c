@@ -8,42 +8,38 @@ Current Step Title: Clarify Inspection Support
 
 ## Just Finished
 
-Step 5 - Move Compile-Time And Follow-Up Transform Boundary tightened the
-compile-time/materialization boundary after the first private-index slice.
+Step 6 - Clarify Inspection Support separated full HIR dump inspection from the
+core HIR public facade include path.
 
-- Added `src/frontend/hir/impl/compile_time/compile_time.hpp` as the private
-  compile-time/materialization implementation index.
-- Retargeted `src/frontend/hir/compile_time_engine.cpp` and private HIR
-  implementation state to reach compile-time declarations through the new
-  private index.
-- Documented `compile_time_engine.hpp` as the retained public/app-facing
-  compile-time and materialization contract used by c4cll dump/emission paths.
-- Documented `inline_expand.hpp` as a separate public follow-up transform
-  contract; it should not move under compile_time in this slice.
-- Confirmed `src/frontend/hir/impl/compile_time/compile_time.hpp` has no
-  inline-expansion include; the private compile-time index keeps only the
-  explicitly relative compile-time engine include it needs.
+- Added `src/frontend/hir/impl/inspect/inspect.hpp` as the private inspection
+  index for implementation/debug internals.
+- Removed `hir_printer.hpp` from `hir.hpp`, leaving `format_summary(...)`
+  public through the core facade while requiring `format_hir(...)` callers to
+  include the printer/inspection boundary explicitly.
+- Retargeted `c4cll.cpp` to include `hir_printer.hpp` explicitly for `--dump-hir` and
+  removed the unused sema printer include.
+- Confirmed frontend HIR tests already include `hir/hir_printer.hpp`
+  explicitly for direct dump assertions.
 
 ## Suggested Next
 
-Next packet: continue Step 5 follow-up only if the supervisor wants a separate
-private boundary for inline expansion; otherwise keep inline expansion as a
-public follow-up transform contract for this plan.
+Next packet: Step 7 - update `src/frontend/hir/README.md` to document the
+current public facade, private implementation indexes, and inspection/debug
+include boundary.
 
 ## Watchouts
 
-- `c4cll.cpp` directly calls `run_compile_time_engine`,
-  `materialize_ready_functions`, and `run_inline_expansion`, so the top-level
-  compile-time and inline-expansion headers remain public contracts.
-- Inline expansion currently reads as a separate post-normalization transform,
-  not compile-time/materialization internals; moving it under compile_time would
-  blur the boundary unless a later plan step explicitly re-scopes it.
-- This slice is include-boundary only; behavior should remain unchanged.
+- `format_hir(...)` still lives in `hir_printer.hpp`; app-facing callers should
+  include that public printer header explicitly. The private inspection index
+  re-exports that existing printer header for implementation/debug internals.
+- Keep `format_summary(...)` in `hir.hpp`; it remains the lightweight public
+  summary formatter.
+- This slice is include-boundary only; behavior is unchanged.
 
 ## Proof
 
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^cpp_hir_'; } > test_after.log 2>&1`
 
-Result: passed for the Step 5 compile-time/materialization boundary tightening
-slice. Build completed and HIR subset proof passed 71/71 `cpp_hir_*` tests.
-Proof log: `test_after.log`.
+Result: passed for the Step 6 inspection boundary slice. Build completed and
+HIR subset proof passed 71/71 `cpp_hir_*` tests. Proof log:
+`test_after.log`.
