@@ -1416,10 +1416,19 @@ Node* Parser::parse_primary() {
                 qualified_name_starts_from_type_owner(qn)) {
                 pos_ = ident_start;
                 std::vector<Token> saved_tokens = tokens_;
-                std::string saved_typedef =
+                const std::string saved_typedef_fallback =
                     active_context_state_.last_resolved_typedef;
-                TextId saved_typedef_text_id =
+                const TextId saved_typedef_text_id =
                     active_context_state_.last_resolved_typedef_text_id;
+                auto restore_last_resolved_typedef = [&]() {
+                    clear_last_resolved_typedef();
+                    if (saved_typedef_text_id != kInvalidText) {
+                        set_last_resolved_typedef(parser_text(
+                            saved_typedef_text_id, saved_typedef_fallback));
+                    } else if (!saved_typedef_fallback.empty()) {
+                        set_last_resolved_typedef(saved_typedef_fallback);
+                    }
+                };
                 TypeSpec cast_ts = parse_base_type();
                 while (check(TokenKind::Star)) {
                     consume();
@@ -1436,9 +1445,7 @@ Node* Parser::parse_primary() {
                     starts_parenthesized_member_pointer_declarator(*this, pos_)) {
                     pos_ = ident_start;
                     tokens_ = saved_tokens;
-                    active_context_state_.last_resolved_typedef = saved_typedef;
-                    active_context_state_.last_resolved_typedef_text_id =
-                        saved_typedef_text_id;
+                    restore_last_resolved_typedef();
                     qn = parse_qualified_name(false);
                 } else if (check(TokenKind::LParen)) {
                     consume();
@@ -1480,9 +1487,7 @@ Node* Parser::parse_primary() {
                 }
                 pos_ = ident_start;
                 tokens_ = saved_tokens;
-                active_context_state_.last_resolved_typedef = saved_typedef;
-                active_context_state_.last_resolved_typedef_text_id =
-                    saved_typedef_text_id;
+                restore_last_resolved_typedef();
                 qn = parse_qualified_name(false);
             }
         }
