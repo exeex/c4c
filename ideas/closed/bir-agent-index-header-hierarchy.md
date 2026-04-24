@@ -1,5 +1,20 @@
 # BIR Agent Index Header Hierarchy
 
+## Closure
+
+Closed after completing the active five-step runbook. The final structure keeps
+`src/backend/bir/bir.hpp` as the public BIR index,
+`src/backend/bir/lir_to_bir.hpp` as the exported LIR-to-BIR entry API, and
+`src/backend/bir/lir_to_bir/lowering.hpp` as the private lowering directory
+index. Memory lowering sources live under
+`src/backend/bir/lir_to_bir/memory/` without introducing one-off memory
+headers; add `memory/memory.hpp` only if that subdomain later gains shared
+memory-specific declarations.
+
+Close-time proof used the available full-suite validation log: 3071 tests
+passed, 0 failed, 12 disabled. The read-only regression guard passed against
+that full-suite proof.
+
 ## Intent
 
 Optimize `src/backend/bir` for LLM-agent programming by treating headers as
