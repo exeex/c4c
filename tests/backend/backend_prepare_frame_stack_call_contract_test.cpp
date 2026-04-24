@@ -634,6 +634,159 @@ prepare::PreparedBirModule prepare_general_grouped_spill_reload_contract_module(
   return std::move(regalloc_planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_float_grouped_spill_reload_contract_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  bir::Function decl;
+  decl.name = "spill_sink";
+  decl.is_declaration = true;
+  decl.return_type = bir::TypeKind::Void;
+  decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::F32,
+      .name = "arg0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  module.functions.push_back(std::move(decl));
+
+  bir::Function function;
+  function.name = "float_grouped_spill_reload_contract";
+  function.return_type = bir::TypeKind::F32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F32,
+      .name = "p.carry",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F32,
+      .name = "p.seed",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F32,
+      .name = "p.arg",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "carry"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "p.carry"),
+      .rhs = bir::Value::immediate_f32_bits(0x3f800000U),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "hot"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "p.seed"),
+      .rhs = bir::Value::immediate_f32_bits(0x40000000U),
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "spill_sink",
+      .args = {bir::Value::named(bir::TypeKind::F32, "p.arg")},
+      .arg_types = {bir::TypeKind::F32},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "hot.mix0"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "hot"),
+      .rhs = bir::Value::immediate_f32_bits(0x40e00000U),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "hot.mix1"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "hot.mix0"),
+      .rhs = bir::Value::named(bir::TypeKind::F32, "hot"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "hot.mix2"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "hot.mix1"),
+      .rhs = bir::Value::named(bir::TypeKind::F32, "hot"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "hot.mix3"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "hot.mix2"),
+      .rhs = bir::Value::named(bir::TypeKind::F32, "hot"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "hot.mix4"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "hot.mix3"),
+      .rhs = bir::Value::named(bir::TypeKind::F32, "hot"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "hot.mix5"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "hot.mix4"),
+      .rhs = bir::Value::named(bir::TypeKind::F32, "hot"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "hot.mix6"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "hot.mix5"),
+      .rhs = bir::Value::named(bir::TypeKind::F32, "hot"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F32, "merge"),
+      .operand_type = bir::TypeKind::F32,
+      .lhs = bir::Value::named(bir::TypeKind::F32, "carry"),
+      .rhs = bir::Value::named(bir::TypeKind::F32, "hot.mix6"),
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::F32, "merge")};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule seeded;
+  seeded.module = std::move(module);
+  seeded.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(seeded), options);
+  planner.run_stack_layout();
+  planner.run_liveness();
+
+  auto prepared = std::move(planner.prepared());
+  set_register_group_override(prepared,
+                              "float_grouped_spill_reload_contract",
+                              "carry",
+                              prepare::PreparedRegisterClass::Float,
+                              2);
+  set_register_group_override(prepared,
+                              "float_grouped_spill_reload_contract",
+                              "hot",
+                              prepare::PreparedRegisterClass::Float,
+                              2);
+
+  prepare::BirPreAlloc regalloc_planner(std::move(prepared), {});
+  regalloc_planner.run_regalloc();
+  regalloc_planner.publish_contract_plans();
+  return std::move(regalloc_planner.prepared());
+}
+
 bir::Module make_fixed_frame_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -3512,6 +3665,92 @@ int check_x86_consumer_surface_reads_general_grouped_spill_reload_authority() {
   return 0;
 }
 
+int check_x86_consumer_surface_reads_float_grouped_spill_reload_authority() {
+  const auto prepared = prepare_float_grouped_spill_reload_contract_module();
+  const auto function_id = prepare::resolve_prepared_function_name_id(
+      prepared.names, "float_grouped_spill_reload_contract");
+  if (!function_id.has_value()) {
+    return fail("x86 consumer surface contract: failed to resolve float_grouped_spill_reload_contract");
+  }
+
+  const auto consumed =
+      c4c::backend::x86::consume_plans(prepared, "float_grouped_spill_reload_contract");
+  if (consumed.frame != prepare::find_prepared_frame_plan(prepared, *function_id) ||
+      consumed.dynamic_stack != prepare::find_prepared_dynamic_stack_plan(prepared, *function_id) ||
+      consumed.calls != prepare::find_prepared_call_plans(prepared, *function_id) ||
+      consumed.regalloc == nullptr ||
+      consumed.storage != prepare::find_prepared_storage_plan(prepared, *function_id)) {
+    return fail(
+        "x86 consumer surface contract: x86 no longer reads grouped float spill/reload regalloc authority directly from prepared plans");
+  }
+  const auto* carry = consumed.storage == nullptr ? nullptr : find_storage_value(prepared, *consumed.storage, "carry");
+  if (consumed.calls == nullptr || consumed.calls->calls.size() != 1 || consumed.storage == nullptr ||
+      carry == nullptr) {
+    return fail(
+        "x86 consumer surface contract: grouped float spill/reload fixture no longer exposes call and storage authority through x86");
+  }
+  if (carry->encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      carry->bank != prepare::PreparedRegisterBank::Fpr || carry->contiguous_width != 2 ||
+      !carry->slot_id.has_value() || !carry->stack_offset_bytes.has_value()) {
+    return fail(
+        "x86 consumer surface contract: grouped float spill/reload fixture lost grouped stack-storage authority through x86");
+  }
+
+  const auto spill_it = std::find_if(
+      consumed.regalloc->spill_reload_ops.begin(),
+      consumed.regalloc->spill_reload_ops.end(),
+      [](const prepare::PreparedSpillReloadOp& op) {
+        return op.op_kind == prepare::PreparedSpillReloadOpKind::Spill &&
+               op.register_bank == prepare::PreparedRegisterBank::Fpr &&
+               op.register_name == std::optional<std::string>{"fs1"} &&
+               op.contiguous_width == 2 &&
+               op.occupied_register_names == std::vector<std::string>{"fs1", "fs2"};
+      });
+  if (spill_it == consumed.regalloc->spill_reload_ops.end()) {
+    return fail(
+        "x86 consumer surface contract: grouped float spill/reload fixture lost direct grouped spill authority");
+  }
+  const auto reload_it = std::find_if(
+      consumed.regalloc->spill_reload_ops.begin(),
+      consumed.regalloc->spill_reload_ops.end(),
+      [spill_it](const prepare::PreparedSpillReloadOp& op) {
+        return op.op_kind == prepare::PreparedSpillReloadOpKind::Reload &&
+               op.value_id == spill_it->value_id &&
+               op.register_bank == spill_it->register_bank &&
+               op.register_name == spill_it->register_name &&
+               op.contiguous_width == spill_it->contiguous_width &&
+               op.occupied_register_names == spill_it->occupied_register_names &&
+               op.slot_id == spill_it->slot_id &&
+               op.stack_offset_bytes == spill_it->stack_offset_bytes;
+      });
+  if (reload_it == consumed.regalloc->spill_reload_ops.end()) {
+    return fail(
+        "x86 consumer surface contract: grouped float spill/reload fixture lost reload authority for the spilled grouped value");
+  }
+
+  const auto* spill_value = find_regalloc_value(*consumed.regalloc, spill_it->value_id);
+  if (spill_value == nullptr || !spill_it->slot_id.has_value() || !spill_it->stack_offset_bytes.has_value() ||
+      !spill_value->assigned_stack_slot.has_value() ||
+      spill_value->assigned_stack_slot->slot_id != *spill_it->slot_id ||
+      spill_value->assigned_stack_slot->offset_bytes != *spill_it->stack_offset_bytes ||
+      carry->slot_id != spill_it->slot_id ||
+      carry->stack_offset_bytes != spill_it->stack_offset_bytes) {
+    return fail(
+        "x86 consumer surface contract: grouped float spill/reload fixture lost direct stack-slot identity across storage and regalloc");
+  }
+  if (spill_value->allocation_status != prepare::PreparedAllocationStatus::AssignedStackSlot ||
+      spill_value->assigned_register.has_value() || !spill_value->spill_register_authority.has_value() ||
+      spill_value->spill_register_authority->register_name != spill_it->register_name ||
+      spill_value->spill_register_authority->reg_class != prepare::PreparedRegisterClass::Float ||
+      spill_value->spill_register_authority->contiguous_width != spill_it->contiguous_width ||
+      spill_value->spill_register_authority->occupied_register_names !=
+          spill_it->occupied_register_names) {
+    return fail(
+        "x86 consumer surface contract: grouped float spill/reload fixture lost published spill-register authority for the grouped stack-assigned value");
+  }
+  return 0;
+}
+
 int check_x86_module_emitter_reads_grouped_spill_reload_authority() {
   auto prepared = prepare_grouped_spill_reload_contract_module();
   prepared.target_profile = x86_target_profile();
@@ -4488,6 +4727,10 @@ int main() {
     return rc;
   }
   if (const int rc = check_x86_consumer_surface_reads_general_grouped_spill_reload_authority();
+      rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_x86_consumer_surface_reads_float_grouped_spill_reload_authority();
       rc != 0) {
     return rc;
   }
