@@ -3261,22 +3261,22 @@ Node* Parser::make_str_lit(const char* raw, int line) {
     return n;
 }
 
-const char* Parser::consume_adjacent_string_literal() {
-    if (!check(TokenKind::StrLit)) return nullptr;
+const char* consume_adjacent_string_literal(Parser& parser) {
+    if (!parser.check(TokenKind::StrLit)) return nullptr;
 
-    std::string combined = std::string(token_spelling(cur()));
-    consume();
-    while (check(TokenKind::StrLit)) {
+    std::string combined = std::string(parser.token_spelling(parser.cur()));
+    parser.consume();
+    while (parser.check(TokenKind::StrLit)) {
         if (!combined.empty() && combined.back() == '"') combined.pop_back();
-        const std::string next = std::string(token_spelling(cur()));
+        const std::string next = std::string(parser.token_spelling(parser.cur()));
         if (!next.empty() && next.front() == '"') {
             combined += next.substr(1);
         } else {
             combined += next;
         }
-        consume();
+        parser.consume();
     }
-    return arena_.strdup(combined);
+    return parser.arena_.strdup(combined);
 }
 
 Node* Parser::make_var(const char* name, int line) {

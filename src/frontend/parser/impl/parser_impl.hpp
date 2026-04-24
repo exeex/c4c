@@ -40,6 +40,7 @@ int bin_prec(TokenKind k);
 Node* parse_lambda_expr(Parser& parser, int ln);
 Node* parse_sizeof_pack_expr(Parser& parser, int ln);
 Node* parse_new_expr(Parser& parser, int ln, bool global_qualified);
+const char* consume_adjacent_string_literal(Parser& parser);
 
 bool lexeme_is_imaginary(const char* s);
 long long parse_int_lexeme(const char* s);

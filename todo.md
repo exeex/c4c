@@ -8,13 +8,13 @@ Current Step Title: Move Implementation-Only Method Declarations Behind The Boun
 
 ## Just Finished
 
-Completed Step 3 declaration-boundary slice by removing the expression-only
-`parse_sizeof_pack_expr`, `parse_new_expr`, and `parse_lambda_expr`
-declarations from public `Parser` in `src/frontend/parser/parser.hpp`, adding
-the equivalent private implementation helper declarations to
-`src/frontend/parser/impl/parser_impl.hpp`, and converting the definitions and
-call sites in `src/frontend/parser/parser_expressions.cpp` to pass `Parser&`
-through the private implementation boundary.
+Completed Step 3 declaration-boundary slice by removing the implementation-only
+`consume_adjacent_string_literal` declaration from public `Parser` in
+`src/frontend/parser/parser.hpp`, adding the equivalent private helper
+declaration to `src/frontend/parser/impl/parser_impl.hpp`, converting the
+definition in `src/frontend/parser/parser_core.cpp` to take `Parser&`, and
+updating implementation call sites in `parser_expressions.cpp` and
+`parser_statements.cpp` to pass `*this` through the private boundary.
 
 ## Suggested Next
 
@@ -35,13 +35,14 @@ plan, keeping implementation-only declarations behind
 - Keep any test-only hooks clearly named and isolated.
 - `Parser` move operations are explicitly deleted in this slice because the
   compatibility boundary keeps public reference members bound into `ParserImpl`.
-- The delegated `rg` query confirms these helpers are no longer declared on
-  public `Parser`; their declarations live in `impl/parser_impl.hpp`, with
-  definitions and call sites in `parser_expressions.cpp` passing `Parser&`.
+- The delegated `rg` query confirms `consume_adjacent_string_literal` is no
+  longer declared on public `Parser`; its declaration lives in
+  `impl/parser_impl.hpp`, with the definition and call sites passing `Parser&`.
 
 ## Proof
 
-Executor Step 3 focused proof passed for this declaration-boundary slice:
+Executor Step 3 focused proof passed for the
+`consume_adjacent_string_literal` declaration-boundary slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 
 Supervisor acceptance proof then escalated to a matching full-suite run:

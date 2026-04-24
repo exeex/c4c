@@ -1044,7 +1044,7 @@ Node* Parser::parse_primary() {
 
     // String literal (possibly multiple adjacent)
     if (check(TokenKind::StrLit)) {
-        return make_str_lit(consume_adjacent_string_literal(), ln);
+        return make_str_lit(consume_adjacent_string_literal(*this), ln);
     }
 
     // Char literal

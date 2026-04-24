@@ -895,7 +895,7 @@ Node* Parser::parse_stmt() {
             auto parse_asm_operand = [&]() -> AsmOperand {
                 AsmOperand op{};
                 if (check(TokenKind::StrLit)) {
-                    op.constraint = consume_adjacent_string_literal();
+                    op.constraint = consume_adjacent_string_literal(*this);
                 }
                 if (match(TokenKind::LParen)) {
                     op.expr = parse_expr();
@@ -941,7 +941,7 @@ Node* Parser::parse_stmt() {
 
             Node* asm_template = nullptr;
             if (check(TokenKind::StrLit)) {
-                asm_template = make_str_lit(consume_adjacent_string_literal(), cur().line);
+                asm_template = make_str_lit(consume_adjacent_string_literal(*this), cur().line);
             } else if (!check(TokenKind::Colon) && !check(TokenKind::RParen)) {
                 asm_template = parse_expr();
             }
@@ -956,7 +956,7 @@ Node* Parser::parse_stmt() {
                         while (!at_end() && !check(TokenKind::RParen)) {
                             if (check(TokenKind::StrLit)) {
                                 clobbers.push_back(make_str_lit(
-                                    consume_adjacent_string_literal(), cur().line));
+                                    consume_adjacent_string_literal(*this), cur().line));
                             }
                             else if (check(TokenKind::LParen)) skip_paren_group();
                             else consume();

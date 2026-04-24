@@ -879,7 +879,6 @@ class Parser {
   Node* parse_unary();           // prefix unary
   Node* parse_postfix(Node* base); // postfix ops (left-recursive)
   Node* parse_primary();         // primary expression
-  const char* consume_adjacent_string_literal();
 
   // ── statement parsing ─────────────────────────────────────────────────────
   Node* parse_stmt();
