@@ -2071,9 +2071,9 @@ Node* Parser::parse_top_level() {
 
     // Handle #pragma pack tokens
     if (check(TokenKind::PragmaPack)) {
-        handle_pragma_pack(cur().text_id == kInvalidText
-                               ? std::string()
-                               : std::string(token_spelling(cur())));
+        handle_pragma_pack(*this, cur().text_id == kInvalidText
+                                      ? std::string()
+                                      : std::string(token_spelling(cur())));
         consume();
         return nullptr;
     }
@@ -2088,7 +2088,7 @@ Node* Parser::parse_top_level() {
 
     // Handle #pragma GCC visibility push/pop tokens
     if (check(TokenKind::PragmaGccVisibility)) {
-        handle_pragma_gcc_visibility(std::string(token_spelling(cur())));
+        handle_pragma_gcc_visibility(*this, std::string(token_spelling(cur())));
         consume();
         return nullptr;
     }
@@ -2096,7 +2096,7 @@ Node* Parser::parse_top_level() {
     if (check(TokenKind::PragmaExec)) {
         auto* node = make_node(NK_PRAGMA_EXEC, ln);
         node->name = arena_.strdup(std::string(token_spelling(cur())));
-        handle_pragma_exec(std::string(token_spelling(cur())));
+        handle_pragma_exec(*this, std::string(token_spelling(cur())));
         consume();
         return node;
     }

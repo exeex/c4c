@@ -241,9 +241,9 @@ Node* Parser::parse_stmt() {
 
     switch (cur().kind) {
         case TokenKind::PragmaPack: {
-            handle_pragma_pack(cur().text_id == kInvalidText
-                                   ? std::string()
-                                   : std::string(token_spelling(cur())));
+            handle_pragma_pack(*this, cur().text_id == kInvalidText
+                                          ? std::string()
+                                          : std::string(token_spelling(cur())));
             consume();
             return make_node(NK_EMPTY, ln);
         }
@@ -258,7 +258,7 @@ Node* Parser::parse_stmt() {
         case TokenKind::PragmaExec: {
             auto* node = make_node(NK_PRAGMA_EXEC, ln);
             node->name = arena_.strdup(std::string(token_spelling(cur())));
-            handle_pragma_exec(std::string(token_spelling(cur())));
+            handle_pragma_exec(*this, std::string(token_spelling(cur())));
             consume();
             return node;
         }

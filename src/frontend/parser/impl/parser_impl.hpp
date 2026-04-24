@@ -41,4 +41,8 @@ bool lexeme_is_imaginary(const char* s);
 long long parse_int_lexeme(const char* s);
 double parse_float_lexeme(const char* s);
 
+void handle_pragma_pack(Parser& parser, const std::string& args);
+void handle_pragma_gcc_visibility(Parser& parser, const std::string& args);
+void handle_pragma_exec(Parser& parser, const std::string& args);
+
 }  // namespace c4c

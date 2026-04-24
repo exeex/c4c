@@ -8,18 +8,20 @@ Current Step Title: Move Implementation-Only Method Declarations Behind The Boun
 
 ## Just Finished
 
-Completed Step 2 by adding `ParserImpl` ownership in
-`src/frontend/parser/impl/parser_impl.hpp`, making `Parser` own that state
-through `std::unique_ptr<ParserImpl>`, rebinding existing state-facing members
-as references into the owned implementation object, and defining ownership
-special members out of line in `parser_core.cpp`. Constructor and `parse()`
-behavior were preserved.
+Completed Step 3 by removing the pragma helper declarations from public
+`Parser` in `src/frontend/parser/parser.hpp`, adding equivalent private
+implementation helper declarations to
+`src/frontend/parser/impl/parser_impl.hpp`, converting definitions in
+`src/frontend/parser/parser_core.cpp` to implementation free functions, and
+updating pragma helper call sites in
+`src/frontend/parser/parser_declarations.cpp` and
+`src/frontend/parser/parser_statements.cpp`.
 
 ## Suggested Next
 
-Execute the next coherent parser facade packet: start moving implementation-only
-helper declarations or test-only access away from the public facade now that the
-state carrier has an owned implementation object.
+Continue with the next parser facade boundary slice from the active plan,
+keeping implementation-only declarations behind
+`src/frontend/parser/impl/parser_impl.hpp` where practical.
 
 ## Watchouts
 
@@ -34,10 +36,13 @@ state carrier has an owned implementation object.
 - Keep any test-only hooks clearly named and isolated.
 - `Parser` move operations are explicitly deleted in this slice because the
   compatibility boundary keeps public reference members bound into `ParserImpl`.
+- `rg` confirms `handle_pragma_pack`, `handle_pragma_gcc_visibility`, and
+  `handle_pragma_exec` are no longer declared in public `parser.hpp`; the
+  remaining declarations live in `impl/parser_impl.hpp`.
 
 ## Proof
 
-Executor Step 2 focused proof passed:
+Executor Step 3 focused proof passed:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 
 Supervisor acceptance proof then escalated to a matching full-suite run:

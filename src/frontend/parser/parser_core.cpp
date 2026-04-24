@@ -1484,7 +1484,7 @@ Parser::~Parser() = default;
 
 // ── pragma helpers ────────────────────────────────────────────────────────────
 
-void Parser::handle_pragma_pack(const std::string& args) {
+void handle_pragma_pack(Parser& parser, const std::string& args) {
     // #pragma pack(N)        — set pack alignment to N
     // #pragma pack()         — reset to default (0)
     // #pragma pack(push)     — push current alignment
@@ -1494,36 +1494,38 @@ void Parser::handle_pragma_pack(const std::string& args) {
     // The lexeme has whitespace stripped and contains just the args, e.g. "1", "push,2", "pop", ""
 
     if (args.empty()) {
-        pragma_state_.pack_alignment = 0;
+        parser.pragma_state_.pack_alignment = 0;
         return;
     }
 
     if (args.substr(0, 4) == "push") {
-        pragma_state_.pack_stack.push_back(pragma_state_.pack_alignment);
+        parser.pragma_state_.pack_stack.push_back(
+            parser.pragma_state_.pack_alignment);
         if (args.size() > 4 && args[4] == ',') {
-            pragma_state_.pack_alignment = std::stoi(args.substr(5));
+            parser.pragma_state_.pack_alignment = std::stoi(args.substr(5));
         }
     } else if (args.substr(0, 3) == "pop") {
-        if (!pragma_state_.pack_stack.empty()) {
-            pragma_state_.pack_alignment = pragma_state_.pack_stack.back();
-            pragma_state_.pack_stack.pop_back();
+        if (!parser.pragma_state_.pack_stack.empty()) {
+            parser.pragma_state_.pack_alignment =
+                parser.pragma_state_.pack_stack.back();
+            parser.pragma_state_.pack_stack.pop_back();
         } else {
-            pragma_state_.pack_alignment = 0;
+            parser.pragma_state_.pack_alignment = 0;
         }
         if (args.size() > 3 && args[3] == ',') {
-            pragma_state_.pack_alignment = std::stoi(args.substr(4));
+            parser.pragma_state_.pack_alignment = std::stoi(args.substr(4));
         }
     } else {
         // Simple numeric value
-        pragma_state_.pack_alignment = std::stoi(args);
+        parser.pragma_state_.pack_alignment = std::stoi(args);
     }
 }
 
-void Parser::handle_pragma_exec(const std::string& args) {
+void handle_pragma_exec(Parser& parser, const std::string& args) {
     if (args == "host") {
-        pragma_state_.execution_domain = ExecutionDomain::Host;
+        parser.pragma_state_.execution_domain = ExecutionDomain::Host;
     } else if (args == "device") {
-        pragma_state_.execution_domain = ExecutionDomain::Device;
+        parser.pragma_state_.execution_domain = ExecutionDomain::Device;
     }
 }
 
@@ -2018,21 +2020,23 @@ const char* Parser::diag_file_at(int token_index) const {
     return core_input_state_.source_file.c_str();
 }
 
-void Parser::handle_pragma_gcc_visibility(const std::string& args) {
+void handle_pragma_gcc_visibility(Parser& parser, const std::string& args) {
     // Lexeme format: "push,<visibility>" or "pop"
     if (args == "pop") {
-        if (!pragma_state_.visibility_stack.empty()) {
-            pragma_state_.visibility = pragma_state_.visibility_stack.back();
-            pragma_state_.visibility_stack.pop_back();
+        if (!parser.pragma_state_.visibility_stack.empty()) {
+            parser.pragma_state_.visibility =
+                parser.pragma_state_.visibility_stack.back();
+            parser.pragma_state_.visibility_stack.pop_back();
         } else {
-            pragma_state_.visibility = 0;  // default
+            parser.pragma_state_.visibility = 0;  // default
         }
     } else if (args.substr(0, 5) == "push,") {
-        pragma_state_.visibility_stack.push_back(pragma_state_.visibility);
+        parser.pragma_state_.visibility_stack.push_back(
+            parser.pragma_state_.visibility);
         const std::string vis = args.substr(5);
-        if (vis == "hidden") pragma_state_.visibility = 1;
-        else if (vis == "protected") pragma_state_.visibility = 2;
-        else pragma_state_.visibility = 0;  // "default" or unknown → default
+        if (vis == "hidden") parser.pragma_state_.visibility = 1;
+        else if (vis == "protected") parser.pragma_state_.visibility = 2;
+        else parser.pragma_state_.visibility = 0;  // "default" or unknown → default
     }
 }
 

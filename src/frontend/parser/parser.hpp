@@ -200,11 +200,6 @@ class Parser {
   // ── pragma state ─────────────────────────────────────────────────────────
   ParserPragmaState& pragma_state_;
 
-  // ── pragma helpers ────────────────────────────────────────────────────────
-  void handle_pragma_pack(const std::string& args);
-  void handle_pragma_gcc_visibility(const std::string& args);
-  void handle_pragma_exec(const std::string& args);
-
   // ── parser diagnostics / debug tracing ───────────────────────────────────
   void set_parser_debug(bool enabled);
   void set_parser_debug_channels(unsigned channels);
