@@ -37,6 +37,9 @@ bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);
 bool is_type_kw(TokenKind k);
 int bin_prec(TokenKind k);
+Node* parse_lambda_expr(Parser& parser, int ln);
+Node* parse_sizeof_pack_expr(Parser& parser, int ln);
+Node* parse_new_expr(Parser& parser, int ln, bool global_qualified);
 
 bool lexeme_is_imaginary(const char* s);
 long long parse_int_lexeme(const char* s);

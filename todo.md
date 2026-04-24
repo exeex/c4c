@@ -8,17 +8,18 @@ Current Step Title: Move Implementation-Only Method Declarations Behind The Boun
 
 ## Just Finished
 
-Completed Step 3 by removing the implementation-only `bin_prec` declaration
-from public `Parser` in `src/frontend/parser/parser.hpp`, adding the equivalent
-private implementation helper declaration to
-`src/frontend/parser/impl/parser_impl.hpp`, and converting the definition in
-`src/frontend/parser/parser_expressions.cpp` to an implementation free
-function used by expression parsing.
+Completed Step 3 declaration-boundary slice by removing the expression-only
+`parse_sizeof_pack_expr`, `parse_new_expr`, and `parse_lambda_expr`
+declarations from public `Parser` in `src/frontend/parser/parser.hpp`, adding
+the equivalent private implementation helper declarations to
+`src/frontend/parser/impl/parser_impl.hpp`, and converting the definitions and
+call sites in `src/frontend/parser/parser_expressions.cpp` to pass `Parser&`
+through the private implementation boundary.
 
 ## Suggested Next
 
-Continue with the next parser facade boundary slice from the active plan,
-keeping implementation-only declarations behind
+Continue with the next narrow parser facade boundary slice from the active
+plan, keeping implementation-only declarations behind
 `src/frontend/parser/impl/parser_impl.hpp` where practical.
 
 ## Watchouts
@@ -34,13 +35,13 @@ keeping implementation-only declarations behind
 - Keep any test-only hooks clearly named and isolated.
 - `Parser` move operations are explicitly deleted in this slice because the
   compatibility boundary keeps public reference members bound into `ParserImpl`.
-- `rg` confirms `bin_prec` is no longer declared in public `parser.hpp`; the
-  remaining declaration lives in `impl/parser_impl.hpp`, with the definition
-  and call in `parser_expressions.cpp`.
+- The delegated `rg` query confirms these helpers are no longer declared on
+  public `Parser`; their declarations live in `impl/parser_impl.hpp`, with
+  definitions and call sites in `parser_expressions.cpp` passing `Parser&`.
 
 ## Proof
 
-Executor Step 3 focused proof passed:
+Executor Step 3 focused proof passed for this declaration-boundary slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 
 Supervisor acceptance proof then escalated to a matching full-suite run:

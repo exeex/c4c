@@ -179,29 +179,29 @@ Node* Parser::parse_binary(int min_prec) {
     return lhs;
 }
 
-Node* Parser::parse_sizeof_pack_expr(int ln) {
-    expect(TokenKind::Ellipsis);
-    expect(TokenKind::LParen);
+Node* parse_sizeof_pack_expr(Parser& parser, int ln) {
+    parser.expect(TokenKind::Ellipsis);
+    parser.expect(TokenKind::LParen);
 
-    int pack_start = core_input_state_.pos;
+    int pack_start = parser.core_input_state_.pos;
     Node* pack_expr = nullptr;
-    if (!check(TokenKind::RParen)) {
-        pack_expr = parse_assign_expr();
+    if (!parser.check(TokenKind::RParen)) {
+        pack_expr = parser.parse_assign_expr();
     }
-    int pack_end = core_input_state_.pos;
+    int pack_end = parser.core_input_state_.pos;
 
-    expect(TokenKind::RParen);
+    parser.expect(TokenKind::RParen);
 
     std::string pack_text;
     for (int i = pack_start; i < pack_end &&
-                    i < static_cast<int>(core_input_state_.tokens.size());
+                    i < static_cast<int>(parser.core_input_state_.tokens.size());
          ++i) {
-        pack_text += token_spelling(core_input_state_.tokens[i]);
+        pack_text += parser.token_spelling(parser.core_input_state_.tokens[i]);
     }
 
-    Node* n = make_node(NK_SIZEOF_PACK, ln);
+    Node* n = parser.make_node(NK_SIZEOF_PACK, ln);
     n->left = pack_expr;
-    n->sval = arena_.strdup(pack_text.c_str());
+    n->sval = parser.arena_.strdup(pack_text.c_str());
     n->type.base = TB_ULONG;
     return n;
 }
@@ -296,12 +296,12 @@ Node* Parser::parse_unary() {
         }
         case TokenKind::KwNew: {
             // C++ new expression: new T, new T(args), new T[n]
-            return parse_new_expr(ln, false /*not global-qualified*/);
+            return parse_new_expr(*this, ln, false /*not global-qualified*/);
         }
         case TokenKind::KwSizeof: {
             consume();
             if (is_cpp_mode() && check(TokenKind::Ellipsis)) {
-                return parse_sizeof_pack_expr(ln);
+                return parse_sizeof_pack_expr(*this, ln);
             }
             if (check(TokenKind::LParen)) {
                 // Could be sizeof(type) or sizeof(expr)
@@ -403,60 +403,59 @@ Node* Parser::parse_unary() {
     }
 }
 
-Node* Parser::parse_new_expr(int ln, bool global_qualified) {
+Node* parse_new_expr(Parser& parser, int ln, bool global_qualified) {
     // Called after 'new' has been consumed.
     // Syntax: [::] new [( placement_args )] type [( ctor_args )] | type [ array_size ]
-    consume(); // consume 'new'
+    parser.consume(); // consume 'new'
 
-    Node* n = make_node(NK_NEW_EXPR, ln);
+    Node* n = parser.make_node(NK_NEW_EXPR, ln);
     n->is_global_qualified = global_qualified;
 
     // Optional placement args: new (args...) T(...)
     // Placement args are comma-separated expressions in parentheses.
     // Stored in n->params / n->n_params to avoid conflicts with ctor args.
-    if (check(TokenKind::LParen)) {
+    if (parser.check(TokenKind::LParen)) {
         // Disambiguate: could be placement args or a parenthesized type.
         // Peek: if '(' followed by a type start and then ')', it's a cast-style type.
         // For placement new, arguments are expressions.
         // NOTE: pos_ saved/restored only to re-consume '(' after a peek; not a
         // full tentative parse, so TentativeParseGuard is not used here.
-        int saved = pos_;
-        consume(); // '('
-        bool is_placement = true;
-        if (is_type_start()) {
+        int saved = parser.pos_;
+        parser.consume(); // '('
+        if (parser.is_type_start()) {
             // Still parse as expression — placement args like (void*)ptr are common.
-            pos_ = saved;
-            consume(); // '('
+            parser.pos_ = saved;
+            parser.consume(); // '('
         }
         // Parse comma-separated placement args.
         std::vector<Node*> pargs;
-        while (!check(TokenKind::RParen)) {
-            pargs.push_back(parse_assign_expr());
-            if (!check(TokenKind::RParen)) expect(TokenKind::Comma);
+        while (!parser.check(TokenKind::RParen)) {
+            pargs.push_back(parser.parse_assign_expr());
+            if (!parser.check(TokenKind::RParen)) parser.expect(TokenKind::Comma);
         }
-        expect(TokenKind::RParen);
+        parser.expect(TokenKind::RParen);
         n->n_params = static_cast<int>(pargs.size());
         if (!pargs.empty()) {
-            n->params = arena_.alloc_array<Node*>(n->n_params);
+            n->params = parser.arena_.alloc_array<Node*>(n->n_params);
             for (int i = 0; i < n->n_params; ++i) n->params[i] = pargs[i];
             n->left = pargs[0]; // backward compat: first placement arg
         }
     }
 
     // Parse the allocated type.
-    TypeSpec ts = parse_base_type();
+    TypeSpec ts = parser.parse_base_type();
     // Handle pointer levels in the type: new int*, new char* etc.
-    while (check(TokenKind::Star)) {
-        consume();
+    while (parser.check(TokenKind::Star)) {
+        parser.consume();
         ts.ptr_level++;
     }
     n->type = ts;
 
     // Check for array form: new T[n]
-    if (check(TokenKind::LBracket)) {
-        consume(); // '['
-        Node* size_expr = parse_assign_expr();
-        expect(TokenKind::RBracket);
+    if (parser.check(TokenKind::LBracket)) {
+        parser.consume(); // '['
+        Node* size_expr = parser.parse_assign_expr();
+        parser.expect(TokenKind::RBracket);
         n->right = size_expr;
         n->ival = 1; // array new
     } else {
@@ -464,17 +463,17 @@ Node* Parser::parse_new_expr(int ln, bool global_qualified) {
     }
 
     // Optional constructor args: new T(args...)
-    if (n->ival == 0 && check(TokenKind::LParen)) {
-        consume(); // '('
+    if (n->ival == 0 && parser.check(TokenKind::LParen)) {
+        parser.consume(); // '('
         std::vector<Node*> args;
-        while (!check(TokenKind::RParen)) {
-            args.push_back(parse_assign_expr());
-            if (!check(TokenKind::RParen)) expect(TokenKind::Comma);
+        while (!parser.check(TokenKind::RParen)) {
+            args.push_back(parser.parse_assign_expr());
+            if (!parser.check(TokenKind::RParen)) parser.expect(TokenKind::Comma);
         }
-        expect(TokenKind::RParen);
+        parser.expect(TokenKind::RParen);
         n->n_children = static_cast<int>(args.size());
         if (!args.empty()) {
-            n->children = arena_.alloc_array<Node*>(n->n_children);
+            n->children = parser.arena_.alloc_array<Node*>(n->n_children);
             for (int i = 0; i < n->n_children; ++i) n->children[i] = args[i];
         }
     }
@@ -700,36 +699,36 @@ bool Parser::try_parse_operator_function_id(std::string& out_name) {
     return true;
 }
 
-Node* Parser::parse_lambda_expr(int ln) {
-    expect(TokenKind::LBracket);
+Node* parse_lambda_expr(Parser& parser, int ln) {
+    parser.expect(TokenKind::LBracket);
 
     LambdaCaptureDefault capture_default = LCD_NONE;
-    if (match(TokenKind::RBracket)) {
+    if (parser.match(TokenKind::RBracket)) {
         capture_default = LCD_NONE;
-    } else if (match(TokenKind::Amp)) {
+    } else if (parser.match(TokenKind::Amp)) {
         capture_default = LCD_BY_REFERENCE;
-        expect(TokenKind::RBracket);
-    } else if (match(TokenKind::Assign)) {
+        parser.expect(TokenKind::RBracket);
+    } else if (parser.match(TokenKind::Assign)) {
         capture_default = LCD_BY_COPY;
-        expect(TokenKind::RBracket);
+        parser.expect(TokenKind::RBracket);
     } else {
         throw std::runtime_error("unsupported lambda capture list");
     }
 
     bool has_parameter_list = false;
-    if (match(TokenKind::LParen)) {
+    if (parser.match(TokenKind::LParen)) {
         has_parameter_list = true;
-        expect(TokenKind::RParen);
+        parser.expect(TokenKind::RParen);
     }
 
-    if (!check(TokenKind::LBrace)) {
+    if (!parser.check(TokenKind::LBrace)) {
         throw std::runtime_error("lambda body must be a compound statement");
     }
 
-    Node* lambda = make_node(NK_LAMBDA, ln);
+    Node* lambda = parser.make_node(NK_LAMBDA, ln);
     lambda->lambda_capture_default = capture_default;
     lambda->lambda_has_parameter_list = has_parameter_list;
-    lambda->body = parse_block();
+    lambda->body = parser.parse_block();
     return lambda;
 }
 
@@ -1023,7 +1022,7 @@ Node* Parser::parse_primary() {
     if (is_cpp_mode() && check(TokenKind::LBracket)) {
         TentativeParseGuard guard(*this);
         try {
-            Node* result = parse_lambda_expr(ln);
+            Node* result = parse_lambda_expr(*this, ln);
             guard.commit();
             return result;
         } catch (const std::exception&) {
@@ -1251,7 +1250,7 @@ Node* Parser::parse_primary() {
         core_input_state_.tokens[core_input_state_.pos + 1].kind ==
             TokenKind::KwNew) {
         consume(); // consume '::'
-        return parse_new_expr(ln, true /*global_qualified*/);
+        return parse_new_expr(*this, ln, true /*global_qualified*/);
     }
 
     // Global-qualified identifier (::name or ::ns::name)
