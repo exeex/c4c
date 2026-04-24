@@ -7,24 +7,23 @@ Current Step Title: Replace remaining suitable single-name string tables and iso
 # Current Packet
 
 ## Just Finished
-Completed the step 5 parser-entry-point sweep for a remaining body-parsing
-holdout. Added the scoped function-parameter binding guard to the
-out-of-class constructor-definition body path so constructor parameters stay
-visible during body parsing, and added a frontend regression that exercises a
-ctor body containing a nested ctor-init disambiguation probe.
+Completed the step 5 template-scope TextId-first cleanup slice. Updated the
+template-scope parameter probe so semantic `TextId` matches win whenever active
+template params carry them, while spelling-only holdouts still work when no
+semantic ids are present. Added a focused frontend regression for the mixed
+TextId/spelling case.
 
 ## Suggested Next
-Continue step 5 by checking whether any other parser entry points still need a
-parameter-scope bridge for lexical disambiguation. If no additional holdouts
-show up, keep the next slice focused on the remaining parser/frontend cleanup
-items under the active idea.
+Continue step 5 by checking the remaining parser single-name lookup holdouts in
+the owned parser surface and isolate any places that still need spelling-based
+fallbacks.
 
 ## Watchouts
-Keep the new parameter scope limited to body parsing so declaration-only paths
-do not start inheriting function parameters unexpectedly. Qualified concept
-lookup still needs to stay on structured namespace-context keys.
+Template-scope lookup now prefers semantic ids whenever they are available, but
+legacy spelling-only frames still rely on the fallback path. Keep that fallback
+isolated so it does not become the primary route again.
 
 ## Proof
 Ran `cmake --build --preset default` and
-`ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_parse_record_member_template_friend_cleanup_dump|cpp_positive_sema_record_template_prelude_and_tag_registration_parse_cpp|cpp_positive_sema_local_direct_init_paren_runtime_cpp|cpp_positive_sema_local_direct_init_single_identifier_runtime_cpp)$'`
+`ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_positive_sema_record_member_template_scope_cleanup_parse_cpp|cpp_positive_sema_template_declaration_prelude_cleanup_parse_cpp|cpp_parse_record_member_template_friend_cleanup_dump)$'`
 with proof captured in `test_after.log`.

@@ -2029,6 +2029,32 @@ void test_parser_template_type_arg_probes_use_token_spelling() {
   parser.pop_template_scope();
 }
 
+void test_parser_template_scope_type_param_prefers_text_id_over_spelling() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId param_text = texts.intern("T");
+  const c4c::TextId other_text = texts.intern("Other");
+  parser.push_template_scope(
+      c4c::Parser::TemplateScopeKind::FreeFunctionTemplate,
+      {{.name_text_id = param_text, .name = "corrupted"}});
+
+  expect_true(parser.is_template_scope_type_param(param_text, "corrupted"),
+              "template-scope lookup should match the semantic TextId even when spelling is stale");
+  expect_true(!parser.is_template_scope_type_param(other_text, "T"),
+              "template-scope lookup should not fall back to spelling when a TextId is already available");
+  parser.pop_template_scope();
+
+  parser.push_template_scope(
+      c4c::Parser::TemplateScopeKind::FreeFunctionTemplate,
+      {{.name = "T"}});
+  expect_true(parser.is_template_scope_type_param("T"),
+              "spelling-only template-scope lookups should still work when no TextId is available");
+  parser.pop_template_scope();
+}
+
 void test_parser_template_type_arg_uses_visible_scope_local_alias() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -2370,6 +2396,7 @@ int main() {
   test_parser_stmt_disambiguates_qualified_visible_value_member_access_assignment_as_expr();
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
+  test_parser_template_scope_type_param_prefers_text_id_over_spelling();
   test_parser_template_type_arg_uses_visible_scope_local_alias();
   test_parser_synthesized_typedef_binding_unregisters_by_text_id();
   test_parser_template_type_arg_prefers_local_visible_typedef_text_id();

@@ -34,14 +34,28 @@ void Parser::pop_template_scope() {
 
 bool Parser::is_template_scope_type_param(TextId name_text_id,
                                           std::string_view name) const {
+    bool saw_text_id_param = false;
     // Walk from innermost scope to outermost.
     for (int i = static_cast<int>(template_state_.template_scope_stack.size()) - 1;
          i >= 0; --i) {
         for (const auto& p : template_state_.template_scope_stack[i].params) {
             if (p.is_nttp) continue;
-            if (name_text_id != kInvalidText && p.name_text_id == name_text_id) {
-                return true;
+            if (p.name_text_id != kInvalidText) {
+                saw_text_id_param = true;
+                if (name_text_id != kInvalidText && p.name_text_id == name_text_id) {
+                    return true;
+                }
             }
+        }
+    }
+    if (name_text_id != kInvalidText && saw_text_id_param) return false;
+    if (name.empty()) return false;
+    // Only spelling-based params remain in scope, so keep the legacy holdout
+    // path available for callers that do not have a semantic TextId.
+    for (int i = static_cast<int>(template_state_.template_scope_stack.size()) - 1;
+         i >= 0; --i) {
+        for (const auto& p : template_state_.template_scope_stack[i].params) {
+            if (p.is_nttp) continue;
             if (p.name && name == p.name) return true;
         }
     }

@@ -2576,8 +2576,9 @@ Node* Parser::parse_top_level() {
     if (!is_type_start()) {
         if (is_typedef) {
             if (check(TokenKind::Identifier)) {
+                const TextId name_text_id = cur().text_id;
                 const std::string spelled = std::string(token_spelling(cur()));
-                if (is_template_scope_type_param(cur().text_id, spelled)) {
+                if (is_template_scope_type_param(name_text_id, spelled)) {
                     base_ts.array_size = -1;
                     base_ts.array_rank = 0;
                     for (int i = 0; i < 8; ++i) base_ts.array_dims[i] = -1;
