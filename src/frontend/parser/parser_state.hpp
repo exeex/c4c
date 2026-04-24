@@ -208,6 +208,11 @@ struct ParserTemplateScopeParam {
   bool is_nttp = false;
 };
 
+struct ParserInjectedTemplateParam {
+  TextId name_text_id = kInvalidText;
+  const char* name = nullptr;
+};
+
 struct ParserTemplateScopeFrame {
   ParserTemplateScopeKind kind = ParserTemplateScopeKind::FreeFunctionTemplate;
   std::vector<ParserTemplateScopeParam> params;
@@ -499,7 +504,7 @@ struct ParserLocalVarBindingSuppressionGuard {
 // Record prelude guard: inject template params, then unwind on scope exit.
 struct ParserRecordTemplatePreludeGuard {
   Parser* parser = nullptr;
-  std::vector<std::string> injected_type_params;
+  std::vector<ParserInjectedTemplateParam> injected_type_params;
   bool pushed_template_scope = false;
 
   explicit ParserRecordTemplatePreludeGuard(Parser* p);
@@ -509,7 +514,7 @@ struct ParserRecordTemplatePreludeGuard {
 // Template-declaration prelude guard: same push/pop shape as record preludes.
 struct ParserTemplateDeclarationPreludeGuard {
   Parser* parser = nullptr;
-  std::vector<std::string> injected_type_params;
+  std::vector<ParserInjectedTemplateParam> injected_type_params;
   bool pushed_template_scope = false;
 
   explicit ParserTemplateDeclarationPreludeGuard(Parser* p);

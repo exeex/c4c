@@ -141,7 +141,7 @@ Parser::recover_record_member_parse_error(int member_start_pos) {
 }
 
 void Parser::parse_record_template_member_prelude(
-    std::vector<std::string>* injected_type_params,
+    std::vector<InjectedTemplateParam>* injected_type_params,
     bool* pushed_template_scope) {
     if (pushed_template_scope) *pushed_template_scope = false;
     if (!(is_cpp_mode() && check(TokenKind::KwTemplate)))
@@ -195,10 +195,13 @@ void Parser::parse_record_template_member_prelude(
             consume();
             if (check(TokenKind::Ellipsis)) consume();
             if (check(TokenKind::Identifier)) {
-                std::string pname = std::string(token_spelling(cur()));
+                const std::string pname = std::string(token_spelling(cur()));
+                const TextId pname_text_id =
+                    parser_text_id_for_token(cur().text_id, pname);
                 consume();
-                register_synthesized_typedef_binding(pname);
-                injected_type_params->push_back(std::move(pname));
+                register_synthesized_typedef_binding(pname_text_id, pname);
+                injected_type_params->push_back(
+                    {pname_text_id, arena_.strdup(pname.c_str())});
             }
             if (check(TokenKind::Assign)) {
                 consume();
@@ -247,10 +250,13 @@ void Parser::parse_record_template_member_prelude(
             while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
             if (check(TokenKind::Ellipsis)) consume();
             if (check(TokenKind::Identifier)) {
-                std::string pname = std::string(token_spelling(cur()));
+                const std::string pname = std::string(token_spelling(cur()));
+                const TextId pname_text_id =
+                    parser_text_id_for_token(cur().text_id, pname);
                 consume();
-                register_synthesized_typedef_binding(pname);
-                injected_type_params->push_back(std::move(pname));
+                register_synthesized_typedef_binding(pname_text_id, pname);
+                injected_type_params->push_back(
+                    {pname_text_id, arena_.strdup(pname.c_str())});
             }
             if (check(TokenKind::Assign)) {
                 consume();
@@ -293,10 +299,13 @@ void Parser::parse_record_template_member_prelude(
                     (check(TokenKind::Ellipsis) || check(TokenKind::Identifier))) {
                     if (check(TokenKind::Ellipsis)) consume();
                     if (check(TokenKind::Identifier)) {
-                        std::string pname = std::string(token_spelling(cur()));
+                        const std::string pname = std::string(token_spelling(cur()));
+                        const TextId pname_text_id =
+                            parser_text_id_for_token(cur().text_id, pname);
                         consume();
-                        register_synthesized_typedef_binding(pname);
-                        injected_type_params->push_back(std::move(pname));
+                        register_synthesized_typedef_binding(pname_text_id, pname);
+                        injected_type_params->push_back(
+                            {pname_text_id, arena_.strdup(pname.c_str())});
                     }
                     if (check(TokenKind::Assign)) {
                         consume();
@@ -449,10 +458,13 @@ void Parser::parse_record_template_member_prelude(
                         (check(TokenKind::Ellipsis) || check(TokenKind::Identifier))) {
                         if (check(TokenKind::Ellipsis)) consume();
                         if (check(TokenKind::Identifier)) {
-                            std::string pname = std::string(token_spelling(cur()));
+                            const std::string pname = std::string(token_spelling(cur()));
+                            const TextId pname_text_id =
+                                parser_text_id_for_token(cur().text_id, pname);
                             consume();
-                            register_synthesized_typedef_binding(pname);
-                            injected_type_params->push_back(std::move(pname));
+                            register_synthesized_typedef_binding(pname_text_id, pname);
+                            injected_type_params->push_back(
+                                {pname_text_id, arena_.strdup(pname.c_str())});
                         }
                         if (check(TokenKind::Assign)) {
                             consume();
@@ -512,10 +524,10 @@ void Parser::parse_record_template_member_prelude(
     expect_template_close();
     if (!injected_type_params->empty()) {
         std::vector<TemplateScopeParam> member_params;
-        for (const auto& n : *injected_type_params) {
+        for (const auto& injected : *injected_type_params) {
             TemplateScopeParam p;
-            p.name_text_id = parser_text_id_for_token(kInvalidText, n);
-            p.name = arena_.strdup(n.c_str());
+            p.name_text_id = injected.name_text_id;
+            p.name = injected.name;
             p.is_nttp = false;
             member_params.push_back(p);
         }

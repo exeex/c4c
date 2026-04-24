@@ -2035,6 +2035,22 @@ void test_parser_template_type_arg_uses_visible_scope_local_alias() {
               "test fixture should balance the local visible typedef scope");
 }
 
+void test_parser_synthesized_typedef_binding_unregisters_by_text_id() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId synth_text_id = texts.intern("SynthParam");
+  parser.register_synthesized_typedef_binding(synth_text_id, "corrupted");
+  expect_true(parser.is_typedef_name(synth_text_id, "SynthParam"),
+              "synthesized typedef registration should prefer the semantic TextId");
+
+  parser.unregister_typedef_binding(synth_text_id, "still_corrupted");
+  expect_true(!parser.is_typedef_name(synth_text_id, "SynthParam"),
+              "synthesized typedef cleanup should remove the semantic TextId binding");
+}
+
 void test_parser_template_type_arg_prefers_local_visible_typedef_text_id() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -2321,6 +2337,7 @@ int main() {
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
   test_parser_template_type_arg_uses_visible_scope_local_alias();
+  test_parser_synthesized_typedef_binding_unregisters_by_text_id();
   test_parser_template_type_arg_prefers_local_visible_typedef_text_id();
   test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias();
   test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases();

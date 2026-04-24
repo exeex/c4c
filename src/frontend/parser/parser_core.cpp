@@ -894,13 +894,14 @@ void Parser::register_typedef_binding(const std::string& name,
     shared_lookup_state_.parser_name_tables.typedef_types[id] = type;
 }
 
-void Parser::unregister_typedef_binding(const std::string& name) {
+void Parser::unregister_typedef_binding(TextId name_text_id,
+                                        std::string_view fallback_name) {
+    const std::string_view name = parser_text(name_text_id, fallback_name);
     if (!uses_symbol_identity(name)) {
-        const TextId id = find_parser_text_id(name);
-        if (id == kInvalidText) return;
-        binding_state_.non_atom_typedefs.erase(id);
-        binding_state_.non_atom_user_typedefs.erase(id);
-        binding_state_.non_atom_typedef_types.erase(id);
+        if (name_text_id == kInvalidText) return;
+        binding_state_.non_atom_typedefs.erase(name_text_id);
+        binding_state_.non_atom_user_typedefs.erase(name_text_id);
+        binding_state_.non_atom_typedef_types.erase(name_text_id);
         return;
     }
     const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name);
@@ -910,13 +911,24 @@ void Parser::unregister_typedef_binding(const std::string& name) {
     shared_lookup_state_.parser_name_tables.typedef_types.erase(id);
 }
 
-void Parser::register_synthesized_typedef_binding(const std::string& name) {
+void Parser::unregister_typedef_binding(const std::string& name) {
+    unregister_typedef_binding(find_parser_text_id(name), name);
+}
+
+void Parser::register_synthesized_typedef_binding(TextId name_text_id,
+                                                  std::string_view name) {
     TypeSpec synthesized_ts{};
     synthesized_ts.array_size = -1;
     synthesized_ts.inner_rank = -1;
     synthesized_ts.base = TB_TYPEDEF;
-    synthesized_ts.tag = arena_.strdup(name.c_str());
-    register_typedef_binding(name, synthesized_ts, false);
+    synthesized_ts.tag = arena_.strdup(std::string(name).c_str());
+    register_typedef_binding(std::string(parser_text(name_text_id, name)),
+                             synthesized_ts, false);
+}
+
+void Parser::register_synthesized_typedef_binding(const std::string& name) {
+    register_synthesized_typedef_binding(parser_text_id_for_token(kInvalidText, name),
+                                         name);
 }
 
 void Parser::register_tag_type_binding(const std::string& name,
@@ -1212,8 +1224,9 @@ ParserRecordTemplatePreludeGuard::~ParserRecordTemplatePreludeGuard() {
         !parser->template_state_.template_scope_stack.empty()) {
         parser->template_state_.template_scope_stack.pop_back();
     }
-    for (const std::string& name : injected_type_params) {
-        parser->unregister_typedef_binding(name);
+    for (const ParserInjectedTemplateParam& param : injected_type_params) {
+        parser->unregister_typedef_binding(param.name_text_id,
+                                           param.name ? param.name : "");
     }
 }
 
@@ -1228,8 +1241,9 @@ ParserTemplateDeclarationPreludeGuard::
         !parser->template_state_.template_scope_stack.empty()) {
         parser->template_state_.template_scope_stack.pop_back();
     }
-    for (const std::string& name : injected_type_params) {
-        parser->unregister_typedef_binding(name);
+    for (const ParserInjectedTemplateParam& param : injected_type_params) {
+        parser->unregister_typedef_binding(param.name_text_id,
+                                           param.name ? param.name : "");
     }
 }
 

@@ -78,6 +78,7 @@ class Parser {
   using TemplateScopeKind = ParserTemplateScopeKind;
   using TemplateScopeParam = ParserTemplateScopeParam;
   using TemplateScopeFrame = ParserTemplateScopeFrame;
+  using InjectedTemplateParam = ParserInjectedTemplateParam;
   using LexicalScopeState = ParserLexicalScopeState;
   using RecordBodyState = ParserRecordBodyState;
   using RecordMemberRecoveryResult = ParserRecordMemberRecoveryResult;
@@ -334,7 +335,11 @@ class Parser {
   void register_typedef_name(const std::string& name, bool is_user_typedef);
   void register_typedef_binding(const std::string& name, const TypeSpec& type,
                                 bool is_user_typedef);
+  void unregister_typedef_binding(TextId name_text_id,
+                                  std::string_view fallback_name);
   void unregister_typedef_binding(const std::string& name);
+  void register_synthesized_typedef_binding(TextId name_text_id,
+                                            std::string_view name);
   void register_synthesized_typedef_binding(const std::string& name);
   void register_tag_type_binding(const std::string& name, TypeBase base,
                                  const char* tag,
@@ -680,7 +685,7 @@ class Parser {
   bool try_skip_record_static_assert_member(std::vector<Node*>* methods);
   RecordMemberRecoveryResult recover_record_member_parse_error(int member_start_pos);
   void parse_record_template_member_prelude(
-      std::vector<std::string>* injected_type_params,
+      std::vector<InjectedTemplateParam>* injected_type_params,
       bool* pushed_template_scope);
   void parse_decl_attrs_for_record(int line, TypeSpec* attr_ts);
   void skip_record_base_specifier_tail();

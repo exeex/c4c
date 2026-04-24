@@ -1644,8 +1644,11 @@ Node* Parser::parse_top_level() {
                     pname = make_anon_template_param_name(arena_, false, template_params.size());
                 }
                 if (pname && pname[0]) {
-                    register_synthesized_typedef_binding(pname);
-                    template_prelude_guard.injected_type_params.emplace_back(pname);
+                    const TextId pname_text_id =
+                        parser_text_id_for_token(kInvalidText, pname);
+                    register_synthesized_typedef_binding(pname_text_id, pname);
+                    template_prelude_guard.injected_type_params.push_back(
+                        {pname_text_id, pname});
                 }
                 template_params.push_back(pname);
                 template_param_nttp.push_back(false);
