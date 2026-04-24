@@ -16,7 +16,6 @@ using DynamicGlobalScalarArrayAccess = BirFunctionLowerer::DynamicGlobalScalarAr
 using DynamicLocalAggregateArrayAccess = BirFunctionLowerer::DynamicLocalAggregateArrayAccess;
 using DynamicLocalPointerArrayAccess = BirFunctionLowerer::DynamicLocalPointerArrayAccess;
 using GlobalAddress = BirFunctionLowerer::GlobalAddress;
-using LocalArraySlots = BirFunctionLowerer::LocalArraySlots;
 using LocalPointerArrayBase = BirFunctionLowerer::LocalPointerArrayBase;
 using PointerAddress = BirFunctionLowerer::PointerAddress;
 using lir_to_bir_detail::compute_aggregate_type_layout;
@@ -294,83 +293,7 @@ bool BirFunctionLowerer::lower_scalar_or_local_memory_inst(
   }
 
   if (const auto* alloca = std::get_if<c4c::codegen::lir::LirAllocaOp>(&inst)) {
-    if (alloca->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
-      return fail_alloca();
-    }
-
-    const std::string slot_name = alloca->result.str();
-    if (!alloca->count.str().empty()) {
-      if (!context_.options.preserve_dynamic_alloca) {
-        return fail_alloca();
-      }
-      const auto element_type = lower_scalar_or_function_pointer_type(alloca->type_str.str());
-      const auto lowered_count = lower_value(alloca->count, bir::TypeKind::I64, value_aliases);
-      if (!element_type.has_value() || !lowered_count.has_value()) {
-        return fail_alloca();
-      }
-      const auto type_text =
-          std::string(c4c::codegen::lir::trim_lir_arg_text(alloca->type_str.str()));
-      lowered_insts->push_back(bir::CallInst{
-          .result = bir::Value::named(bir::TypeKind::Ptr, slot_name),
-          .callee = "llvm.dynamic_alloca." + type_text,
-          .args = {*lowered_count},
-          .arg_types = {bir::TypeKind::I64},
-          .return_type = bir::TypeKind::Ptr,
-      });
-      pointer_value_addresses[slot_name] = PointerAddress{
-          .base_value = bir::Value::named(bir::TypeKind::Ptr, slot_name),
-          .value_type = *element_type,
-          .byte_offset = 0,
-          .storage_type_text = type_text,
-          .type_text = type_text,
-      };
-      return true;
-    }
-
-    const auto slot_type = lower_scalar_or_function_pointer_type(alloca->type_str.str());
-    if (local_slot_types.find(slot_name) != local_slot_types.end() ||
-        local_array_slots.find(slot_name) != local_array_slots.end()) {
-      return fail_alloca();
-    }
-
-    if (slot_type.has_value()) {
-      local_slot_types.emplace(slot_name, *slot_type);
-      local_pointer_slots.emplace(slot_name, slot_name);
-      lowered_function->local_slots.push_back(bir::LocalSlot{
-          .name = slot_name,
-          .type = *slot_type,
-          .align_bytes = alloca->align > 0 ? static_cast<std::size_t>(alloca->align) : 0,
-      });
-      return true;
-    }
-
-    const auto array_type = parse_local_array_type(alloca->type_str.str());
-    if (array_type.has_value()) {
-      LocalArraySlots array_slots{.element_type = array_type->second};
-      array_slots.element_slots.reserve(array_type->first);
-      for (std::size_t index = 0; index < array_type->first; ++index) {
-        const std::string element_slot = slot_name + "." + std::to_string(index);
-        local_slot_types.emplace(element_slot, array_type->second);
-        local_pointer_slots.emplace(element_slot, element_slot);
-        array_slots.element_slots.push_back(element_slot);
-        lowered_function->local_slots.push_back(bir::LocalSlot{
-            .name = element_slot,
-            .type = array_type->second,
-            .align_bytes = alloca->align > 0 ? static_cast<std::size_t>(alloca->align) : 0,
-        });
-      }
-      local_array_slots.emplace(slot_name, std::move(array_slots));
-      return true;
-    }
-
-    if (!declare_local_aggregate_slots(alloca->type_str.str(),
-                                       slot_name,
-                                       alloca->align > 0
-                                           ? static_cast<std::size_t>(alloca->align)
-                                           : 0)) {
-      return fail_alloca();
-    }
-    return true;
+    return lower_local_memory_alloca_inst(*alloca, lowered_insts) ? true : fail_alloca();
   }
 
   if (const auto* gep = std::get_if<c4c::codegen::lir::LirGepOp>(&inst)) {

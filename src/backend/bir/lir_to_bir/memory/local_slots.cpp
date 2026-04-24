@@ -265,6 +265,82 @@ std::optional<std::pair<std::size_t, bir::TypeKind>> BirFunctionLowerer::parse_l
   return std::pair<std::size_t, bir::TypeKind>{static_cast<std::size_t>(*count), *element_type};
 }
 
+bool BirFunctionLowerer::lower_local_memory_alloca_inst(
+    const c4c::codegen::lir::LirAllocaOp& alloca,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (alloca.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+    return false;
+  }
+
+  const std::string slot_name = alloca.result.str();
+  const auto align_bytes = alloca.align > 0 ? static_cast<std::size_t>(alloca.align) : 0;
+  if (!alloca.count.str().empty()) {
+    if (!context_.options.preserve_dynamic_alloca) {
+      return false;
+    }
+    const auto element_type = lower_scalar_or_function_pointer_type(alloca.type_str.str());
+    const auto lowered_count = lower_value(alloca.count, bir::TypeKind::I64, value_aliases_);
+    if (!element_type.has_value() || !lowered_count.has_value()) {
+      return false;
+    }
+    const auto type_text =
+        std::string(c4c::codegen::lir::trim_lir_arg_text(alloca.type_str.str()));
+    lowered_insts->push_back(bir::CallInst{
+        .result = bir::Value::named(bir::TypeKind::Ptr, slot_name),
+        .callee = "llvm.dynamic_alloca." + type_text,
+        .args = {*lowered_count},
+        .arg_types = {bir::TypeKind::I64},
+        .return_type = bir::TypeKind::Ptr,
+    });
+    pointer_value_addresses_[slot_name] = PointerAddress{
+        .base_value = bir::Value::named(bir::TypeKind::Ptr, slot_name),
+        .value_type = *element_type,
+        .byte_offset = 0,
+        .storage_type_text = type_text,
+        .type_text = type_text,
+    };
+    return true;
+  }
+
+  const auto slot_type = lower_scalar_or_function_pointer_type(alloca.type_str.str());
+  if (local_slot_types_.find(slot_name) != local_slot_types_.end() ||
+      local_array_slots_.find(slot_name) != local_array_slots_.end()) {
+    return false;
+  }
+
+  if (slot_type.has_value()) {
+    local_slot_types_.emplace(slot_name, *slot_type);
+    local_pointer_slots_.emplace(slot_name, slot_name);
+    lowered_function_.local_slots.push_back(bir::LocalSlot{
+        .name = slot_name,
+        .type = *slot_type,
+        .align_bytes = align_bytes,
+    });
+    return true;
+  }
+
+  const auto array_type = parse_local_array_type(alloca.type_str.str());
+  if (array_type.has_value()) {
+    LocalArraySlots array_slots{.element_type = array_type->second};
+    array_slots.element_slots.reserve(array_type->first);
+    for (std::size_t index = 0; index < array_type->first; ++index) {
+      const std::string element_slot = slot_name + "." + std::to_string(index);
+      local_slot_types_.emplace(element_slot, array_type->second);
+      local_pointer_slots_.emplace(element_slot, element_slot);
+      array_slots.element_slots.push_back(element_slot);
+      lowered_function_.local_slots.push_back(bir::LocalSlot{
+          .name = element_slot,
+          .type = array_type->second,
+          .align_bytes = align_bytes,
+      });
+    }
+    local_array_slots_.emplace(slot_name, std::move(array_slots));
+    return true;
+  }
+
+  return declare_local_aggregate_slots(alloca.type_str.str(), slot_name, align_bytes);
+}
+
 bool BirFunctionLowerer::try_lower_immediate_local_memset(
     std::string_view dst_operand,
     std::uint8_t fill_byte,
