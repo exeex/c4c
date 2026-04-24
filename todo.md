@@ -3,41 +3,40 @@ Source Idea Path: ideas/open/91_advanced_prepared_call_authority_and_grouped_wid
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Make Grouped Width-Greater-Than-One Allocation Truthful
-Plan Review Counter: 4 / 6
+Plan Review Counter: 5 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 3 now proves the x86 module emitter reads grouped authority through the
-shared `consume_plans` seam for both grouped call-boundary and grouped
-spill/reload fixtures before it falls back to the contract-first stub body.
-Grouped functions now have direct backend contracts for emitted comment
-summaries and detail lines covering shared saved/preserved/clobber/storage
-authority plus grouped spill/reload value-id, span, and spill-slot facts.
+Step 3 now publishes truthful grouped call-boundary move authority for grouped
+width-greater-than-one values across call arguments, call results, and returns.
+Prepared call-boundary move records and ABI bindings now carry destination
+contiguous width plus occupied ABI register spans instead of collapsing grouped
+destinations to scalar-only base-register metadata, and the focused backend
+proof covers grouped RISC-V argument/result/return cases through regalloc and
+prepared move-bundle publication.
 
 ## Suggested Next
 
-Use the widened grouped proofs to identify the next truthful Step 3 gap beyond
-consumer publication, or move to the next x86-native grouped-width behavior
-that still lacks direct prepared-authority proof.
+Use the new grouped call-boundary authority to close the next remaining Step 3
+truthfulness gap in downstream consumers or call/storage plans that still read
+only scalar ABI destination metadata.
 
 ## Watchouts
 
-- Keep grouped-width proofs anchored to shared prepared plans; do not let x86
-  rebuild regalloc or spill facts from target-local heuristics.
-- Keep grouped call-boundary proofs tied to preserved-value, saved-register,
-  caller-clobber, and storage identities from prepared authority rather than
-  brittle asm spelling outside the consumer seam.
+- Keep grouped-width consumers keyed to destination span metadata
+  (`destination_contiguous_width` and `destination_occupied_register_names`)
+  instead of reconstructing grouped ABI lanes from scalar base-register names.
+- Keep grouped call-boundary truth anchored to prepared authority rather than
+  target-local heuristics or testcase-shaped register-name reconstruction.
 - Do not reopen out-of-SSA follow-on work from idea 90 inside this runbook.
 - Reject testcase-shaped shortcuts; grouped-width progress must generalize
-  beyond one named spill/reload case.
-- Prefer cross-plan identity checks such as value id, register span, and spill
-  slot authority over brittle target spelling that may move for unrelated
-  reasons.
+  beyond one named grouped call-boundary case.
 
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-Result: passed after adding the grouped call-boundary x86 module-emitter
-contract alongside the grouped spill/reload contract.
+Result: passed after publishing grouped call-boundary destination span authority
+in regalloc move records and prepared ABI bindings, with grouped argument,
+result, and return coverage added to `backend_prepare_liveness_test`.
 Log: `test_after.log`

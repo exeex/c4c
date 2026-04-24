@@ -210,6 +210,19 @@ bool move_resolution_reason_has_prefix(const prepare::PreparedMoveResolution& mo
   return move_reason.substr(0, reason_prefix.size()) == reason_prefix;
 }
 
+const prepare::PreparedAbiBinding* find_abi_binding(
+    const prepare::PreparedMoveBundle& bundle,
+    prepare::PreparedMoveDestinationKind destination_kind,
+    std::optional<std::size_t> destination_abi_index) {
+  for (const auto& binding : bundle.abi_bindings) {
+    if (binding.destination_kind == destination_kind &&
+        binding.destination_abi_index == destination_abi_index) {
+      return &binding;
+    }
+  }
+  return nullptr;
+}
+
 prepare::PreparedBirModule prepare_phi_module() {
   bir::Module module;
 
@@ -1189,6 +1202,151 @@ prepare::PreparedBirModule prepare_return_same_storage_module_with_regalloc() {
 
   prepare::BirPreAlloc planner(std::move(prepared), options);
   return planner.run();
+}
+
+prepare::PreparedBirModule prepare_grouped_call_boundary_move_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function sink_decl;
+  sink_decl.name = "sink_pair";
+  sink_decl.is_declaration = true;
+  sink_decl.return_type = bir::TypeKind::Void;
+  sink_decl.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "arg0",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  module.functions.push_back(std::move(sink_decl));
+
+  bir::Function source_decl;
+  source_decl.name = "source_pair";
+  source_decl.is_declaration = true;
+  source_decl.return_type = bir::TypeKind::I32;
+  source_decl.return_abi = bir::CallResultAbiInfo{
+      .type = bir::TypeKind::I32,
+      .primary_class = bir::AbiValueClass::Integer,
+  };
+  module.functions.push_back(std::move(source_decl));
+
+  bir::Function call_arg_function;
+  call_arg_function.name = "grouped_call_arg_move_resolution";
+  call_arg_function.return_type = bir::TypeKind::I32;
+  bir::Block call_arg_entry;
+  call_arg_entry.label = "entry";
+  call_arg_entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "grouped.arg"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(10),
+      .rhs = bir::Value::immediate_i32(20),
+  });
+  call_arg_entry.insts.push_back(bir::CallInst{
+      .callee = "sink_pair",
+      .args = {bir::Value::named(bir::TypeKind::I32, "grouped.arg")},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  call_arg_entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::immediate_i32(0),
+  };
+  call_arg_function.blocks.push_back(std::move(call_arg_entry));
+  module.functions.push_back(std::move(call_arg_function));
+
+  bir::Function call_result_function;
+  call_result_function.name = "grouped_call_result_move_resolution";
+  call_result_function.return_type = bir::TypeKind::I32;
+  bir::Block call_result_entry;
+  call_result_entry.label = "entry";
+  call_result_entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "grouped.call.result"),
+      .callee = "source_pair",
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  call_result_entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "grouped.call.result"),
+  };
+  call_result_function.blocks.push_back(std::move(call_result_entry));
+  module.functions.push_back(std::move(call_result_function));
+
+  bir::Function return_function;
+  return_function.name = "grouped_return_move_resolution";
+  return_function.return_type = bir::TypeKind::I32;
+  return_function.return_abi = bir::CallResultAbiInfo{
+      .type = bir::TypeKind::I32,
+      .primary_class = bir::AbiValueClass::Integer,
+  };
+  bir::Block return_entry;
+  return_entry.label = "entry";
+  return_entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "grouped.ret.value"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  return_entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "grouped.ret.value"),
+  };
+  return_function.blocks.push_back(std::move(return_entry));
+  module.functions.push_back(std::move(return_function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  planner.run_liveness();
+  auto seeded = std::move(planner.prepared());
+  set_register_group_override(seeded,
+                              "grouped_call_arg_move_resolution",
+                              "grouped.arg",
+                              prepare::PreparedRegisterClass::General,
+                              2);
+  set_register_group_override(seeded,
+                              "grouped_call_result_move_resolution",
+                              "grouped.call.result",
+                              prepare::PreparedRegisterClass::General,
+                              2);
+  set_register_group_override(seeded,
+                              "grouped_return_move_resolution",
+                              "grouped.ret.value",
+                              prepare::PreparedRegisterClass::General,
+                              2);
+
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = true;
+  prepare::BirPreAlloc regalloc_planner(std::move(seeded), options);
+  regalloc_planner.run_regalloc();
+  return std::move(regalloc_planner.prepared());
 }
 
 std::optional<prepare::PreparedBirModule> lower_and_legalize_aggregate_return_decl_module() {
@@ -3215,6 +3373,111 @@ int check_return_same_storage_resolution(const prepare::PreparedBirModule& prepa
   return 0;
 }
 
+int check_grouped_call_boundary_move_resolution(const prepare::PreparedBirModule& prepared) {
+  const auto* call_arg_function =
+      find_regalloc_function(prepared, "grouped_call_arg_move_resolution");
+  const auto* call_result_function =
+      find_regalloc_function(prepared, "grouped_call_result_move_resolution");
+  const auto* return_function =
+      find_regalloc_function(prepared, "grouped_return_move_resolution");
+  if (call_arg_function == nullptr || call_result_function == nullptr ||
+      return_function == nullptr) {
+    return fail("expected grouped call-boundary functions in regalloc output");
+  }
+
+  const auto* grouped_arg = find_regalloc_value(prepared, *call_arg_function, "grouped.arg");
+  if (grouped_arg == nullptr) {
+    return fail("expected grouped call argument value in regalloc output");
+  }
+  const auto* arg_move =
+      find_move_resolution(*call_arg_function, grouped_arg->value_id, grouped_arg->value_id);
+  if (arg_move == nullptr || arg_move->destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      arg_move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      arg_move->destination_abi_index != std::optional<std::size_t>{0} ||
+      arg_move->destination_register_name != std::optional<std::string>{"a0"} ||
+      arg_move->destination_contiguous_width != 2 ||
+      arg_move->destination_occupied_register_names != std::vector<std::string>{"a0", "a1"}) {
+    return fail("expected grouped call-argument moves to publish the full ABI register span");
+  }
+  const auto* call_arg_locations =
+      prepare::find_prepared_value_location_function(prepared, "grouped_call_arg_move_resolution");
+  const auto* before_call_bundle =
+      call_arg_locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_move_bundle(*call_arg_locations,
+                                               prepare::PreparedMovePhase::BeforeCall,
+                                               0,
+                                               1);
+  const auto* arg_binding = before_call_bundle == nullptr
+                                ? nullptr
+                                : find_abi_binding(*before_call_bundle,
+                                                   prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                                                   0);
+  if (arg_binding == nullptr ||
+      arg_binding->destination_register_name != std::optional<std::string>{"a0"} ||
+      arg_binding->destination_contiguous_width != 2 ||
+      arg_binding->destination_occupied_register_names != std::vector<std::string>{"a0", "a1"}) {
+    return fail("expected grouped call-argument ABI bindings to preserve grouped register authority");
+  }
+
+  const auto* grouped_call_result =
+      find_regalloc_value(prepared, *call_result_function, "grouped.call.result");
+  if (grouped_call_result == nullptr) {
+    return fail("expected grouped call result value in regalloc output");
+  }
+  const auto* result_move = find_move_resolution(
+      *call_result_function, grouped_call_result->value_id, grouped_call_result->value_id);
+  if (result_move == nullptr ||
+      result_move->destination_kind != prepare::PreparedMoveDestinationKind::CallResultAbi ||
+      result_move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      result_move->destination_abi_index.has_value() ||
+      result_move->destination_register_name != std::optional<std::string>{"a0"} ||
+      result_move->destination_contiguous_width != 2 ||
+      result_move->destination_occupied_register_names != std::vector<std::string>{"a0", "a1"}) {
+    return fail("expected grouped call-result moves to publish the full ABI register span");
+  }
+  const auto* call_result_locations =
+      prepare::find_prepared_value_location_function(prepared, "grouped_call_result_move_resolution");
+  const auto* after_call_bundle =
+      call_result_locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_move_bundle(*call_result_locations,
+                                               prepare::PreparedMovePhase::AfterCall,
+                                               0,
+                                               0);
+  const auto* result_binding =
+      after_call_bundle == nullptr
+          ? nullptr
+          : find_abi_binding(*after_call_bundle,
+                             prepare::PreparedMoveDestinationKind::CallResultAbi,
+                             std::nullopt);
+  if (result_binding == nullptr ||
+      result_binding->destination_register_name != std::optional<std::string>{"a0"} ||
+      result_binding->destination_contiguous_width != 2 ||
+      result_binding->destination_occupied_register_names != std::vector<std::string>{"a0", "a1"}) {
+    return fail("expected grouped call-result ABI bindings to preserve grouped register authority");
+  }
+
+  const auto* grouped_ret =
+      find_regalloc_value(prepared, *return_function, "grouped.ret.value");
+  if (grouped_ret == nullptr) {
+    return fail("expected grouped return value in regalloc output");
+  }
+  const auto* return_move =
+      find_move_resolution(*return_function, grouped_ret->value_id, grouped_ret->value_id);
+  if (return_move == nullptr ||
+      return_move->destination_kind != prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
+      return_move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      return_move->destination_abi_index.has_value() ||
+      return_move->destination_register_name != std::optional<std::string>{"a0"} ||
+      return_move->destination_contiguous_width != 2 ||
+      return_move->destination_occupied_register_names != std::vector<std::string>{"a0", "a1"}) {
+    return fail("expected grouped returns to publish the full ABI register span");
+  }
+
+  return 0;
+}
+
 int check_lowered_aggregate_return_abi(const prepare::PreparedBirModule& prepared) {
   const auto* function = find_module_function(prepared, "aggregate_decl");
   if (function == nullptr) {
@@ -4148,6 +4411,11 @@ int main() {
 
   const auto return_same_storage_prepared = prepare_return_same_storage_module_with_regalloc();
   if (const int rc = check_return_same_storage_resolution(return_same_storage_prepared); rc != 0) {
+    return rc;
+  }
+  const auto grouped_call_boundary_prepared = prepare_grouped_call_boundary_move_module_with_regalloc();
+  if (const int rc = check_grouped_call_boundary_move_resolution(grouped_call_boundary_prepared);
+      rc != 0) {
     return rc;
   }
 

@@ -730,6 +730,8 @@ struct PreparedMoveResolution {
   PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
   std::optional<std::size_t> destination_abi_index;
   std::optional<std::string> destination_register_name;
+  std::size_t destination_contiguous_width = 1;
+  std::vector<std::string> destination_occupied_register_names;
   std::optional<std::size_t> destination_stack_offset_bytes;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
@@ -743,6 +745,8 @@ struct PreparedAbiBinding {
   PreparedMoveStorageKind destination_storage_kind = PreparedMoveStorageKind::None;
   std::optional<std::size_t> destination_abi_index;
   std::optional<std::string> destination_register_name;
+  std::size_t destination_contiguous_width = 1;
+  std::vector<std::string> destination_occupied_register_names;
   std::optional<std::size_t> destination_stack_offset_bytes;
 };
 
