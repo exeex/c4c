@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -66,6 +67,38 @@ bir::Block* find_block(bir::Function& function, const char* label) {
     }
   }
   return nullptr;
+}
+
+std::optional<std::size_t> find_block_index(const bir::Function& function, const char* label) {
+  for (std::size_t index = 0; index < function.blocks.size(); ++index) {
+    if (function.blocks[index].label == label) {
+      return index;
+    }
+  }
+  return std::nullopt;
+}
+
+const prepare::PreparedValueLocationFunction* find_value_location_function(
+    const prepare::PreparedBirModule& prepared,
+    const char* function_name) {
+  return prepare::find_prepared_value_location_function(prepared, function_name);
+}
+
+std::size_t count_phi_move_bundles_at_block(
+    const prepare::PreparedValueLocationFunction& function_locations,
+    std::size_t block_index) {
+  return static_cast<std::size_t>(std::count_if(
+      function_locations.move_bundles.begin(),
+      function_locations.move_bundles.end(),
+      [&](const prepare::PreparedMoveBundle& bundle) {
+        return bundle.phase == prepare::PreparedMovePhase::BlockEntry &&
+               bundle.block_index == block_index &&
+               std::any_of(bundle.moves.begin(),
+                           bundle.moves.end(),
+                           [](const prepare::PreparedMoveResolution& move) {
+                             return move.reason.rfind("phi_", 0) == 0;
+                           });
+      }));
 }
 
 bir::Module make_x86_param_passthrough_module() {
@@ -751,6 +784,52 @@ int check_compare_join_requires_authoritative_parallel_copy_bundles(
   return 0;
 }
 
+int check_compare_join_regalloc_consumes_predecessor_parallel_copy_execution_site(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  const auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  const auto* function_locations = find_value_location_function(prepared, function_name);
+  if (control_flow == nullptr || function_locations == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the compare-join regalloc/value-location contract")
+                    .c_str());
+  }
+
+  const auto* bundle =
+      prepare::find_prepared_parallel_copy_bundle(prepared.names, *control_flow, "is_zero", "join");
+  if (bundle == nullptr ||
+      bundle->execution_site != prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer classifies the compare-join handoff as predecessor-terminator executable")
+                    .c_str());
+  }
+
+  const auto predecessor_block_index = find_block_index(prepared.module.functions.front(), "is_zero");
+  const auto successor_block_index = find_block_index(prepared.module.functions.front(), "join");
+  if (!predecessor_block_index.has_value() || !successor_block_index.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer exposes the expected blocks for bundle placement")
+                    .c_str());
+  }
+
+  if (count_phi_move_bundles_at_block(*function_locations, *predecessor_block_index) == 0) {
+    return fail((std::string(failure_context) +
+                 ": regalloc stopped placing predecessor-owned compare-join bundles at the published predecessor block")
+                    .c_str());
+  }
+  if (count_phi_move_bundles_at_block(*function_locations, *successor_block_index) != 0) {
+    return fail((std::string(failure_context) +
+                 ": regalloc unexpectedly relocated predecessor-owned compare-join bundles into the join block")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_minimal_compare_branch_param_return_requires_authoritative_prepared_return_bundle(
     const bir::Module& module,
     const char* function_name,
@@ -1351,6 +1430,14 @@ int run_backend_x86_handoff_boundary_compare_branch_tests() {
               make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
               "branch_join_adjust_then_xor",
               "scalar-control-flow compare-against-zero compare-join lane rejects reopening phi-edge fallback when authoritative parallel-copy publication is missing but join transfers remain");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_compare_join_regalloc_consumes_predecessor_parallel_copy_execution_site(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero compare-join lane keeps predecessor-owned bundles on the published predecessor execution site");
       status != 0) {
     return status;
   }

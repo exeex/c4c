@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -61,6 +62,38 @@ bir::Block* find_block(bir::Function& function, const char* label) {
     }
   }
   return nullptr;
+}
+
+std::optional<std::size_t> find_block_index(const bir::Function& function, const char* label) {
+  for (std::size_t index = 0; index < function.blocks.size(); ++index) {
+    if (function.blocks[index].label == label) {
+      return index;
+    }
+  }
+  return std::nullopt;
+}
+
+const prepare::PreparedValueLocationFunction* find_value_location_function(
+    const prepare::PreparedBirModule& prepared,
+    const char* function_name) {
+  return prepare::find_prepared_value_location_function(prepared, function_name);
+}
+
+std::size_t count_phi_move_bundles_at_block(
+    const prepare::PreparedValueLocationFunction& function_locations,
+    std::size_t block_index) {
+  return static_cast<std::size_t>(std::count_if(
+      function_locations.move_bundles.begin(),
+      function_locations.move_bundles.end(),
+      [&](const prepare::PreparedMoveBundle& bundle) {
+        return bundle.phase == prepare::PreparedMovePhase::BlockEntry &&
+               bundle.block_index == block_index &&
+               std::any_of(bundle.moves.begin(),
+                           bundle.moves.end(),
+                           [](const prepare::PreparedMoveResolution& move) {
+                             return move.reason.rfind("phi_", 0) == 0;
+                           });
+      }));
 }
 
 std::string_view block_label(const prepare::PreparedBirModule& prepared,
@@ -695,6 +728,53 @@ int check_short_circuit_route_requires_authoritative_parallel_copy_bundles(
                    ": x86 prepared-module consumer rejected missing short-circuit parallel-copy publication with the wrong contract message")
                       .c_str());
     }
+  }
+
+  return 0;
+}
+
+int check_short_circuit_regalloc_consumes_critical_edge_parallel_copy_execution_site(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  const auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  const auto* function_locations = find_value_location_function(prepared, function_name);
+  if (control_flow == nullptr || function_locations == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the short-circuit regalloc/value-location contract")
+                    .c_str());
+  }
+
+  const auto* bundle =
+      prepare::find_prepared_parallel_copy_bundle(prepared.names, *control_flow, "entry", "logic.end.10");
+  if (bundle == nullptr ||
+      bundle->execution_site != prepare::PreparedParallelCopyExecutionSite::CriticalEdge) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer classifies the branch-owned short-circuit handoff as critical-edge executable")
+                    .c_str());
+  }
+
+  const auto predecessor_block_index = find_block_index(prepared.module.functions.front(), "entry");
+  const auto successor_block_index = find_block_index(prepared.module.functions.front(), "logic.end.10");
+  if (!predecessor_block_index.has_value() || !successor_block_index.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes the expected blocks for bundle placement")
+                    .c_str());
+  }
+
+  if (count_phi_move_bundles_at_block(*function_locations, *successor_block_index) == 0) {
+    return fail((std::string(failure_context) +
+                 ": regalloc stopped placing critical-edge short-circuit bundles at the published successor execution site")
+                    .c_str());
+  }
+  if (count_phi_move_bundles_at_block(*function_locations, *predecessor_block_index) != 0) {
+    return fail((std::string(failure_context) +
+                 ": regalloc still treats critical-edge short-circuit bundles as predecessor-terminator executable")
+                    .c_str());
   }
 
   return 0;
@@ -2762,6 +2842,14 @@ int run_backend_x86_handoff_boundary_short_circuit_tests() {
               make_x86_local_i32_short_circuit_or_guard_module(),
               "main",
               "minimal local-slot short-circuit or-guard prepared-control-flow ownership rejects phi-edge obligations when authoritative parallel-copy publication is removed but join metadata remains");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_short_circuit_regalloc_consumes_critical_edge_parallel_copy_execution_site(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit or-guard keeps critical-edge bundles on the published successor execution site");
       status != 0) {
     return status;
   }

@@ -1476,6 +1476,7 @@ void append_phi_move_resolution(const PreparedNameTables& names,
     if (!predecessor_block_index.has_value()) {
       continue;
     }
+    const auto successor_block_index = find_block_index(names, function, bundle.successor_label);
 
     for (const auto& step : bundle.steps) {
       if (step.move_index >= bundle.moves.size()) {
@@ -1489,9 +1490,17 @@ void append_phi_move_resolution(const PreparedNameTables& names,
       }
 
       const auto& join_transfer = function_cf.join_transfers[move.join_transfer_index];
+      std::size_t bundle_block_index = *predecessor_block_index;
       std::size_t instruction_index = function.blocks[*predecessor_block_index].insts.size();
+      if (bundle.execution_site != PreparedParallelCopyExecutionSite::PredecessorTerminator) {
+        if (!successor_block_index.has_value()) {
+          continue;
+        }
+        bundle_block_index = *successor_block_index;
+        instruction_index = 0;
+      }
       if (const auto join_block_index = find_block_index(names, function, join_transfer.join_block_label);
-          join_block_index.has_value()) {
+          join_block_index.has_value() && *join_block_index == bundle_block_index) {
         if (const auto join_instruction_index =
                 find_instruction_index_for_named_result(function.blocks[*join_block_index],
                                                         move.destination_value.name);
@@ -1510,7 +1519,7 @@ void append_phi_move_resolution(const PreparedNameTables& names,
         append_move_resolution_record(regalloc_function,
                                       *destination,
                                       *destination,
-                                      *predecessor_block_index,
+                                      bundle_block_index,
                                       instruction_index,
                                       false,
                                       PreparedMoveResolutionOpKind::SaveDestinationToTemp,
@@ -1533,7 +1542,7 @@ void append_phi_move_resolution(const PreparedNameTables& names,
           regalloc_function,
           *source,
           *destination,
-          *predecessor_block_index,
+          bundle_block_index,
           instruction_index,
           step.uses_cycle_temp_source,
           PreparedMoveResolutionOpKind::Move,

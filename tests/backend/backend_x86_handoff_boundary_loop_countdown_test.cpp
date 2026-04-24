@@ -4,6 +4,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -62,6 +63,38 @@ bir::Block* find_block(bir::Function& function, const char* label) {
     }
   }
   return nullptr;
+}
+
+std::optional<std::size_t> find_block_index(const bir::Function& function, const char* label) {
+  for (std::size_t index = 0; index < function.blocks.size(); ++index) {
+    if (function.blocks[index].label == label) {
+      return index;
+    }
+  }
+  return std::nullopt;
+}
+
+const prepare::PreparedValueLocationFunction* find_value_location_function(
+    const prepare::PreparedBirModule& prepared,
+    const char* function_name) {
+  return prepare::find_prepared_value_location_function(prepared, function_name);
+}
+
+std::size_t count_phi_move_bundles_at_block(
+    const prepare::PreparedValueLocationFunction& function_locations,
+    std::size_t block_index) {
+  return static_cast<std::size_t>(std::count_if(
+      function_locations.move_bundles.begin(),
+      function_locations.move_bundles.end(),
+      [&](const prepare::PreparedMoveBundle& bundle) {
+        return bundle.phase == prepare::PreparedMovePhase::BlockEntry &&
+               bundle.block_index == block_index &&
+               std::any_of(bundle.moves.begin(),
+                           bundle.moves.end(),
+                           [](const prepare::PreparedMoveResolution& move) {
+                             return move.reason.rfind("phi_", 0) == 0;
+                           });
+      }));
 }
 
 std::string_view block_label(const prepare::PreparedBirModule& prepared,
@@ -1150,6 +1183,53 @@ int check_loop_countdown_route_requires_authoritative_parallel_copy_bundles(
   return 0;
 }
 
+int check_loop_countdown_regalloc_consumes_predecessor_parallel_copy_execution_site(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  const auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  const auto* function_locations = find_value_location_function(prepared, function_name);
+  if (control_flow == nullptr || function_locations == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the loop regalloc/value-location contract")
+                    .c_str());
+  }
+
+  const auto* bundle =
+      prepare::find_prepared_parallel_copy_bundle(prepared.names, *control_flow, "entry", "loop");
+  if (bundle == nullptr ||
+      bundle->execution_site != prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer classifies the entry-to-loop handoff as predecessor-terminator executable")
+                    .c_str());
+  }
+
+  const auto predecessor_block_index = find_block_index(prepared.module.functions.front(), "entry");
+  const auto successor_block_index = find_block_index(prepared.module.functions.front(), "loop");
+  if (!predecessor_block_index.has_value() || !successor_block_index.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture no longer exposes the expected blocks for bundle placement")
+                    .c_str());
+  }
+
+  if (count_phi_move_bundles_at_block(*function_locations, *predecessor_block_index) == 0) {
+    return fail((std::string(failure_context) +
+                 ": regalloc stopped placing predecessor-owned loop bundles at the published predecessor block")
+                    .c_str());
+  }
+  if (count_phi_move_bundles_at_block(*function_locations, *successor_block_index) != 0) {
+    return fail((std::string(failure_context) +
+                 ": regalloc unexpectedly relocated predecessor-owned loop bundles into the header block")
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_local_countdown_guard_route_consumes_authoritative_guard_branch_condition(
     const bir::Module& module,
     const char* function_name,
@@ -1896,6 +1976,14 @@ int run_backend_x86_handoff_boundary_loop_countdown_tests() {
               make_x86_loop_countdown_join_module(),
               "main",
               "minimal loop-carried join countdown prepared-control-flow ownership rejects loop phi-edge obligations when authoritative parallel-copy publication is removed but join metadata remains");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_loop_countdown_regalloc_consumes_predecessor_parallel_copy_execution_site(
+              make_x86_loop_countdown_join_module(),
+              "main",
+              "minimal loop-carried join countdown keeps predecessor-owned bundles on the published predecessor execution site");
       status != 0) {
     return status;
   }
