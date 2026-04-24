@@ -1,5 +1,5 @@
 // parser_types_template.cpp — template registry, NTTP evaluation
-#include "parser.hpp"
+#include "impl/parser_impl.hpp"
 #include "lexer.hpp"
 
 #include <climits>

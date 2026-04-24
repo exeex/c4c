@@ -1,5 +1,5 @@
 // parser_types_declarator.cpp — declarator parsing, template argument parsing
-#include "parser.hpp"
+#include "impl/parser_impl.hpp"
 #include "lexer.hpp"
 
 #include <climits>

@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "lexer.hpp"
-#include "parser.hpp"
+#include "impl/parser_impl.hpp"
 #include "types_helpers.hpp"
 
 namespace c4c {
