@@ -1,6 +1,6 @@
 # Parser Public Facade PIMPL Boundary
 
-Status: Open
+Status: Closed
 Created: 2026-04-24
 Last Updated: 2026-04-24
 Parent Ideas:
@@ -62,6 +62,14 @@ Explore a conservative facade/PIMPL boundary:
   debug configuration, `parse()`, and parse-error inspection.
 - Focused parser tests pass.
 - `c4c_frontend` and `c4cll` build.
+
+## Completion Notes
+
+Closed after Step 7 final validation. `parser.hpp` no longer includes
+`impl/parser_state.hpp`; parser implementation files use
+`impl/parser_impl.hpp` as the private implementation index; parser tests that
+need private hooks explicitly include the private boundary. Focused parser
+proof, standalone public-header include proof, and full CTest validation passed.
 
 ## Non-Goals
 
