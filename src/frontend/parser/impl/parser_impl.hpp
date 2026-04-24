@@ -121,6 +121,8 @@ void parse_pointer_ref_qualifiers(Parser& parser, TypeSpec& ts,
                                   bool consume_pointer_token = true);
 bool is_grouped_declarator_start(Parser& parser);
 bool is_parenthesized_pointer_declarator_start(Parser& parser);
+Node* parse_ternary(Parser& parser);
+Node* parse_binary(Parser& parser, int min_prec);
 
 bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);

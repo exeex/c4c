@@ -9,17 +9,12 @@ Current Step Title: Move Implementation-Only Method Declarations Behind The Boun
 ## Just Finished
 
 Completed Step 3 declaration-boundary slice by removing the implementation-only
-declarator pointer-token and shape predicate helpers
-`Parser::apply_declarator_pointer_token`,
-`Parser::parse_pointer_ref_qualifiers`,
-`Parser::is_grouped_declarator_start`, and
-`Parser::is_parenthesized_pointer_declarator_start` from public `Parser`
-declarations in `src/frontend/parser/parser.hpp`, adding equivalent private
-`Parser&` helper declarations to
+expression helpers `Parser::parse_ternary` and `Parser::parse_binary` from
+public `Parser` declarations in `src/frontend/parser/parser.hpp`, adding
+equivalent private `Parser&` helper declarations to
 `src/frontend/parser/impl/parser_impl.hpp`, converting the implementations in
-`src/frontend/parser/parser_types_declarator.cpp` to the private parser
-boundary, and retargeting internal parser call sites to pass the parser
-explicitly.
+`src/frontend/parser/parser_expressions.cpp` to the private parser boundary,
+and retargeting internal parser call sites to pass the parser explicitly.
 
 ## Suggested Next
 
@@ -101,11 +96,17 @@ plan, keeping implementation-only declarations behind
   declarations, member definitions, or external direct member calls.
 - `consume_declarator_post_pointer_qualifiers` remains publicly declared
   because `tests/frontend/frontend_parser_tests.cpp` calls it directly.
+- `parse_unary` remains publicly declared because
+  `tests/frontend/frontend_parser_tests.cpp` calls it directly.
+- `parse_ternary` and `parse_binary` now live behind `impl/parser_impl.hpp`;
+  current source/test search found no remaining public declarations, member
+  definitions, or external direct member calls for the expression-parser
+  helpers.
 
 ## Proof
 
-Executor Step 3 focused proof passed for the declarator pointer-token and
-shape predicate helper declaration-boundary slice:
+Executor Step 3 focused proof passed for the ternary/binary expression helper
+declaration-boundary slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 
 Result: passed. Proof log: `test_after.log`.

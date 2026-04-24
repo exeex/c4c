@@ -676,8 +676,6 @@ class Parser {
   // ── expression parsing (Pratt) ────────────────────────────────────────────
   Node* parse_expr();            // comma-level
   Node* parse_assign_expr();     // assignment / ternary
-  Node* parse_ternary();         // ternary ?:
-  Node* parse_binary(int min_prec); // binary ops (precedence climbing)
   Node* parse_unary();           // prefix unary
   Node* parse_postfix(Node* base); // postfix ops (left-recursive)
   Node* parse_primary();         // primary expression

@@ -82,7 +82,7 @@ Node* Parser::parse_expr() {
 
 Node* Parser::parse_assign_expr() {
     ParseContextGuard trace(this, __func__);
-    Node* lhs = parse_ternary();
+    Node* lhs = parse_ternary(*this);
     if (active_context_state_.template_arg_expr_depth > 0 &&
         check_template_close())
         return lhs;
@@ -115,40 +115,40 @@ Node* Parser::parse_assign_expr() {
     return lhs;
 }
 
-Node* Parser::parse_ternary() {
-    ParseContextGuard trace(this, __func__);
-    Node* cond = parse_binary(4);
-    if (!check(TokenKind::Question)) return cond;
-    int ln = cur().line;
-    consume();  // ?
+Node* parse_ternary(Parser& parser) {
+    Parser::ParseContextGuard trace(&parser, __func__);
+    Node* cond = parse_binary(parser, 4);
+    if (!parser.check(TokenKind::Question)) return cond;
+    int ln = parser.cur().line;
+    parser.consume();  // ?
 
     Node* then_node;
-    if (check(TokenKind::Colon)) {
+    if (parser.check(TokenKind::Colon)) {
         // GNU extension: cond ?: else  (omitted-middle)
         then_node = cond;
     } else {
-        then_node = parse_expr();
+        then_node = parser.parse_expr();
     }
-    expect(TokenKind::Colon);
-    Node* else_node = parse_assign_expr();
+    parser.expect(TokenKind::Colon);
+    Node* else_node = parser.parse_assign_expr();
 
-    Node* n = make_node(NK_TERNARY, ln);
+    Node* n = parser.make_node(NK_TERNARY, ln);
     n->cond  = cond;
     n->then_ = then_node;
     n->else_ = else_node;
     return n;
 }
 
-Node* Parser::parse_binary(int min_prec) {
-    Node* lhs = parse_unary();
+Node* parse_binary(Parser& parser, int min_prec) {
+    Node* lhs = parser.parse_unary();
     while (true) {
-        if (active_context_state_.template_arg_expr_depth > 0 &&
-            check_template_close())
+        if (parser.active_context_state_.template_arg_expr_depth > 0 &&
+            parser.check_template_close())
             break;
-        int prec = bin_prec(cur().kind);
+        int prec = bin_prec(parser.cur().kind);
         if (prec < min_prec) break;
-        TokenKind k = cur().kind;
-        int ln = cur().line;
+        TokenKind k = parser.cur().kind;
+        int ln = parser.cur().line;
         const char* op;
         switch (k) {
             case TokenKind::Plus:             op = "+";  break;
@@ -172,9 +172,9 @@ Node* Parser::parse_binary(int min_prec) {
             case TokenKind::PipePipe:         op = "||"; break;
             default:                          op = "?";  break;
         }
-        consume();
-        Node* rhs = parse_binary(prec + 1);  // left-associative
-        lhs = make_binop(op, lhs, rhs, ln);
+        parser.consume();
+        Node* rhs = parse_binary(parser, prec + 1);  // left-associative
+        lhs = parser.make_binop(op, lhs, rhs, ln);
     }
     return lhs;
 }
