@@ -2553,6 +2553,19 @@ TypeSpec Parser::parse_base_type() {
                                 // Resolve pending template base types: e.g. is_const<T> → is_const<const int>
                                 if (inst->base_types[bi].tpl_struct_origin) {
                                     std::string origin = inst->base_types[bi].tpl_struct_origin;
+                                    auto find_instantiated_base_primary =
+                                        [&]() -> const Node* {
+                                        QualifiedNameRef origin_qn;
+                                        if (qualified_name_from_text(
+                                                *this, origin, &origin_qn) &&
+                                            (!origin_qn.qualifier_segments.empty() ||
+                                             origin_qn.is_global_qualified)) {
+                                            return find_template_struct_primary(origin_qn);
+                                        }
+                                        return find_template_struct_primary(
+                                            current_namespace_context_id(),
+                                            find_parser_text_id(origin), origin);
+                                    };
                                     auto type_mentions_bound_param =
                                         [&](const TypeSpec& candidate) -> bool {
                                             if (candidate.base == TB_TYPEDEF &&
@@ -2564,10 +2577,12 @@ TypeSpec Parser::parse_base_type() {
                                                 }
                                             }
                                             return false;
-                                        };
+                                    };
+                                    const Node* base_primary =
+                                        find_instantiated_base_primary();
                                     if (inst->base_types[bi].tpl_struct_args.data &&
                                         inst->base_types[bi].tpl_struct_args.size > 0 &&
-                                        find_template_struct_primary(origin)) {
+                                        base_primary) {
                                         bool can_use_typed_args = true;
                                         std::vector<ParsedTemplateArg> base_args;
                                         base_args.reserve(
@@ -2598,8 +2613,6 @@ TypeSpec Parser::parse_base_type() {
                                             base_args.push_back(base_arg);
                                         }
                                         if (can_use_typed_args) {
-                                            const Node* base_primary =
-                                                find_template_struct_primary(origin);
                                             std::vector<std::pair<std::string, TypeSpec>>
                                                 base_prelim_tb;
                                             std::vector<std::pair<std::string, long long>>
@@ -2790,11 +2803,11 @@ TypeSpec Parser::parse_base_type() {
                                         set_template_arg_debug_refs_text(
                                             &inst->base_types[bi], updated_refs);
                                     }
-                                    if (all_resolved && find_template_struct_primary(origin)) {
+                                    base_primary = find_instantiated_base_primary();
+                                    if (all_resolved && base_primary) {
                                         // Build ParsedTemplateArg list from resolved parts
                                         // and fill in deferred NTTP defaults, then trigger
                                         // a proper template instantiation.
-                                        const Node* base_primary = find_template_struct_primary(origin);
                                         std::vector<ParsedTemplateArg> base_args;
                                         for (int pi = 0; pi < (int)new_arg_parts.size() &&
                                              pi < base_primary->n_template_params; ++pi) {
