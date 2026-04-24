@@ -3,7 +3,7 @@ Source Idea Path: ideas/open/90_out_of_ssa_critical_edge_and_parallel_copy_deepe
 Source Plan Path: plan.md
 Current Step ID: 2
 Current Step Title: Publish Critical-Edge And Bundle Semantics
-Plan Review Counter: 3 / 6
+Plan Review Counter: 4 / 6
 # Current Packet
 
 ## Just Finished
@@ -15,16 +15,18 @@ successor block-entry phi move bundle.
 
 ## Suggested Next
 
-Deepen producer-side coverage on a fixture that truthfully publishes
-`execution_site=successor_entry` from `out_of_ssa` itself instead of only
-simulating the downstream handoff by mutating an already-prepared compare-join
-bundle after regalloc.
+Confirm whether Step 2 needs a producer-path extension for truthful
+`execution_site=successor_entry` publication or whether the current
+`join_transfers -> parallel_copy_bundles` pipeline makes that shape
+unreachable, then shift the next packet to another owned publication seam if
+successor-entry bundles remain consumer-only audit territory.
 
 ## Watchouts
 
-- The new audit proves the downstream successor-block consumer path, but the
-  owned fixtures still do not exercise a real producer-published
-  `execution_site=successor_entry` bundle.
+- The new audit proves the downstream successor-block consumer path, but
+  `parallel_copy_bundles` are currently built only from `join_transfers`,
+  which appear to require multi-predecessor join blocks and therefore may make
+  producer-published `execution_site=successor_entry` bundles unreachable.
 - Keep this route target-independent; do not repair critical-edge handling with
   x86-local edge recovery or testcase-shaped splitting.
 - Preserve idea 87's phi-elimination ownership while deepening bundle
