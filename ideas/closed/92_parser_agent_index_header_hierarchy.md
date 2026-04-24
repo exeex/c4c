@@ -1,12 +1,26 @@
 # Parser Agent Index Header Hierarchy
 
-Status: Open
+Status: Closed
 Created: 2026-04-24
 Last Updated: 2026-04-24
 Parent Ideas:
 - [87_parser_visible_name_resolution_structured_result.md](/workspaces/c4c/ideas/closed/87_parser_visible_name_resolution_structured_result.md)
 
 Reopened: 2026-04-24
+
+## Completion Notes
+
+Closed after the reopened parser hierarchy runbook completed. Core parser
+implementation files now live under `src/frontend/parser/impl/` with short
+filenames, and type/declarator/template implementation files now live under
+`src/frontend/parser/impl/types/` with short filenames. `parser.hpp` remains
+the public facade, parser-private headers live under `impl/`, and the type
+subdomain keeps `types_helpers.hpp` as its private index; no thin
+`impl/types/types.hpp` wrapper was added because no meaningful shared index
+declarations remained.
+
+Focused parser proof passed, the full CTest suite passed `2974/2974`, and the
+close-time regression guard passed with no new failures.
 
 ## Reopen Note
 
