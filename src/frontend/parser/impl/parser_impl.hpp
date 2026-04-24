@@ -1,6 +1,6 @@
 #pragma once
 
-// Private parser implementation index for parser_*.cpp translation units.
+// Private parser implementation index for parser impl/*.cpp translation units.
 // This header gathers declarations shared inside the parser implementation
 // without extending the public parser facade.
 #include "../parser_support.hpp"

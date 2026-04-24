@@ -8,18 +8,19 @@
 // Role:
 // - owns the recursive-descent parser state and top-level entry point
 // - declares the cross-translation-unit parser helper families
-// - acts as the navigation index for parser_*.cpp implementation files
+// - acts as the public facade while impl/parser_impl.hpp indexes private
+//   implementation files
 //
 // Implementation map:
-// - parser_core.cpp: token cursor, diagnostics, namespace/visibility plumbing
-// - parser_types_base.cpp: type-specifier parsing and enum parsing
-// - parser_types_declarator.cpp: declarator parsing and qualified type spelling
-// - parser_types_struct.cpp: record/struct parsing and in-record dispatch
-// - parser_types_template.cpp: template argument parsing and template metadata
-// - parser_expressions.cpp: expression parsing
-// - parser_statements.cpp: statement parsing
-// - parser_declarations.cpp: declaration and translation-unit entry points
-// - parser_support.cpp: AST builders and shared parser helpers
+// - impl/core.cpp: token cursor, diagnostics, namespace/visibility plumbing
+// - impl/types/base.cpp: type-specifier parsing and enum parsing
+// - impl/types/declarator.cpp: declarator parsing and qualified type spelling
+// - impl/types/struct.cpp: record/struct parsing and in-record dispatch
+// - impl/types/template.cpp: template argument parsing and template metadata
+// - impl/expressions.cpp: expression parsing
+// - impl/statements.cpp: statement parsing
+// - impl/declarations.cpp: declaration and translation-unit entry points
+// - impl/support.cpp: AST builders and shared parser helpers
 //
 // Design constraints:
 //  - All AST nodes and strings are allocated from the supplied Arena.

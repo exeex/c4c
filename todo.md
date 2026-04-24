@@ -1,62 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/92_parser_agent_index_header_hierarchy.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Move Type Parser Implementation Files Under impl/types/
+Current Step ID: 4
+Current Step Title: Clean Compatibility Fallout And Documentation
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 3 by moving the four type-family parser implementation
-files under `src/frontend/parser/impl/types/` and removing redundant
-`parser_types_` filename prefixes:
-- `src/frontend/parser/parser_types_base.cpp` ->
-  `src/frontend/parser/impl/types/base.cpp`
-- `src/frontend/parser/parser_types_declarator.cpp` ->
-  `src/frontend/parser/impl/types/declarator.cpp`
-- `src/frontend/parser/parser_types_struct.cpp` ->
-  `src/frontend/parser/impl/types/struct.cpp`
-- `src/frontend/parser/parser_types_template.cpp` ->
-  `src/frontend/parser/impl/types/template.cpp`
+Completed plan Step 4 by cleaning stale comments, docs, and parser-focused
+test comments left behind by the Step 2/3 file moves.
 
-Updated only the includes made stale by the new directory depth:
-- Moved type-family files now include `"../parser_impl.hpp"` instead of
-  `"impl/parser_impl.hpp"`.
-- Moved type-family files now include `"types_helpers.hpp"` instead of
-  `"impl/types/types_helpers.hpp"`.
+Updated live references that still implied parser implementation files lived at
+the old top-level paths:
+- `src/frontend/parser/parser.hpp` now points implementation navigation at the
+  `impl/` and `impl/types/` files and keeps the public facade role explicit.
+- `src/frontend/parser/impl/parser_impl.hpp` now describes itself as the
+  private index for `impl/*.cpp` translation units.
+- `src/frontend/parser/BOUNDARY_AUDIT.md` now names the moved parser
+  implementation paths.
+- `docs/frontend_compile_time_hotspot_inventory.md` now preserves the original
+  timing data while naming the moved parser translation units.
+- Parser-focused regression comments that named `parser_types_struct.cpp` now
+  name `impl/types/struct.cpp`.
 
-No CMake source-list edit was needed because the frontend target uses a
-recursive `*.cpp` glob.
+Lightweight stale-reference search:
+
+```sh
+rg -n "parser_(core|declarations|expressions|statements|support)\\.cpp|parser_types_(base|declarator|struct|template)\\.cpp|src/frontend/parser/(parser_(core|declarations|expressions|statements|support)|parser_types_(base|declarator|struct|template))\\.cpp|src/frontend/parser/(declarations|expressions|statements|types|support|core)\\.cpp" --glob '!plan.md' --glob '!todo.md' --glob '!ideas/**'
+```
+
+Result: no matches in live source, docs, tests, build files, or scripts outside
+the lifecycle/source-idea/archive paths intentionally excluded above.
 
 ## Suggested Next
 
-Start Step 4 cleanup by searching for stale references to the old top-level
-parser implementation filenames in public comments, docs, tests, and source
-navigation notes, then update only references that are still inaccurate after
-the moves.
+Ask the plan owner to decide whether the active runbook is exhausted and should
+close, retire, or continue with a follow-up packet.
 
 ## Watchouts
 
-- This is structural parser layout work; preserve parser behavior, AST output,
-  diagnostics behavior, visible-name behavior, pragma behavior, template
-  parsing behavior, and testcase expectations.
-- Do not split `ast.hpp`.
-- Do not create one-header-per-implementation-file indexes.
-- The five non-type implementation files now live under `impl/`, and the four
-  type-family implementation files now live under `impl/types/`; keep them
-  there in later cleanup.
-- The previous parser facade boundary work already made
-  `src/frontend/parser/parser.hpp` a smaller public surface; do not regress it
-  by reintroducing private state dependencies.
 - Keep the transient `review/step3_parser_facade_boundary_review.md` artifact
   out of lifecycle commits unless the supervisor explicitly requests it.
-- `parser.hpp` still contains an implementation-map comment listing old flat
-  filenames; update or remove that public-facade private-navigation comment in
-  a cleanup slice so the public facade does not become stale.
-- `BOUNDARY_AUDIT.md` already mentions older post-move-looking names such as
-  `declarations.cpp`, `types.cpp`, and `statements.cpp`; treat it as stale
-  documentation to reconcile in Step 4 rather than as a build/source reference.
+- The stale-reference search intentionally excluded `plan.md`, `todo.md`, and
+  `ideas/**` because the active plan/source idea record the historical move map
+  and the repository treats closed/draft ideas as archive.
+- No parser semantics, build sources, file moves, `ast.hpp` split, or
+  one-header-per-implementation-file index work was done in this packet.
 
 ## Proof
 

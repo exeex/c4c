@@ -1,6 +1,6 @@
 # Parser Boundary Audit Inventory
 
-Last Updated: 2026-03-29
+Last Updated: 2026-04-24
 Plan Source: `ideas/open/07_parser_whitelist_boundary_audit.md`
 
 This note is the Step 1 inventory for the active parser whitelist-boundary
@@ -10,12 +10,12 @@ ranking pass.
 
 ## Constraint / `requires` Boundaries
 
-1. `src/frontend/parser/declarations.cpp:157`
+1. `src/frontend/parser/impl/declarations.cpp:230`
    `is_cpp20_requires_clause_decl_boundary(Parser&)` is a local declaration
    boundary whitelist that already avoids splitting after `::` and `Identifier<`.
    Tag: `acceptable breadth`
 
-2. `src/frontend/parser/declarations.cpp:219`
+2. `src/frontend/parser/impl/declarations.cpp:459`
    `skip_cpp20_constraint_atom(Parser&)` still consumes a generic token stream
    until a small set of hard stops appears. It tracks nesting, but any token not
    on the stop list is accepted by default.
@@ -25,13 +25,13 @@ ranking pass.
    `tests/cpp/internal/postive_case/cpp20_requires_trait_disjunction_function_parse.cpp`
    exists because this boundary had been too broad.
 
-3. `src/frontend/parser/declarations.cpp:308`
+3. `src/frontend/parser/impl/declarations.cpp:548`
    `parse_optional_cpp20_requires_clause(Parser&)` now refuses empty
    declaration-level constraints except for the explicit record-declaration
-   boundary check at `declarations.cpp:145`.
+   boundary check at `impl/declarations.cpp:218`.
    Tag: `acceptable breadth`
 
-4. `src/frontend/parser/declarations.cpp:335`
+4. `src/frontend/parser/impl/declarations.cpp:575`
    `parse_optional_cpp20_trailing_requires_clause(Parser&)` now reuses the same
    atom-by-atom constraint walk as the ordinary `requires` parser, so it stops
    after a complete constraint-expression instead of greedily consuming the
@@ -42,27 +42,27 @@ ranking pass.
    plus the dedicated dump assertion keep the following `inner` declaration
    visible after a malformed constrained member prelude.
 
-5. `src/frontend/parser/types.cpp:497`
-   The older `types.cpp` copy of `is_cpp20_requires_clause_decl_boundary(Parser&)`
+5. `src/frontend/parser/impl/types/types_helpers.hpp:1129`
+   The type-helper copy of `is_cpp20_requires_clause_decl_boundary(Parser&)`
    falls back directly to `parser.is_type_start()`.
    Tag: `known bug`
    Reason: this is materially broader than the newer declaration-side helper and
    can inherit every false positive from `is_type_start()`.
 
-6. `src/frontend/parser/types.cpp:512`
-   The older `types.cpp` copy of `skip_cpp20_constraint_atom(Parser&)` shares the
+6. `src/frontend/parser/impl/types/types_helpers.hpp:1287`
+   The type-helper copy of `skip_cpp20_constraint_atom(Parser&)` shares the
    same broad consume-until-stop shape and still depends on the broader
-   `types.cpp` boundary probe.
+   type-helper boundary probe.
    Tag: `known bug`
 
-7. `src/frontend/parser/types.cpp:601`
-   The older `types.cpp` copy of `parse_optional_cpp20_requires_clause(Parser&)`
+7. `src/frontend/parser/impl/types/types_helpers.hpp:1381`
+   The type-helper copy of `parse_optional_cpp20_requires_clause(Parser&)`
    still treats any consumed token run as a valid constraint expression.
    Tag: `suspicious breadth`
 
 ## Generic Recovery Loops
 
-1. `src/frontend/parser/types.cpp:4426`
+1. `src/frontend/parser/impl/types/struct.cpp:142`
    `recover_record_member_parse_error(int)` skips until `;` or an unmatched `}`
    while only tracking brace depth.
    Tag: `known bug`
@@ -73,13 +73,13 @@ ranking pass.
    malformed non-alias `using` member, but broader malformed member shapes are
    still suspicious.
 
-2. `src/frontend/parser/types.cpp:5872`
-   `try_parse_record_member_or_recover(...)` only treats
-   `SyncedAtSemicolon` as recoverable and rethrows on `StoppedAtRBrace`. That is
-   narrower than the helper above, but it still depends on the broad skip path.
+2. `src/frontend/parser/impl/types/struct.cpp:1813`
+   `try_parse_record_member(...)` delegates recovery through
+   `recover_record_member_parse_error(...)`. That path is narrower than the
+   helper above, but it still depends on the broad skip path.
    Tag: `suspicious breadth`
 
-3. `src/frontend/parser/statements.cpp:10`
+3. `src/frontend/parser/impl/statements.cpp:28`
    `parse_block()` uses statement-level recovery that skips to `;` or `}` after
    any exception.
    Tag: `acceptable breadth`
@@ -88,7 +88,7 @@ ranking pass.
 
 ## Start-Condition Probes
 
-1. `src/frontend/parser/types.cpp:2560`
+1. `src/frontend/parser/impl/types/base.cpp:66`
    `Parser::is_type_start()` intentionally accepts many starters, including
    qualifiers, storage-class specifiers, unresolved typedef-like identifiers,
    `Identifier<`, and qualified names.
@@ -96,7 +96,7 @@ ranking pass.
    Reason: this is necessary in some contexts, but it is too broad to reuse as a
    declaration-boundary detector inside `requires` parsing.
 
-2. `src/frontend/parser/types.cpp:2633`
+2. `src/frontend/parser/impl/types/base.cpp:176`
    `Parser::can_start_parameter_type()` is even broader than `is_type_start()`
    because it also accepts unresolved identifier forms used during parameter
    recovery.
@@ -104,19 +104,19 @@ ranking pass.
    Reason: broadness is expected here, but callers should treat it as a local
    parameter probe only.
 
-3. `src/frontend/parser/statements.cpp:279`
+3. `src/frontend/parser/impl/statements.cpp:89`
    `parse_stmt()` uses `is_type_start()` for `for (...)` initializer
    disambiguation.
    Tag: `acceptable breadth`
 
-4. `src/frontend/parser/statements.cpp:620`
+4. `src/frontend/parser/impl/statements.cpp:89`
    `parse_stmt()` uses `is_type_start()` again to choose declaration vs
    expression parsing for local statements, with a special qualified-call guard.
    Tag: `acceptable breadth`
 
 ## `NK_EMPTY` Parse-And-Discard Sites
 
-1. `src/frontend/parser/statements.cpp:77`
+1. `src/frontend/parser/impl/statements.cpp:89`
    Local `using` aliases and `using namespace` forms used to skip directly to
    `;` and return `NK_EMPTY`; the current tightening pass now parses them
    structurally enough to recover malformed local `using` forms as
@@ -126,7 +126,7 @@ ranking pass.
    `tests/cpp/internal/parse_only_case/local_using_alias_recovery_preserves_following_decl_parse.cpp`
    keeps the following `kept` declaration visible after a malformed local alias.
 
-2. `src/frontend/parser/declarations.cpp:510`
+2. `src/frontend/parser/impl/declarations.cpp:1157`
    Top-level `extern "C"` parsing now drops empty linkage-spec blocks instead of
    materializing a synthetic `NK_EMPTY` node when the body does not produce
    declarations.
@@ -136,7 +136,7 @@ ranking pass.
    keeps the following `kept` global visible without an intermediate `Empty`
    node after `extern "C" {}`.
 
-3. `src/frontend/parser/declarations.cpp:1783`
+3. `src/frontend/parser/impl/declarations.cpp:1157`
    The malformed top-level storage-class fallback used to skip blindly to `;`
    when no type followed `static` / `extern` / related specifiers.
    Tag: `acceptable breadth`
@@ -145,7 +145,7 @@ ranking pass.
    now proves `extern foo` stops before the next-line `int kept;` declaration
    instead of erasing it through broad `skip_until(';')` recovery.
 
-4. `src/frontend/parser/declarations.cpp:1925`
+4. `src/frontend/parser/impl/declarations.cpp:1157`
    The generic top-level no-type-start recovery now reuses the shared
    declaration-boundary helper, so malformed discarded declarations stop before
    later `class` / `namespace` / `constexpr` / `consteval` starters instead of
@@ -156,7 +156,7 @@ ranking pass.
    keeps the following `class kept {};` definition visible after a malformed
    top-level `friend` line.
 
-5. `src/frontend/parser/declarations.cpp:1336`
+5. `src/frontend/parser/impl/declarations.cpp:2111`
    Top-level `asm(...)` parsing now drops valid declarations out of the program
    item stream and recovers before the next strong declaration starter when the
    parenthesized payload never closes, instead of materializing a synthetic
@@ -170,7 +170,7 @@ ranking pass.
    keep the following `kept` global visible with no intermediate `Empty` node
    after valid `asm("nop");` input and after malformed `asm(` recovery.
 
-6. `src/frontend/parser/declarations.cpp:924`
+6. `src/frontend/parser/impl/declarations.cpp:1267`
    Top-level `using namespace`, `using ns::name`, and `using Alias = type`
    handling now performs its namespace / alias bookkeeping and then drops out of
    the item stream instead of materializing synthetic `NK_EMPTY` nodes, while
@@ -184,7 +184,7 @@ ranking pass.
    `top_level_using_alias_recovery_preserves_following_decl_parse.cpp` still
    prove malformed missing-semicolon cases preserve the following declaration.
 
-8. `src/frontend/parser/declarations.cpp:911`
+8. `src/frontend/parser/impl/declarations.cpp:1157`
    Empty top-level `namespace {}` / `namespace ns {}` wrappers now drop out of
    the AST entirely instead of materializing a synthetic `NK_EMPTY` node when
    the body contributes no declarations.
@@ -194,7 +194,7 @@ ranking pass.
    keeps the following `kept` global visible without an intermediate `Empty`
    node after an empty namespace block.
 
-9. `src/frontend/parser/declarations.cpp:2086`
+9. `src/frontend/parser/impl/declarations.cpp:3234`
    Top-level tag-only declarations and typedef-backed tag definitions now drop
    out of the item stream when the real `StructDef` / `EnumDef` has already
    been recorded in the parser tag-definition tables, instead of appending a
@@ -209,7 +209,7 @@ ranking pass.
    node after plain structure-only declarations, declaration-level attribute
    tails, and typedef-backed tag declarations.
 
-10. `src/frontend/parser/declarations.cpp:2086`
+10. `src/frontend/parser/impl/declarations.cpp:3234`
    Top-level forward tag declarations now also drop out of the item stream
    instead of materializing a synthetic `NK_EMPTY` node after bookkeeping-only
    declarations such as `struct Forward;`.
@@ -219,7 +219,7 @@ ranking pass.
    keeps the following `kept` global visible with no intermediate `Empty`
    node after `struct Forward;`.
 
-11. `src/frontend/parser/declarations.cpp:1417`
+11. `src/frontend/parser/impl/declarations.cpp:266`
    Top-level C++ `concept` declarations now drop out of the item stream after
    registering the concept name, instead of materializing a synthetic
    `NK_EMPTY` node for either plain or templated `concept` declarations.
@@ -229,7 +229,7 @@ ranking pass.
    keeps the following `kept` global visible with no intermediate `Empty`
    node after `template<typename T> concept audit_concept = true;`.
 
-12. `src/frontend/parser/declarations.cpp:2026`
+12. `src/frontend/parser/impl/declarations.cpp:2826`
    Top-level `typedef` declarations now drop out of the item stream after
    updating alias metadata instead of materializing a synthetic `NK_EMPTY`
    node for bookkeeping-only aliases such as `typedef int Value;`.
@@ -239,7 +239,7 @@ ranking pass.
    keeps the following `kept` global visible with no intermediate `Empty`
    node after simple and function-pointer typedef declarations.
 
-13. `src/frontend/parser/declarations.cpp:1422`
+13. `src/frontend/parser/impl/declarations.cpp:2075`
    Top-level `#pragma pack(...)` directives now update parser pack state and
    drop out of the item stream instead of materializing a synthetic `NK_EMPTY`
    node before the following declaration.
@@ -249,7 +249,7 @@ ranking pass.
    keeps the following `kept` global visible with no intermediate `Empty`
    node after `#pragma pack(push, 1)`.
 
-14. `src/frontend/parser/declarations.cpp:1437`
+14. `src/frontend/parser/impl/declarations.cpp:2092`
    Top-level `#pragma GCC visibility push/pop` directives now update parser
    visibility state and drop out of the item stream instead of materializing a
    synthetic `NK_EMPTY` node before the following declaration.
@@ -259,7 +259,7 @@ ranking pass.
    keeps the following `kept` global visible with no intermediate `Empty`
    node after `#pragma GCC visibility push(hidden)`.
 
-15. `src/frontend/parser/declarations.cpp:1960`
+15. `src/frontend/parser/impl/declarations.cpp:2699`
    The generic unsupported top-level declaration recovery now stops at the next
    declaration boundary or `;` and drops out of the item stream instead of
    materializing a synthetic `NK_EMPTY` node after malformed lines such as bare
@@ -274,11 +274,11 @@ ranking pass.
 
 ## Ranked First Tightening Targets
 
-1. `src/frontend/parser/types.cpp:512`
+1. `src/frontend/parser/impl/types/types_helpers.hpp:1287`
    Replace the older duplicate `skip_cpp20_constraint_atom(Parser&)` boundary
    with the narrower declaration-side rule so dependent `requires` parsing in
-   `types.cpp` cannot inherit broad `is_type_start()` false positives.
+   type helpers cannot inherit broad `is_type_start()` false positives.
 
-2. `src/frontend/parser/types.cpp:4426`
+2. `src/frontend/parser/impl/types/struct.cpp:142`
    Narrow record-member recovery so malformed members cannot silently consume up
    to the record-closing `}` without a more explicit outcome.

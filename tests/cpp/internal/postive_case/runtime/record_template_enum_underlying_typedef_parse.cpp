@@ -1,5 +1,5 @@
 // Parse-only regression: record-body template-origin setup plus typedef-backed
-// enum underlying types should remain visible while `parser_types_struct.cpp`
+// enum underlying types should remain visible while `impl/types/struct.cpp`
 // finishes routing enum typedef reads through parser-local helpers.
 // RUN: %c4cll --parse-only %s
 

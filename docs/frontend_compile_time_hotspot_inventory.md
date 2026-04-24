@@ -23,10 +23,10 @@ Build: `build` (`RelWithDebInfo`, optimized single-TU compile commands from
 | 3 | `src/frontend/hir/hir_stmt.cpp` | 4.998 | 83946 | 345 |
 | 4 | `src/frontend/hir/hir_templates.cpp` | 4.886 | 85265 | 360 |
 | 5 | `src/codegen/lir/stmt_emitter_call.cpp` | 3.939 | 85628 | 384 |
-| 6 | `src/frontend/parser/parser_declarations.cpp` | 2.957 | 65266 | 310 |
-| 7 | `src/frontend/parser/parser_types_base.cpp` | 2.696 | 67811 | 317 |
-| 8 | `src/frontend/parser/parser_expressions.cpp` | 1.205 | 55439 | 252 |
-| 9 | `src/frontend/parser/parser_statements.cpp` | 0.872 | 54420 | 249 |
+| 6 | `src/frontend/parser/impl/declarations.cpp` | 2.957 | 65266 | 310 |
+| 7 | `src/frontend/parser/impl/types/base.cpp` | 2.696 | 67811 | 317 |
+| 8 | `src/frontend/parser/impl/expressions.cpp` | 1.205 | 55439 | 252 |
+| 9 | `src/frontend/parser/impl/statements.cpp` | 0.872 | 54420 | 249 |
 
 ## Immediate Takeaways
 
