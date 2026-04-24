@@ -2303,6 +2303,23 @@ find_authoritative_branch_owned_join_transfer(
                                                        false_predecessor_label_id);
 }
 
+[[nodiscard]] inline const PreparedParallelCopyBundle*
+find_published_parallel_copy_bundle_for_edge_transfer(
+    const PreparedControlFlowFunction& function_cf,
+    const PreparedEdgeValueTransfer& edge_transfer) {
+  if (edge_transfer.predecessor_label == kInvalidBlockLabel ||
+      edge_transfer.successor_label == kInvalidBlockLabel) {
+    return nullptr;
+  }
+  for (const auto& bundle : function_cf.parallel_copy_bundles) {
+    if (bundle.predecessor_label == edge_transfer.predecessor_label &&
+        bundle.successor_label == edge_transfer.successor_label) {
+      return &bundle;
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] inline std::optional<PreparedAuthoritativeBranchParallelCopyBundles>
 find_authoritative_branch_owned_parallel_copy_bundles(
     const PreparedNameTables& names,
@@ -2325,19 +2342,10 @@ find_authoritative_branch_owned_parallel_copy_bundles(
     return std::nullopt;
   }
 
-  const auto find_bundle = [&](const PreparedEdgeValueTransfer& edge_transfer)
-      -> const PreparedParallelCopyBundle* {
-    for (const auto& bundle : function_cf.parallel_copy_bundles) {
-      if (bundle.predecessor_label == edge_transfer.predecessor_label &&
-          bundle.successor_label == edge_transfer.successor_label) {
-        return &bundle;
-      }
-    }
-    return nullptr;
-  };
-
-  const auto* true_bundle = find_bundle(*authoritative_join_transfer->true_transfer);
-  const auto* false_bundle = find_bundle(*authoritative_join_transfer->false_transfer);
+  const auto* true_bundle = find_published_parallel_copy_bundle_for_edge_transfer(
+      function_cf, *authoritative_join_transfer->true_transfer);
+  const auto* false_bundle = find_published_parallel_copy_bundle_for_edge_transfer(
+      function_cf, *authoritative_join_transfer->false_transfer);
   if (true_bundle == nullptr || false_bundle == nullptr || true_bundle == false_bundle) {
     return std::nullopt;
   }

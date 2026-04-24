@@ -581,6 +581,52 @@ int check_authoritative_parallel_copy_execution_block_publication() {
   return 0;
 }
 
+int check_authoritative_parallel_copy_bundle_lookup_requires_published_edge_ownership() {
+  auto prepared = legalize_short_circuit_or_guard_module();
+  auto* control_flow =
+      find_control_flow_function(prepared, "short_circuit_or_prepare_contract");
+  if (control_flow == nullptr) {
+    return fail("expected prepared control-flow before removing published edge ownership");
+  }
+
+  const auto authoritative_join = prepare::find_authoritative_branch_owned_join_transfer(
+      prepared.names, *control_flow, "entry");
+  if (!authoritative_join.has_value() ||
+      authoritative_join->true_transfer == nullptr ||
+      authoritative_join->false_transfer == nullptr) {
+    return fail("expected published branch-owned join transfer before removing edge ownership");
+  }
+
+  if (prepare::find_published_parallel_copy_bundle_for_edge_transfer(
+          *control_flow, *authoritative_join->true_transfer) == nullptr ||
+      prepare::find_published_parallel_copy_bundle_for_edge_transfer(
+          *control_flow, *authoritative_join->false_transfer) == nullptr) {
+    return fail("expected published bundle lookup seam to resolve branch-owned join bundles before mutation");
+  }
+
+  auto* mutable_true_transfer =
+      const_cast<prepare::PreparedEdgeValueTransfer*>(authoritative_join->true_transfer);
+  auto* mutable_false_transfer =
+      const_cast<prepare::PreparedEdgeValueTransfer*>(authoritative_join->false_transfer);
+  mutable_true_transfer->predecessor_label = c4c::kInvalidBlockLabel;
+  mutable_false_transfer->successor_label = c4c::kInvalidBlockLabel;
+
+  if (prepare::find_published_parallel_copy_bundle_for_edge_transfer(
+          *control_flow, *mutable_true_transfer) != nullptr ||
+      prepare::find_published_parallel_copy_bundle_for_edge_transfer(
+          *control_flow, *mutable_false_transfer) != nullptr) {
+    return fail("expected published bundle lookup seam to require published edge labels instead of recomputing bundle ownership");
+  }
+
+  const auto authoritative_bundles = prepare::find_authoritative_branch_owned_parallel_copy_bundles(
+      prepared.names, *control_flow, "entry");
+  if (authoritative_bundles.has_value()) {
+    return fail("expected authoritative branch-owned bundle helper to fail once published edge ownership is removed");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -628,6 +674,11 @@ int main() {
     return status;
   }
   if (const int status = check_authoritative_parallel_copy_execution_block_publication();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          check_authoritative_parallel_copy_bundle_lookup_requires_published_edge_ownership();
       status != 0) {
     return status;
   }
