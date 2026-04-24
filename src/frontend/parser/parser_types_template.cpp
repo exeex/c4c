@@ -276,9 +276,8 @@ bool Parser::ensure_template_struct_instantiated_from_args(
 
     std::vector<std::pair<std::string, TypeSpec>> type_bindings;
     std::vector<std::pair<std::string, long long>> nttp_bindings;
-    const auto* specializations = find_template_struct_specializations(
-        current_namespace_context_id(), find_parser_text_id(template_name),
-        template_name, primary_tpl);
+    const auto* specializations =
+        find_template_struct_specializations(primary_tpl);
     const Node* selected = select_template_struct_pattern_for_args(
         args, primary_tpl, specializations, &type_bindings, &nttp_bindings);
     if (!selected) return false;
