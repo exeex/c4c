@@ -1720,67 +1720,72 @@ bool Parser::try_parse_record_method_or_field_member(
     return true;
 }
 
-bool Parser::try_parse_record_type_like_member_dispatch(
+bool try_parse_record_type_like_member_dispatch(
+    Parser& parser,
     std::vector<Node*>* fields,
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
-    ParseContextGuard trace(this, __func__);
-    if (try_parse_record_using_member(member_typedef_names,
-                                      member_typedef_types)) {
+    Parser::ParseContextGuard trace(&parser, __func__);
+    if (parser.try_parse_record_using_member(member_typedef_names,
+                                             member_typedef_types)) {
         return true;
     }
-    if (try_parse_nested_record_member(fields, check_dup_field)) return true;
-    if (try_parse_record_enum_member(fields, check_dup_field)) return true;
-    return try_parse_record_typedef_member(member_typedef_names,
-                                           member_typedef_types);
+    if (parser.try_parse_nested_record_member(fields, check_dup_field))
+        return true;
+    if (parser.try_parse_record_enum_member(fields, check_dup_field)) return true;
+    return parser.try_parse_record_typedef_member(member_typedef_names,
+                                                  member_typedef_types);
 }
 
-bool Parser::try_parse_record_member_dispatch(
+bool try_parse_record_member_dispatch(
+    Parser& parser,
     const std::string& struct_source_name,
     std::vector<Node*>* fields,
     std::vector<Node*>* methods,
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
-    ParseContextGuard trace(this, __func__);
+    Parser::ParseContextGuard trace(&parser, __func__);
     if (try_parse_record_type_like_member_dispatch(
-            fields, member_typedef_names, member_typedef_types,
+            parser, fields, member_typedef_names, member_typedef_types,
             check_dup_field)) {
         return true;
     }
-    if (try_parse_record_special_member_dispatch(struct_source_name, methods))
+    if (try_parse_record_special_member_dispatch(parser, struct_source_name,
+                                                 methods))
         return true;
-    return try_parse_record_method_or_field_member(fields, methods,
-                                                   check_dup_field);
+    return parser.try_parse_record_method_or_field_member(fields, methods,
+                                                          check_dup_field);
 }
 
-bool Parser::try_parse_record_special_member_dispatch(
+bool try_parse_record_special_member_dispatch(
+    Parser& parser,
     const std::string& struct_source_name,
     std::vector<Node*>* methods) {
-    if (try_parse_record_constructor_member(struct_source_name, methods)) {
+    if (parser.try_parse_record_constructor_member(struct_source_name, methods)) {
         return true;
     }
-    return try_parse_record_destructor_member(struct_source_name, methods);
+    return parser.try_parse_record_destructor_member(struct_source_name, methods);
 }
 
-bool Parser::try_parse_record_member_with_template_prelude(
+bool try_parse_record_member_with_template_prelude(
+    Parser& parser,
     const std::string& struct_source_name,
     std::vector<Node*>* fields,
     std::vector<Node*>* methods,
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
-    RecordTemplatePreludeGuard tmpl_guard(this);
-    parse_record_template_member_prelude(*this, &tmpl_guard.injected_type_params,
+    Parser::RecordTemplatePreludeGuard tmpl_guard(&parser);
+    parse_record_template_member_prelude(parser, &tmpl_guard.injected_type_params,
                                          &tmpl_guard.pushed_template_scope);
-    parse_optional_cpp20_requires_clause(*this);
-    if (try_skip_record_friend_member(*this)) return true;
-    if (try_skip_record_static_assert_member(*this, methods)) return true;
-    return try_parse_record_member_dispatch(struct_source_name, fields, methods,
-                                            member_typedef_names,
-                                            member_typedef_types,
-                                            check_dup_field);
+    parse_optional_cpp20_requires_clause(parser);
+    if (try_skip_record_friend_member(parser)) return true;
+    if (try_skip_record_static_assert_member(parser, methods)) return true;
+    return try_parse_record_member_dispatch(
+        parser, struct_source_name, fields, methods, member_typedef_names,
+        member_typedef_types, check_dup_field);
 }
 
 bool begin_record_member_parse(Parser& parser) {
@@ -1788,45 +1793,49 @@ bool begin_record_member_parse(Parser& parser) {
     return !parser.check(TokenKind::RBrace);
 }
 
-bool Parser::try_parse_record_member_prelude(std::vector<Node*>* methods) {
-    if (try_parse_record_access_label(*this)) return true;
-    if (try_skip_record_friend_member(*this)) return true;
-    return try_skip_record_static_assert_member(*this, methods);
+bool try_parse_record_member_prelude(Parser& parser,
+                                     std::vector<Node*>* methods) {
+    if (try_parse_record_access_label(parser)) return true;
+    if (try_skip_record_friend_member(parser)) return true;
+    return try_skip_record_static_assert_member(parser, methods);
 }
 
-bool Parser::try_parse_record_member(
+bool try_parse_record_member(
+    Parser& parser,
     const std::string& struct_source_name,
     std::vector<Node*>* fields,
     std::vector<Node*>* methods,
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
-    if (!begin_record_member_parse(*this)) return false;
-    if (try_parse_record_member_prelude(methods)) return true;
+    if (!begin_record_member_parse(parser)) return false;
+    if (try_parse_record_member_prelude(parser, methods)) return true;
     return try_parse_record_member_with_template_prelude(
-        struct_source_name, fields, methods, member_typedef_names,
+        parser, struct_source_name, fields, methods, member_typedef_names,
         member_typedef_types, check_dup_field);
 }
 
-bool Parser::try_parse_record_body_member(
+bool try_parse_record_body_member(
+    Parser& parser,
     const std::string& struct_source_name,
-    RecordBodyState* body_state,
+    Parser::RecordBodyState* body_state,
     const std::function<void(const char*)>& check_dup_field) {
     if (!body_state)
         return false;
 
-    const int member_start_pos = pos_;
+    const int member_start_pos = parser.pos_;
     try {
-        return try_parse_record_member(struct_source_name, &body_state->fields,
+        return try_parse_record_member(parser, struct_source_name,
+                                       &body_state->fields,
                                        &body_state->methods,
                                        &body_state->member_typedef_names,
                                        &body_state->member_typedef_types,
                                        check_dup_field);
     } catch (const std::exception&) {
-        const RecordMemberRecoveryResult recovery =
-            recover_record_member_parse_error(*this, member_start_pos);
-        if (recovery != RecordMemberRecoveryResult::SyncedAtSemicolon &&
-            recovery != RecordMemberRecoveryResult::StoppedAtNextMember)
+        const Parser::RecordMemberRecoveryResult recovery =
+            recover_record_member_parse_error(parser, member_start_pos);
+        if (recovery != Parser::RecordMemberRecoveryResult::SyncedAtSemicolon &&
+            recovery != Parser::RecordMemberRecoveryResult::StoppedAtNextMember)
             throw;
         return false;
     }
@@ -1869,43 +1878,48 @@ void Parser::begin_record_body_context(const char* tag,
     }
 }
 
-void Parser::parse_record_body(
+void parse_record_body(
+    Parser& parser,
     const std::string& struct_source_name,
-    RecordBodyState* body_state) {
+    Parser::RecordBodyState* body_state) {
     if (!body_state)
         return;
 
     std::unordered_set<std::string> field_names_seen;
     auto check_dup_field =
-        make_record_field_duplicate_checker(this, &field_names_seen);
+        make_record_field_duplicate_checker(&parser, &field_names_seen);
 
-    while (!at_end() && !check(TokenKind::RBrace)) {
-        if (try_parse_record_body_member(struct_source_name, body_state,
+    while (!parser.at_end() && !parser.check(TokenKind::RBrace)) {
+        if (try_parse_record_body_member(parser, struct_source_name, body_state,
                                          check_dup_field)) {
             continue;
         }
     }
 }
 
-void Parser::parse_record_body_with_context(
+void parse_record_body_with_context(
+    Parser& parser,
     const char* tag,
     const char* template_origin_name,
-    RecordBodyState* body_state) {
+    Parser::RecordBodyState* body_state) {
     const TextId saved_struct_tag_text_id =
-        active_context_state_.current_struct_tag_text_id;
-    std::string saved_struct_tag = active_context_state_.current_struct_tag;
+        parser.active_context_state_.current_struct_tag_text_id;
+    std::string saved_struct_tag =
+        parser.active_context_state_.current_struct_tag;
     std::string struct_source_name;
-    begin_record_body_context(tag, template_origin_name, &saved_struct_tag,
-                              &struct_source_name);
-    parse_record_body(struct_source_name, body_state);
-    finish_record_body_context(saved_struct_tag);
-    restore_current_struct_tag(*this, saved_struct_tag_text_id,
+    parser.begin_record_body_context(tag, template_origin_name,
+                                     &saved_struct_tag, &struct_source_name);
+    parse_record_body(parser, struct_source_name, body_state);
+    finish_record_body_context(parser, saved_struct_tag);
+    restore_current_struct_tag(parser, saved_struct_tag_text_id,
                                saved_struct_tag);
 }
 
-void Parser::finish_record_body_context(const std::string& saved_struct_tag) {
-    expect(TokenKind::RBrace);
-    restore_current_struct_tag(*this, find_parser_text_id(saved_struct_tag),
+void finish_record_body_context(Parser& parser,
+                                const std::string& saved_struct_tag) {
+    parser.expect(TokenKind::RBrace);
+    restore_current_struct_tag(parser,
+                               parser.find_parser_text_id(saved_struct_tag),
                                saved_struct_tag);
 }
 
@@ -2277,7 +2291,8 @@ void Parser::parse_record_definition_body(Node* sd,
     consume();  // consume {
 
     RecordBodyState body_state;
-    parse_record_body_with_context(tag, template_origin_name, &body_state);
+    parse_record_body_with_context(*this, tag, template_origin_name,
+                                   &body_state);
     finalize_record_definition(sd, is_union, source_tag, body_state);
 }
 

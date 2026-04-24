@@ -8,12 +8,11 @@ Current Step Title: Move Implementation-Only Method Declarations Behind The Boun
 
 ## Just Finished
 
-Completed Step 3 declaration-boundary slice by removing the implementation-only
-record base-clause helpers `skip_record_base_specifier_tail`,
-`try_parse_record_base_specifier`, and `parse_record_base_clause` from public
-`Parser` declarations in `src/frontend/parser/parser.hpp`, adding equivalent
-private helper declarations to `src/frontend/parser/impl/parser_impl.hpp`, and
-converting definitions and call sites in
+Completed Step 3 declaration-boundary slice by removing implementation-only
+record member dispatch/body helper declarations from public `Parser`
+declarations in `src/frontend/parser/parser.hpp`, adding equivalent private
+helper declarations to `src/frontend/parser/impl/parser_impl.hpp`, and
+retargeting the definitions and internal call sites in
 `src/frontend/parser/parser_types_struct.cpp` to pass `Parser&` through the
 private boundary.
 
@@ -36,13 +35,16 @@ plan, keeping implementation-only declarations behind
 - Keep any test-only hooks clearly named and isolated.
 - `Parser` move operations are explicitly deleted in this slice because the
   compatibility boundary keeps public reference members bound into `ParserImpl`.
-- The delegated `rg` query confirms the three record base-clause helpers are no
-  longer declared on public `Parser`; their declarations live in
-  `impl/parser_impl.hpp`, with definitions and call sites passing `Parser&`.
+- `begin_record_body_context` remains publicly declared because
+  `tests/frontend/frontend_parser_tests.cpp` calls it directly; the moved
+  dispatch/body helpers had no external source or test references.
+- The moved record member dispatch/body helpers now live in
+  `impl/parser_impl.hpp`, with definitions and internal call sites passing
+  `Parser&`.
 
 ## Proof
 
-Executor Step 3 focused proof passed for the record base-clause helper
+Executor Step 3 focused proof passed for the record member dispatch/body helper
 declaration-boundary slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 

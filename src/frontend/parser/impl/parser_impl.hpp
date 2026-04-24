@@ -58,6 +58,56 @@ void parse_decl_attrs_for_record(Parser& parser, int line, TypeSpec* attr_ts);
 void skip_record_base_specifier_tail(Parser& parser);
 bool try_parse_record_base_specifier(Parser& parser, TypeSpec* base_ts);
 void parse_record_base_clause(Parser& parser, std::vector<TypeSpec>* base_types);
+bool try_parse_record_type_like_member_dispatch(
+    Parser& parser,
+    std::vector<Node*>* fields,
+    std::vector<const char*>* member_typedef_names,
+    std::vector<TypeSpec>* member_typedef_types,
+    const std::function<void(const char*)>& check_dup_field);
+bool try_parse_record_member_dispatch(
+    Parser& parser,
+    const std::string& struct_source_name,
+    std::vector<Node*>* fields,
+    std::vector<Node*>* methods,
+    std::vector<const char*>* member_typedef_names,
+    std::vector<TypeSpec>* member_typedef_types,
+    const std::function<void(const char*)>& check_dup_field);
+bool try_parse_record_special_member_dispatch(
+    Parser& parser,
+    const std::string& struct_source_name,
+    std::vector<Node*>* methods);
+bool try_parse_record_member_with_template_prelude(
+    Parser& parser,
+    const std::string& struct_source_name,
+    std::vector<Node*>* fields,
+    std::vector<Node*>* methods,
+    std::vector<const char*>* member_typedef_names,
+    std::vector<TypeSpec>* member_typedef_types,
+    const std::function<void(const char*)>& check_dup_field);
+bool try_parse_record_member_prelude(Parser& parser,
+                                     std::vector<Node*>* methods);
+bool try_parse_record_member(
+    Parser& parser,
+    const std::string& struct_source_name,
+    std::vector<Node*>* fields,
+    std::vector<Node*>* methods,
+    std::vector<const char*>* member_typedef_names,
+    std::vector<TypeSpec>* member_typedef_types,
+    const std::function<void(const char*)>& check_dup_field);
+bool try_parse_record_body_member(
+    Parser& parser,
+    const std::string& struct_source_name,
+    Parser::RecordBodyState* body_state,
+    const std::function<void(const char*)>& check_dup_field);
+void parse_record_body(Parser& parser,
+                       const std::string& struct_source_name,
+                       Parser::RecordBodyState* body_state);
+void parse_record_body_with_context(Parser& parser,
+                                    const char* tag,
+                                    const char* template_origin_name,
+                                    Parser::RecordBodyState* body_state);
+void finish_record_body_context(Parser& parser,
+                                const std::string& saved_struct_tag);
 
 bool lexeme_is_imaginary(const char* s);
 long long parse_int_lexeme(const char* s);

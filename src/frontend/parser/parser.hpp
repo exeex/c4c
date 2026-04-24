@@ -757,40 +757,6 @@ class Parser {
       std::vector<Node*>* fields,
       std::vector<Node*>* methods,
       const std::function<void(const char*)>& check_dup_field);
-  bool try_parse_record_type_like_member_dispatch(
-      std::vector<Node*>* fields,
-      std::vector<const char*>* member_typedef_names,
-      std::vector<TypeSpec>* member_typedef_types,
-      const std::function<void(const char*)>& check_dup_field);
-  bool try_parse_record_member_dispatch(
-      const std::string& struct_source_name,
-      std::vector<Node*>* fields,
-      std::vector<Node*>* methods,
-      std::vector<const char*>* member_typedef_names,
-      std::vector<TypeSpec>* member_typedef_types,
-      const std::function<void(const char*)>& check_dup_field);
-  bool try_parse_record_special_member_dispatch(
-      const std::string& struct_source_name,
-      std::vector<Node*>* methods);
-  bool try_parse_record_member_with_template_prelude(
-      const std::string& struct_source_name,
-      std::vector<Node*>* fields,
-      std::vector<Node*>* methods,
-      std::vector<const char*>* member_typedef_names,
-      std::vector<TypeSpec>* member_typedef_types,
-      const std::function<void(const char*)>& check_dup_field);
-  bool try_parse_record_member_prelude(std::vector<Node*>* methods);
-  bool try_parse_record_member(
-      const std::string& struct_source_name,
-      std::vector<Node*>* fields,
-      std::vector<Node*>* methods,
-      std::vector<const char*>* member_typedef_names,
-      std::vector<TypeSpec>* member_typedef_types,
-      const std::function<void(const char*)>& check_dup_field);
-  bool try_parse_record_body_member(
-      const std::string& struct_source_name,
-      RecordBodyState* body_state,
-      const std::function<void(const char*)>& check_dup_field);
   void parse_record_definition_prelude(
       int line,
       TypeSpec* attr_ts,
@@ -824,14 +790,6 @@ class Parser {
                                  const char* template_origin_name,
                                  std::string* saved_struct_tag,
                                  std::string* struct_source_name);
-  void parse_record_body(
-      const std::string& struct_source_name,
-      RecordBodyState* body_state);
-  void parse_record_body_with_context(
-      const char* tag,
-      const char* template_origin_name,
-      RecordBodyState* body_state);
-  void finish_record_body_context(const std::string& saved_struct_tag);
   void apply_record_trailing_type_attributes(Node* sd);
   void store_record_body_members(
       Node* sd,
