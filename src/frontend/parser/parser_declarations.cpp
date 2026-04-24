@@ -977,7 +977,8 @@ Node* Parser::parse_local_decl() {
                     std::vector<const char*> probe_knr_names;
                     bool probe_variadic = false;
                     parse_top_level_parameter_list(
-                        &probe_params, &probe_knr_names, &probe_variadic);
+                        *this, &probe_params, &probe_knr_names,
+                        &probe_variadic);
                     if (single_value_arg ||
                         (!check(TokenKind::Semi) && !check(TokenKind::Comma))) {
                         return false;
@@ -1093,45 +1094,47 @@ Node* Parser::parse_local_decl() {
 
 // ── top-level parsing ─────────────────────────────────────────────────────────
 
-void Parser::parse_top_level_parameter_list(
+void parse_top_level_parameter_list(
+    Parser& parser,
     std::vector<Node*>* out_params,
     std::vector<const char*>* out_knr_param_names,
     bool* out_variadic) {
-    ParseContextGuard trace(this, __func__);
+    Parser::ParseContextGuard trace(&parser, __func__);
     if (out_params) out_params->clear();
     if (out_knr_param_names) out_knr_param_names->clear();
     if (out_variadic) *out_variadic = false;
 
-    expect(TokenKind::LParen);
-    if (!check(TokenKind::RParen)) {
-        while (!at_end()) {
-            if (check(TokenKind::Ellipsis)) {
+    parser.expect(TokenKind::LParen);
+    if (!parser.check(TokenKind::RParen)) {
+        while (!parser.at_end()) {
+            if (parser.check(TokenKind::Ellipsis)) {
                 if (out_variadic) *out_variadic = true;
-                consume();
+                parser.consume();
                 break;
             }
-            if (check(TokenKind::RParen)) break;
-            if (!is_type_start() && !can_start_parameter_type() &&
-                check(TokenKind::Identifier)) {
+            if (parser.check(TokenKind::RParen)) break;
+            if (!parser.is_type_start() && !parser.can_start_parameter_type() &&
+                parser.check(TokenKind::Identifier)) {
                 if (out_knr_param_names)
                     out_knr_param_names->push_back(
-                        arena_.strdup(std::string(token_spelling(cur()))));
-                consume();
-                if (match(TokenKind::Comma)) continue;
+                        parser.arena_.strdup(
+                            std::string(parser.token_spelling(parser.cur()))));
+                parser.consume();
+                if (parser.match(TokenKind::Comma)) continue;
                 break;
             }
-            if (!can_start_parameter_type()) break;
-            Node* p = parse_param(*this);
+            if (!parser.can_start_parameter_type()) break;
+            Node* p = parse_param(parser);
             if (p && out_params) out_params->push_back(p);
-            if (check(TokenKind::Ellipsis)) {
+            if (parser.check(TokenKind::Ellipsis)) {
                 if (out_variadic) *out_variadic = true;
-                consume();
+                parser.consume();
                 break;
             }
-            if (!match(TokenKind::Comma)) break;
+            if (!parser.match(TokenKind::Comma)) break;
         }
     }
-    expect(TokenKind::RParen);
+    parser.expect(TokenKind::RParen);
 }
 
 Node* parse_static_assert_declaration(Parser& parser) {
@@ -3331,7 +3334,8 @@ top_level_base_ready:
         std::vector<Node*> params;
         std::vector<const char*> knr_param_names;
         bool variadic = false;
-        parse_top_level_parameter_list(&params, &knr_param_names, &variadic);
+        parse_top_level_parameter_list(
+            *this, &params, &knr_param_names, &variadic);
         if (decl_name) {
             std::string adjusted_name(decl_name);
             finalize_pending_operator_name(adjusted_name, params.size());

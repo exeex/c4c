@@ -38,6 +38,11 @@ Node* parse_block(Parser& parser);
 Node* parse_static_assert_declaration(Parser& parser);
 Node* parse_initializer(Parser& parser);
 Node* parse_init_list(Parser& parser);
+void parse_top_level_parameter_list(
+    Parser& parser,
+    std::vector<Node*>* out_params,
+    std::vector<const char*>* out_knr_param_names,
+    bool* out_variadic);
 
 bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);

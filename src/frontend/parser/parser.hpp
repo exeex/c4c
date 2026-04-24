@@ -683,10 +683,6 @@ class Parser {
       std::vector<long long>* out_dims);
   void parse_declarator_parameter_list(std::vector<Node*>* out_params,
                                        bool* out_variadic);
-  void parse_top_level_parameter_list(
-      std::vector<Node*>* out_params,
-      std::vector<const char*>* out_knr_param_names,
-      bool* out_variadic);
   void parse_parenthesized_function_pointer_suffix(
       TypeSpec& ts, bool is_nested_fn_ptr,
       Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
