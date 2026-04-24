@@ -355,33 +355,33 @@ void append_parallel_copy_step_detail(std::ostringstream& out,
                                       const PreparedNameTables& names,
                                       const PreparedParallelCopyBundle& bundle,
                                       const PreparedParallelCopyStep& step) {
-  if (step.move_index >= bundle.moves.size()) {
+  const auto* move = find_prepared_parallel_copy_move_for_step(bundle, step);
+  if (move == nullptr) {
     out << " invalid_move_index";
     return;
   }
 
-  const auto& move = bundle.moves[step.move_index];
   if (step.kind == PreparedParallelCopyStepKind::SaveDestinationToTemp) {
-    out << " save_destination=" << render_value(move.destination_value)
-        << " blocked_source=" << render_value(move.source_value)
-        << " temp_source=cycle_temp(" << render_value(move.destination_value) << ")"
-        << " carrier=" << prepared_join_transfer_carrier_kind_name(move.carrier_kind);
-    if (move.storage_name.has_value()) {
-      out << " storage=" << prepared_slot_name(names, *move.storage_name);
+    out << " save_destination=" << render_value(move->destination_value)
+        << " blocked_source=" << render_value(move->source_value)
+        << " temp_source=cycle_temp(" << render_value(move->destination_value) << ")"
+        << " carrier=" << prepared_join_transfer_carrier_kind_name(move->carrier_kind);
+    if (move->storage_name.has_value()) {
+      out << " storage=" << prepared_slot_name(names, *move->storage_name);
     }
     return;
   }
 
   out << " source=";
   if (step.uses_cycle_temp_source) {
-    out << "cycle_temp(" << render_value(move.source_value) << ")";
+    out << "cycle_temp(" << render_value(move->source_value) << ")";
   } else {
-    out << render_value(move.source_value);
+    out << render_value(move->source_value);
   }
-  out << " destination=" << render_value(move.destination_value)
-      << " carrier=" << prepared_join_transfer_carrier_kind_name(move.carrier_kind);
-  if (move.storage_name.has_value()) {
-    out << " storage=" << prepared_slot_name(names, *move.storage_name);
+  out << " destination=" << render_value(move->destination_value)
+      << " carrier=" << prepared_join_transfer_carrier_kind_name(move->carrier_kind);
+  if (move->storage_name.has_value()) {
+    out << " storage=" << prepared_slot_name(names, *move->storage_name);
   }
 }
 

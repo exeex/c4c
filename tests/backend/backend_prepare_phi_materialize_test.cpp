@@ -596,16 +596,6 @@ int check_parallel_copy_cycle_contract(const prepare::PreparedBirModule& prepare
       body_bundle->steps.size() != 3) {
     return fail("expected the backedge bundle to publish a cycle-breaking resolution plan");
   }
-  if (body_bundle->moves[0].carrier_kind !=
-          prepare::PreparedJoinTransferCarrierKind::EdgeStoreSlot ||
-      !body_bundle->moves[0].storage_name.has_value() ||
-      prepare::prepared_slot_name(prepared.names, *body_bundle->moves[0].storage_name) != "a.phi" ||
-      body_bundle->moves[1].carrier_kind !=
-          prepare::PreparedJoinTransferCarrierKind::EdgeStoreSlot ||
-      !body_bundle->moves[1].storage_name.has_value() ||
-      prepare::prepared_slot_name(prepared.names, *body_bundle->moves[1].storage_name) != "b.phi") {
-    return fail("expected the loop backedge bundle to publish edge-store carrier authority for both phi destinations");
-  }
   if (body_bundle->steps[0].kind !=
           prepare::PreparedParallelCopyStepKind::SaveDestinationToTemp ||
       body_bundle->steps[1].kind != prepare::PreparedParallelCopyStepKind::Move ||
@@ -617,11 +607,30 @@ int check_parallel_copy_cycle_contract(const prepare::PreparedBirModule& prepare
       !body_bundle->steps[2].uses_cycle_temp_source) {
     return fail("expected the backedge bundle to rotate the cycle through the published temporary source");
   }
-  if (!is_named_i32(body_bundle->moves[0].source_value, "b") ||
-      !is_named_i32(body_bundle->moves[0].destination_value, "a") ||
-      !is_named_i32(body_bundle->moves[1].source_value, "a") ||
-      !is_named_i32(body_bundle->moves[1].destination_value, "b")) {
-    return fail("expected the backedge bundle to preserve the phi swap sources and destinations");
+  const auto* save_step_move = prepare::find_prepared_parallel_copy_move_for_step(*body_bundle, 0);
+  const auto* direct_step_move = prepare::find_prepared_parallel_copy_move_for_step(*body_bundle, 1);
+  const auto* temp_step_move = prepare::find_prepared_parallel_copy_move_for_step(*body_bundle, 2);
+  if (save_step_move == nullptr || direct_step_move == nullptr || temp_step_move == nullptr) {
+    return fail("expected the backedge bundle to publish a direct step-to-carrier lookup seam");
+  }
+  if (save_step_move->carrier_kind != prepare::PreparedJoinTransferCarrierKind::EdgeStoreSlot ||
+      !save_step_move->storage_name.has_value() ||
+      prepare::prepared_slot_name(prepared.names, *save_step_move->storage_name) != "a.phi" ||
+      direct_step_move->carrier_kind != prepare::PreparedJoinTransferCarrierKind::EdgeStoreSlot ||
+      !direct_step_move->storage_name.has_value() ||
+      prepare::prepared_slot_name(prepared.names, *direct_step_move->storage_name) != "a.phi" ||
+      temp_step_move->carrier_kind != prepare::PreparedJoinTransferCarrierKind::EdgeStoreSlot ||
+      !temp_step_move->storage_name.has_value() ||
+      prepare::prepared_slot_name(prepared.names, *temp_step_move->storage_name) != "b.phi") {
+    return fail("expected the loop backedge steps to publish edge-store carrier authority directly");
+  }
+  if (!is_named_i32(save_step_move->source_value, "b") ||
+      !is_named_i32(save_step_move->destination_value, "a") ||
+      !is_named_i32(direct_step_move->source_value, "b") ||
+      !is_named_i32(direct_step_move->destination_value, "a") ||
+      !is_named_i32(temp_step_move->source_value, "a") ||
+      !is_named_i32(temp_step_move->destination_value, "b")) {
+    return fail("expected the backedge steps to preserve the phi swap sources and destinations");
   }
 
   return 0;

@@ -3734,6 +3734,31 @@ find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
   return nullptr;
 }
 
+[[nodiscard]] inline const PreparedParallelCopyMove* find_prepared_parallel_copy_move_for_step(
+    const PreparedParallelCopyBundle& bundle,
+    const PreparedParallelCopyStep& step) {
+  if (step.move_index >= bundle.moves.size()) {
+    return nullptr;
+  }
+  return &bundle.moves[step.move_index];
+}
+
+[[nodiscard]] inline const PreparedParallelCopyMove* find_prepared_parallel_copy_move_for_step(
+    const PreparedParallelCopyBundle& bundle,
+    std::size_t step_index) {
+  if (step_index >= bundle.steps.size()) {
+    return nullptr;
+  }
+  return find_prepared_parallel_copy_move_for_step(bundle, bundle.steps[step_index]);
+}
+
+[[nodiscard]] inline PreparedParallelCopyMove* find_prepared_parallel_copy_move_for_step(
+    PreparedParallelCopyBundle& bundle,
+    std::size_t step_index) {
+  return const_cast<PreparedParallelCopyMove*>(find_prepared_parallel_copy_move_for_step(
+      static_cast<const PreparedParallelCopyBundle&>(bundle), step_index));
+}
+
 [[nodiscard]] inline std::optional<BlockLabelId> published_prepared_parallel_copy_execution_block_label(
     const PreparedParallelCopyBundle& bundle) {
   return bundle.execution_block_label;

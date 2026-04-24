@@ -3461,6 +3461,16 @@ int check_phi_loop_cycle_move_resolution(const prepare::PreparedBirModule& prepa
       body_bundle->steps[2].move_index != 1 || !body_bundle->steps[2].uses_cycle_temp_source) {
     return fail("expected the loop backedge bundle to publish the cycle-break ordering directly");
   }
+  const auto* saved_step_move = prepare::find_prepared_parallel_copy_move_for_step(*body_bundle, 0);
+  const auto* direct_step_move = prepare::find_prepared_parallel_copy_move_for_step(*body_bundle, 1);
+  const auto* temp_step_move = prepare::find_prepared_parallel_copy_move_for_step(*body_bundle, 2);
+  if (saved_step_move == nullptr || direct_step_move == nullptr || temp_step_move == nullptr) {
+    return fail("expected the loop backedge bundle to publish a direct step-to-move lookup seam");
+  }
+  if (saved_step_move != &body_bundle->moves[0] || direct_step_move != &body_bundle->moves[0] ||
+      temp_step_move != &body_bundle->moves[1]) {
+    return fail("expected the loop backedge steps to resolve against the published carrier moves");
+  }
   const auto* body_move_bundle = prepare::find_prepared_out_of_ssa_parallel_copy_move_bundle(
       prepared.names, *bir_function, *value_locations, *body_bundle);
   if (body_move_bundle == nullptr ||
@@ -3555,9 +3565,13 @@ int check_phi_loop_cycle_move_resolution(const prepare::PreparedBirModule& prepa
   if (bundled_save_a_to_temp == nullptr || bundled_b_to_a == nullptr || bundled_a_to_b == nullptr) {
     return fail("expected the authoritative loop backedge move bundle to carry the save/direct/cycle-temp sequence");
   }
-  if (&body_move_bundle->moves[0] != bundled_save_a_to_temp || &body_move_bundle->moves[1] != bundled_b_to_a ||
-      &body_move_bundle->moves[2] != bundled_a_to_b) {
-    return fail("expected the authoritative loop backedge move bundle to preserve the published cycle-break ordering");
+  if (prepare::find_prepared_out_of_ssa_parallel_copy_move_for_step(*body_move_bundle, 0) !=
+          bundled_save_a_to_temp ||
+      prepare::find_prepared_out_of_ssa_parallel_copy_move_for_step(*body_move_bundle, 1) !=
+          bundled_b_to_a ||
+      prepare::find_prepared_out_of_ssa_parallel_copy_move_for_step(*body_move_bundle, 2) !=
+          bundled_a_to_b) {
+    return fail("expected the authoritative loop backedge move bundle to publish per-step move lookup");
   }
   if (bundled_save_a_to_temp->uses_cycle_temp_source || bundled_b_to_a->uses_cycle_temp_source ||
       !bundled_a_to_b->uses_cycle_temp_source) {
