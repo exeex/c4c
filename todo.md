@@ -1,34 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/93_hir_agent_index_header_hierarchy.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Move Compile-Time And HIR-Local Follow-Up Work
+Current Step ID: 6
+Current Step Title: Resolve Inspection Surface And Refresh Documentation
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 `Move Compile-Time And HIR-Local Follow-Up Work` completed as a
-behavior-preserving structure packet.
+Step 6 `Resolve Inspection Surface And Refresh Documentation` completed as a
+behavior-preserving inspection/docs packet.
 
-Moved compile-time and coupled HIR-local follow-up implementation files under
-`src/frontend/hir/impl/compile_time/`:
+Kept `hir_printer.hpp` public because `src/apps/c4cll.cpp` and
+`tests/frontend/frontend_hir_tests.cpp` include it directly for normal dump
+formatting use. Moved only the implementation:
 
-- `src/frontend/hir/compile_time_engine.cpp` -> `src/frontend/hir/impl/compile_time/engine.cpp`
-- `src/frontend/hir/inline_expand.cpp` -> `src/frontend/hir/impl/compile_time/inline_expand.cpp`
+- `src/frontend/hir/hir_printer.cpp` -> `src/frontend/hir/impl/inspect/printer.cpp`
 
-Kept `compile_time_engine.hpp` and `inline_expand.hpp` as public top-level
-contracts. Updated moved-file includes to use the existing private
-`impl/compile_time/compile_time.hpp` index for the engine and the public
-inline-expansion contract for the app-facing transform. Confirmed no owned old
-`compile_time_engine.cpp` or `inline_expand.cpp` filename references remain in
-live source, docs, tests, or root build files outside lifecycle/archive paths.
+Updated the moved implementation to include the existing private
+`impl/inspect/inspect.hpp` index. Refreshed `src/frontend/hir/README.md` with
+the actual HIR tree, public header roles, private index roles, and agent
+navigation guidance.
+
+Stale-reference search found no live references to the old
+`src/frontend/hir/hir_printer.cpp` path outside lifecycle/archive paths. The
+remaining `hir_expr_*` and `hir_stmt_*` matches are test names or historical
+hotspot notes, not old moved implementation filenames.
 
 ## Suggested Next
 
-Execute Step 6: resolve the inspection/debug surface and refresh the HIR README
-so the documented HIR tree matches the implementation layout after the parser
-and HIR move packets.
+Execute Step 7: final acceptance validation for the HIR hierarchy migration.
 
 ## Watchouts
 
@@ -42,13 +43,14 @@ and HIR move packets.
   `compile_time_engine.hpp`, `inline_expand.hpp`, and `hir/hir_ir.hpp`; do not
   demote these headers without updating callers and validating the wider
   include surface.
-- Inspection/debug support and root HIR implementation files were intentionally
-  left in place for later plan steps.
+- Root HIR implementation files such as `hir.cpp`, `hir_build.cpp`,
+  `hir_functions.cpp`, `hir_lowering_core.cpp`, and `hir_types.cpp` were not
+  moved in Step 6; that was outside this packet.
 - The `frontend_hir_tests` CTest selector does not exist in this build tree;
   this packet used the supervisor-selected `^cpp_hir` subset instead.
-- This packet did not change public declarations or HIR behavior; full CTest is
-  not specifically warranted by this diff, though the supervisor may still
-  choose it for milestone confidence.
+- This packet did not change public declarations or HIR behavior. Full CTest is
+  not specifically warranted by this diff, but Step 7 is the milestone
+  acceptance point and may choose broader validation.
 
 ## Proof
 

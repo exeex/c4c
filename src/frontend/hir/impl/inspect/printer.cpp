@@ -1,4 +1,4 @@
-#include "hir_printer.hpp"
+#include "inspect.hpp"
 
 #include <cassert>
 #include <sstream>
