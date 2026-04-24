@@ -290,15 +290,15 @@ void test_parser_last_using_alias_name_prefers_text_id_storage() {
   c4c::FileTable files;
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
 
-  parser.set_last_using_alias_name("ns::Alias");
+  parser.set_last_using_alias_name(parser.intern_semantic_name_key("ns::Alias"));
   expect_true(parser.active_context_state_.last_using_alias_name_text_id !=
                   c4c::kInvalidText,
               "using-alias bookkeeping should retain a valid TextId");
-  expect_eq(parser.last_using_alias_name_text(), "ns::Alias",
+  expect_eq(parser.last_using_alias_name_text(), "Alias",
             "using-alias bookkeeping should resolve through the parser text table");
 
   parser.active_context_state_.last_using_alias_name = "corrupted";
-  expect_eq(parser.last_using_alias_name_text(), "ns::Alias",
+  expect_eq(parser.last_using_alias_name_text(), "Alias",
             "using-alias bookkeeping should prefer the TextId carrier over raw string storage");
 
   parser.clear_last_using_alias_name();
