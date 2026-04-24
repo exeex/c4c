@@ -751,7 +751,6 @@ class Parser {
 
   // ── statement parsing ─────────────────────────────────────────────────────
   Node* parse_stmt();
-  Node* parse_block();           // { ... }
   Node* parse_static_assert_declaration();
 
   // ── initializer parsing ──────────────────────────────────────────────────

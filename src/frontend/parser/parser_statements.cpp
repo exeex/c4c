@@ -25,65 +25,65 @@ struct LexicalBindingScopeGuard {
 
 }  // namespace
 
-Node* Parser::parse_block() {
-    ParseContextGuard trace(this, __func__);
-    int ln = cur().line;
-    expect(TokenKind::LBrace);
-    LexicalBindingScopeGuard lexical_scope_guard(this);
+Node* parse_block(Parser& parser) {
+    Parser::ParseContextGuard trace(&parser, __func__);
+    int ln = parser.cur().line;
+    parser.expect(TokenKind::LBrace);
+    LexicalBindingScopeGuard lexical_scope_guard(&parser);
     // Save enum constant scope — inner block enums must not leak to outer scope.
-    auto saved_enum_consts = binding_state_.enum_consts;
+    auto saved_enum_consts = parser.binding_state_.enum_consts;
     std::vector<Node*> stmts;
-    while (!at_end() && !check(TokenKind::RBrace)) {
-        int stmt_start = core_input_state_.pos;
+    while (!parser.at_end() && !parser.check(TokenKind::RBrace)) {
+        int stmt_start = parser.core_input_state_.pos;
         try {
-            Node* s = parse_stmt();
+            Node* s = parser.parse_stmt();
             if (s) stmts.push_back(s);
         } catch (const std::exception& e) {
             // Statement-level recovery: emit diagnostic, skip to ; or },
             // produce NK_INVALID_STMT, and continue parsing next statement.
-            int err_idx = diagnostic_state_.best_parse_failure.active
-                              ? diagnostic_state_.best_parse_failure.token_index
-                              : (!at_end() ? core_input_state_.pos
-                                           : (core_input_state_.pos > 0
-                                                  ? core_input_state_.pos - 1
+            int err_idx = parser.diagnostic_state_.best_parse_failure.active
+                              ? parser.diagnostic_state_.best_parse_failure.token_index
+                              : (!parser.at_end() ? parser.core_input_state_.pos
+                                           : (parser.core_input_state_.pos > 0
+                                                  ? parser.core_input_state_.pos - 1
                                                   : -1));
-            int err_line = diagnostic_state_.best_parse_failure.active
-                               ? diagnostic_state_.best_parse_failure.line
-                               : ((!at_end())
-                                      ? cur().line
-                                      : (core_input_state_.pos > 0
-                                             ? core_input_state_.tokens[core_input_state_.pos - 1].line
+            int err_line = parser.diagnostic_state_.best_parse_failure.active
+                               ? parser.diagnostic_state_.best_parse_failure.line
+                               : ((!parser.at_end())
+                                      ? parser.cur().line
+                                      : (parser.core_input_state_.pos > 0
+                                             ? parser.core_input_state_.tokens[parser.core_input_state_.pos - 1].line
                                              : 1));
-            int err_col  = diagnostic_state_.best_parse_failure.active
-                               ? diagnostic_state_.best_parse_failure.column
-                               : ((!at_end()) ? cur().column : 1);
-            std::string diag = format_best_parse_failure();
+            int err_col  = parser.diagnostic_state_.best_parse_failure.active
+                               ? parser.diagnostic_state_.best_parse_failure.column
+                               : ((!parser.at_end()) ? parser.cur().column : 1);
+            std::string diag = parser.format_best_parse_failure();
             fprintf(stderr, "%s:%d:%d: error: %s\n",
-                    diag_file_at(err_idx), err_line, err_col,
+                    parser.diag_file_at(err_idx), err_line, err_col,
                     diag.empty() ? e.what() : diag.c_str());
-            dump_parse_debug_trace();
-            diagnostic_state_.had_error = true;
-            ++diagnostic_state_.parse_error_count;
-            if (diagnostic_state_.parse_error_count >=
-                diagnostic_state_.max_parse_errors) {
+            parser.dump_parse_debug_trace();
+            parser.diagnostic_state_.had_error = true;
+            ++parser.diagnostic_state_.parse_error_count;
+            if (parser.diagnostic_state_.parse_error_count >=
+                parser.diagnostic_state_.max_parse_errors) {
                 fprintf(stderr, "%s:%d:%d: error: too many errors emitted, stopping now\n",
-                        diag_file_at(err_idx), err_line, err_col);
+                        parser.diag_file_at(err_idx), err_line, err_col);
                 break;
             }
             // Advance at least one token to avoid infinite loop.
-            if (core_input_state_.pos == stmt_start && !at_end()) consume();
+            if (parser.core_input_state_.pos == stmt_start && !parser.at_end()) parser.consume();
             // Skip to next statement boundary (; or }).
-            while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace)) {
-                consume();
+            while (!parser.at_end() && !parser.check(TokenKind::Semi) && !parser.check(TokenKind::RBrace)) {
+                parser.consume();
             }
-            if (!at_end() && check(TokenKind::Semi)) consume();
-            stmts.push_back(make_node(NK_INVALID_STMT, err_line));
+            if (!parser.at_end() && parser.check(TokenKind::Semi)) parser.consume();
+            stmts.push_back(parser.make_node(NK_INVALID_STMT, err_line));
         }
     }
-    expect(TokenKind::RBrace);
+    parser.expect(TokenKind::RBrace);
     // Restore enum constants so inner-block definitions don't leak.
-    binding_state_.enum_consts = std::move(saved_enum_consts);
-    return make_block(stmts.empty() ? nullptr : stmts.data(), (int)stmts.size(), ln);
+    parser.binding_state_.enum_consts = std::move(saved_enum_consts);
+    return parser.make_block(stmts.empty() ? nullptr : stmts.data(), (int)stmts.size(), ln);
 }
 
 Node* Parser::parse_stmt() {
@@ -268,7 +268,7 @@ Node* Parser::parse_stmt() {
         }
 
         case TokenKind::LBrace:
-            return parse_block();
+            return parse_block(*this);
 
         case TokenKind::KwReturn: {
             consume();

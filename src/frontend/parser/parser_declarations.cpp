@@ -2463,7 +2463,7 @@ Node* Parser::parse_top_level() {
                 ParserFunctionParamScopeGuard param_scope(*this, params);
                 bool saved_top = active_context_state_.parsing_top_level_context;
                 active_context_state_.parsing_top_level_context = false;
-                fn->body = parse_block();
+                fn->body = parse_block(*this);
                 active_context_state_.parsing_top_level_context = saved_top;
             } else if (is_cpp_mode() && check(TokenKind::Assign) &&
                        core_input_state_.pos + 1 <
@@ -2607,7 +2607,7 @@ Node* Parser::parse_top_level() {
                     bool saved_top =
                         active_context_state_.parsing_top_level_context;
                     active_context_state_.parsing_top_level_context = false;
-                    fn->body = parse_block();
+                    fn->body = parse_block(*this);
                     active_context_state_.parsing_top_level_context = saved_top;
                 } else if (is_cpp_mode() && check(TokenKind::Assign) &&
                            core_input_state_.pos + 1 <
@@ -3256,7 +3256,7 @@ top_level_base_ready:
             ParserFunctionParamScopeGuard param_scope(*this, fptr_fn_params);
             bool saved_top = active_context_state_.parsing_top_level_context;
             active_context_state_.parsing_top_level_context = false;
-            Node* body = parse_block();
+            Node* body = parse_block(*this);
             active_context_state_.parsing_top_level_context = saved_top;
             Node* fn = make_node(NK_FUNCTION, ln);
             fn->type      = ts;
@@ -3466,7 +3466,7 @@ top_level_base_ready:
             // Function definition
             bool saved_top = active_context_state_.parsing_top_level_context;
             active_context_state_.parsing_top_level_context = false;
-            Node* body = parse_block();
+            Node* body = parse_block(*this);
             active_context_state_.parsing_top_level_context = saved_top;
             Node* fn = make_node(NK_FUNCTION, ln);
             fn->type      = ts;

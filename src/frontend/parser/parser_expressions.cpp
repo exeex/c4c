@@ -728,7 +728,7 @@ Node* parse_lambda_expr(Parser& parser, int ln) {
     Node* lambda = parser.make_node(NK_LAMBDA, ln);
     lambda->lambda_capture_default = capture_default;
     lambda->lambda_has_parameter_list = has_parameter_list;
-    lambda->body = parser.parse_block();
+    lambda->body = parse_block(parser);
     return lambda;
 }
 
@@ -1223,7 +1223,7 @@ Node* Parser::parse_primary() {
         not_a_cast:
         // GCC statement expression: ({ ... })
         if (check(TokenKind::LBrace)) {
-            Node* block = parse_block();
+            Node* block = parse_block(*this);
             expect(TokenKind::RParen);
             Node* n = make_node(NK_STMT_EXPR, ln);
             n->body = block;

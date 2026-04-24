@@ -9,14 +9,15 @@ Current Step Title: Move Implementation-Only Method Declarations Behind The Boun
 ## Just Finished
 
 Completed Step 3 declaration-boundary slice by removing the implementation-only
-parameter parser entry from public `Parser` declarations in
+block parser entry from public `Parser` declarations in
 `src/frontend/parser/parser.hpp`, adding the equivalent private
-`parse_param(Parser& parser)` declaration to
-`src/frontend/parser/impl/parser_impl.hpp`, and retargeting the definition plus
-internal call sites in `src/frontend/parser/parser_types_struct.cpp`,
-`src/frontend/parser/parser_declarations.cpp`, and
-`src/frontend/parser/parser_types_declarator.cpp` to pass `Parser&` through
-the private parser implementation boundary.
+`parse_block(Parser& parser)` declaration to
+`src/frontend/parser/impl/parser_impl.hpp`, converting the implementation in
+`src/frontend/parser/parser_statements.cpp` to the private parser boundary,
+and retargeting internal call sites in
+`src/frontend/parser/parser_declarations.cpp`,
+`src/frontend/parser/parser_expressions.cpp`, and
+`src/frontend/parser/parser_types_struct.cpp`.
 
 ## Suggested Next
 
@@ -44,10 +45,13 @@ plan, keeping implementation-only declarations behind
   found only parser implementation call sites.
 - `parse_param` now lives behind `impl/parser_impl.hpp`; current source search
   found only parser implementation call sites.
+- `parse_block` now lives behind `impl/parser_impl.hpp`; current source search
+  found only parser implementation call sites, plus an audit-note mention under
+  `src/frontend/parser/BOUNDARY_AUDIT.md`.
 
 ## Proof
 
-Executor Step 3 focused proof passed for the parameter parser entry
+Executor Step 3 focused proof passed for the block parser entry
 declaration-boundary slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 

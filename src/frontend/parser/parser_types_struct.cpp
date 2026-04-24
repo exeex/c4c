@@ -1106,7 +1106,7 @@ bool try_parse_record_constructor_member(
     }
     if (parser.check(TokenKind::LBrace)) {
         ParserFunctionParamScopeGuard param_scope(parser, params);
-        method->body = parser.parse_block();
+        method->body = parse_block(parser);
     } else if (parser.is_cpp_mode() && parser.check(TokenKind::Assign) &&
                parser.core_input_state_.pos + 1 <
                    static_cast<int>(parser.core_input_state_.tokens.size()) &&
@@ -1165,7 +1165,7 @@ bool try_parse_record_destructor_member(
     method->is_destructor = true;
     method->n_params = 0;
     if (parser.check(TokenKind::LBrace)) {
-        method->body = parser.parse_block();
+        method->body = parse_block(parser);
     } else if (parser.is_cpp_mode() && parser.check(TokenKind::Assign) &&
                parser.core_input_state_.pos + 1 <
                    static_cast<int>(parser.core_input_state_.tokens.size()) &&
@@ -1504,7 +1504,7 @@ bool try_parse_record_method_or_field_member(
         }
         if (parser.check(TokenKind::LBrace)) {
             ParserFunctionParamScopeGuard param_scope(parser, params);
-            method->body = parser.parse_block();
+            method->body = parse_block(parser);
         } else if (parser.is_cpp_mode() && parser.check(TokenKind::Assign) &&
                    parser.core_input_state_.pos + 1 <
                        static_cast<int>(parser.core_input_state_.tokens.size()) &&
@@ -1626,7 +1626,7 @@ bool try_parse_record_method_or_field_member(
             }
             if (parser.check(TokenKind::LBrace)) {
                 ParserFunctionParamScopeGuard param_scope(parser, params);
-                method->body = parser.parse_block();
+                method->body = parse_block(parser);
             } else if (parser.is_cpp_mode() && parser.check(TokenKind::Assign) &&
                        parser.core_input_state_.pos + 1 <
                            static_cast<int>(parser.core_input_state_.tokens.size()) &&
