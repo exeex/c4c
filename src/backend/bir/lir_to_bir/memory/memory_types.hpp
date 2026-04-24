@@ -5,9 +5,15 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
+
+namespace c4c::backend::lir_to_bir_detail {
+struct GlobalAddress;
+}
 
 namespace c4c::backend {
 
@@ -125,5 +131,42 @@ struct LocalAggregateGepTarget {
   std::string type_text;
   std::int64_t byte_offset = 0;
 };
+
+using GlobalPointerMap = std::unordered_map<std::string, lir_to_bir_detail::GlobalAddress>;
+using GlobalObjectPointerMap = std::unordered_map<std::string, lir_to_bir_detail::GlobalAddress>;
+using GlobalAddressIntMap = std::unordered_map<std::string, lir_to_bir_detail::GlobalAddress>;
+using GlobalObjectAddressIntMap =
+    std::unordered_map<std::string, lir_to_bir_detail::GlobalAddress>;
+using LocalAddressSlots = std::unordered_map<std::string, lir_to_bir_detail::GlobalAddress>;
+using LocalSlotAddressSlots = std::unordered_map<std::string, LocalSlotAddress>;
+using LocalSlotPointerValues = std::unordered_map<std::string, LocalSlotAddress>;
+using GlobalAddressSlots =
+    std::unordered_map<std::string, std::optional<lir_to_bir_detail::GlobalAddress>>;
+using AddressedGlobalPointerSlots =
+    std::unordered_map<GlobalPointerSlotKey,
+                       std::optional<lir_to_bir_detail::GlobalAddress>,
+                       GlobalPointerSlotKeyHash>;
+using LocalArraySlotMap = std::unordered_map<std::string, LocalArraySlots>;
+using DynamicLocalPointerArrayMap =
+    std::unordered_map<std::string, DynamicLocalPointerArrayAccess>;
+using DynamicLocalAggregateArrayMap =
+    std::unordered_map<std::string, DynamicLocalAggregateArrayAccess>;
+using DynamicPointerValueArrayMap =
+    std::unordered_map<std::string, DynamicPointerValueArrayAccess>;
+using LocalPointerArrayBaseMap = std::unordered_map<std::string, LocalPointerArrayBase>;
+using DynamicGlobalPointerArrayMap =
+    std::unordered_map<std::string, DynamicGlobalPointerArrayAccess>;
+using DynamicGlobalAggregateArrayMap =
+    std::unordered_map<std::string, DynamicGlobalAggregateArrayAccess>;
+using DynamicGlobalScalarArrayMap =
+    std::unordered_map<std::string, DynamicGlobalScalarArrayAccess>;
+using LocalAggregateSlotMap = std::unordered_map<std::string, LocalAggregateSlots>;
+using LocalAggregateFieldSet = std::unordered_set<std::string>;
+using LocalPointerValueAliasMap = std::unordered_map<std::string, bir::Value>;
+using PointerAddressMap = std::unordered_map<std::string, PointerAddress>;
+using PointerAddressIntMap = std::unordered_map<std::string, PointerAddress>;
+using GlobalPointerValueSlots = std::unordered_map<std::string, std::optional<PointerAddress>>;
+using AddressedGlobalPointerValueSlots =
+    std::unordered_map<GlobalPointerSlotKey, std::optional<PointerAddress>, GlobalPointerSlotKeyHash>;
 
 }  // namespace c4c::backend

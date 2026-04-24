@@ -188,72 +188,60 @@ class BirFunctionLowerer {
   using GlobalPointerSlotKey = c4c::backend::GlobalPointerSlotKey;
   using GlobalPointerSlotKeyHash = c4c::backend::GlobalPointerSlotKeyHash;
 
-  using GlobalPointerMap = std::unordered_map<std::string, GlobalAddress>;
-  using GlobalObjectPointerMap = std::unordered_map<std::string, GlobalAddress>;
-  using GlobalAddressIntMap = std::unordered_map<std::string, GlobalAddress>;
-  using GlobalObjectAddressIntMap = std::unordered_map<std::string, GlobalAddress>;
-  using LocalAddressSlots = std::unordered_map<std::string, GlobalAddress>;
+  using GlobalPointerMap = c4c::backend::GlobalPointerMap;
+  using GlobalObjectPointerMap = c4c::backend::GlobalObjectPointerMap;
+  using GlobalAddressIntMap = c4c::backend::GlobalAddressIntMap;
+  using GlobalObjectAddressIntMap = c4c::backend::GlobalObjectAddressIntMap;
+  using LocalAddressSlots = c4c::backend::LocalAddressSlots;
   using LocalSlotAddress = c4c::backend::LocalSlotAddress;
-  using LocalSlotAddressSlots = std::unordered_map<std::string, LocalSlotAddress>;
-  using LocalSlotPointerValues = std::unordered_map<std::string, LocalSlotAddress>;
-  using GlobalAddressSlots = std::unordered_map<std::string, std::optional<GlobalAddress>>;
-  using AddressedGlobalPointerSlots =
-      std::unordered_map<GlobalPointerSlotKey,
-                         std::optional<GlobalAddress>,
-                         GlobalPointerSlotKeyHash>;
+  using LocalSlotAddressSlots = c4c::backend::LocalSlotAddressSlots;
+  using LocalSlotPointerValues = c4c::backend::LocalSlotPointerValues;
+  using GlobalAddressSlots = c4c::backend::GlobalAddressSlots;
+  using AddressedGlobalPointerSlots = c4c::backend::AddressedGlobalPointerSlots;
 
   using LocalArraySlots = c4c::backend::LocalArraySlots;
 
-  using LocalArraySlotMap = std::unordered_map<std::string, LocalArraySlots>;
+  using LocalArraySlotMap = c4c::backend::LocalArraySlotMap;
 
   using DynamicLocalPointerArrayAccess = c4c::backend::DynamicLocalPointerArrayAccess;
 
-  using DynamicLocalPointerArrayMap =
-      std::unordered_map<std::string, DynamicLocalPointerArrayAccess>;
+  using DynamicLocalPointerArrayMap = c4c::backend::DynamicLocalPointerArrayMap;
 
   using DynamicLocalAggregateArrayAccess = c4c::backend::DynamicLocalAggregateArrayAccess;
 
-  using DynamicLocalAggregateArrayMap =
-      std::unordered_map<std::string, DynamicLocalAggregateArrayAccess>;
+  using DynamicLocalAggregateArrayMap = c4c::backend::DynamicLocalAggregateArrayMap;
 
   using DynamicPointerValueArrayAccess = c4c::backend::DynamicPointerValueArrayAccess;
 
-  using DynamicPointerValueArrayMap =
-      std::unordered_map<std::string, DynamicPointerValueArrayAccess>;
+  using DynamicPointerValueArrayMap = c4c::backend::DynamicPointerValueArrayMap;
 
   using LocalPointerArrayBase = c4c::backend::LocalPointerArrayBase;
 
-  using LocalPointerArrayBaseMap = std::unordered_map<std::string, LocalPointerArrayBase>;
+  using LocalPointerArrayBaseMap = c4c::backend::LocalPointerArrayBaseMap;
 
   using DynamicGlobalPointerArrayAccess = c4c::backend::DynamicGlobalPointerArrayAccess;
 
-  using DynamicGlobalPointerArrayMap =
-      std::unordered_map<std::string, DynamicGlobalPointerArrayAccess>;
+  using DynamicGlobalPointerArrayMap = c4c::backend::DynamicGlobalPointerArrayMap;
 
   using DynamicGlobalAggregateArrayAccess = c4c::backend::DynamicGlobalAggregateArrayAccess;
 
-  using DynamicGlobalAggregateArrayMap =
-      std::unordered_map<std::string, DynamicGlobalAggregateArrayAccess>;
+  using DynamicGlobalAggregateArrayMap = c4c::backend::DynamicGlobalAggregateArrayMap;
 
   using DynamicGlobalScalarArrayAccess = c4c::backend::DynamicGlobalScalarArrayAccess;
 
-  using DynamicGlobalScalarArrayMap =
-      std::unordered_map<std::string, DynamicGlobalScalarArrayAccess>;
+  using DynamicGlobalScalarArrayMap = c4c::backend::DynamicGlobalScalarArrayMap;
 
   using LocalAggregateSlots = c4c::backend::LocalAggregateSlots;
 
-  using LocalAggregateSlotMap = std::unordered_map<std::string, LocalAggregateSlots>;
-  using LocalAggregateFieldSet = std::unordered_set<std::string>;
-  using LocalPointerValueAliasMap = std::unordered_map<std::string, bir::Value>;
+  using LocalAggregateSlotMap = c4c::backend::LocalAggregateSlotMap;
+  using LocalAggregateFieldSet = c4c::backend::LocalAggregateFieldSet;
+  using LocalPointerValueAliasMap = c4c::backend::LocalPointerValueAliasMap;
   using PointerAddress = c4c::backend::PointerAddress;
 
-  using PointerAddressMap = std::unordered_map<std::string, PointerAddress>;
-  using PointerAddressIntMap = std::unordered_map<std::string, PointerAddress>;
-  using GlobalPointerValueSlots = std::unordered_map<std::string, std::optional<PointerAddress>>;
-  using AddressedGlobalPointerValueSlots =
-      std::unordered_map<GlobalPointerSlotKey,
-                         std::optional<PointerAddress>,
-                         GlobalPointerSlotKeyHash>;
+  using PointerAddressMap = c4c::backend::PointerAddressMap;
+  using PointerAddressIntMap = c4c::backend::PointerAddressIntMap;
+  using GlobalPointerValueSlots = c4c::backend::GlobalPointerValueSlots;
+  using AddressedGlobalPointerValueSlots = c4c::backend::AddressedGlobalPointerValueSlots;
 
   struct CompareExpr {
     bir::BinaryOpcode opcode = bir::BinaryOpcode::Eq;
