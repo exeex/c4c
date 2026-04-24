@@ -1394,56 +1394,63 @@ void parse_parenthesized_function_pointer_suffix(
         out_fn_ptr_variadic, fn_ptr_params, fn_ptr_variadic);
 }
 
-void Parser::parse_parenthesized_pointer_declarator_prefix(TypeSpec& ts) {
-    consume();  // (
-    skip_attributes();  // skip any __attribute__((...)) before * or owner prefix
+void parse_parenthesized_pointer_declarator_prefix(Parser& parser,
+                                                   TypeSpec& ts) {
+    parser.consume();  // (
+    parser.skip_attributes();  // skip any __attribute__((...)) before * or owner prefix
 
-    TokenKind pointer_tok = cur().kind;
+    TokenKind pointer_tok = parser.cur().kind;
     bool consumed_member_pointer_prefix = false;
-    if (is_cpp_mode() && consume_member_pointer_owner_prefix()) {
+    if (parser.is_cpp_mode() && parser.consume_member_pointer_owner_prefix()) {
         consumed_member_pointer_prefix = true;
         pointer_tok = TokenKind::Star;
     }
-    parse_pointer_ref_qualifiers(ts, pointer_tok,
-                                 /*preserve_array_base=*/false,
-                                 /*consume_pointer_token=*/!consumed_member_pointer_prefix);
+    parser.parse_pointer_ref_qualifiers(
+        ts, pointer_tok,
+        /*preserve_array_base=*/false,
+        /*consume_pointer_token=*/!consumed_member_pointer_prefix);
 
-    while (check(TokenKind::Star)) {
-        parse_pointer_ref_qualifiers(ts, TokenKind::Star,
-                                     /*preserve_array_base=*/false);
+    while (parser.check(TokenKind::Star)) {
+        parser.parse_pointer_ref_qualifiers(ts, TokenKind::Star,
+                                            /*preserve_array_base=*/false);
     }
 
-    consume_declarator_post_pointer_qualifiers();
+    parser.consume_declarator_post_pointer_qualifiers();
 
-    if (is_cpp_mode()) {
-        if (check(TokenKind::AmpAmp)) {
-            consume();
+    if (parser.is_cpp_mode()) {
+        if (parser.check(TokenKind::AmpAmp)) {
+            parser.consume();
             ts.is_rvalue_ref = true;
-        } else if (check(TokenKind::Amp)) {
-            consume();
+        } else if (parser.check(TokenKind::Amp)) {
+            parser.consume();
             ts.is_lvalue_ref = true;
         }
     }
 }
 
-void Parser::skip_parenthesized_pointer_declarator_array_chunks() {
-    while (check(TokenKind::LBracket)) {
-        consume();  // [
-        while (!at_end() && !check(TokenKind::RBracket)) consume();
-        if (check(TokenKind::RBracket)) consume();  // ]
+void skip_parenthesized_pointer_declarator_array_chunks(Parser& parser) {
+    while (parser.check(TokenKind::LBracket)) {
+        parser.consume();  // [
+        while (!parser.at_end() && !parser.check(TokenKind::RBracket)) {
+            parser.consume();
+        }
+        if (parser.check(TokenKind::RBracket)) parser.consume();  // ]
     }
 }
 
-bool Parser::parse_parenthesized_pointer_declarator_name(
+bool parse_parenthesized_pointer_declarator_name(
+    Parser& parser,
     const char** out_name, TextId* out_name_text_id) {
-    if (!out_name || !check(TokenKind::Identifier)) return false;
+    if (!out_name || !parser.check(TokenKind::Identifier)) return false;
 
     if (out_name_text_id) {
         *out_name_text_id =
-            parser_text_id_for_token(cur().text_id, token_spelling(cur()));
+            parser.parser_text_id_for_token(parser.cur().text_id,
+                                            parser.token_spelling(parser.cur()));
     }
-    *out_name = arena_.strdup(std::string(token_spelling(cur())));
-    consume();
+    *out_name =
+        parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
+    parser.consume();
     return true;
 }
 
@@ -1466,10 +1473,11 @@ bool Parser::parse_parenthesized_pointer_declarator_inner(
     TypeSpec& ts, const char** out_name,
     Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
     bool* out_fn_ptr_variadic, TextId* out_name_text_id) {
-    skip_parenthesized_pointer_declarator_array_chunks();
+    skip_parenthesized_pointer_declarator_array_chunks(*this);
     const bool got_name =
-        parse_parenthesized_pointer_declarator_name(out_name, out_name_text_id);
-    skip_parenthesized_pointer_declarator_array_chunks();
+        parse_parenthesized_pointer_declarator_name(*this, out_name,
+                                                    out_name_text_id);
+    skip_parenthesized_pointer_declarator_array_chunks(*this);
 
     if (got_name && check(TokenKind::LParen)) {
         skip_paren_group();  // skip own params: (int a, int b)
@@ -1510,7 +1518,7 @@ void Parser::parse_parenthesized_pointer_declarator(
     bool is_nested_fn_ptr = false;
     std::vector<long long> decl_dims;
 
-    parse_parenthesized_pointer_declarator_prefix(ts);
+    parse_parenthesized_pointer_declarator_prefix(*this, ts);
 
     is_nested_fn_ptr = parse_parenthesized_pointer_declarator_inner(
         ts, out_name,

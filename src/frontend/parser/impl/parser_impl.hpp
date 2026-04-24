@@ -53,6 +53,12 @@ void parse_parenthesized_function_pointer_suffix(
     bool* out_fn_ptr_variadic,
     Node*** out_ret_fn_ptr_params, int* out_n_ret_fn_ptr_params,
     bool* out_ret_fn_ptr_variadic);
+void parse_parenthesized_pointer_declarator_prefix(Parser& parser,
+                                                   TypeSpec& ts);
+void skip_parenthesized_pointer_declarator_array_chunks(Parser& parser);
+bool parse_parenthesized_pointer_declarator_name(Parser& parser,
+                                                 const char** out_name,
+                                                 TextId* out_name_text_id);
 
 bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);

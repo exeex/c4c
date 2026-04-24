@@ -681,10 +681,6 @@ class Parser {
   void parse_non_parenthesized_declarator_suffixes(
       TypeSpec& ts, const char** out_name, TextId* out_name_text_id,
       std::vector<long long>* out_dims);
-  void parse_parenthesized_pointer_declarator_prefix(TypeSpec& ts);
-  void skip_parenthesized_pointer_declarator_array_chunks();
-  bool parse_parenthesized_pointer_declarator_name(const char** out_name,
-                                                   TextId* out_name_text_id);
   bool try_parse_nested_parenthesized_pointer_declarator(
       TypeSpec& ts, const char** out_name,
       Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
