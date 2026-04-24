@@ -217,6 +217,20 @@ const prepare::PreparedMoveResolution* find_move_resolution_by_op_kind(
   return nullptr;
 }
 
+const prepare::PreparedMoveResolution* find_move_bundle_move_by_op_kind(
+    const prepare::PreparedMoveBundle& bundle,
+    prepare::PreparedMoveResolutionOpKind op_kind,
+    prepare::PreparedValueId from_value_id,
+    prepare::PreparedValueId to_value_id) {
+  for (const auto& move : bundle.moves) {
+    if (move.op_kind == op_kind && move.from_value_id == from_value_id &&
+        move.to_value_id == to_value_id) {
+      return &move;
+    }
+  }
+  return nullptr;
+}
+
 int count_value_move_resolution_to_value_with_authority(
     const prepare::PreparedRegallocFunction& function,
     prepare::PreparedValueId to_value_id,
@@ -3381,6 +3395,9 @@ int check_phi_loop_cycle_move_resolution(const prepare::PreparedBirModule& prepa
     return fail(
         "expected the loop backedge bundle to publish a direct out-of-SSA move-bundle lookup seam");
   }
+  if (body_move_bundle->moves.size() != 3) {
+    return fail("expected the loop backedge move bundle to preserve the published cycle-break step count");
+  }
 
   const auto* a = find_regalloc_value(prepared, *function, "a");
   const auto* b = find_regalloc_value(prepared, *function, "b");
@@ -3406,6 +3423,10 @@ int check_phi_loop_cycle_move_resolution(const prepare::PreparedBirModule& prepa
   if (!prepare::prepared_move_resolution_has_out_of_ssa_parallel_copy_authority(*save_a_to_temp)) {
     return fail("expected the temp-save contract to keep explicit out-of-SSA authority");
   }
+  if (save_a_to_temp->block_index != body_move_bundle->block_index ||
+      save_a_to_temp->instruction_index != body_move_bundle->instruction_index) {
+    return fail("expected the published temp-save step to use the authoritative out-of-SSA move-bundle placement");
+  }
 
   const auto* b_to_a = find_move_resolution(*function, b->value_id, a->value_id);
   if (b_to_a == nullptr) {
@@ -3420,6 +3441,10 @@ int check_phi_loop_cycle_move_resolution(const prepare::PreparedBirModule& prepa
   if (!prepare::prepared_move_resolution_has_out_of_ssa_parallel_copy_authority(*b_to_a)) {
     return fail("expected the direct backedge move to keep explicit out-of-SSA authority");
   }
+  if (b_to_a->block_index != body_move_bundle->block_index ||
+      b_to_a->instruction_index != body_move_bundle->instruction_index) {
+    return fail("expected the direct backedge move to share the authoritative out-of-SSA move-bundle placement");
+  }
 
   const auto* a_to_b = find_move_resolution(*function, a->value_id, b->value_id);
   if (a_to_b == nullptr) {
@@ -3433,6 +3458,37 @@ int check_phi_loop_cycle_move_resolution(const prepare::PreparedBirModule& prepa
   }
   if (!prepare::prepared_move_resolution_has_out_of_ssa_parallel_copy_authority(*a_to_b)) {
     return fail("expected the cycle-broken backedge transfer to keep explicit out-of-SSA authority");
+  }
+  if (a_to_b->block_index != body_move_bundle->block_index ||
+      a_to_b->instruction_index != body_move_bundle->instruction_index) {
+    return fail("expected the cycle-broken backedge move to share the authoritative out-of-SSA move-bundle placement");
+  }
+
+  const auto* bundled_save_a_to_temp = find_move_bundle_move_by_op_kind(
+      *body_move_bundle,
+      prepare::PreparedMoveResolutionOpKind::SaveDestinationToTemp,
+      a->value_id,
+      a->value_id);
+  const auto* bundled_b_to_a = find_move_bundle_move_by_op_kind(
+      *body_move_bundle,
+      prepare::PreparedMoveResolutionOpKind::Move,
+      b->value_id,
+      a->value_id);
+  const auto* bundled_a_to_b = find_move_bundle_move_by_op_kind(
+      *body_move_bundle,
+      prepare::PreparedMoveResolutionOpKind::Move,
+      a->value_id,
+      b->value_id);
+  if (bundled_save_a_to_temp == nullptr || bundled_b_to_a == nullptr || bundled_a_to_b == nullptr) {
+    return fail("expected the authoritative loop backedge move bundle to carry the save/direct/cycle-temp sequence");
+  }
+  if (&body_move_bundle->moves[0] != bundled_save_a_to_temp || &body_move_bundle->moves[1] != bundled_b_to_a ||
+      &body_move_bundle->moves[2] != bundled_a_to_b) {
+    return fail("expected the authoritative loop backedge move bundle to preserve the published cycle-break ordering");
+  }
+  if (bundled_save_a_to_temp->uses_cycle_temp_source || bundled_b_to_a->uses_cycle_temp_source ||
+      !bundled_a_to_b->uses_cycle_temp_source) {
+    return fail("expected the authoritative loop backedge move bundle to preserve direct-then-cycle-temp sourcing");
   }
 
   if (count_value_move_resolution_to_value_without_authority(

@@ -1476,16 +1476,41 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
   return prefix;
 }
 
+struct PublishedParallelCopyPlacement {
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+};
+
+[[nodiscard]] std::optional<PublishedParallelCopyPlacement>
+published_out_of_ssa_parallel_copy_placement(const PreparedNameTables& names,
+                                             const bir::Function& function,
+                                             const PreparedParallelCopyBundle& bundle) {
+  const auto execution_block_label = published_prepared_parallel_copy_execution_block_label(bundle);
+  if (!execution_block_label.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto block_index = find_block_index(names, function, *execution_block_label);
+  if (!block_index.has_value()) {
+    return std::nullopt;
+  }
+
+  return PublishedParallelCopyPlacement{
+      .block_index = *block_index,
+      .instruction_index = 0,
+  };
+}
+
 void append_phi_move_resolution(const PreparedNameTables& names,
                                 const bir::Function& function,
                                 const PreparedControlFlowFunction& function_cf,
                                 PreparedRegallocFunction& regalloc_function) {
   for (const auto& bundle : function_cf.parallel_copy_bundles) {
-    const auto predecessor_block_index = find_block_index(names, function, bundle.predecessor_label);
-    if (!predecessor_block_index.has_value()) {
+    const auto published_placement =
+        published_out_of_ssa_parallel_copy_placement(names, function, bundle);
+    if (!published_placement.has_value()) {
       continue;
     }
-    const auto successor_block_index = find_block_index(names, function, bundle.successor_label);
 
     for (const auto& step : bundle.steps) {
       if (step.move_index >= bundle.moves.size()) {
@@ -1499,24 +1524,6 @@ void append_phi_move_resolution(const PreparedNameTables& names,
       }
 
       const auto& join_transfer = function_cf.join_transfers[move.join_transfer_index];
-      std::size_t bundle_block_index = *predecessor_block_index;
-      std::size_t instruction_index = function.blocks[*predecessor_block_index].insts.size();
-      if (bundle.execution_site != PreparedParallelCopyExecutionSite::PredecessorTerminator) {
-        if (!successor_block_index.has_value()) {
-          continue;
-        }
-        bundle_block_index = *successor_block_index;
-        instruction_index = 0;
-      }
-      if (const auto join_block_index = find_block_index(names, function, join_transfer.join_block_label);
-          join_block_index.has_value() && *join_block_index == bundle_block_index) {
-        if (const auto join_instruction_index =
-                find_instruction_index_for_named_result(function.blocks[*join_block_index],
-                                                        move.destination_value.name);
-            join_instruction_index.has_value()) {
-          instruction_index = *join_instruction_index;
-        }
-      }
 
       const auto* destination =
           find_regalloc_value(regalloc_function, names, move.destination_value.name);
@@ -1528,8 +1535,8 @@ void append_phi_move_resolution(const PreparedNameTables& names,
         append_move_resolution_record(regalloc_function,
                                       *destination,
                                       *destination,
-                                      bundle_block_index,
-                                      instruction_index,
+                                      published_placement->block_index,
+                                      published_placement->instruction_index,
                                       false,
                                       PreparedMoveResolutionOpKind::SaveDestinationToTemp,
                                       PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
@@ -1552,8 +1559,8 @@ void append_phi_move_resolution(const PreparedNameTables& names,
           regalloc_function,
           *source,
           *destination,
-          bundle_block_index,
-          instruction_index,
+          published_placement->block_index,
+          published_placement->instruction_index,
           step.uses_cycle_temp_source,
           PreparedMoveResolutionOpKind::Move,
           PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
