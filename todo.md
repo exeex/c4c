@@ -1,15 +1,15 @@
 Status: Active
 Source Idea Path: ideas/open/86_parser_alias_template_structured_identity.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Tighten `last_using_alias_name` Around Structured Alias Identity
+Current Step ID: 5
+Current Step Title: Final Audit And Broader Parser Proof
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 helper cleanup completed for `last_using_alias_name` active-context
-handoff. Removed the unused string-only
+Step 4 is exhausted. The helper cleanup completed for
+`last_using_alias_name` active-context handoff by removing the unused string-only
 `set_last_using_alias_name(std::string_view)` fallback setter from `parser.hpp`
 after confirming the only live setter call is the structured
 `set_last_using_alias_name(const QualifiedNameKey&)` path in using-alias
@@ -17,8 +17,9 @@ registration.
 
 ## Suggested Next
 
-Step 4 appears exhausted from the executor side. Supervisor/plan-owner can
-advance the active runbook to Step 5 or perform the required lifecycle review.
+Execute Step 5 final audit: re-run the active-context field search, classify
+remaining string mirror dependencies, confirm completed template-struct identity
+work was not reopened, and run the parser build plus `frontend_parser_tests`.
 
 ## Watchouts
 
