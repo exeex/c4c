@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/lir-agent-index-header-hierarchy.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Create the Private HIR-to-LIR Lowering Index
+Current Step ID: 3
+Current Step Title: Move HIR-to-LIR Implementation Files Under the Semantic Directory
 
 # Current Packet
 
@@ -41,3 +41,11 @@ bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-o
 ```
 
 Result: passed. Proof log: `test_after.log`.
+
+Post-review normalization:
+
+- Code review completed: Step 2 was judged aligned, non-overfit, and ready for
+  the narrow Step 3 packet after proof hygiene was restored.
+- Baseline review completed by the supervisor. Canonical logs now present:
+  `test_baseline.log` and `test_after.log`; regression guard passed with
+  `--allow-non-decreasing-passed`.
