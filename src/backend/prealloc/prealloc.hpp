@@ -723,6 +723,22 @@ enum class PreparedMoveResolutionOpKind {
   SaveDestinationToTemp,
 };
 
+enum class PreparedMoveAuthorityKind {
+  None,
+  OutOfSsaParallelCopy,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_move_authority_kind_name(
+    PreparedMoveAuthorityKind kind) {
+  switch (kind) {
+    case PreparedMoveAuthorityKind::None:
+      return "none";
+    case PreparedMoveAuthorityKind::OutOfSsaParallelCopy:
+      return "out_of_ssa_parallel_copy";
+  }
+  return "unknown";
+}
+
 struct PreparedMoveResolution {
   PreparedValueId from_value_id = 0;
   PreparedValueId to_value_id = 0;
@@ -737,6 +753,7 @@ struct PreparedMoveResolution {
   std::size_t instruction_index = 0;
   bool uses_cycle_temp_source = false;
   PreparedMoveResolutionOpKind op_kind = PreparedMoveResolutionOpKind::Move;
+  PreparedMoveAuthorityKind authority_kind = PreparedMoveAuthorityKind::None;
   std::string reason;
 };
 
@@ -862,11 +879,22 @@ struct PreparedValueHome {
 struct PreparedMoveBundle {
   FunctionNameId function_name = kInvalidFunctionName;
   PreparedMovePhase phase = PreparedMovePhase::BeforeInstruction;
+  PreparedMoveAuthorityKind authority_kind = PreparedMoveAuthorityKind::None;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
   std::vector<PreparedMoveResolution> moves;
   std::vector<PreparedAbiBinding> abi_bindings;
 };
+
+[[nodiscard]] inline bool prepared_move_resolution_has_out_of_ssa_parallel_copy_authority(
+    const PreparedMoveResolution& move) {
+  return move.authority_kind == PreparedMoveAuthorityKind::OutOfSsaParallelCopy;
+}
+
+[[nodiscard]] inline bool prepared_move_bundle_has_out_of_ssa_parallel_copy_authority(
+    const PreparedMoveBundle& bundle) {
+  return bundle.authority_kind == PreparedMoveAuthorityKind::OutOfSsaParallelCopy;
+}
 
 struct PreparedValueLocationFunction {
   FunctionNameId function_name = kInvalidFunctionName;

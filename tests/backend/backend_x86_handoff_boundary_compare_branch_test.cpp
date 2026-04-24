@@ -93,11 +93,7 @@ std::size_t count_phi_move_bundles_at_block(
       [&](const prepare::PreparedMoveBundle& bundle) {
         return bundle.phase == prepare::PreparedMovePhase::BlockEntry &&
                bundle.block_index == block_index &&
-               std::any_of(bundle.moves.begin(),
-                           bundle.moves.end(),
-                           [](const prepare::PreparedMoveResolution& move) {
-                             return move.reason.rfind("phi_", 0) == 0;
-                           });
+               prepare::prepared_move_bundle_has_out_of_ssa_parallel_copy_authority(bundle);
       }));
 }
 
@@ -896,13 +892,9 @@ int check_compare_join_route_accepts_successor_entry_parallel_copy_handoff(
                                                 prepare::PreparedMovePhase::BlockEntry,
                                                 *predecessor_block_index));
   if (move_bundle == nullptr ||
-      !std::any_of(move_bundle->moves.begin(),
-                   move_bundle->moves.end(),
-                   [](const prepare::PreparedMoveResolution& move) {
-                     return move.reason.rfind("phi_", 0) == 0;
-                   })) {
+      !prepare::prepared_move_bundle_has_out_of_ssa_parallel_copy_authority(*move_bundle)) {
     return fail((std::string(failure_context) +
-                 ": regalloc no longer publishes a predecessor-owned phi move bundle for successor-entry relocation")
+                 ": regalloc no longer publishes explicit predecessor-owned out-of-SSA move authority for successor-entry relocation")
                     .c_str());
   }
 

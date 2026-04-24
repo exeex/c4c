@@ -89,11 +89,7 @@ std::size_t count_phi_move_bundles_at_block(
       [&](const prepare::PreparedMoveBundle& bundle) {
         return bundle.phase == prepare::PreparedMovePhase::BlockEntry &&
                bundle.block_index == block_index &&
-               std::any_of(bundle.moves.begin(),
-                           bundle.moves.end(),
-                           [](const prepare::PreparedMoveResolution& move) {
-                             return move.reason.rfind("phi_", 0) == 0;
-                           });
+               prepare::prepared_move_bundle_has_out_of_ssa_parallel_copy_authority(bundle);
       }));
 }
 

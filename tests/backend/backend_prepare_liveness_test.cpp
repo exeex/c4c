@@ -217,25 +217,32 @@ const prepare::PreparedMoveResolution* find_move_resolution_by_op_kind(
   return nullptr;
 }
 
-int count_move_resolution_reason_prefix_to_value(
+int count_value_move_resolution_to_value_with_authority(
     const prepare::PreparedRegallocFunction& function,
     prepare::PreparedValueId to_value_id,
-    std::string_view reason_prefix) {
+    prepare::PreparedMoveAuthorityKind authority_kind) {
   int count = 0;
   for (const auto& move : function.move_resolution) {
-    const std::string_view move_reason = move.reason;
-    if (move.to_value_id == to_value_id &&
-        move_reason.substr(0, reason_prefix.size()) == reason_prefix) {
+    if (move.destination_kind == prepare::PreparedMoveDestinationKind::Value &&
+        move.to_value_id == to_value_id && move.authority_kind == authority_kind) {
       ++count;
     }
   }
   return count;
 }
 
-bool move_resolution_reason_has_prefix(const prepare::PreparedMoveResolution& move,
-                                       std::string_view reason_prefix) {
-  const std::string_view move_reason = move.reason;
-  return move_reason.substr(0, reason_prefix.size()) == reason_prefix;
+int count_value_move_resolution_to_value_without_authority(
+    const prepare::PreparedRegallocFunction& function,
+    prepare::PreparedValueId to_value_id,
+    prepare::PreparedMoveAuthorityKind authority_kind) {
+  int count = 0;
+  for (const auto& move : function.move_resolution) {
+    if (move.destination_kind == prepare::PreparedMoveDestinationKind::Value &&
+        move.to_value_id == to_value_id && move.authority_kind != authority_kind) {
+      ++count;
+    }
+  }
+  return count;
 }
 
 const prepare::PreparedAbiBinding* find_abi_binding(
@@ -3291,8 +3298,10 @@ int check_phi_join_move_resolution(const prepare::PreparedBirModule& prepared) {
   }
 
   const auto* move = find_move_resolution(*function, left_feed->value_id, phi->value_id);
-  if (move == nullptr || !move_resolution_reason_has_prefix(*move, "phi_join_stack_to_")) {
-    return fail("expected the stack-backed left phi incoming to publish prepared phi-join move resolution");
+  if (move == nullptr ||
+      !prepare::prepared_move_resolution_has_out_of_ssa_parallel_copy_authority(*move)) {
+    return fail(
+        "expected the stack-backed left phi incoming to publish explicit out-of-SSA move authority");
   }
   if (move->uses_cycle_temp_source) {
     return fail("expected the acyclic phi join move resolution to read directly from the incoming value");
@@ -3310,8 +3319,9 @@ int check_phi_join_move_resolution(const prepare::PreparedBirModule& prepared) {
       find_move_resolution(*function, right_feed->value_id, phi->value_id) != nullptr) {
     return fail("expected matching register-backed phi incoming storage to skip redundant move resolution");
   }
-  if (count_move_resolution_reason_prefix_to_value(*function, phi->value_id, "consumer_") != 0) {
-    return fail("expected prepared phi join results to avoid select-shaped consumer move reconstruction");
+  if (count_value_move_resolution_to_value_without_authority(
+          *function, phi->value_id, prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy) != 0) {
+    return fail("expected prepared phi join results to avoid non-authoritative value-move reconstruction");
   }
 
   return 0;
@@ -3383,6 +3393,9 @@ int check_phi_loop_cycle_move_resolution(const prepare::PreparedBirModule& prepa
       save_a_to_temp->destination_kind != prepare::PreparedMoveDestinationKind::Value) {
     return fail("expected the temp-save contract to publish a first-class save step without reopening a special destination surface");
   }
+  if (!prepare::prepared_move_resolution_has_out_of_ssa_parallel_copy_authority(*save_a_to_temp)) {
+    return fail("expected the temp-save contract to keep explicit out-of-SSA authority");
+  }
 
   const auto* b_to_a = find_move_resolution(*function, b->value_id, a->value_id);
   if (b_to_a == nullptr) {
@@ -3393,6 +3406,9 @@ int check_phi_loop_cycle_move_resolution(const prepare::PreparedBirModule& prepa
   }
   if (b_to_a->uses_cycle_temp_source) {
     return fail("expected the first backedge move to read directly from the original incoming value");
+  }
+  if (!prepare::prepared_move_resolution_has_out_of_ssa_parallel_copy_authority(*b_to_a)) {
+    return fail("expected the direct backedge move to keep explicit out-of-SSA authority");
   }
 
   const auto* a_to_b = find_move_resolution(*function, a->value_id, b->value_id);
@@ -3405,10 +3421,15 @@ int check_phi_loop_cycle_move_resolution(const prepare::PreparedBirModule& prepa
   if (!a_to_b->uses_cycle_temp_source) {
     return fail("expected the cycle-broken backedge move to publish first-class cycle-temp sourcing");
   }
+  if (!prepare::prepared_move_resolution_has_out_of_ssa_parallel_copy_authority(*a_to_b)) {
+    return fail("expected the cycle-broken backedge transfer to keep explicit out-of-SSA authority");
+  }
 
-  if (count_move_resolution_reason_prefix_to_value(*function, a->value_id, "consumer_") != 0 ||
-      count_move_resolution_reason_prefix_to_value(*function, b->value_id, "consumer_") != 0) {
-    return fail("expected loop phi cycle values to avoid generic consumer move reconstruction");
+  if (count_value_move_resolution_to_value_without_authority(
+          *function, a->value_id, prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy) != 0 ||
+      count_value_move_resolution_to_value_without_authority(
+          *function, b->value_id, prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy) != 0) {
+    return fail("expected loop phi cycle values to avoid non-authoritative value-move reconstruction");
   }
 
   return 0;
@@ -3450,21 +3471,26 @@ int check_select_materialized_join_move_resolution(const prepare::PreparedBirMod
     return fail("expected select-materialized join regalloc proof to publish move-resolution bookkeeping");
   }
 
-  if (count_move_resolution_reason_prefix_to_value(*function, phi->value_id, "consumer_") != 0) {
-    return fail("expected select-materialized join results to avoid consumer-shaped move reconstruction");
+  if (count_value_move_resolution_to_value_without_authority(
+          *function, phi->value_id, prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy) != 0) {
+    return fail(
+        "expected select-materialized join results to avoid non-authoritative value-move reconstruction");
   }
 
-  const auto phi_join_moves =
-      count_move_resolution_reason_prefix_to_value(*function, phi->value_id, "phi_join_");
-  if (phi_join_moves == 0) {
-    return fail("expected select-materialized join results to consume published phi-join authority");
+  const auto authoritative_phi_moves = count_value_move_resolution_to_value_with_authority(
+      *function, phi->value_id, prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy);
+  if (authoritative_phi_moves == 0) {
+    return fail(
+        "expected select-materialized join results to consume published out-of-SSA move authority");
   }
 
   const auto* left_move = find_move_resolution(*function, left_feed->value_id, phi->value_id);
   const auto* right_move = find_move_resolution(*function, right_feed->value_id, phi->value_id);
   const auto* authoritative_move = left_move != nullptr ? left_move : right_move;
-  if (authoritative_move == nullptr || !move_resolution_reason_has_prefix(*authoritative_move, "phi_join_")) {
-    return fail("expected select-materialized join move resolution to be sourced from published join metadata");
+  if (authoritative_move == nullptr ||
+      !prepare::prepared_move_resolution_has_out_of_ssa_parallel_copy_authority(*authoritative_move)) {
+    return fail(
+        "expected select-materialized join move resolution to be sourced from explicit out-of-SSA authority");
   }
 
   return 0;
