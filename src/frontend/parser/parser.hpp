@@ -637,10 +637,7 @@ class Parser {
                                        QualifiedNameRef* out_qn = nullptr);
   bool consume_template_args_before_scope();
   bool consume_member_pointer_owner_prefix();
-  bool try_parse_declarator_member_pointer_prefix(TypeSpec& ts);
   bool parse_dependent_typename_specifier(std::string* out_name = nullptr);
-  bool try_parse_cpp_scoped_base_type(bool already_have_base, TypeSpec* out_ts);
-  bool try_parse_qualified_base_type(TypeSpec* out_ts);
 
   // Parse a complete type specifier (base type + qualifiers).
   // ptr_level and array_size are NOT parsed here (those are in the declarator).

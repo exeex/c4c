@@ -542,10 +542,10 @@ bool Parser::consume_member_pointer_owner_prefix() {
     return true;
 }
 
-bool Parser::try_parse_declarator_member_pointer_prefix(TypeSpec& ts) {
-    if (!is_cpp_mode()) return false;
+bool try_parse_declarator_member_pointer_prefix(Parser& parser, TypeSpec& ts) {
+    if (!parser.is_cpp_mode()) return false;
 
-    if (!consume_member_pointer_owner_prefix()) {
+    if (!parser.consume_member_pointer_owner_prefix()) {
         return false;
     }
 
@@ -892,45 +892,45 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
     return true;
 }
 
-bool Parser::try_parse_cpp_scoped_base_type(bool already_have_base,
-                                            TypeSpec* out_ts) {
-    ParseContextGuard trace(this, __func__);
-    if (!out_ts || !is_cpp_mode()) return false;
+bool try_parse_cpp_scoped_base_type(Parser& parser, bool already_have_base,
+                                    TypeSpec* out_ts) {
+    Parser::ParseContextGuard trace(&parser, __func__);
+    if (!out_ts || !parser.is_cpp_mode()) return false;
 
-    if (check(TokenKind::KwTypename)) {
+    if (parser.check(TokenKind::KwTypename)) {
         std::string resolved;
-        if (!parse_dependent_typename_specifier(&resolved)) return false;
-        out_ts->tag = arena_.strdup(resolved.c_str());
+        if (!parser.parse_dependent_typename_specifier(&resolved)) return false;
+        out_ts->tag = parser.arena_.strdup(resolved.c_str());
         return true;
     }
 
     if (already_have_base) return false;
-    return try_parse_qualified_base_type(out_ts);
+    return try_parse_qualified_base_type(parser, out_ts);
 }
 
-bool Parser::try_parse_qualified_base_type(TypeSpec* out_ts) {
-    ParseContextGuard trace(this, __func__);
-    if (!out_ts || !is_cpp_mode()) return false;
+bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts) {
+    Parser::ParseContextGuard trace(&parser, __func__);
+    if (!out_ts || !parser.is_cpp_mode()) return false;
 
-    QualifiedNameRef qn;
-    if (!peek_qualified_name(&qn, true)) return false;
+    Parser::QualifiedNameRef qn;
+    if (!parser.peek_qualified_name(&qn, true)) return false;
 
-    const QualifiedTypeProbe probe = probe_qualified_type(*this, qn);
+    const QualifiedTypeProbe probe = probe_qualified_type(parser, qn);
     if (!has_qualified_type_parse_fallback(probe)) return false;
     if (probe.has_resolved_typedef) {
-        out_ts->tag = arena_.strdup(probe.resolved_typedef_name.c_str());
+        out_ts->tag = parser.arena_.strdup(probe.resolved_typedef_name.c_str());
         out_ts->is_global_qualified = qn.is_global_qualified;
         out_ts->n_qualifier_segments =
             static_cast<int>(qn.qualifier_segments.size());
         if (out_ts->n_qualifier_segments > 0) {
             out_ts->qualifier_segments =
-                arena_.alloc_array<const char*>(out_ts->n_qualifier_segments);
+                parser.arena_.alloc_array<const char*>(out_ts->n_qualifier_segments);
             for (int i = 0; i < out_ts->n_qualifier_segments; ++i) {
                 out_ts->qualifier_segments[i] =
-                    arena_.strdup(qn.qualifier_segments[i].c_str());
+                    parser.arena_.strdup(qn.qualifier_segments[i].c_str());
             }
         }
-        consume_qualified_type_spelling_with_typename(
+        parser.consume_qualified_type_spelling_with_typename(
             /*require_typename=*/false,
             /*allow_global=*/true,
             /*consume_final_template_args=*/false,
@@ -938,8 +938,8 @@ bool Parser::try_parse_qualified_base_type(TypeSpec* out_ts) {
         return true;
     }
 
-    out_ts->tag = arena_.strdup(probe.spelled_name.c_str());
-    consume_qualified_type_spelling_with_typename(
+    out_ts->tag = parser.arena_.strdup(probe.spelled_name.c_str());
+    parser.consume_qualified_type_spelling_with_typename(
         /*require_typename=*/false,
         /*allow_global=*/true,
         /*consume_final_template_args=*/false,
@@ -1245,7 +1245,7 @@ void parse_declarator_prefix(Parser& parser, TypeSpec& ts,
     // C++ pointer-to-member declarator prefix: `C::*name` or `ns::C::*name`.
     // Model it as an additional pointer level for parser bring-up so headers
     // like EASTL's invoke_impl(R C::*func, ...) can parse successfully.
-    parser.try_parse_declarator_member_pointer_prefix(ts);
+    try_parse_declarator_member_pointer_prefix(parser, ts);
 
     // Count pointer stars (and qualifiers between them).
     while (parser.check(TokenKind::Star)) {

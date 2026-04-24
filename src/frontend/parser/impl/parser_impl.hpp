@@ -115,12 +115,16 @@ void store_declarator_function_pointer_params(
 void apply_declarator_pointer_token(Parser& parser, TypeSpec& ts,
                                     TokenKind pointer_tok,
                                     bool preserve_array_base);
+bool try_parse_declarator_member_pointer_prefix(Parser& parser, TypeSpec& ts);
 void parse_pointer_ref_qualifiers(Parser& parser, TypeSpec& ts,
                                   TokenKind pointer_tok,
                                   bool preserve_array_base,
                                   bool consume_pointer_token = true);
 bool is_grouped_declarator_start(Parser& parser);
 bool is_parenthesized_pointer_declarator_start(Parser& parser);
+bool try_parse_cpp_scoped_base_type(Parser& parser, bool already_have_base,
+                                    TypeSpec* out_ts);
+bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts);
 Node* parse_ternary(Parser& parser);
 Node* parse_binary(Parser& parser, int min_prec);
 

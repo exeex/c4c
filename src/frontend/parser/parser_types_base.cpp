@@ -1212,7 +1212,9 @@ TypeSpec Parser::parse_base_type() {
                                                               name_text_id,
                                                               name);
                         if (!simple_unqualified_known_type_head &&
-                            try_parse_cpp_scoped_base_type(already_have_base, &ts)) {
+                            try_parse_cpp_scoped_base_type(*this,
+                                                           already_have_base,
+                                                           &ts)) {
                             has_typedef = true;
                             done = true;
                             break;
