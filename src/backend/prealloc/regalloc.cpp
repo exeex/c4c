@@ -1,5 +1,4 @@
 #include "prealloc.hpp"
-#include "../bir/lir_to_bir.hpp"
 #include "target_register_profile.hpp"
 #include "stack_layout/support.hpp"
 
@@ -1677,8 +1676,7 @@ void append_consumer_move_resolution(const PreparedNameTables& names,
   if (arg_index >= call.arg_types.size()) {
     return std::nullopt;
   }
-  return c4c::backend::lir_to_bir_detail::compute_call_arg_abi(
-      target_profile, call.arg_types[arg_index]);
+  return infer_call_arg_abi(target_profile, call.arg_types[arg_index]);
 }
 
 [[nodiscard]] PreparedMoveStorageKind call_arg_storage_kind(const c4c::TargetProfile& target_profile,

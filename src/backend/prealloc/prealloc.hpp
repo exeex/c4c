@@ -107,6 +107,10 @@ struct PreparedNameTables {
 
 struct PreparedBirModule;
 
+[[nodiscard]] std::optional<bir::CallArgAbiInfo> infer_call_arg_abi(
+    const c4c::TargetProfile& target_profile,
+    bir::TypeKind type);
+
 [[nodiscard]] inline std::string_view prepared_function_name(
     const PreparedNameTables& names,
     FunctionNameId id) {

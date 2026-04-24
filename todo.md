@@ -1,82 +1,37 @@
 Status: Active
 Source Idea Path: ideas/open/bir-agent-index-header-hierarchy.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Survey Current Header And Include Boundaries
+Current Step ID: 2
+Current Step Title: Create The LIR-To-BIR Private Directory Index
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 1, `Survey Current Header And Include Boundaries`.
-Surveyed `src/backend/bir/lir_to_bir.hpp`, all current
-`src/backend/bir/lir_to_bir/*.cpp` includes, `src/backend/bir/lir_to_bir.cpp`,
-and external includes/usages under `src/` and `tests/`.
+Completed `plan.md` Step 2, `Create The LIR-To-BIR Private Directory Index`.
+Added the private implementation index
+`src/backend/bir/lir_to_bir/lowering.hpp`, moved LIR-to-BIR internals behind
+that header, and slimmed `src/backend/bir/lir_to_bir.hpp` back to the public
+lowering API surface plus the analysis types still exposed by
+`BirLoweringResult`.
 
-Exported declarations that should remain in
-`src/backend/bir/lir_to_bir.hpp`:
-
-- `BirLoweringOptions`
-- `BirLoweringNote`
-- `BirLoweringResult`
-- `try_lower_to_bir_with_options`
-- `try_lower_to_bir`
-- `lower_to_bir`
-
-Private lowering declarations that should move to
-`src/backend/bir/lir_to_bir/lowering.hpp`:
-
-- `BirLoweringContext` and `make_lowering_context`
-- `BirFunctionPreScan`, `BirModuleAnalysis`, `analyze_module`, and
-  `lower_module`
-- the `lir_to_bir_detail` namespace declarations: `ValueMap`,
-  `GlobalAddress`, `GlobalInfo`, `GlobalTypes`, `TypeDeclMap`,
-  `FunctionSymbolSet`, local slot/pointer aliases, `ParsedTypedOperand`,
-  `AggregateField`, `AggregateTypeLayout`, and helper declarations including
-  `build_type_decl_map`, `parse_i64`, `lower_integer_type`,
-  `type_size_bytes`, `compute_call_arg_abi`,
-  `compute_function_return_abi`, `split_top_level_initializer_items`,
-  `parse_typed_operand`, `resolve_index_operand`,
-  `compute_aggregate_type_layout`, `lower_minimal_global`,
-  `lower_string_constant_global`, `resolve_pointer_initializer_offsets`,
-  `resolve_known_global_address`, and `is_known_function_symbol`
-- `BirFunctionLowerer`, including its nested public helper structs/aliases,
-  private helper declarations, and lowering state fields
-
-External callers/includes reviewed:
-
-- Production public API users: `src/backend/backend.hpp`,
-  `src/backend/backend.cpp`, `src/backend/mir/x86/api/api.cpp`, and
-  `src/codegen/llvm/llvm_codegen.cpp` use the public lowering options/result
-  and entry functions.
-- Production private-helper leak: `src/backend/prealloc/regalloc.cpp` calls
-  `c4c::backend::lir_to_bir_detail::compute_call_arg_abi`.
-- AArch64 handoff include:
-  `src/backend/mir/aarch64/codegen/emit.cpp` includes
-  `../../../bir/lir_to_bir.hpp`; no private lowering declaration use was found
-  in the surveyed opening section.
-- Test public API users include the backend handoff, notes, liveness, and
-  frontend lowering tests.
-- Test private-helper leaks include x86 handoff tests that call
-  `lir_to_bir_detail::compute_call_arg_abi` or
-  `compute_function_return_abi`.
-- `tests/frontend/frontend_hir_tests.cpp` directly uses
-  `BirLoweringContext`, `make_lowering_context`, `BirModuleAnalysis`,
-  `BirFunctionPreScan`, and `analyze_module`.
-- Every current `src/backend/bir/lir_to_bir/*.cpp` file includes
-  `../lir_to_bir.hpp`; `src/backend/bir/lir_to_bir.cpp` includes
-  `lir_to_bir.hpp` and also uses private helpers/lowerer declarations.
+Updated the LIR-to-BIR implementation files, the facade implementation, and
+tests that intentionally probe lowering internals to include the private index
+directly. Also completed the reviewer-requested boundary adjustment by removing
+the production prealloc dependency on the nested private LIR-to-BIR index:
+`src/backend/prealloc/prealloc.hpp` now declares prealloc-owned
+`infer_call_arg_abi`, `src/backend/prealloc/legalize.cpp` backs it with the
+existing legalize ABI inference logic, and `src/backend/prealloc/regalloc.cpp`
+uses that local surface instead of including
+`src/backend/bir/lir_to_bir/lowering.hpp` or calling
+`lir_to_bir_detail::compute_call_arg_abi`.
 
 ## Suggested Next
 
-Execute `plan.md` Step 2 by adding
-`src/backend/bir/lir_to_bir/lowering.hpp`, moving the private declarations
-listed above into it, and updating `src/backend/bir/lir_to_bir/*.cpp` plus
-`src/backend/bir/lir_to_bir.cpp` to include the private index where they use
-lowering internals. Keep `src/backend/bir/lir_to_bir.hpp` focused on the public
-options, notes, result type, and entry functions, and handle the current
-external `lir_to_bir_detail`/analysis leaks explicitly so the move is
-behavior-preserving and compile-clean.
+Execute `plan.md` Step 3, `Validate The Public BIR Header Surface`, by
+confirming BIR printer and validation declarations remain centralized in
+`src/backend/bir/bir.hpp`, avoiding new thin one-off headers, and updating only
+the includes needed to preserve the top-level BIR index model.
 
 ## Watchouts
 
@@ -85,16 +40,16 @@ behavior-preserving and compile-clean.
 - Do not edit `ideas/open/bir-agent-index-header-hierarchy.md` for routine
   execution notes.
 - Do not create one header per implementation file.
-- `BirLoweringResult` currently exposes `BirModuleAnalysis`, so Step 2 must
-  either keep the analysis result surface intentionally public or adjust the
-  result/API shape as an explicit behavior-preserving public-boundary decision.
-- Moving `lir_to_bir_detail::compute_call_arg_abi` and
-  `compute_function_return_abi` without a replacement public ABI surface will
-  break `src/backend/prealloc/regalloc.cpp` and several backend tests.
-- Moving `BirLoweringContext`/analysis declarations will require updating or
-  rethinking the direct analysis probe in `tests/frontend/frontend_hir_tests.cpp`.
+- `BirLoweringResult` still exposes `BirModuleAnalysis`, so
+  `BirFunctionPreScan` and `BirModuleAnalysis` remain in the public header for
+  this behavior-preserving slice.
+- Tests still intentionally include the private index as explicit probes.
+- `src/backend/bir/lir_to_bir.cpp` still includes the private index as part of
+  the LIR-to-BIR implementation facade; the reviewer-blocked prealloc
+  production leak is removed.
 
 ## Proof
 
-No build or test proof required by the survey-only packet. No test logs were
-created or modified.
+Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
+The build completed and the backend subset passed: 97 tests passed, 0 failed,
+with 12 disabled tests not run. Proof log: `test_after.log`.

@@ -1,4 +1,4 @@
-#include "../lir_to_bir.hpp"
+#include "lowering.hpp"
 
 #include <array>
 #include <charconv>

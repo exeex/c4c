@@ -8,7 +8,7 @@
 #include "sema.hpp"
 #include "source_profile.hpp"
 #include "target_profile.hpp"
-#include "backend/bir/lir_to_bir.hpp"
+#include "backend/bir/lir_to_bir/lowering.hpp"
 
 #include <algorithm>
 #include <cstdlib>

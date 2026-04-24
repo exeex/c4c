@@ -1,6 +1,6 @@
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/bir.hpp"
-#include "src/backend/bir/lir_to_bir.hpp"
+#include "src/backend/bir/lir_to_bir/lowering.hpp"
 #include "src/backend/mir/x86/codegen/abi/x86_target_abi.hpp"
 #include "src/backend/mir/x86/codegen/x86_codegen.hpp"  // Compatibility holdout for prepared helper/render reach-throughs without narrower owners yet.
 #include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"

@@ -84,7 +84,7 @@ void legalize_call_result_abi(const c4c::TargetProfile& target_profile,
   abi.type = legalize_type(target_profile, abi.type);
 }
 
-std::optional<bir::CallArgAbiInfo> infer_call_arg_abi(
+std::optional<bir::CallArgAbiInfo> infer_call_arg_abi_impl(
     const c4c::TargetProfile& target_profile,
     bir::TypeKind type) {
   if (type == bir::TypeKind::Void) {
@@ -281,7 +281,7 @@ void legalize_module(const c4c::TargetProfile& target_profile,
     for (auto& param : function.params) {
       legalize_sized_type(target_profile, param.type, param.size_bytes, param.align_bytes);
       if (!param.abi.has_value()) {
-        param.abi = infer_call_arg_abi(target_profile, param.type);
+        param.abi = infer_call_arg_abi_impl(target_profile, param.type);
         if (param.abi.has_value()) {
           if (param.is_sret) {
             param.abi->sret_pointer = true;
@@ -344,7 +344,7 @@ void legalize_module(const c4c::TargetProfile& target_profile,
                 }
                 while (lowered.arg_abi.size() < lowered.arg_types.size()) {
                   const auto inferred_arg_abi =
-                      infer_call_arg_abi(target_profile, lowered.arg_types[lowered.arg_abi.size()]);
+                      infer_call_arg_abi_impl(target_profile, lowered.arg_types[lowered.arg_abi.size()]);
                   if (!inferred_arg_abi.has_value()) {
                     break;
                   }
@@ -416,6 +416,12 @@ void legalize_module(const c4c::TargetProfile& target_profile,
 }
 
 }  // namespace
+
+std::optional<bir::CallArgAbiInfo> infer_call_arg_abi(
+    const c4c::TargetProfile& target_profile,
+    bir::TypeKind type) {
+  return infer_call_arg_abi_impl(target_profile, type);
+}
 
 void BirPreAlloc::run_legalize() {
   prepared_.completed_phases.push_back("legalize");
