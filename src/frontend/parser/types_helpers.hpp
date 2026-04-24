@@ -118,7 +118,9 @@ std::string visible_type_head_name(const Parser& parser,
             return visible_type->tag;
         }
     }
-    return parser.resolve_visible_type_name(name_text_id, name);
+    const Parser::VisibleNameResult resolved =
+        parser.resolve_visible_type(name_text_id, name);
+    return resolved ? parser.visible_name_spelling(resolved) : std::string(name);
 }
 
 std::string visible_type_head_name(const Parser& parser,
@@ -514,16 +516,19 @@ std::string resolve_qualified_typedef_name(const Parser& parser,
     const std::string_view base_name =
         parser.parser_text(qn.base_text_id, qn.base_name);
     if (is_qualified) {
-        std::string resolved = parser.resolve_qualified_type_name(qn);
+        const Parser::VisibleNameResult resolved_type =
+            parser.resolve_qualified_type(qn);
+        std::string resolved = parser.visible_name_spelling(resolved_type);
         if (!resolved.empty() && parser.has_typedef_type(resolved))
             return resolved;
     } else {
         return visible_type_head_name(parser, qn.base_text_id, base_name);
     }
 
-    std::string resolved =
-        parser.resolve_visible_type_name(qn.base_text_id, base_name);
-    if (parser.has_visible_typedef_type(qn.base_text_id, base_name))
+    const Parser::VisibleNameResult visible_type =
+        parser.resolve_visible_type(qn.base_text_id, base_name);
+    std::string resolved = parser.visible_name_spelling(visible_type);
+    if (visible_type && parser.has_visible_typedef_type(qn.base_text_id, base_name))
         return resolved;
     if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
         return {};
@@ -540,7 +545,9 @@ std::string resolve_qualified_known_type_name(
     const bool is_qualified = !qn.qualifier_segments.empty() ||
                               qn.is_global_qualified;
     if (is_qualified) {
-        resolved = parser.resolve_qualified_type_name(qn);
+        const Parser::VisibleNameResult resolved_type =
+            parser.resolve_qualified_type(qn);
+        resolved = parser.visible_name_spelling(resolved_type);
         if (!resolved.empty() &&
             (parser.has_template_struct_primary(qn) ||
              parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {
@@ -557,8 +564,10 @@ std::string resolve_qualified_known_type_name(
         }
     }
 
-    resolved = parser.resolve_visible_type_name(
-        qn.base_text_id, parser.parser_text(qn.base_text_id, qn.base_name));
+    const Parser::VisibleNameResult visible_type =
+        parser.resolve_visible_type(
+            qn.base_text_id, parser.parser_text(qn.base_text_id, qn.base_name));
+    resolved = parser.visible_name_spelling(visible_type);
     if (parser.has_template_struct_primary(
             parser.current_namespace_context_id(),
             parser.find_parser_text_id(resolved), resolved) ||

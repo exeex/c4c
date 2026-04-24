@@ -72,6 +72,33 @@ class Parser {
     TypedNonTypeParameter,
   };
 
+  enum class VisibleNameKind {
+    Type,
+    Value,
+    Concept,
+  };
+
+  enum class VisibleNameSource {
+    Local,
+    Namespace,
+    UsingAlias,
+    ImportedNamespace,
+    AnonymousNamespace,
+    Fallback,
+  };
+
+  struct VisibleNameResult {
+    bool found = false;
+    VisibleNameKind kind = VisibleNameKind::Type;
+    QualifiedNameKey key;
+    TextId base_text_id = kInvalidText;
+    int context_id = -1;
+    VisibleNameSource source = VisibleNameSource::Fallback;
+    std::string compatibility_spelling;
+
+    explicit operator bool() const { return found; }
+  };
+
   // Template-scope stack: tracks active template parameter visibility.
   // Each frame records the parameters introduced by one template<...> clause
   // and the semantic context (enclosing class, member template, or free function).
@@ -413,6 +440,8 @@ class Parser {
   int resolve_namespace_context(const QualifiedNameRef& name) const;
   int resolve_namespace_name(const QualifiedNameRef& name) const;
   std::string resolve_qualified_value_name(const QualifiedNameRef& name) const;
+  VisibleNameResult resolve_qualified_type(
+      const QualifiedNameRef& name) const;
   std::string resolve_qualified_type_name(const QualifiedNameRef& name) const;
   bool lookup_using_value_alias(int context_id, TextId name_text_id,
                                 std::string_view fallback_name,
@@ -420,6 +449,9 @@ class Parser {
   bool lookup_value_in_context(int context_id, TextId name_text_id,
                                std::string_view name,
                                std::string* resolved) const;
+  bool lookup_type_in_context(int context_id, TextId name_text_id,
+                              std::string_view name,
+                              VisibleNameResult* resolved) const;
   bool lookup_type_in_context(int context_id, TextId name_text_id,
                               std::string_view name,
                               std::string* resolved) const;
@@ -433,6 +465,11 @@ class Parser {
   std::string resolve_visible_value_name(TextId name_text_id,
                                          std::string_view name) const;
   std::string resolve_visible_value_name(const std::string& name) const;
+  VisibleNameResult resolve_visible_type(TextId name_text_id,
+                                         std::string_view name) const;
+  VisibleNameResult resolve_visible_type(std::string_view name) const;
+  std::string visible_name_spelling(
+      const VisibleNameResult& result) const;
   std::string resolve_visible_type_name(TextId name_text_id,
                                         std::string_view name) const;
   std::string resolve_visible_type_name(std::string_view name) const;
