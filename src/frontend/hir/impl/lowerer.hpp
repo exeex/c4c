@@ -3,20 +3,19 @@
 // Private HIR Lowerer engine index.
 //
 // Role:
-// - declares the implementation-only Lowerer engine shared across hir_*.cpp
+// - declares the implementation-only Lowerer engine shared across HIR lowering
+//   implementation translation units
 // - groups helper families by lowering phase and semantic responsibility
 // - provides the internal navigation index for callable, stmt, expr, template,
 //   and initializer lowering code
 //
 // Implementation map:
-// - hir_build.cpp: pipeline orchestration and AST pre-collection passes
+// - root implementation files: pipeline orchestration, callable/global
+//   lowering, type/layout/init normalization, and shared source helpers
 // - impl/templates/templates.hpp: template/dependent lowering implementation index
 // - impl/compile_time/compile_time.hpp: compile-time/materialization implementation index
-// - hir_functions.cpp: callable/global lowering
 // - impl/stmt/stmt.hpp: statement lowering implementation index
 // - impl/expr/expr.hpp: expression lowering implementation index
-// - hir_types.cpp: type/layout/init normalization
-// - hir_lowering_core.cpp: shared source/span/string helpers
 
 #include "hir_impl.hpp"
 #include "../../sema/type_utils.hpp"

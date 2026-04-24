@@ -12,16 +12,12 @@
 // - hand deferred template/consteval/NTTP follow-up to compile-time boundary
 //
 // Implementation map:
-// - hir_lowering_core.cpp: shared lowering utilities and initial build entry
-// - hir_build.cpp: module/program-wide coordination
-// - hir_expr.cpp: expression lowering core
-// - hir_expr_call.cpp: call/member/consteval expression lowering
-// - hir_expr_object.cpp: object materialization/new-delete expression lowering
-// - hir_stmt.cpp: statement lowering
-// - hir_stmt_switch.cpp: switch/case/default statement lowering
-// - hir_types.cpp: type/layout/init lowering
-// - hir_templates.cpp: template instantiation support
-// - hir_functions.cpp: function/callable lowering helpers
+// - root build/type/function/lowering translation units include this index
+// - impl/lowerer.hpp declares the Lowerer engine and phase-specific helpers
+// - impl/expr/expr.hpp, impl/stmt/stmt.hpp, and impl/templates/templates.hpp
+//   are subdomain indexes layered on top of impl/lowerer.hpp
+// - impl/compile_time/compile_time.hpp is the private bridge to deferred
+//   compile-time materialization state
 
 #include "ast.hpp"
 #include "canonical_symbol.hpp"

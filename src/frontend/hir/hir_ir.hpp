@@ -1,5 +1,11 @@
 #pragma once
 
+// Public HIR IR contract.
+//
+// Frontend, sema, codegen, dump tooling, and HIR-local transforms share these
+// data structures. Keep implementation-only lowering helpers in impl/* indexes
+// instead of adding them here.
+
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
