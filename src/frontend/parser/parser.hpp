@@ -702,11 +702,6 @@ class Parser {
   void store_declarator_function_pointer_params(
       Node*** out_params, int* out_n_params, bool* out_variadic,
       const std::vector<Node*>& params, bool variadic);
-  long long parse_one_declarator_array_dim(TypeSpec& ts);
-  void parse_declarator_array_suffixes(TypeSpec& ts,
-                                       std::vector<long long>* out_dims);
-  void apply_declarator_array_dims(TypeSpec& ts,
-                                   const std::vector<long long>& decl_dims);
 
   // ── record parsing (struct / union) ──────────────────────────────────────
   // Test-facing record body context hook; implementation-only record helpers
