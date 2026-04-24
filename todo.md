@@ -8,11 +8,11 @@ Current Step Title: Move Implementation-Only Method Declarations Behind The Boun
 
 ## Just Finished
 
-Completed Step 3 declaration-boundary slice by removing implementation-only
-record member dispatch/body helper declarations from public `Parser`
-declarations in `src/frontend/parser/parser.hpp`, adding equivalent private
-helper declarations to `src/frontend/parser/impl/parser_impl.hpp`, and
-retargeting the definitions and internal call sites in
+Completed Step 3 declaration-boundary slice by removing the lower-level
+record member helper declarations from public `Parser` declarations in
+`src/frontend/parser/parser.hpp`, adding equivalent private helper
+declarations to `src/frontend/parser/impl/parser_impl.hpp`, and retargeting
+their definitions plus internal call sites in
 `src/frontend/parser/parser_types_struct.cpp` to pass `Parser&` through the
 private boundary.
 
@@ -38,13 +38,13 @@ plan, keeping implementation-only declarations behind
 - `begin_record_body_context` remains publicly declared because
   `tests/frontend/frontend_parser_tests.cpp` calls it directly; the moved
   dispatch/body helpers had no external source or test references.
-- The moved record member dispatch/body helpers now live in
+- The moved lower-level record member helpers now live in
   `impl/parser_impl.hpp`, with definitions and internal call sites passing
   `Parser&`.
 
 ## Proof
 
-Executor Step 3 focused proof passed for the record member dispatch/body helper
+Executor Step 3 focused proof passed for the lower-level record member helper
 declaration-boundary slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 

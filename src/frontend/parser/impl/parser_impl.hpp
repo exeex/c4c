@@ -58,6 +58,35 @@ void parse_decl_attrs_for_record(Parser& parser, int line, TypeSpec* attr_ts);
 void skip_record_base_specifier_tail(Parser& parser);
 bool try_parse_record_base_specifier(Parser& parser, TypeSpec* base_ts);
 void parse_record_base_clause(Parser& parser, std::vector<TypeSpec>* base_types);
+bool try_parse_record_using_member(
+    Parser& parser,
+    std::vector<const char*>* member_typedef_names,
+    std::vector<TypeSpec>* member_typedef_types);
+bool try_parse_record_typedef_member(
+    Parser& parser,
+    std::vector<const char*>* member_typedef_names,
+    std::vector<TypeSpec>* member_typedef_types);
+bool try_parse_nested_record_member(
+    Parser& parser,
+    std::vector<Node*>* fields,
+    const std::function<void(const char*)>& check_dup_field);
+bool try_parse_record_enum_member(
+    Parser& parser,
+    std::vector<Node*>* fields,
+    const std::function<void(const char*)>& check_dup_field);
+bool try_parse_record_constructor_member(
+    Parser& parser,
+    const std::string& struct_source_name,
+    std::vector<Node*>* methods);
+bool try_parse_record_destructor_member(
+    Parser& parser,
+    const std::string& struct_source_name,
+    std::vector<Node*>* methods);
+bool try_parse_record_method_or_field_member(
+    Parser& parser,
+    std::vector<Node*>* fields,
+    std::vector<Node*>* methods,
+    const std::function<void(const char*)>& check_dup_field);
 bool try_parse_record_type_like_member_dispatch(
     Parser& parser,
     std::vector<Node*>* fields,

@@ -735,28 +735,6 @@ class Parser {
   // ── record parsing (struct / union) ──────────────────────────────────────
   // This family handles both outer record definitions and in-record member
   // dispatch, including recovery in class/struct bodies.
-  bool try_parse_record_using_member(
-      std::vector<const char*>* member_typedef_names,
-      std::vector<TypeSpec>* member_typedef_types);
-  bool try_parse_record_typedef_member(
-      std::vector<const char*>* member_typedef_names,
-      std::vector<TypeSpec>* member_typedef_types);
-  bool try_parse_nested_record_member(
-      std::vector<Node*>* fields,
-      const std::function<void(const char*)>& check_dup_field);
-  bool try_parse_record_enum_member(
-      std::vector<Node*>* fields,
-      const std::function<void(const char*)>& check_dup_field);
-  bool try_parse_record_constructor_member(
-      const std::string& struct_source_name,
-      std::vector<Node*>* methods);
-  bool try_parse_record_destructor_member(
-      const std::string& struct_source_name,
-      std::vector<Node*>* methods);
-  bool try_parse_record_method_or_field_member(
-      std::vector<Node*>* fields,
-      std::vector<Node*>* methods,
-      const std::function<void(const char*)>& check_dup_field);
   void parse_record_definition_prelude(
       int line,
       TypeSpec* attr_ts,

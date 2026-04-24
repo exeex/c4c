@@ -735,67 +735,69 @@ void parse_record_base_clause(Parser& parser, std::vector<TypeSpec>* base_types)
     }
 }
 
-bool Parser::try_parse_record_using_member(
+bool try_parse_record_using_member(
+    Parser& parser,
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types) {
-    ParseContextGuard trace(this, __func__);
-    if (!(is_cpp_mode() && check(TokenKind::KwUsing)))
+    Parser::ParseContextGuard trace(&parser, __func__);
+    if (!(parser.is_cpp_mode() && parser.check(TokenKind::KwUsing)))
         return false;
 
-    consume();
-    if (check(TokenKind::Identifier) &&
-        core_input_state_.pos + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
-        core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::Assign) {
-        std::string alias_name = std::string(token_spelling(cur()));
-        consume(); // name
-        consume(); // '='
-        TypeSpec alias_ts = parse_type_name();
-        expect(TokenKind::Semi);
+    parser.consume();
+    if (parser.check(TokenKind::Identifier) &&
+        parser.core_input_state_.pos + 1 < static_cast<int>(parser.core_input_state_.tokens.size()) &&
+        parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind == TokenKind::Assign) {
+        std::string alias_name = std::string(parser.token_spelling(parser.cur()));
+        parser.consume(); // name
+        parser.consume(); // '='
+        TypeSpec alias_ts = parser.parse_type_name();
+        parser.expect(TokenKind::Semi);
 
-        register_typedef_binding(alias_name, alias_ts, false);
-        member_typedef_names->push_back(arena_.strdup(alias_name.c_str()));
+        parser.register_typedef_binding(alias_name, alias_ts, false);
+        member_typedef_names->push_back(parser.arena_.strdup(alias_name.c_str()));
         member_typedef_types->push_back(alias_ts);
-        if (!current_struct_tag_text().empty()) {
-            register_struct_member_typedef_binding(current_struct_tag_text(),
+        if (!parser.current_struct_tag_text().empty()) {
+            parser.register_struct_member_typedef_binding(parser.current_struct_tag_text(),
                                                    alias_name, alias_ts);
         }
         return true;
     }
 
-    if (check(TokenKind::KwTypename))
-        consume();
-    (void)parse_qualified_name(/*allow_global=*/true);
-    expect(TokenKind::Semi);
+    if (parser.check(TokenKind::KwTypename))
+        parser.consume();
+    (void)parser.parse_qualified_name(/*allow_global=*/true);
+    parser.expect(TokenKind::Semi);
     return true;
 }
 
-bool Parser::try_parse_record_typedef_member(
+bool try_parse_record_typedef_member(
+    Parser& parser,
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types) {
-    ParseContextGuard trace(this, __func__);
-    if (!(is_cpp_mode() && check(TokenKind::KwTypedef)))
+    Parser::ParseContextGuard trace(&parser, __func__);
+    if (!(parser.is_cpp_mode() && parser.check(TokenKind::KwTypedef)))
         return false;
 
-    consume(); // eat 'typedef'
-    TypeSpec td_base = parse_base_type();
-    parse_attributes(&td_base);
+    parser.consume(); // eat 'typedef'
+    TypeSpec td_base = parser.parse_base_type();
+    parser.parse_attributes(&td_base);
     auto register_record_typedef = [&](const char* name, const TypeSpec& type,
                                        Node** fn_ptr_params,
                                        int n_fn_ptr_params,
                                        bool fn_ptr_variadic) {
-        register_typedef_binding(name, type, true);
+        parser.register_typedef_binding(name, type, true);
         if (type.is_fn_ptr && (n_fn_ptr_params > 0 || fn_ptr_variadic)) {
             const TextId typedef_name_id =
-                parser_text_id_for_token(kInvalidText, name);
+                parser.parser_text_id_for_token(kInvalidText, name);
             if (typedef_name_id != kInvalidText) {
-                binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
+                parser.binding_state_.typedef_fn_ptr_info[typedef_name_id] = {
                     fn_ptr_params, n_fn_ptr_params, fn_ptr_variadic};
             }
         }
         member_typedef_names->push_back(name);
         member_typedef_types->push_back(type);
-        if (!current_struct_tag_text().empty()) {
-            register_struct_member_typedef_binding(current_struct_tag_text(),
+        if (!parser.current_struct_tag_text().empty()) {
+            parser.register_struct_member_typedef_binding(parser.current_struct_tag_text(),
                                                    name, type);
         }
     };
@@ -805,76 +807,77 @@ bool Parser::try_parse_record_typedef_member(
     Node** td_fn_ptr_params = nullptr;
     int td_n_fn_ptr_params = 0;
     bool td_fn_ptr_variadic = false;
-    parse_declarator(ts_copy, &tdname, &td_fn_ptr_params,
+    parser.parse_declarator(ts_copy, &tdname, &td_fn_ptr_params,
                      &td_n_fn_ptr_params, &td_fn_ptr_variadic);
     if (tdname) {
         register_record_typedef(tdname, ts_copy, td_fn_ptr_params,
                                 td_n_fn_ptr_params, td_fn_ptr_variadic);
     }
 
-    while (match(TokenKind::Comma)) {
+    while (parser.match(TokenKind::Comma)) {
         TypeSpec ts2 = td_base;
         const char* tdn2 = nullptr;
         Node** td2_fn_ptr_params = nullptr;
         int td2_n_fn_ptr_params = 0;
         bool td2_fn_ptr_variadic = false;
-        parse_declarator(ts2, &tdn2, &td2_fn_ptr_params,
+        parser.parse_declarator(ts2, &tdn2, &td2_fn_ptr_params,
                          &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
         if (tdn2) {
             register_record_typedef(tdn2, ts2, td2_fn_ptr_params,
                                     td2_n_fn_ptr_params, td2_fn_ptr_variadic);
         }
     }
-    expect(TokenKind::Semi);
+    parser.expect(TokenKind::Semi);
     return true;
 }
 
-bool Parser::try_parse_nested_record_member(
+bool try_parse_nested_record_member(
+    Parser& parser,
     std::vector<Node*>* fields,
     const std::function<void(const char*)>& check_dup_field) {
-    if (!(check(TokenKind::KwStruct) || check(TokenKind::KwClass) ||
-          check(TokenKind::KwUnion)))
+    if (!(parser.check(TokenKind::KwStruct) || parser.check(TokenKind::KwClass) ||
+          parser.check(TokenKind::KwUnion)))
         return false;
 
-    bool inner_union = (cur().kind == TokenKind::KwUnion);
-    consume();
-    Node* inner = parse_struct_or_union(inner_union);
-    if (inner) definition_state_.struct_defs.push_back(inner);
+    bool inner_union = (parser.cur().kind == TokenKind::KwUnion);
+    parser.consume();
+    Node* inner = parser.parse_struct_or_union(inner_union);
+    if (inner) parser.definition_state_.struct_defs.push_back(inner);
 
     TypeSpec anon_fts{};
     anon_fts.array_size = -1;
     anon_fts.array_rank = 0;
     anon_fts.base = inner_union ? TB_UNION : TB_STRUCT;
     anon_fts.tag = inner ? inner->name : nullptr;
-    parse_attributes(&anon_fts);
+    parser.parse_attributes(&anon_fts);
 
-    bool has_declarator = !check(TokenKind::Semi) && !check(TokenKind::RBrace);
+    bool has_declarator = !parser.check(TokenKind::Semi) && !parser.check(TokenKind::RBrace);
     if (has_declarator) {
         const char* fname = nullptr;
-        parse_declarator(anon_fts, &fname);
+        parser.parse_declarator(anon_fts, &fname);
         if (fname) {
-            Node* f = make_node(NK_DECL, cur().line);
+            Node* f = parser.make_node(NK_DECL, parser.cur().line);
             f->type = anon_fts;
             f->name = fname;
             check_dup_field(fname);
             fields->push_back(f);
         } else if (inner && inner->name) {
-            Node* f = make_node(NK_DECL, cur().line);
+            Node* f = parser.make_node(NK_DECL, parser.cur().line);
             f->type = anon_fts;
             f->name = inner->name;
             f->is_anon_field = true;
             fields->push_back(f);
         }
-        while (match(TokenKind::Comma)) {
+        while (parser.match(TokenKind::Comma)) {
             TypeSpec fts2{};
             fts2.array_size = -1;
             fts2.array_rank = 0;
             fts2.base = inner_union ? TB_UNION : TB_STRUCT;
             fts2.tag = inner ? inner->name : nullptr;
             const char* fname2 = nullptr;
-            parse_declarator(fts2, &fname2);
+            parser.parse_declarator(fts2, &fname2);
             if (fname2) {
-                Node* f2 = make_node(NK_DECL, cur().line);
+                Node* f2 = parser.make_node(NK_DECL, parser.cur().line);
                 f2->type = fts2;
                 f2->name = fname2;
                 check_dup_field(fname2);
@@ -882,30 +885,31 @@ bool Parser::try_parse_nested_record_member(
             }
         }
     } else if (inner && inner->name) {
-        Node* f = make_node(NK_DECL, cur().line);
+        Node* f = parser.make_node(NK_DECL, parser.cur().line);
         f->type = anon_fts;
         f->name = inner->name;
         f->is_anon_field = true;
         fields->push_back(f);
     }
-    match(TokenKind::Semi);
+    parser.match(TokenKind::Semi);
     return true;
 }
 
-bool Parser::try_parse_record_enum_member(
+bool try_parse_record_enum_member(
+    Parser& parser,
     std::vector<Node*>* fields,
     const std::function<void(const char*)>& check_dup_field) {
-    if (!check(TokenKind::KwEnum))
+    if (!parser.check(TokenKind::KwEnum))
         return false;
 
-    consume();
-    Node* ed = parse_enum();
-    if (ed && active_context_state_.parsing_top_level_context)
-        definition_state_.struct_defs.push_back(ed);
+    parser.consume();
+    Node* ed = parser.parse_enum();
+    if (ed && parser.active_context_state_.parsing_top_level_context)
+        parser.definition_state_.struct_defs.push_back(ed);
     // After the enum body, there may be one or more field declarators:
     // e.g.  enum { X } x;   or   enum E { A, B } kind;
     // If the next token starts a declarator (not ; or }), parse it.
-    if (!check(TokenKind::Semi) && !check(TokenKind::RBrace)) {
+    if (!parser.check(TokenKind::Semi) && !parser.check(TokenKind::RBrace)) {
         TypeSpec fts{};
         fts.array_size = -1;
         fts.array_rank = 0;
@@ -915,34 +919,34 @@ bool Parser::try_parse_record_enum_member(
             // Prefer enum type tag if available
             fts.base = TB_ENUM;
             fts.tag  = ed->name;
-            if (const TypeSpec* enum_type = find_typedef_type(ed->name))
+            if (const TypeSpec* enum_type = parser.find_typedef_type(ed->name))
                 fts.enum_underlying_base = enum_type->enum_underlying_base;
         }
         while (true) {
             TypeSpec cur_fts = fts;
             const char* fname = nullptr;
-            parse_declarator(cur_fts, &fname);
-            skip_attributes();
+            parser.parse_declarator(cur_fts, &fname);
+            parser.skip_attributes();
             long long bf_width = -1;
-            if (check(TokenKind::Colon)) {
-                consume();
-                Node* bfw = parse_assign_expr();
+            if (parser.check(TokenKind::Colon)) {
+                parser.consume();
+                Node* bfw = parser.parse_assign_expr();
                 if (bfw)
                     eval_const_int(
-                        bfw, &bf_width, &definition_state_.struct_tag_def_map);
+                        bfw, &bf_width, &parser.definition_state_.struct_tag_def_map);
             }
             if (fname) {
-                Node* f = make_node(NK_DECL, cur().line);
+                Node* f = parser.make_node(NK_DECL, parser.cur().line);
                 f->type = cur_fts;
                 f->name = fname;
                 f->ival = bf_width;  // -1 = not a bitfield; N = N-bit bitfield
                 check_dup_field(fname);
                 fields->push_back(f);
             }
-            if (!match(TokenKind::Comma)) break;
+            if (!parser.match(TokenKind::Comma)) break;
         }
     }
-    match(TokenKind::Semi);
+    parser.match(TokenKind::Semi);
     return true;
 }
 
@@ -952,33 +956,34 @@ bool is_record_special_member_name(Parser& parser, const std::string& lex,
     return !struct_source_name.empty() && lex == struct_source_name;
 }
 
-bool Parser::try_parse_record_constructor_member(
+bool try_parse_record_constructor_member(
+    Parser& parser,
     const std::string& struct_source_name,
     std::vector<Node*>* methods) {
-    ParseContextGuard trace(this, __func__);
-    if (!(is_cpp_mode() && !current_struct_tag_text().empty()))
+    Parser::ParseContextGuard trace(&parser, __func__);
+    if (!(parser.is_cpp_mode() && !parser.current_struct_tag_text().empty()))
         return false;
 
-    int probe = core_input_state_.pos;
-    while (probe < static_cast<int>(core_input_state_.tokens.size())) {
-        if (core_input_state_.tokens[probe].kind == TokenKind::KwConstexpr ||
-            core_input_state_.tokens[probe].kind == TokenKind::KwConsteval ||
-            (core_input_state_.tokens[probe].kind == TokenKind::Identifier &&
-             token_spelling(core_input_state_.tokens[probe]) == "inline")) {
+    int probe = parser.core_input_state_.pos;
+    while (probe < static_cast<int>(parser.core_input_state_.tokens.size())) {
+        if (parser.core_input_state_.tokens[probe].kind == TokenKind::KwConstexpr ||
+            parser.core_input_state_.tokens[probe].kind == TokenKind::KwConsteval ||
+            (parser.core_input_state_.tokens[probe].kind == TokenKind::Identifier &&
+             parser.token_spelling(parser.core_input_state_.tokens[probe]) == "inline")) {
             ++probe;
             continue;
         }
-        if (core_input_state_.tokens[probe].kind == TokenKind::KwExplicit) {
+        if (parser.core_input_state_.tokens[probe].kind == TokenKind::KwExplicit) {
             ++probe;
-            if (probe < static_cast<int>(core_input_state_.tokens.size()) &&
-                core_input_state_.tokens[probe].kind == TokenKind::LParen) {
+            if (probe < static_cast<int>(parser.core_input_state_.tokens.size()) &&
+                parser.core_input_state_.tokens[probe].kind == TokenKind::LParen) {
                 int depth = 1;
                 ++probe;
-                while (probe < static_cast<int>(core_input_state_.tokens.size()) &&
+                while (probe < static_cast<int>(parser.core_input_state_.tokens.size()) &&
                        depth > 0) {
-                    if (core_input_state_.tokens[probe].kind == TokenKind::LParen)
+                    if (parser.core_input_state_.tokens[probe].kind == TokenKind::LParen)
                         ++depth;
-                    else if (core_input_state_.tokens[probe].kind ==
+                    else if (parser.core_input_state_.tokens[probe].kind ==
                              TokenKind::RParen)
                         --depth;
                     ++probe;
@@ -988,108 +993,108 @@ bool Parser::try_parse_record_constructor_member(
         }
         break;
     }
-    if (probe < static_cast<int>(core_input_state_.tokens.size()) &&
-        core_input_state_.tokens[probe].kind == TokenKind::Identifier &&
+    if (probe < static_cast<int>(parser.core_input_state_.tokens.size()) &&
+        parser.core_input_state_.tokens[probe].kind == TokenKind::Identifier &&
         is_record_special_member_name(
-            *this,
-            std::string(token_spelling(core_input_state_.tokens[probe])),
+            parser,
+            std::string(parser.token_spelling(parser.core_input_state_.tokens[probe])),
             struct_source_name) &&
-        probe + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
-        core_input_state_.tokens[probe + 1].kind == TokenKind::LParen) {
-        while (pos_ < probe) {
-            if (check(TokenKind::KwExplicit))
-                consume_optional_cpp_explicit_specifier(this);
+        probe + 1 < static_cast<int>(parser.core_input_state_.tokens.size()) &&
+        parser.core_input_state_.tokens[probe + 1].kind == TokenKind::LParen) {
+        while (parser.pos_ < probe) {
+            if (parser.check(TokenKind::KwExplicit))
+                consume_optional_cpp_explicit_specifier(&parser);
             else
-                consume();
+                parser.consume();
         }
     }
 
-    if (!(check(TokenKind::Identifier) &&
+    if (!(parser.check(TokenKind::Identifier) &&
           is_record_special_member_name(
-              *this, std::string(token_spelling(cur())),
+            parser, std::string(parser.token_spelling(parser.cur())),
               struct_source_name) &&
-          core_input_state_.pos + 1 <
-              static_cast<int>(core_input_state_.tokens.size()) &&
-          core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+          parser.core_input_state_.pos + 1 <
+              static_cast<int>(parser.core_input_state_.tokens.size()) &&
+          parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
               TokenKind::LParen)) {
         return false;
     }
 
-    const char* ctor_name = arena_.strdup(std::string(token_spelling(cur())));
-    consume();  // consume the struct tag name
-    consume();  // consume '('
+    const char* ctor_name = parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
+    parser.consume();  // consume the struct tag name
+    parser.consume();  // consume '('
     std::vector<Node*> params;
     bool variadic = false;
-    if (!check(TokenKind::RParen)) {
-        while (!at_end()) {
-            if (check(TokenKind::Ellipsis)) {
+    if (!parser.check(TokenKind::RParen)) {
+        while (!parser.at_end()) {
+            if (parser.check(TokenKind::Ellipsis)) {
                 variadic = true;
-                consume();
+                parser.consume();
                 break;
             }
-            if (check(TokenKind::RParen)) break;
-            if (!can_start_parameter_type()) break;
-            Node* p = parse_param();
+            if (parser.check(TokenKind::RParen)) break;
+            if (!parser.can_start_parameter_type()) break;
+            Node* p = parser.parse_param();
             if (p) params.push_back(p);
-            if (check(TokenKind::Ellipsis)) {
+            if (parser.check(TokenKind::Ellipsis)) {
                 variadic = true;
-                consume();
+                parser.consume();
                 break;
             }
-            if (!match(TokenKind::Comma)) break;
+            if (!parser.match(TokenKind::Comma)) break;
         }
     }
-    expect(TokenKind::RParen);
-    skip_exception_spec();
-    parse_optional_cpp20_trailing_requires_clause(*this);
-    Node* method = make_node(NK_FUNCTION, cur().line);
+    parser.expect(TokenKind::RParen);
+    parser.skip_exception_spec();
+    parse_optional_cpp20_trailing_requires_clause(parser);
+    Node* method = parser.make_node(NK_FUNCTION, parser.cur().line);
     method->type.base = TB_VOID;
     method->name = ctor_name;
-    method->execution_domain = pragma_state_.execution_domain;
+    method->execution_domain = parser.pragma_state_.execution_domain;
     method->variadic = variadic;
     method->is_constructor = true;
     method->n_params = static_cast<int>(params.size());
     if (method->n_params > 0) {
-        method->params = arena_.alloc_array<Node*>(method->n_params);
+        method->params = parser.arena_.alloc_array<Node*>(method->n_params);
         for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
     }
-    if (check(TokenKind::Colon)) {
-        consume();  // ':'
+    if (parser.check(TokenKind::Colon)) {
+        parser.consume();  // ':'
         std::vector<const char*> init_names;
         std::vector<std::vector<Node*>> init_args_list;
-        while (!at_end() && !check(TokenKind::LBrace)) {
-            if (!check(TokenKind::Identifier)) break;
+        while (!parser.at_end() && !parser.check(TokenKind::LBrace)) {
+            if (!parser.check(TokenKind::Identifier)) break;
             const char* mem_name =
-                arena_.strdup(std::string(token_spelling(cur())));
-            consume();  // member name
-            expect(TokenKind::LParen);
+                parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
+            parser.consume();  // member name
+            parser.expect(TokenKind::LParen);
             std::vector<Node*> args;
-            if (!check(TokenKind::RParen)) {
+            if (!parser.check(TokenKind::RParen)) {
                 while (true) {
-                    Node* arg = parse_assign_expr();
+                    Node* arg = parser.parse_assign_expr();
                     if (arg) args.push_back(arg);
-                    if (!match(TokenKind::Comma)) break;
+                    if (!parser.match(TokenKind::Comma)) break;
                 }
             }
-            expect(TokenKind::RParen);
+            parser.expect(TokenKind::RParen);
             init_names.push_back(mem_name);
             init_args_list.push_back(std::move(args));
-            if (!match(TokenKind::Comma)) break;
+            if (!parser.match(TokenKind::Comma)) break;
         }
         method->n_ctor_inits = static_cast<int>(init_names.size());
         if (method->n_ctor_inits > 0) {
             method->ctor_init_names =
-                arena_.alloc_array<const char*>(method->n_ctor_inits);
+                parser.arena_.alloc_array<const char*>(method->n_ctor_inits);
             method->ctor_init_args =
-                arena_.alloc_array<Node**>(method->n_ctor_inits);
+                parser.arena_.alloc_array<Node**>(method->n_ctor_inits);
             method->ctor_init_nargs =
-                arena_.alloc_array<int>(method->n_ctor_inits);
+                parser.arena_.alloc_array<int>(method->n_ctor_inits);
             for (int i = 0; i < method->n_ctor_inits; ++i) {
                 method->ctor_init_names[i] = init_names[i];
                 method->ctor_init_nargs[i] =
                     static_cast<int>(init_args_list[i].size());
                 if (method->ctor_init_nargs[i] > 0) {
-                    method->ctor_init_args[i] = arena_.alloc_array<Node*>(
+                    method->ctor_init_args[i] = parser.arena_.alloc_array<Node*>(
                         method->ctor_init_nargs[i]);
                     for (int j = 0; j < method->ctor_init_nargs[i]; ++j)
                         method->ctor_init_args[i][j] = init_args_list[i][j];
@@ -1099,169 +1104,171 @@ bool Parser::try_parse_record_constructor_member(
             }
         }
     }
-    if (check(TokenKind::LBrace)) {
-        ParserFunctionParamScopeGuard param_scope(*this, params);
-        method->body = parse_block();
-    } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-               core_input_state_.pos + 1 <
-                   static_cast<int>(core_input_state_.tokens.size()) &&
-               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+    if (parser.check(TokenKind::LBrace)) {
+        ParserFunctionParamScopeGuard param_scope(parser, params);
+        method->body = parser.parse_block();
+    } else if (parser.is_cpp_mode() && parser.check(TokenKind::Assign) &&
+               parser.core_input_state_.pos + 1 <
+                   static_cast<int>(parser.core_input_state_.tokens.size()) &&
+               parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                    TokenKind::KwDelete) {
-        consume();  // '='
-        consume();  // 'delete'
+        parser.consume();  // '='
+        parser.consume();  // 'delete'
         method->is_deleted = true;
-        match(TokenKind::Semi);
-    } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-               core_input_state_.pos + 1 <
-                   static_cast<int>(core_input_state_.tokens.size()) &&
-               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+        parser.match(TokenKind::Semi);
+    } else if (parser.is_cpp_mode() && parser.check(TokenKind::Assign) &&
+               parser.core_input_state_.pos + 1 <
+                   static_cast<int>(parser.core_input_state_.tokens.size()) &&
+               parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                    TokenKind::KwDefault) {
-        consume();  // '='
-        consume();  // 'default'
+        parser.consume();  // '='
+        parser.consume();  // 'default'
         method->is_defaulted = true;
-        match(TokenKind::Semi);
+        parser.match(TokenKind::Semi);
     } else {
-        match(TokenKind::Semi);
+        parser.match(TokenKind::Semi);
     }
     methods->push_back(method);
     return true;
 }
 
-bool Parser::try_parse_record_destructor_member(
+bool try_parse_record_destructor_member(
+    Parser& parser,
     const std::string& struct_source_name,
     std::vector<Node*>* methods) {
-    if (!(is_cpp_mode() && !current_struct_tag_text().empty() &&
-          check(TokenKind::Tilde) &&
-          core_input_state_.pos + 1 <
-              static_cast<int>(core_input_state_.tokens.size()) &&
-          core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+    if (!(parser.is_cpp_mode() && !parser.current_struct_tag_text().empty() &&
+          parser.check(TokenKind::Tilde) &&
+          parser.core_input_state_.pos + 1 <
+              static_cast<int>(parser.core_input_state_.tokens.size()) &&
+          parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
               TokenKind::Identifier &&
           is_record_special_member_name(
-              *this,
-              std::string(token_spelling(
-                  core_input_state_.tokens[core_input_state_.pos + 1])),
+            parser,
+              std::string(parser.token_spelling(
+                  parser.core_input_state_.tokens[parser.core_input_state_.pos + 1])),
               struct_source_name))) {
         return false;
     }
 
-    consume();  // consume '~'
-    const char* dtor_name = arena_.strdup(std::string(token_spelling(cur())));
-    consume();  // consume struct tag name
-    expect(TokenKind::LParen);
-    expect(TokenKind::RParen);
-    skip_exception_spec();
-    consume_optional_cpp_member_virt_specifier_seq(this);
+    parser.consume();  // consume '~'
+    const char* dtor_name = parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
+    parser.consume();  // consume struct tag name
+    parser.expect(TokenKind::LParen);
+    parser.expect(TokenKind::RParen);
+    parser.skip_exception_spec();
+    consume_optional_cpp_member_virt_specifier_seq(&parser);
     std::string mangled = std::string("~") + dtor_name;
-    Node* method = make_node(NK_FUNCTION, cur().line);
+    Node* method = parser.make_node(NK_FUNCTION, parser.cur().line);
     method->type.base = TB_VOID;
-    method->name = arena_.strdup(mangled.c_str());
-    method->execution_domain = pragma_state_.execution_domain;
+    method->name = parser.arena_.strdup(mangled.c_str());
+    method->execution_domain = parser.pragma_state_.execution_domain;
     method->is_destructor = true;
     method->n_params = 0;
-    if (check(TokenKind::LBrace)) {
-        method->body = parse_block();
-    } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-               core_input_state_.pos + 1 <
-                   static_cast<int>(core_input_state_.tokens.size()) &&
-               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+    if (parser.check(TokenKind::LBrace)) {
+        method->body = parser.parse_block();
+    } else if (parser.is_cpp_mode() && parser.check(TokenKind::Assign) &&
+               parser.core_input_state_.pos + 1 <
+                   static_cast<int>(parser.core_input_state_.tokens.size()) &&
+               parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                    TokenKind::KwDelete) {
-        consume();  // '='
-        consume();  // 'delete'
+        parser.consume();  // '='
+        parser.consume();  // 'delete'
         method->is_deleted = true;
-        match(TokenKind::Semi);
-    } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-               core_input_state_.pos + 1 <
-                   static_cast<int>(core_input_state_.tokens.size()) &&
-               core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+        parser.match(TokenKind::Semi);
+    } else if (parser.is_cpp_mode() && parser.check(TokenKind::Assign) &&
+               parser.core_input_state_.pos + 1 <
+                   static_cast<int>(parser.core_input_state_.tokens.size()) &&
+               parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                    TokenKind::KwDefault) {
-        consume();  // '='
-        consume();  // 'default'
+        parser.consume();  // '='
+        parser.consume();  // 'default'
         method->is_defaulted = true;
-        match(TokenKind::Semi);
+        parser.match(TokenKind::Semi);
     } else {
-        match(TokenKind::Semi);
+        parser.match(TokenKind::Semi);
     }
     methods->push_back(method);
     return true;
 }
 
-bool Parser::try_parse_record_method_or_field_member(
+bool try_parse_record_method_or_field_member(
+    Parser& parser,
     std::vector<Node*>* fields,
     std::vector<Node*>* methods,
     const std::function<void(const char*)>& check_dup_field) {
-    ParseContextGuard trace(this, __func__);
+    Parser::ParseContextGuard trace(&parser, __func__);
     // Regular field declaration
     // C++ conversion operators (e.g., operator bool()) have no return
     // type prefix, so KwOperator can appear directly here.
     bool is_conversion_operator = false;
-    if (is_cpp_mode()) {
-        TentativeParseGuard operator_guard(*this);
-        while (!at_end()) {
-            if (check(TokenKind::KwOperator)) {
+    if (parser.is_cpp_mode()) {
+        Parser::TentativeParseGuard operator_guard(parser);
+        while (!parser.at_end()) {
+            if (parser.check(TokenKind::KwOperator)) {
                 is_conversion_operator = true;
                 break;
             }
-            if (check(TokenKind::KwConst) || check(TokenKind::KwVolatile) ||
-                check(TokenKind::KwInline) || check(TokenKind::KwExtern) ||
-                check(TokenKind::KwStatic) || check(TokenKind::KwConstexpr) ||
-                check(TokenKind::KwConsteval) || check(TokenKind::KwMutable)) {
-                consume();
+            if (parser.check(TokenKind::KwConst) || parser.check(TokenKind::KwVolatile) ||
+                parser.check(TokenKind::KwInline) || parser.check(TokenKind::KwExtern) ||
+                parser.check(TokenKind::KwStatic) || parser.check(TokenKind::KwConstexpr) ||
+                parser.check(TokenKind::KwConsteval) || parser.check(TokenKind::KwMutable)) {
+                parser.consume();
                 continue;
             }
-            if (check(TokenKind::KwExplicit)) {
-                consume_optional_cpp_explicit_specifier(this);
+            if (parser.check(TokenKind::KwExplicit)) {
+                consume_optional_cpp_explicit_specifier(&parser);
                 continue;
             }
             break;
         }
     }
-    if (!is_conversion_operator && !is_type_start()) {
+    if (!is_conversion_operator && !parser.is_type_start()) {
         // unknown token in struct body — skip
-        consume();
+        parser.consume();
         return true;
     }
 
     // Track C++ storage-class specifiers before parse_base_type consumes them.
     bool field_is_static = false;
     bool field_is_constexpr = false;
-    if (is_cpp_mode()) {
-        TentativeParseGuard peek_guard(*this);
-        while (!at_end() && !check(TokenKind::RBrace)) {
-            if (check(TokenKind::KwStatic)) { field_is_static = true; consume(); continue; }
-            if (check(TokenKind::KwConstexpr)) { field_is_constexpr = true; consume(); continue; }
+    if (parser.is_cpp_mode()) {
+        Parser::TentativeParseGuard peek_guard(parser);
+        while (!parser.at_end() && !parser.check(TokenKind::RBrace)) {
+            if (parser.check(TokenKind::KwStatic)) { field_is_static = true; parser.consume(); continue; }
+            if (parser.check(TokenKind::KwConstexpr)) { field_is_constexpr = true; parser.consume(); continue; }
             // Only peek through qualifiers/storage-class keywords
-            if (check(TokenKind::KwConst) || check(TokenKind::KwVolatile) ||
-                check(TokenKind::KwInline) || check(TokenKind::KwExtern) ||
-                check(TokenKind::KwConsteval) ||
-                check(TokenKind::KwMutable)) {
-                consume();
+            if (parser.check(TokenKind::KwConst) || parser.check(TokenKind::KwVolatile) ||
+                parser.check(TokenKind::KwInline) || parser.check(TokenKind::KwExtern) ||
+                parser.check(TokenKind::KwConsteval) ||
+                parser.check(TokenKind::KwMutable)) {
+                parser.consume();
                 continue;
             }
-            if (check(TokenKind::KwExplicit)) {
-                consume_optional_cpp_explicit_specifier(this);
+            if (parser.check(TokenKind::KwExplicit)) {
+                consume_optional_cpp_explicit_specifier(&parser);
                 continue;
             }
             break;
         }
-        // peek_guard restores pos_ on scope exit (committed=false)
+        // peek_guard restores parser.pos_ on scope exit (committed=false)
     }
 
     TypeSpec fts{};
     if (!is_conversion_operator) {
-        fts = parse_base_type();
-        parse_attributes(&fts);
-    } else if (is_cpp_mode()) {
-        while (!at_end()) {
-            if (check(TokenKind::KwOperator)) break;
-            if (check(TokenKind::KwConst) || check(TokenKind::KwVolatile) ||
-                check(TokenKind::KwInline) || check(TokenKind::KwExtern) ||
-                check(TokenKind::KwStatic) || check(TokenKind::KwConstexpr) ||
-                check(TokenKind::KwConsteval) || check(TokenKind::KwMutable)) {
-                consume();
+        fts = parser.parse_base_type();
+        parser.parse_attributes(&fts);
+    } else if (parser.is_cpp_mode()) {
+        while (!parser.at_end()) {
+            if (parser.check(TokenKind::KwOperator)) break;
+            if (parser.check(TokenKind::KwConst) || parser.check(TokenKind::KwVolatile) ||
+                parser.check(TokenKind::KwInline) || parser.check(TokenKind::KwExtern) ||
+                parser.check(TokenKind::KwStatic) || parser.check(TokenKind::KwConstexpr) ||
+                parser.check(TokenKind::KwConsteval) || parser.check(TokenKind::KwMutable)) {
+                parser.consume();
                 continue;
             }
-            if (check(TokenKind::KwExplicit)) {
-                consume_optional_cpp_explicit_specifier(this);
+            if (parser.check(TokenKind::KwExplicit)) {
+                consume_optional_cpp_explicit_specifier(&parser);
                 continue;
             }
             break;
@@ -1271,53 +1278,53 @@ bool Parser::try_parse_record_method_or_field_member(
     // C++ operator method: <return-type> operator<symbol>(<params>) { ... }
     // Consume pointer/reference declarator tokens between the base type
     // and the 'operator' keyword (e.g., Inner* operator->(), int& operator*()).
-    if (is_cpp_mode() && !is_conversion_operator && check(TokenKind::Star)) {
-        while (check(TokenKind::Star)) { consume(); fts.ptr_level++; }
+    if (parser.is_cpp_mode() && !is_conversion_operator && parser.check(TokenKind::Star)) {
+        while (parser.check(TokenKind::Star)) { parser.consume(); fts.ptr_level++; }
     }
-    if (is_cpp_mode() && !is_conversion_operator && check(TokenKind::AmpAmp)) {
-        consume();
+    if (parser.is_cpp_mode() && !is_conversion_operator && parser.check(TokenKind::AmpAmp)) {
+        parser.consume();
         fts.is_rvalue_ref = true;
-    } else if (is_cpp_mode() && !is_conversion_operator && check(TokenKind::Amp)) {
-        consume();
+    } else if (parser.is_cpp_mode() && !is_conversion_operator && parser.check(TokenKind::Amp)) {
+        parser.consume();
         fts.is_lvalue_ref = true;
     }
-    if (is_cpp_mode() && (is_conversion_operator || check(TokenKind::KwOperator))) {
+    if (parser.is_cpp_mode() && (is_conversion_operator || parser.check(TokenKind::KwOperator))) {
         OperatorKind op_kind = OP_NONE;
         const char* op_mangled = nullptr;
-        consume(); // eat 'operator'
+        parser.consume(); // eat 'operator'
 
         // Determine which operator
         std::string conversion_mangled_name;
-        if (is_type_start() || can_start_parameter_type() ||
-            check(TokenKind::Identifier) ||
-            check(TokenKind::ColonColon)) {
+        if (parser.is_type_start() || parser.can_start_parameter_type() ||
+            parser.check(TokenKind::Identifier) ||
+            parser.check(TokenKind::ColonColon)) {
             // Conversion operator: operator T() — the token after 'operator'
             // is a type name. This covers both standalone 'operator T()' and
             // prefix forms like 'explicit operator T()' / 'constexpr explicit operator T()'.
             is_conversion_operator = true;
-            if (check(TokenKind::Identifier) && !is_type_start() &&
-                !can_start_parameter_type()) {
+            if (parser.check(TokenKind::Identifier) && !parser.is_type_start() &&
+                !parser.can_start_parameter_type()) {
                 fts = TypeSpec{};
                 fts.base = TB_TYPEDEF;
-                fts.tag = arena_.strdup(std::string(token_spelling(cur())));
+                fts.tag = parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
                 fts.array_size = -1;
                 fts.inner_rank = -1;
-                consume();
+                parser.consume();
             } else {
-                fts = parse_base_type();
+                fts = parser.parse_base_type();
             }
-            parse_attributes(&fts);
-            if (check(TokenKind::Star)) {
-                while (check(TokenKind::Star)) {
-                    consume();
+            parser.parse_attributes(&fts);
+            if (parser.check(TokenKind::Star)) {
+                while (parser.check(TokenKind::Star)) {
+                    parser.consume();
                     fts.ptr_level++;
                 }
             }
-            if (check(TokenKind::AmpAmp)) {
-                consume();
+            if (parser.check(TokenKind::AmpAmp)) {
+                parser.consume();
                 fts.is_rvalue_ref = true;
-            } else if (check(TokenKind::Amp)) {
-                consume();
+            } else if (parser.check(TokenKind::Amp)) {
+                parser.consume();
                 fts.is_lvalue_ref = true;
             }
             if (fts.base == TB_BOOL && fts.ptr_level == 0 &&
@@ -1327,81 +1334,81 @@ bool Parser::try_parse_record_method_or_field_member(
                 conversion_mangled_name = "operator_conv_";
                 append_type_mangled_suffix(conversion_mangled_name, fts);
             }
-        } else if (check(TokenKind::KwNew)) {
-            consume();
-            conversion_mangled_name = check(TokenKind::LBracket)
+        } else if (parser.check(TokenKind::KwNew)) {
+            parser.consume();
+            conversion_mangled_name = parser.check(TokenKind::LBracket)
                 ? "operator_new_array"
                 : "operator_new";
-            if (check(TokenKind::LBracket)) {
-                consume();
-                expect(TokenKind::RBracket);
+            if (parser.check(TokenKind::LBracket)) {
+                parser.consume();
+                parser.expect(TokenKind::RBracket);
             }
-        } else if (check(TokenKind::KwDelete)) {
-            consume();
-            conversion_mangled_name = check(TokenKind::LBracket)
+        } else if (parser.check(TokenKind::KwDelete)) {
+            parser.consume();
+            conversion_mangled_name = parser.check(TokenKind::LBracket)
                 ? "operator_delete_array"
                 : "operator_delete";
-            if (check(TokenKind::LBracket)) {
-                consume();
-                expect(TokenKind::RBracket);
+            if (parser.check(TokenKind::LBracket)) {
+                parser.consume();
+                parser.expect(TokenKind::RBracket);
             }
-        } else if (check(TokenKind::LBracket)) {
-            consume(); expect(TokenKind::RBracket);
+        } else if (parser.check(TokenKind::LBracket)) {
+            parser.consume(); parser.expect(TokenKind::RBracket);
             op_kind = OP_SUBSCRIPT;
-        } else if (check(TokenKind::Star)) {
-            consume();
+        } else if (parser.check(TokenKind::Star)) {
+            parser.consume();
             op_kind = OP_DEREF;
             conversion_mangled_name = "operator_star_pending";
-        } else if (check(TokenKind::Arrow)) {
-            consume();
+        } else if (parser.check(TokenKind::Arrow)) {
+            parser.consume();
             op_kind = OP_ARROW;
-        } else if (check(TokenKind::PlusPlus)) {
-            consume();
+        } else if (parser.check(TokenKind::PlusPlus)) {
+            parser.consume();
             op_kind = OP_PRE_INC; // may become OP_POST_INC based on params
-        } else if (check(TokenKind::EqualEqual)) {
-            consume();
+        } else if (parser.check(TokenKind::EqualEqual)) {
+            parser.consume();
             op_kind = OP_EQ;
-        } else if (check(TokenKind::BangEqual)) {
-            consume();
+        } else if (parser.check(TokenKind::BangEqual)) {
+            parser.consume();
             op_kind = OP_NEQ;
-        } else if (check(TokenKind::Plus)) {
-            consume();
+        } else if (parser.check(TokenKind::Plus)) {
+            parser.consume();
             op_kind = OP_PLUS;
-        } else if (check(TokenKind::Minus)) {
-            consume();
+        } else if (parser.check(TokenKind::Minus)) {
+            parser.consume();
             op_kind = OP_MINUS;
-        } else if (check(TokenKind::Assign)) {
-            consume();
+        } else if (parser.check(TokenKind::Assign)) {
+            parser.consume();
             op_kind = OP_ASSIGN;
-        } else if (check(TokenKind::LessEqual)) {
-            consume();
+        } else if (parser.check(TokenKind::LessEqual)) {
+            parser.consume();
             op_kind = OP_LE;
-        } else if (check(TokenKind::Spaceship)) {
-            consume();
+        } else if (parser.check(TokenKind::Spaceship)) {
+            parser.consume();
             op_kind = OP_SPACESHIP;
-        } else if (check(TokenKind::GreaterEqual)) {
-            consume();
+        } else if (parser.check(TokenKind::GreaterEqual)) {
+            parser.consume();
             op_kind = OP_GE;
-        } else if (check(TokenKind::Less)) {
-            consume();
+        } else if (parser.check(TokenKind::Less)) {
+            parser.consume();
             op_kind = OP_LT;
-        } else if (check(TokenKind::Greater)) {
-            consume();
+        } else if (parser.check(TokenKind::Greater)) {
+            parser.consume();
             op_kind = OP_GT;
-        } else if (check(TokenKind::LParen)) {
+        } else if (parser.check(TokenKind::LParen)) {
             // operator() — function call operator
-            consume(); // eat '('
-            expect(TokenKind::RParen); // eat ')'
+            parser.consume(); // eat '('
+            parser.expect(TokenKind::RParen); // eat ')'
             op_kind = OP_CALL;
-        } else if (check(TokenKind::Amp)) {
-            consume();
+        } else if (parser.check(TokenKind::Amp)) {
+            parser.consume();
             conversion_mangled_name = "operator_amp_pending";
-        } else if (const char* extra_mangled = extra_operator_mangled_name(cur().kind)) {
-            consume();
+        } else if (const char* extra_mangled = extra_operator_mangled_name(parser.cur().kind)) {
+            parser.consume();
             conversion_mangled_name = extra_mangled;
-        } else if (check(TokenKind::KwBool)) {
+        } else if (parser.check(TokenKind::KwBool)) {
             // operator bool — conversion operator; return type is bool
-            consume();
+            parser.consume();
             op_kind = OP_BOOL;
             fts = TypeSpec{};
             fts.base = TB_BOOL;
@@ -1409,35 +1416,35 @@ bool Parser::try_parse_record_method_or_field_member(
             // Unknown operator token — error
             throw std::runtime_error(
                 std::string("unsupported operator overload token '") +
-                std::string(token_spelling(cur())) + "' at line " +
-                std::to_string(cur().line));
+                std::string(parser.token_spelling(parser.cur())) + "' at line " +
+                std::to_string(parser.cur().line));
         }
 
         op_mangled = operator_kind_mangled_name(op_kind);
         if (!conversion_mangled_name.empty()) {
-            op_mangled = arena_.strdup(conversion_mangled_name.c_str());
+            op_mangled = parser.arena_.strdup(conversion_mangled_name.c_str());
         }
 
         // Function attributes such as [[nodiscard]] can appear between the
         // operator name and its parameter list.
-        skip_attributes();
+        parser.skip_attributes();
 
         // Parse parameter list
-        expect(TokenKind::LParen);
+        parser.expect(TokenKind::LParen);
         std::vector<Node*> params;
         bool variadic = false;
-        if (!check(TokenKind::RParen)) {
-            while (!at_end()) {
-                if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
-                if (check(TokenKind::RParen)) break;
-                if (!can_start_parameter_type()) break;
-                Node* p = parse_param();
+        if (!parser.check(TokenKind::RParen)) {
+            while (!parser.at_end()) {
+                if (parser.check(TokenKind::Ellipsis)) { variadic = true; parser.consume(); break; }
+                if (parser.check(TokenKind::RParen)) break;
+                if (!parser.can_start_parameter_type()) break;
+                Node* p = parser.parse_param();
                 if (p) params.push_back(p);
-                if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
-                if (!match(TokenKind::Comma)) break;
+                if (parser.check(TokenKind::Ellipsis)) { variadic = true; parser.consume(); break; }
+                if (!parser.match(TokenKind::Comma)) break;
             }
         }
-        expect(TokenKind::RParen);
+        parser.expect(TokenKind::RParen);
 
         // Distinguish prefix vs postfix operator++ by parameter count:
         // prefix: operator++() — 0 params; postfix: operator++(int) — 1 param
@@ -1447,7 +1454,7 @@ bool Parser::try_parse_record_method_or_field_member(
         }
         if (!conversion_mangled_name.empty()) {
             finalize_pending_operator_name(conversion_mangled_name, params.size());
-            op_mangled = arena_.strdup(conversion_mangled_name.c_str());
+            op_mangled = parser.arena_.strdup(conversion_mangled_name.c_str());
         }
 
         // Parse trailing qualifiers (const, constexpr, consteval)
@@ -1457,32 +1464,32 @@ bool Parser::try_parse_record_method_or_field_member(
         bool is_method_lvalue_ref = false;
         bool is_method_rvalue_ref = false;
         while (true) {
-            if (match(TokenKind::KwConst)) { is_method_const = true; }
-            else if (is_cpp_mode() && match(TokenKind::KwConstexpr)) {
+            if (parser.match(TokenKind::KwConst)) { is_method_const = true; }
+            else if (parser.is_cpp_mode() && parser.match(TokenKind::KwConstexpr)) {
                 is_method_constexpr = true;
-            } else if (is_cpp_mode() && match(TokenKind::KwConsteval)) {
+            } else if (parser.is_cpp_mode() && parser.match(TokenKind::KwConsteval)) {
                 is_method_consteval = true;
             } else {
                 break;
             }
         }
         // Skip C++ ref-qualifiers: & or &&
-        if (is_cpp_mode()) {
-            if (match(TokenKind::AmpAmp)) is_method_rvalue_ref = true;
-            else if (match(TokenKind::Amp)) is_method_lvalue_ref = true;
+        if (parser.is_cpp_mode()) {
+            if (parser.match(TokenKind::AmpAmp)) is_method_rvalue_ref = true;
+            else if (parser.match(TokenKind::Amp)) is_method_lvalue_ref = true;
         }
-        skip_exception_spec();
-        if (is_cpp_mode() && match(TokenKind::Arrow)) {
-            fts = parse_type_name();
-            parse_attributes(&fts);
+        parser.skip_exception_spec();
+        if (parser.is_cpp_mode() && parser.match(TokenKind::Arrow)) {
+            fts = parser.parse_type_name();
+            parser.parse_attributes(&fts);
         }
-        parse_optional_cpp20_trailing_requires_clause(*this);
-        consume_optional_cpp_member_virt_specifier_seq(this);
+        parse_optional_cpp20_trailing_requires_clause(parser);
+        consume_optional_cpp_member_virt_specifier_seq(&parser);
 
-        Node* method = make_node(NK_FUNCTION, cur().line);
+        Node* method = parser.make_node(NK_FUNCTION, parser.cur().line);
         method->type = fts;
-        method->name = arena_.strdup(op_mangled);
-        method->execution_domain = pragma_state_.execution_domain;
+        method->name = parser.arena_.strdup(op_mangled);
+        method->execution_domain = parser.pragma_state_.execution_domain;
         method->operator_kind = op_kind;
         method->variadic = variadic;
         method->is_const_method = is_method_const;
@@ -1492,48 +1499,48 @@ bool Parser::try_parse_record_method_or_field_member(
         method->is_consteval = is_method_consteval;
         method->n_params = static_cast<int>(params.size());
         if (method->n_params > 0) {
-            method->params = arena_.alloc_array<Node*>(method->n_params);
+            method->params = parser.arena_.alloc_array<Node*>(method->n_params);
             for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
         }
-        if (check(TokenKind::LBrace)) {
-            ParserFunctionParamScopeGuard param_scope(*this, params);
-            method->body = parse_block();
-        } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                   core_input_state_.pos + 1 <
-                       static_cast<int>(core_input_state_.tokens.size()) &&
-                   core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+        if (parser.check(TokenKind::LBrace)) {
+            ParserFunctionParamScopeGuard param_scope(parser, params);
+            method->body = parser.parse_block();
+        } else if (parser.is_cpp_mode() && parser.check(TokenKind::Assign) &&
+                   parser.core_input_state_.pos + 1 <
+                       static_cast<int>(parser.core_input_state_.tokens.size()) &&
+                   parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                        TokenKind::KwDelete) {
-            consume(); // '='
-            consume(); // 'delete'
+            parser.consume(); // '='
+            parser.consume(); // 'delete'
             method->is_deleted = true;
-            match(TokenKind::Semi);
-        } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                   core_input_state_.pos + 1 <
-                       static_cast<int>(core_input_state_.tokens.size()) &&
-                   core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+            parser.match(TokenKind::Semi);
+        } else if (parser.is_cpp_mode() && parser.check(TokenKind::Assign) &&
+                   parser.core_input_state_.pos + 1 <
+                       static_cast<int>(parser.core_input_state_.tokens.size()) &&
+                   parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                        TokenKind::KwDefault) {
-            consume(); // '='
-            consume(); // 'default'
+            parser.consume(); // '='
+            parser.consume(); // 'default'
             method->is_defaulted = true;
-            match(TokenKind::Semi);
+            parser.match(TokenKind::Semi);
         } else {
-            match(TokenKind::Semi);
+            parser.match(TokenKind::Semi);
         }
         methods->push_back(method);
         return true;
     }
 
     // Handle anonymous bitfield: just ': expr;'
-    if (check(TokenKind::Colon)) {
-        consume();
-        parse_assign_expr();  // skip bitfield width
-        match(TokenKind::Semi);
+    if (parser.check(TokenKind::Colon)) {
+        parser.consume();
+        parser.parse_assign_expr();  // skip bitfield width
+        parser.match(TokenKind::Semi);
         return true;
     }
 
     // If semicolon follows immediately: anonymous struct field (no name)
-    if (check(TokenKind::Semi)) {
-        match(TokenKind::Semi);
+    if (parser.check(TokenKind::Semi)) {
+        parser.match(TokenKind::Semi);
         return true;
     }
 
@@ -1548,64 +1555,64 @@ bool Parser::try_parse_record_method_or_field_member(
         Node** fn_ptr_params = nullptr;
         int n_fn_ptr_params = 0;
         bool fn_ptr_variadic = false;
-        parse_declarator(cur_fts, &fname, &fn_ptr_params,
+        parser.parse_declarator(cur_fts, &fname, &fn_ptr_params,
                          &n_fn_ptr_params, &fn_ptr_variadic);
-        skip_attributes();
+        parser.skip_attributes();
 
-        if (fname && check(TokenKind::LParen)) {
-            consume();
+        if (fname && parser.check(TokenKind::LParen)) {
+            parser.consume();
             std::vector<Node*> params;
             bool variadic = false;
-            if (!check(TokenKind::RParen)) {
-                while (!at_end()) {
-                    if (check(TokenKind::Ellipsis)) {
+            if (!parser.check(TokenKind::RParen)) {
+                while (!parser.at_end()) {
+                    if (parser.check(TokenKind::Ellipsis)) {
                         variadic = true;
-                        consume();
+                        parser.consume();
                         break;
                     }
-                    if (check(TokenKind::RParen)) break;
-                    if (!can_start_parameter_type()) break;
-                    Node* p = parse_param();
+                    if (parser.check(TokenKind::RParen)) break;
+                    if (!parser.can_start_parameter_type()) break;
+                    Node* p = parser.parse_param();
                     if (p) params.push_back(p);
-                    if (check(TokenKind::Ellipsis)) {
+                    if (parser.check(TokenKind::Ellipsis)) {
                         variadic = true;
-                        consume();
+                        parser.consume();
                         break;
                     }
-                    if (!match(TokenKind::Comma)) break;
+                    if (!parser.match(TokenKind::Comma)) break;
                 }
             }
-            expect(TokenKind::RParen);
+            parser.expect(TokenKind::RParen);
             bool is_method_const = false;
             bool is_method_constexpr = false;
             bool is_method_consteval = false;
             bool is_method_lvalue_ref = false;
             bool is_method_rvalue_ref = false;
             while (true) {
-                if (match(TokenKind::KwConst)) { is_method_const = true; }
-                else if (is_cpp_mode() && match(TokenKind::KwConstexpr)) {
+                if (parser.match(TokenKind::KwConst)) { is_method_const = true; }
+                else if (parser.is_cpp_mode() && parser.match(TokenKind::KwConstexpr)) {
                     is_method_constexpr = true;
-                } else if (is_cpp_mode() && match(TokenKind::KwConsteval)) {
+                } else if (parser.is_cpp_mode() && parser.match(TokenKind::KwConsteval)) {
                     is_method_consteval = true;
                 } else {
                     break;
                 }
             }
-            if (is_cpp_mode()) {
-                if (match(TokenKind::AmpAmp)) is_method_rvalue_ref = true;
-                else if (match(TokenKind::Amp)) is_method_lvalue_ref = true;
+            if (parser.is_cpp_mode()) {
+                if (parser.match(TokenKind::AmpAmp)) is_method_rvalue_ref = true;
+                else if (parser.match(TokenKind::Amp)) is_method_lvalue_ref = true;
             }
-            skip_exception_spec();
-            if (is_cpp_mode() && match(TokenKind::Arrow)) {
-                cur_fts = parse_type_name();
-                parse_attributes(&cur_fts);
+            parser.skip_exception_spec();
+            if (parser.is_cpp_mode() && parser.match(TokenKind::Arrow)) {
+                cur_fts = parser.parse_type_name();
+                parser.parse_attributes(&cur_fts);
             }
-            parse_optional_cpp20_trailing_requires_clause(*this);
-            consume_optional_cpp_member_virt_specifier_seq(this);
-            Node* method = make_node(NK_FUNCTION, cur().line);
+            parse_optional_cpp20_trailing_requires_clause(parser);
+            consume_optional_cpp_member_virt_specifier_seq(&parser);
+            Node* method = parser.make_node(NK_FUNCTION, parser.cur().line);
             method->type = cur_fts;
             method->name = fname;
-            method->execution_domain = pragma_state_.execution_domain;
+            method->execution_domain = parser.pragma_state_.execution_domain;
             method->variadic = variadic;
             method->is_const_method = is_method_const;
             method->is_lvalue_ref_method = is_method_lvalue_ref;
@@ -1614,86 +1621,86 @@ bool Parser::try_parse_record_method_or_field_member(
             method->is_consteval = is_method_consteval;
             method->n_params = static_cast<int>(params.size());
             if (method->n_params > 0) {
-                method->params = arena_.alloc_array<Node*>(method->n_params);
+                method->params = parser.arena_.alloc_array<Node*>(method->n_params);
                 for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
             }
-            if (check(TokenKind::LBrace)) {
-                ParserFunctionParamScopeGuard param_scope(*this, params);
-                method->body = parse_block();
-            } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                       core_input_state_.pos + 1 <
-                           static_cast<int>(core_input_state_.tokens.size()) &&
-                       core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+            if (parser.check(TokenKind::LBrace)) {
+                ParserFunctionParamScopeGuard param_scope(parser, params);
+                method->body = parser.parse_block();
+            } else if (parser.is_cpp_mode() && parser.check(TokenKind::Assign) &&
+                       parser.core_input_state_.pos + 1 <
+                           static_cast<int>(parser.core_input_state_.tokens.size()) &&
+                       parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                            TokenKind::KwDelete) {
-                consume(); // '='
-                consume(); // 'delete'
+                parser.consume(); // '='
+                parser.consume(); // 'delete'
                 method->is_deleted = true;
-                match(TokenKind::Semi);
-            } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                       core_input_state_.pos + 1 <
-                           static_cast<int>(core_input_state_.tokens.size()) &&
-                       core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                parser.match(TokenKind::Semi);
+            } else if (parser.is_cpp_mode() && parser.check(TokenKind::Assign) &&
+                       parser.core_input_state_.pos + 1 <
+                           static_cast<int>(parser.core_input_state_.tokens.size()) &&
+                       parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                            TokenKind::KwDefault) {
-                consume(); // '='
-                consume(); // 'default'
+                parser.consume(); // '='
+                parser.consume(); // 'default'
                 method->is_defaulted = true;
-                match(TokenKind::Semi);
+                parser.match(TokenKind::Semi);
             } else {
-                match(TokenKind::Semi);
+                parser.match(TokenKind::Semi);
             }
             methods->push_back(method);
-            if (!match(TokenKind::Comma)) break;
+            if (!parser.match(TokenKind::Comma)) break;
             continue;
         }
 
         long long bf_width = -1;
-        if (check(TokenKind::Colon)) {
-            consume();
-            Node* bfw = parse_assign_expr();
+        if (parser.check(TokenKind::Colon)) {
+            parser.consume();
+            Node* bfw = parser.parse_assign_expr();
             if (bfw)
                 eval_const_int(
-                    bfw, &bf_width, &definition_state_.struct_tag_def_map);
+                    bfw, &bf_width, &parser.definition_state_.struct_tag_def_map);
         }
 
         Node* field_init_expr = nullptr;
-        if (is_cpp_mode() && check(TokenKind::Assign)) {
-            consume(); // eat '='
+        if (parser.is_cpp_mode() && parser.check(TokenKind::Assign)) {
+            parser.consume(); // eat '='
             if (field_is_static) {
                 try {
-                    field_init_expr = parse_assign_expr();
+                    field_init_expr = parser.parse_assign_expr();
                 } catch (...) {
                     field_init_expr = nullptr;
                 }
             }
             if (!field_init_expr) {
                 int depth = 0, angle_depth = 0;
-                while (!at_end()) {
-                    if (check(TokenKind::LParen) || check(TokenKind::LBrace) ||
-                        check(TokenKind::LBracket)) { ++depth; consume(); }
-                    else if (check(TokenKind::RParen) || check(TokenKind::RBrace) ||
-                             check(TokenKind::RBracket)) {
+                while (!parser.at_end()) {
+                    if (parser.check(TokenKind::LParen) || parser.check(TokenKind::LBrace) ||
+                        parser.check(TokenKind::LBracket)) { ++depth; parser.consume(); }
+                    else if (parser.check(TokenKind::RParen) || parser.check(TokenKind::RBrace) ||
+                             parser.check(TokenKind::RBracket)) {
                         if (depth == 0) break;
-                        --depth; consume();
+                        --depth; parser.consume();
                     }
-                    else if (check(TokenKind::Less) && depth == 0) {
-                        ++angle_depth; consume();
+                    else if (parser.check(TokenKind::Less) && depth == 0) {
+                        ++angle_depth; parser.consume();
                     }
-                    else if (check(TokenKind::Greater) && angle_depth > 0 && depth == 0) {
-                        --angle_depth; consume();
+                    else if (parser.check(TokenKind::Greater) && angle_depth > 0 && depth == 0) {
+                        --angle_depth; parser.consume();
                     }
-                    else if (check(TokenKind::GreaterGreater) && angle_depth > 0 && depth == 0) {
+                    else if (parser.check(TokenKind::GreaterGreater) && angle_depth > 0 && depth == 0) {
                         angle_depth -= std::min(angle_depth, 2);
-                        consume();
+                        parser.consume();
                     }
-                    else if ((check(TokenKind::Semi) || check(TokenKind::Comma)) &&
+                    else if ((parser.check(TokenKind::Semi) || parser.check(TokenKind::Comma)) &&
                              depth == 0 && angle_depth == 0) break;
-                    else consume();
+                    else parser.consume();
                 }
             }
         }
 
         if (fname) {
-            Node* f = make_node(NK_DECL, cur().line);
+            Node* f = parser.make_node(NK_DECL, parser.cur().line);
             f->type = cur_fts;
             f->name = fname;
             f->ival = bf_width;
@@ -1704,7 +1711,7 @@ bool Parser::try_parse_record_method_or_field_member(
             f->n_fn_ptr_params = n_fn_ptr_params;
             f->fn_ptr_variadic = fn_ptr_variadic;
             if (cur_fts.is_fn_ptr && n_fn_ptr_params == 0 && !fn_ptr_variadic) {
-                if (const FnPtrTypedefInfo* info = find_current_typedef_fn_ptr_info()) {
+                if (const Parser::FnPtrTypedefInfo* info = parser.find_current_typedef_fn_ptr_info()) {
                     f->fn_ptr_params = info->params;
                     f->n_fn_ptr_params = info->n_params;
                     f->fn_ptr_variadic = info->variadic;
@@ -1714,9 +1721,9 @@ bool Parser::try_parse_record_method_or_field_member(
             fields->push_back(f);
         }
 
-        if (!match(TokenKind::Comma)) break;
+        if (!parser.match(TokenKind::Comma)) break;
     }
-    match(TokenKind::Semi);
+    parser.match(TokenKind::Semi);
     return true;
 }
 
@@ -1727,15 +1734,16 @@ bool try_parse_record_type_like_member_dispatch(
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
     Parser::ParseContextGuard trace(&parser, __func__);
-    if (parser.try_parse_record_using_member(member_typedef_names,
-                                             member_typedef_types)) {
+    if (try_parse_record_using_member(parser, member_typedef_names,
+                                      member_typedef_types)) {
         return true;
     }
-    if (parser.try_parse_nested_record_member(fields, check_dup_field))
+    if (try_parse_nested_record_member(parser, fields, check_dup_field))
         return true;
-    if (parser.try_parse_record_enum_member(fields, check_dup_field)) return true;
-    return parser.try_parse_record_typedef_member(member_typedef_names,
-                                                  member_typedef_types);
+    if (try_parse_record_enum_member(parser, fields, check_dup_field))
+        return true;
+    return try_parse_record_typedef_member(parser, member_typedef_names,
+                                           member_typedef_types);
 }
 
 bool try_parse_record_member_dispatch(
@@ -1755,18 +1763,20 @@ bool try_parse_record_member_dispatch(
     if (try_parse_record_special_member_dispatch(parser, struct_source_name,
                                                  methods))
         return true;
-    return parser.try_parse_record_method_or_field_member(fields, methods,
-                                                          check_dup_field);
+    return try_parse_record_method_or_field_member(parser, fields, methods,
+                                                   check_dup_field);
 }
 
 bool try_parse_record_special_member_dispatch(
     Parser& parser,
     const std::string& struct_source_name,
     std::vector<Node*>* methods) {
-    if (parser.try_parse_record_constructor_member(struct_source_name, methods)) {
+    if (try_parse_record_constructor_member(parser, struct_source_name,
+                                            methods)) {
         return true;
     }
-    return parser.try_parse_record_destructor_member(struct_source_name, methods);
+    return try_parse_record_destructor_member(parser, struct_source_name,
+                                              methods);
 }
 
 bool try_parse_record_member_with_template_prelude(
