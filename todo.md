@@ -7,16 +7,17 @@ Current Step Title: Replace remaining suitable single-name string tables and iso
 # Current Packet
 
 ## Just Finished
-Completed the step 5 lexical-lookup follow-up slice for local direct-init
-resolution. Added a scoped function-parameter binding guard around function
-body parsing in the free-function and record-member definition paths so
-parameter names are visible to ctor-init disambiguation while the body is
-parsed.
+Completed the step 5 parser-entry-point sweep for a remaining body-parsing
+holdout. Added the scoped function-parameter binding guard to the
+out-of-class constructor-definition body path so constructor parameters stay
+visible during body parsing, and added a frontend regression that exercises a
+ctor body containing a nested ctor-init disambiguation probe.
 
 ## Suggested Next
 Continue step 5 by checking whether any other parser entry points still need a
-parameter-scope bridge for lexical disambiguation, then widen the focused
-parser/frontend proof only if a new holdout shows up.
+parameter-scope bridge for lexical disambiguation. If no additional holdouts
+show up, keep the next slice focused on the remaining parser/frontend cleanup
+items under the active idea.
 
 ## Watchouts
 Keep the new parameter scope limited to body parsing so declaration-only paths

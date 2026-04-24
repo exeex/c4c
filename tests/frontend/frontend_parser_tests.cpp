@@ -1767,6 +1767,39 @@ void test_parser_local_ctor_init_probe_balances_qualified_member_access_value_sh
             "qualified visible member-access forms should keep their declarator spelling");
 }
 
+void test_parser_out_of_class_ctor_body_keeps_parameter_scope_for_ctor_init_probe() {
+  c4c::Lexer lexer("struct Box {\n"
+                   "  Box(int source);\n"
+                   "};\n"
+                   "Box::Box(int source) {\n"
+                   "  Box value(source(other));\n"
+                   "}\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::Node* program = parser.parse();
+  expect_true(program != nullptr && program->kind == c4c::NK_PROGRAM,
+              "out-of-class constructor body regression should parse as a program");
+  expect_eq_int(program->n_children, 2,
+                "the out-of-class constructor body regression should contain the record and constructor definition");
+
+  c4c::Node* ctor_fn = program->children[1];
+  expect_true(ctor_fn != nullptr && ctor_fn->kind == c4c::NK_FUNCTION,
+              "the out-of-class constructor body regression should include a parsed constructor");
+  expect_true(ctor_fn->body != nullptr && ctor_fn->body->kind == c4c::NK_BLOCK,
+              "the constructor definition should keep its block body");
+  expect_eq_int(ctor_fn->body->n_children, 1,
+                "the constructor body should retain the ambiguous value-like declaration");
+  expect_true(ctor_fn->body->children[0] != nullptr &&
+                  ctor_fn->body->children[0]->kind == c4c::NK_DECL,
+              "constructor parameters should remain visible while parsing the body");
+  expect_eq(ctor_fn->body->children[0]->name, "value",
+            "the constructor body should keep the declarator spelling for the value-like declaration");
+}
+
 void test_parser_stmt_disambiguates_global_qualified_template_call_as_expr() {
   c4c::Lexer lexer("namespace api {\n"
                    "template<typename T>\n"
@@ -2329,6 +2362,7 @@ int main() {
   test_parser_local_ctor_init_probe_balances_template_param_and_value_call_shapes();
   test_parser_local_ctor_init_probe_balances_qualified_param_and_value_call_shapes();
   test_parser_local_ctor_init_probe_balances_qualified_member_access_value_shapes();
+  test_parser_out_of_class_ctor_body_keeps_parameter_scope_for_ctor_init_probe();
   test_parser_stmt_disambiguates_global_qualified_template_call_as_expr();
   test_parser_stmt_disambiguates_global_qualified_operator_call_as_expr();
   test_parser_stmt_prefers_expression_for_member_access_after_visible_type_head();

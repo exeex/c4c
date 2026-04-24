@@ -2537,6 +2537,7 @@ Node* Parser::parse_top_level() {
                 }
 
                 if (check(TokenKind::LBrace)) {
+                    ParserFunctionParamScopeGuard param_scope(*this, params);
                     bool saved_top =
                         active_context_state_.parsing_top_level_context;
                     active_context_state_.parsing_top_level_context = false;
