@@ -23,7 +23,8 @@ whether any touched lexical lookup path still depends on flat strings after
 this template-prelude cleanup. `enum_consts` and `const_int_bindings` are
 already `TextId`-native, so the next packet should either isolate a real
 lexical holdout or explicitly mark the remaining string carriers as
-compatibility-only.
+compatibility-only. The last proof was still narrow, so the next execution
+packet should widen focused parser/frontend coverage before more route work.
 
 ## Watchouts
 Keep lexical concept visibility separate from namespace traversal. Do not
