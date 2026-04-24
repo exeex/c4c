@@ -1,5 +1,6 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
+#include "src/backend/prealloc/prepared_printer.hpp"
 #include "src/codegen/lir/ir.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
@@ -2033,6 +2034,94 @@ prepare::PreparedBirModule prepare_cross_call_boundary_module_with_regalloc() {
   return planner.run();
 }
 
+prepare::PreparedBirModule prepare_indirect_call_preservation_module_with_regalloc() {
+  bir::Module module;
+  module.globals.push_back(bir::Global{
+      .name = "indirect_fn_ptr",
+      .type = bir::TypeKind::Ptr,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .initializer_symbol_name = std::string("indirect_target"),
+  });
+
+  bir::Function target;
+  target.name = "indirect_target";
+  target.is_declaration = true;
+  target.return_type = bir::TypeKind::I32;
+  target.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "arg0",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  module.functions.push_back(std::move(target));
+
+  bir::Function function;
+  function.name = "indirect_call_preservation";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "carry"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(9),
+      .rhs = bir::Value::immediate_i32(4),
+  });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "%callee.ptr"),
+      .global_name = "indirect_fn_ptr",
+      .align_bytes = 8,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "call.out"),
+      .callee_value = bir::Value::named(bir::TypeKind::Ptr, "%callee.ptr"),
+      .args = {bir::Value::named(bir::TypeKind::I32, "carry")},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+      .is_indirect = true,
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "after"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "carry"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "call.out"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "after"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
 prepare::PreparedBirModule prepare_same_start_priority_module_with_regalloc() {
   bir::Module module;
 
@@ -3624,6 +3713,70 @@ int check_cross_call_boundary_classification(const prepare::PreparedBirModule& p
   return 0;
 }
 
+int check_indirect_call_preservation_publication(const prepare::PreparedBirModule& prepared) {
+  const auto* regalloc = find_regalloc_function(prepared, "indirect_call_preservation");
+  if (regalloc == nullptr) {
+    return fail("expected regalloc output for indirect_call_preservation");
+  }
+
+  const auto* call_plans = prepare::find_prepared_call_plans(prepared, regalloc->function_name);
+  if (call_plans == nullptr || call_plans->calls.size() != 1) {
+    return fail("expected indirect_call_preservation to publish one prepared call plan");
+  }
+
+  const auto* carry = find_regalloc_value(prepared, *regalloc, "carry");
+  const auto* callee_ptr = find_regalloc_value(prepared, *regalloc, "%callee.ptr");
+  if (carry == nullptr || callee_ptr == nullptr) {
+    return fail("expected indirect_call_preservation values to appear in regalloc output");
+  }
+
+  const auto& call = call_plans->calls.front();
+  if (!call.is_indirect || call.wrapper_kind != prepare::PreparedCallWrapperKind::Indirect ||
+      !call.indirect_callee.has_value()) {
+    return fail("expected indirect_call_preservation to publish indirect call authority");
+  }
+  if (call.indirect_callee->value_name != callee_ptr->value_name ||
+      call.indirect_callee->value_id != std::optional<prepare::PreparedValueId>{callee_ptr->value_id} ||
+      call.indirect_callee->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      call.indirect_callee->bank != prepare::PreparedRegisterBank::Gpr) {
+    return fail("expected the prepared indirect callee publication to preserve the shared register-backed authority seam");
+  }
+
+  const auto preserved_it = std::find_if(
+      call.preserved_values.begin(),
+      call.preserved_values.end(),
+      [&](const prepare::PreparedCallPreservedValue& preserved) {
+        return preserved.value_id == carry->value_id;
+      });
+  if (preserved_it == call.preserved_values.end()) {
+    return fail("expected indirect_call_preservation to publish cross-call preservation for carry");
+  }
+  if (preserved_it->route != prepare::PreparedCallPreservationRoute::CalleeSavedRegister ||
+      preserved_it->register_bank != std::optional<prepare::PreparedRegisterBank>{
+                                   prepare::PreparedRegisterBank::Gpr}) {
+    return fail("expected indirect_call_preservation to publish carry through the callee-saved preservation seam");
+  }
+
+  const std::string prepared_dump = prepare::print(prepared);
+  if (prepared_dump.find(
+          "callsite block=0 inst=2 wrapper=indirect variadic_fpr_args=0 args=1 indirect_callee=%callee.ptr indirect_home=register indirect_bank=gpr") ==
+      std::string::npos ||
+      prepared_dump.find("preserves=carry#") == std::string::npos) {
+    return fail("expected prepared printer summary to publish indirect-callee and preserved-carry authority");
+  }
+  if (prepared_dump.find(
+          "call block_index=0 inst_index=2 wrapper_kind=indirect variadic_fpr_arg_register_count=0 indirect=yes indirect_callee=%callee.ptr indirect_encoding=register indirect_bank=gpr") ==
+      std::string::npos) {
+    return fail("expected prepared printer call-plan detail to publish the indirect-callee authority seam");
+  }
+  if (prepared_dump.find("preserve value=carry value_id=") == std::string::npos ||
+      prepared_dump.find("route=callee_saved_register") == std::string::npos) {
+    return fail("expected prepared printer call-plan detail to publish the preserved carry route");
+  }
+
+  return 0;
+}
+
 int check_same_start_priority_ordering(const prepare::PreparedBirModule& prepared) {
   const auto* regalloc = find_regalloc_function(prepared, "same_start_priority");
   if (regalloc == nullptr) {
@@ -4022,6 +4175,13 @@ int main() {
 
   const auto cross_call_boundary_prepared = prepare_cross_call_boundary_module_with_regalloc();
   if (const int rc = check_cross_call_boundary_classification(cross_call_boundary_prepared); rc != 0) {
+    return rc;
+  }
+  const auto indirect_call_preservation_prepared =
+      prepare_indirect_call_preservation_module_with_regalloc();
+  if (const int rc =
+          check_indirect_call_preservation_publication(indirect_call_preservation_prepared);
+      rc != 0) {
     return rc;
   }
 

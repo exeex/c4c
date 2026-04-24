@@ -3,24 +3,24 @@ Source Idea Path: ideas/open/91_advanced_prepared_call_authority_and_grouped_wid
 Source Plan Path: plan.md
 Current Step ID: 2
 Current Step Title: Publish Advanced Prepared Call Authority
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 2 now proves a richer advanced-call family through the same shared
-consumer surface. Added a focused prepared-dump route-debug fixture in
-`tests/backend/backend_x86_route_debug_test.cpp` for a memory-return call and
-verified that focusing on `lv.call.sret.storage` keeps the published
-memory-return callsite and storage authority while dropping the unrelated
-immediate argument detail from the filtered prepared dump.
+Step 2 now proves two richer advanced-call families through the same shared
+consumer surface. Added a built indirect-call publication proof in
+`tests/backend/backend_prepare_liveness_test.cpp` and verified through the
+shared prepared call-plan plus prepared-printer boundary that an indirect
+callee value publishes register-backed indirect authority while the cross-call
+`carry` value publishes callee-saved preservation authority, alongside the
+earlier memory-return focus proof.
 
 ## Suggested Next
 
-Continue Step 2 with another advanced prepared-call family that shares this
-consumer boundary, preferably indirect-call focus proof or before/after-call
-move publication for a harder boundary case, so the route proves more than the
-memory-return seam before moving on to grouped width `> 1` allocator work.
+Decide whether Step 2 needs one more publication packet for a stack-backed
+before/after-call preservation edge or whether the route is now broad enough to
+start the grouped width `> 1` allocator work in Step 3.
 
 ## Watchouts
 
@@ -32,6 +32,9 @@ memory-return seam before moving on to grouped width `> 1` allocator work.
 - Focused prepared dumps still leave unrelated non-value-owned sections such as
   broader frame-plan material in place; treat that as adjacent shared-dump
   cleanup, not as a reason to weaken the new advanced-call filtering proof.
+- The new indirect-call proof stays on the built prepared-printer/call-plan
+  surface and intentionally checks generic authority fields without pinning a
+  target-local register name.
 
 ## Proof
 
