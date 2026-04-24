@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-agent-index-header-hierarchy-and-rust-reference-removal.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Move the Stack-Layout Coordinator If Clean
+Current Step ID: 4
+Current Step Title: Remove Prealloc-Local Rust Reference Files
 
 # Current Packet
 
@@ -56,4 +56,4 @@ Result: passed. CMake detected the recursive glob mismatch, reconfigured, built
 `test_after.log` contains the canonical proof output for this packet.
 
 Baseline review: supervisor accepted `test_baseline.new.log` as
-`test_baseline.log`, green for `^backend_` at commit `36442b9d`.
+`test_baseline.log`, green for `^backend_` at commit `92e1cd60`.
