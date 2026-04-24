@@ -696,7 +696,7 @@ bool Parser::try_parse_record_using_member(
         register_typedef_binding(alias_name, alias_ts, false);
         member_typedef_names->push_back(arena_.strdup(alias_name.c_str()));
         member_typedef_types->push_back(alias_ts);
-        if (!active_context_state_.current_struct_tag.empty()) {
+        if (!current_struct_tag_text().empty()) {
             register_struct_member_typedef_binding(current_struct_tag_text(),
                                                    alias_name, alias_ts);
         }
@@ -735,7 +735,7 @@ bool Parser::try_parse_record_typedef_member(
         }
         member_typedef_names->push_back(name);
         member_typedef_types->push_back(type);
-        if (!active_context_state_.current_struct_tag.empty()) {
+        if (!current_struct_tag_text().empty()) {
             register_struct_member_typedef_binding(current_struct_tag_text(),
                                                    name, type);
         }
@@ -897,7 +897,7 @@ bool Parser::try_parse_record_constructor_member(
     const std::string& struct_source_name,
     std::vector<Node*>* methods) {
     ParseContextGuard trace(this, __func__);
-    if (!(is_cpp_mode() && !active_context_state_.current_struct_tag.empty()))
+    if (!(is_cpp_mode() && !current_struct_tag_text().empty()))
         return false;
 
     int probe = core_input_state_.pos;
@@ -1069,7 +1069,7 @@ bool Parser::try_parse_record_constructor_member(
 bool Parser::try_parse_record_destructor_member(
     const std::string& struct_source_name,
     std::vector<Node*>* methods) {
-    if (!(is_cpp_mode() && !active_context_state_.current_struct_tag.empty() &&
+    if (!(is_cpp_mode() && !current_struct_tag_text().empty() &&
           check(TokenKind::Tilde) &&
           core_input_state_.pos + 1 <
               static_cast<int>(core_input_state_.tokens.size()) &&
