@@ -1,12 +1,29 @@
 # HIR Agent Index Header Hierarchy
 
-Status: Open
+Status: Closed
 Created: 2026-04-24
 Last Updated: 2026-04-24
 Parent Ideas:
 - [92_parser_agent_index_header_hierarchy.md](/workspaces/c4c/ideas/closed/92_parser_agent_index_header_hierarchy.md)
 
 Reopened: 2026-04-24
+Closed: 2026-04-24
+
+## Completion Notes
+
+Closed after the active runbook completed the HIR agent-index migration:
+
+- `hir.hpp` and `hir_ir.hpp` remain the public HIR facade and IR contract.
+- Private HIR implementation indexes are under `src/frontend/hir/impl/`.
+- Expression, statement, template, compile-time, and inspection implementation
+  files live under their semantic `impl/` subdirectories with redundant
+  filename prefixes removed.
+- Top-level remaining HIR `.cpp` files are root/facade/pipeline implementation
+  for this plan's scope.
+- Stale old implementation filename references were checked outside lifecycle
+  and archive paths.
+- Focused `^cpp_hir` validation, the public include probe, and full CTest
+  validation passed before closure.
 
 ## Reopen Note
 
