@@ -448,6 +448,46 @@ int check_authoritative_join_continuation_targets() {
   return 0;
 }
 
+int check_authoritative_parallel_copy_bundle_ownership(const prepare::PreparedBirModule& prepared,
+                                                       const char* function_name,
+                                                       const char* source_branch_label,
+                                                       prepare::PreparedParallelCopyExecutionSite expected_true_site,
+                                                       prepare::PreparedParallelCopyExecutionSite expected_false_site) {
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr) {
+    return fail("expected prepared control-flow publication for authoritative parallel-copy ownership");
+  }
+
+  const auto authoritative_bundles = prepare::find_authoritative_branch_owned_parallel_copy_bundles(
+      prepared.names, *control_flow, source_branch_label);
+  if (!authoritative_bundles.has_value() ||
+      authoritative_bundles->join_transfer.join_transfer == nullptr ||
+      authoritative_bundles->join_transfer.true_transfer == nullptr ||
+      authoritative_bundles->join_transfer.false_transfer == nullptr ||
+      authoritative_bundles->true_bundle == nullptr ||
+      authoritative_bundles->false_bundle == nullptr) {
+    return fail("expected authoritative parallel-copy bundle ownership to be recoverable from prepared metadata");
+  }
+
+  if (authoritative_bundles->true_bundle->predecessor_label !=
+          authoritative_bundles->join_transfer.true_transfer->predecessor_label ||
+      authoritative_bundles->true_bundle->successor_label !=
+          authoritative_bundles->join_transfer.true_transfer->successor_label ||
+      authoritative_bundles->false_bundle->predecessor_label !=
+          authoritative_bundles->join_transfer.false_transfer->predecessor_label ||
+      authoritative_bundles->false_bundle->successor_label !=
+          authoritative_bundles->join_transfer.false_transfer->successor_label) {
+    return fail("expected authoritative parallel-copy bundle helper to reuse published join-edge ownership");
+  }
+
+  if (authoritative_bundles->true_bundle->execution_site != expected_true_site ||
+      authoritative_bundles->false_bundle->execution_site != expected_false_site) {
+    return fail("expected authoritative parallel-copy bundle helper to preserve published execution-site ownership");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -461,6 +501,15 @@ int main() {
       status != 0) {
     return status;
   }
+  if (const int status = check_authoritative_parallel_copy_bundle_ownership(
+          prepared_two_way,
+          "branch_join_prepare_contract",
+          "entry",
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator);
+      status != 0) {
+    return status;
+  }
 
   const auto prepared_short_circuit = legalize_short_circuit_or_guard_module();
   if (const int status = check_authoritative_join_ownership(prepared_short_circuit,
@@ -469,6 +518,15 @@ int main() {
                                                             "logic.end.10",
                                                             "logic.skip.8",
                                                             "logic.rhs.end.9");
+      status != 0) {
+    return status;
+  }
+  if (const int status = check_authoritative_parallel_copy_bundle_ownership(
+          prepared_short_circuit,
+          "short_circuit_or_prepare_contract",
+          "entry",
+          prepare::PreparedParallelCopyExecutionSite::CriticalEdge,
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator);
       status != 0) {
     return status;
   }

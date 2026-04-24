@@ -1261,6 +1261,12 @@ struct PreparedAuthoritativeBranchJoinTransfer {
   const PreparedEdgeValueTransfer* false_transfer = nullptr;
 };
 
+struct PreparedAuthoritativeBranchParallelCopyBundles {
+  PreparedAuthoritativeBranchJoinTransfer join_transfer;
+  const PreparedParallelCopyBundle* true_bundle = nullptr;
+  const PreparedParallelCopyBundle* false_bundle = nullptr;
+};
+
 struct PreparedAuthoritativeJoinBranchSources {
   const PreparedJoinTransfer* join_transfer = nullptr;
   const PreparedEdgeValueTransfer* true_transfer = nullptr;
@@ -2262,6 +2268,91 @@ find_authoritative_branch_owned_join_transfer(
                                                        required_kind,
                                                        true_predecessor_label_id,
                                                        false_predecessor_label_id);
+}
+
+[[nodiscard]] inline std::optional<PreparedAuthoritativeBranchParallelCopyBundles>
+find_authoritative_branch_owned_parallel_copy_bundles(
+    const PreparedNameTables& names,
+    const PreparedControlFlowFunction& function_cf,
+    BlockLabelId source_branch_block_label,
+    std::optional<PreparedJoinTransferKind> required_kind = std::nullopt,
+    std::optional<BlockLabelId> true_predecessor_label = std::nullopt,
+    std::optional<BlockLabelId> false_predecessor_label = std::nullopt) {
+  const auto authoritative_join_transfer = find_authoritative_branch_owned_join_transfer(
+      names,
+      function_cf,
+      source_branch_block_label,
+      required_kind,
+      true_predecessor_label,
+      false_predecessor_label);
+  if (!authoritative_join_transfer.has_value() ||
+      authoritative_join_transfer->join_transfer == nullptr ||
+      authoritative_join_transfer->true_transfer == nullptr ||
+      authoritative_join_transfer->false_transfer == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto find_bundle = [&](const PreparedEdgeValueTransfer& edge_transfer)
+      -> const PreparedParallelCopyBundle* {
+    for (const auto& bundle : function_cf.parallel_copy_bundles) {
+      if (bundle.predecessor_label == edge_transfer.predecessor_label &&
+          bundle.successor_label == edge_transfer.successor_label) {
+        return &bundle;
+      }
+    }
+    return nullptr;
+  };
+
+  const auto* true_bundle = find_bundle(*authoritative_join_transfer->true_transfer);
+  const auto* false_bundle = find_bundle(*authoritative_join_transfer->false_transfer);
+  if (true_bundle == nullptr || false_bundle == nullptr || true_bundle == false_bundle) {
+    return std::nullopt;
+  }
+
+  return PreparedAuthoritativeBranchParallelCopyBundles{
+      .join_transfer = *authoritative_join_transfer,
+      .true_bundle = true_bundle,
+      .false_bundle = false_bundle,
+  };
+}
+
+[[nodiscard]] inline std::optional<PreparedAuthoritativeBranchParallelCopyBundles>
+find_authoritative_branch_owned_parallel_copy_bundles(
+    const PreparedNameTables& names,
+    const PreparedControlFlowFunction& function_cf,
+    std::string_view source_branch_block_label,
+    std::optional<PreparedJoinTransferKind> required_kind = std::nullopt,
+    std::optional<std::string_view> true_predecessor_label = std::nullopt,
+    std::optional<std::string_view> false_predecessor_label = std::nullopt) {
+  const auto source_branch_block_label_id =
+      resolve_prepared_block_label_id(names, source_branch_block_label);
+  if (!source_branch_block_label_id.has_value()) {
+    return std::nullopt;
+  }
+
+  std::optional<BlockLabelId> true_predecessor_label_id;
+  if (true_predecessor_label.has_value()) {
+    true_predecessor_label_id = resolve_prepared_block_label_id(names, *true_predecessor_label);
+    if (!true_predecessor_label_id.has_value()) {
+      return std::nullopt;
+    }
+  }
+
+  std::optional<BlockLabelId> false_predecessor_label_id;
+  if (false_predecessor_label.has_value()) {
+    false_predecessor_label_id =
+        resolve_prepared_block_label_id(names, *false_predecessor_label);
+    if (!false_predecessor_label_id.has_value()) {
+      return std::nullopt;
+    }
+  }
+
+  return find_authoritative_branch_owned_parallel_copy_bundles(names,
+                                                               function_cf,
+                                                               *source_branch_block_label_id,
+                                                               required_kind,
+                                                               true_predecessor_label_id,
+                                                               false_predecessor_label_id);
 }
 
 [[nodiscard]] inline std::optional<PreparedAuthoritativeJoinBranchSources>
