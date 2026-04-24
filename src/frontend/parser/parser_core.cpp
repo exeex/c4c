@@ -3111,7 +3111,7 @@ Node* Parser::parse() {
         int loop_start_pos = core_input_state_.pos;
         clear_parse_debug_state();
         try {
-            item = parse_top_level();
+            item = parse_top_level(*this);
         } catch (const std::exception& e) {
             // Parse error: emit stable diagnostic and try to recover.
             int err_idx = diagnostic_state_.best_parse_failure.active

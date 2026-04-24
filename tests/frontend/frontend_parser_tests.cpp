@@ -1049,7 +1049,7 @@ void test_parser_using_value_import_keeps_structured_target_key() {
   target_ts.base = c4c::TB_INT;
   parser.register_var_type_binding("ns::Target", target_ts);
 
-  (void)parser.parse_top_level();
+  (void)parse_top_level(parser);
 
   const c4c::TextId alias_text = parser.find_parser_text_id("Target");
   expect_true(alias_text != c4c::kInvalidText,
@@ -1074,7 +1074,7 @@ void test_parser_global_using_value_import_keeps_global_target_resolution() {
   target_ts.base = c4c::TB_INT;
   parser.register_var_type_binding("Target", target_ts);
 
-  (void)parser.parse_top_level();
+  (void)parse_top_level(parser);
 
   const c4c::TextId alias_text = parser.find_parser_text_id("Target");
   expect_true(alias_text != c4c::kInvalidText,
@@ -1390,7 +1390,7 @@ void test_parser_top_level_typedef_uses_unresolved_identifier_type_head_fallback
   c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
                      c4c::SourceProfile::CppSubset);
 
-  c4c::Node* decl = parser.parse_top_level();
+  c4c::Node* decl = parse_top_level(parser);
   expect_true(decl == nullptr,
               "top-level typedef fallback should stay bookkeeping-only after registering the alias");
 
@@ -1963,7 +1963,7 @@ void test_parser_template_member_suffix_probe_uses_token_spelling() {
   c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
                      c4c::SourceProfile::CppSubset);
 
-  (void)parser.parse_top_level();
+  (void)parse_top_level(parser);
   expect_true(parser.find_template_struct_primary("Trait") != nullptr,
               "template struct fixture should register before injected suffix probing");
 
@@ -2176,7 +2176,7 @@ void test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases() 
                      c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
-  (void)parser.parse_top_level();
+  (void)parse_top_level(parser);
   expect_true(parser.find_template_struct_primary("Trait") != nullptr,
               "template member lookup fixture should register the template primary");
 

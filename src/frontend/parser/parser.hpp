@@ -659,13 +659,6 @@ class Parser {
                         TextId* out_name_text_id = nullptr);
   bool parse_operator_declarator_name(std::string* out_name);
 
-  // ── declaration and translation-unit entry points ────────────────────────
-  // Parse a local declaration (inside function body). May return a NK_BLOCK
-  // when the declaration expands into multiple declarators.
-  Node* parse_local_decl();
-  // Parse one top-level item. Returns nullptr on EOF.
-  Node* parse_top_level();
-
   // ── AST node builders ─────────────────────────────────────────────────────
   Node* make_node(NodeKind k, int line);
   Node* make_int_lit(long long v, int line);

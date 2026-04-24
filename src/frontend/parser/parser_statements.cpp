@@ -606,14 +606,14 @@ Node* parse_stmt(Parser& parser) {
                         if (can_use_lite_range_for_probe()) {
                             Parser::TentativeParseGuardLite range_guard(parser);
                             Parser::LocalVarBindingSuppressionGuard binding_guard(parser);
-                            decl = parser.parse_local_decl();
+                            decl = parse_local_decl(parser);
                             is_range_for = parser.check(TokenKind::Colon);
                             if (is_range_for) {
                                 range_guard.commit();
                             }
                         } else {
                             Parser::TentativeParseGuard range_guard(parser);
-                            decl = parser.parse_local_decl();
+                            decl = parse_local_decl(parser);
                             is_range_for = parser.check(TokenKind::Colon);
                             if (is_range_for) {
                                 range_guard.commit();
@@ -642,7 +642,7 @@ Node* parse_stmt(Parser& parser) {
                     }
                     {
                         LexicalBindingScopeGuard loop_scope(&parser);
-                        for_init = parser.parse_local_decl();
+                        for_init = parse_local_decl(parser);
                         // parse_local_decl already consumed the ';' — do NOT
                         // consume another one, or we eat the condition separator.
                         Node* for_cond = nullptr;
@@ -1079,16 +1079,16 @@ Node* parse_stmt(Parser& parser) {
 
     // constexpr / consteval local declarations (C++ mode)
     if (parser.is_cpp_mode() && (parser.check(TokenKind::KwConstexpr) || parser.check(TokenKind::KwConsteval))) {
-        return parser.parse_local_decl();
+        return parse_local_decl(parser);
     }
 
     if (parser.check(TokenKind::KwAlignas)) {
-        return parser.parse_local_decl();
+        return parse_local_decl(parser);
     }
 
     if (parser.is_cpp_mode() &&
         starts_qualified_member_pointer_type_id(parser, parser.core_input_state_.pos)) {
-        return parser.parse_local_decl();
+        return parse_local_decl(parser);
     }
 
     // Local declaration?
@@ -1210,7 +1210,7 @@ Node* parse_stmt(Parser& parser) {
                 if (after_pos < static_cast<int>(parser.core_input_state_.tokens.size()) &&
                     parser.core_input_state_.tokens[after_pos].kind == TokenKind::LParen &&
                     starts_parenthesized_member_pointer_declarator(parser, after_pos)) {
-                    return parser.parse_local_decl();
+                    return parse_local_decl(parser);
                 }
 
                 const TokenKind after_kind =
@@ -1236,7 +1236,7 @@ Node* parse_stmt(Parser& parser) {
                 }
             }
         }
-        return parser.parse_local_decl();
+        return parse_local_decl(parser);
     }
 
 expr_stmt:

@@ -36,6 +36,8 @@ Node* parse_enum(Parser& parser);
 Node* parse_param(Parser& parser);
 Node* parse_block(Parser& parser);
 Node* parse_stmt(Parser& parser);
+Node* parse_local_decl(Parser& parser);
+Node* parse_top_level(Parser& parser);
 Node* parse_static_assert_declaration(Parser& parser);
 Node* parse_initializer(Parser& parser);
 Node* parse_init_list(Parser& parser);
