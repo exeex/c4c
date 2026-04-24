@@ -8,11 +8,14 @@ Current Step Title: Split Scalar-Only Cases
 
 ## Just Finished
 
-Lifecycle activation created the active runbook from `ideas/open/03_bir-memory-coordinator-dispatch-split.md`.
+Completed `Step 1: Split Scalar-Only Cases` by moving scalar compare/cast/binop
+lowering into the private scalar-family handler in `scalar.cpp`. The memory
+coordinator now keeps only pointer-address cast handling and pointer-address
+subtraction before delegating generic scalar work.
 
 ## Suggested Next
 
-Execute `Step 1: Split Scalar-Only Cases` from `plan.md`.
+Execute `Step 2: Split Alloca And Local-Slot Handling` from `plan.md`.
 
 ## Watchouts
 
@@ -21,7 +24,11 @@ Execute `Step 1: Split Scalar-Only Cases` from `plan.md`.
 - Keep memory state ownership on `BirFunctionLowerer`.
 - Split by real instruction-family boundaries, not one file per narrow case.
 - Preserve behavior and diagnostics; do not rewrite expectations as proof.
+- `lower_scalar_or_local_memory_inst` still owns the address-int/provenance cast
+  branches; those were intentionally left for the later address-int or memory
+  families.
 
 ## Proof
 
-Lifecycle-only activation; no build or test proof required.
+`cmake --build --preset default --target c4c_backend` passed; proof log:
+`test_after.log`. `git diff --check` passed.

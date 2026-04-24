@@ -355,6 +355,10 @@ class BirFunctionLowerer {
                                  ValueMap& value_aliases,
                                  CompareMap& compare_exprs,
                                  std::vector<bir::Inst>* lowered_insts) const;
+  std::optional<bool> lower_scalar_family_inst(const c4c::codegen::lir::LirInst& inst,
+                                               ValueMap& value_aliases,
+                                               CompareMap& compare_exprs,
+                                               std::vector<bir::Inst>* lowered_insts) const;
   bool resolve_select_chain_inst(const c4c::codegen::lir::LirInst& inst,
                                  ValueMap& value_aliases,
                                  CompareMap& compare_exprs,
