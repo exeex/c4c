@@ -1,7 +1,7 @@
-#include "lowering.hpp"
+#include "../lowering.hpp"
 #include "call_args_ops.hpp"
 #include "canonical_symbol.hpp"
-#include "../../llvm/calling_convention.hpp"
+#include "../../../llvm/calling_convention.hpp"
 
 namespace c4c::codegen::lir {
 

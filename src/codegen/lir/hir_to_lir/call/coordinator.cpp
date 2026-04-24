@@ -1,3 +1,3 @@
-#include "lowering.hpp"
+#include "../lowering.hpp"
 
 namespace c4c::codegen::lir {}  // namespace c4c::codegen::lir
