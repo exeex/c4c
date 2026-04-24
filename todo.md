@@ -3,7 +3,6 @@ Source Idea Path: ideas/open/94_parser_public_facade_pimpl_boundary.md
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Move Implementation-Only Method Declarations Behind The Boundary
-你該做code review了
 
 # Current Packet
 
