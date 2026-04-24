@@ -1,29 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/83_parser_scope_textid_binding_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Replace remaining suitable single-name string tables and isolate holdouts
+Current Step ID: 6
+Current Step Title: Reduce legacy lexical bridge lookup to compatibility-only support
 
 # Current Packet
 
 ## Just Finished
-Completed the step 5 template-scope TextId-first cleanup slice. Updated the
-template-scope parameter probe so semantic `TextId` matches win whenever active
-template params carry them, while spelling-only holdouts still work when no
-semantic ids are present. Added a focused frontend regression for the mixed
-TextId/spelling case.
+Closed out step 5 after confirming the remaining parser single-name lexical
+tables in the active surface are already `TextId`-first. The leftover
+`known_fn_names` and `struct_typedefs` paths are structured-qualified holdouts
+that the idea explicitly keeps out of this slice.
 
 ## Suggested Next
-Continue step 5 by checking the remaining parser single-name lookup holdouts in
-the owned parser surface and isolate any places that still need spelling-based
-fallbacks.
+Start step 6 by narrowing the touched lexical visible-name helpers so bridge
+string lookup stays compatibility-only after scope-local `TextId` matches and
+structured namespace probes have already had their chance.
 
 ## Watchouts
-Template-scope lookup now prefers semantic ids whenever they are available, but
-legacy spelling-only frames still rely on the fallback path. Keep that fallback
-isolated so it does not become the primary route again.
+Do not pull `known_fn_names` or `struct_typedefs` back into flat string-key
+work. The next packet should target lexical fallback demotion on the already
+touched unqualified type/value/concept paths only.
 
 ## Proof
-Ran `cmake --build --preset default` and
+No new command for this lifecycle-only state update. The last code packet proof
+remains the `cmake --build --preset default` plus
 `ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|cpp_positive_sema_record_member_template_scope_cleanup_parse_cpp|cpp_positive_sema_template_declaration_prelude_cleanup_parse_cpp|cpp_parse_record_member_template_friend_cleanup_dump)$'`
-with proof captured in `test_after.log`.
+run recorded in `test_after.log`.
