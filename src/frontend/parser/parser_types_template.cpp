@@ -88,6 +88,31 @@ const std::vector<Node*>* Parser::find_template_struct_specializations(
                    : nullptr;
     };
 
+    if (primary_tpl && primary_tpl->namespace_context_id >= 0) {
+        const char* primary_name = primary_tpl->unqualified_name;
+        TextId primary_name_text_id = primary_tpl->unqualified_text_id;
+        if ((!primary_name || !primary_name[0]) && primary_tpl->name) {
+            primary_name = std::strrchr(primary_tpl->name, ':');
+            primary_name = primary_name ? primary_name + 1 : primary_tpl->name;
+        }
+        if (primary_name && primary_name[0]) {
+            if (primary_name_text_id == kInvalidText) {
+                primary_name_text_id =
+                    parser_text_id_for_token(kInvalidText, primary_name);
+            }
+            const QualifiedNameKey primary_key = alias_template_key_in_context(
+                primary_tpl->namespace_context_id, primary_name_text_id,
+                primary_name);
+            if (!(primary_key == alias_template_key_in_context(
+                      context_id, name_text_id, fallback_name))) {
+                if (const auto* specializations =
+                        lookup_structured(primary_key)) {
+                    return specializations;
+                }
+            }
+        }
+    }
+
     const QualifiedNameKey key =
         alias_template_key_in_context(context_id, name_text_id, fallback_name);
     if (const auto* specializations = lookup_structured(key)) {
@@ -132,6 +157,17 @@ const std::vector<Node*>* Parser::find_template_struct_specializations(
 const std::vector<Node*>* Parser::find_template_struct_specializations(
     const Node* primary_tpl) const {
     if (!primary_tpl || !primary_tpl->name) return nullptr;
+    if (primary_tpl->namespace_context_id >= 0 &&
+        primary_tpl->unqualified_name && primary_tpl->unqualified_name[0]) {
+        const TextId name_text_id =
+            primary_tpl->unqualified_text_id != kInvalidText
+                ? primary_tpl->unqualified_text_id
+                : parser_text_id_for_token(kInvalidText,
+                                           primary_tpl->unqualified_name);
+        return find_template_struct_specializations(
+            primary_tpl->namespace_context_id, name_text_id,
+            primary_tpl->unqualified_name, primary_tpl);
+    }
     return find_template_struct_specializations(
         current_namespace_context_id(), find_parser_text_id(primary_tpl->name),
         primary_tpl->name, primary_tpl);
