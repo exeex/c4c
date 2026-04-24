@@ -2,8 +2,7 @@
 // This file is not yet wired into the build and is intended as a staging
 // artifact for the eventual multi-translation-unit split.
 
-#include "impl/hir_impl.hpp"
-#include "impl/lowerer.hpp"
+#include "impl/expr/expr.hpp"
 #include <cctype>
 #include <sstream>
 

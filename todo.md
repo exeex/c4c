@@ -8,34 +8,36 @@ Current Step Title: Add Expression And Statement Subdomain Indexes
 
 ## Just Finished
 
-Step 2 - Create Private HIR Implementation Boundary is closed for the
-top-level private HIR compatibility shim cleanup.
+Step 3 - Add Expression And Statement Subdomain Indexes completed the narrow
+expression/statement private index slice.
 
-- Verified there are no active `#include` users of `hir_lowering.hpp` or
-  `hir_lowerer_internal.hpp` under the repo.
-- Removed `src/frontend/hir/hir_lowering.hpp` and
-  `src/frontend/hir/hir_lowerer_internal.hpp`.
-- Updated active HIR source comments to name `impl/hir_impl.hpp` and
-  `impl/lowerer.hpp` as the private lowering boundary.
+- Added `src/frontend/hir/impl/expr/expr.hpp` as the private expression
+  lowering implementation index.
+- Added `src/frontend/hir/impl/stmt/stmt.hpp` as the private statement
+  lowering implementation index.
+- Retargeted `src/frontend/hir/hir_expr*.cpp` to include
+  `impl/expr/expr.hpp` and `src/frontend/hir/hir_stmt*.cpp` to include
+  `impl/stmt/stmt.hpp`.
+- Updated the `impl/lowerer.hpp` navigation comment to point expression and
+  statement implementation readers at the new subdomain indexes.
 
 ## Suggested Next
 
-Next Step 3 packet: add the expression and statement subdomain indexes, moving
-shared expression/statement lowering declarations behind private implementation
-headers without widening into parser or backend/codegen work.
+Next packet: supervisor should decide whether Step 3 is complete enough for
+commit or whether another narrow Step 3 cleanup is needed before moving to the
+next runbook step.
 
 ## Watchouts
 
-- The top-level private compatibility shims are gone; new HIR implementation
-  code should include `impl/hir_impl.hpp` or `impl/lowerer.hpp` directly.
-- `impl/lowerer.hpp` lives one directory deeper, so private/header utility
-  includes should stay explicit relative paths from `hir/impl/`.
-- Keep parser follow-up work from
-  `ideas/open/94_parser_public_facade_pimpl_boundary.md` separate.
+- The new expression and statement headers are directory-level indexes only;
+  they intentionally do not introduce one header per implementation file.
+- Template, type, callable, build, and core HIR implementation files still
+  include `impl/lowerer.hpp` directly.
 
 ## Proof
 
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^cpp_hir_'; } > test_after.log 2>&1`
 
-Result: passed for the Step 2 shim-removal cleanup. Build completed and HIR
-subset proof passed 71/71 `cpp_hir_*` tests. Proof log: `test_after.log`.
+Result: passed for the Step 3 expression/statement subdomain index slice. Build
+completed and HIR subset proof passed 71/71 `cpp_hir_*` tests. Proof log:
+`test_after.log`.

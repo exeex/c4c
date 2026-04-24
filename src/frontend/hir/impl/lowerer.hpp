@@ -12,9 +12,8 @@
 // - hir_build.cpp: pipeline orchestration and AST pre-collection passes
 // - hir_templates.cpp: template-struct realization and deferred-type resolution
 // - hir_functions.cpp: callable/global lowering
-// - hir_stmt.cpp: statement lowering and cleanup emission
-// - hir_expr.cpp: expression dispatch and lvalue classification
-// - hir_expr_scalar_control.cpp: scalar and control-expression lowering helpers
+// - impl/stmt/stmt.hpp: statement lowering implementation index
+// - impl/expr/expr.hpp: expression lowering implementation index
 // - hir_templates_materialization.cpp: template-arg materialization and mangling
 // - hir_templates_struct_instantiation.cpp: template struct body realization
 // - hir_types.cpp: type/layout/init normalization
