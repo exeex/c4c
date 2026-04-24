@@ -603,8 +603,8 @@ add_test(
           -DDUMP_FLAG=--dump-prepared-bir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-value;t1"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=focus function: stdarg|focus value: %t1|focused functions matched: 1|focused semantic value-owned lines matched: 1|focused prepared value-owned lines matched: 3|prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|bir.func @stdarg() -> void {|entry:|%t1 = bir.call i32 printf(ptr @.str48)|prepared.func @stdarg|home %t1 value_id=|move_bundle phase=after_call block_index=0 instruction_index=0|move from_value_id="
-          "-DFORBIDDEN_SNIPPETS=bir.call void myprintf(ptr @.str49|home %t3.global.aggregate.load.0|access block=entry"
+          "-DREQUIRED_SNIPPETS=focus function: stdarg|focus value: %t1|focused functions matched: 1|focused semantic value-owned lines matched: 1|prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|bir.func @stdarg() -> void {|entry:|%t1 = bir.call i32 printf(ptr @.str48)|prepared.summary @stdarg|calls=1|storage_values=1|callsite block=0 inst=0 wrapper=direct_extern_variadic|storage %t1 register bank=gpr reg=r11|home %t1 value_id=|move_bundle phase=after_call block_index=0 instruction_index=0|move from_value_id="
+          "-DFORBIDDEN_SNIPPETS=bir.call void myprintf(ptr @.str49|callsite block=0 inst=129|storage %t3.global.aggregate.load.0|access block=entry"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_dump_prepared_bir_focus_value_t1_00204 PROPERTIES

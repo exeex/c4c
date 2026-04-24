@@ -798,6 +798,73 @@ bool prepared_access_mentions_value(
          access.address.pointer_value_name == focus_value_id;
 }
 
+bool prepared_call_argument_mentions_value(
+    const c4c::backend::prepare::PreparedCallArgumentPlan& argument,
+    c4c::ValueNameId focus_value_id,
+    const std::unordered_set<c4c::backend::prepare::PreparedValueId>& focus_value_ids) {
+  return (argument.source_value_id.has_value() &&
+          focus_value_ids.count(*argument.source_value_id) != 0) ||
+         (argument.source_base_value_id.has_value() &&
+          focus_value_ids.count(*argument.source_base_value_id) != 0) ||
+         argument.source_base_value_name == focus_value_id;
+}
+
+bool prepared_call_result_mentions_value(
+    const c4c::backend::prepare::PreparedCallResultPlan& result,
+    const std::unordered_set<c4c::backend::prepare::PreparedValueId>& focus_value_ids) {
+  return result.destination_value_id.has_value() &&
+         focus_value_ids.count(*result.destination_value_id) != 0;
+}
+
+bool prepared_call_preserved_value_mentions_value(
+    const c4c::backend::prepare::PreparedCallPreservedValue& preserved,
+    c4c::ValueNameId focus_value_id,
+    const std::unordered_set<c4c::backend::prepare::PreparedValueId>& focus_value_ids) {
+  return preserved.value_name == focus_value_id ||
+         focus_value_ids.count(preserved.value_id) != 0;
+}
+
+bool prepared_indirect_callee_mentions_value(
+    const c4c::backend::prepare::PreparedIndirectCalleePlan& callee,
+    c4c::ValueNameId focus_value_id,
+    const std::unordered_set<c4c::backend::prepare::PreparedValueId>& focus_value_ids) {
+  return (callee.value_id.has_value() && focus_value_ids.count(*callee.value_id) != 0) ||
+         callee.pointer_base_value_name == focus_value_id;
+}
+
+bool prepared_call_plan_mentions_value(
+    const c4c::backend::prepare::PreparedCallPlan& call,
+    c4c::ValueNameId focus_value_id,
+    const std::unordered_set<c4c::backend::prepare::PreparedValueId>& focus_value_ids) {
+  if (call.indirect_callee.has_value() &&
+      prepared_indirect_callee_mentions_value(*call.indirect_callee, focus_value_id, focus_value_ids)) {
+    return true;
+  }
+  if (call.result.has_value() && prepared_call_result_mentions_value(*call.result, focus_value_ids)) {
+    return true;
+  }
+  if (std::any_of(call.arguments.begin(),
+                  call.arguments.end(),
+                  [&](const c4c::backend::prepare::PreparedCallArgumentPlan& argument) {
+                    return prepared_call_argument_mentions_value(argument, focus_value_id, focus_value_ids);
+                  })) {
+    return true;
+  }
+  return std::any_of(call.preserved_values.begin(),
+                     call.preserved_values.end(),
+                     [&](const c4c::backend::prepare::PreparedCallPreservedValue& preserved) {
+                       return prepared_call_preserved_value_mentions_value(
+                           preserved, focus_value_id, focus_value_ids);
+                     });
+}
+
+bool prepared_storage_plan_value_mentions_value(
+    const c4c::backend::prepare::PreparedStoragePlanValue& value,
+    c4c::ValueNameId focus_value_id,
+    const std::unordered_set<c4c::backend::prepare::PreparedValueId>& focus_value_ids) {
+  return value.value_name == focus_value_id || focus_value_ids.count(value.value_id) != 0;
+}
+
 std::unordered_set<c4c::backend::prepare::PreparedValueId> collect_prepared_value_ids(
     const c4c::backend::prepare::PreparedBirModule& module,
     c4c::ValueNameId focus_value_id) {
@@ -893,6 +960,39 @@ std::size_t count_matching_prepared_value_lines(
         [&](const c4c::backend::prepare::PreparedMemoryAccess& access) {
           return prepared_access_mentions_value(access, *focus_value_id);
         }));
+  }
+  for (const auto& function_plan : module.storage_plans.functions) {
+    matched_lines += static_cast<std::size_t>(std::count_if(
+        function_plan.values.begin(),
+        function_plan.values.end(),
+        [&](const c4c::backend::prepare::PreparedStoragePlanValue& value) {
+          return prepared_storage_plan_value_mentions_value(value, *focus_value_id, focus_value_ids);
+        }));
+  }
+
+  for (const auto& function_plan : module.call_plans.functions) {
+    for (const auto& call : function_plan.calls) {
+      if (!prepared_call_plan_mentions_value(call, *focus_value_id, focus_value_ids)) {
+        continue;
+      }
+      ++matched_lines;
+      matched_lines += static_cast<std::size_t>(std::count_if(
+          call.arguments.begin(),
+          call.arguments.end(),
+          [&](const c4c::backend::prepare::PreparedCallArgumentPlan& argument) {
+            return prepared_call_argument_mentions_value(argument, *focus_value_id, focus_value_ids);
+          }));
+      if (call.result.has_value() && prepared_call_result_mentions_value(*call.result, focus_value_ids)) {
+        ++matched_lines;
+      }
+      matched_lines += static_cast<std::size_t>(std::count_if(
+          call.preserved_values.begin(),
+          call.preserved_values.end(),
+          [&](const c4c::backend::prepare::PreparedCallPreservedValue& preserved) {
+            return prepared_call_preserved_value_mentions_value(
+                preserved, *focus_value_id, focus_value_ids);
+          }));
+    }
   }
 
   return matched_lines;
@@ -1093,6 +1193,66 @@ c4c::backend::prepare::PreparedBirModule filter_prepared_module_to_value(
                        }),
         function_addressing.accesses.end());
   }
+
+  filtered.call_plans.functions.erase(
+      std::remove_if(
+          filtered.call_plans.functions.begin(),
+          filtered.call_plans.functions.end(),
+          [&](c4c::backend::prepare::PreparedCallPlansFunction& function_plan) {
+            function_plan.calls.erase(
+                std::remove_if(
+                    function_plan.calls.begin(),
+                    function_plan.calls.end(),
+                    [&](c4c::backend::prepare::PreparedCallPlan& call) {
+                      if (!prepared_call_plan_mentions_value(call, *focus_value_id, focus_value_ids)) {
+                        return true;
+                      }
+                      call.arguments.erase(
+                          std::remove_if(
+                              call.arguments.begin(),
+                              call.arguments.end(),
+                              [&](const c4c::backend::prepare::PreparedCallArgumentPlan& argument) {
+                                return !prepared_call_argument_mentions_value(
+                                    argument, *focus_value_id, focus_value_ids);
+                              }),
+                          call.arguments.end());
+                      if (call.result.has_value() &&
+                          !prepared_call_result_mentions_value(*call.result, focus_value_ids)) {
+                        call.result.reset();
+                      }
+                      call.preserved_values.erase(
+                          std::remove_if(
+                              call.preserved_values.begin(),
+                              call.preserved_values.end(),
+                              [&](const c4c::backend::prepare::PreparedCallPreservedValue& preserved) {
+                                return !prepared_call_preserved_value_mentions_value(
+                                    preserved, *focus_value_id, focus_value_ids);
+                              }),
+                          call.preserved_values.end());
+                      return false;
+                    }),
+                function_plan.calls.end());
+            return function_plan.calls.empty();
+          }),
+      filtered.call_plans.functions.end());
+
+  filtered.storage_plans.functions.erase(
+      std::remove_if(
+          filtered.storage_plans.functions.begin(),
+          filtered.storage_plans.functions.end(),
+          [&](c4c::backend::prepare::PreparedStoragePlanFunction& function_plan) {
+            function_plan.values.erase(
+                std::remove_if(
+                    function_plan.values.begin(),
+                    function_plan.values.end(),
+                    [&](const c4c::backend::prepare::PreparedStoragePlanValue& value) {
+                      return !prepared_storage_plan_value_mentions_value(
+                          value, *focus_value_id, focus_value_ids);
+                    }),
+                function_plan.values.end());
+            return function_plan.values.empty();
+          }),
+      filtered.storage_plans.functions.end());
 
   return filtered;
 }
