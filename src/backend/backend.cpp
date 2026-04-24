@@ -1,6 +1,6 @@
 #include "backend.hpp"
 
-#include "bir/bir_printer.hpp"
+#include "bir/bir.hpp"
 #include "mir/x86/api/api.hpp"
 #include "mir/x86/x86.hpp"
 #include "prealloc/prepared_printer.hpp"

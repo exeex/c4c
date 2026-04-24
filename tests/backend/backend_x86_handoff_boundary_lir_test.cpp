@@ -1,5 +1,5 @@
 #include "src/backend/backend.hpp"
-#include "src/backend/bir/bir_printer.hpp"
+#include "src/backend/bir/bir.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
 #include "src/backend/mir/x86/codegen/route_debug.hpp"

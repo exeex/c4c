@@ -1,7 +1,6 @@
 #include "prepared_printer.hpp"
 
 #include "../bir/bir.hpp"
-#include "../bir/bir_printer.hpp"
 
 #include <iomanip>
 #include <sstream>

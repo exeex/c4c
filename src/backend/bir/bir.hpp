@@ -424,5 +424,7 @@ inline std::optional<std::int64_t> parse_i32_return_immediate(const Function& fu
 std::string render_type(TypeKind type);
 std::string render_binary_opcode(BinaryOpcode opcode);
 std::string render_cast_opcode(CastOpcode opcode);
+std::string print(const Module& module);
+bool validate(const Module& module, std::string* error);
 
 }  // namespace c4c::backend::bir

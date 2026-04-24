@@ -1,4 +1,4 @@
-#include "bir_validate.hpp"
+#include "bir.hpp"
 
 #include <algorithm>
 #include <string_view>

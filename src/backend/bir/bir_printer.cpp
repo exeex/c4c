@@ -1,4 +1,4 @@
-#include "bir_printer.hpp"
+#include "bir.hpp"
 
 #include <iomanip>
 #include <sstream>

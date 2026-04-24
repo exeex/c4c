@@ -1,5 +1,5 @@
 #include "src/backend/backend.hpp"
-#include "src/backend/bir/bir_printer.hpp"
+#include "src/backend/bir/bir.hpp"
 #include "src/backend/mir/x86/x86.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/backend/prealloc/prepared_printer.hpp"

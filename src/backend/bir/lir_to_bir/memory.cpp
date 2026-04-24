@@ -1,4 +1,4 @@
-#include "lir_to_bir.hpp"
+#include "../lir_to_bir.hpp"
 
 #include <algorithm>
 #include <limits>
