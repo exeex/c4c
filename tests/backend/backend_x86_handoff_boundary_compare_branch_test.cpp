@@ -830,6 +830,86 @@ int check_compare_join_regalloc_consumes_predecessor_parallel_copy_execution_sit
   return 0;
 }
 
+int check_compare_join_route_accepts_successor_entry_parallel_copy_handoff(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow =
+      find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the compare-join control-flow contract")
+                    .c_str());
+  }
+  auto* bundle = prepare::find_prepared_parallel_copy_bundle(
+      prepared.names, *control_flow, "is_zero", "join");
+  if (bundle == nullptr ||
+      bundle->execution_site != prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer exposes the predecessor-owned compare-join bundle needed for successor-entry handoff mutation")
+                    .c_str());
+  }
+
+  if (prepared.module.functions.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer exposes a function body for bundle relocation")
+                    .c_str());
+  }
+  const auto predecessor_block_index = find_block_index(prepared.module.functions.front(), "is_zero");
+  const auto successor_block_index = find_block_index(prepared.module.functions.front(), "join");
+  if (!predecessor_block_index.has_value() || !successor_block_index.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer exposes the expected blocks for successor-entry relocation")
+                    .c_str());
+  }
+
+  if (prepared.value_locations.functions.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the compare-join value-location contract")
+                    .c_str());
+  }
+  auto& function_locations = prepared.value_locations.functions.front();
+  auto move_bundle_it =
+      std::find_if(function_locations.move_bundles.begin(),
+                   function_locations.move_bundles.end(),
+                   [&](const prepare::PreparedMoveBundle& candidate) {
+                     return candidate.phase == prepare::PreparedMovePhase::BlockEntry &&
+                            candidate.block_index == *predecessor_block_index &&
+                            std::any_of(candidate.moves.begin(),
+                                        candidate.moves.end(),
+                                        [](const prepare::PreparedMoveResolution& move) {
+                                          return move.reason.rfind("phi_", 0) == 0;
+                                        });
+                   });
+  if (move_bundle_it == function_locations.move_bundles.end()) {
+    return fail((std::string(failure_context) +
+                 ": regalloc no longer publishes a predecessor-owned phi move bundle for successor-entry relocation")
+                    .c_str());
+  }
+
+  bundle->execution_site = prepare::PreparedParallelCopyExecutionSite::SuccessorEntry;
+  move_bundle_it->block_index = *successor_block_index;
+  move_bundle_it->instruction_index = 0;
+  for (auto& move : move_bundle_it->moves) {
+    move.block_index = *successor_block_index;
+    move.instruction_index = 0;
+  }
+
+  try {
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
+  } catch (const std::invalid_argument& error) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer rejected a successor-entry compare-join handoff after the authoritative block-entry move bundle was relocated into the successor block: " +
+                 error.what())
+                    .c_str());
+  }
+
+  return 0;
+}
+
 int check_minimal_compare_branch_param_return_requires_authoritative_prepared_return_bundle(
     const bir::Module& module,
     const char* function_name,
@@ -1438,6 +1518,14 @@ int run_backend_x86_handoff_boundary_compare_branch_tests() {
               make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
               "branch_join_adjust_then_xor",
               "scalar-control-flow compare-against-zero compare-join lane keeps predecessor-owned bundles on the published predecessor execution site");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_compare_join_route_accepts_successor_entry_parallel_copy_handoff(
+              make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module(),
+              "branch_join_adjust_then_xor",
+              "scalar-control-flow compare-against-zero compare-join lane still accepts a successor-entry prepared handoff once regalloc has relocated the authoritative phi move bundle into the successor block");
       status != 0) {
     return status;
   }
