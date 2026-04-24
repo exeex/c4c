@@ -1,51 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/91_advanced_prepared_call_authority_and_grouped_width_allocation.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish Advanced Prepared Call Authority
-Plan Review Counter: 2 / 6
+Current Step ID: 3
+Current Step Title: Make Grouped Width-Greater-Than-One Allocation Truthful
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 2 now extends the shared prepared call-plan plus prepared-printer proof to
-the existing same-module variadic-byval authority surface in
-`tests/backend/backend_prepare_liveness_test.cpp`. The lowered
-`lowered_same_module_variadic_global_byval_metadata` fixture now proves that the
-global byval payload publishes as a symbol-backed aggregate-address call
-argument on the prepared call-plan and printer seams, and the refined
-assertions now require a concrete ABI destination without hard-coding an x86
-register spelling, avoiding target-local recovery or testcase-shaped
-shortcuts.
+Step 3 now publishes prepared regalloc through the x86 `consume_plans` seam so
+downstream helpers can read grouped spill/reload authority directly from the
+shared prepared packet. The grouped spill/reload contract and prepared-printer
+fixtures now prove that width-`> 1` spill/reload facts stay truthful on that
+consumer seam, including the grouped register span, spill slot identity, and
+value-id linkage without x86-local reconstruction.
 
 ## Suggested Next
 
-Decide whether Step 2 still needs one more truthful publication packet for a
-stack-backed before/after-call preservation edge or whether this same-module
-variadic-byval extension is enough to move the runbook into Step 3 grouped
-width `> 1` allocator work.
+Use the new x86-published regalloc seam to tighten the next grouped-width
+packet around another downstream consumer that still reconstructs span or spill
+facts locally, or move to the next Step 3 proof gap if grouped width `> 1`
+authority still disappears outside the current spill/reload path.
 
 ## Watchouts
 
-- Keep this route target-independent; do not hide missing authority behind
-  x86-local recovery.
+- Keep grouped-width proofs anchored to shared prepared plans; do not let x86
+  rebuild regalloc or spill facts from target-local heuristics.
 - Do not reopen out-of-SSA follow-on work from idea 90 inside this runbook.
-- Reject testcase-shaped shortcuts; the next packet must generalize across the
-  owned advanced call or grouped-width failure family.
-- Keep the prepared-printer checks pinned to shared authority facts such as
-  wrapper kind, source encoding, symbol identity, and destination bank rather
-  than broad clobber-set spelling that may change for unrelated reasons.
-- Same-module variadic-byval currently publishes through register-backed source
-  storage plus symbol-address call-plan authority; if that route changes, the
-  next packet should repair the shared publication seam rather than weakening
-  the proof.
-- Require the existence of a concrete ABI destination on both the structured
-  and printer seams, but do not pin acceptance to any target-local register
-  spelling.
+- Reject testcase-shaped shortcuts; grouped-width progress must generalize
+  beyond one named spill/reload case.
+- Prefer cross-plan identity checks such as value id, register span, and spill
+  slot authority over brittle target spelling that may move for unrelated
+  reasons.
 
 ## Proof
 
-`cmake --build --preset default`
-`ctest --test-dir build -j --output-on-failure -R '^backend_'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
 Result: passed on this packet.
 Log: `test_after.log`

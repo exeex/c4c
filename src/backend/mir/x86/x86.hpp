@@ -14,6 +14,7 @@ struct ConsumedPlans {
   const c4c::backend::prepare::PreparedFramePlanFunction* frame = nullptr;
   const c4c::backend::prepare::PreparedDynamicStackPlanFunction* dynamic_stack = nullptr;
   const c4c::backend::prepare::PreparedCallPlansFunction* calls = nullptr;
+  const c4c::backend::prepare::PreparedRegallocFunction* regalloc = nullptr;
   const c4c::backend::prepare::PreparedStoragePlanFunction* storage = nullptr;
 };
 
@@ -25,6 +26,14 @@ struct ConsumedPlans {
       .dynamic_stack =
           c4c::backend::prepare::find_prepared_dynamic_stack_plan(module, function_name),
       .calls = c4c::backend::prepare::find_prepared_call_plans(module, function_name),
+      .regalloc = [&]() -> const c4c::backend::prepare::PreparedRegallocFunction* {
+        for (const auto& function_regalloc : module.regalloc.functions) {
+          if (function_regalloc.function_name == function_name) {
+            return &function_regalloc;
+          }
+        }
+        return nullptr;
+      }(),
       .storage = c4c::backend::prepare::find_prepared_storage_plan(module, function_name),
   };
 }

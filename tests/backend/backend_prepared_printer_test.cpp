@@ -1,5 +1,6 @@
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/backend/prealloc/prepared_printer.hpp"
+#include "src/backend/mir/x86/x86.hpp"
 #include "src/target_profile.hpp"
 
 #include <algorithm>
@@ -1212,6 +1213,17 @@ prepare::PreparedBirModule prepare_grouped_spill_reload_dump_module() {
   return std::move(regalloc_planner.prepared());
 }
 
+const prepare::PreparedRegallocValue* find_regalloc_value(
+    const prepare::PreparedRegallocFunction& function,
+    prepare::PreparedValueId value_id) {
+  for (const auto& value : function.values) {
+    if (value.value_id == value_id) {
+      return &value;
+    }
+  }
+  return nullptr;
+}
+
 prepare::PreparedBirModule prepare_stack_argument_slot_dump_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1964,28 +1976,15 @@ int main() {
   }
 
   const auto grouped_spill_reload_prepared = prepare_grouped_spill_reload_dump_module();
-  const auto grouped_spill_function_id =
-      grouped_spill_reload_prepared.names.function_names.find("grouped_spill_reload_dump_contract");
-  const auto* grouped_spill_regalloc =
-      grouped_spill_function_id == c4c::kInvalidFunctionName
-          ? nullptr
-          : [&]() -> const prepare::PreparedRegallocFunction* {
-              for (const auto& function : grouped_spill_reload_prepared.regalloc.functions) {
-                if (function.function_name == grouped_spill_function_id) {
-                  return &function;
-                }
-              }
-              return nullptr;
-            }();
-  const auto* grouped_spill_storage = find_storage_plan_function(
-      grouped_spill_reload_prepared, "grouped_spill_reload_dump_contract");
-  if (grouped_spill_regalloc == nullptr || grouped_spill_storage == nullptr) {
+  const auto consumed = c4c::backend::x86::consume_plans(grouped_spill_reload_prepared,
+                                                         "grouped_spill_reload_dump_contract");
+  if (consumed.regalloc == nullptr || consumed.storage == nullptr) {
     std::cerr << "[FAIL] missing grouped spill/reload dump fixture\n";
     return EXIT_FAILURE;
   }
   const auto grouped_spill_it = std::find_if(
-      grouped_spill_regalloc->spill_reload_ops.begin(),
-      grouped_spill_regalloc->spill_reload_ops.end(),
+      consumed.regalloc->spill_reload_ops.begin(),
+      consumed.regalloc->spill_reload_ops.end(),
       [&](const prepare::PreparedSpillReloadOp& op) {
         return op.op_kind == prepare::PreparedSpillReloadOpKind::Spill &&
                op.register_bank == prepare::PreparedRegisterBank::Vreg &&
@@ -1994,22 +1993,17 @@ int main() {
                op.occupied_register_names.front() == "v0" &&
                op.occupied_register_names.back() == "v15";
       });
-  if (grouped_spill_it == grouped_spill_regalloc->spill_reload_ops.end()) {
+  if (grouped_spill_it == consumed.regalloc->spill_reload_ops.end()) {
     std::cerr << "[FAIL] missing grouped spill/reload authority in dump fixture\n";
     return EXIT_FAILURE;
   }
-  const auto grouped_spill_value_it = std::find_if(
-      grouped_spill_regalloc->values.begin(),
-      grouped_spill_regalloc->values.end(),
-      [&](const prepare::PreparedRegallocValue& value) {
-        return value.value_id == grouped_spill_it->value_id;
-      });
+  const auto* grouped_spill_value = find_regalloc_value(*consumed.regalloc, grouped_spill_it->value_id);
   const std::string grouped_spill_value_name =
-      grouped_spill_value_it == grouped_spill_regalloc->values.end()
+      grouped_spill_value == nullptr
           ? std::string{}
           : std::string(prepare::prepared_value_name(grouped_spill_reload_prepared.names,
-                                                     grouped_spill_value_it->value_name));
-  if (grouped_spill_value_it == grouped_spill_regalloc->values.end() ||
+                                                     grouped_spill_value->value_name));
+  if (grouped_spill_value == nullptr ||
       !grouped_spill_it->slot_id.has_value() || !grouped_spill_it->stack_offset_bytes.has_value()) {
     std::cerr << "[FAIL] missing grouped spill slot authority in dump fixture\n";
     return EXIT_FAILURE;
