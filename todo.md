@@ -1,40 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/02_bir-memory-helper-consolidation.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Normalize Byte-Storage Reinterpretation Checks
+Current Step ID: Step 5
+Current Step Title: Validate Helper Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Completed `Step 4: Normalize Byte-Storage Reinterpretation Checks`.
-Moved the common byte-storage reinterpretation predicate behind the pure
-`memory/memory_helpers.hpp` helper surface as
-`can_reinterpret_byte_storage_as_type(...)` and reused it from the existing GEP
-walkers in `memory/addressing.cpp` and `memory/local_slots.cpp`.
+Completed `Step 5: Validate Helper Boundaries`.
+Validated that the BIR memory helper consolidation stayed inside the source
+idea boundaries:
 
-The shared helper owns only layout checks for unsigned-byte storage views and
-target type size compatibility. GEP fallback policy, provenance updates, alias
-map mutation, and caller-specific traversal behavior remain in the existing
-callers.
+- no new memory headers were introduced; the memory header surface remains
+  `memory_types.hpp` and `memory_helpers.hpp`
+- `coordinator.cpp` remains a single implementation file and was not split
+- `BirFunctionLowerer` still owns memory lowering state in `lowering.hpp`
+- shared helpers behind `memory_helpers.hpp` remain pure and argument-driven
+- mutable alias/map updates remain in the memory implementation files
+- no test expectation rewrites were used as proof
+
+No remaining source-idea gap was found. The plan is close-ready for supervisor
+and plan-owner handling.
 
 ## Suggested Next
 
-Execute `Step 5: Validate Helper Boundaries`.
-Run the structural checks for helper boundaries and the delegated backend proof
-before handing the plan back for close handling.
+Hand the completed plan back to the supervisor for close handling.
 
 ## Watchouts
 
-- Do not create additional `.hpp` files.
-- Do not split `coordinator.cpp`.
-- Keep `BirFunctionLowerer` as the memory state owner.
-- Keep shared helpers pure and argument-driven behind `memory_helpers.hpp`.
-- Preserve behavior; do not rewrite expectations as proof.
-- The byte-storage helper currently preserves existing whole-view semantics by
-  accepting only `target_byte_offset == 0` and equal storage/target sizes.
-- Do not broaden offset or partial-view behavior during validation.
+Close handling belongs to the supervisor/plan-owner. No implementation,
+header, test, or source-idea edits were made in this validation packet.
 
 ## Proof
 
