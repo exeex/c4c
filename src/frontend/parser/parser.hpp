@@ -42,13 +42,32 @@
 #include "arena.hpp"
 #include "ast.hpp"
 #include "parser_types.hpp"
-#include "impl/parser_state.hpp"
+#include "shared/qualified_name_table.hpp"
 #include "source_profile.hpp"
 #include "token.hpp"
 
 namespace c4c {
 
 struct ParserImpl;
+struct ParserCoreInputState;
+struct ParserSharedLookupState;
+struct ParserBindingState;
+struct ParserDefinitionState;
+struct ParserTemplateState;
+struct ParserLexicalScopeState;
+struct ParserActiveContextState;
+struct ParserNamespaceState;
+struct ParserDiagnosticState;
+struct ParserPragmaState;
+struct ParserLiteSnapshot;
+struct ParserSnapshot;
+struct ParserTentativeParseStats;
+struct ParserParseContextGuard;
+struct ParserTentativeParseGuard;
+struct ParserTentativeParseGuardLite;
+struct ParserLocalVarBindingSuppressionGuard;
+struct ParserRecordTemplatePreludeGuard;
+struct ParserTemplateDeclarationPreludeGuard;
 
 class Parser {
  public:

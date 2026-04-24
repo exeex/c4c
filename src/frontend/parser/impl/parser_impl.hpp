@@ -5,6 +5,7 @@
 // without extending the public parser facade.
 #include "../parser_support.hpp"
 #include "../parser.hpp"
+#include "parser_state.hpp"
 
 namespace c4c {
 

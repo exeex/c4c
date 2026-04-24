@@ -1,50 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/94_parser_public_facade_pimpl_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Separate Facade Types From Private State Carriers
+Current Step ID: 6
+Current Step Title: Tighten Public Header And Include Proof
 
 # Current Packet
 
 ## Just Finished
 
-Completed the next Step 5 facade boundary slice by moving the remaining
-`parser.hpp` inline helper bodies that dereferenced private parser carriers into
-`src/frontend/parser/parser_support.cpp`, which includes
-`impl/parser_impl.hpp`. The moved helpers cover parser text lookup/interning,
-current struct tag state, last resolved typedef state, last using-alias state,
-function-pointer typedef lookup, parser symbol interning/spelling, and C++ mode
-detection through `core_input_state_.source_profile`. `parser.hpp` now only
-declares those methods; its only remaining inline method body is
-`VisibleNameResult::operator bool()`, which does not touch private state.
-
-Remaining `parser.hpp` dependencies on `impl/parser_state.hpp` are now
-declaration/type-shape dependencies rather than inline private-state logic:
-the `Parser` object still exposes reference members to private carriers
-(`ParserCoreInputState`, `ParserSharedLookupState`, `ParserBindingState`,
-`ParserDefinitionState`, `ParserTemplateState`, `ParserLexicalScopeState`,
-`ParserActiveContextState`, `ParserNamespaceState`, `ParserDiagnosticState`,
-and `ParserPragmaState`), and the public class still aliases/declares
-state-backed snapshot and guard types (`ParserLiteSnapshot`, `ParserSnapshot`,
-`TentativeParseStats`, `TentativeParseGuard*`, parse-context guard,
-local-var-binding suppression guard, and template prelude guards). Those names
-are what still force the private include unless the next packet replaces the
-include with narrow forward declarations or moves those state-backed surfaces
-behind implementation-only APIs.
+Completed the Step 5/6 boundary transition by removing
+`#include "impl/parser_state.hpp"` from `src/frontend/parser/parser.hpp`.
+`parser.hpp` now forward-declares the private parser state carriers, snapshot
+types, tentative/parse-context guards, and template prelude guard types it only
+names by reference, alias, return type, or parameter type. The complete private
+definitions now enter parser implementation translation units through
+`src/frontend/parser/impl/parser_impl.hpp`, which explicitly includes
+`parser_state.hpp` after the public parser facade. `parser.hpp` also now
+includes `shared/qualified_name_table.hpp` directly because `QualifiedNameKey`
+is a public facade signature dependency that was previously arriving
+transitively through private state.
 
 ## Suggested Next
 
-Next executor packet: test whether `parser.hpp` can replace
-`impl/parser_state.hpp` with narrow forward declarations for the remaining
-private carrier, snapshot, and guard names, or identify the smallest public
-surface that must move before that include can be removed.
+Next executor packet: start Step 6 by shrinking the remaining parser facade
+exposure itself, especially public aliases and members that still name private
+snapshot/guard/carrier types, now that the public header no longer includes
+their definitions.
 
 ## Watchouts
 
 - Preserve parser behavior, AST output, diagnostics behavior, and testcase
   expectations.
-- `parser.hpp` still includes `impl/parser_state.hpp`; this packet intentionally
-  did not force final include removal.
+- `parser.hpp` no longer includes `impl/parser_state.hpp`; do not reintroduce
+  private state definitions through another public include.
+- `QualifiedNameKey` is an intentional public support dependency in
+  `parser.hpp` because multiple facade declarations expose it.
 - A source search now finds no `parser.hpp` inline methods that read/write
   `shared_lookup_state_`, `active_context_state_`, `binding_state_`,
   `core_input_state_`, or the other private state carrier members.
@@ -66,7 +56,13 @@ surface that must move before that include can be removed.
 
 ## Proof
 
-Executor Step 5 focused proof passed for the inline-helper move:
+Executor Step 5/6 boundary proof passed:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 
 Result: passed. Proof log: `test_after.log`.
+
+Supervisor include proof passed:
+`c++ -std=c++20 -I src -I src/frontend -I src/frontend/parser -I src/frontend/lexer -c /tmp/c4c_parser_header_probe.cpp -o /tmp/c4c_parser_header_probe.o`
+
+Result: passed for a standalone source that includes only
+`frontend/parser/parser.hpp`.
