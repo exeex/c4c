@@ -1,6 +1,6 @@
 # Parser Alias Template Structured Identity
 
-Status: Proposed
+Status: Closed
 Last Updated: 2026-04-24
 
 ## Goal
@@ -51,11 +51,14 @@ follow-through stop depending on canonical rendered names as the primary key.
   specialization lookup, instantiation bridge cleanup, and the remaining
   emitted-artifact duplicate guard clarification for
   `instantiated_template_struct_keys`.
-- The active runbook is exhausted and has been deactivated. The source idea
-  remains open because the active-context string/`TextId` mirror cleanup still
-  has a distinct unresolved execution boundary, and close-time after proof was
-  not available inside the proof-log ownership constraints for this packet.
-  Reactivate only for a bounded remaining parser identity slice.
+- The active-context string/`TextId` mirror cleanup runbook completed its final
+  audit. Remaining string mirrors were classified as fallback, snapshot,
+  diagnostic/injected/member-owner, or compatibility bridge support, and no
+  implementation inconsistency was found.
+- Close-time parser regression proof passed with matching `test_before.log` and
+  `test_after.log` for `frontend_parser_tests` at 1/1 passing before and after.
+  No distinct implementation boundary remains from the structured
+  alias-template, template-struct, or active-context identity cleanup.
 
 The intended direction is:
 
