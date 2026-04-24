@@ -1787,6 +1787,10 @@ TypeSpec Parser::parse_base_type() {
                                                     alias_qn.base_name));
                                             if (alias_base.size() > 2 &&
                                                 alias_base.substr(alias_base.size() - 2) == "_t") {
+                                                // Compatibility bridge: map legacy `_t`
+                                                // spellings back onto `foo::type` when a
+                                                // structured owner/member spelling is not
+                                                // already available.
                                                 alias_qn.base_name = alias_base.substr(
                                                     0, alias_base.size() - 2);
                                                 alias_qn.base_text_id =
@@ -2046,10 +2050,11 @@ TypeSpec Parser::parse_base_type() {
                                             (has_dependent_owner_args(owner_name) &&
                                              preserve_deferred_alias_member(
                                                  owner_name, member_name)) ||
-                                            apply_unary_alias_transform(owner_name, member_name) ||
                                             resolve_alias_member_type(
                                                 owner_name, &owner_qn,
-                                                member_name);
+                                                member_name) ||
+                                            apply_unary_alias_transform(
+                                                owner_name, member_name);
                                     if (!resolved_alias_member &&
                                         ts.deferred_member_type_name &&
                                         ((ts.tpl_struct_origin &&
@@ -2067,6 +2072,9 @@ TypeSpec Parser::parse_base_type() {
                                         (!owner_name.empty() && !member_name.empty());
                                     if (!resolved_alias_member &&
                                         can_try_derived_alias_member) {
+                                        // Bridge-only fallback for legacy alias-name
+                                        // recovery once the structured owner/member path
+                                        // has already failed.
                                         auto [derived_owner, derived_member] =
                                             derive_alias_owner_and_member(alias_template_name);
                                         if (!derived_owner.empty() && !derived_member.empty())
