@@ -1,4 +1,4 @@
-#include "impl/compile_time/compile_time.hpp"
+#include "compile_time.hpp"
 #include "consteval.hpp"
 
 #include <sstream>

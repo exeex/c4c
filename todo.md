@@ -1,39 +1,34 @@
 Status: Active
 Source Idea Path: ideas/open/93_hir_agent_index_header_hierarchy.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Move Template Lowering Family
+Current Step ID: 5
+Current Step Title: Move Compile-Time And HIR-Local Follow-Up Work
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 `Move Template Lowering Family` completed as a
+Step 5 `Move Compile-Time And HIR-Local Follow-Up Work` completed as a
 behavior-preserving structure packet.
 
-Moved template implementation files under `src/frontend/hir/impl/templates/`:
+Moved compile-time and coupled HIR-local follow-up implementation files under
+`src/frontend/hir/impl/compile_time/`:
 
-- `src/frontend/hir/hir_templates.cpp` -> `src/frontend/hir/impl/templates/templates.cpp`
-- `src/frontend/hir/hir_templates_deduction.cpp` -> `src/frontend/hir/impl/templates/deduction.cpp`
-- `src/frontend/hir/hir_templates_deferred_nttp.cpp` -> `src/frontend/hir/impl/templates/deferred_nttp.cpp`
-- `src/frontend/hir/hir_templates_global.cpp` -> `src/frontend/hir/impl/templates/global.cpp`
-- `src/frontend/hir/hir_templates_materialization.cpp` -> `src/frontend/hir/impl/templates/materialization.cpp`
-- `src/frontend/hir/hir_templates_member_typedef.cpp` -> `src/frontend/hir/impl/templates/member_typedef.cpp`
-- `src/frontend/hir/hir_templates_struct_instantiation.cpp` -> `src/frontend/hir/impl/templates/struct_instantiation.cpp`
-- `src/frontend/hir/hir_templates_type_resolution.cpp` -> `src/frontend/hir/impl/templates/type_resolution.cpp`
-- `src/frontend/hir/hir_templates_value_args.cpp` -> `src/frontend/hir/impl/templates/value_args.cpp`
+- `src/frontend/hir/compile_time_engine.cpp` -> `src/frontend/hir/impl/compile_time/engine.cpp`
+- `src/frontend/hir/inline_expand.cpp` -> `src/frontend/hir/impl/compile_time/inline_expand.cpp`
 
-Updated moved-file includes to use the local subdomain index headers, refreshed
-the stale top-level template implementation filenames in live docs and the HIR
-template helper-test comment, and confirmed no moved top-level
-`hir_templates*.cpp` files remain in live source, docs, tests, or root build
-files outside lifecycle/archive paths.
+Kept `compile_time_engine.hpp` and `inline_expand.hpp` as public top-level
+contracts. Updated moved-file includes to use the existing private
+`impl/compile_time/compile_time.hpp` index for the engine and the public
+inline-expansion contract for the app-facing transform. Confirmed no owned old
+`compile_time_engine.cpp` or `inline_expand.cpp` filename references remain in
+live source, docs, tests, or root build files outside lifecycle/archive paths.
 
 ## Suggested Next
 
-Execute Step 5: move compile-time and HIR-local follow-up implementation under
-`src/frontend/hir/impl/compile_time/`, keeping the packet structural and
-updating only directly owned includes and references.
+Execute Step 6: resolve the inspection/debug surface and refresh the HIR README
+so the documented HIR tree matches the implementation layout after the parser
+and HIR move packets.
 
 ## Watchouts
 
@@ -47,10 +42,13 @@ updating only directly owned includes and references.
   `compile_time_engine.hpp`, `inline_expand.hpp`, and `hir/hir_ir.hpp`; do not
   demote these headers without updating callers and validating the wider
   include surface.
-- Compile-time, inline expansion, inspection, and root HIR implementation files
-  were intentionally left in place for later plan steps.
+- Inspection/debug support and root HIR implementation files were intentionally
+  left in place for later plan steps.
 - The `frontend_hir_tests` CTest selector does not exist in this build tree;
   this packet used the supervisor-selected `^cpp_hir` subset instead.
+- This packet did not change public declarations or HIR behavior; full CTest is
+  not specifically warranted by this diff, though the supervisor may still
+  choose it for milestone confidence.
 
 ## Proof
 
