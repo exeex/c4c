@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/92_parser_agent_index_header_hierarchy.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Move Implementation Navigation Behind `impl/parser_impl.hpp`
+Current Step ID: 3
+Current Step Title: Minimize Public Exposure Of Parser State
 
 # Current Packet
 
@@ -57,3 +57,4 @@ Current Step Title: Move Implementation Navigation Behind `impl/parser_impl.hpp`
 - Result: passed.
 - Test subset used: `frontend_parser_tests`.
 - Proof log path: `test_after.log`.
+- Full-suite baseline candidate for commit `7298738b` was accepted.
