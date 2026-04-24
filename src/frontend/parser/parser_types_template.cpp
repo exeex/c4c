@@ -13,10 +13,43 @@
 
 namespace c4c {
 
+Node* Parser::find_template_struct_primary(
+    int context_id, TextId name_text_id, std::string_view fallback_name) const {
+    if (context_id < 0) return nullptr;
+
+    auto lookup_structured = [&](const QualifiedNameKey& key) -> Node* {
+        if (key.base_text_id == kInvalidText) return nullptr;
+        auto it = template_state_.template_struct_defs_by_key.find(key);
+        return it != template_state_.template_struct_defs_by_key.end()
+                   ? it->second
+                   : nullptr;
+    };
+
+    const QualifiedNameKey key =
+        alias_template_key_in_context(context_id, name_text_id, fallback_name);
+    if (Node* node = lookup_structured(key)) return node;
+
+    const std::string resolved =
+        resolve_visible_type_name(name_text_id, fallback_name);
+    if (!resolved.empty() && resolved != fallback_name) {
+        const TextId resolved_text_id = find_parser_text_id(resolved);
+        const QualifiedNameKey resolved_key = alias_template_key_in_context(
+            context_id, resolved_text_id, resolved);
+        if (Node* node = lookup_structured(resolved_key)) return node;
+    }
+
+    auto it = template_state_.template_struct_defs.find(std::string(fallback_name));
+    if (it != template_state_.template_struct_defs.end()) return it->second;
+    if (!resolved.empty() && resolved != fallback_name) {
+        it = template_state_.template_struct_defs.find(resolved);
+        if (it != template_state_.template_struct_defs.end()) return it->second;
+    }
+    return nullptr;
+}
+
 Node* Parser::find_template_struct_primary(const std::string& name) const {
-    auto it = template_state_.template_struct_defs.find(name);
-    return it != template_state_.template_struct_defs.end() ? it->second
-                                                            : nullptr;
+    return find_template_struct_primary(
+        current_namespace_context_id(), find_parser_text_id(name), name);
 }
 
 const std::vector<Node*>* Parser::find_template_struct_specializations(
@@ -41,11 +74,35 @@ const Node* Parser::select_template_struct_pattern_for_args(
 }
 
 void Parser::register_template_struct_primary(const std::string& name, Node* node) {
+    register_template_struct_primary(
+        current_namespace_context_id(), parser_text_id_for_token(kInvalidText, name),
+        name, node);
+}
+
+void Parser::register_template_struct_primary(
+    int context_id, TextId name_text_id, std::string_view fallback_name,
+    Node* node) {
     if (!node || node->kind != NK_STRUCT_DEF || node->n_template_params <= 0 ||
         node->n_template_args != 0) {
         return;
     }
-    template_state_.template_struct_defs[name] = node;
+
+    const QualifiedNameKey key =
+        alias_template_key_in_context(context_id, name_text_id, fallback_name);
+    if (key.base_text_id != kInvalidText) {
+        template_state_.template_struct_defs_by_key[key] = node;
+    }
+
+    const std::string legacy_name(fallback_name);
+    if (!legacy_name.empty()) {
+        template_state_.template_struct_defs[legacy_name] = node;
+    }
+
+    const std::string qualified =
+        bridge_name_in_context(context_id, name_text_id, fallback_name);
+    if (!qualified.empty() && qualified != legacy_name) {
+        template_state_.template_struct_defs[qualified] = node;
+    }
 }
 
 void Parser::register_template_struct_specialization(const char* primary_name, Node* node) {
@@ -567,13 +624,17 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         ++ti;
 
         std::string resolved_ref_tpl_name = ref_tpl_name;
-        const Node* ref_primary = find_template_struct_primary(resolved_ref_tpl_name);
+        const Node* ref_primary = find_template_struct_primary(
+            current_namespace_context_id(),
+            find_parser_text_id(resolved_ref_tpl_name), resolved_ref_tpl_name);
         if (!ref_primary) {
             if (const TypeSpec* visible_type =
                     find_visible_typedef_type(ref_tpl_name_text_id, ref_tpl_name)) {
                 if (visible_type->tag && visible_type->tag[0]) {
                     resolved_ref_tpl_name = visible_type->tag;
                     ref_primary = find_template_struct_primary(
+                        current_namespace_context_id(),
+                        find_parser_text_id(resolved_ref_tpl_name),
                         resolved_ref_tpl_name);
                 }
             }
@@ -583,7 +644,10 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                 resolve_visible_type_name(ref_tpl_name_text_id, ref_tpl_name);
             if (!visible_name.empty()) {
                 resolved_ref_tpl_name = visible_name;
-                ref_primary = find_template_struct_primary(resolved_ref_tpl_name);
+                ref_primary = find_template_struct_primary(
+                    current_namespace_context_id(),
+                    find_parser_text_id(resolved_ref_tpl_name),
+                    resolved_ref_tpl_name);
             }
         }
         if (!ref_primary) {
@@ -591,7 +655,10 @@ bool Parser::eval_deferred_nttp_expr_tokens(
             if (scope_pos != std::string::npos) {
                 resolved_ref_tpl_name =
                     tpl_name.substr(0, scope_pos + 2) + ref_tpl_name;
-                ref_primary = find_template_struct_primary(resolved_ref_tpl_name);
+                ref_primary = find_template_struct_primary(
+                    current_namespace_context_id(),
+                    find_parser_text_id(resolved_ref_tpl_name),
+                    resolved_ref_tpl_name);
             }
         }
         if (!ref_primary) { ti = saved_ti; return false; }

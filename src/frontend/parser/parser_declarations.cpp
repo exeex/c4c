@@ -2020,7 +2020,10 @@ Node* Parser::parse_top_level() {
                        !template_params.empty()) {
                 if (last_sd->n_template_params == 0)
                     attach_template_params(last_sd);
-                register_template_struct_primary(last_sd->name, last_sd);
+                register_template_struct_primary(
+                    current_namespace_context_id(),
+                    parser_text_id_for_token(kInvalidText, last_sd->name),
+                    last_sd->name, last_sd);
                 // In C++ mode, register the template struct name as a typedef
                 // so it's recognized as a type start for Pair<int> syntax.
                 register_tag_type_binding(last_sd->name, TB_STRUCT,
@@ -2031,7 +2034,6 @@ Node* Parser::parse_top_level() {
                     current_namespace_context_id(), find_parser_text_id(last_sd->name),
                     last_sd->name);
                 register_tag_type_binding(qn, TB_STRUCT, last_sd->name);
-                register_template_struct_primary(qn, last_sd);
             }
         }
         return templated;
@@ -2336,8 +2338,9 @@ Node* Parser::parse_top_level() {
             if (!template_state_.template_scope_stack.empty() &&
                 template_state_.template_scope_stack.back().kind ==
                     TemplateScopeKind::FreeFunctionTemplate &&
-                (find_template_struct_primary(qualified_owner) ||
-                 template_state_.template_struct_defs.count(qualified_owner))) {
+                find_template_struct_primary(
+                    current_namespace_context_id(),
+                    find_parser_text_id(qualified_owner), qualified_owner)) {
                 template_state_.template_scope_stack.back().kind =
                     TemplateScopeKind::EnclosingClass;
                 template_state_.template_scope_stack.back().owner_struct_tag =
@@ -2479,8 +2482,9 @@ Node* Parser::parse_top_level() {
                 if (!template_state_.template_scope_stack.empty() &&
                     template_state_.template_scope_stack.back().kind ==
                         TemplateScopeKind::FreeFunctionTemplate &&
-                    (find_template_struct_primary(qualified_owner) ||
-                     template_state_.template_struct_defs.count(qualified_owner))) {
+                    find_template_struct_primary(
+                        current_namespace_context_id(),
+                        find_parser_text_id(qualified_owner), qualified_owner)) {
                     template_state_.template_scope_stack.back().kind =
                         TemplateScopeKind::EnclosingClass;
                     template_state_.template_scope_stack.back().owner_struct_tag =
@@ -3017,8 +3021,10 @@ top_level_base_ready:
         if (!template_state_.template_scope_stack.empty() &&
             template_state_.template_scope_stack.back().kind ==
                 TemplateScopeKind::FreeFunctionTemplate) {
-            if (find_template_struct_primary(qualified_owner_tag) ||
-                template_state_.template_struct_defs.count(qualified_owner_tag)) {
+            if (find_template_struct_primary(
+                    current_namespace_context_id(),
+                    find_parser_text_id(qualified_owner_tag),
+                    qualified_owner_tag)) {
                 template_state_.template_scope_stack.back().kind =
                     TemplateScopeKind::EnclosingClass;
                 template_state_.template_scope_stack.back().owner_struct_tag =

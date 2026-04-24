@@ -317,6 +317,8 @@ struct ParserDefinitionState {
 // - template_struct_* tables track primary templates and specializations.
 // - template_scope_stack is the push/pop surface for active template params.
 struct ParserTemplateState {
+  std::unordered_map<QualifiedNameKey, Node*, QualifiedNameKeyHash>
+      template_struct_defs_by_key;
   std::unordered_map<std::string, Node*> template_struct_defs;
   std::unordered_map<std::string, std::vector<Node*>>
       template_struct_specializations;

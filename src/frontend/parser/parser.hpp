@@ -475,6 +475,8 @@ class Parser {
       const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
       const std::vector<std::pair<std::string, long long>>& nttp_bindings,
       long long* out);
+  Node* find_template_struct_primary(int context_id, TextId name_text_id,
+                                     std::string_view fallback_name) const;
   Node* find_template_struct_primary(const std::string& name) const;
   const std::vector<Node*>* find_template_struct_specializations(
       const Node* primary_tpl) const;
@@ -484,6 +486,9 @@ class Parser {
       const std::vector<Node*>* specializations,
       std::vector<std::pair<std::string, TypeSpec>>* out_type_bindings,
       std::vector<std::pair<std::string, long long>>* out_nttp_bindings) const;
+  void register_template_struct_primary(int context_id, TextId name_text_id,
+                                        std::string_view fallback_name,
+                                        Node* node);
   void register_template_struct_primary(const std::string& name, Node* node);
   void register_template_struct_specialization(const char* primary_name, Node* node);
   bool parse_next_template_argument(std::vector<TemplateArgParseResult>* out_args,
