@@ -180,6 +180,15 @@ the public/private signal simple:
 - Prealloc README/comparison docs no longer instruct agents to consult deleted
   local Rust reference files as active guidance.
 
+## Closure Note
+
+Closed after the active runbook classified the exported top-level prealloc
+headers, renamed the nested stack-layout private index to
+`stack_layout/stack_layout.hpp`, moved the stack-layout coordinator under the
+stack-layout semantic directory, removed all prealloc-local `.rs` reference
+files, updated prealloc-local docs, and passed the backend close-gate
+regression guard.
+
 ## Non-Goals
 
 - Do not introduce a traditional separated `include/` tree.
