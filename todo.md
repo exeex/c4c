@@ -8,36 +8,44 @@ Current Step Title: Reassess Call Argument Surfaces
 
 ## Just Finished
 
-Step 3: Move HIR-to-LIR Implementation Files Under the Semantic Directory
-completed the behavior-preserving source relocation:
+Step 4: Reassess Call Argument Surfaces completed the inspection-only
+classification for `call_args.hpp` and `call_args_ops.hpp`:
 
-- Moved `hir_to_lir.cpp`, `const_init_emitter.cpp`, and all
-  `stmt_emitter_*.cpp` implementation files under
-  `src/codegen/lir/hir_to_lir/`.
-- Rewrote moved implementation includes so the private lowering index is local
-  to the semantic directory and backend/shared relative includes still resolve.
-- Left exported top-level LIR headers and `src/codegen/CMakeLists.txt`
-  unchanged; the existing recursive source glob picked up the moved files.
+- Keep `src/codegen/lir/call_args.hpp` exported as a top-level LIR API. It owns
+  syntax-level call parsing, formatting, operand scanning, and typed argument
+  helpers used outside HIR-to-LIR.
+- Keep `src/codegen/lir/call_args_ops.hpp` exported as a top-level LIR API. It
+  adapts the same helpers to `LirCallOp` and is used by printer and BIR
+  lowering, not just by HIR-to-LIR emitters.
+- Relevant cross-component users found:
+  `src/codegen/lir/lir_printer.cpp`,
+  `src/backend/bir/lir_to_bir/lowering.hpp`,
+  `src/backend/bir/lir_to_bir/calling.cpp`,
+  `src/backend/bir/lir_to_bir/memory/coordinator.cpp`, and
+  `src/backend/mir/aarch64/codegen/emit.cpp`.
+- HIR-to-LIR users remain implementation consumers:
+  `src/codegen/lir/hir_to_lir/lowering.hpp`,
+  `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`, and the call/vaarg/expression
+  statement emitters.
+- No implementation-only call-lowering state was identified in these headers,
+  so a private `src/codegen/lir/hir_to_lir/call/` subdomain is not warranted
+  now.
 
 ## Suggested Next
 
-Start Step 4: Reassess Call Argument Surfaces by inspecting users of
-`call_args.hpp` and `call_args_ops.hpp`, including printer and BIR lowering
-users, to confirm whether they remain exported top-level LIR APIs.
+Start Step 5: Final Structural Validation and Cleanup. Confirm the final
+top-level LIR header set, including whether `verify.hpp` is an intentionally
+retained exported validation surface or should be cleaned up as part of the
+final structure pass.
 
 ## Watchouts
 
-The moved implementation files still include exported LIR/frontend surfaces
-through existing include directories. Keep `call_args.hpp` and
-`call_args_ops.hpp` exported unless inspection finds implementation-only call
-lowering state that belongs under a private `hir_to_lir/call/` subdomain.
+Do not move `call_args.hpp` or `call_args_ops.hpp` under `hir_to_lir/` without
+first splitting out any truly private lowering-only helpers. The current
+top-level headers are shared LIR text/call semantics used by backend lowering
+and printing.
 
 ## Proof
 
-Ran:
-
-```sh
-bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_tests|backend_)"' > test_after.log 2>&1
-```
-
-Result: passed. Proof log: `test_after.log`.
+No build proof required by packet; this was inspection-only and changed only
+`todo.md`. Existing `test_after.log` was not touched.
