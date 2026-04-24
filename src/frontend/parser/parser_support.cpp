@@ -29,6 +29,15 @@ const Token& Parser::token_at_for_testing(int index) const {
     return tokens_.at(static_cast<size_t>(index));
 }
 
+bool Parser::parser_symbols_use_text_table_for_testing(
+    const TextTable* texts) const {
+    return shared_lookup_state_.parser_symbols.texts_ == texts;
+}
+
+size_t Parser::parser_symbol_count_for_testing() const {
+    return shared_lookup_state_.parser_symbols.size();
+}
+
 void Parser::register_concept_name_for_testing(TextId name_text_id) {
     binding_state_.concept_name_text_ids.insert(name_text_id);
 }
@@ -45,9 +54,33 @@ void Parser::register_using_value_alias_for_testing(
         target_key, std::move(compatibility_name)};
 }
 
+bool Parser::replace_using_value_alias_compatibility_name_for_testing(
+    int context_id, TextId alias_text_id, std::string compatibility_name) {
+    const auto context_it = namespace_state_.using_value_aliases.find(context_id);
+    if (context_it == namespace_state_.using_value_aliases.end()) return false;
+    const auto alias_it = context_it->second.find(alias_text_id);
+    if (alias_it == context_it->second.end()) return false;
+    alias_it->second.compatibility_name = std::move(compatibility_name);
+    return true;
+}
+
 void Parser::register_alias_template_info_for_testing(
     const QualifiedNameKey& key, const ParserAliasTemplateInfo& info) {
     template_state_.alias_template_info[key] = info;
+}
+
+bool Parser::has_last_using_alias_name_text_id_for_testing() const {
+    return active_context_state_.last_using_alias_name_text_id != kInvalidText;
+}
+
+void Parser::replace_last_using_alias_name_fallback_for_testing(
+    std::string name) {
+    active_context_state_.last_using_alias_name = std::move(name);
+}
+
+std::string_view Parser::last_resolved_typedef_text() const {
+    return parser_text(active_context_state_.last_resolved_typedef_text_id,
+                       active_context_state_.last_resolved_typedef);
 }
 
 Parser::ParserLiteSnapshot Parser::save_lite_state() const {

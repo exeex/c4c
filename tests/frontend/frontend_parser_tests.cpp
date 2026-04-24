@@ -81,8 +81,8 @@ void test_parser_reuses_symbol_ids_for_repeated_identifier_text_ids() {
               "repeated identifier text ids should reuse one SymbolId");
   expect_eq(parser.symbol_spelling(first), "Value",
             "parser symbol table should recover identifier spelling");
-  expect_true(parser.shared_lookup_state_.parser_symbols.texts_ ==
-                  &lexer.text_table(),
+  expect_true(parser.parser_symbols_use_text_table_for_testing(
+                  &lexer.text_table()),
               "parser symbol table should reuse the shared lexer text table");
 }
 
@@ -127,16 +127,15 @@ void test_parser_string_wrappers_use_symbol_id_keyed_name_tables() {
   parser.register_var_type_binding("counter", var_ts);
 
   const c4c::Parser::SymbolId typedef_symbol =
-      parser.shared_lookup_state_.parser_name_tables.find_identifier("Value");
+      parser.parser_symbol_tables().find_identifier("Value");
   const c4c::Parser::SymbolId var_symbol =
-      parser.shared_lookup_state_.parser_name_tables.find_identifier("counter");
+      parser.parser_symbol_tables().find_identifier("counter");
 
   expect_true(typedef_symbol != c4c::Parser::kInvalidSymbol,
               "typedef wrapper should intern a valid SymbolId");
-  expect_true(parser.shared_lookup_state_.parser_name_tables.is_typedef(
-                  typedef_symbol),
+  expect_true(parser.parser_symbol_tables().is_typedef(typedef_symbol),
               "typedef wrapper should store membership by SymbolId");
-  expect_true(parser.shared_lookup_state_.parser_name_tables.user_typedefs.count(
+  expect_true(parser.parser_symbol_tables().user_typedefs.count(
                   typedef_symbol) == 1,
               "user typedef wrapper should track user typedef membership by SymbolId");
   expect_true(parser.has_typedef_name("Value"),
@@ -146,18 +145,16 @@ void test_parser_string_wrappers_use_symbol_id_keyed_name_tables() {
   expect_true(parser.find_typedef_type("Value") != nullptr &&
                   parser.find_typedef_type("Value")->base == c4c::TB_INT,
               "typedef type wrapper should recover the stored TypeSpec");
-  expect_true(parser.shared_lookup_state_.parser_name_tables.lookup_typedef_type(
+  expect_true(parser.parser_symbol_tables().lookup_typedef_type(
                   typedef_symbol) != nullptr &&
-                  parser.shared_lookup_state_.parser_name_tables
+                  parser.parser_symbol_tables()
                           .lookup_typedef_type(typedef_symbol)
-                          ->base ==
-                      c4c::TB_INT,
+                          ->base == c4c::TB_INT,
               "symbol-keyed typedef map should recover the stored TypeSpec");
 
   expect_true(var_symbol != c4c::Parser::kInvalidSymbol,
               "var-type wrapper should intern a valid SymbolId");
-  expect_true(parser.shared_lookup_state_.parser_name_tables.var_types.count(
-                  var_symbol) == 1,
+  expect_true(parser.parser_symbol_tables().var_types.count(var_symbol) == 1,
               "var-type wrapper should store var bindings by SymbolId");
   expect_true(parser.has_var_type("counter"),
               "string-facing var-type lookup should still work");
@@ -185,7 +182,7 @@ void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {
   parser.register_typedef_binding("Keep", keep_ts, false);
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
   const size_t typedef_count_before =
-      parser.shared_lookup_state_.parser_name_tables.typedefs.size();
+      parser.parser_symbol_tables().typedefs.size();
   const auto snapshot = parser.save_state();
   parser.register_typedef_binding("Temp", temp_ts, true);
   parser.register_var_type_binding("scratch", temp_ts);
@@ -198,7 +195,7 @@ void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {
   expect_true(!parser.has_var_type("scratch"),
               "restore_state should roll back var bindings added after the snapshot");
   expect_eq_int(
-      static_cast<int>(parser.shared_lookup_state_.parser_name_tables.typedefs.size()),
+      static_cast<int>(parser.parser_symbol_tables().typedefs.size()),
                 static_cast<int>(typedef_count_before),
                 "heavy snapshot restore should reset typedef membership to the snapshot");
 #else
@@ -236,7 +233,7 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
   var_ts.base = c4c::TB_DOUBLE;
 
   const int symbol_count_before =
-      static_cast<int>(parser.shared_lookup_state_.parser_symbols.size());
+      static_cast<int>(parser.parser_symbol_count_for_testing());
 
   parser.register_typedef_binding("ns::Type", typedef_ts, true);
   parser.register_var_type_binding("ns::value", var_ts);
@@ -253,15 +250,15 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
   expect_true(parser.find_var_type("ns::value") != nullptr &&
                   parser.find_var_type("ns::value")->base == c4c::TB_DOUBLE,
               "qualified value lookup should recover the stored TypeSpec");
-  expect_true(parser.shared_lookup_state_.parser_name_tables.find_identifier(
+  expect_true(parser.parser_symbol_tables().find_identifier(
                   "ns::Type") ==
                   c4c::Parser::kInvalidSymbol,
               "qualified typedef names should not intern composed strings");
-  expect_true(parser.shared_lookup_state_.parser_name_tables.find_identifier(
+  expect_true(parser.parser_symbol_tables().find_identifier(
                   "ns::value") ==
                   c4c::Parser::kInvalidSymbol,
               "qualified value names should not intern composed strings");
-  expect_eq_int(static_cast<int>(parser.shared_lookup_state_.parser_symbols.size()),
+  expect_eq_int(static_cast<int>(parser.parser_symbol_count_for_testing()),
                 symbol_count_before,
                 "qualified bindings should not change the atom-symbol table size");
 
@@ -291,19 +288,17 @@ void test_parser_last_using_alias_name_prefers_text_id_storage() {
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
 
   parser.set_last_using_alias_name(parser.intern_semantic_name_key("ns::Alias"));
-  expect_true(parser.active_context_state_.last_using_alias_name_text_id !=
-                  c4c::kInvalidText,
+  expect_true(parser.has_last_using_alias_name_text_id_for_testing(),
               "using-alias bookkeeping should retain a valid TextId");
   expect_eq(parser.last_using_alias_name_text(), "Alias",
             "using-alias bookkeeping should resolve through the parser text table");
 
-  parser.active_context_state_.last_using_alias_name = "corrupted";
+  parser.replace_last_using_alias_name_fallback_for_testing("corrupted");
   expect_eq(parser.last_using_alias_name_text(), "Alias",
             "using-alias bookkeeping should prefer the TextId carrier over raw string storage");
 
   parser.clear_last_using_alias_name();
-  expect_true(parser.active_context_state_.last_using_alias_name_text_id ==
-                  c4c::kInvalidText,
+  expect_true(!parser.has_last_using_alias_name_text_id_for_testing(),
               "clearing using-alias bookkeeping should drop the TextId carrier");
   expect_true(parser.last_using_alias_name_text().empty(),
               "clearing using-alias bookkeeping should leave no visible alias text");
@@ -647,7 +642,7 @@ void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
   c4c::TypeSpec alias_ts = parser.parse_base_type();
   expect_true(alias_ts.base == c4c::TB_INT,
               "parse_base_type should resolve typedef names via parser-owned spelling");
-  expect_eq(parser.active_context_state_.last_resolved_typedef, "TypeAlias",
+  expect_eq(parser.last_resolved_typedef_text(), "TypeAlias",
             "typedef resolution should preserve the parser-owned identifier spelling");
 
   c4c::TypeSpec local_alias_ts{};
@@ -666,7 +661,7 @@ void test_parser_parse_base_type_identifier_probes_use_token_spelling() {
   c4c::TypeSpec local_alias_result = parser.parse_base_type();
   expect_true(local_alias_result.base == c4c::TB_DOUBLE,
               "parse_base_type should resolve scope-local typedef names through the lexical scope facade");
-  expect_eq(parser.active_context_state_.last_resolved_typedef, "LocalAlias",
+  expect_eq(parser.last_resolved_typedef_text(), "LocalAlias",
             "scope-local typedef resolution should preserve the parser-owned identifier spelling");
   expect_eq(parser.token_spelling(parser.cur()), "value",
             "scope-local typedef resolution should leave the declarator token in place");
@@ -743,7 +738,7 @@ void test_parser_local_visible_typedef_cast_uses_scope_lookup() {
   expect_true(expr->left != nullptr && expr->left->kind == c4c::NK_INT_LIT &&
                   expr->left->ival == 1,
               "local visible typedef casts should keep the cast operand intact");
-  expect_eq(parser.active_context_state_.last_resolved_typedef, "Alias",
+  expect_eq(parser.last_resolved_typedef_text(), "Alias",
             "local visible typedef casts should preserve the visible typedef spelling");
   expect_true(parser.pop_local_binding_scope(),
               "test fixture should balance the local visible typedef scope");
@@ -861,8 +856,8 @@ void test_parser_conflicting_user_typedef_binding_uses_local_visible_scope_looku
   parser.push_local_binding_scope();
   parser.bind_local_typedef(alias_text, alias_ts);
   const c4c::Parser::SymbolId alias_symbol =
-      parser.shared_lookup_state_.parser_name_tables.intern_identifier("Alias");
-  parser.shared_lookup_state_.parser_name_tables.user_typedefs.insert(alias_symbol);
+      parser.parser_symbol_tables().intern_identifier("Alias");
+  parser.parser_symbol_tables().user_typedefs.insert(alias_symbol);
 
   expect_true(!parser.has_conflicting_user_typedef_binding("Alias", alias_ts),
               "typedef conflict checks should accept matching scope-local visible typedefs");
@@ -1058,10 +1053,9 @@ void test_parser_using_value_import_keeps_structured_target_key() {
   const c4c::TextId alias_text = parser.find_parser_text_id("Target");
   expect_true(alias_text != c4c::kInvalidText,
               "using-import fixture should intern the alias text");
-  auto alias_it = parser.namespace_state_.using_value_aliases[0].find(alias_text);
-  expect_true(alias_it != parser.namespace_state_.using_value_aliases[0].end(),
+  expect_true(parser.replace_using_value_alias_compatibility_name_for_testing(
+                  0, alias_text, "corrupted"),
               "using-import fixture should record a value-alias entry");
-  alias_it->second.compatibility_name = "corrupted";
   expect_eq(parser.resolve_visible_value_name("Target"), "ns::Target",
             "using-import lookup should prefer the structured target key over the compatibility bridge");
 }
@@ -1084,10 +1078,9 @@ void test_parser_global_using_value_import_keeps_global_target_resolution() {
   const c4c::TextId alias_text = parser.find_parser_text_id("Target");
   expect_true(alias_text != c4c::kInvalidText,
               "global using-import fixture should intern the alias text");
-  auto alias_it = parser.namespace_state_.using_value_aliases[0].find(alias_text);
-  expect_true(alias_it != parser.namespace_state_.using_value_aliases[0].end(),
+  expect_true(parser.replace_using_value_alias_compatibility_name_for_testing(
+                  0, alias_text, "corrupted"),
               "global using-import fixture should record a value-alias entry");
-  alias_it->second.compatibility_name = "corrupted";
   expect_eq(parser.resolve_visible_value_name("Target"), "Target",
             "global using-import lookup should keep the global target spelling instead of introducing a leading scope bridge");
 }
@@ -2159,7 +2152,7 @@ void test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias() {
       parser.make_injected_token(seed, c4c::TokenKind::Comma, ","),
       parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
       parser.make_injected_token(seed, c4c::TokenKind::RParen, ")"),
-  });
+  };
 
   long long value = 0;
   expect_true(parser.eval_deferred_nttp_expr_tokens("Trait", toks, {}, {}, &value),
@@ -2210,7 +2203,7 @@ void test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases() 
       parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
       parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
-  });
+  };
 
   long long value = 0;
   expect_true(parser.eval_deferred_nttp_expr_tokens("Trait", toks, {}, {}, &value),
