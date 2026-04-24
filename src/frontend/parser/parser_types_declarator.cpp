@@ -1454,37 +1454,40 @@ bool parse_parenthesized_pointer_declarator_name(
     return true;
 }
 
-bool Parser::try_parse_nested_parenthesized_pointer_declarator(
+bool try_parse_nested_parenthesized_pointer_declarator(
+    Parser& parser,
     TypeSpec& ts, const char** out_name,
     Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
     bool* out_fn_ptr_variadic, TextId* out_name_text_id) {
-    if (!check(TokenKind::LParen)) return false;
+    if (!parser.check(TokenKind::LParen)) return false;
 
     TypeSpec inner_ts = ts;
     inner_ts.ptr_level = 0;
-    parse_declarator(inner_ts, out_name,
-                     out_fn_ptr_params, out_n_fn_ptr_params,
-                     out_fn_ptr_variadic, nullptr, nullptr, nullptr, nullptr,
-                     out_name_text_id);
+    parser.parse_declarator(inner_ts, out_name,
+                            out_fn_ptr_params, out_n_fn_ptr_params,
+                            out_fn_ptr_variadic, nullptr, nullptr, nullptr,
+                            nullptr, out_name_text_id);
     return true;
 }
 
-bool Parser::parse_parenthesized_pointer_declarator_inner(
+bool parse_parenthesized_pointer_declarator_inner(
+    Parser& parser,
     TypeSpec& ts, const char** out_name,
     Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
     bool* out_fn_ptr_variadic, TextId* out_name_text_id) {
-    skip_parenthesized_pointer_declarator_array_chunks(*this);
+    skip_parenthesized_pointer_declarator_array_chunks(parser);
     const bool got_name =
-        parse_parenthesized_pointer_declarator_name(*this, out_name,
+        parse_parenthesized_pointer_declarator_name(parser, out_name,
                                                     out_name_text_id);
-    skip_parenthesized_pointer_declarator_array_chunks(*this);
+    skip_parenthesized_pointer_declarator_array_chunks(parser);
 
-    if (got_name && check(TokenKind::LParen)) {
-        skip_paren_group();  // skip own params: (int a, int b)
+    if (got_name && parser.check(TokenKind::LParen)) {
+        parser.skip_paren_group();  // skip own params: (int a, int b)
         return false;
     }
 
     return try_parse_nested_parenthesized_pointer_declarator(
+        parser,
         ts, out_name,
         out_fn_ptr_params, out_n_fn_ptr_params,
         out_fn_ptr_variadic, out_name_text_id);
@@ -1521,6 +1524,7 @@ void Parser::parse_parenthesized_pointer_declarator(
     parse_parenthesized_pointer_declarator_prefix(*this, ts);
 
     is_nested_fn_ptr = parse_parenthesized_pointer_declarator_inner(
+        *this,
         ts, out_name,
         out_fn_ptr_params, out_n_fn_ptr_params,
         out_fn_ptr_variadic, out_name_text_id);

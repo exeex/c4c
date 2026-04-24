@@ -59,6 +59,16 @@ void skip_parenthesized_pointer_declarator_array_chunks(Parser& parser);
 bool parse_parenthesized_pointer_declarator_name(Parser& parser,
                                                  const char** out_name,
                                                  TextId* out_name_text_id);
+bool try_parse_nested_parenthesized_pointer_declarator(
+    Parser& parser,
+    TypeSpec& ts, const char** out_name,
+    Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
+    bool* out_fn_ptr_variadic, TextId* out_name_text_id);
+bool parse_parenthesized_pointer_declarator_inner(
+    Parser& parser,
+    TypeSpec& ts, const char** out_name,
+    Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
+    bool* out_fn_ptr_variadic, TextId* out_name_text_id);
 
 bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);
