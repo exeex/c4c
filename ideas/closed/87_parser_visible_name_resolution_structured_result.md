@@ -1,8 +1,9 @@
 # Parser Visible Name Resolution Structured Result
 
-Status: Open
+Status: Closed
 Created: 2026-04-24
 Last Updated: 2026-04-24
+Closed: 2026-04-24
 Parent Ideas:
 - [84_parser_qualified_name_structured_lookup.md](/workspaces/c4c/ideas/closed/84_parser_qualified_name_structured_lookup.md)
 - [86_parser_alias_template_structured_identity.md](/workspaces/c4c/ideas/closed/86_parser_alias_template_structured_identity.md)
@@ -183,3 +184,16 @@ needed.
 
 Idea 85 remains separate because constructor-init visible-head handling is a
 probe-boundary ambiguity, not a visible-name result representation problem.
+
+## Closure Summary
+
+Closed after the active runbook introduced `VisibleNameResult`, retargeted
+visible type/value/concept consumers to structured lookup, narrowed
+using-alias publishing to structured results, and preserved rendered names as
+compatibility, AST, diagnostic, fallback, or string-keyed table boundary
+outputs.
+
+Closure proof used the accepted full-suite baseline at commit `86211995`
+against the current tree after Step 5. Both `test_before.log` and
+`test_after.log` report 2974/2974 passing tests, and the regression guard
+passed in documented non-decreasing refactor mode with no new failures.
