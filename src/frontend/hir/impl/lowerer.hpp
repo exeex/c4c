@@ -5,17 +5,15 @@
 // Role:
 // - declares the implementation-only Lowerer engine shared across hir_*.cpp
 // - groups helper families by lowering phase and semantic responsibility
-// - provides the internal navigation index for template, callable, stmt, expr,
+// - provides the internal navigation index for callable, stmt, expr, template,
 //   and initializer lowering code
 //
 // Implementation map:
 // - hir_build.cpp: pipeline orchestration and AST pre-collection passes
-// - hir_templates.cpp: template-struct realization and deferred-type resolution
+// - impl/templates/templates.hpp: template/dependent lowering implementation index
 // - hir_functions.cpp: callable/global lowering
 // - impl/stmt/stmt.hpp: statement lowering implementation index
 // - impl/expr/expr.hpp: expression lowering implementation index
-// - hir_templates_materialization.cpp: template-arg materialization and mangling
-// - hir_templates_struct_instantiation.cpp: template struct body realization
 // - hir_types.cpp: type/layout/init normalization
 // - hir_lowering_core.cpp: shared source/span/string helpers
 
