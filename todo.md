@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/94_parser_public_facade_pimpl_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Public Parser Surface
+Current Step ID: 2
+Current Step Title: Introduce Opaque Parser Implementation Ownership
 
 # Current Packet
 
