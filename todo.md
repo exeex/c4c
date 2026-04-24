@@ -1,9 +1,9 @@
 Status: Active
 Source Idea Path: ideas/open/90_out_of_ssa_critical_edge_and_parallel_copy_deepening.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Make Ordering, Cycle Breaking, And Carrier Use Truthful
-Plan Review Counter: 6 / 6
+Current Step ID: 3.2
+Current Step Title: Publish Cycle-Breaking And Temporary Carrier Authority
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
@@ -18,10 +18,12 @@ is removed instead of silently recomputing bundle matches from CFG shape.
 
 ## Suggested Next
 
-Step 3 has reached its `Plan Review Counter` limit. Before taking another
-implementation packet on ordering/carrier authority, run plan review to decide
-whether Step 3 should split into smaller numbered substeps or remain a single
-route with a reset counter.
+The Step 3 review split is now recorded in `plan.md`. Treat the completed
+execution-order and bundle-lookup work as Step 3.1 progress, then take Step
+3.2 as the next packet: inspect which remaining covered bundle families still
+leave cycle save/move ordering or temporary carrier sourcing implicit after
+the published lookup work, and publish that authority target-independently
+before taking on Step 3.3 coalescing-boundary cleanup.
 
 ## Watchouts
 

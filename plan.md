@@ -187,7 +187,9 @@ Completion check:
 ## Step 3: Make Ordering, Cycle Breaking, And Carrier Use Truthful
 
 Goal: ensure hard parallel-copy cases survive through published ordering and
-carrier authority instead of implementation accidents.
+carrier authority instead of implementation accidents without collapsing
+execution-site publication, cycle handling, and coalescing boundaries into one
+oversized packet.
 
 Primary targets:
 
@@ -195,18 +197,87 @@ Primary targets:
 - temporary carrier and coalescing boundaries
 - downstream consumer surfaces for harder CFG copy bundles
 
-Actions:
-
-- repair the missing ordering/cycle-breaking publication for the selected hard
-  bundle cases
-- keep temporary carriers and coalescing limits explicit in bundle authority
-- add focused proof that downstream consumers can follow the published copy
-  plan directly
-
 Completion check:
 
 - harder parallel-copy cases publish truthful ordering and carrier authority
 - no owned consumer seam still depends on hidden CFG or implementation detail
+
+### Step 3.1: Publish Bundle Execution-Order Lookup Authority
+
+Goal: make prepared parallel-copy execution order and bundle ownership readable
+through published lookup surfaces instead of consumer-side bundle rescans.
+
+Primary targets:
+
+- execution-block and execution-index facts for prepared bundles
+- authoritative bundle lookup helpers for published edge-owned or
+  branch-owned transfers
+- focused backend proof that consumers use published bundle authority directly
+
+Actions:
+
+- keep bundle execution order anchored to prepared `parallel_copy_bundles`
+  instead of backend-local block reconstruction
+- expose the smallest target-independent helper surfaces needed to retrieve
+  the authoritative prepared bundle for published transfers
+- prove that consumers fail closed when the published lookup facts are absent
+  rather than silently reconstructing ownership from CFG shape
+
+Completion check:
+
+- downstream readers can follow published bundle execution order and ownership
+  without rescanning raw bundle arrays or branch CFG structure
+
+### Step 3.2: Publish Cycle-Breaking And Temporary Carrier Authority
+
+Goal: make cycle save/move ordering and temporary carrier use explicit in the
+published bundle contract for the remaining hard copy families.
+
+Primary targets:
+
+- save/move/move ordering for cycle-broken bundles
+- `uses_cycle_temp_source` and related temporary-carrier publication surfaces
+- prepared tests that prove cycle handling through authoritative bundle data
+
+Actions:
+
+- inspect which covered bundle families still leave cycle-breaking or temp
+  sourcing implicit after the Step 3.1 lookup work
+- publish the smallest target-independent ordering or carrier seam that closes
+  the first remaining gap
+- extend focused proof so hard cycle cases are validated through the published
+  move bundle rather than backend-local recovery
+
+Completion check:
+
+- the remaining covered cycle-broken bundles publish enough ordering and temp
+  carrier authority that consumers do not infer it from implementation detail
+
+### Step 3.3: Publish Coalescing Boundaries And Remaining Consumer Proof
+
+Goal: make copy coalescing limits and downstream use of the published bundle
+plan truthful for the Step 3 surface area.
+
+Primary targets:
+
+- explicit coalescing and normalization boundaries for published copy bundles
+- downstream consumer seams that still infer copy behavior from local CFG
+  interpretation
+- focused proof tying consumer behavior to the published bundle contract
+
+Actions:
+
+- inspect where consumer code still depends on hidden coalescing or
+  normalization assumptions after Steps 3.1 and 3.2
+- publish the smallest remaining target-independent boundary needed for those
+  consumers
+- prove the touched consumers follow the published ordering and carrier plan
+  directly before moving on to Step 4 closure decisions
+
+Completion check:
+
+- Step 3 consumers rely on published ordering, carrier, and coalescing
+  authority rather than backend-local reconstruction
 
 ## Step 4: Prove Consumer Use And Decide Closure
 
