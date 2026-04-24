@@ -466,90 +466,12 @@ class StmtEmitter {
 
   // ── Expression subdomain entry points ────────────────────────────────────
   //
-  // Implementations are indexed from `hir_to_lir/expr/expr.hpp`; keep detailed
-  // expression-only helpers there as that index is strengthened.
-
-  // Recursively resolve the C type of an expression from HIR structure.
-  // The AST doesn't annotate types on NK_BINOP/NK_VAR nodes, so we infer.
-  TypeSpec resolve_expr_type(FnCtx& ctx, ExprId id);
-  TypeSpec resolve_expr_type(FnCtx& ctx, const Expr& e);
-  const Function* find_local_target_function(LinkNameId link_name_id,
-                                             std::string_view fallback_name) const;
-  const FnPtrSig* resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& callee_e);
-  TypeSpec resolve_payload_type(FnCtx& ctx, const DeclRef& r);
-  TypeSpec resolve_payload_type(FnCtx& ctx, const BinaryExpr& b);
-  TypeSpec resolve_payload_type(FnCtx& ctx, const UnaryExpr& u);
-  TypeSpec resolve_payload_type(FnCtx& ctx, const AssignExpr& a);
-  TypeSpec resolve_payload_type(FnCtx& ctx, const CastExpr& c);
-  TypeSpec resolve_payload_type(FnCtx& ctx, const CallExpr& c);
-  TypeSpec resolve_payload_type(FnCtx&, const IntLiteral&);
-  TypeSpec resolve_payload_type(FnCtx&, const FloatLiteral&);
-  TypeSpec resolve_payload_type(FnCtx&, const CharLiteral&);
-  TypeSpec resolve_payload_type(FnCtx&, const StringLiteral&);
-  TypeSpec resolve_payload_type(FnCtx& ctx, const MemberExpr& m);
-  TypeSpec resolve_payload_type(FnCtx& ctx, const IndexExpr& idx);
-  TypeSpec resolve_payload_type(FnCtx& ctx, const TernaryExpr& t);
-  TypeSpec resolve_payload_type(FnCtx& ctx, const VaArgExpr& v);
-  TypeSpec resolve_payload_type(FnCtx& ctx, const SizeofExpr& s);
-  TypeSpec resolve_payload_type(FnCtx& ctx, const SizeofTypeExpr& s);
-  TypeSpec resolve_payload_type(FnCtx& ctx, const LabelAddrExpr& la);
-  TypeSpec resolve_payload_type(FnCtx& ctx, const PendingConstevalExpr& p);
-  template <typename T>
-  TypeSpec resolve_payload_type(FnCtx&, const T&);
-  std::string emit_rval_id(FnCtx& ctx, ExprId id, TypeSpec& out_ts);
-  std::string emit_rval_expr(FnCtx& ctx, const Expr& e);
-
-  // ── Default payload (unimplemented) ─────────────────────────────────────
-  template <typename T>
-  std::string emit_rval_payload(FnCtx&, const T&, const Expr&);
-
-  // ── Literal payloads ─────────────────────────────────────────────────────
-  std::string emit_rval_payload(FnCtx&, const IntLiteral& x, const Expr& e);
-  std::string emit_rval_payload(FnCtx&, const FloatLiteral& x, const Expr& e);
-  std::string emit_rval_payload(FnCtx&, const CharLiteral& x, const Expr&);
-  std::string emit_complex_binary_arith(FnCtx& ctx,
-                                        BinaryOp op,
-                                        const std::string& lv,
-                                        const TypeSpec& lts,
-                                        const std::string& rv,
-                                        const TypeSpec& rts,
-                                        const TypeSpec& res_spec);
-  std::string emit_rval_payload(FnCtx& ctx, const StringLiteral& sl, const Expr& /*e*/);
-
-  // ── DeclRef ───────────────────────────────────────────────────────────────
-  std::string emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Expr& e);
-
-  // ── Unary ─────────────────────────────────────────────────────────────────
-  std::string emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const Expr& e);
-
-  // ── Binary ────────────────────────────────────────────────────────────────
-  std::string emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const Expr& e);
-  std::string emit_logical(FnCtx& ctx, const BinaryExpr& b, const Expr& e);
-
-  // ── Assign ────────────────────────────────────────────────────────────────
-  std::string emit_rval_payload(FnCtx& ctx, const AssignExpr& a, const Expr& /*e*/);
-
-  // ── Cast ─────────────────────────────────────────────────────────────────
-  std::string emit_rval_payload(FnCtx& ctx, const CastExpr& c, const Expr& /*e*/);
-
-  // ── Ternary ───────────────────────────────────────────────────────────────
-  std::string emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, const Expr& e);
-
-  // ── Sizeof ────────────────────────────────────────────────────────────────
-  std::string emit_rval_payload(FnCtx& ctx, const SizeofExpr& s, const Expr&);
-  std::string emit_rval_payload(FnCtx& ctx, const SizeofTypeExpr& s, const Expr&);
-
-  // ── LabelAddrExpr (GCC &&label extension) ────────────────────────────────
-  std::string emit_rval_payload(FnCtx& ctx, const LabelAddrExpr& la, const Expr&);
-
-  // ── PendingConstevalExpr ────────────────────────────────────────────────
-  std::string emit_rval_payload(FnCtx& ctx, const PendingConstevalExpr& p, const Expr& e);
-
-  // ── IndexExpr (rval: load through computed ptr) ──────────────────────────
-  std::string emit_rval_payload(FnCtx& ctx, const IndexExpr&, const Expr& e);
-
-  // ── MemberExpr ────────────────────────────────────────────────────────────
-  std::string emit_rval_payload(FnCtx& ctx, const MemberExpr& m, const Expr& e);
+  // Member declarations are indexed from `hir_to_lir/expr/expr.hpp` so
+  // expression-lowering agents have one private entry point for type
+  // resolution, rval coordination, binary helpers, and miscellaneous payloads.
+#define C4C_CODEGEN_LIR_HIR_TO_LIR_EXPR_MEMBERS
+#include "expr/expr.hpp"
+#undef C4C_CODEGEN_LIR_HIR_TO_LIR_EXPR_MEMBERS
 
   // ── Statement emission ────────────────────────────────────────────────────
 
