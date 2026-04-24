@@ -1,39 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/92_parser_agent_index_header_hierarchy.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Minimize Public Exposure Of Parser State
+Current Step ID: 4
+Current Step Title: Closure Validation
 
 # Current Packet
 
 ## Just Finished
 
-- Completed plan Step 3 sub-slice replacing direct `parser.tokens_`,
-  `parser.pos_`, and `parser.definition_state_` access in
-  `src/frontend/parser/impl/types/types_helpers.hpp`.
-- Added narrow Parser helpers for token cursor probing, injected base-type
-  parsing, defined-struct-tag lookup, and constant-expression evaluation through
-  parser-owned tables.
+- Reviewed plan Step 3 after the accessor/helper slices.
+- Decided not to continue Step 3 as another narrow accessor pass: removing
+  `impl/parser_state.hpp` from `parser.hpp` now requires changing `Parser`'s
+  public object layout because the remaining state carrier fields are stored by
+  value and parser implementation files are class methods over those fields.
+- Created follow-on idea
+  `ideas/open/94_parser_public_facade_pimpl_boundary.md` for the larger
+  Parser facade/PIMPL rebuild needed to make external `parser.hpp` inclusion
+  independent of private state definitions.
 
 ## Suggested Next
 
-- Next Step 3 sub-slice: continue removing parser helper/header dependencies on
-  public Parser state, prioritizing direct `binding_state_`,
-  `template_state_`, or `namespace_state_` reads that still force
-  `impl/parser_state.hpp` through `parser.hpp`.
+- Proceed with plan Step 4 closure validation for idea 92, treating full removal
+  of `impl/parser_state.hpp` from `parser.hpp` as intentionally split into idea
+  94 rather than as more Step 3 accessor work.
+- Re-check that the completed header hierarchy work still satisfies the
+  remaining idea-92 closure criteria once the facade/PIMPL constraint is
+  excluded by the split.
 
 ## Watchouts
 
 - `types_helpers.hpp` no longer directly references `parser.tokens_`,
   `parser.pos_`, or `parser.definition_state_`; the delegated grep is clean.
-- Remaining blockers to removing `impl/parser_state.hpp` from `parser.hpp`
-  include public state members still read by parser implementation files and
-  any helper headers that need state-shaped types from `impl/parser_state.hpp`.
-- The new helpers are not test-only APIs; avoid routing implementation callers
-  through existing `*_for_testing` helpers when continuing the state split.
+- Do not close idea 92 by claiming that `parser.hpp` no longer includes private
+  parser state; it still includes `impl/parser_state.hpp`.
+- The remaining exposure is recorded as a deliberate split because resolving it
+  requires a public facade/private implementation ownership boundary, not just
+  moving helper declarations or adding accessors.
+- Do not start idea 94 inside the active plan unless the supervisor explicitly
+  switches lifecycle state.
 
 ## Proof
 
 - Ran the supervisor-selected proof:
   `{ cmake --build build -j --target frontend_parser_tests c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 - Result: passed. `test_after.log` is the proof log.
+- Lifecycle-only plan-owner review; no new build or test run.
