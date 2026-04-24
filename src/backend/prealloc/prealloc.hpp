@@ -752,6 +752,7 @@ struct PreparedMoveResolution {
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
   bool uses_cycle_temp_source = false;
+  std::optional<std::size_t> source_parallel_copy_step_index;
   PreparedMoveResolutionOpKind op_kind = PreparedMoveResolutionOpKind::Move;
   PreparedMoveAuthorityKind authority_kind = PreparedMoveAuthorityKind::None;
   std::optional<BlockLabelId> source_parallel_copy_predecessor_label;
@@ -4033,6 +4034,57 @@ find_prepared_out_of_ssa_parallel_copy_move_bundle(
       function,
       static_cast<const PreparedValueLocationFunction&>(function_locations),
       parallel_copy_bundle));
+}
+
+[[nodiscard]] inline const PreparedMoveResolution*
+find_prepared_out_of_ssa_parallel_copy_move_for_step(
+    const PreparedMoveBundle& move_bundle,
+    std::size_t parallel_copy_step_index) {
+  if (move_bundle.authority_kind != PreparedMoveAuthorityKind::OutOfSsaParallelCopy) {
+    return nullptr;
+  }
+  const PreparedMoveResolution* match = nullptr;
+  for (const auto& move : move_bundle.moves) {
+    if (move.source_parallel_copy_step_index != parallel_copy_step_index) {
+      continue;
+    }
+    if (match != nullptr) {
+      return nullptr;
+    }
+    match = &move;
+  }
+  return match;
+}
+
+[[nodiscard]] inline const PreparedMoveResolution*
+find_prepared_out_of_ssa_parallel_copy_move_for_step(
+    const PreparedNameTables& names,
+    const bir::Function& function,
+    const PreparedValueLocationFunction& function_locations,
+    const PreparedParallelCopyBundle& parallel_copy_bundle,
+    std::size_t parallel_copy_step_index) {
+  const auto* move_bundle = find_prepared_out_of_ssa_parallel_copy_move_bundle(
+      names, function, function_locations, parallel_copy_bundle);
+  if (move_bundle == nullptr) {
+    return nullptr;
+  }
+  return find_prepared_out_of_ssa_parallel_copy_move_for_step(*move_bundle,
+                                                              parallel_copy_step_index);
+}
+
+[[nodiscard]] inline PreparedMoveResolution*
+find_prepared_out_of_ssa_parallel_copy_move_for_step(
+    const PreparedNameTables& names,
+    const bir::Function& function,
+    PreparedValueLocationFunction& function_locations,
+    const PreparedParallelCopyBundle& parallel_copy_bundle,
+    std::size_t parallel_copy_step_index) {
+  return const_cast<PreparedMoveResolution*>(find_prepared_out_of_ssa_parallel_copy_move_for_step(
+      names,
+      function,
+      static_cast<const PreparedValueLocationFunction&>(function_locations),
+      parallel_copy_bundle,
+      parallel_copy_step_index));
 }
 
 [[nodiscard]] inline const PreparedMoveBundle* find_prepared_unique_move_bundle(

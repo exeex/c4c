@@ -3,45 +3,45 @@ Source Idea Path: ideas/open/90_out_of_ssa_critical_edge_and_parallel_copy_deepe
 Source Plan Path: plan.md
 Current Step ID: 3.2
 Current Step Title: Publish Cycle-Breaking And Temporary Carrier Authority
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 3 now publishes a shared prepared edge-to-bundle lookup seam for
-branch-owned out-of-SSA parallel-copy bundles:
-`find_published_parallel_copy_bundle_for_edge_transfer()` is the single
-bundle-authority helper consumed by
-`find_authoritative_branch_owned_parallel_copy_bundles()`, and the focused
-backend proof now checks that the lookup fails once published edge ownership
-is removed instead of silently recomputing bundle matches from CFG shape.
+Step 3.2 now publishes explicit cycle-step authority on out-of-SSA move
+resolution output instead of relying on move-bundle insertion order:
+`PreparedMoveResolution` carries `source_parallel_copy_step_index`,
+`append_phi_move_resolution()` threads the published `PreparedParallelCopyStep`
+index through save/move lowering, and
+`find_prepared_out_of_ssa_parallel_copy_move_for_step()` lets downstream
+consumers recover the authoritative cycle save/move/move entry for a prepared
+parallel-copy step without reconstructing it from implementation accident.
 
 ## Suggested Next
 
-The Step 3 review split is now recorded in `plan.md`. Treat the completed
-execution-order and bundle-lookup work as Step 3.1 progress, then take Step
-3.2 as the next packet: inspect which remaining covered bundle families still
-leave cycle save/move ordering or temporary carrier sourcing implicit after
-the published lookup work, and publish that authority target-independently
-before taking on Step 3.3 coalescing-boundary cleanup.
+Stay in Step 3.2 and take the remaining temporary-carrier surface directly:
+inspect whether any covered cycle-broken or edge-store bundle families still
+force consumers to infer `uses_cycle_temp_source` or carrier provenance from
+raw move ordering, then publish the smallest remaining helper or prepared-dump
+seam before moving on to Step 3.3 coalescing-boundary cleanup.
 
 ## Watchouts
 
-- `find_published_parallel_copy_bundle_for_edge_transfer()` now treats invalid
-  predecessor or successor labels as missing publication and must stay null in
-  that state; do not let downstream readers reconstruct bundle ownership from
-  branch CFG shape when the published edge labels are absent.
+- `source_parallel_copy_step_index` is only populated for
+  `PreparedMoveAuthorityKind::OutOfSsaParallelCopy`; keep non-parallel-copy
+  move families null so the field stays an authority seam rather than generic
+  sequencing metadata.
+- The new helper fails closed if multiple move-bundle entries claim the same
+  published step index. Preserve that uniqueness if later packets widen the
+  cycle-breaking route.
 - Keep the route target-independent: predecessor-owned, successor-entry, and
-  critical-edge phi copies should continue to flow through published execution
-  authority rather than backend-local placement rules.
-- The strengthened loop-cycle proof still guards save/move/move ordering and
-  cycle-temp sourcing directly through the authoritative move bundle; preserve
-  that first-class bundle ordering if later packets touch cycle handling.
+  critical-edge phi copies should continue to publish cycle/temp authority
+  through prepared bundle data rather than backend-local placement rules.
 
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' 2>&1 | tee test_after.log`
-Passed. Backend build and the `^backend_` subset stayed green after routing
-branch-owned bundle lookup through the published edge-to-bundle seam and
-strengthening authoritative join ownership coverage; canonical proof log path
-is `test_after.log`.
+Passed. Backend build and the `^backend_` subset stayed green after publishing
+explicit out-of-SSA parallel-copy step indices on move-resolution records and
+adding the authoritative move-for-step helper; canonical proof log path is
+`test_after.log`.

@@ -814,6 +814,9 @@ void append_value_locations(std::ostringstream& out, const PreparedBirModule& mo
             << " destination_storage=" << move_storage_kind_name(move.destination_storage_kind)
             << " op_kind=" << move_resolution_op_kind_name(move.op_kind)
             << " uses_cycle_temp_source=" << (move.uses_cycle_temp_source ? "yes" : "no");
+        if (move.source_parallel_copy_step_index.has_value()) {
+          out << " parallel_copy_step_index=" << *move.source_parallel_copy_step_index;
+        }
         if (move.destination_abi_index.has_value()) {
           out << " abi_index=" << *move.destination_abi_index;
         }

@@ -392,6 +392,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                                    std::size_t block_index,
                                    std::size_t instruction_index,
                                    bool uses_cycle_temp_source,
+                                   std::optional<std::size_t> source_parallel_copy_step_index,
                                    PreparedMoveResolutionOpKind op_kind,
                                    PreparedMoveAuthorityKind authority_kind,
                                    std::string reason,
@@ -417,6 +418,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                !move.destination_register_name.has_value() &&
                !move.destination_stack_offset_bytes.has_value() &&
                move.uses_cycle_temp_source == uses_cycle_temp_source &&
+               move.source_parallel_copy_step_index == source_parallel_copy_step_index &&
                move.op_kind == op_kind &&
                move.authority_kind == authority_kind &&
                move.source_parallel_copy_predecessor_label ==
@@ -441,6 +443,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       .block_index = block_index,
       .instruction_index = instruction_index,
       .uses_cycle_temp_source = uses_cycle_temp_source,
+      .source_parallel_copy_step_index = source_parallel_copy_step_index,
       .op_kind = op_kind,
       .authority_kind = authority_kind,
       .source_parallel_copy_predecessor_label = source_parallel_copy_predecessor_label,
@@ -463,6 +466,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                                    std::size_t block_index,
                                    std::size_t instruction_index,
                                    bool uses_cycle_temp_source,
+                                   std::optional<std::size_t> source_parallel_copy_step_index,
                                    PreparedMoveResolutionOpKind op_kind,
                                    PreparedMoveAuthorityKind authority_kind,
                                    std::string reason,
@@ -489,6 +493,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                move.block_index == block_index &&
                move.instruction_index == instruction_index &&
                move.uses_cycle_temp_source == uses_cycle_temp_source &&
+               move.source_parallel_copy_step_index == source_parallel_copy_step_index &&
                move.op_kind == op_kind &&
                move.authority_kind == authority_kind &&
                move.source_parallel_copy_predecessor_label ==
@@ -513,6 +518,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       .block_index = block_index,
       .instruction_index = instruction_index,
       .uses_cycle_temp_source = uses_cycle_temp_source,
+      .source_parallel_copy_step_index = source_parallel_copy_step_index,
       .op_kind = op_kind,
       .authority_kind = authority_kind,
       .source_parallel_copy_predecessor_label = source_parallel_copy_predecessor_label,
@@ -1497,7 +1503,8 @@ void append_phi_move_resolution(const PreparedNameTables& names,
       continue;
     }
 
-    for (const auto& step : bundle.steps) {
+    for (std::size_t step_index = 0; step_index < bundle.steps.size(); ++step_index) {
+      const auto& step = bundle.steps[step_index];
       if (step.move_index >= bundle.moves.size()) {
         continue;
       }
@@ -1523,6 +1530,7 @@ void append_phi_move_resolution(const PreparedNameTables& names,
                                       *block_index,
                                       0,
                                       false,
+                                      step_index,
                                       PreparedMoveResolutionOpKind::SaveDestinationToTemp,
                                       PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
                                       phi_temp_save_reason(join_transfer),
@@ -1549,6 +1557,7 @@ void append_phi_move_resolution(const PreparedNameTables& names,
           *block_index,
           0,
           step.uses_cycle_temp_source,
+          step_index,
           PreparedMoveResolutionOpKind::Move,
           PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
           storage_transfer_reason(
@@ -1611,6 +1620,7 @@ void append_consumer_move_resolution(const PreparedNameTables& names,
                                     block_index,
                                     instruction_index,
                                     false,
+                                    std::nullopt,
                                     PreparedMoveResolutionOpKind::Move,
                                     PreparedMoveAuthorityKind::None,
                                     storage_transfer_reason("consumer", *source, *destination));
@@ -1817,6 +1827,7 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
                                       block_index,
                                       instruction_index,
                                       false,
+                                      std::nullopt,
                                       PreparedMoveResolutionOpKind::Move,
                                       PreparedMoveAuthorityKind::None,
                                       storage_transfer_reason("call_arg",
@@ -1881,6 +1892,7 @@ void append_call_result_move_resolution(const PreparedNameTables& names,
                                     block_index,
                                     instruction_index,
                                     false,
+                                    std::nullopt,
                                     PreparedMoveResolutionOpKind::Move,
                                     PreparedMoveAuthorityKind::None,
                                     storage_transfer_reason("call_result",
@@ -1947,6 +1959,7 @@ void append_return_move_resolution(const PreparedNameTables& names,
                                   block_index,
                                   block.insts.size(),
                                   false,
+                                  std::nullopt,
                                   PreparedMoveResolutionOpKind::Move,
                                   PreparedMoveAuthorityKind::None,
                                   storage_transfer_reason("return",
