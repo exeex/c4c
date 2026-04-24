@@ -1,44 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/93_hir_agent_index_header_hierarchy.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Move Expression And Statement Implementation Families
+Current Step ID: 4
+Current Step Title: Move Template Lowering Family
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 `Move Expression And Statement Implementation Families` completed as a
+Step 4 `Move Template Lowering Family` completed as a
 behavior-preserving structure packet.
 
-Moved expression implementation files under `src/frontend/hir/impl/expr/`:
+Moved template implementation files under `src/frontend/hir/impl/templates/`:
 
-- `src/frontend/hir/hir_expr.cpp` -> `src/frontend/hir/impl/expr/expr.cpp`
-- `src/frontend/hir/hir_expr_builtin.cpp` -> `src/frontend/hir/impl/expr/builtin.cpp`
-- `src/frontend/hir/hir_expr_call.cpp` -> `src/frontend/hir/impl/expr/call.cpp`
-- `src/frontend/hir/hir_expr_object.cpp` -> `src/frontend/hir/impl/expr/object.cpp`
-- `src/frontend/hir/hir_expr_operator.cpp` -> `src/frontend/hir/impl/expr/operator.cpp`
-- `src/frontend/hir/hir_expr_scalar_control.cpp` -> `src/frontend/hir/impl/expr/scalar_control.cpp`
-
-Moved statement implementation files under `src/frontend/hir/impl/stmt/`:
-
-- `src/frontend/hir/hir_stmt.cpp` -> `src/frontend/hir/impl/stmt/stmt.cpp`
-- `src/frontend/hir/hir_stmt_control_flow.cpp` -> `src/frontend/hir/impl/stmt/control_flow.cpp`
-- `src/frontend/hir/hir_stmt_decl.cpp` -> `src/frontend/hir/impl/stmt/decl.cpp`
-- `src/frontend/hir/hir_stmt_range_for.cpp` -> `src/frontend/hir/impl/stmt/range_for.cpp`
-- `src/frontend/hir/hir_stmt_switch.cpp` -> `src/frontend/hir/impl/stmt/switch.cpp`
+- `src/frontend/hir/hir_templates.cpp` -> `src/frontend/hir/impl/templates/templates.cpp`
+- `src/frontend/hir/hir_templates_deduction.cpp` -> `src/frontend/hir/impl/templates/deduction.cpp`
+- `src/frontend/hir/hir_templates_deferred_nttp.cpp` -> `src/frontend/hir/impl/templates/deferred_nttp.cpp`
+- `src/frontend/hir/hir_templates_global.cpp` -> `src/frontend/hir/impl/templates/global.cpp`
+- `src/frontend/hir/hir_templates_materialization.cpp` -> `src/frontend/hir/impl/templates/materialization.cpp`
+- `src/frontend/hir/hir_templates_member_typedef.cpp` -> `src/frontend/hir/impl/templates/member_typedef.cpp`
+- `src/frontend/hir/hir_templates_struct_instantiation.cpp` -> `src/frontend/hir/impl/templates/struct_instantiation.cpp`
+- `src/frontend/hir/hir_templates_type_resolution.cpp` -> `src/frontend/hir/impl/templates/type_resolution.cpp`
+- `src/frontend/hir/hir_templates_value_args.cpp` -> `src/frontend/hir/impl/templates/value_args.cpp`
 
 Updated moved-file includes to use the local subdomain index headers, refreshed
-the stale top-level expression/statement implementation filenames in live docs
-and HIR helper-test comments, and confirmed no moved top-level
-`hir_expr*.cpp` or `hir_stmt*.cpp` files remain.
+the stale top-level template implementation filenames in live docs and the HIR
+template helper-test comment, and confirmed no moved top-level
+`hir_templates*.cpp` files remain in live source, docs, tests, or root build
+files outside lifecycle/archive paths.
 
 ## Suggested Next
 
-Execute Step 4: move the template lowering implementation family under
-`src/frontend/hir/impl/templates/`, rename the moved files to short
-subdomain-local filenames, and update includes/stale references for that move
-only.
+Execute Step 5: move compile-time and HIR-local follow-up implementation under
+`src/frontend/hir/impl/compile_time/`, keeping the packet structural and
+updating only directly owned includes and references.
 
 ## Watchouts
 
@@ -52,8 +47,6 @@ only.
   `compile_time_engine.hpp`, `inline_expand.hpp`, and `hir/hir_ir.hpp`; do not
   demote these headers without updating callers and validating the wider
   include surface.
-- Template implementation files still use old top-level `hir_templates*.cpp`
-  names and should be handled by the Step 4 packet only.
 - Compile-time, inline expansion, inspection, and root HIR implementation files
   were intentionally left in place for later plan steps.
 - The `frontend_hir_tests` CTest selector does not exist in this build tree;

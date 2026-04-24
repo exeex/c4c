@@ -1,5 +1,5 @@
 // HIR regression: template global instantiation should keep mangled global
-// emission stable after the helper family moves out of hir_templates.cpp.
+// emission stable after the helper family moves out of templates.cpp.
 
 namespace ns {
 

@@ -1,4 +1,4 @@
-#include "impl/templates/templates.hpp"
+#include "templates.hpp"
 
 namespace c4c::hir {
 
