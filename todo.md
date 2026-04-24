@@ -9,14 +9,13 @@ Current Step Title: Move Implementation-Only Method Declarations Behind The Boun
 ## Just Finished
 
 Completed Step 3 declaration-boundary slice by removing the implementation-only
-grouped/normal declarator tail helpers
-`Parser::try_parse_grouped_declarator` and
-`Parser::parse_normal_declarator_tail` from public `Parser` declarations in
-`src/frontend/parser/parser.hpp`, adding equivalent private `Parser&` helper
-declarations to `src/frontend/parser/impl/parser_impl.hpp`, converting the
-implementations in `src/frontend/parser/parser_types_declarator.cpp` to the
-private parser boundary, and retargeting the internal suffix dispatcher to pass
-the parser explicitly.
+non-parenthesized declarator suffix dispatcher
+`Parser::parse_non_parenthesized_declarator_suffixes` from public `Parser`
+declarations in `src/frontend/parser/parser.hpp`, adding an equivalent private
+`Parser&` helper declaration to
+`src/frontend/parser/impl/parser_impl.hpp`, converting the implementation in
+`src/frontend/parser/parser_types_declarator.cpp` to the private parser
+boundary, and retargeting internal callers to pass the parser explicitly.
 
 ## Suggested Next
 
@@ -84,11 +83,14 @@ plan, keeping implementation-only declarations behind
 - `try_parse_grouped_declarator` and `parse_normal_declarator_tail` now live
   behind `impl/parser_impl.hpp`; current source/test search found no remaining
   public declarations, member definitions, or external direct member calls.
+- `parse_non_parenthesized_declarator_suffixes` now lives behind
+  `impl/parser_impl.hpp`; current source/test search found no remaining public
+  declaration, member definition, or external direct member calls.
 
 ## Proof
 
-Executor Step 3 focused proof passed for the grouped/normal declarator tail
-helper declaration-boundary slice:
+Executor Step 3 focused proof passed for the non-parenthesized declarator
+suffix dispatcher declaration-boundary slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 
 Result: passed. Proof log: `test_after.log`.

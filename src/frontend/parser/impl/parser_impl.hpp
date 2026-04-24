@@ -104,6 +104,9 @@ void parse_normal_declarator_tail(Parser& parser, TypeSpec& ts,
                                   const char** out_name,
                                   TextId* out_name_text_id,
                                   std::vector<long long>* out_dims);
+void parse_non_parenthesized_declarator_suffixes(
+    Parser& parser, TypeSpec& ts, const char** out_name,
+    TextId* out_name_text_id, std::vector<long long>* out_dims);
 
 bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);
