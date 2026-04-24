@@ -865,35 +865,62 @@ int check_compare_join_route_accepts_successor_entry_parallel_copy_handoff(
                  ": prepared compare-join fixture no longer exposes the expected blocks for successor-entry relocation")
                     .c_str());
   }
+  const auto published_execution_block =
+      prepare::published_prepared_parallel_copy_execution_block_label(*bundle);
+  if (!published_execution_block.has_value() ||
+      prepare::prepared_block_label(prepared.names, *published_execution_block) != "is_zero") {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the predecessor-owned compare-join execution block directly")
+                    .c_str());
+  }
 
-  if (prepared.value_locations.functions.empty()) {
+  const auto* function_locations = find_value_location_function(prepared, function_name);
+  if (function_locations == nullptr) {
     return fail((std::string(failure_context) +
                  ": prepare no longer publishes the compare-join value-location contract")
                     .c_str());
   }
-  auto& function_locations = prepared.value_locations.functions.front();
-  auto move_bundle_it =
-      std::find_if(function_locations.move_bundles.begin(),
-                   function_locations.move_bundles.end(),
-                   [&](const prepare::PreparedMoveBundle& candidate) {
-                     return candidate.phase == prepare::PreparedMovePhase::BlockEntry &&
-                            candidate.block_index == *predecessor_block_index &&
-                            std::any_of(candidate.moves.begin(),
-                                        candidate.moves.end(),
-                                        [](const prepare::PreparedMoveResolution& move) {
-                                          return move.reason.rfind("phi_", 0) == 0;
-                                        });
+  auto function_locations_it =
+      std::find_if(prepared.value_locations.functions.begin(),
+                   prepared.value_locations.functions.end(),
+                   [&](const prepare::PreparedValueLocationFunction& candidate) {
+                     return candidate.function_name == function_locations->function_name;
                    });
-  if (move_bundle_it == function_locations.move_bundles.end()) {
+  if (function_locations_it == prepared.value_locations.functions.end()) {
+    return fail((std::string(failure_context) +
+                 ": compare-join value-location publication became unstable during successor-entry relocation")
+                    .c_str());
+  }
+  auto* move_bundle = const_cast<prepare::PreparedMoveBundle*>(
+      prepare::find_prepared_unique_move_bundle(*function_locations,
+                                                prepare::PreparedMovePhase::BlockEntry,
+                                                *predecessor_block_index));
+  if (move_bundle == nullptr ||
+      !std::any_of(move_bundle->moves.begin(),
+                   move_bundle->moves.end(),
+                   [](const prepare::PreparedMoveResolution& move) {
+                     return move.reason.rfind("phi_", 0) == 0;
+                   })) {
     return fail((std::string(failure_context) +
                  ": regalloc no longer publishes a predecessor-owned phi move bundle for successor-entry relocation")
                     .c_str());
   }
 
   bundle->execution_site = prepare::PreparedParallelCopyExecutionSite::SuccessorEntry;
-  move_bundle_it->block_index = *successor_block_index;
-  move_bundle_it->instruction_index = 0;
-  for (auto& move : move_bundle_it->moves) {
+  bundle->execution_block_label =
+      prepare::resolve_prepared_block_label_id(prepared.names, "join");
+  const auto successor_execution_block =
+      prepare::published_prepared_parallel_copy_execution_block_label(*bundle);
+  if (!successor_execution_block.has_value() ||
+      prepare::prepared_block_label(prepared.names, *successor_execution_block) != "join") {
+    return fail((std::string(failure_context) +
+                 ": successor-entry relocation no longer flows through the published execution-block seam")
+                    .c_str());
+  }
+
+  move_bundle->block_index = *successor_block_index;
+  move_bundle->instruction_index = 0;
+  for (auto& move : move_bundle->moves) {
     move.block_index = *successor_block_index;
     move.instruction_index = 0;
   }

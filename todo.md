@@ -3,44 +3,42 @@ Source Idea Path: ideas/open/90_out_of_ssa_critical_edge_and_parallel_copy_deepe
 Source Plan Path: plan.md
 Current Step ID: 2.2
 Current Step Title: Publish Remaining Edge-Owned Bundle Authority
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 2 now publishes a direct lookup surface for existing branch-owned
-parallel-copy bundle authority: `prealloc.hpp` gained
-`find_authoritative_branch_owned_parallel_copy_bundles(...)`, which reuses the
-published authoritative join-transfer edges and returns the corresponding
-`true_bundle` / `false_bundle` without forcing downstream readers to rescan
-`parallel_copy_bundles` manually. The prepare-level authoritative-ownership
-test now proves both a purely `predecessor_terminator` branch join and the
-mixed `critical_edge` + `predecessor_terminator` short-circuit case through
-that shared helper.
+Step 2.2 now publishes direct execution-block ownership on
+`PreparedParallelCopyBundle`: `out_of_ssa` records the authoritative block
+that executes each published edge-owned bundle, `prealloc.hpp` exposes that
+seam through `published_prepared_parallel_copy_execution_block_label(...)`,
+and the compare-join handoff proof uses that published block directly when
+relocating a bundle to `successor_entry` instead of inferring ownership from
+raw predecessor/successor CFG shape. Focused prepare and printer tests now
+cover the new execution-block authority and its dump surface.
 
 ## Suggested Next
 
-The Step 2 review split is now recorded in `plan.md`. Treat the completed
-branch-owned lookup helper as Step 2.1 progress, then take Step 2.2 as the
-next packet: inspect which edge-owned bundle family still lacks a direct
-publication seam beyond the current join-transfer lookup surface, and publish
-that ownership target-independently before moving on to dump exposure or Step
-3 ordering/carrier work.
+Stay within Step 2.2 only if the route still needs a naturally-produced
+non-join `successor_entry` family from `out_of_ssa`; otherwise the next
+coherent packet is Step 2.3 dump/fixture deepening around the new
+execution-block publication seam.
 
 ## Watchouts
 
-- `out_of_ssa` still does not publish non-join parallel-copy bundles; if a
-  future Step 2 route really needs producer-published `successor_entry`, it
-  will require a new publication path instead of more join-transfer
-  reinterpretation.
+- `out_of_ssa` still only builds `parallel_copy_bundles` from join-transfer
+  edge transfers, so the new execution-block seam makes edge ownership direct
+  for published bundles but does not by itself create a naturally-produced
+  non-join `successor_entry` family.
 - Keep this route target-independent; do not repair critical-edge handling with
   x86-local edge recovery or testcase-shaped splitting.
 - Preserve idea 87's phi-elimination ownership while deepening bundle
-  semantics.
+  semantics; consumer-facing helpers should read the new publication instead of
+  rebuilding CFG authority locally.
 
 ## Proof
 
-`cmake --build --preset default`
-`ctest --test-dir build -j --output-on-failure -R '^backend_'`
-Passed after adding the branch-owned bundle lookup helper and prepare-level
-authority coverage; proof log written to `test_after.log`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+Passed after publishing bundle execution-block ownership, updating the
+consumer-facing successor-entry handoff test, and refreshing dump/fixture
+expectations; proof log written to `test_after.log`.

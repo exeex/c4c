@@ -452,7 +452,9 @@ int check_authoritative_parallel_copy_bundle_ownership(const prepare::PreparedBi
                                                        const char* function_name,
                                                        const char* source_branch_label,
                                                        prepare::PreparedParallelCopyExecutionSite expected_true_site,
-                                                       prepare::PreparedParallelCopyExecutionSite expected_false_site) {
+                                                       prepare::PreparedParallelCopyExecutionSite expected_false_site,
+                                                       const char* expected_true_execution_block,
+                                                       const char* expected_false_execution_block) {
   const auto* control_flow = find_control_flow_function(prepared, function_name);
   if (control_flow == nullptr) {
     return fail("expected prepared control-flow publication for authoritative parallel-copy ownership");
@@ -485,6 +487,23 @@ int check_authoritative_parallel_copy_bundle_ownership(const prepare::PreparedBi
     return fail("expected authoritative parallel-copy bundle helper to preserve published execution-site ownership");
   }
 
+  const auto true_execution_block =
+      prepare::published_prepared_parallel_copy_execution_block_label(*authoritative_bundles->true_bundle);
+  const auto false_execution_block =
+      prepare::published_prepared_parallel_copy_execution_block_label(*authoritative_bundles->false_bundle);
+  if ((expected_true_execution_block == nullptr) != !true_execution_block.has_value() ||
+      (expected_false_execution_block == nullptr) != !false_execution_block.has_value()) {
+    return fail("expected authoritative parallel-copy bundle helper to preserve direct execution-block ownership");
+  }
+  if ((expected_true_execution_block != nullptr &&
+       prepare::prepared_block_label(prepared.names, *true_execution_block) !=
+           expected_true_execution_block) ||
+      (expected_false_execution_block != nullptr &&
+       prepare::prepared_block_label(prepared.names, *false_execution_block) !=
+           expected_false_execution_block)) {
+    return fail("expected authoritative parallel-copy bundle helper to expose the published execution block directly");
+  }
+
   return 0;
 }
 
@@ -506,7 +525,9 @@ int main() {
           "branch_join_prepare_contract",
           "entry",
           prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
-          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator);
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
+          "is_zero",
+          "is_nonzero");
       status != 0) {
     return status;
   }
@@ -525,8 +546,10 @@ int main() {
           prepared_short_circuit,
           "short_circuit_or_prepare_contract",
           "entry",
-          prepare::PreparedParallelCopyExecutionSite::CriticalEdge,
-          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator);
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator,
+          "logic.skip.8",
+          "logic.rhs.end.9");
       status != 0) {
     return status;
   }

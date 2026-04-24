@@ -117,6 +117,21 @@ PreparedParallelCopyExecutionSite classify_join_transfer_parallel_copy_execution
   return PreparedParallelCopyExecutionSite::PredecessorTerminator;
 }
 
+std::optional<BlockLabelId> classify_parallel_copy_execution_block_label(
+    PreparedParallelCopyExecutionSite execution_site,
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label) {
+  switch (execution_site) {
+    case PreparedParallelCopyExecutionSite::PredecessorTerminator:
+      return predecessor_label;
+    case PreparedParallelCopyExecutionSite::SuccessorEntry:
+      return successor_label;
+    case PreparedParallelCopyExecutionSite::CriticalEdge:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
 PreparedParallelCopyBundle make_parallel_copy_bundle(
     const PreparedControlFlowFunction& function_control_flow,
     BlockLabelId predecessor_label,
@@ -129,11 +144,14 @@ struct MoveState {
     bool emitted = false;
   };
 
+  const auto execution_site = classify_join_transfer_parallel_copy_execution_site(
+      function_control_flow, predecessor_label, successor_label);
   PreparedParallelCopyBundle bundle{
       .predecessor_label = predecessor_label,
       .successor_label = successor_label,
-      .execution_site = classify_join_transfer_parallel_copy_execution_site(
-          function_control_flow, predecessor_label, successor_label),
+      .execution_site = execution_site,
+      .execution_block_label = classify_parallel_copy_execution_block_label(
+          execution_site, predecessor_label, successor_label),
       .moves = std::move(moves),
   };
   std::vector<MoveState> states;

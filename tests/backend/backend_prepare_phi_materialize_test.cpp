@@ -2315,11 +2315,11 @@ int main() {
   }
   const std::string parallel_copy_dump = prepare::print(prepared_parallel_copy_cycle);
   if (!expect_contains(parallel_copy_dump,
-                       "parallel_copy entry -> loop execution_site=predecessor_terminator has_cycle=no resolution=acyclic moves=2 steps=2")) {
+                       "parallel_copy entry -> loop execution_site=predecessor_terminator execution_block=entry has_cycle=no resolution=acyclic moves=2 steps=2")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(parallel_copy_dump,
-                       "parallel_copy body -> loop execution_site=predecessor_terminator has_cycle=yes resolution=cycle_break moves=2 steps=3")) {
+                       "parallel_copy body -> loop execution_site=predecessor_terminator execution_block=body has_cycle=yes resolution=cycle_break moves=2 steps=3")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(parallel_copy_dump,
@@ -2354,12 +2354,12 @@ int main() {
   const std::string critical_edge_dump = prepare::print(prepared_critical_edge);
   if (!expect_contains(
           critical_edge_dump,
-          "parallel_copy left -> join execution_site=critical_edge has_cycle=no resolution=acyclic moves=1 steps=1")) {
+          "parallel_copy left -> join execution_site=critical_edge execution_block=<none> has_cycle=no resolution=acyclic moves=1 steps=1")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(
           critical_edge_dump,
-          "parallel_copy right -> join execution_site=predecessor_terminator has_cycle=no resolution=acyclic moves=1 steps=1")) {
+          "parallel_copy right -> join execution_site=predecessor_terminator execution_block=right has_cycle=no resolution=acyclic moves=1 steps=1")) {
     return EXIT_FAILURE;
   }
 

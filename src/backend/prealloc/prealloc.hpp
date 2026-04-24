@@ -1187,6 +1187,7 @@ struct PreparedParallelCopyBundle {
   BlockLabelId successor_label = kInvalidBlockLabel;
   PreparedParallelCopyExecutionSite execution_site =
       PreparedParallelCopyExecutionSite::PredecessorTerminator;
+  std::optional<BlockLabelId> execution_block_label;
   std::vector<PreparedParallelCopyMove> moves;
   std::vector<PreparedParallelCopyStep> steps;
   bool has_cycle = false;
@@ -3690,6 +3691,11 @@ find_prepared_param_zero_resolved_materialized_compare_join_render_contract(
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] inline std::optional<BlockLabelId> published_prepared_parallel_copy_execution_block_label(
+    const PreparedParallelCopyBundle& bundle) {
+  return bundle.execution_block_label;
 }
 
 [[nodiscard]] inline const PreparedParallelCopyBundle* find_prepared_parallel_copy_bundle(
