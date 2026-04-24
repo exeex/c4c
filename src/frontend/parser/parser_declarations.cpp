@@ -42,6 +42,16 @@ struct ParserFunctionParamScopeGuard {
     }
 };
 
+static void restore_current_struct_tag(Parser& parser, TextId text_id,
+                                       const std::string& fallback) {
+    const std::string_view tag = parser.parser_text(text_id, fallback);
+    if (tag.empty()) {
+        parser.clear_current_struct_tag();
+        return;
+    }
+    parser.set_current_struct_tag(tag);
+}
+
 static void finalize_pending_operator_name(std::string& name, size_t param_count) {
     if (name.find("operator_star_pending") != std::string::npos) {
         name.replace(name.find("operator_star_pending"),
@@ -2332,7 +2342,10 @@ Node* Parser::parse_top_level() {
             expect(TokenKind::KwOperator);
 
             // Enter owner scope for out-of-class operator definition.
-            std::string saved_tag_op = active_context_state_.current_struct_tag;
+            const TextId saved_tag_op_text_id =
+                active_context_state_.current_struct_tag_text_id;
+            const std::string saved_tag_op_fallback =
+                active_context_state_.current_struct_tag;
             set_current_struct_tag(qualified_owner);
             if (!template_state_.template_scope_stack.empty() &&
                 template_state_.template_scope_stack.back().kind ==
@@ -2457,7 +2470,8 @@ Node* Parser::parse_top_level() {
                 match(TokenKind::Semi);
             }
             register_known_fn_name(qualified_op_name);
-            set_current_struct_tag(saved_tag_op);
+            restore_current_struct_tag(*this, saved_tag_op_text_id,
+                                       saved_tag_op_fallback);
             return fn;
         }
 
@@ -2475,7 +2489,9 @@ Node* Parser::parse_top_level() {
                 qualified_ctor_name += ctor_name;
 
                 // Enter owner scope for out-of-class constructor definition.
-                std::string saved_tag_ctor =
+                const TextId saved_tag_ctor_text_id =
+                    active_context_state_.current_struct_tag_text_id;
+                const std::string saved_tag_ctor_fallback =
                     active_context_state_.current_struct_tag;
                 set_current_struct_tag(qualified_owner);
                 if (!template_state_.template_scope_stack.empty() &&
@@ -2598,7 +2614,8 @@ Node* Parser::parse_top_level() {
                     match(TokenKind::Semi);
                 }
                 register_known_fn_name(qualified_ctor_name);
-                set_current_struct_tag(saved_tag_ctor);
+                restore_current_struct_tag(*this, saved_tag_ctor_text_id,
+                                           saved_tag_ctor_fallback);
                 return fn;
             }
         }
@@ -3005,8 +3022,8 @@ top_level_base_ready:
     // Owner-aware scope: if the declarator produced a qualified name like
     // "vector::set_capacity", detect the owner struct and re-enter its scope
     // so member typedefs are visible during parameter/body parsing.
-    // We save/restore current_struct_tag_ via a scope guard so all exit paths
-    // are covered.
+    // We save/restore current_struct_tag via TextId plus fallback spelling so
+    // all exit paths keep structured context metadata intact.
     std::string qualified_owner_tag;
     auto enter_owner_scope = [&]() {
         if (!is_cpp_mode() || !decl_name) return;
@@ -3031,13 +3048,17 @@ top_level_base_ready:
             }
         }
     };
-    std::string saved_struct_tag_for_qualified =
+    const TextId saved_struct_tag_text_id_for_qualified =
+        active_context_state_.current_struct_tag_text_id;
+    const std::string saved_struct_tag_fallback_for_qualified =
         active_context_state_.current_struct_tag;
     enter_owner_scope();
     // Helper to restore struct tag before returning from this function.
     auto restore_owner_scope = [&]() {
         if (!qualified_owner_tag.empty())
-            set_current_struct_tag(saved_struct_tag_for_qualified);
+            restore_current_struct_tag(
+                *this, saved_struct_tag_text_id_for_qualified,
+                saved_struct_tag_fallback_for_qualified);
     };
 
     // Explicit template specialization: parse <type_args> after function name.
