@@ -392,6 +392,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                                    std::size_t block_index,
                                    std::size_t instruction_index,
                                    bool uses_cycle_temp_source,
+                                   bool coalesced_by_assigned_storage,
                                    std::optional<std::size_t> source_parallel_copy_step_index,
                                    PreparedMoveResolutionOpKind op_kind,
                                    PreparedMoveAuthorityKind authority_kind,
@@ -402,7 +403,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                                        std::nullopt) {
   if (assigned_storage_kind(source) == PreparedMoveStorageKind::None ||
       assigned_storage_kind(destination) == PreparedMoveStorageKind::None ||
-      (op_kind == PreparedMoveResolutionOpKind::Move &&
+      (op_kind == PreparedMoveResolutionOpKind::Move && !coalesced_by_assigned_storage &&
        assigned_storage_matches(source, destination))) {
     return;
   }
@@ -418,6 +419,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                !move.destination_register_name.has_value() &&
                !move.destination_stack_offset_bytes.has_value() &&
                move.uses_cycle_temp_source == uses_cycle_temp_source &&
+               move.coalesced_by_assigned_storage == coalesced_by_assigned_storage &&
                move.source_parallel_copy_step_index == source_parallel_copy_step_index &&
                move.op_kind == op_kind &&
                move.authority_kind == authority_kind &&
@@ -443,6 +445,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       .block_index = block_index,
       .instruction_index = instruction_index,
       .uses_cycle_temp_source = uses_cycle_temp_source,
+      .coalesced_by_assigned_storage = coalesced_by_assigned_storage,
       .source_parallel_copy_step_index = source_parallel_copy_step_index,
       .op_kind = op_kind,
       .authority_kind = authority_kind,
@@ -466,6 +469,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                                    std::size_t block_index,
                                    std::size_t instruction_index,
                                    bool uses_cycle_temp_source,
+                                   bool coalesced_by_assigned_storage,
                                    std::optional<std::size_t> source_parallel_copy_step_index,
                                    PreparedMoveResolutionOpKind op_kind,
                                    PreparedMoveAuthorityKind authority_kind,
@@ -493,6 +497,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                move.block_index == block_index &&
                move.instruction_index == instruction_index &&
                move.uses_cycle_temp_source == uses_cycle_temp_source &&
+               move.coalesced_by_assigned_storage == coalesced_by_assigned_storage &&
                move.source_parallel_copy_step_index == source_parallel_copy_step_index &&
                move.op_kind == op_kind &&
                move.authority_kind == authority_kind &&
@@ -518,6 +523,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       .block_index = block_index,
       .instruction_index = instruction_index,
       .uses_cycle_temp_source = uses_cycle_temp_source,
+      .coalesced_by_assigned_storage = coalesced_by_assigned_storage,
       .source_parallel_copy_step_index = source_parallel_copy_step_index,
       .op_kind = op_kind,
       .authority_kind = authority_kind,
@@ -1530,6 +1536,7 @@ void append_phi_move_resolution(const PreparedNameTables& names,
                                       *block_index,
                                       0,
                                       false,
+                                      false,
                                       step_index,
                                       PreparedMoveResolutionOpKind::SaveDestinationToTemp,
                                       PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
@@ -1545,10 +1552,10 @@ void append_phi_move_resolution(const PreparedNameTables& names,
       }
 
       const auto* source = find_regalloc_value(regalloc_function, names, move.source_value.name);
-      if (source == nullptr || assigned_storage_kind(*source) == PreparedMoveStorageKind::None ||
-          assigned_storage_matches(*source, *destination)) {
+      if (source == nullptr || assigned_storage_kind(*source) == PreparedMoveStorageKind::None) {
         continue;
       }
+      const bool coalesced_by_assigned_storage = assigned_storage_matches(*source, *destination);
 
       append_move_resolution_record(
           regalloc_function,
@@ -1557,6 +1564,7 @@ void append_phi_move_resolution(const PreparedNameTables& names,
           *block_index,
           0,
           step.uses_cycle_temp_source,
+          coalesced_by_assigned_storage,
           step_index,
           PreparedMoveResolutionOpKind::Move,
           PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
@@ -1619,6 +1627,7 @@ void append_consumer_move_resolution(const PreparedNameTables& names,
                                     *destination,
                                     block_index,
                                     instruction_index,
+                                    false,
                                     false,
                                     std::nullopt,
                                     PreparedMoveResolutionOpKind::Move,
@@ -1827,6 +1836,7 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
                                       block_index,
                                       instruction_index,
                                       false,
+                                      false,
                                       std::nullopt,
                                       PreparedMoveResolutionOpKind::Move,
                                       PreparedMoveAuthorityKind::None,
@@ -1891,6 +1901,7 @@ void append_call_result_move_resolution(const PreparedNameTables& names,
                                     std::nullopt,
                                     block_index,
                                     instruction_index,
+                                    false,
                                     false,
                                     std::nullopt,
                                     PreparedMoveResolutionOpKind::Move,
@@ -1958,6 +1969,7 @@ void append_return_move_resolution(const PreparedNameTables& names,
                                   std::nullopt,
                                   block_index,
                                   block.insts.size(),
+                                  false,
                                   false,
                                   std::nullopt,
                                   PreparedMoveResolutionOpKind::Move,

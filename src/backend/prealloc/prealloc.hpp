@@ -752,6 +752,7 @@ struct PreparedMoveResolution {
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
   bool uses_cycle_temp_source = false;
+  bool coalesced_by_assigned_storage = false;
   std::optional<std::size_t> source_parallel_copy_step_index;
   PreparedMoveResolutionOpKind op_kind = PreparedMoveResolutionOpKind::Move;
   PreparedMoveAuthorityKind authority_kind = PreparedMoveAuthorityKind::None;

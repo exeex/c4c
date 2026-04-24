@@ -3385,10 +3385,38 @@ int check_phi_join_move_resolution(const prepare::PreparedBirModule& prepared) {
       move->destination_abi_index.has_value() || move->destination_register_name.has_value()) {
     return fail("expected phi-join move resolution to keep the generic value destination surface");
   }
+  const auto* right_step_move =
+      prepare::find_prepared_parallel_copy_move_for_step(*right_parallel_copy, 0);
+  const auto* right_resolution =
+      prepare::find_prepared_out_of_ssa_parallel_copy_move_for_step(*right_move_bundle, 0);
+  if (right_step_move == nullptr || right_resolution == nullptr) {
+    return fail("expected the right-edge phi bundle to publish a direct step-resolution lookup");
+  }
+  if (right_step_move != &right_parallel_copy->moves[0]) {
+    return fail("expected the right-edge phi bundle to keep step lookup anchored to the published move");
+  }
+  if (right_resolution->from_value_id != right_feed->value_id ||
+      right_resolution->to_value_id != phi->value_id ||
+      !prepare::prepared_move_resolution_has_out_of_ssa_parallel_copy_authority(*right_resolution)) {
+    return fail("expected the right-edge phi bundle to resolve through published out-of-SSA authority");
+  }
   if (right_feed->assigned_register.has_value() &&
-      right_feed->assigned_register->register_name == phi->assigned_register->register_name &&
-      find_move_resolution(*function, right_feed->value_id, phi->value_id) != nullptr) {
-    return fail("expected matching register-backed phi incoming storage to skip redundant move resolution");
+      phi->assigned_register.has_value() &&
+      right_feed->assigned_register->register_name == phi->assigned_register->register_name) {
+    if (!right_resolution->coalesced_by_assigned_storage) {
+      return fail("expected matching register-backed phi incoming storage to publish explicit coalescing");
+    }
+  } else if (right_resolution->coalesced_by_assigned_storage) {
+    return fail("expected phi coalescing publication to stay limited to matching assigned storage");
+  }
+  const auto* right_function_move = find_move_resolution(*function, right_feed->value_id, phi->value_id);
+  if (right_function_move == nullptr ||
+      right_function_move->source_parallel_copy_step_index !=
+          right_resolution->source_parallel_copy_step_index ||
+      right_function_move->coalesced_by_assigned_storage !=
+          right_resolution->coalesced_by_assigned_storage ||
+      right_function_move->authority_kind != right_resolution->authority_kind) {
+    return fail("expected right-edge phi consumer lookup to agree with the published move-bundle record");
   }
   if (count_value_move_resolution_to_value_without_authority(
           *function, phi->value_id, prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy) != 0) {
