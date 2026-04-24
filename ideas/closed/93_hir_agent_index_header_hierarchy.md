@@ -1,10 +1,31 @@
 # HIR Agent Index Header Hierarchy
 
-Status: Open
+Status: Closed
 Created: 2026-04-24
 Last Updated: 2026-04-24
 Parent Ideas:
 - [92_parser_agent_index_header_hierarchy.md](/workspaces/c4c/ideas/closed/92_parser_agent_index_header_hierarchy.md)
+
+Closed: 2026-04-24
+
+## Closure Summary
+
+The HIR header hierarchy was completed as a structural refactor. Top-level HIR
+headers now represent public/app-facing surfaces by default, private HIR
+indexes live under `src/frontend/hir/impl/`, expression/statement/template/
+compile-time/inspection subdomains have directory-level index headers, and the
+former top-level private headers `hir_lowering.hpp` and
+`hir_lowerer_internal.hpp` were removed.
+
+Final validation passed with:
+
+```bash
+cmake --build build -j && ctest --test-dir build -j --output-on-failure
+```
+
+Result: 2974/2974 tests passing in `test_after.log`. Close-time regression
+guard also passed with matching full-suite `test_before.log` and
+`test_after.log`.
 
 ## Goal
 
