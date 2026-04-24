@@ -1,5 +1,11 @@
 #pragma once
 
+// Public inline-expansion transform contract.
+//
+// c4cll invokes this follow-up transform directly before emission, so this
+// top-level header remains an app-facing contract. It is intentionally not
+// folded into the compile-time/materialization private index in this slice.
+
 #include "hir_ir.hpp"
 
 #include <string>

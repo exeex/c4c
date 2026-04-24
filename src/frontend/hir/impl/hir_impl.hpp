@@ -9,7 +9,7 @@
 // Lowering responsibility:
 // - resolve template/dependent constructs far enough to build initial HIR
 // - preserve deferred work when immediate resolution is not yet possible
-// - hand deferred template/consteval/NTTP follow-up to compile_time_engine
+// - hand deferred template/consteval/NTTP follow-up to compile-time boundary
 //
 // Implementation map:
 // - hir_lowering_core.cpp: shared lowering utilities and initial build entry
@@ -25,7 +25,7 @@
 
 #include "ast.hpp"
 #include "canonical_symbol.hpp"
-#include "compile_time_engine.hpp"
+#include "compile_time/compile_time.hpp"
 #include "hir_ir.hpp"
 
 #include <memory>

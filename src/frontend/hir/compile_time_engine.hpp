@@ -1,6 +1,11 @@
 #pragma once
 
-// Compile-time retry / realization engine for HIR.
+// Public compile-time retry / realization engine contract for HIR.
+//
+// This header is intentionally retained as an app-facing and pipeline-facing
+// shim: c4cll dump/emission paths and the HIR pipeline call the compile-time
+// reduction and materialization APIs directly. Implementation files should
+// include impl/compile_time/compile_time.hpp instead.
 //
 // Initial HIR lowering is allowed to leave some work deferred when full
 // template/dependent information is not yet ready. This engine owns the

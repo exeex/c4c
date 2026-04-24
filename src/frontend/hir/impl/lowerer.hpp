@@ -11,6 +11,7 @@
 // Implementation map:
 // - hir_build.cpp: pipeline orchestration and AST pre-collection passes
 // - impl/templates/templates.hpp: template/dependent lowering implementation index
+// - impl/compile_time/compile_time.hpp: compile-time/materialization implementation index
 // - hir_functions.cpp: callable/global lowering
 // - impl/stmt/stmt.hpp: statement lowering implementation index
 // - impl/expr/expr.hpp: expression lowering implementation index
