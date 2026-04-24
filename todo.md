@@ -1,46 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/90_out_of_ssa_critical_edge_and_parallel_copy_deepening.md
 Source Plan Path: plan.md
-Current Step ID: 2.3
-Current Step Title: Expose Bundle Authority In Dumps And Fixtures
+Current Step ID: 3
+Current Step Title: Make Ordering, Cycle Breaking, And Carrier Use Truthful
 Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 2.3 now makes the Step 2.2 execution-block publication seam directly
-visible in prepared output and focused fixtures: the prepared printer emits a
-dedicated `authority execution_site=... execution_block=...` line for each
-published parallel-copy bundle, the phi-materialize fixtures assert the
-published execution block on predecessor-terminator bundles and the expected
-absence on critical-edge bundles, and the authoritative-join / printer tests
-prove both helper readers and dump readers stop exposing those labels once the
-publication is removed instead of reconstructing CFG authority locally.
+Step 3 now proves the loop backedge bundle publishes its real cycle-break plan
+directly: the prepared printer spells each published step with its ordered
+source/destination action, cycle-temp use, and edge-store-slot carrier/storage
+authority; the phi-materialize fixtures assert that same backedge bundle
+surface directly; and the liveness proof now checks move-resolution lowering
+against the published bundle ordering instead of backend-local
+`move_resolution.reason` prefixes.
 
 ## Suggested Next
 
-If Step 2 is accepted as complete, move into Step 3 with one narrow packet on
-published ordering/cycle-breaking authority, most naturally around the
-temporary-carrier path already exercised by the loop backedge bundle. If the
-supervisor still sees a missing Step 2 family, keep the route target-
-independent and extend only the first uncovered published bundle seam.
+Stay within Step 3 and pick the next narrow consumer-facing seam that still
+trusts implicit parallel-copy ordering or carrier facts. The best follow-on is
+the first downstream reader that still reconstructs bundle sequencing or temp
+use instead of consuming the published prepared bundle plan directly.
 
 ## Watchouts
 
-- `out_of_ssa` still only builds `parallel_copy_bundles` from join-transfer
-  edge transfers, so the dump/fixture deepening proves the published
-  execution-block seam for existing families but does not by itself create a
-  naturally-produced non-join `successor_entry` family.
+- The loop backedge publication is explicitly `carrier=edge_store_slot` with
+  per-move `storage=*.phi`; keep later packets honest about that published
+  authority rather than simplifying it to carrier-free value swaps.
 - Keep this route target-independent; do not repair critical-edge handling with
   x86-local edge recovery or testcase-shaped splitting.
 - Preserve idea 87's phi-elimination ownership while deepening bundle
   semantics; consumer-facing helpers and dumps should read the published
-  execution block directly instead of rebuilding CFG authority locally.
+  bundle plan directly instead of rebuilding ordering or carrier facts locally.
 
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
 Passed after adding direct bundle-authority dump lines, deepening
-execution-block fixture assertions, and proving removed publication no longer
-prints or helper-exposes reconstructed execution blocks; proof log written to
-`test_after.log`.
+loop-backedge step/carrier dump assertions, and replacing the loop-cycle
+liveness dependency on `move_resolution.reason` prefixes with checks against
+the published bundle plan; proof log written to `test_after.log`.

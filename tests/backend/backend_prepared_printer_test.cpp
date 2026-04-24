@@ -2095,17 +2095,17 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(parallel_copy_dump,
-                       "step[0] save_destination_to_temp move_index=0 uses_cycle_temp_source=no",
+                       "step[0] save_destination_to_temp move_index=0 save_destination=a blocked_source=b temp_source=cycle_temp(a) carrier=edge_store_slot storage=a.phi uses_cycle_temp_source=no",
                        "cycle temp save step")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(parallel_copy_dump,
-                       "step[1] move move_index=0 uses_cycle_temp_source=no",
+                       "step[1] move move_index=0 source=b destination=a carrier=edge_store_slot storage=a.phi uses_cycle_temp_source=no",
                        "non-temp move step")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(parallel_copy_dump,
-                       "step[2] move move_index=1 uses_cycle_temp_source=yes",
+                       "step[2] move move_index=1 source=cycle_temp(a) destination=b carrier=edge_store_slot storage=b.phi uses_cycle_temp_source=yes",
                        "temp-fed move step")) {
     return EXIT_FAILURE;
   }

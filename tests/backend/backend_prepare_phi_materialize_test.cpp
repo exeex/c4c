@@ -596,6 +596,16 @@ int check_parallel_copy_cycle_contract(const prepare::PreparedBirModule& prepare
       body_bundle->steps.size() != 3) {
     return fail("expected the backedge bundle to publish a cycle-breaking resolution plan");
   }
+  if (body_bundle->moves[0].carrier_kind !=
+          prepare::PreparedJoinTransferCarrierKind::EdgeStoreSlot ||
+      !body_bundle->moves[0].storage_name.has_value() ||
+      prepare::prepared_slot_name(prepared.names, *body_bundle->moves[0].storage_name) != "a.phi" ||
+      body_bundle->moves[1].carrier_kind !=
+          prepare::PreparedJoinTransferCarrierKind::EdgeStoreSlot ||
+      !body_bundle->moves[1].storage_name.has_value() ||
+      prepare::prepared_slot_name(prepared.names, *body_bundle->moves[1].storage_name) != "b.phi") {
+    return fail("expected the loop backedge bundle to publish edge-store carrier authority for both phi destinations");
+  }
   if (body_bundle->steps[0].kind !=
           prepare::PreparedParallelCopyStepKind::SaveDestinationToTemp ||
       body_bundle->steps[1].kind != prepare::PreparedParallelCopyStepKind::Move ||
@@ -2353,6 +2363,18 @@ int main() {
   }
   if (!expect_contains(parallel_copy_dump,
                        "move[1] a -> b join_transfer_index=1 edge_transfer_index=1")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(parallel_copy_dump,
+                       "step[0] save_destination_to_temp move_index=0 save_destination=a blocked_source=b temp_source=cycle_temp(a) carrier=edge_store_slot storage=a.phi uses_cycle_temp_source=no")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(parallel_copy_dump,
+                       "step[1] move move_index=0 source=b destination=a carrier=edge_store_slot storage=a.phi uses_cycle_temp_source=no")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(parallel_copy_dump,
+                       "step[2] move move_index=1 source=cycle_temp(a) destination=b carrier=edge_store_slot storage=b.phi uses_cycle_temp_source=yes")) {
     return EXIT_FAILURE;
   }
 

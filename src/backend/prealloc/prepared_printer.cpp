@@ -351,6 +351,40 @@ std::string prepared_parallel_copy_resolution_name(const PreparedParallelCopyBun
   return bundle.has_cycle ? "cycle_break" : "acyclic";
 }
 
+void append_parallel_copy_step_detail(std::ostringstream& out,
+                                      const PreparedNameTables& names,
+                                      const PreparedParallelCopyBundle& bundle,
+                                      const PreparedParallelCopyStep& step) {
+  if (step.move_index >= bundle.moves.size()) {
+    out << " invalid_move_index";
+    return;
+  }
+
+  const auto& move = bundle.moves[step.move_index];
+  if (step.kind == PreparedParallelCopyStepKind::SaveDestinationToTemp) {
+    out << " save_destination=" << render_value(move.destination_value)
+        << " blocked_source=" << render_value(move.source_value)
+        << " temp_source=cycle_temp(" << render_value(move.destination_value) << ")"
+        << " carrier=" << prepared_join_transfer_carrier_kind_name(move.carrier_kind);
+    if (move.storage_name.has_value()) {
+      out << " storage=" << prepared_slot_name(names, *move.storage_name);
+    }
+    return;
+  }
+
+  out << " source=";
+  if (step.uses_cycle_temp_source) {
+    out << "cycle_temp(" << render_value(move.source_value) << ")";
+  } else {
+    out << render_value(move.source_value);
+  }
+  out << " destination=" << render_value(move.destination_value)
+      << " carrier=" << prepared_join_transfer_carrier_kind_name(move.carrier_kind);
+  if (move.storage_name.has_value()) {
+    out << " storage=" << prepared_slot_name(names, *move.storage_name);
+  }
+}
+
 void append_register_occupancy(std::ostringstream& out,
                                std::size_t contiguous_width,
                                const std::vector<std::string>& occupied_register_names) {
@@ -727,8 +761,9 @@ void append_prepared_control_flow(std::ostringstream& out, const PreparedBirModu
         const auto& step = bundle.steps[step_index];
         out << "    step[" << step_index << "] "
             << prepared_parallel_copy_step_kind_name(step.kind)
-            << " move_index=" << step.move_index
-            << " uses_cycle_temp_source="
+            << " move_index=" << step.move_index;
+        append_parallel_copy_step_detail(out, module.names, bundle, step);
+        out << " uses_cycle_temp_source="
             << (step.uses_cycle_temp_source ? "yes" : "no") << "\n";
       }
     }
