@@ -12,6 +12,16 @@ remaining advanced call/frame families and making grouped register allocation
 real for width-greater-than-one values instead of stopping at bank/span
 substrate scaffolding.
 
+## Latest Durable Note
+
+As of 2026-04-24, advanced prepared-call publication for same-module
+variadic-byval, indirect-callee preservation, and memory-return seams is
+covered by direct x86 consumer-surface proof, grouped width `> 1` values now
+allocate and survive call-boundary and spill/reload cases through published
+allocator behavior, and the active runbook closed after a non-regressive
+backend close-scope guard (`97 -> 97`, no new failures). Follow-on out-of-SSA
+critical-edge and parallel-copy deepening remains separate under idea 90.
+
 ## Owned Failure Family
 
 This idea owns prealloc gaps where:

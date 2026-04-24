@@ -1,248 +1,166 @@
-# Advanced Prepared Call Authority And Grouped-Width Allocation
+# Out-Of-SSA Critical-Edge And Parallel-Copy Deepening
 
 Status: Active
-Source Idea: ideas/open/91_advanced_prepared_call_authority_and_grouped_width_allocation.md
-Activated from: ideas/open/91_advanced_prepared_call_authority_and_grouped_width_allocation.md
+Source Idea: ideas/open/90_out_of_ssa_critical_edge_and_parallel_copy_deepening.md
+Activated from: ideas/open/90_out_of_ssa_critical_edge_and_parallel_copy_deepening.md
 
 ## Purpose
 
-Continue the target-independent prepared-authority route after ideas 88 and 89
-by finishing advanced call publication and making grouped width-greater-than-one
-allocation behave as real allocator authority.
+Continue the post-idea-87 `out_of_ssa` route by making critical-edge
+handling, parallel-copy ordering, cycle breaking, and copy coalescing policy
+publish as explicit target-independent authority.
 
 ## Goal
 
-Leave idea 91 with an honest prepared/regalloc runbook:
+Leave idea 90 with an honest `out_of_ssa` runbook:
 
-- advanced call families publish truthful prepared authority
-- grouped width `> 1` values allocate, spill, reload, and cross call boundaries
-  through published allocator behavior
-- backend consumers can read the published facts directly instead of recreating
-  policy locally
+- critical-edge handling is published explicitly
+- parallel-copy bundles carry enough sequencing and carrier authority for hard
+  CFG cases
+- downstream consumers can read the published edge/copy facts directly instead
+  of inferring them from implementation accidents
 
 ## Core Rule
 
-Keep this route target-independent. Do not hide missing prepared or regalloc
-authority behind x86-local recovery, testcase-shaped shortcuts, or expectation
-downgrades.
+Keep this route target-independent. Do not hide missing `out_of_ssa` contract
+semantics behind x86-local copy recovery, testcase-shaped ordering hacks, or
+expectation downgrades.
 
 ## Read First
 
-- [ideas/open/91_advanced_prepared_call_authority_and_grouped_width_allocation.md](/workspaces/c4c/ideas/open/91_advanced_prepared_call_authority_and_grouped_width_allocation.md)
-- [ideas/closed/88_prepared_frame_stack_call_authority_completion_for_target_backends.md](/workspaces/c4c/ideas/closed/88_prepared_frame_stack_call_authority_completion_for_target_backends.md)
+- [ideas/open/90_out_of_ssa_critical_edge_and_parallel_copy_deepening.md](/workspaces/c4c/ideas/open/90_out_of_ssa_critical_edge_and_parallel_copy_deepening.md)
+- [ideas/closed/87_out_of_ssa_contract_and_parallel_copy_authority_for_prealloc.md](/workspaces/c4c/ideas/closed/87_out_of_ssa_contract_and_parallel_copy_authority_for_prealloc.md)
 
 ## Current Targets
 
-- advanced prepared call families such as variadic, byval, indirect-result, and
-  memory-return publication
-- before-call and after-call move publication for harder call-boundary cases
-- grouped width `> 1` allocation, spill, reload, and call-boundary behavior
-- prepared and allocator dumps/tests that prove backends can consume the
-  published authority directly
+- explicit critical-edge policy in published `out_of_ssa` authority
+- stronger `PreparedParallelCopyBundle` semantics for ordering and temporary
+  carriers
+- clearer copy-coalescing and normalization boundaries at CFG joins and edges
+- dumps and tests that prove downstream consumers can trust the richer edge
+  copy contract directly
 
 ## Non-Goals
 
-- x86-specific spelling, lowering recovery, or backend-local ABI policy
-- frontend type-lowering expansions unrelated to the owned failure family
-- out-of-SSA critical-edge or parallel-copy deepening from idea 90
-- reworking liveness into physical-resource modeling
+- target-specific register-copy spelling or final assembly rendering
+- reopening frame/stack/call authority work now closed under ideas 88 and 91
+- grouped-register allocation semantics except where grouped occupancy changes
+  published edge-copy rules
+- reassigning phi elimination ownership away from `out_of_ssa`
 
 ## Working Model
 
-- prepared output should publish final call/frame authority for the covered
-  advanced families
-- grouped bank/span legality is already substrate; this plan turns width `> 1`
-  allocation into truthful allocator behavior
-- downstream backends should consume prepared and regalloc output without
-  reconstructing missing call or grouped-allocation policy
+- `out_of_ssa` remains the sole owner of phi elimination for the covered cases
+- `join_transfers` and `parallel_copy_bundles` should carry final
+  target-independent edge-copy authority for harder CFG shapes
+- backends and later prealloc consumers should follow the published copy plan
+  instead of reconstructing ordering or carrier policy locally
 
 ## Execution Rules
 
-- inspect the current prepared and prealloc surfaces first and keep the source
-  idea's owned failure family authoritative
-- prefer small packets that publish one missing authority seam or one grouped
-  allocator behavior family at a time
+- inspect existing `out_of_ssa`, prepared dump, and consumer surfaces first
+- keep packets small and tied to one missing authority seam at a time
+- prefer semantic copy-order and carrier rules over named-case shortcuts
 - use `build -> focused proof -> broader validation only when blast radius
-  expands` as the default proof ladder
-- if execution reveals a distinct initiative outside advanced prepared call
-  authority or grouped width allocation, record it as a separate idea instead
-  of stretching this runbook
+  expands`
+- if execution reveals a separate initiative outside edge/copy publication,
+  record it as a new open idea instead of stretching this runbook
 
-## Step 1: Audit Remaining Advanced Prepared-Authority Gaps
+## Step 1: Audit Remaining Edge-Copy Contract Gaps
 
-Goal: identify the smallest truthful next packet inside idea 91 after ideas 88
-and 89.
+Goal: identify the first missing target-independent fact still blocking idea
+90 after idea 87.
 
 Primary targets:
 
-- prepared call-authority publication surfaces
-- grouped width-aware allocator surfaces and dumps
-- existing tests or fixtures covering advanced call families and grouped
-  resource behavior
+- `out_of_ssa` critical-edge and parallel-copy publication surfaces
+- prepared dumps and tests that already consume `join_transfers` and
+  `parallel_copy_bundles`
+- downstream consumers that still infer ordering or carrier policy from raw CFG
+  or implementation detail
 
 Actions:
 
-- inspect the current prepared and prealloc implementation plus nearby proof
-  coverage
-- separate already-published scalar/group substrate behavior from the missing
-  advanced call and width `> 1` authority
-- choose the next packet that repairs the first bad target-independent fact
+- inspect the current `out_of_ssa` publication path plus nearby proof coverage
+- separate already-published phi and baseline join semantics from the remaining
+  critical-edge, ordering, and carrier gaps
+- choose the smallest honest next packet that repairs the first missing
+  contract fact
 
 Completion check:
 
 - the next implementation packet is concrete, target-independent, and tied to
-  the owned failure family rather than to one named testcase
+  one owned edge/copy authority gap
 
-## Step 2: Publish Advanced Prepared Call Authority
+## Step 2: Publish Critical-Edge And Bundle Semantics
 
-Goal: make the remaining advanced call families publish truthful prepared
-authority instead of relying on backend reconstruction.
-
-Primary targets:
-
-- prepared call-plan publication for variadic, byval, indirect-result, and
-  memory-return families
-- before-call and after-call move publication for advanced call boundaries
-- dumps and fixtures that expose the new prepared facts directly
-
-Actions:
-
-- strengthen the prepared data and publication paths for the selected advanced
-  call families
-- make before/after-call move ownership explicit where advanced cases need it
-- add focused proof that the prepared output carries the needed authority
-
-Completion check:
-
-- covered advanced call cases publish enough prepared authority that downstream
-  code does not need backend-local ABI reconstruction for those facts
-
-## Step 3: Make Grouped Width-Greater-Than-One Allocation Truthful
-
-Goal: turn grouped width `> 1` allocation from substrate scaffolding into real
-allocator behavior.
+Goal: make harder CFG edge-copy obligations explicit in published
+`out_of_ssa` authority.
 
 Primary targets:
 
-- width-aware grouped allocation decisions
-- grouped spill/reload publication
-- grouped call-boundary and preserved/clobbered behavior
+- critical-edge handling policy
+- richer `PreparedParallelCopyBundle` semantics for edge ownership and
+  normalization
+- dumps and fixtures that expose the new edge-copy facts directly
 
 Actions:
 
-- execute the numbered substeps below in order
-- keep each packet focused on one grouped allocator truthfulness seam at a time
-- reject scalar base-register reconstruction when published grouped span
-  authority already exists
+- strengthen the `out_of_ssa` data/publication path for critical-edge and
+  bundle semantics
+- keep copy ownership anchored to published edge/bundle records rather than
+  downstream reconstruction
+- add focused proof that the prepared output exposes the new authority
 
 Completion check:
 
-- all Step 3 substeps are complete
-- width `> 1` grouped values allocate and survive spill/reload and call-boundary
-  cases through published allocator behavior rather than hidden special cases
+- covered critical-edge and bundle cases publish enough authority that later
+  code does not need to infer missing edge-copy meaning locally
 
-### Step 3.1: Make Grouped Call-Boundary Consumers Read Published Span Authority
+## Step 3: Make Ordering, Cycle Breaking, And Carrier Use Truthful
 
-Goal: finish the first downstream consumer seam after grouped call-plan span
-publication so grouped call-boundary handling stops reconstructing ABI lanes
-from scalar base-register identity.
+Goal: ensure hard parallel-copy cases survive through published ordering and
+carrier authority instead of implementation accidents.
 
 Primary targets:
 
-- grouped call-boundary consumer surfaces that still read scalar register names
-  instead of grouped span metadata
-- prepared/regalloc dumps and focused backend fixtures for grouped
-  argument/result boundaries
+- copy-order and cycle-breaking semantics
+- temporary carrier and coalescing boundaries
+- downstream consumer surfaces for harder CFG copy bundles
 
 Actions:
 
-- replace grouped call-boundary consumer logic that still keys on scalar
-  base-register identity with the published contiguous-width and occupied-span
-  authority
-- keep grouped preserved/clobbered and movement ownership anchored to the
-  shared call-plan span fields instead of backend-local heuristics
-- add focused proof that grouped call-boundary consumers can follow the
-  published span directly in representative grouped argument/result cases
+- repair the missing ordering/cycle-breaking publication for the selected hard
+  bundle cases
+- keep temporary carriers and coalescing limits explicit in bundle authority
+- add focused proof that downstream consumers can follow the published copy
+  plan directly
 
 Completion check:
 
-- grouped call-boundary consumers read published span authority directly
-- no owned grouped boundary case still depends on scalar lane reconstruction
-
-### Step 3.2: Make Width-Aware Grouped Allocation Decisions Truthful
-
-Goal: ensure width `> 1` grouped values are allocated as real contiguous spans
-through allocator decisions instead of scalarized placeholders.
-
-Primary targets:
-
-- grouped width-aware allocation decisions
-- grouped preserved/live-through decisions outside the already-published
-  call-plan seam
-- focused allocator dumps and fixtures that expose chosen grouped spans
-
-Actions:
-
-- implement the missing width-aware grouped allocation decisions using the
-  published bank/span legality as allocator authority
-- keep grouped preserved/live-through handling tied to whole-span ownership
-  rather than scalar alias reconstruction
-- add focused proof that grouped allocator output shows truthful contiguous
-  span choices for width `> 1` values
-
-Completion check:
-
-- width `> 1` grouped values receive truthful contiguous allocation decisions
-- grouped allocator consumers do not need to recover allocation policy locally
-
-### Step 3.3: Make Grouped Spill And Reload Publication Truthful
-
-Goal: repair grouped spill/reload behavior so width `> 1` values survive
-storage transitions through published allocator behavior rather than scalar
-surrogates.
-
-Primary targets:
-
-- grouped spill/reload publication
-- grouped storage and reload moves for width `> 1` values
-- focused backend/regalloc proof covering grouped allocation plus spill/reload
-
-Actions:
-
-- repair spill and reload handling where grouped width `> 1` values still fall
-  back to non-authoritative scalar-shaped behavior
-- keep grouped storage ownership and reload movement explicit in allocator
-  output and dumps
-- add focused proof that grouped values survive allocation, spill/reload, and
-  call-boundary cases without backend policy recovery
-
-Completion check:
-
-- grouped width `> 1` values survive spill/reload through published allocator
-  behavior
-- dumps and focused tests expose grouped storage transitions directly
+- harder parallel-copy cases publish truthful ordering and carrier authority
+- no owned consumer seam still depends on hidden CFG or implementation detail
 
 ## Step 4: Prove Consumer Use And Decide Closure
 
-Goal: confirm the published authority is actually consumable and decide whether
-idea 91 is complete or needs follow-on work.
+Goal: confirm the published edge/copy authority is consumable and decide
+whether idea 90 is complete or needs follow-on work.
 
 Primary targets:
 
-- prepared and regalloc dumps for the covered advanced families
-- backend-consumption proof for the touched authority surfaces
+- prepared dumps for the covered edge/copy families
+- backend or downstream consumer proof for the touched authority surfaces
 - remaining gaps discovered during Steps 1 through 3
 
 Actions:
 
-- run fresh build proof and focused tests for the changed prepared/regalloc
-  surfaces
+- run fresh build proof and focused tests for the changed `out_of_ssa` and
+  consumer surfaces
 - escalate to broader validation if the blast radius extends beyond one narrow
   bucket
-- classify leftovers as remaining idea-91 scope or a separate initiative
+- classify leftovers as remaining idea-90 scope or a separate initiative
 
 Completion check:
 
-- the covered advanced call and grouped width-allocation authority is published
-  truthfully, consumed directly, and any residual work is honestly split rather
-  than silently absorbed
+- the covered critical-edge and parallel-copy authority is published
+  truthfully, consumed directly, and any residual work is honestly split
