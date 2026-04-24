@@ -47,8 +47,15 @@ follow-through stop depending on canonical rendered names as the primary key.
   `parser_types_base.cpp`: structured owner/member lookup now runs before the
   `_t` / trait-style compatibility fallbacks, and the legacy bridge path is
   explicitly fallback-only.
-- The prior runbook is exhausted. Any remaining parser identity work should be
-  reactivated as a fresh plan only if it has a distinct execution boundary.
+- The follow-up template-struct identity runbook completed primary lookup,
+  specialization lookup, instantiation bridge cleanup, and the remaining
+  emitted-artifact duplicate guard clarification for
+  `instantiated_template_struct_keys`.
+- The active runbook is exhausted and has been deactivated. The source idea
+  remains open because the active-context string/`TextId` mirror cleanup still
+  has a distinct unresolved execution boundary, and close-time after proof was
+  not available inside the proof-log ownership constraints for this packet.
+  Reactivate only for a bounded remaining parser identity slice.
 
 The intended direction is:
 
