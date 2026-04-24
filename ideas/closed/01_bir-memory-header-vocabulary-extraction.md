@@ -156,3 +156,11 @@ lowerer fields. The fields may use types from `memory_types.hpp`, but
 - Do not introduce a separate state owner object.
 - Do not optimize or redesign memory lowering semantics.
 - Do not change current testcase contracts.
+
+## Closure Note
+
+Closed after extracting exactly `memory_types.hpp` and `memory_helpers.hpp`,
+keeping `lowering.hpp` as the complete private `BirFunctionLowerer` index and
+direct state owner, and preserving backend behavior. Close validation used
+`cmake --build --preset default --target c4c_backend && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+with regression guard passing at 97 passed before and after, 0 failed.
