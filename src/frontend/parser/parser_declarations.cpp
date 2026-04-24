@@ -1035,7 +1035,7 @@ Node* Parser::parse_local_decl() {
         if (!is_ctor_init) {
             if (match(TokenKind::Assign) ||
                 (is_cpp_mode() && check(TokenKind::LBrace))) {
-                init_node = parse_initializer();
+                init_node = parse_initializer(*this);
             }
         }
 
@@ -3595,7 +3595,7 @@ top_level_base_ready:
     Node* first_init = nullptr;
     if (match(TokenKind::Assign) ||
         (is_cpp_mode() && check(TokenKind::LBrace))) {
-        first_init = parse_initializer();
+        first_init = parse_initializer(*this);
     }
     gvars.push_back(make_gvar(ts, scoped_decl_name, decl_name, decl_name_text_id,
                               first_init, decl_fn_ptr_params,
@@ -3619,7 +3619,7 @@ top_level_base_ready:
         skip_asm();
         Node* init2 = nullptr;
         if (match(TokenKind::Assign) ||
-            (is_cpp_mode() && check(TokenKind::LBrace))) init2 = parse_initializer();
+            (is_cpp_mode() && check(TokenKind::LBrace))) init2 = parse_initializer(*this);
         if (n2) {
             const char* scoped_n2 = qualify_name_arena(n2_text_id, n2);
             gvars.push_back(make_gvar(ts2, scoped_n2, n2, n2_text_id, init2,

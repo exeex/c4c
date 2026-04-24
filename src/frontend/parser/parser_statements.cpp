@@ -356,7 +356,7 @@ Node* Parser::parse_stmt() {
                         Node* init_node = nullptr;
                         if (match(TokenKind::Assign) ||
                             (is_cpp_mode() && check(TokenKind::LBrace))) {
-                            init_node = parse_initializer();
+                            init_node = parse_initializer(*this);
                         }
 
                         if (!check(TokenKind::RParen)) {
@@ -491,7 +491,7 @@ Node* Parser::parse_stmt() {
                         Node* init_node = nullptr;
                         if (match(TokenKind::Assign) ||
                             (is_cpp_mode() && check(TokenKind::LBrace))) {
-                            init_node = parse_initializer();
+                            init_node = parse_initializer(*this);
                         }
 
                         if (!check(TokenKind::RParen)) {
@@ -759,7 +759,7 @@ Node* Parser::parse_stmt() {
                         Node* init_node = nullptr;
                         if (match(TokenKind::Assign) ||
                             (is_cpp_mode() && check(TokenKind::LBrace))) {
-                            init_node = parse_initializer();
+                            init_node = parse_initializer(*this);
                         }
 
                         if (!check(TokenKind::RParen)) {

@@ -1193,7 +1193,7 @@ Node* Parser::parse_primary() {
                 consume();  // consume )
                 // Check for compound literal: (type){ ... }
                 if (check(TokenKind::LBrace)) {
-                    Node* init_list = parse_init_list();
+                    Node* init_list = parse_init_list(*this);
                     Node* n = make_node(NK_COMPOUND_LIT, ln);
                     n->type     = cast_ts;
                     n->left     = init_list;
@@ -1690,7 +1690,7 @@ Node* Parser::parse_primary() {
 
     // Initializer list in some contexts — just parse it
     if (check(TokenKind::LBrace)) {
-        return parse_init_list();
+        return parse_init_list(*this);
     }
 
     // C++ functional cast: T(expr)
@@ -1814,79 +1814,79 @@ Node* Parser::parse_primary() {
 
 // ── initializer parsing ───────────────────────────────────────────────────────
 
-Node* Parser::parse_initializer() {
-    ParseContextGuard trace(this, __func__);
-    if (check(TokenKind::LBrace)) {
-        return parse_init_list();
+Node* parse_initializer(Parser& parser) {
+    Parser::ParseContextGuard trace(&parser, __func__);
+    if (parser.check(TokenKind::LBrace)) {
+        return parse_init_list(parser);
     }
-    return parse_assign_expr();
+    return parser.parse_assign_expr();
 }
 
-Node* Parser::parse_init_list() {
-    ParseContextGuard trace(this, __func__);
-    int ln = cur().line;
-    expect(TokenKind::LBrace);
+Node* parse_init_list(Parser& parser) {
+    Parser::ParseContextGuard trace(&parser, __func__);
+    int ln = parser.cur().line;
+    parser.expect(TokenKind::LBrace);
     std::vector<Node*> items;
-    while (!at_end() && !check(TokenKind::RBrace)) {
-        Node* item = make_node(NK_INIT_ITEM, cur().line);
+    while (!parser.at_end() && !parser.check(TokenKind::RBrace)) {
+        Node* item = parser.make_node(NK_INIT_ITEM, parser.cur().line);
 
         // Designator?
         // Old GCC-style: `fieldname: value` (same as `.fieldname = value`)
-        if (check(TokenKind::Identifier) &&
-            peek(1).kind == TokenKind::Colon) {
+        if (parser.check(TokenKind::Identifier) &&
+            parser.peek(1).kind == TokenKind::Colon) {
             item->desig_field =
-                arena_.strdup(std::string(token_spelling(cur())));
+                parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
             item->is_designated  = true;
             item->is_index_desig = false;
-            consume();  // identifier
-            consume();  // ':'
-            item->left = parse_initializer();
+            parser.consume();  // identifier
+            parser.consume();  // ':'
+            item->left = parse_initializer(parser);
             items.push_back(item);
-            if (!match(TokenKind::Comma)) break;
-            if (check(TokenKind::RBrace)) break;
+            if (!parser.match(TokenKind::Comma)) break;
+            if (parser.check(TokenKind::RBrace)) break;
             continue;
         }
-        if (check(TokenKind::Dot)) {
-            consume();
-            if (check(TokenKind::Identifier)) {
+        if (parser.check(TokenKind::Dot)) {
+            parser.consume();
+            if (parser.check(TokenKind::Identifier)) {
                 item->desig_field =
-                    arena_.strdup(std::string(token_spelling(cur())));
+                    parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
                 item->is_designated  = true;
                 item->is_index_desig = false;
-                consume();
+                parser.consume();
             }
             // Multi-level designator: .a.b = val → synthesize nested { .b = val }
-            if (check(TokenKind::Dot) || check(TokenKind::LBracket)) {
+            if (parser.check(TokenKind::Dot) || parser.check(TokenKind::LBracket)) {
                 // Recursively build nested init list for the remaining chain
                 std::function<Node*()> build_nested = [&]() -> Node* {
-                    int ln2 = cur().line;
-                    Node* inner = make_node(NK_INIT_ITEM, ln2);
-                    if (check(TokenKind::Dot)) {
-                        consume();
-                        if (check(TokenKind::Identifier)) {
+                    int ln2 = parser.cur().line;
+                    Node* inner = parser.make_node(NK_INIT_ITEM, ln2);
+                    if (parser.check(TokenKind::Dot)) {
+                        parser.consume();
+                        if (parser.check(TokenKind::Identifier)) {
                             inner->desig_field =
-                                arena_.strdup(std::string(token_spelling(cur())));
+                                parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
                             inner->is_designated  = true;
                             inner->is_index_desig = false;
-                            consume();
+                            parser.consume();
                         }
-                    } else if (check(TokenKind::LBracket)) {
-                        consume();
-                        Node* ie = parse_assign_expr();
+                    } else if (parser.check(TokenKind::LBracket)) {
+                        parser.consume();
+                        Node* ie = parser.parse_assign_expr();
                         long long iv = (ie && ie->kind == NK_INT_LIT) ? ie->ival : 0;
-                        expect(TokenKind::RBracket);
+                        parser.expect(TokenKind::RBracket);
                         inner->is_designated  = true;
                         inner->is_index_desig = true;
                         inner->desig_val      = iv;
                     }
-                    if (check(TokenKind::Dot) || check(TokenKind::LBracket)) {
+                    if (parser.check(TokenKind::Dot) || parser.check(TokenKind::LBracket)) {
                         inner->left = build_nested();
                     } else {
-                        match(TokenKind::Assign);
-                        inner->left = parse_initializer();
+                        parser.match(TokenKind::Assign);
+                        inner->left = parse_initializer(parser);
                     }
-                    Node* lst2 = make_node(NK_INIT_LIST, ln2);
-                    Node** ch = (Node**)arena_.alloc(sizeof(Node*));
+                    Node* lst2 = parser.make_node(NK_INIT_LIST, ln2);
+                    Node** ch = (Node**)parser.arena_.alloc(sizeof(Node*));
                     ch[0] = inner;
                     lst2->children = ch;
                     lst2->n_children = 1;
@@ -1894,42 +1894,42 @@ Node* Parser::parse_init_list() {
                 };
                 item->left = build_nested();
                 items.push_back(item);
-                if (!match(TokenKind::Comma)) break;
-                if (check(TokenKind::RBrace)) break;
+                if (!parser.match(TokenKind::Comma)) break;
+                if (parser.check(TokenKind::RBrace)) break;
                 continue;
             }
-            match(TokenKind::Assign);
-        } else if (check(TokenKind::LBracket)) {
-            consume();
-            Node* idx_expr = parse_assign_expr();
+            parser.match(TokenKind::Assign);
+        } else if (parser.check(TokenKind::LBracket)) {
+            parser.consume();
+            Node* idx_expr = parser.parse_assign_expr();
             long long idx_lo = 0;
             if (idx_expr && idx_expr->kind == NK_INT_LIT) idx_lo = idx_expr->ival;
             // GCC range: [lo ... hi]
             long long idx_hi = idx_lo;
-            if (check(TokenKind::Ellipsis)) {
-                consume();
-                Node* hi_expr = parse_assign_expr();
+            if (parser.check(TokenKind::Ellipsis)) {
+                parser.consume();
+                Node* hi_expr = parser.parse_assign_expr();
                 if (hi_expr && hi_expr->kind == NK_INT_LIT) idx_hi = hi_expr->ival;
             }
-            expect(TokenKind::RBracket);
-            match(TokenKind::Assign);
+            parser.expect(TokenKind::RBracket);
+            parser.match(TokenKind::Assign);
             item->is_designated  = true;
             item->is_index_desig = true;
             item->desig_val      = idx_lo;
             // For ranges, store hi in right->ival
             if (idx_hi != idx_lo) {
-                Node* hi_node = make_int_lit(idx_hi, cur().line);
+                Node* hi_node = parser.make_int_lit(idx_hi, parser.cur().line);
                 item->right = hi_node;
             }
         }
 
-        item->left = parse_initializer();
+        item->left = parse_initializer(parser);
         items.push_back(item);
 
-        if (!match(TokenKind::Comma)) break;
-        if (check(TokenKind::RBrace)) break;
+        if (!parser.match(TokenKind::Comma)) break;
+        if (parser.check(TokenKind::RBrace)) break;
     }
-    expect(TokenKind::RBrace);
+    parser.expect(TokenKind::RBrace);
 
     std::vector<Node*> expanded_items;
     expanded_items.reserve(items.size());
@@ -1944,7 +1944,7 @@ Node* Parser::parse_init_list() {
         const long long lo = item->desig_val;
         const long long hi = item->right->ival;
         for (long long idx = lo; idx <= hi; ++idx) {
-            Node* clone = make_node(NK_INIT_ITEM, item->line);
+            Node* clone = parser.make_node(NK_INIT_ITEM, item->line);
             clone->is_designated = true;
             clone->is_index_desig = true;
             clone->desig_val = idx;
@@ -1953,10 +1953,10 @@ Node* Parser::parse_init_list() {
         }
     }
 
-    Node* list = make_node(NK_INIT_LIST, ln);
+    Node* list = parser.make_node(NK_INIT_LIST, ln);
     list->n_children = (int)expanded_items.size();
     if (list->n_children > 0) {
-        list->children = arena_.alloc_array<Node*>(list->n_children);
+        list->children = parser.arena_.alloc_array<Node*>(list->n_children);
         for (int i = 0; i < list->n_children; ++i) list->children[i] = expanded_items[i];
     }
     return list;

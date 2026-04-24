@@ -753,10 +753,6 @@ class Parser {
   Node* parse_stmt();
   Node* parse_static_assert_declaration();
 
-  // ── initializer parsing ──────────────────────────────────────────────────
-  Node* parse_initializer();     // expr or { list }
-  Node* parse_init_list();       // { item, item, ... }
-
   // ── declaration and translation-unit entry points ────────────────────────
   // Parse a local declaration (inside function body). May return a NK_BLOCK
   // when the declaration expands into multiple declarators.
