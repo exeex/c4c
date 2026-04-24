@@ -68,7 +68,57 @@ std::optional<std::string_view> prepared_named_value_name(const bir::Value& valu
   return value.name;
 }
 
+std::size_t prepared_block_successor_count(const PreparedControlFlowBlock& block) {
+  switch (block.terminator_kind) {
+    case bir::TerminatorKind::Branch:
+      return block.branch_target_label != kInvalidBlockLabel ? 1 : 0;
+    case bir::TerminatorKind::CondBranch:
+      return block.true_label != kInvalidBlockLabel && block.false_label != kInvalidBlockLabel ? 2 : 0;
+    default:
+      return 0;
+  }
+}
+
+std::size_t prepared_block_predecessor_count(const PreparedControlFlowFunction& function_control_flow,
+                                             BlockLabelId block_label) {
+  if (block_label == kInvalidBlockLabel) {
+    return 0;
+  }
+
+  std::size_t predecessor_count = 0;
+  for (const auto& block : function_control_flow.blocks) {
+    if ((block.terminator_kind == bir::TerminatorKind::Branch &&
+         block.branch_target_label == block_label) ||
+        (block.terminator_kind == bir::TerminatorKind::CondBranch &&
+         (block.true_label == block_label || block.false_label == block_label))) {
+      ++predecessor_count;
+    }
+  }
+  return predecessor_count;
+}
+
+PreparedParallelCopyExecutionSite classify_parallel_copy_execution_site(
+    const PreparedControlFlowFunction& function_control_flow,
+    BlockLabelId predecessor_label,
+    BlockLabelId successor_label) {
+  const auto* predecessor =
+      find_prepared_control_flow_block(function_control_flow, predecessor_label);
+  const std::size_t predecessor_successors =
+      predecessor != nullptr ? prepared_block_successor_count(*predecessor) : 0;
+  const std::size_t successor_predecessors =
+      prepared_block_predecessor_count(function_control_flow, successor_label);
+
+  if (predecessor_successors > 1 && successor_predecessors > 1) {
+    return PreparedParallelCopyExecutionSite::CriticalEdge;
+  }
+  if (predecessor_successors > 1) {
+    return PreparedParallelCopyExecutionSite::SuccessorEntry;
+  }
+  return PreparedParallelCopyExecutionSite::PredecessorTerminator;
+}
+
 PreparedParallelCopyBundle make_parallel_copy_bundle(
+    const PreparedControlFlowFunction& function_control_flow,
     BlockLabelId predecessor_label,
     BlockLabelId successor_label,
     std::vector<PreparedParallelCopyMove> moves) {
@@ -82,6 +132,9 @@ struct MoveState {
   PreparedParallelCopyBundle bundle{
       .predecessor_label = predecessor_label,
       .successor_label = successor_label,
+      .execution_site = classify_parallel_copy_execution_site(function_control_flow,
+                                                              predecessor_label,
+                                                              successor_label),
       .moves = std::move(moves),
   };
   std::vector<MoveState> states;
@@ -1003,8 +1056,8 @@ void build_parallel_copy_bundles(const PreparedNameTables&,
   function_control_flow->parallel_copy_bundles.clear();
   function_control_flow->parallel_copy_bundles.reserve(moves_by_edge.size());
   for (auto& [edge, moves] : moves_by_edge) {
-    function_control_flow->parallel_copy_bundles.push_back(
-        make_parallel_copy_bundle(edge.predecessor_label, edge.successor_label, std::move(moves)));
+    function_control_flow->parallel_copy_bundles.push_back(make_parallel_copy_bundle(
+        *function_control_flow, edge.predecessor_label, edge.successor_label, std::move(moves)));
   }
   std::sort(function_control_flow->parallel_copy_bundles.begin(),
             function_control_flow->parallel_copy_bundles.end(),

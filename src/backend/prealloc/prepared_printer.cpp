@@ -695,6 +695,8 @@ void append_prepared_control_flow(std::ostringstream& out, const PreparedBirModu
       out << "  parallel_copy "
           << maybe_block_label(module.names, bundle.predecessor_label)
           << " -> " << maybe_block_label(module.names, bundle.successor_label)
+          << " execution_site="
+          << prepared_parallel_copy_execution_site_name(bundle.execution_site)
           << " has_cycle=" << (bundle.has_cycle ? "yes" : "no")
           << " resolution=" << prepared_parallel_copy_resolution_name(bundle)
           << " moves=" << bundle.moves.size()

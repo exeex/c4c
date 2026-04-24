@@ -343,6 +343,87 @@ prepare::PreparedBirModule legalize_parallel_copy_cycle_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule legalize_critical_edge_parallel_copy_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "critical_edge_parallel_copy_prepare_contract";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I1, "cond0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(0),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "cond0"),
+      .true_label = "left",
+      .false_label = "right",
+  };
+
+  bir::Block left;
+  left.label = "left";
+  left.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I1, "cond1"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  left.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "cond1"),
+      .true_label = "join",
+      .false_label = "exit",
+  };
+
+  bir::Block right;
+  right.label = "right";
+  right.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block exit;
+  exit.label = "exit";
+  exit.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(-1)};
+
+  bir::Block join;
+  join.label = "join";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .incomings = {
+          bir::PhiIncoming{.label = "left", .value = bir::Value::immediate_i32(11)},
+          bir::PhiIncoming{.label = "right", .value = bir::Value::immediate_i32(22)},
+      },
+  });
+  join.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "merge"),
+  };
+
+  function.blocks = {
+      std::move(entry),
+      std::move(left),
+      std::move(right),
+      std::move(exit),
+      std::move(join),
+  };
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  planner.run_out_of_ssa();
+  return std::move(planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_call_wrapper_dump_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1970,12 +2051,12 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(parallel_copy_dump,
-                       "parallel_copy entry -> loop has_cycle=no resolution=acyclic moves=2 steps=2",
+                       "parallel_copy entry -> loop execution_site=predecessor_terminator has_cycle=no resolution=acyclic moves=2 steps=2",
                        "acyclic parallel-copy summary")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(parallel_copy_dump,
-                       "parallel_copy body -> loop has_cycle=yes resolution=cycle_break moves=2 steps=3",
+                       "parallel_copy body -> loop execution_site=predecessor_terminator has_cycle=yes resolution=cycle_break moves=2 steps=3",
                        "cycle-break parallel-copy summary")) {
     return EXIT_FAILURE;
   }
@@ -1992,6 +2073,26 @@ int main() {
   if (!expect_contains(parallel_copy_dump,
                        "step[2] move move_index=1 uses_cycle_temp_source=yes",
                        "temp-fed move step")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto critical_edge_prepared = legalize_critical_edge_parallel_copy_module();
+  const std::string critical_edge_dump = prepare::print(critical_edge_prepared);
+  if (!expect_contains(critical_edge_dump,
+                       "prepared.func @critical_edge_parallel_copy_prepare_contract",
+                       "critical-edge printer function section")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          critical_edge_dump,
+          "parallel_copy left -> join execution_site=critical_edge has_cycle=no resolution=acyclic moves=1 steps=1",
+          "critical-edge parallel-copy summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          critical_edge_dump,
+          "parallel_copy right -> join execution_site=predecessor_terminator has_cycle=no resolution=acyclic moves=1 steps=1",
+          "linear-edge parallel-copy summary")) {
     return EXIT_FAILURE;
   }
 

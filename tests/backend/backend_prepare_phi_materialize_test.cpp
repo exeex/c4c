@@ -539,6 +539,12 @@ int check_parallel_copy_cycle_contract(const prepare::PreparedBirModule& prepare
   if (entry_bundle == nullptr || body_bundle == nullptr) {
     return fail("expected the parallel-copy loop lane to publish entry/body bundle ownership");
   }
+  if (entry_bundle->execution_site !=
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator ||
+      body_bundle->execution_site !=
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator) {
+    return fail("expected loop bundles to publish predecessor-terminator execution ownership");
+  }
   if (entry_bundle->has_cycle || entry_bundle->moves.size() != 2 ||
       entry_bundle->steps.size() != 2) {
     return fail("expected the entry-to-loop bundle to stay acyclic while preserving both phi moves");
@@ -570,6 +576,42 @@ int check_parallel_copy_cycle_contract(const prepare::PreparedBirModule& prepare
       !is_named_i32(body_bundle->moves[1].source_value, "a") ||
       !is_named_i32(body_bundle->moves[1].destination_value, "b")) {
     return fail("expected the backedge bundle to preserve the phi swap sources and destinations");
+  }
+
+  return 0;
+}
+
+int check_critical_edge_parallel_copy_contract(const prepare::PreparedBirModule& prepared,
+                                               const char* function_name) {
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr) {
+    return fail("expected legalize to publish control-flow metadata for the critical-edge bundle lane");
+  }
+  if (control_flow->join_transfers.size() != 1 || control_flow->parallel_copy_bundles.size() != 2) {
+    return fail("expected the critical-edge lane to publish one join transfer and two edge bundles");
+  }
+
+  const auto* critical_bundle = find_parallel_copy_bundle(prepared, function_name, "left", "join");
+  const auto* linear_bundle = find_parallel_copy_bundle(prepared, function_name, "right", "join");
+  if (critical_bundle == nullptr || linear_bundle == nullptr) {
+    return fail("expected the critical-edge lane to publish left/right bundle ownership");
+  }
+  if (critical_bundle->execution_site != prepare::PreparedParallelCopyExecutionSite::CriticalEdge) {
+    return fail("expected the left-to-join bundle to publish critical-edge execution ownership");
+  }
+  if (linear_bundle->execution_site !=
+      prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator) {
+    return fail("expected the right-to-join bundle to stay predecessor-terminator executable");
+  }
+  if (critical_bundle->moves.size() != 1 || critical_bundle->steps.size() != 1 ||
+      linear_bundle->moves.size() != 1 || linear_bundle->steps.size() != 1) {
+    return fail("expected the critical-edge lane to preserve one move and one step per incoming edge");
+  }
+  if (!is_immediate_i32(critical_bundle->moves.front().source_value, 11) ||
+      !is_named_i32(critical_bundle->moves.front().destination_value, "merge") ||
+      !is_immediate_i32(linear_bundle->moves.front().source_value, 22) ||
+      !is_named_i32(linear_bundle->moves.front().destination_value, "merge")) {
+    return fail("expected the critical-edge lane to preserve the per-edge copy sources and destination");
   }
 
   return 0;
@@ -1130,6 +1172,84 @@ prepare::PreparedBirModule legalize_parallel_copy_cycle_module() {
       std::move(loop),
       std::move(body),
       std::move(exit),
+  };
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  planner.run_out_of_ssa();
+  return std::move(planner.prepared());
+}
+
+prepare::PreparedBirModule legalize_critical_edge_parallel_copy_module() {
+  bir::Module module;
+  bir::Function function;
+  function.name = "critical_edge_parallel_copy_prepare_contract";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I1, "cond0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(0),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "cond0"),
+      .true_label = "left",
+      .false_label = "right",
+  };
+
+  bir::Block left;
+  left.label = "left";
+  left.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I1, "cond1"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(1),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  left.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "cond1"),
+      .true_label = "join",
+      .false_label = "exit",
+  };
+
+  bir::Block right;
+  right.label = "right";
+  right.terminator = bir::BranchTerminator{.target_label = "join"};
+
+  bir::Block exit;
+  exit.label = "exit";
+  exit.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(-1)};
+
+  bir::Block join;
+  join.label = "join";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "merge"),
+      .incomings = {
+          bir::PhiIncoming{.label = "left", .value = bir::Value::immediate_i32(11)},
+          bir::PhiIncoming{.label = "right", .value = bir::Value::immediate_i32(22)},
+      },
+  });
+  join.terminator = bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "merge")};
+
+  function.blocks = {
+      std::move(entry),
+      std::move(left),
+      std::move(right),
+      std::move(exit),
+      std::move(join),
   };
   module.functions.push_back(std::move(function));
 
@@ -2168,11 +2288,11 @@ int main() {
   }
   const std::string parallel_copy_dump = prepare::print(prepared_parallel_copy_cycle);
   if (!expect_contains(parallel_copy_dump,
-                       "parallel_copy entry -> loop has_cycle=no resolution=acyclic moves=2 steps=2")) {
+                       "parallel_copy entry -> loop execution_site=predecessor_terminator has_cycle=no resolution=acyclic moves=2 steps=2")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(parallel_copy_dump,
-                       "parallel_copy body -> loop has_cycle=yes resolution=cycle_break moves=2 steps=3")) {
+                       "parallel_copy body -> loop execution_site=predecessor_terminator has_cycle=yes resolution=cycle_break moves=2 steps=3")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(parallel_copy_dump,
@@ -2189,6 +2309,30 @@ int main() {
   }
   if (!expect_contains(parallel_copy_dump,
                        "move[1] a -> b join_transfer_index=1 edge_transfer_index=1")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto prepared_critical_edge = legalize_critical_edge_parallel_copy_module();
+  if (const int status = check_prepare_phi_invariant(prepared_critical_edge); status != 0) {
+    return status;
+  }
+  if (const int status = check_prepare_i1_invariant(prepared_critical_edge); status != 0) {
+    return status;
+  }
+  if (const int status = check_critical_edge_parallel_copy_contract(
+          prepared_critical_edge, "critical_edge_parallel_copy_prepare_contract");
+      status != 0) {
+    return status;
+  }
+  const std::string critical_edge_dump = prepare::print(prepared_critical_edge);
+  if (!expect_contains(
+          critical_edge_dump,
+          "parallel_copy left -> join execution_site=critical_edge has_cycle=no resolution=acyclic moves=1 steps=1")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          critical_edge_dump,
+          "parallel_copy right -> join execution_site=predecessor_terminator has_cycle=no resolution=acyclic moves=1 steps=1")) {
     return EXIT_FAILURE;
   }
 

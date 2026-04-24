@@ -1163,9 +1163,30 @@ struct PreparedParallelCopyStep {
   bool uses_cycle_temp_source = false;
 };
 
+enum class PreparedParallelCopyExecutionSite {
+  PredecessorTerminator,
+  SuccessorEntry,
+  CriticalEdge,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_parallel_copy_execution_site_name(
+    PreparedParallelCopyExecutionSite site) {
+  switch (site) {
+    case PreparedParallelCopyExecutionSite::PredecessorTerminator:
+      return "predecessor_terminator";
+    case PreparedParallelCopyExecutionSite::SuccessorEntry:
+      return "successor_entry";
+    case PreparedParallelCopyExecutionSite::CriticalEdge:
+      return "critical_edge";
+  }
+  return "unknown";
+}
+
 struct PreparedParallelCopyBundle {
   BlockLabelId predecessor_label = kInvalidBlockLabel;
   BlockLabelId successor_label = kInvalidBlockLabel;
+  PreparedParallelCopyExecutionSite execution_site =
+      PreparedParallelCopyExecutionSite::PredecessorTerminator;
   std::vector<PreparedParallelCopyMove> moves;
   std::vector<PreparedParallelCopyStep> steps;
   bool has_cycle = false;
