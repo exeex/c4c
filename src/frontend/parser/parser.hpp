@@ -659,9 +659,6 @@ class Parser {
                         TextId* out_name_text_id = nullptr);
   bool parse_operator_declarator_name(std::string* out_name);
 
-  // ── statement parsing ─────────────────────────────────────────────────────
-  Node* parse_stmt();
-
   // ── declaration and translation-unit entry points ────────────────────────
   // Parse a local declaration (inside function body). May return a NK_BLOCK
   // when the declaration expands into multiple declarators.

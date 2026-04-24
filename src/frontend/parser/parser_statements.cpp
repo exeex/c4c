@@ -36,7 +36,7 @@ Node* parse_block(Parser& parser) {
     while (!parser.at_end() && !parser.check(TokenKind::RBrace)) {
         int stmt_start = parser.core_input_state_.pos;
         try {
-            Node* s = parser.parse_stmt();
+            Node* s = parse_stmt(parser);
             if (s) stmts.push_back(s);
         } catch (const std::exception& e) {
             // Statement-level recovery: emit diagnostic, skip to ; or },
@@ -86,11 +86,11 @@ Node* parse_block(Parser& parser) {
     return parser.make_block(stmts.empty() ? nullptr : stmts.data(), (int)stmts.size(), ln);
 }
 
-Node* Parser::parse_stmt() {
-    ParseContextGuard trace(this, __func__);
-    int ln = cur().line;
+Node* parse_stmt(Parser& parser) {
+    Parser::ParseContextGuard trace(&parser, __func__);
+    int ln = parser.cur().line;
     auto is_local_using_recovery_boundary = [&]() -> bool {
-        switch (cur().kind) {
+        switch (parser.cur().kind) {
             case TokenKind::KwUsing:
             case TokenKind::KwReturn:
             case TokenKind::KwIf:
@@ -132,167 +132,167 @@ Node* Parser::parse_stmt() {
         }
     };
     auto recover_malformed_local_using = [&]() -> Node* {
-        while (!at_end()) {
-            if (check(TokenKind::Semi)) {
-                consume();
+        while (!parser.at_end()) {
+            if (parser.check(TokenKind::Semi)) {
+                parser.consume();
                 break;
             }
-            if (check(TokenKind::RBrace) || is_local_using_recovery_boundary())
+            if (parser.check(TokenKind::RBrace) || is_local_using_recovery_boundary())
                 break;
-            consume();
+            parser.consume();
         }
-        return make_node(NK_INVALID_STMT, ln);
+        return parser.make_node(NK_INVALID_STMT, ln);
     };
 
     // Skip leading __attribute__ UNLESS a real type keyword follows, in which
     // case we must let parse_local_decl / parse_base_type capture the attribute
     // (e.g. __attribute__((vector_size(N))) char c0).
-    if (check(TokenKind::KwAttribute)) {
-        int save = pos_;
-        skip_attributes();
-        if (is_type_start()) {
-            pos_ = save;  // restore: let parse_local_decl handle it
+    if (parser.check(TokenKind::KwAttribute)) {
+        int save = parser.core_input_state_.pos;
+        parser.skip_attributes();
+        if (parser.is_type_start()) {
+            parser.core_input_state_.pos = save;  // restore: let parse_local_decl handle it
         }
     }
 
     // C++ using type alias inside function body: using R = type;
     // Registered as a local typedef so subsequent code can reference it.
-    if (is_cpp_mode() && check(TokenKind::KwUsing)) {
-        consume(); // eat 'using'
-        if (check(TokenKind::Identifier) &&
-            core_input_state_.pos + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
-            core_input_state_.tokens[core_input_state_.pos + 1].kind == TokenKind::Assign) {
-            std::string alias_name = std::string(token_spelling(cur()));
-            consume(); // eat name
-            consume(); // eat '='
-            const int alias_type_pos = pos_;
+    if (parser.is_cpp_mode() && parser.check(TokenKind::KwUsing)) {
+        parser.consume(); // eat 'using'
+        if (parser.check(TokenKind::Identifier) &&
+            parser.core_input_state_.pos + 1 < static_cast<int>(parser.core_input_state_.tokens.size()) &&
+            parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind == TokenKind::Assign) {
+            std::string alias_name = std::string(parser.token_spelling(parser.cur()));
+            parser.consume(); // eat name
+            parser.consume(); // eat '='
+            const int alias_type_pos = parser.core_input_state_.pos;
             TypeSpec alias_ts{};
             try {
-                alias_ts = parse_type_name();
+                alias_ts = parser.parse_type_name();
             } catch (const std::exception&) {
-                pos_ = alias_type_pos;
+                parser.core_input_state_.pos = alias_type_pos;
                 return recover_malformed_local_using();
             }
-            if (!match(TokenKind::Semi)) {
-                pos_ = alias_type_pos;
+            if (!parser.match(TokenKind::Semi)) {
+                parser.core_input_state_.pos = alias_type_pos;
                 int depth = 0;
                 bool consumed_type_tokens = false;
-                while (!at_end()) {
-                    if (depth == 0 && check(TokenKind::Semi)) {
-                        consume();
+                while (!parser.at_end()) {
+                    if (depth == 0 && parser.check(TokenKind::Semi)) {
+                        parser.consume();
                         break;
                     }
                     if (depth == 0 && consumed_type_tokens &&
                         is_local_using_recovery_boundary()) {
                         break;
                     }
-                    if (check(TokenKind::Less) || check(TokenKind::LParen) ||
-                        check(TokenKind::LBracket)) {
+                    if (parser.check(TokenKind::Less) || parser.check(TokenKind::LParen) ||
+                        parser.check(TokenKind::LBracket)) {
                         ++depth;
-                    } else if ((check(TokenKind::Greater) ||
-                                check(TokenKind::RParen) ||
-                                check(TokenKind::RBracket)) &&
+                    } else if ((parser.check(TokenKind::Greater) ||
+                                parser.check(TokenKind::RParen) ||
+                                parser.check(TokenKind::RBracket)) &&
                                depth > 0) {
                         --depth;
-                    } else if (check(TokenKind::GreaterGreater) && depth > 0) {
+                    } else if (parser.check(TokenKind::GreaterGreater) && depth > 0) {
                         depth -= std::min(depth, 2);
                         consumed_type_tokens = true;
-                        consume();
+                        parser.consume();
                         continue;
                     }
                     consumed_type_tokens = true;
-                    consume();
+                    parser.consume();
                 }
-                return make_node(NK_INVALID_STMT, ln);
+                return parser.make_node(NK_INVALID_STMT, ln);
             }
             // Register as typedef so subsequent code recognizes the name.
-            register_typedef_binding(alias_name, alias_ts, true);
-            return make_node(NK_EMPTY, ln);
+            parser.register_typedef_binding(alias_name, alias_ts, true);
+            return parser.make_node(NK_EMPTY, ln);
         }
 
-        if (match(TokenKind::KwNamespace)) {
-            if (!check(TokenKind::Identifier))
+        if (parser.match(TokenKind::KwNamespace)) {
+            if (!parser.check(TokenKind::Identifier))
                 return recover_malformed_local_using();
-            (void)parse_qualified_name(true);
-            if (!match(TokenKind::Semi))
+            (void)parser.parse_qualified_name(true);
+            if (!parser.match(TokenKind::Semi))
                 return recover_malformed_local_using();
-            return make_node(NK_EMPTY, ln);
+            return parser.make_node(NK_EMPTY, ln);
         }
 
-        if (!check(TokenKind::Identifier) && !check(TokenKind::ColonColon))
+        if (!parser.check(TokenKind::Identifier) && !parser.check(TokenKind::ColonColon))
             return recover_malformed_local_using();
 
-        if (match(TokenKind::ColonColon)) {
-            if (!check(TokenKind::Identifier))
+        if (parser.match(TokenKind::ColonColon)) {
+            if (!parser.check(TokenKind::Identifier))
                 return recover_malformed_local_using();
-            consume();
+            parser.consume();
         } else {
-            consume();
+            parser.consume();
         }
-        while (match(TokenKind::ColonColon)) {
-            if (!check(TokenKind::Identifier))
+        while (parser.match(TokenKind::ColonColon)) {
+            if (!parser.check(TokenKind::Identifier))
                 return recover_malformed_local_using();
-            consume();
+            parser.consume();
         }
-        if (!match(TokenKind::Semi))
+        if (!parser.match(TokenKind::Semi))
             return recover_malformed_local_using();
-        return make_node(NK_EMPTY, ln);
+        return parser.make_node(NK_EMPTY, ln);
     }
 
-    switch (cur().kind) {
+    switch (parser.cur().kind) {
         case TokenKind::PragmaPack: {
-            handle_pragma_pack(*this, cur().text_id == kInvalidText
-                                          ? std::string()
-                                          : std::string(token_spelling(cur())));
-            consume();
-            return make_node(NK_EMPTY, ln);
+            handle_pragma_pack(parser, parser.cur().text_id == kInvalidText
+                                           ? std::string()
+                                           : std::string(parser.token_spelling(parser.cur())));
+            parser.consume();
+            return parser.make_node(NK_EMPTY, ln);
         }
 
         case TokenKind::PragmaWeak: {
-            auto* node = make_node(NK_PRAGMA_WEAK, ln);
-            node->name = arena_.strdup(std::string(token_spelling(cur())));
-            consume();
+            auto* node = parser.make_node(NK_PRAGMA_WEAK, ln);
+            node->name = parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
+            parser.consume();
             return node;
         }
 
         case TokenKind::PragmaExec: {
-            auto* node = make_node(NK_PRAGMA_EXEC, ln);
-            node->name = arena_.strdup(std::string(token_spelling(cur())));
-            handle_pragma_exec(*this, std::string(token_spelling(cur())));
-            consume();
+            auto* node = parser.make_node(NK_PRAGMA_EXEC, ln);
+            node->name = parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
+            handle_pragma_exec(parser, std::string(parser.token_spelling(parser.cur())));
+            parser.consume();
             return node;
         }
 
         case TokenKind::KwStaticAssert: {
-            return parse_static_assert_declaration(*this);
+            return parse_static_assert_declaration(parser);
         }
 
         case TokenKind::LBrace:
-            return parse_block(*this);
+            return parse_block(parser);
 
         case TokenKind::KwReturn: {
-            consume();
+            parser.consume();
             Node* val = nullptr;
-            if (!check(TokenKind::Semi)) {
-                val = parse_expr(*this);
+            if (!parser.check(TokenKind::Semi)) {
+                val = parse_expr(parser);
             }
-            match(TokenKind::Semi);
-            Node* n = make_node(NK_RETURN, ln);
+            parser.match(TokenKind::Semi);
+            Node* n = parser.make_node(NK_RETURN, ln);
             n->left = val;
             return n;
         }
 
         case TokenKind::KwIf: {
-            consume();
+            parser.consume();
             bool is_constexpr_if = false;
-            if (is_cpp_mode() && match(TokenKind::KwConstexpr)) {
+            if (parser.is_cpp_mode() && parser.match(TokenKind::KwConstexpr)) {
                 is_constexpr_if = true;
             }
-            expect(TokenKind::LParen);
+            parser.expect(TokenKind::LParen);
             std::unique_ptr<LexicalBindingScopeGuard> condition_scope_guard;
             auto can_start_if_condition_decl = [&]() -> bool {
-                if (!is_cpp_mode()) return false;
-                TokenKind k = cur().kind;
+                if (!parser.is_cpp_mode()) return false;
+                TokenKind k = parser.cur().kind;
                 if (is_type_kw(k) || is_qualifier(k) || is_storage_class(k)) return true;
                 if (k == TokenKind::KwConstexpr || k == TokenKind::KwConsteval ||
                     k == TokenKind::KwAttribute || k == TokenKind::KwAlignas) {
@@ -300,14 +300,14 @@ Node* Parser::parse_stmt() {
                 }
                 if (k == TokenKind::KwTypename) return true;
                 if (k != TokenKind::Identifier) return false;
-                return is_known_simple_type_head(*this, cur().text_id,
-                                                 token_spelling(cur()));
+                return is_known_simple_type_head(parser, parser.cur().text_id,
+                                                 parser.token_spelling(parser.cur()));
             };
 
             auto can_use_lite_if_condition_decl = [&]() -> bool {
                 if (!can_start_if_condition_decl()) return false;
 
-                TokenKind k = cur().kind;
+                TokenKind k = parser.cur().kind;
                 switch (k) {
                     case TokenKind::KwStruct:
                     case TokenKind::KwClass:
@@ -317,11 +317,11 @@ Node* Parser::parse_stmt() {
                     case TokenKind::ColonColon:
                         return false;
                     case TokenKind::Identifier:
-                        if (core_input_state_.pos + 1 <
-                                static_cast<int>(core_input_state_.tokens.size()) &&
-                            (core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        if (parser.core_input_state_.pos + 1 <
+                                static_cast<int>(parser.core_input_state_.tokens.size()) &&
+                            (parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                                  TokenKind::ColonColon ||
-                             core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                             parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                                  TokenKind::Less)) {
                             return false;
                         }
@@ -338,36 +338,36 @@ Node* Parser::parse_stmt() {
                     [&](auto& guard,
                         std::unique_ptr<LexicalBindingScopeGuard>& pending_scope)
                     -> Node* {
-                        TypeSpec base_ts = parse_base_type();
-                        parse_attributes(&base_ts);
+                        TypeSpec base_ts = parser.parse_base_type();
+                        parser.parse_attributes(&base_ts);
 
                         TypeSpec ts = base_ts;
                         ts.array_size_expr = nullptr;
                         const char* vname = nullptr;
-                        parse_declarator(ts, &vname);
-                        skip_attributes();
-                        skip_asm();
-                        skip_attributes();
+                        parser.parse_declarator(ts, &vname);
+                        parser.skip_attributes();
+                        parser.skip_asm();
+                        parser.skip_attributes();
 
                         if (!vname) {
                             return nullptr;
                         }
 
                         Node* init_node = nullptr;
-                        if (match(TokenKind::Assign) ||
-                            (is_cpp_mode() && check(TokenKind::LBrace))) {
-                            init_node = parse_initializer(*this);
+                        if (parser.match(TokenKind::Assign) ||
+                            (parser.is_cpp_mode() && parser.check(TokenKind::LBrace))) {
+                            init_node = parse_initializer(parser);
                         }
 
-                        if (!check(TokenKind::RParen)) {
+                        if (!parser.check(TokenKind::RParen)) {
                             return nullptr;
                         }
 
-                        Node* decl = make_node(NK_DECL, ln);
+                        Node* decl = parser.make_node(NK_DECL, ln);
                         decl->type = ts;
                         decl->name = vname;
                         decl->init = init_node;
-                        register_var_type_binding(vname, ts);
+                        parser.register_var_type_binding(vname, ts);
                         condition_scope_guard = std::move(pending_scope);
                         guard.commit();
                         return decl;
@@ -375,15 +375,15 @@ Node* Parser::parse_stmt() {
 
                 try {
                     if (can_use_lite_if_condition_decl()) {
-                        TentativeParseGuardLite guard(*this);
+                        Parser::TentativeParseGuardLite guard(parser);
                         auto pending_scope =
-                            std::make_unique<LexicalBindingScopeGuard>(this);
+                            std::make_unique<LexicalBindingScopeGuard>(&parser);
                         return try_parse_if_condition_decl(guard, pending_scope);
                     }
 
-                    TentativeParseGuard guard(*this);
+                    Parser::TentativeParseGuard guard(parser);
                     auto pending_scope =
-                        std::make_unique<LexicalBindingScopeGuard>(this);
+                        std::make_unique<LexicalBindingScopeGuard>(&parser);
                     return try_parse_if_condition_decl(guard, pending_scope);
                 } catch (const std::exception&) {
                     return nullptr;
@@ -393,41 +393,41 @@ Node* Parser::parse_stmt() {
             Node* cond_decl = parse_if_condition_decl();
             Node* cnd = nullptr;
             if (cond_decl) {
-                cnd = make_var(cond_decl->name, cond_decl->line);
+                cnd = parser.make_var(cond_decl->name, cond_decl->line);
             } else {
-                cnd = parse_expr(*this);
+                cnd = parse_expr(parser);
             }
-            expect(TokenKind::RParen);
-            if (is_cpp_mode()) {
-                skip_attributes();
+            parser.expect(TokenKind::RParen);
+            if (parser.is_cpp_mode()) {
+                parser.skip_attributes();
             }
-            Node* then_stmt = parse_stmt();
+            Node* then_stmt = parse_stmt(parser);
             Node* else_stmt = nullptr;
-            if (match(TokenKind::KwElse)) {
-                else_stmt = parse_stmt();
+            if (parser.match(TokenKind::KwElse)) {
+                else_stmt = parse_stmt(parser);
             }
-            Node* n = make_node(NK_IF, ln);
+            Node* n = parser.make_node(NK_IF, ln);
             n->cond  = cnd;
             n->then_ = then_stmt;
             n->else_ = else_stmt;
             n->is_constexpr = is_constexpr_if;
             if (!cond_decl) return n;
 
-            Node* scoped = make_node(NK_BLOCK, ln);
+            Node* scoped = parser.make_node(NK_BLOCK, ln);
             scoped->n_children = 2;
-            scoped->children = arena_.alloc_array<Node*>(2);
+            scoped->children = parser.arena_.alloc_array<Node*>(2);
             scoped->children[0] = cond_decl;
             scoped->children[1] = n;
             return scoped;
         }
 
         case TokenKind::KwWhile: {
-            consume();
-            expect(TokenKind::LParen);
+            parser.consume();
+            parser.expect(TokenKind::LParen);
             std::unique_ptr<LexicalBindingScopeGuard> condition_scope_guard;
             auto can_start_while_condition_decl = [&]() -> bool {
-                if (!is_cpp_mode()) return false;
-                TokenKind k = cur().kind;
+                if (!parser.is_cpp_mode()) return false;
+                TokenKind k = parser.cur().kind;
                 if (is_type_kw(k) || is_qualifier(k) || is_storage_class(k)) return true;
                 if (k == TokenKind::KwConstexpr || k == TokenKind::KwConsteval ||
                     k == TokenKind::KwAttribute || k == TokenKind::KwAlignas) {
@@ -435,14 +435,14 @@ Node* Parser::parse_stmt() {
                 }
                 if (k == TokenKind::KwTypename) return true;
                 if (k != TokenKind::Identifier) return false;
-                return is_known_simple_type_head(*this, cur().text_id,
-                                                 token_spelling(cur()));
+                return is_known_simple_type_head(parser, parser.cur().text_id,
+                                                 parser.token_spelling(parser.cur()));
             };
 
             auto can_use_lite_while_condition_decl = [&]() -> bool {
                 if (!can_start_while_condition_decl()) return false;
 
-                TokenKind k = cur().kind;
+                TokenKind k = parser.cur().kind;
                 switch (k) {
                     case TokenKind::KwStruct:
                     case TokenKind::KwClass:
@@ -452,11 +452,11 @@ Node* Parser::parse_stmt() {
                     case TokenKind::ColonColon:
                         return false;
                     case TokenKind::Identifier:
-                        if (core_input_state_.pos + 1 <
-                                static_cast<int>(core_input_state_.tokens.size()) &&
-                            (core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        if (parser.core_input_state_.pos + 1 <
+                                static_cast<int>(parser.core_input_state_.tokens.size()) &&
+                            (parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                                  TokenKind::ColonColon ||
-                             core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                             parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                                  TokenKind::Less)) {
                             return false;
                         }
@@ -473,36 +473,36 @@ Node* Parser::parse_stmt() {
                     [&](auto& guard,
                         std::unique_ptr<LexicalBindingScopeGuard>& pending_scope)
                     -> Node* {
-                        TypeSpec base_ts = parse_base_type();
-                        parse_attributes(&base_ts);
+                        TypeSpec base_ts = parser.parse_base_type();
+                        parser.parse_attributes(&base_ts);
 
                         TypeSpec ts = base_ts;
                         ts.array_size_expr = nullptr;
                         const char* vname = nullptr;
-                        parse_declarator(ts, &vname);
-                        skip_attributes();
-                        skip_asm();
-                        skip_attributes();
+                        parser.parse_declarator(ts, &vname);
+                        parser.skip_attributes();
+                        parser.skip_asm();
+                        parser.skip_attributes();
 
                         if (!vname) {
                             return nullptr;
                         }
 
                         Node* init_node = nullptr;
-                        if (match(TokenKind::Assign) ||
-                            (is_cpp_mode() && check(TokenKind::LBrace))) {
-                            init_node = parse_initializer(*this);
+                        if (parser.match(TokenKind::Assign) ||
+                            (parser.is_cpp_mode() && parser.check(TokenKind::LBrace))) {
+                            init_node = parse_initializer(parser);
                         }
 
-                        if (!check(TokenKind::RParen)) {
+                        if (!parser.check(TokenKind::RParen)) {
                             return nullptr;
                         }
 
-                        Node* decl = make_node(NK_DECL, ln);
+                        Node* decl = parser.make_node(NK_DECL, ln);
                         decl->type = ts;
                         decl->name = vname;
                         decl->init = init_node;
-                        register_var_type_binding(vname, ts);
+                        parser.register_var_type_binding(vname, ts);
                         condition_scope_guard = std::move(pending_scope);
                         guard.commit();
                         return decl;
@@ -510,15 +510,15 @@ Node* Parser::parse_stmt() {
 
                 try {
                     if (can_use_lite_while_condition_decl()) {
-                        TentativeParseGuardLite guard(*this);
+                        Parser::TentativeParseGuardLite guard(parser);
                         auto pending_scope =
-                            std::make_unique<LexicalBindingScopeGuard>(this);
+                            std::make_unique<LexicalBindingScopeGuard>(&parser);
                         return try_parse_while_condition_decl(guard, pending_scope);
                     }
 
-                    TentativeParseGuard guard(*this);
+                    Parser::TentativeParseGuard guard(parser);
                     auto pending_scope =
-                        std::make_unique<LexicalBindingScopeGuard>(this);
+                        std::make_unique<LexicalBindingScopeGuard>(&parser);
                     return try_parse_while_condition_decl(guard, pending_scope);
                 } catch (const std::exception&) {
                     return nullptr;
@@ -528,49 +528,49 @@ Node* Parser::parse_stmt() {
             Node* cond_decl = parse_while_condition_decl();
             Node* cnd = nullptr;
             if (cond_decl) {
-                cnd = make_var(cond_decl->name, cond_decl->line);
+                cnd = parser.make_var(cond_decl->name, cond_decl->line);
             } else {
-                cnd = parse_expr(*this);
+                cnd = parse_expr(parser);
             }
-            expect(TokenKind::RParen);
-            Node* bd = parse_stmt();
-            Node* n = make_node(NK_WHILE, ln);
+            parser.expect(TokenKind::RParen);
+            Node* bd = parse_stmt(parser);
+            Node* n = parser.make_node(NK_WHILE, ln);
             n->cond = cnd;
             n->body = bd;
             if (!cond_decl) return n;
 
-            Node* scoped = make_node(NK_BLOCK, ln);
+            Node* scoped = parser.make_node(NK_BLOCK, ln);
             scoped->n_children = 2;
-            scoped->children = arena_.alloc_array<Node*>(2);
+            scoped->children = parser.arena_.alloc_array<Node*>(2);
             scoped->children[0] = cond_decl;
             scoped->children[1] = n;
             return scoped;
         }
 
         case TokenKind::KwDo: {
-            consume();
-            Node* bd = parse_stmt();
-            expect(TokenKind::KwWhile);
-            expect(TokenKind::LParen);
-            Node* cnd = parse_expr(*this);
-            expect(TokenKind::RParen);
-            match(TokenKind::Semi);
-            Node* n = make_node(NK_DO_WHILE, ln);
+            parser.consume();
+            Node* bd = parse_stmt(parser);
+            parser.expect(TokenKind::KwWhile);
+            parser.expect(TokenKind::LParen);
+            Node* cnd = parse_expr(parser);
+            parser.expect(TokenKind::RParen);
+            parser.match(TokenKind::Semi);
+            Node* n = parser.make_node(NK_DO_WHILE, ln);
             n->body = bd;
             n->cond = cnd;
             return n;
         }
 
         case TokenKind::KwFor: {
-            consume();
-            expect(TokenKind::LParen);
+            parser.consume();
+            parser.expect(TokenKind::LParen);
             Node* for_init = nullptr;
-            if (!check(TokenKind::Semi)) {
-                if (is_type_start()) {
+            if (!parser.check(TokenKind::Semi)) {
+                if (parser.is_type_start()) {
                     auto can_use_lite_range_for_probe = [&]() -> bool {
-                        if (!is_cpp_mode()) return false;
+                        if (!parser.is_cpp_mode()) return false;
 
-                        TokenKind k = cur().kind;
+                        TokenKind k = parser.cur().kind;
                         switch (k) {
                             case TokenKind::LBracket:
                             case TokenKind::KwAttribute:
@@ -584,11 +584,11 @@ Node* Parser::parse_stmt() {
                             case TokenKind::ColonColon:
                                 return false;
                             case TokenKind::Identifier:
-                                if (core_input_state_.pos + 1 <
-                                        static_cast<int>(core_input_state_.tokens.size()) &&
-                                    (core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                                if (parser.core_input_state_.pos + 1 <
+                                        static_cast<int>(parser.core_input_state_.tokens.size()) &&
+                                    (parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                                          TokenKind::ColonColon ||
-                                     core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                                     parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                                          TokenKind::Less)) {
                                     return false;
                                 }
@@ -600,63 +600,63 @@ Node* Parser::parse_stmt() {
 
                     // C++ range-for detection: save position, parse decl,
                     // check if ':' follows (range-for) vs ';' (regular for).
-                    if (is_cpp_mode()) {
+                    if (parser.is_cpp_mode()) {
                         Node* decl = nullptr;
                         bool is_range_for = false;
                         if (can_use_lite_range_for_probe()) {
-                            TentativeParseGuardLite range_guard(*this);
-                            LocalVarBindingSuppressionGuard binding_guard(*this);
-                            decl = parse_local_decl();
-                            is_range_for = check(TokenKind::Colon);
+                            Parser::TentativeParseGuardLite range_guard(parser);
+                            Parser::LocalVarBindingSuppressionGuard binding_guard(parser);
+                            decl = parser.parse_local_decl();
+                            is_range_for = parser.check(TokenKind::Colon);
                             if (is_range_for) {
                                 range_guard.commit();
                             }
                         } else {
-                            TentativeParseGuard range_guard(*this);
-                            decl = parse_local_decl();
-                            is_range_for = check(TokenKind::Colon);
+                            Parser::TentativeParseGuard range_guard(parser);
+                            decl = parser.parse_local_decl();
+                            is_range_for = parser.check(TokenKind::Colon);
                             if (is_range_for) {
                                 range_guard.commit();
                             }
                         }
                         if (is_range_for) {
                             // Range-for: for (Type var : range_expr) body
-                            consume(); // consume ':'
-                            Node* range_expr = parse_expr(*this);
-                            expect(TokenKind::RParen);
-                            LexicalBindingScopeGuard loop_scope(this);
+                            parser.consume(); // consume ':'
+                            Node* range_expr = parse_expr(parser);
+                            parser.expect(TokenKind::RParen);
+                            LexicalBindingScopeGuard loop_scope(&parser);
                             if (decl && decl->name) {
                                 const TextId decl_name_text_id =
-                                    find_parser_text_id(decl->name);
-                                bind_local_value(decl_name_text_id, decl->type);
+                                    parser.find_parser_text_id(decl->name);
+                                parser.bind_local_value(decl_name_text_id, decl->type);
                             }
-                            Node* bd = parse_stmt();
-                            Node* n = make_node(NK_RANGE_FOR, ln);
+                            Node* bd = parse_stmt(parser);
+                            Node* n = parser.make_node(NK_RANGE_FOR, ln);
                             n->init  = decl;       // loop variable declaration
                             n->right = range_expr;  // range expression
                             n->body  = bd;
                             return n;
                         }
-                        // Not range-for — TentativeParseGuard restores state
+                        // Not range-for — Parser::TentativeParseGuard restores state
                         // on scope exit since commit() was not called.
                     }
                     {
-                        LexicalBindingScopeGuard loop_scope(this);
-                        for_init = parse_local_decl();
+                        LexicalBindingScopeGuard loop_scope(&parser);
+                        for_init = parser.parse_local_decl();
                         // parse_local_decl already consumed the ';' — do NOT
                         // consume another one, or we eat the condition separator.
                         Node* for_cond = nullptr;
-                        if (!check(TokenKind::Semi)) {
-                            for_cond = parse_expr(*this);
+                        if (!parser.check(TokenKind::Semi)) {
+                            for_cond = parse_expr(parser);
                         }
-                        match(TokenKind::Semi);
+                        parser.match(TokenKind::Semi);
                         Node* for_update = nullptr;
-                        if (!check(TokenKind::RParen)) {
-                            for_update = parse_expr(*this);
+                        if (!parser.check(TokenKind::RParen)) {
+                            for_update = parse_expr(parser);
                         }
-                        expect(TokenKind::RParen);
-                        Node* bd = parse_stmt();
-                        Node* n = make_node(NK_FOR, ln);
+                        parser.expect(TokenKind::RParen);
+                        Node* bd = parse_stmt(parser);
+                        Node* n = parser.make_node(NK_FOR, ln);
                         n->init   = for_init;
                         n->cond   = for_cond;
                         n->update = for_update;
@@ -664,24 +664,24 @@ Node* Parser::parse_stmt() {
                         return n;
                     }
                 } else {
-                    for_init = parse_expr(*this);
-                    match(TokenKind::Semi);
+                    for_init = parse_expr(parser);
+                    parser.match(TokenKind::Semi);
                 }
             } else {
-                consume();  // consume ;
+                parser.consume();  // consume ;
             }
             Node* for_cond = nullptr;
-            if (!check(TokenKind::Semi)) {
-                for_cond = parse_expr(*this);
+            if (!parser.check(TokenKind::Semi)) {
+                for_cond = parse_expr(parser);
             }
-            match(TokenKind::Semi);
+            parser.match(TokenKind::Semi);
             Node* for_update = nullptr;
-            if (!check(TokenKind::RParen)) {
-                for_update = parse_expr(*this);
+            if (!parser.check(TokenKind::RParen)) {
+                for_update = parse_expr(parser);
             }
-            expect(TokenKind::RParen);
-            Node* bd = parse_stmt();
-            Node* n = make_node(NK_FOR, ln);
+            parser.expect(TokenKind::RParen);
+            Node* bd = parse_stmt(parser);
+            Node* n = parser.make_node(NK_FOR, ln);
             n->init   = for_init;
             n->cond   = for_cond;
             n->update = for_update;
@@ -690,12 +690,12 @@ Node* Parser::parse_stmt() {
         }
 
         case TokenKind::KwSwitch: {
-            consume();
-            expect(TokenKind::LParen);
+            parser.consume();
+            parser.expect(TokenKind::LParen);
             std::unique_ptr<LexicalBindingScopeGuard> condition_scope_guard;
             auto can_start_switch_condition_decl = [&]() -> bool {
-                if (!is_cpp_mode()) return false;
-                TokenKind k = cur().kind;
+                if (!parser.is_cpp_mode()) return false;
+                TokenKind k = parser.cur().kind;
                 if (is_type_kw(k) || is_qualifier(k) || is_storage_class(k)) return true;
                 if (k == TokenKind::KwConstexpr || k == TokenKind::KwConsteval ||
                     k == TokenKind::KwAttribute || k == TokenKind::KwAlignas) {
@@ -703,14 +703,14 @@ Node* Parser::parse_stmt() {
                 }
                 if (k == TokenKind::KwTypename) return true;
                 if (k != TokenKind::Identifier) return false;
-                return is_known_simple_type_head(*this, cur().text_id,
-                                                 token_spelling(cur()));
+                return is_known_simple_type_head(parser, parser.cur().text_id,
+                                                 parser.token_spelling(parser.cur()));
             };
 
             auto can_use_lite_switch_condition_decl = [&]() -> bool {
                 if (!can_start_switch_condition_decl()) return false;
 
-                TokenKind k = cur().kind;
+                TokenKind k = parser.cur().kind;
                 switch (k) {
                     case TokenKind::KwStruct:
                     case TokenKind::KwClass:
@@ -720,11 +720,11 @@ Node* Parser::parse_stmt() {
                     case TokenKind::ColonColon:
                         return false;
                     case TokenKind::Identifier:
-                        if (core_input_state_.pos + 1 <
-                                static_cast<int>(core_input_state_.tokens.size()) &&
-                            (core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        if (parser.core_input_state_.pos + 1 <
+                                static_cast<int>(parser.core_input_state_.tokens.size()) &&
+                            (parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                                  TokenKind::ColonColon ||
-                             core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                             parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                                  TokenKind::Less)) {
                             return false;
                         }
@@ -741,36 +741,36 @@ Node* Parser::parse_stmt() {
                     [&](auto& guard,
                         std::unique_ptr<LexicalBindingScopeGuard>& pending_scope)
                     -> Node* {
-                        TypeSpec base_ts = parse_base_type();
-                        parse_attributes(&base_ts);
+                        TypeSpec base_ts = parser.parse_base_type();
+                        parser.parse_attributes(&base_ts);
 
                         TypeSpec ts = base_ts;
                         ts.array_size_expr = nullptr;
                         const char* vname = nullptr;
-                        parse_declarator(ts, &vname);
-                        skip_attributes();
-                        skip_asm();
-                        skip_attributes();
+                        parser.parse_declarator(ts, &vname);
+                        parser.skip_attributes();
+                        parser.skip_asm();
+                        parser.skip_attributes();
 
                         if (!vname) {
                             return nullptr;
                         }
 
                         Node* init_node = nullptr;
-                        if (match(TokenKind::Assign) ||
-                            (is_cpp_mode() && check(TokenKind::LBrace))) {
-                            init_node = parse_initializer(*this);
+                        if (parser.match(TokenKind::Assign) ||
+                            (parser.is_cpp_mode() && parser.check(TokenKind::LBrace))) {
+                            init_node = parse_initializer(parser);
                         }
 
-                        if (!check(TokenKind::RParen)) {
+                        if (!parser.check(TokenKind::RParen)) {
                             return nullptr;
                         }
 
-                        Node* decl = make_node(NK_DECL, ln);
+                        Node* decl = parser.make_node(NK_DECL, ln);
                         decl->type = ts;
                         decl->name = vname;
                         decl->init = init_node;
-                        register_var_type_binding(vname, ts);
+                        parser.register_var_type_binding(vname, ts);
                         condition_scope_guard = std::move(pending_scope);
                         guard.commit();
                         return decl;
@@ -778,15 +778,15 @@ Node* Parser::parse_stmt() {
 
                 try {
                     if (can_use_lite_switch_condition_decl()) {
-                        TentativeParseGuardLite guard(*this);
+                        Parser::TentativeParseGuardLite guard(parser);
                         auto pending_scope =
-                            std::make_unique<LexicalBindingScopeGuard>(this);
+                            std::make_unique<LexicalBindingScopeGuard>(&parser);
                         return try_parse_switch_condition_decl(guard, pending_scope);
                     }
 
-                    TentativeParseGuard guard(*this);
+                    Parser::TentativeParseGuard guard(parser);
                     auto pending_scope =
-                        std::make_unique<LexicalBindingScopeGuard>(this);
+                        std::make_unique<LexicalBindingScopeGuard>(&parser);
                     return try_parse_switch_condition_decl(guard, pending_scope);
                 } catch (const std::exception&) {
                     return nullptr;
@@ -796,92 +796,92 @@ Node* Parser::parse_stmt() {
             Node* cond_decl = parse_switch_condition_decl();
             Node* cnd = nullptr;
             if (cond_decl) {
-                cnd = make_var(cond_decl->name, cond_decl->line);
+                cnd = parser.make_var(cond_decl->name, cond_decl->line);
             } else {
-                cnd = parse_expr(*this);
+                cnd = parse_expr(parser);
             }
-            expect(TokenKind::RParen);
-            Node* bd = parse_stmt();
-            Node* n = make_node(NK_SWITCH, ln);
+            parser.expect(TokenKind::RParen);
+            Node* bd = parse_stmt(parser);
+            Node* n = parser.make_node(NK_SWITCH, ln);
             n->cond = cnd;
             n->body = bd;
             if (!cond_decl) return n;
 
-            Node* scoped = make_node(NK_BLOCK, ln);
+            Node* scoped = parser.make_node(NK_BLOCK, ln);
             scoped->n_children = 2;
-            scoped->children = arena_.alloc_array<Node*>(2);
+            scoped->children = parser.arena_.alloc_array<Node*>(2);
             scoped->children[0] = cond_decl;
             scoped->children[1] = n;
             return scoped;
         }
 
         case TokenKind::KwCase: {
-            consume();
-            Node* val_lo = parse_assign_expr(*this);
+            parser.consume();
+            Node* val_lo = parse_assign_expr(parser);
             Node* val_hi = nullptr;
-            if (check(TokenKind::Ellipsis)) {
-                consume();
-                val_hi = parse_assign_expr(*this);
+            if (parser.check(TokenKind::Ellipsis)) {
+                parser.consume();
+                val_hi = parse_assign_expr(parser);
             }
-            expect(TokenKind::Colon);
+            parser.expect(TokenKind::Colon);
             // Accumulate case body as the next statement
             Node* body_stmt = nullptr;
-            if (!check(TokenKind::RBrace) && !check(TokenKind::KwCase) &&
-                !check(TokenKind::KwDefault)) {
-                body_stmt = parse_stmt();
+            if (!parser.check(TokenKind::RBrace) && !parser.check(TokenKind::KwCase) &&
+                !parser.check(TokenKind::KwDefault)) {
+                body_stmt = parse_stmt(parser);
             }
             if (val_hi) {
-                Node* n = make_node(NK_CASE_RANGE, ln);
+                Node* n = parser.make_node(NK_CASE_RANGE, ln);
                 n->left  = val_lo;
                 n->right = val_hi;
                 n->body  = body_stmt;
                 return n;
             }
-            Node* n = make_node(NK_CASE, ln);
+            Node* n = parser.make_node(NK_CASE, ln);
             n->left = val_lo;
             n->body = body_stmt;
             return n;
         }
 
         case TokenKind::KwDefault: {
-            consume();
-            expect(TokenKind::Colon);
+            parser.consume();
+            parser.expect(TokenKind::Colon);
             Node* body_stmt = nullptr;
-            if (!check(TokenKind::RBrace) && !check(TokenKind::KwCase) &&
-                !check(TokenKind::KwDefault)) {
-                body_stmt = parse_stmt();
+            if (!parser.check(TokenKind::RBrace) && !parser.check(TokenKind::KwCase) &&
+                !parser.check(TokenKind::KwDefault)) {
+                body_stmt = parse_stmt(parser);
             }
-            Node* n = make_node(NK_DEFAULT, ln);
+            Node* n = parser.make_node(NK_DEFAULT, ln);
             n->body = body_stmt;
             return n;
         }
 
         case TokenKind::KwBreak:
-            consume(); match(TokenKind::Semi);
-            return make_node(NK_BREAK, ln);
+            parser.consume(); parser.match(TokenKind::Semi);
+            return parser.make_node(NK_BREAK, ln);
 
         case TokenKind::KwContinue:
-            consume(); match(TokenKind::Semi);
-            return make_node(NK_CONTINUE, ln);
+            parser.consume(); parser.match(TokenKind::Semi);
+            return parser.make_node(NK_CONTINUE, ln);
 
         case TokenKind::KwGoto: {
-            consume();
+            parser.consume();
             const char* lbl = nullptr;
-            if (check(TokenKind::Identifier)) {
-                lbl = arena_.strdup(std::string(token_spelling(cur())));
-                consume();
-            } else if (check(TokenKind::Star)) {
+            if (parser.check(TokenKind::Identifier)) {
+                lbl = parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
+                parser.consume();
+            } else if (parser.check(TokenKind::Star)) {
                 // computed goto: goto *expr;
-                consume();
-                Node* target = parse_unary(*this);
-                match(TokenKind::Semi);
-                Node* n = make_node(NK_GOTO, ln);
+                parser.consume();
+                Node* target = parse_unary(parser);
+                parser.match(TokenKind::Semi);
+                Node* n = parser.make_node(NK_GOTO, ln);
                 n->name = "__computed__";
                 n->left = target;
                 return n;
             }
-            match(TokenKind::Semi);
-            Node* n = make_node(NK_GOTO, ln);
+            parser.match(TokenKind::Semi);
+            Node* n = parser.make_node(NK_GOTO, ln);
             n->name = lbl;
             return n;
         }
@@ -894,21 +894,21 @@ Node* Parser::parse_stmt() {
             std::vector<Node*> clobbers;
             auto parse_asm_operand = [&]() -> AsmOperand {
                 AsmOperand op{};
-                if (check(TokenKind::StrLit)) {
-                    op.constraint = consume_adjacent_string_literal(*this);
+                if (parser.check(TokenKind::StrLit)) {
+                    op.constraint = consume_adjacent_string_literal(parser);
                 }
-                if (match(TokenKind::LParen)) {
-                    op.expr = parse_expr(*this);
-                    expect(TokenKind::RParen);
+                if (parser.match(TokenKind::LParen)) {
+                    op.expr = parse_expr(parser);
+                    parser.expect(TokenKind::RParen);
                 }
                 return op;
             };
             auto parse_asm_operand_list = [&]() -> std::vector<AsmOperand> {
                 std::vector<AsmOperand> ops;
-                if (check(TokenKind::Colon) || check(TokenKind::RParen)) return ops;
-                while (!at_end() && !check(TokenKind::Colon) && !check(TokenKind::RParen)) {
+                if (parser.check(TokenKind::Colon) || parser.check(TokenKind::RParen)) return ops;
+                while (!parser.at_end() && !parser.check(TokenKind::Colon) && !parser.check(TokenKind::RParen)) {
                     ops.push_back(parse_asm_operand());
-                    if (!match(TokenKind::Comma)) break;
+                    if (!parser.match(TokenKind::Comma)) break;
                 }
                 return ops;
             };
@@ -925,51 +925,51 @@ Node* Parser::parse_stmt() {
                 return true;
             };
 
-            consume();
+            parser.consume();
             // Skip optional qualifiers: volatile, goto, inline
             bool saw_volatile = false;
-            while (check(TokenKind::KwVolatile) || check(TokenKind::KwInline) ||
-                   check(TokenKind::KwGoto)) {
-                if (check(TokenKind::KwVolatile)) saw_volatile = true;
-                consume();
+            while (parser.check(TokenKind::KwVolatile) || parser.check(TokenKind::KwInline) ||
+                   parser.check(TokenKind::KwGoto)) {
+                if (parser.check(TokenKind::KwVolatile)) saw_volatile = true;
+                parser.consume();
             }
-            if (!check(TokenKind::LParen)) {
-                match(TokenKind::Semi);
-                return make_node(NK_EMPTY, ln);
+            if (!parser.check(TokenKind::LParen)) {
+                parser.match(TokenKind::Semi);
+                return parser.make_node(NK_EMPTY, ln);
             }
-            consume();  // (
+            parser.consume();  // (
 
             Node* asm_template = nullptr;
-            if (check(TokenKind::StrLit)) {
-                asm_template = make_str_lit(consume_adjacent_string_literal(*this), cur().line);
-            } else if (!check(TokenKind::Colon) && !check(TokenKind::RParen)) {
-                asm_template = parse_expr(*this);
+            if (parser.check(TokenKind::StrLit)) {
+                asm_template = parser.make_str_lit(consume_adjacent_string_literal(parser), parser.cur().line);
+            } else if (!parser.check(TokenKind::Colon) && !parser.check(TokenKind::RParen)) {
+                asm_template = parse_expr(parser);
             }
 
             std::vector<AsmOperand> outputs;
             std::vector<AsmOperand> inputs;
-            if (match(TokenKind::Colon)) {
+            if (parser.match(TokenKind::Colon)) {
                 outputs = parse_asm_operand_list();
-                if (match(TokenKind::Colon)) {
+                if (parser.match(TokenKind::Colon)) {
                     inputs = parse_asm_operand_list();
-                    if (match(TokenKind::Colon)) {
-                        while (!at_end() && !check(TokenKind::RParen)) {
-                            if (check(TokenKind::StrLit)) {
-                                clobbers.push_back(make_str_lit(
-                                    consume_adjacent_string_literal(*this), cur().line));
+                    if (parser.match(TokenKind::Colon)) {
+                        while (!parser.at_end() && !parser.check(TokenKind::RParen)) {
+                            if (parser.check(TokenKind::StrLit)) {
+                                clobbers.push_back(parser.make_str_lit(
+                                    consume_adjacent_string_literal(parser), parser.cur().line));
                             }
-                            else if (check(TokenKind::LParen)) skip_paren_group();
-                            else consume();
-                            if (!match(TokenKind::Comma)) break;
+                            else if (parser.check(TokenKind::LParen)) parser.skip_paren_group();
+                            else parser.consume();
+                            if (!parser.match(TokenKind::Comma)) break;
                         }
-                        if (match(TokenKind::Colon)) {
-                            while (!at_end() && !check(TokenKind::RParen)) consume();
+                        if (parser.match(TokenKind::Colon)) {
+                            while (!parser.at_end() && !parser.check(TokenKind::RParen)) parser.consume();
                         }
                     }
                 }
             }
-            expect(TokenKind::RParen);
-            match(TokenKind::Semi);
+            parser.expect(TokenKind::RParen);
+            parser.match(TokenKind::Semi);
 
             const bool empty_template =
                 asm_template && asm_template->kind == NK_STR_LIT && asm_template->sval &&
@@ -985,7 +985,7 @@ Node* Parser::parse_stmt() {
                     if (out_constraint.find('+') != std::string::npos) {
                         // read-write tied to itself; empty asm leaves value unchanged,
                         // but we must still evaluate the expression for side effects.
-                        Node* expr_stmt = make_node(NK_EXPR_STMT, ln);
+                        Node* expr_stmt = parser.make_node(NK_EXPR_STMT, ln);
                         expr_stmt->left = out.expr;
                         lowered.push_back(expr_stmt);
                         continue;
@@ -1003,17 +1003,17 @@ Node* Parser::parse_stmt() {
                         can_lower_all_outputs = false;
                         break;
                     }
-                    Node* expr_stmt = make_node(NK_EXPR_STMT, ln);
-                    expr_stmt->left = make_assign("=", out.expr, rhs, ln);
+                    Node* expr_stmt = parser.make_node(NK_EXPR_STMT, ln);
+                    expr_stmt->left = parser.make_assign("=", out.expr, rhs, ln);
                     lowered.push_back(expr_stmt);
                 }
                 if (!can_lower_all_outputs) lowered.clear();
-                if (lowered.empty()) return make_node(NK_EMPTY, ln);
-                return make_block(lowered.data(), static_cast<int>(lowered.size()), ln);
+                if (lowered.empty()) return parser.make_node(NK_EMPTY, ln);
+                return parser.make_block(lowered.data(), static_cast<int>(lowered.size()), ln);
             }
 
             if (asm_template && asm_template->kind == NK_STR_LIT) {
-                Node* n = make_node(NK_ASM, ln);
+                Node* n = parser.make_node(NK_ASM, ln);
                 n->left = asm_template;
                 n->is_volatile_asm = saw_volatile;
                 n->asm_num_outputs = static_cast<int>(outputs.size());
@@ -1021,18 +1021,18 @@ Node* Parser::parse_stmt() {
                 n->asm_num_clobbers = static_cast<int>(clobbers.size());
                 n->asm_n_constraints = n->asm_num_outputs + n->asm_num_inputs;
                 if (n->asm_n_constraints > 0) {
-                    n->asm_constraints = arena_.alloc_array<const char*>(n->asm_n_constraints);
+                    n->asm_constraints = parser.arena_.alloc_array<const char*>(n->asm_n_constraints);
                     int ci = 0;
                     for (const AsmOperand& out : outputs) {
-                        n->asm_constraints[ci++] = arena_.strdup(out.constraint.c_str());
+                        n->asm_constraints[ci++] = parser.arena_.strdup(out.constraint.c_str());
                     }
                     for (const AsmOperand& in : inputs) {
-                        n->asm_constraints[ci++] = arena_.strdup(in.constraint.c_str());
+                        n->asm_constraints[ci++] = parser.arena_.strdup(in.constraint.c_str());
                     }
                 }
                 n->n_children = n->asm_num_outputs + n->asm_num_inputs + n->asm_num_clobbers;
                 if (n->n_children > 0) {
-                    n->children = arena_.alloc_array<Node*>(n->n_children);
+                    n->children = parser.arena_.alloc_array<Node*>(n->n_children);
                     int idx = 0;
                     for (const AsmOperand& out : outputs) n->children[idx++] = out.expr;
                     for (const AsmOperand& in : inputs) n->children[idx++] = in.expr;
@@ -1040,12 +1040,12 @@ Node* Parser::parse_stmt() {
                 }
                 return n;
             }
-            return make_node(NK_EMPTY, ln);
+            return parser.make_node(NK_EMPTY, ln);
         }
 
         case TokenKind::Semi:
-            consume();
-            return make_node(NK_EMPTY, ln);
+            parser.consume();
+            return parser.make_node(NK_EMPTY, ln);
 
         default:
             break;
@@ -1053,53 +1053,53 @@ Node* Parser::parse_stmt() {
 
     // GCC __label__ local label declaration — treat as no-op
     // e.g. __label__ foo, bar;
-    if (check(TokenKind::Identifier) && token_spelling(cur()) == std::string_view("__label__")) {
-        consume();  // consume __label__
-        while (check(TokenKind::Identifier)) {
-            consume();  // consume label name
-            if (!match(TokenKind::Comma)) break;
+    if (parser.check(TokenKind::Identifier) && parser.token_spelling(parser.cur()) == std::string_view("__label__")) {
+        parser.consume();  // consume __label__
+        while (parser.check(TokenKind::Identifier)) {
+            parser.consume();  // consume label name
+            if (!parser.match(TokenKind::Comma)) break;
         }
-        match(TokenKind::Semi);
-        return make_node(NK_EMPTY, ln);
+        parser.match(TokenKind::Semi);
+        return parser.make_node(NK_EMPTY, ln);
     }
 
     // Identifier followed by colon → label
-    if (check(TokenKind::Identifier) && peek_next_is(TokenKind::Colon)) {
-        const char* lbl = arena_.strdup(std::string(token_spelling(cur())));
-        consume(); consume();  // consume name and :
+    if (parser.check(TokenKind::Identifier) && parser.peek_next_is(TokenKind::Colon)) {
+        const char* lbl = parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
+        parser.consume(); parser.consume();  // consume name and :
         Node* body_stmt = nullptr;
-        if (!check(TokenKind::RBrace)) {
-            body_stmt = parse_stmt();
+        if (!parser.check(TokenKind::RBrace)) {
+            body_stmt = parse_stmt(parser);
         }
-        Node* n = make_node(NK_LABEL, ln);
+        Node* n = parser.make_node(NK_LABEL, ln);
         n->name = lbl;
         n->body = body_stmt;
         return n;
     }
 
     // constexpr / consteval local declarations (C++ mode)
-    if (is_cpp_mode() && (check(TokenKind::KwConstexpr) || check(TokenKind::KwConsteval))) {
-        return parse_local_decl();
+    if (parser.is_cpp_mode() && (parser.check(TokenKind::KwConstexpr) || parser.check(TokenKind::KwConsteval))) {
+        return parser.parse_local_decl();
     }
 
-    if (check(TokenKind::KwAlignas)) {
-        return parse_local_decl();
+    if (parser.check(TokenKind::KwAlignas)) {
+        return parser.parse_local_decl();
     }
 
-    if (is_cpp_mode() &&
-        starts_qualified_member_pointer_type_id(*this, core_input_state_.pos)) {
-        return parse_local_decl();
+    if (parser.is_cpp_mode() &&
+        starts_qualified_member_pointer_type_id(parser, parser.core_input_state_.pos)) {
+        return parser.parse_local_decl();
     }
 
     // Local declaration?
     // Disambiguate: Type::Method(args) is a qualified call expression, not a
     // declaration.  When the first identifier is a type but Type::Ident is NOT
     // a known type, route to expression parsing for qualified calls.
-    if (is_type_start()) {
+    if (parser.is_type_start()) {
         auto follows_assignment_operator = [&](int pos) -> bool {
             if (pos < 0 ||
-                pos >= static_cast<int>(core_input_state_.tokens.size())) return false;
-            switch (core_input_state_.tokens[pos].kind) {
+                pos >= static_cast<int>(parser.core_input_state_.tokens.size())) return false;
+            switch (parser.core_input_state_.tokens[pos].kind) {
                 case TokenKind::Assign:
                 case TokenKind::PlusAssign:
                 case TokenKind::MinusAssign:
@@ -1118,117 +1118,117 @@ Node* Parser::parse_stmt() {
         };
         auto classify_visible_stmt_starter = [&](int pos, int* after_pos) -> int {
             if (after_pos) *after_pos = pos;
-            if (pos < 0 || pos >= static_cast<int>(core_input_state_.tokens.size())) {
+            if (pos < 0 || pos >= static_cast<int>(parser.core_input_state_.tokens.size())) {
                 return 0;
             }
 
-            const TokenKind first_kind = core_input_state_.tokens[pos].kind;
+            const TokenKind first_kind = parser.core_input_state_.tokens[pos].kind;
             if (first_kind != TokenKind::Identifier &&
                 first_kind != TokenKind::ColonColon) {
                 return 0;
             }
 
-            return classify_visible_value_or_type_head(pos, after_pos);
+            return parser.classify_visible_value_or_type_head(pos, after_pos);
         };
-        int starter_tail_pos = core_input_state_.pos;
+        int starter_tail_pos = parser.core_input_state_.pos;
         const int starter_kind =
-            classify_visible_stmt_starter(core_input_state_.pos, &starter_tail_pos);
-        if (is_cpp_mode() && starter_tail_pos <
-                                 static_cast<int>(core_input_state_.tokens.size()) &&
-            (core_input_state_.tokens[starter_tail_pos].kind == TokenKind::Dot ||
-             core_input_state_.tokens[starter_tail_pos].kind == TokenKind::Arrow)) {
+            classify_visible_stmt_starter(parser.core_input_state_.pos, &starter_tail_pos);
+        if (parser.is_cpp_mode() && starter_tail_pos <
+                                 static_cast<int>(parser.core_input_state_.tokens.size()) &&
+            (parser.core_input_state_.tokens[starter_tail_pos].kind == TokenKind::Dot ||
+             parser.core_input_state_.tokens[starter_tail_pos].kind == TokenKind::Arrow)) {
             goto expr_stmt;
         }
-        if (is_cpp_mode() && starter_kind > 0 &&
+        if (parser.is_cpp_mode() && starter_kind > 0 &&
             follows_assignment_operator(starter_tail_pos)) {
             goto expr_stmt;
         }
-        if (is_cpp_mode() && starter_kind > 0 &&
-            starter_tail_pos < static_cast<int>(core_input_state_.tokens.size()) &&
-            (core_input_state_.tokens[starter_tail_pos].kind == TokenKind::Dot ||
-             core_input_state_.tokens[starter_tail_pos].kind == TokenKind::Arrow)) {
+        if (parser.is_cpp_mode() && starter_kind > 0 &&
+            starter_tail_pos < static_cast<int>(parser.core_input_state_.tokens.size()) &&
+            (parser.core_input_state_.tokens[starter_tail_pos].kind == TokenKind::Dot ||
+             parser.core_input_state_.tokens[starter_tail_pos].kind == TokenKind::Arrow)) {
                 goto expr_stmt;
         }
-        if (is_cpp_mode() && starter_kind > 0 &&
-            starter_tail_pos < static_cast<int>(core_input_state_.tokens.size())) {
+        if (parser.is_cpp_mode() && starter_kind > 0 &&
+            starter_tail_pos < static_cast<int>(parser.core_input_state_.tokens.size())) {
             const TokenKind starter_tail_kind =
-                core_input_state_.tokens[starter_tail_pos].kind;
+                parser.core_input_state_.tokens[starter_tail_pos].kind;
             if (starter_tail_kind == TokenKind::LParen ||
                 (starter_tail_kind == TokenKind::Less &&
                  starts_with_value_like_template_expr(
-                     *this, core_input_state_.tokens, core_input_state_.pos))) {
+                     parser, parser.core_input_state_.tokens, parser.core_input_state_.pos))) {
                 goto expr_stmt;
             }
         }
-        if (is_cpp_mode() && check(TokenKind::Identifier) &&
-            core_input_state_.pos + 2 <
-                static_cast<int>(core_input_state_.tokens.size()) &&
-            core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+        if (parser.is_cpp_mode() && parser.check(TokenKind::Identifier) &&
+            parser.core_input_state_.pos + 2 <
+                static_cast<int>(parser.core_input_state_.tokens.size()) &&
+            parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                 TokenKind::ColonColon &&
-            core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+            parser.core_input_state_.tokens[parser.core_input_state_.pos + 2].kind ==
                 TokenKind::KwOperator) {
             goto expr_stmt;
         }
-        if (is_cpp_mode() && check(TokenKind::ColonColon) &&
-            core_input_state_.pos + 3 <
-                static_cast<int>(core_input_state_.tokens.size()) &&
-            core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+        if (parser.is_cpp_mode() && parser.check(TokenKind::ColonColon) &&
+            parser.core_input_state_.pos + 3 <
+                static_cast<int>(parser.core_input_state_.tokens.size()) &&
+            parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                 TokenKind::Identifier &&
-            core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+            parser.core_input_state_.tokens[parser.core_input_state_.pos + 2].kind ==
                 TokenKind::ColonColon &&
-            core_input_state_.tokens[core_input_state_.pos + 3].kind ==
+            parser.core_input_state_.tokens[parser.core_input_state_.pos + 3].kind ==
                 TokenKind::KwOperator) {
             goto expr_stmt;
         }
-        if (is_cpp_mode() &&
-            (check(TokenKind::ColonColon) ||
-             (check(TokenKind::Identifier) &&
-              core_input_state_.pos + 1 <
-                  static_cast<int>(core_input_state_.tokens.size()) &&
-              core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+        if (parser.is_cpp_mode() &&
+            (parser.check(TokenKind::ColonColon) ||
+             (parser.check(TokenKind::Identifier) &&
+              parser.core_input_state_.pos + 1 <
+                  static_cast<int>(parser.core_input_state_.tokens.size()) &&
+              parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                   TokenKind::ColonColon))) {
-            QualifiedNameRef qn;
-            if (peek_qualified_name(&qn, true) &&
+            Parser::QualifiedNameRef qn;
+            if (parser.peek_qualified_name(&qn, true) &&
                 (qn.is_global_qualified || !qn.qualifier_segments.empty())) {
                 const int after_pos =
-                    core_input_state_.pos + (qn.is_global_qualified ? 1 : 0) +
+                    parser.core_input_state_.pos + (qn.is_global_qualified ? 1 : 0) +
                     1 + 2 * static_cast<int>(qn.qualifier_segments.size());
-                if (after_pos < static_cast<int>(core_input_state_.tokens.size()) &&
-                    core_input_state_.tokens[after_pos].kind ==
+                if (after_pos < static_cast<int>(parser.core_input_state_.tokens.size()) &&
+                    parser.core_input_state_.tokens[after_pos].kind ==
                         TokenKind::KwOperator) {
                     // `Type::operator...(...)` in block scope is an
                     // expression statement, not a local declaration.
                     goto expr_stmt;
                 }
-                if (after_pos + 1 < static_cast<int>(core_input_state_.tokens.size()) &&
-                    core_input_state_.tokens[after_pos].kind ==
+                if (after_pos + 1 < static_cast<int>(parser.core_input_state_.tokens.size()) &&
+                    parser.core_input_state_.tokens[after_pos].kind ==
                         TokenKind::ColonColon &&
-                    core_input_state_.tokens[after_pos + 1].kind ==
+                    parser.core_input_state_.tokens[after_pos + 1].kind ==
                         TokenKind::KwOperator) {
                     goto expr_stmt;
                 }
-                if (after_pos < static_cast<int>(core_input_state_.tokens.size()) &&
-                    core_input_state_.tokens[after_pos].kind == TokenKind::LParen &&
-                    starts_parenthesized_member_pointer_declarator(*this, after_pos)) {
-                    return parse_local_decl();
+                if (after_pos < static_cast<int>(parser.core_input_state_.tokens.size()) &&
+                    parser.core_input_state_.tokens[after_pos].kind == TokenKind::LParen &&
+                    starts_parenthesized_member_pointer_declarator(parser, after_pos)) {
+                    return parser.parse_local_decl();
                 }
 
                 const TokenKind after_kind =
-                    after_pos < static_cast<int>(core_input_state_.tokens.size())
-                        ? core_input_state_.tokens[after_pos].kind
+                    after_pos < static_cast<int>(parser.core_input_state_.tokens.size())
+                        ? parser.core_input_state_.tokens[after_pos].kind
                         : TokenKind::EndOfFile;
                 const bool call_like_head =
                     after_kind == TokenKind::LParen ||
                     (after_kind == TokenKind::Less &&
                      starts_with_value_like_template_expr(
-                         *this, core_input_state_.tokens, core_input_state_.pos));
+                         parser, parser.core_input_state_.tokens, parser.core_input_state_.pos));
                 if (call_like_head) {
-                    if (classify_visible_value_or_type_starter(
-                            core_input_state_.pos) > 0) {
+                    if (parser.classify_visible_value_or_type_starter(
+                            parser.core_input_state_.pos) > 0) {
                         goto expr_stmt;
                     }
 
-                    const QualifiedTypeProbe probe = probe_qualified_type(*this, qn);
+                    const QualifiedTypeProbe probe = probe_qualified_type(parser, qn);
                     if (!probe.has_resolved_typedef) {
                         // Likely a qualified call: Type::Method(args)
                         goto expr_stmt;
@@ -1236,15 +1236,15 @@ Node* Parser::parse_stmt() {
                 }
             }
         }
-        return parse_local_decl();
+        return parser.parse_local_decl();
     }
 
 expr_stmt:
 
     // Expression statement
-    Node* expr = parse_expr(*this);
-    match(TokenKind::Semi);
-    Node* n = make_node(NK_EXPR_STMT, ln);
+    Node* expr = parse_expr(parser);
+    parser.match(TokenKind::Semi);
+    Node* n = parser.make_node(NK_EXPR_STMT, ln);
     n->left = expr;
     return n;
 }

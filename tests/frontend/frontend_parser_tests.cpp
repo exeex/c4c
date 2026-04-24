@@ -1167,7 +1167,7 @@ void test_parser_if_condition_decl_uses_local_visible_typedef_scope() {
   parser.push_local_binding_scope();
   parser.bind_local_typedef(alias_text, alias_ts);
 
-  c4c::Node* stmt = parser.parse_stmt();
+  c4c::Node* stmt = c4c::parse_stmt(parser);
   expect_true(stmt != nullptr && stmt->kind == c4c::NK_BLOCK,
               "if-condition declarations should parse as a scoped block when they introduce a declaration");
   expect_eq_int(stmt->n_children, 2,
@@ -1205,7 +1205,7 @@ void test_parser_if_condition_decl_scope_does_not_leak_bindings() {
   parser.push_local_binding_scope();
   parser.bind_local_typedef(alias_text, alias_ts);
 
-  c4c::Node* stmt = parser.parse_stmt();
+  c4c::Node* stmt = c4c::parse_stmt(parser);
   expect_true(stmt != nullptr && stmt->kind == c4c::NK_BLOCK,
               "if-condition declaration scope should still parse as a synthetic block");
   expect_true(stmt->children[1] != nullptr &&
@@ -1216,7 +1216,7 @@ void test_parser_if_condition_decl_scope_does_not_leak_bindings() {
   expect_true(parser.find_visible_var_type("value") == nullptr,
               "if-condition declaration scope should pop after the statement finishes");
 
-  c4c::Node* trailing = parser.parse_stmt();
+  c4c::Node* trailing = c4c::parse_stmt(parser);
   expect_true(trailing != nullptr,
               "parsing should continue after the if-condition declaration scope ends");
 
@@ -1242,7 +1242,7 @@ void test_parser_for_init_decl_uses_loop_lifetime_local_scope() {
   parser.push_local_binding_scope();
   parser.bind_local_typedef(alias_text, alias_ts);
 
-  c4c::Node* stmt = parser.parse_stmt();
+  c4c::Node* stmt = c4c::parse_stmt(parser);
   expect_true(stmt != nullptr && stmt->kind == c4c::NK_FOR,
               "for init declarations should parse as a for-statement node");
   expect_true(stmt->init != nullptr && stmt->init->kind == c4c::NK_DECL,
@@ -1252,7 +1252,7 @@ void test_parser_for_init_decl_uses_loop_lifetime_local_scope() {
   expect_true(parser.find_visible_var_type("value") == nullptr,
               "for init declaration bindings should not leak after the loop");
 
-  c4c::Node* trailing = parser.parse_stmt();
+  c4c::Node* trailing = c4c::parse_stmt(parser);
   expect_true(trailing != nullptr,
               "parsing should continue after the for init declaration scope ends");
 
@@ -1278,7 +1278,7 @@ void test_parser_while_condition_decl_uses_loop_lifetime_local_scope() {
   parser.push_local_binding_scope();
   parser.bind_local_typedef(alias_text, alias_ts);
 
-  c4c::Node* stmt = parser.parse_stmt();
+  c4c::Node* stmt = c4c::parse_stmt(parser);
   expect_true(stmt != nullptr && stmt->kind == c4c::NK_BLOCK,
               "while-condition declarations should parse as a synthetic block");
   expect_eq_int(stmt->n_children, 2,
@@ -1295,7 +1295,7 @@ void test_parser_while_condition_decl_uses_loop_lifetime_local_scope() {
   expect_true(parser.find_visible_var_type("value") == nullptr,
               "while-condition declaration bindings should not leak after the loop");
 
-  c4c::Node* trailing = parser.parse_stmt();
+  c4c::Node* trailing = c4c::parse_stmt(parser);
   expect_true(trailing != nullptr,
               "parsing should continue after the while-condition declaration scope ends");
 
@@ -1321,7 +1321,7 @@ void test_parser_range_for_decl_uses_loop_lifetime_local_scope() {
   parser.push_local_binding_scope();
   parser.bind_local_typedef(alias_text, alias_ts);
 
-  c4c::Node* stmt = parser.parse_stmt();
+  c4c::Node* stmt = c4c::parse_stmt(parser);
   expect_true(stmt != nullptr && stmt->kind == c4c::NK_RANGE_FOR,
               "range-for declarations should parse as a range-for node");
   expect_true(stmt->init != nullptr && stmt->init->kind == c4c::NK_DECL,
@@ -1331,7 +1331,7 @@ void test_parser_range_for_decl_uses_loop_lifetime_local_scope() {
   expect_true(parser.find_visible_var_type("value") == nullptr,
               "range-for declaration bindings should not leak after the loop");
 
-  c4c::Node* trailing = parser.parse_stmt();
+  c4c::Node* trailing = c4c::parse_stmt(parser);
   expect_true(trailing != nullptr,
               "parsing should continue after the range-for declaration scope ends");
 
@@ -1357,7 +1357,7 @@ void test_parser_switch_condition_decl_uses_case_scope_without_leaking() {
   parser.push_local_binding_scope();
   parser.bind_local_typedef(alias_text, alias_ts);
 
-  c4c::Node* stmt = parser.parse_stmt();
+  c4c::Node* stmt = c4c::parse_stmt(parser);
   expect_true(stmt != nullptr && stmt->kind == c4c::NK_BLOCK,
               "switch-condition declarations should parse as a synthetic block");
   expect_eq_int(stmt->n_children, 2,
@@ -1374,7 +1374,7 @@ void test_parser_switch_condition_decl_uses_case_scope_without_leaking() {
   expect_true(parser.find_visible_var_type("value") == nullptr,
               "switch-condition declaration bindings should not leak after the statement finishes");
 
-  c4c::Node* trailing = parser.parse_stmt();
+  c4c::Node* trailing = c4c::parse_stmt(parser);
   expect_true(trailing != nullptr,
               "parsing should continue after the switch-condition declaration scope ends");
 
