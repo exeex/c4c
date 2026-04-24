@@ -796,8 +796,17 @@ void append_value_locations(std::ostringstream& out, const PreparedBirModule& mo
 
     for (const auto& bundle : function_locations.move_bundles) {
       out << "  move_bundle phase=" << prepared_move_phase_name(bundle.phase)
+          << " authority=" << prepared_move_authority_kind_name(bundle.authority_kind)
           << " block_index=" << bundle.block_index
-          << " instruction_index=" << bundle.instruction_index << "\n";
+          << " instruction_index=" << bundle.instruction_index;
+      if (bundle.source_parallel_copy_predecessor_label.has_value() &&
+          bundle.source_parallel_copy_successor_label.has_value()) {
+        out << " source_parallel_copy="
+            << maybe_block_label(module.names, *bundle.source_parallel_copy_predecessor_label)
+            << " -> "
+            << maybe_block_label(module.names, *bundle.source_parallel_copy_successor_label);
+      }
+      out << "\n";
       for (const auto& move : bundle.moves) {
         out << "    move from_value_id=" << move.from_value_id
             << " to_value_id=" << move.to_value_id

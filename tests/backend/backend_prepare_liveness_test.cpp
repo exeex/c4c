@@ -3284,8 +3284,55 @@ int check_phi_join_move_resolution(const prepare::PreparedBirModule& prepared) {
   }
   const auto* control_flow =
       prepare::find_prepared_control_flow_function(prepared.control_flow, function->function_name);
+  const auto* value_locations =
+      prepare::find_prepared_value_location_function(prepared, "phi_join_move_resolution");
+  const auto* bir_function = find_module_function(prepared, "phi_join_move_resolution");
   if (control_flow == nullptr || control_flow->parallel_copy_bundles.empty()) {
     return fail("expected phi_join_move_resolution to publish prepared parallel-copy control-flow data");
+  }
+  if (value_locations == nullptr || bir_function == nullptr) {
+    return fail("expected phi_join_move_resolution to publish prepared value-location move bundles");
+  }
+
+  const auto* left_parallel_copy =
+      prepare::find_prepared_parallel_copy_bundle(prepared.names, *control_flow, "left", "join");
+  const auto* right_parallel_copy =
+      prepare::find_prepared_parallel_copy_bundle(prepared.names, *control_flow, "right", "join");
+  if (left_parallel_copy == nullptr || right_parallel_copy == nullptr) {
+    return fail("expected phi_join_move_resolution to publish both incoming join edges");
+  }
+  const auto left_execution_block =
+      prepare::published_prepared_parallel_copy_execution_block_label(*left_parallel_copy);
+  const auto right_execution_block =
+      prepare::published_prepared_parallel_copy_execution_block_label(*right_parallel_copy);
+  if (!left_execution_block.has_value() || !right_execution_block.has_value() ||
+      prepare::prepared_block_label(prepared.names, *left_execution_block) != "left" ||
+      prepare::prepared_block_label(prepared.names, *right_execution_block) != "right") {
+    return fail("expected each join incoming bundle to publish its predecessor-owned execution block");
+  }
+  const auto* left_move_bundle = prepare::find_prepared_out_of_ssa_parallel_copy_move_bundle(
+      prepared.names, *bir_function, *value_locations, *left_parallel_copy);
+  const auto* right_move_bundle = prepare::find_prepared_out_of_ssa_parallel_copy_move_bundle(
+      prepared.names, *bir_function, *value_locations, *right_parallel_copy);
+  if (left_move_bundle == nullptr || right_move_bundle == nullptr || left_move_bundle == right_move_bundle) {
+    return fail("expected direct move-bundle lookup to keep distinct phi edges addressable through published source labels");
+  }
+  const auto left_label = prepared.names.block_labels.find("left");
+  const auto right_label = prepared.names.block_labels.find("right");
+  const auto join_label = prepared.names.block_labels.find("join");
+  if (left_label == c4c::kInvalidBlockLabel || right_label == c4c::kInvalidBlockLabel ||
+      join_label == c4c::kInvalidBlockLabel) {
+    return fail("expected phi_join_move_resolution labels to resolve in prepared names");
+  }
+  if (left_move_bundle->source_parallel_copy_predecessor_label != left_label ||
+      left_move_bundle->source_parallel_copy_successor_label != join_label ||
+      right_move_bundle->source_parallel_copy_predecessor_label != right_label ||
+      right_move_bundle->source_parallel_copy_successor_label != join_label) {
+    return fail("expected the published phi join move bundles to keep their owning source edge");
+  }
+  if (left_move_bundle->block_index == right_move_bundle->block_index &&
+      left_move_bundle->instruction_index == right_move_bundle->instruction_index) {
+    return fail("expected predecessor-owned phi join bundles to remain distinct in value-location placement");
   }
 
   const auto* left_feed = find_regalloc_value(prepared, *function, "left.feed");
@@ -3336,6 +3383,16 @@ int check_phi_join_move_resolution(const prepare::PreparedBirModule& prepared) {
   if (count_value_move_resolution_to_value_without_authority(
           *function, phi->value_id, prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy) != 0) {
     return fail("expected prepared phi join results to avoid non-authoritative value-move reconstruction");
+  }
+
+  const std::string prepared_dump = prepare::print(prepared);
+  if (prepared_dump.find(
+          "move_bundle phase=block_entry authority=out_of_ssa_parallel_copy block_index=1 instruction_index=0 source_parallel_copy=left -> join") ==
+          std::string::npos ||
+      prepared_dump.find(
+          "move_bundle phase=block_entry authority=out_of_ssa_parallel_copy block_index=2 instruction_index=0 source_parallel_copy=right -> join") ==
+          std::string::npos) {
+    return fail("expected prepared dumps to publish the owning source edge for phi join move bundles");
   }
 
   return 0;

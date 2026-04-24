@@ -394,7 +394,11 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                                    bool uses_cycle_temp_source,
                                    PreparedMoveResolutionOpKind op_kind,
                                    PreparedMoveAuthorityKind authority_kind,
-                                   std::string reason) {
+                                   std::string reason,
+                                   std::optional<BlockLabelId> source_parallel_copy_predecessor_label =
+                                       std::nullopt,
+                                   std::optional<BlockLabelId> source_parallel_copy_successor_label =
+                                       std::nullopt) {
   if (assigned_storage_kind(source) == PreparedMoveStorageKind::None ||
       assigned_storage_kind(destination) == PreparedMoveStorageKind::None ||
       (op_kind == PreparedMoveResolutionOpKind::Move &&
@@ -415,6 +419,10 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                move.uses_cycle_temp_source == uses_cycle_temp_source &&
                move.op_kind == op_kind &&
                move.authority_kind == authority_kind &&
+               move.source_parallel_copy_predecessor_label ==
+                   source_parallel_copy_predecessor_label &&
+               move.source_parallel_copy_successor_label ==
+                   source_parallel_copy_successor_label &&
                move.block_index == block_index &&
                move.instruction_index == instruction_index;
       });
@@ -435,6 +443,8 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       .uses_cycle_temp_source = uses_cycle_temp_source,
       .op_kind = op_kind,
       .authority_kind = authority_kind,
+      .source_parallel_copy_predecessor_label = source_parallel_copy_predecessor_label,
+      .source_parallel_copy_successor_label = source_parallel_copy_successor_label,
       .reason = std::move(reason),
   });
 }
@@ -455,7 +465,11 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                                    bool uses_cycle_temp_source,
                                    PreparedMoveResolutionOpKind op_kind,
                                    PreparedMoveAuthorityKind authority_kind,
-                                   std::string reason) {
+                                   std::string reason,
+                                   std::optional<BlockLabelId> source_parallel_copy_predecessor_label =
+                                       std::nullopt,
+                                   std::optional<BlockLabelId> source_parallel_copy_successor_label =
+                                       std::nullopt) {
   if (from_kind == PreparedMoveStorageKind::None || to_kind == PreparedMoveStorageKind::None) {
     return;
   }
@@ -476,7 +490,11 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                move.instruction_index == instruction_index &&
                move.uses_cycle_temp_source == uses_cycle_temp_source &&
                move.op_kind == op_kind &&
-               move.authority_kind == authority_kind;
+               move.authority_kind == authority_kind &&
+               move.source_parallel_copy_predecessor_label ==
+                   source_parallel_copy_predecessor_label &&
+               move.source_parallel_copy_successor_label ==
+                   source_parallel_copy_successor_label;
       });
   if (duplicate != regalloc_function.move_resolution.end()) {
     return;
@@ -497,6 +515,8 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       .uses_cycle_temp_source = uses_cycle_temp_source,
       .op_kind = op_kind,
       .authority_kind = authority_kind,
+      .source_parallel_copy_predecessor_label = source_parallel_copy_predecessor_label,
+      .source_parallel_copy_successor_label = source_parallel_copy_successor_label,
       .reason = std::move(reason),
   });
 }
@@ -1136,7 +1156,11 @@ void append_prepared_move_bundle(PreparedValueLocationFunction& function_locatio
       [&](const PreparedMoveBundle& bundle) {
         return bundle.phase == phase && bundle.authority_kind == move.authority_kind &&
                bundle.block_index == move.block_index &&
-               bundle.instruction_index == move.instruction_index;
+               bundle.instruction_index == move.instruction_index &&
+               bundle.source_parallel_copy_predecessor_label ==
+                   move.source_parallel_copy_predecessor_label &&
+               bundle.source_parallel_copy_successor_label ==
+                   move.source_parallel_copy_successor_label;
       });
   if (existing != function_locations.move_bundles.end()) {
     existing->moves.push_back(move);
@@ -1148,6 +1172,8 @@ void append_prepared_move_bundle(PreparedValueLocationFunction& function_locatio
       .authority_kind = move.authority_kind,
       .block_index = move.block_index,
       .instruction_index = move.instruction_index,
+      .source_parallel_copy_predecessor_label = move.source_parallel_copy_predecessor_label,
+      .source_parallel_copy_successor_label = move.source_parallel_copy_successor_label,
       .moves = {move},
   });
 }
@@ -1540,7 +1566,9 @@ void append_phi_move_resolution(const PreparedNameTables& names,
                                       false,
                                       PreparedMoveResolutionOpKind::SaveDestinationToTemp,
                                       PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
-                                      phi_temp_save_reason(join_transfer));
+                                      phi_temp_save_reason(join_transfer),
+                                      bundle.predecessor_label,
+                                      bundle.successor_label);
         continue;
       }
 
@@ -1565,7 +1593,11 @@ void append_phi_move_resolution(const PreparedNameTables& names,
           PreparedMoveResolutionOpKind::Move,
           PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
           storage_transfer_reason(
-              phi_transfer_reason_prefix(join_transfer, step.uses_cycle_temp_source), *source, *destination));
+              phi_transfer_reason_prefix(join_transfer, step.uses_cycle_temp_source),
+              *source,
+              *destination),
+          bundle.predecessor_label,
+          bundle.successor_label);
     }
   }
 }

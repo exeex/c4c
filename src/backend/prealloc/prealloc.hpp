@@ -754,6 +754,8 @@ struct PreparedMoveResolution {
   bool uses_cycle_temp_source = false;
   PreparedMoveResolutionOpKind op_kind = PreparedMoveResolutionOpKind::Move;
   PreparedMoveAuthorityKind authority_kind = PreparedMoveAuthorityKind::None;
+  std::optional<BlockLabelId> source_parallel_copy_predecessor_label;
+  std::optional<BlockLabelId> source_parallel_copy_successor_label;
   std::string reason;
 };
 
@@ -882,6 +884,8 @@ struct PreparedMoveBundle {
   PreparedMoveAuthorityKind authority_kind = PreparedMoveAuthorityKind::None;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
+  std::optional<BlockLabelId> source_parallel_copy_predecessor_label;
+  std::optional<BlockLabelId> source_parallel_copy_successor_label;
   std::vector<PreparedMoveResolution> moves;
   std::vector<PreparedAbiBinding> abi_bindings;
 };
@@ -3989,6 +3993,10 @@ find_prepared_out_of_ssa_parallel_copy_move_bundle(
     if (move_bundle.phase != PreparedMovePhase::BlockEntry ||
         move_bundle.authority_kind != PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
         move_bundle.block_index != *block_index) {
+      continue;
+    }
+    if (move_bundle.source_parallel_copy_predecessor_label != parallel_copy_bundle.predecessor_label ||
+        move_bundle.source_parallel_copy_successor_label != parallel_copy_bundle.successor_label) {
       continue;
     }
     if (match != nullptr) {
