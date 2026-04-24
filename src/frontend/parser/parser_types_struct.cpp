@@ -903,7 +903,7 @@ bool try_parse_record_enum_member(
         return false;
 
     parser.consume();
-    Node* ed = parser.parse_enum();
+    Node* ed = parse_enum(parser);
     if (ed && parser.active_context_state_.parsing_top_level_context)
         parser.definition_state_.struct_defs.push_back(ed);
     // After the enum body, there may be one or more field declarators:
@@ -2347,55 +2347,55 @@ Node* parse_struct_or_union(Parser& parser, bool is_union) {
 
 // ── enum parsing ─────────────────────────────────────────────────────────────
 
-Node* Parser::parse_enum() {
-    int ln = cur().line;
-    skip_attributes();
+Node* parse_enum(Parser& parser) {
+    int ln = parser.cur().line;
+    parser.skip_attributes();
 
     bool is_scoped_enum = false;
-    if (check(TokenKind::KwClass) || check(TokenKind::KwStruct)) {
+    if (parser.check(TokenKind::KwClass) || parser.check(TokenKind::KwStruct)) {
         is_scoped_enum = true;
-        consume();
-        skip_attributes();
+        parser.consume();
+        parser.skip_attributes();
     }
 
     const char* tag = nullptr;
-    if (check(TokenKind::Identifier)) {
-        tag = arena_.strdup(std::string(token_spelling(cur())));
-        consume();
+    if (parser.check(TokenKind::Identifier)) {
+        tag = parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
+        parser.consume();
     }
-    skip_attributes();
+    parser.skip_attributes();
 
     TypeBase enum_underlying_base = TB_INT;
-    if (match(TokenKind::Colon)) {
+    if (parser.match(TokenKind::Colon)) {
         // Preserve fixed underlying-type metadata for layout-sensitive queries.
-        TypeSpec underlying_ts = parse_base_type();
-        underlying_ts = resolve_typedef_type_chain(underlying_ts);
+        TypeSpec underlying_ts = parser.parse_base_type();
+        underlying_ts = parser.resolve_typedef_type_chain(underlying_ts);
         enum_underlying_base = effective_scalar_base(underlying_ts);
-        skip_attributes();
+        parser.skip_attributes();
     }
 
     auto register_enum_type = [&](const char* source_tag, const char* canonical_tag) {
         if (!source_tag || !source_tag[0] || !canonical_tag || !canonical_tag[0])
             return;
-        register_tag_type_binding(source_tag, TB_ENUM, canonical_tag,
-                                  enum_underlying_base);
+        parser.register_tag_type_binding(source_tag, TB_ENUM, canonical_tag,
+                                         enum_underlying_base);
         if (strcmp(source_tag, canonical_tag) != 0)
-            register_tag_type_binding(canonical_tag, TB_ENUM, canonical_tag,
-                                      enum_underlying_base);
+            parser.register_tag_type_binding(canonical_tag, TB_ENUM, canonical_tag,
+                                             enum_underlying_base);
     };
 
-    if (!check(TokenKind::LBrace)) {
+    if (!parser.check(TokenKind::LBrace)) {
         if (!tag) {
             char buf[32];
             snprintf(buf, sizeof(buf), "_anon_enum_%d",
-                     definition_state_.anon_counter++);
-            tag = arena_.strdup(buf);
+                     parser.definition_state_.anon_counter++);
+            tag = parser.arena_.strdup(buf);
         }
-        Node* ref = make_node(NK_ENUM_DEF, ln);
-        ref->name = arena_.strdup(bridge_name_in_context(
-            current_namespace_context_id(),
-            parser_text_id_for_token(kInvalidText, tag), tag).c_str());
-        apply_decl_namespace(ref, current_namespace_context_id(), tag);
+        Node* ref = parser.make_node(NK_ENUM_DEF, ln);
+        ref->name = parser.arena_.strdup(parser.bridge_name_in_context(
+            parser.current_namespace_context_id(),
+            parser.parser_text_id_for_token(kInvalidText, tag), tag).c_str());
+        parser.apply_decl_namespace(ref, parser.current_namespace_context_id(), tag);
         ref->n_enum_variants = -1;
         register_enum_type(tag, ref->name);
         return ref;
@@ -2404,45 +2404,47 @@ Node* Parser::parse_enum() {
     if (!tag) {
         char buf[32];
         snprintf(buf, sizeof(buf), "_anon_enum_%d",
-                 definition_state_.anon_counter++);
-        tag = arena_.strdup(buf);
+                 parser.definition_state_.anon_counter++);
+        tag = parser.arena_.strdup(buf);
     }
 
-    Node* ed = make_node(NK_ENUM_DEF, ln);
-    ed->name = arena_.strdup(bridge_name_in_context(
-        current_namespace_context_id(), parser_text_id_for_token(kInvalidText, tag),
+    Node* ed = parser.make_node(NK_ENUM_DEF, ln);
+    ed->name = parser.arena_.strdup(parser.bridge_name_in_context(
+        parser.current_namespace_context_id(), parser.parser_text_id_for_token(kInvalidText, tag),
         tag).c_str());
-    apply_decl_namespace(ed, current_namespace_context_id(), tag);
+    parser.apply_decl_namespace(ed, parser.current_namespace_context_id(), tag);
     register_enum_type(tag, ed->name);
 
-    consume();  // consume {
+    parser.consume();  // consume {
 
     std::vector<const char*> names;
     std::vector<long long>   vals;
     std::unordered_set<TextId> seen_names;
-    ParserEnumConstTable local_enum_consts = binding_state_.enum_consts;
+    ParserEnumConstTable local_enum_consts = parser.binding_state_.enum_consts;
     long long cur_val = 0;
 
-    while (!at_end() && !check(TokenKind::RBrace)) {
-        skip_attributes();
-        if (!check(TokenKind::Identifier)) { consume(); continue; }
+    while (!parser.at_end() && !parser.check(TokenKind::RBrace)) {
+        parser.skip_attributes();
+        if (!parser.check(TokenKind::Identifier)) { parser.consume(); continue; }
         const TextId vname_text_id =
-            parser_text_id_for_token(cur().text_id, token_spelling(cur()));
-        const char* vname = arena_.strdup(std::string(token_spelling(cur())));
+            parser.parser_text_id_for_token(parser.cur().text_id,
+                                            parser.token_spelling(parser.cur()));
+        const char* vname =
+            parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
         std::string vname_s(vname ? vname : "");
         if (vname_text_id != kInvalidText && seen_names.count(vname_text_id))
             throw std::runtime_error("duplicate enumerator: " + vname_s);
         if (vname_text_id != kInvalidText) seen_names.insert(vname_text_id);
-        consume();
+        parser.consume();
         // Skip __attribute__((...)) between enum constant name and '='
         // e.g. _CLOCK_REALTIME __attribute__((availability(...))) = 0,
-        skip_attributes();
+        parser.skip_attributes();
         long long vval = cur_val;
-        if (match(TokenKind::Assign)) {
-            Node* ve = parse_assign_expr();
+        if (parser.match(TokenKind::Assign)) {
+            Node* ve = parser.parse_assign_expr();
             if (!eval_enum_expr(ve, local_enum_consts, &vval)) {
-                if (is_cpp_mode() &&
-                    is_dependent_enum_expr(ve, binding_state_.enum_consts)) {
+                if (parser.is_cpp_mode() &&
+                    is_dependent_enum_expr(ve, parser.binding_state_.enum_consts)) {
                     vval = 0;  // Placeholder until template/dependent evaluation exists.
                 } else {
                 throw std::runtime_error("enum initializer is not an integer constant expression");
@@ -2450,22 +2452,24 @@ Node* Parser::parse_enum() {
             }
         }
         // Skip __attribute__((...)) annotations after enum value (e.g. availability macros)
-        skip_attributes();
+        parser.skip_attributes();
         cur_val = vval + 1;
         names.push_back(vname);
         vals.push_back(vval);
         // Track enum constants for subsequent initializers in this enum body.
         if (vname_text_id != kInvalidText) local_enum_consts[vname_text_id] = vval;
-        if (!match(TokenKind::Comma)) break;
+        if (!parser.match(TokenKind::Comma)) break;
         // Trailing comma before } is allowed
-        if (check(TokenKind::RBrace)) break;
+        if (parser.check(TokenKind::RBrace)) break;
     }
-    expect(TokenKind::RBrace);
+    parser.expect(TokenKind::RBrace);
 
     ed->n_enum_variants = (int)names.size();
     if (ed->n_enum_variants > 0) {
-        ed->enum_names = arena_.alloc_array<const char*>(ed->n_enum_variants);
-        ed->enum_vals  = arena_.alloc_array<long long>(ed->n_enum_variants);
+        ed->enum_names =
+            parser.arena_.alloc_array<const char*>(ed->n_enum_variants);
+        ed->enum_vals =
+            parser.arena_.alloc_array<long long>(ed->n_enum_variants);
         for (int i = 0; i < ed->n_enum_variants; ++i) {
             ed->enum_names[i] = names[i];
             ed->enum_vals[i]  = vals[i];
@@ -2475,14 +2479,14 @@ Node* Parser::parse_enum() {
         for (int i = 0; i < ed->n_enum_variants; ++i)
             if (ed->enum_names[i] && ed->enum_names[i][0]) {
                 const TextId enum_name_text_id =
-                    parser_text_id_for_token(kInvalidText, ed->enum_names[i]);
+                    parser.parser_text_id_for_token(kInvalidText, ed->enum_names[i]);
                 if (enum_name_text_id != kInvalidText)
-                    binding_state_.enum_consts[enum_name_text_id] =
+                    parser.binding_state_.enum_consts[enum_name_text_id] =
                         ed->enum_vals[i];
             }
     }
-    if (active_context_state_.parsing_top_level_context)
-        definition_state_.struct_defs.push_back(ed);
+    if (parser.active_context_state_.parsing_top_level_context)
+        parser.definition_state_.struct_defs.push_back(ed);
     return ed;
 }
 

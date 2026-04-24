@@ -740,9 +740,6 @@ class Parser {
                                  std::string* saved_struct_tag,
                                  std::string* struct_source_name);
 
-  // ── enum parsing ──────────────────────────────────────────────────────────
-  Node* parse_enum();
-
   // ── parameter parsing ─────────────────────────────────────────────────────
   Node* parse_param();
 

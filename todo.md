@@ -8,12 +8,12 @@ Current Step Title: Move Implementation-Only Method Declarations Behind The Boun
 
 ## Just Finished
 
-Completed Step 3 declaration-boundary slice by removing the outer
-record-definition helper declarations from public `Parser` declarations in
-`src/frontend/parser/parser.hpp`, adding equivalent private free-helper
-declarations to `src/frontend/parser/impl/parser_impl.hpp`, and retargeting
-definitions plus internal call sites in
-`src/frontend/parser/parser_types_struct.cpp` and
+Completed Step 3 declaration-boundary slice by removing the implementation-only
+enum parser entry from public `Parser` declarations in
+`src/frontend/parser/parser.hpp`, adding the equivalent private
+`parse_enum(Parser& parser)` declaration to
+`src/frontend/parser/impl/parser_impl.hpp`, and retargeting the definition plus
+internal call sites in `src/frontend/parser/parser_types_struct.cpp` and
 `src/frontend/parser/parser_types_base.cpp` to pass `Parser&` through the
 private parser implementation boundary.
 
@@ -39,12 +39,12 @@ plan, keeping implementation-only declarations behind
 - `begin_record_body_context` remains publicly declared because
   `tests/frontend/frontend_parser_tests.cpp` calls it directly; the moved
   outer record-definition helpers had no external source or test references.
-- The moved outer record-definition helpers now live in `impl/parser_impl.hpp`,
-  with definitions and internal call sites passing `Parser&`.
+- `parse_enum` now lives behind `impl/parser_impl.hpp`; current source search
+  found only parser implementation call sites.
 
 ## Proof
 
-Executor Step 3 focused proof passed for the outer record-definition helper
+Executor Step 3 focused proof passed for the enum parser entry
 declaration-boundary slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 
