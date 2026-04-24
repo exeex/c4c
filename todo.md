@@ -8,14 +8,12 @@ Current Step Title: Move Implementation-Only Method Declarations Behind The Boun
 
 ## Just Finished
 
-Completed Step 3 by removing the pragma helper declarations from public
-`Parser` in `src/frontend/parser/parser.hpp`, adding equivalent private
-implementation helper declarations to
-`src/frontend/parser/impl/parser_impl.hpp`, converting definitions in
-`src/frontend/parser/parser_core.cpp` to implementation free functions, and
-updating pragma helper call sites in
-`src/frontend/parser/parser_declarations.cpp` and
-`src/frontend/parser/parser_statements.cpp`.
+Completed Step 3 by removing the implementation-only `bin_prec` declaration
+from public `Parser` in `src/frontend/parser/parser.hpp`, adding the equivalent
+private implementation helper declaration to
+`src/frontend/parser/impl/parser_impl.hpp`, and converting the definition in
+`src/frontend/parser/parser_expressions.cpp` to an implementation free
+function used by expression parsing.
 
 ## Suggested Next
 
@@ -36,9 +34,9 @@ keeping implementation-only declarations behind
 - Keep any test-only hooks clearly named and isolated.
 - `Parser` move operations are explicitly deleted in this slice because the
   compatibility boundary keeps public reference members bound into `ParserImpl`.
-- `rg` confirms `handle_pragma_pack`, `handle_pragma_gcc_visibility`, and
-  `handle_pragma_exec` are no longer declared in public `parser.hpp`; the
-  remaining declarations live in `impl/parser_impl.hpp`.
+- `rg` confirms `bin_prec` is no longer declared in public `parser.hpp`; the
+  remaining declaration lives in `impl/parser_impl.hpp`, with the definition
+  and call in `parser_expressions.cpp`.
 
 ## Proof
 

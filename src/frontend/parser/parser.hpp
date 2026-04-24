@@ -884,9 +884,6 @@ class Parser {
   Node* parse_sizeof_pack_expr(int ln); // sizeof...(pack)
   Node* parse_new_expr(int ln, bool global_qualified); // C++ new expression
 
-  // Operator precedence helper.
-  static int bin_prec(TokenKind k);
-
   // ── statement parsing ─────────────────────────────────────────────────────
   Node* parse_stmt();
   Node* parse_block();           // { ... }

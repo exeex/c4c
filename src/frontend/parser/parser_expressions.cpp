@@ -40,7 +40,7 @@ static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& t
     if (ts.is_rvalue_ref) out += "_rref";
 }
 
-int Parser::bin_prec(TokenKind k) {
+int bin_prec(TokenKind k) {
     switch (k) {
         case TokenKind::PipePipe:       return 4;
         case TokenKind::AmpAmp:         return 5;

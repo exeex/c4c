@@ -36,6 +36,7 @@ long long align_base(TypeBase b, int ptr_level);
 bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);
 bool is_type_kw(TokenKind k);
+int bin_prec(TokenKind k);
 
 bool lexeme_is_imaginary(const char* s);
 long long parse_int_lexeme(const char* s);
