@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/93_hir_agent_index_header_hierarchy.md
 Source Plan Path: plan.md
-Current Step ID: 7
-Current Step Title: Refresh HIR README
+Current Step ID: 8
+Current Step Title: Final Structural Validation
 
 # Current Packet
 
