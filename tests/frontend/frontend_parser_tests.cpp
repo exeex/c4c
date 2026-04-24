@@ -2244,7 +2244,9 @@ void test_parser_alias_template_value_probes_use_token_spelling() {
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
   c4c::Token seed{};
 
-  parser.template_state_.alias_template_info["Alias"] = {};
+  parser.template_state_.alias_template_info[parser.alias_template_key_in_context(
+      parser.current_namespace_context_id(), parser.find_parser_text_id("Alias"),
+      "Alias")] = {};
   parser.tokens_ = {
       parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
       parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
@@ -2268,7 +2270,10 @@ void test_parser_alias_template_value_probes_use_token_spelling() {
   resolved_parser.register_typedef_binding("ns::Alias", alias_ts, true);
   resolved_parser.namespace_state_.using_value_aliases[0][alias_text] = {
       resolved_parser.intern_semantic_name_key("ns::Alias"), "corrupted"};
-  resolved_parser.template_state_.alias_template_info["ns::Alias"] = {};
+  resolved_parser.template_state_.alias_template_info
+      [resolved_parser.alias_template_key_in_context(
+          resolved_parser.current_namespace_context_id(),
+          resolved_parser.find_parser_text_id("ns::Alias"), "ns::Alias")] = {};
   resolved_parser.tokens_ = {
       resolved_parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Alias"),
       resolved_parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
