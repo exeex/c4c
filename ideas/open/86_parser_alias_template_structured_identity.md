@@ -41,6 +41,15 @@ Make alias-template and adjacent template-owned parser identity structured
 first, so alias lookup, alias application, and template-owned member/type
 follow-through stop depending on canonical rendered names as the primary key.
 
+## Execution Note
+
+- The active Step 5 parser packet completed the bridge narrowing in
+  `parser_types_base.cpp`: structured owner/member lookup now runs before the
+  `_t` / trait-style compatibility fallbacks, and the legacy bridge path is
+  explicitly fallback-only.
+- The prior runbook is exhausted. Any remaining parser identity work should be
+  reactivated as a fresh plan only if it has a distinct execution boundary.
+
 The intended direction is:
 
 - keep lexical scope lookup separate from namespace traversal, as established
