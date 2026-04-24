@@ -1,40 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/91_advanced_prepared_call_authority_and_grouped_width_allocation.md
 Source Plan Path: plan.md
-Current Step ID: 3.3
-Current Step Title: Make Grouped Spill And Reload Publication Truthful
-Plan Review Counter: 1 / 6
+Current Step ID: 4
+Current Step Title: Prove Consumer Use And Decide Closure
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 3.3 added grouped float spill/reload parity proof on top of the existing
-vector and grouped GPR coverage, proving that a width-2 RISC-V call-crossing
-float value can be evicted from the only legal `fs1,fs2` callee span, keep
-truthful `spill_register_authority`, publish matching grouped spill/reload
-ops, and preserve grouped stack-storage identity through liveness checks,
-direct prepared consumption, and prepared-printer output.
+Step 3.3 is now complete: grouped spill/reload publication has direct vector,
+grouped GPR, and width-2 float proof, including call-crossing eviction from
+the lone legal grouped callee span, truthful `spill_register_authority`,
+matching grouped spill/reload ops, and preserved grouped stack-storage
+identity across liveness, direct prepared consumption, and prepared-printer
+surfaces.
 
 ## Suggested Next
 
-Ask the supervisor whether Step 3.3 can now close and move on to the next
-remaining grouped-width runbook packet, since grouped spill/reload publication
-now has direct vector, grouped GPR, and grouped float proof.
+Execute Step 4 by treating the grouped-width substeps as complete, using the
+fresh backend build and `^backend_` proof as the current validation baseline,
+and deciding whether any remaining consumer-use gaps still belong to idea 91
+or should be split into follow-on work before closure is considered.
 
 ## Watchouts
 
-- The grouped general and grouped float spill fixtures both need real
-  post-call pressure to force eviction from the lone width-2 callee span; if
-  that pressure drops, the proof silently becomes a non-spill case again.
-- Grouped spill/reload publication now has direct proof for vector LMUL,
-  width-2 general spans, and width-2 float spans without reopening grouped
-  allocation policy.
-- Do not reopen width-aware pool policy or idea 90 follow-on work from this
-  packet.
+- Do not close idea 91 directly from Step 3.3 completion alone; Step 4 still
+  owns the final consumer-use review and leftover classification.
+- The supervisor's before/after `^backend_` runs were green, but the
+  monotonic regression-guard script did not produce a closure-ready pass
+  because the strengthened proof lives inside existing backend test binaries
+  rather than increasing the CTest pass count.
+- Keep idea 90 out-of-SSA follow-on work and any width-aware pool-policy
+  redesign outside this Step 4 packet unless the remaining gap is proven to be
+  required for idea 91 closure.
 
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-Result: passed after adding focused backend liveness, direct prepared-consumer,
-and prepared-printer proof for grouped width-2 float spill/reload parity.
+Result: baseline commit `14c7bdde` and current `HEAD` both passed; this is the
+current validation baseline for Step 4 closure judgment.
 Log: `test_after.log`
