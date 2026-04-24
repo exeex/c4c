@@ -3,7 +3,7 @@ Source Idea Path: ideas/open/90_out_of_ssa_critical_edge_and_parallel_copy_deepe
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Make Ordering, Cycle Breaking, And Carrier Use Truthful
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
