@@ -1055,7 +1055,10 @@ const TypeSpec* Parser::find_visible_var_type(TextId name_text_id,
         }
     }
     if (const TypeSpec* type = find_var_type(std::string(name))) return type;
-    const std::string resolved = resolve_visible_value_name(name_text_id, name);
+    const VisibleNameResult resolved_result =
+        resolve_visible_value(name_text_id, name);
+    if (!resolved_result) return nullptr;
+    const std::string resolved = visible_name_spelling(resolved_result);
     if (resolved.empty() || resolved == name) return nullptr;
     const TextId resolved_text_id = find_parser_text_id(resolved);
     if (can_probe_local_binding(resolved_text_id, resolved)) {
@@ -2089,23 +2092,63 @@ const char* Parser::qualify_name_arena(const char* name) {
     return qualify_name_arena(parser_text_id_for_token(kInvalidText, name), name);
 }
 
-std::string Parser::resolve_visible_value_name(TextId name_text_id,
-                                               std::string_view name) const {
+Parser::VisibleNameResult Parser::resolve_visible_value(
+    TextId name_text_id, std::string_view name) const {
     if (can_probe_local_binding(name_text_id, name) &&
         find_local_visible_var_type(name_text_id)) {
-        return std::string(name);
+        VisibleNameResult result;
+        result.found = true;
+        result.kind = VisibleNameKind::Value;
+        result.base_text_id = name_text_id;
+        result.context_id = current_namespace_context_id();
+        result.source = VisibleNameSource::Local;
+        result.compatibility_spelling = std::string(name);
+        return result;
     }
     const std::string spelled(name);
-    return resolve_visible_name_from_namespace_stack(
-        namespace_state_.namespace_stack, spelled,
-        [&](int context_id, std::string* resolved) {
-            if (lookup_using_value_alias(context_id, name_text_id, spelled,
-                                         resolved)) {
-                return true;
+    VisibleNameResult result;
+    for (int i = static_cast<int>(namespace_state_.namespace_stack.size()) - 1;
+         i >= 0; --i) {
+        const int context_id = namespace_state_.namespace_stack[i];
+        std::string alias_name;
+        if (lookup_using_value_alias(context_id, name_text_id, spelled,
+                                     &alias_name)) {
+            const TextId alias_text_id = find_parser_text_id(alias_name);
+            if (lookup_value_in_context(context_id, alias_text_id, alias_name,
+                                        &result)) {
+                result.source = VisibleNameSource::UsingAlias;
+                return result;
             }
-            return lookup_value_in_context(context_id, name_text_id, spelled,
-                                           resolved);
-        });
+            result.found = true;
+            result.kind = VisibleNameKind::Value;
+            result.base_text_id = alias_text_id != kInvalidText ? alias_text_id
+                                                                : name_text_id;
+            result.context_id = context_id;
+            result.source = VisibleNameSource::UsingAlias;
+            result.compatibility_spelling = alias_name;
+            return result;
+        }
+        if (lookup_value_in_context(context_id, name_text_id, spelled,
+                                    &result)) {
+            return result;
+        }
+    }
+    return {};
+}
+
+Parser::VisibleNameResult Parser::resolve_visible_value(
+    std::string_view name) const {
+    return resolve_visible_value(find_parser_text_id(name), name);
+}
+
+std::string Parser::resolve_visible_value_name(TextId name_text_id,
+                                               std::string_view name) const {
+    const VisibleNameResult result = resolve_visible_value(name_text_id, name);
+    if (result) {
+        const std::string spelling = visible_name_spelling(result);
+        if (!spelling.empty()) return spelling;
+    }
+    return std::string(name);
 }
 
 std::string Parser::resolve_visible_value_name(const std::string& name) const {
@@ -2219,19 +2262,44 @@ std::string Parser::resolve_visible_type_name(std::string_view name) const {
     return resolve_visible_type_name(find_parser_text_id(name), name);
 }
 
-std::string Parser::resolve_visible_concept_name(TextId name_text_id,
-                                                 std::string_view name) const {
+Parser::VisibleNameResult Parser::resolve_visible_concept(
+    TextId name_text_id, std::string_view name) const {
     if (name_text_id != kInvalidText && is_unqualified_lookup_name(name) &&
         binding_state_.concept_name_text_ids.count(name_text_id) > 0) {
-        return std::string(name);
+        VisibleNameResult result;
+        result.found = true;
+        result.kind = VisibleNameKind::Concept;
+        result.base_text_id = name_text_id;
+        result.context_id = current_namespace_context_id();
+        result.source = VisibleNameSource::Local;
+        result.compatibility_spelling = std::string(name);
+        return result;
     }
     const std::string spelled(name);
-    return resolve_visible_name_from_namespace_stack(
-        namespace_state_.namespace_stack, spelled,
-        [&](int context_id, std::string* resolved) {
-            return lookup_concept_in_context(context_id, name_text_id, spelled,
-                                             resolved);
-        });
+    VisibleNameResult result;
+    for (int i = static_cast<int>(namespace_state_.namespace_stack.size()) - 1;
+         i >= 0; --i) {
+        if (lookup_concept_in_context(namespace_state_.namespace_stack[i],
+                                      name_text_id, spelled, &result)) {
+            return result;
+        }
+    }
+    return {};
+}
+
+Parser::VisibleNameResult Parser::resolve_visible_concept(
+    std::string_view name) const {
+    return resolve_visible_concept(find_parser_text_id(name), name);
+}
+
+std::string Parser::resolve_visible_concept_name(TextId name_text_id,
+                                                 std::string_view name) const {
+    const VisibleNameResult result = resolve_visible_concept(name_text_id, name);
+    if (result) {
+        const std::string spelling = visible_name_spelling(result);
+        if (!spelling.empty()) return spelling;
+    }
+    return std::string(name);
 }
 
 std::string Parser::resolve_visible_concept_name(const std::string& name) const {
@@ -2249,8 +2317,7 @@ bool Parser::is_concept_name(const std::string& name) const {
         binding_state_.concept_name_text_ids.count(name_text_id) > 0) {
         return true;
     }
-    const std::string resolved = resolve_visible_concept_name(name_text_id, name);
-    return resolved != name;
+    return static_cast<bool>(resolve_visible_concept(name_text_id, name));
 }
 
 void Parser::refresh_current_namespace_bridge() {
@@ -2431,31 +2498,60 @@ std::string Parser::qualified_name_text(const QualifiedNameRef& name,
     return qualified;
 }
 
-std::string Parser::resolve_qualified_value_name(
+Parser::VisibleNameResult Parser::resolve_qualified_value(
     const QualifiedNameRef& name) const {
     const std::string base_name =
         std::string(parser_text(name.base_text_id, name.base_name));
     if (name.qualifier_segments.empty()) {
-        return name.is_global_qualified
-                   ? base_name
-                   : resolve_visible_value_name(name.base_text_id, base_name);
+        if (!name.is_global_qualified) {
+            return resolve_visible_value(name.base_text_id, base_name);
+        }
+        VisibleNameResult result;
+        if (lookup_value_in_context(0, name.base_text_id, base_name, &result)) {
+            return result;
+        }
+        result.found = true;
+        result.kind = VisibleNameKind::Value;
+        result.base_text_id = name.base_text_id;
+        result.context_id = 0;
+        result.source = VisibleNameSource::Fallback;
+        result.compatibility_spelling = base_name;
+        return result;
     }
 
     const int context_id = resolve_namespace_context(name);
     if (context_id < 0) return {};
 
+    VisibleNameResult result;
     std::string alias_name;
     if (lookup_using_value_alias(context_id, name.base_text_id, base_name,
                                  &alias_name)) {
-        return alias_name;
+        const TextId alias_text_id = find_parser_text_id(alias_name);
+        if (lookup_value_in_context(context_id, alias_text_id, alias_name,
+                                    &result)) {
+            result.source = VisibleNameSource::UsingAlias;
+            return result;
+        }
+        result.found = true;
+        result.kind = VisibleNameKind::Value;
+        result.base_text_id = alias_text_id != kInvalidText ? alias_text_id
+                                                            : name.base_text_id;
+        result.context_id = context_id;
+        result.source = VisibleNameSource::UsingAlias;
+        result.compatibility_spelling = alias_name;
+        return result;
     }
 
-    std::string resolved;
     if (lookup_value_in_context(context_id, name.base_text_id, base_name,
-                                &resolved)) {
-        return resolved;
+                                &result)) {
+        return result;
     }
     return {};
+}
+
+std::string Parser::resolve_qualified_value_name(
+    const QualifiedNameRef& name) const {
+    return visible_name_spelling(resolve_qualified_value(name));
 }
 
 Parser::VisibleNameResult Parser::resolve_qualified_type(
@@ -2524,18 +2620,32 @@ bool Parser::lookup_using_value_alias(int context_id, TextId name_text_id,
 
 bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
                                      std::string_view name,
-                                     std::string* resolved) const {
+                                     VisibleNameResult* resolved) const {
+    if (!resolved) return false;
     const QualifiedNameKey candidate_key =
         known_fn_name_key_in_context(context_id, name_text_id, name);
     if (has_known_fn_name(candidate_key)) {
-        *resolved = render_structured_name(*this, candidate_key);
-        return !resolved->empty();
+        resolved->found = true;
+        resolved->kind = VisibleNameKind::Value;
+        resolved->key = candidate_key;
+        resolved->base_text_id = candidate_key.base_text_id;
+        resolved->context_id = context_id;
+        resolved->source = VisibleNameSource::Namespace;
+        resolved->compatibility_spelling =
+            render_structured_name(*this, candidate_key);
+        return !resolved->compatibility_spelling.empty();
     }
 
     const std::string structured_candidate =
         render_value_binding_name(*this, candidate_key);
     if (!structured_candidate.empty() && has_var_type(structured_candidate)) {
-        *resolved = structured_candidate;
+        resolved->found = true;
+        resolved->kind = VisibleNameKind::Value;
+        resolved->key = candidate_key;
+        resolved->base_text_id = candidate_key.base_text_id;
+        resolved->context_id = context_id;
+        resolved->source = VisibleNameSource::Namespace;
+        resolved->compatibility_spelling = structured_candidate;
         return true;
     }
     const std::string fallback_name(name);
@@ -2543,11 +2653,23 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
         const QualifiedNameKey global_key =
             known_fn_name_key_in_context(0, name_text_id, fallback_name);
         if (has_known_fn_name(global_key)) {
-            *resolved = render_structured_name(*this, global_key);
-            return !resolved->empty();
+            resolved->found = true;
+            resolved->kind = VisibleNameKind::Value;
+            resolved->key = global_key;
+            resolved->base_text_id = global_key.base_text_id;
+            resolved->context_id = context_id;
+            resolved->source = VisibleNameSource::Namespace;
+            resolved->compatibility_spelling =
+                render_structured_name(*this, global_key);
+            return !resolved->compatibility_spelling.empty();
         }
         if (has_var_type(fallback_name)) {
-            *resolved = name;
+            resolved->found = true;
+            resolved->kind = VisibleNameKind::Value;
+            resolved->base_text_id = name_text_id;
+            resolved->context_id = context_id;
+            resolved->source = VisibleNameSource::Fallback;
+            resolved->compatibility_spelling = fallback_name;
             return true;
         }
     }
@@ -2555,8 +2677,12 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
     auto anon_it = namespace_state_.anonymous_namespace_children.find(context_id);
     if (anon_it != namespace_state_.anonymous_namespace_children.end()) {
         for (int anon_id : anon_it->second) {
-            if (lookup_value_in_context(anon_id, name_text_id, name, resolved))
+            if (lookup_value_in_context(anon_id, name_text_id, name, resolved)) {
+                if (resolved->source == VisibleNameSource::Namespace) {
+                    resolved->source = VisibleNameSource::AnonymousNamespace;
+                }
                 return true;
+            }
         }
     }
 
@@ -2565,6 +2691,9 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
         for (int imported_id : using_it->second) {
             if (lookup_value_in_context(imported_id, name_text_id, name,
                                         resolved)) {
+                if (resolved->source == VisibleNameSource::Namespace) {
+                    resolved->source = VisibleNameSource::ImportedNamespace;
+                }
                 return true;
             }
         }
@@ -2573,10 +2702,28 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
     const std::string candidate =
         render_lookup_name_in_context(*this, context_id, name_text_id, name);
     if (has_var_type(candidate)) {
-        *resolved = candidate;
+        resolved->found = true;
+        resolved->kind = VisibleNameKind::Value;
+        resolved->key = candidate_key;
+        resolved->base_text_id = name_text_id;
+        resolved->context_id = context_id;
+        resolved->source = VisibleNameSource::Fallback;
+        resolved->compatibility_spelling = candidate;
         return true;
     }
     return false;
+}
+
+bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
+                                     std::string_view name,
+                                     std::string* resolved) const {
+    if (!resolved) return false;
+    VisibleNameResult result;
+    if (!lookup_value_in_context(context_id, name_text_id, name, &result)) {
+        return false;
+    }
+    *resolved = visible_name_spelling(result);
+    return !resolved->empty();
 }
 
 bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
@@ -2673,7 +2820,7 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
 
 bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
                                        std::string_view name,
-                                       std::string* resolved) const {
+                                       VisibleNameResult* resolved) const {
     if (!resolved) return false;
     if (name_text_id == kInvalidText) {
         name_text_id = find_parser_text_id(name);
@@ -2681,15 +2828,28 @@ bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
     if (context_id == 0 && name_text_id != kInvalidText &&
         is_unqualified_lookup_name(name) &&
         binding_state_.concept_name_text_ids.count(name_text_id) > 0) {
-        *resolved = std::string(name);
+        resolved->found = true;
+        resolved->kind = VisibleNameKind::Concept;
+        resolved->base_text_id = name_text_id;
+        resolved->context_id = context_id;
+        resolved->source = VisibleNameSource::Local;
+        resolved->compatibility_spelling = std::string(name);
         return true;
     }
     const QualifiedNameKey candidate_key =
         known_fn_name_key_in_context(context_id, name_text_id, name);
     if (has_structured_concept_name(candidate_key)) {
-        *resolved = render_structured_name(*this, candidate_key);
-        if (resolved->empty()) {
-            *resolved = bridge_name_in_context(context_id, name_text_id, name);
+        resolved->found = true;
+        resolved->kind = VisibleNameKind::Concept;
+        resolved->key = candidate_key;
+        resolved->base_text_id = candidate_key.base_text_id;
+        resolved->context_id = context_id;
+        resolved->source = VisibleNameSource::Namespace;
+        resolved->compatibility_spelling =
+            render_structured_name(*this, candidate_key);
+        if (resolved->compatibility_spelling.empty()) {
+            resolved->compatibility_spelling =
+                bridge_name_in_context(context_id, name_text_id, name);
         }
         return true;
     }
@@ -2697,8 +2857,12 @@ bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
     auto anon_it = namespace_state_.anonymous_namespace_children.find(context_id);
     if (anon_it != namespace_state_.anonymous_namespace_children.end()) {
         for (int anon_id : anon_it->second) {
-            if (lookup_concept_in_context(anon_id, name_text_id, name, resolved))
+            if (lookup_concept_in_context(anon_id, name_text_id, name, resolved)) {
+                if (resolved->source == VisibleNameSource::Namespace) {
+                    resolved->source = VisibleNameSource::AnonymousNamespace;
+                }
                 return true;
+            }
         }
     }
 
@@ -2707,11 +2871,26 @@ bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
         for (int imported_id : using_it->second) {
             if (lookup_concept_in_context(imported_id, name_text_id, name,
                                           resolved)) {
+                if (resolved->source == VisibleNameSource::Namespace) {
+                    resolved->source = VisibleNameSource::ImportedNamespace;
+                }
                 return true;
             }
         }
     }
     return false;
+}
+
+bool Parser::lookup_concept_in_context(int context_id, TextId name_text_id,
+                                       std::string_view name,
+                                       std::string* resolved) const {
+    if (!resolved) return false;
+    VisibleNameResult result;
+    if (!lookup_concept_in_context(context_id, name_text_id, name, &result)) {
+        return false;
+    }
+    *resolved = visible_name_spelling(result);
+    return !resolved->empty();
 }
 
 bool Parser::peek_qualified_name(QualifiedNameRef* out, bool allow_global) const {

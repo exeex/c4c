@@ -1261,7 +1261,8 @@ Node* Parser::parse_primary() {
         core_input_state_.tokens[core_input_state_.pos + 1].kind ==
             TokenKind::Identifier) {
         QualifiedNameRef qn = parse_qualified_name(true);
-        std::string qualified_name = resolve_qualified_value_name(qn);
+        const VisibleNameResult resolved_value = resolve_qualified_value(qn);
+        std::string qualified_name = visible_name_spelling(resolved_value);
         if (qualified_name.empty()) {
             qualified_name = qualified_name_text(
                 qn, true /* include_global_prefix */);
@@ -1491,7 +1492,8 @@ Node* Parser::parse_primary() {
                 qn = parse_qualified_name(false);
             }
         }
-        std::string qualified_name = resolve_qualified_value_name(qn);
+        const VisibleNameResult resolved_value = resolve_qualified_value(qn);
+        std::string qualified_name = visible_name_spelling(resolved_value);
         if (qualified_name.empty()) {
             qualified_name = qualified_name_text(
                 qn, true /* include_global_prefix */);
@@ -1720,8 +1722,10 @@ Node* Parser::parse_primary() {
                         !(pos_ + 3 < static_cast<int>(tokens_.size()) &&
                           tokens_[pos_ + 3].kind == TokenKind::Less)) {
                         QualifiedNameRef operand_name = parse_qualified_name(false);
+                        const VisibleNameResult resolved_operand =
+                            resolve_qualified_value(operand_name);
                         std::string qualified_name =
-                            resolve_qualified_value_name(operand_name);
+                            visible_name_spelling(resolved_operand);
                         if (qualified_name.empty()) {
                             qualified_name = qualified_name_text(
                                 operand_name, true /* include_global_prefix */);

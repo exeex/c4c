@@ -258,11 +258,16 @@ int Parser::classify_visible_value_or_type_head(int pos, int* after_pos) {
             if (has_known_fn_name(current_member_name)) return 1;
         }
 
-        const std::string resolved_value =
-            resolve_visible_value_name(head_tok.text_id, head_name);
-        if (!resolved_value.empty() &&
-            has_known_fn_name(resolved_value)) {
-            return 1;
+        const VisibleNameResult resolved_value =
+            resolve_visible_value(head_tok.text_id, head_name);
+        if (resolved_value) {
+            if (has_known_fn_name(resolved_value.key)) return 1;
+            const std::string resolved_spelling =
+                visible_name_spelling(resolved_value);
+            if (!resolved_spelling.empty() &&
+                has_known_fn_name(resolved_spelling)) {
+                return 1;
+            }
         }
 
         if (is_known_simple_visible_type_head(*this, head_tok.text_id,
@@ -278,7 +283,7 @@ int Parser::classify_visible_value_or_type_head(int pos, int* after_pos) {
     after_name_pos += 1 + 2 * static_cast<int>(qn.qualifier_segments.size());
     if (after_pos) *after_pos = after_name_pos;
 
-    if (!resolve_qualified_value_name(qn).empty()) return 1;
+    if (resolve_qualified_value(qn)) return 1;
     if (resolve_qualified_type(qn)) return -1;
     // Declaration-side probes keep unresolved qualified heads on the type side
     // unless structured value lookup proves they are expression-like.

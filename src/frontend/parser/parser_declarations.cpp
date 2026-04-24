@@ -1647,7 +1647,9 @@ Node* Parser::parse_top_level() {
             imported_var = find_var_type(imported_value_name);
         }
         if (!imported_var) {
-            imported_value_name = resolve_qualified_value_name(target_name);
+            const VisibleNameResult imported_value =
+                resolve_qualified_value(target_name);
+            imported_value_name = visible_name_spelling(imported_value);
             if (imported_value_name.empty()) {
                 imported_value_name = qualified_name_text(target_name);
             }
