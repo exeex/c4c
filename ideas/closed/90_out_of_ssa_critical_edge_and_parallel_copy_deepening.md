@@ -1,8 +1,9 @@
 # Out-Of-SSA Critical-Edge And Parallel-Copy Deepening
 
-Status: Open
+Status: Closed
 Created: 2026-04-24
 Last-Updated: 2026-04-24
+Closed: 2026-04-24
 Parent Idea: [87_out_of_ssa_contract_and_parallel_copy_authority_for_prealloc.md](/workspaces/c4c/ideas/closed/87_out_of_ssa_contract_and_parallel_copy_authority_for_prealloc.md)
 
 ## Intent
@@ -47,9 +48,29 @@ This idea does not own:
   target-independent copy publication rules
 - reopening legalize as the owner of phi elimination
 
+## Latest Durable Note
+
+As of 2026-04-24, the remaining critical-edge, bundle-ownership,
+execution-order, cycle-breaking, temporary-carrier, and coalescing-boundary
+facts owned by this idea are published as target-independent `out_of_ssa`
+authority, prepared dumps expose the relevant bundle records directly, and the
+covered backend consumers now resolve those edge-copy facts through published
+lookup and step metadata instead of local CFG or storage-equality inference.
+
 ## Completion Signal
 
 This idea is complete when the remaining hard parts of out-of-SSA edge-copy
 publication are explicit in prepared contracts and dumps, and downstream phases
 no longer need to infer critical-edge or cycle-breaking behavior from
 implementation accidents.
+
+## Closure Notes
+
+This success signal is now met. Steps 2 and 3 completed the outstanding
+publication seams for branch-owned and edge-owned bundle authority, prepared
+bundle execution order, cycle-breaking and temporary-carrier use, and the last
+regalloc-side coalescing boundary for published move resolution. The active
+consumer proof now checks those surfaces through published bundle lookup and
+step authority, and no remaining idea-90-specific consumer seam is recorded as
+depending on hidden edge-copy reconstruction. Close gate passed against the
+canonical backend subset logs with a non-decreasing result.
