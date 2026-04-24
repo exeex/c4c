@@ -9,17 +9,14 @@ Current Step Title: Move Implementation-Only Method Declarations Behind The Boun
 ## Just Finished
 
 Completed Step 3 declaration-boundary slice by removing the implementation-only
-non-parenthesized declarator helper trio
-`Parser::parse_non_parenthesized_declarator`,
-`Parser::parse_non_parenthesized_declarator_tail`, and
-`Parser::parse_plain_function_declarator_suffix` from public `Parser`
-declarations in `src/frontend/parser/parser.hpp`, adding equivalent private
-`Parser&` helper declarations to
-`src/frontend/parser/impl/parser_impl.hpp`, converting the implementations in
-`src/frontend/parser/parser_types_declarator.cpp` to the private parser
-boundary, and retargeting internal parser call sites in
-`src/frontend/parser/parser_types_declarator.cpp` and
-`src/frontend/parser/parser_types_struct.cpp` to pass the parser explicitly.
+grouped/normal declarator tail helpers
+`Parser::try_parse_grouped_declarator` and
+`Parser::parse_normal_declarator_tail` from public `Parser` declarations in
+`src/frontend/parser/parser.hpp`, adding equivalent private `Parser&` helper
+declarations to `src/frontend/parser/impl/parser_impl.hpp`, converting the
+implementations in `src/frontend/parser/parser_types_declarator.cpp` to the
+private parser boundary, and retargeting the internal suffix dispatcher to pass
+the parser explicitly.
 
 ## Suggested Next
 
@@ -84,10 +81,13 @@ plan, keeping implementation-only declarations behind
   `parse_plain_function_declarator_suffix` now live behind
   `impl/parser_impl.hpp`; current source/test search found no remaining public
   declarations, member definitions, or external direct member calls.
+- `try_parse_grouped_declarator` and `parse_normal_declarator_tail` now live
+  behind `impl/parser_impl.hpp`; current source/test search found no remaining
+  public declarations, member definitions, or external direct member calls.
 
 ## Proof
 
-Executor Step 3 focused proof passed for the non-parenthesized declarator
+Executor Step 3 focused proof passed for the grouped/normal declarator tail
 helper declaration-boundary slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 

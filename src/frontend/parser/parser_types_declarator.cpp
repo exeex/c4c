@@ -1270,57 +1270,65 @@ void Parser::parse_declarator_prefix(TypeSpec& ts, bool* out_is_parameter_pack) 
     parse_attributes(&ts);
 }
 
-bool Parser::try_parse_grouped_declarator(TypeSpec& ts, const char** out_name,
-                                          TextId* out_name_text_id,
-                                          std::vector<long long>* out_dims) {
-    if (!is_grouped_declarator_start()) return false;
+bool try_parse_grouped_declarator(Parser& parser, TypeSpec& ts,
+                                  const char** out_name,
+                                  TextId* out_name_text_id,
+                                  std::vector<long long>* out_dims) {
+    if (!parser.is_grouped_declarator_start()) return false;
 
-    consume();  // (
-    if (out_name && check(TokenKind::Identifier)) {
+    parser.consume();  // (
+    if (out_name && parser.check(TokenKind::Identifier)) {
         if (out_name_text_id) {
             *out_name_text_id =
-                parser_text_id_for_token(cur().text_id, token_spelling(cur()));
+                parser.parser_text_id_for_token(
+                    parser.cur().text_id, parser.token_spelling(parser.cur()));
         }
-        *out_name = arena_.strdup(std::string(token_spelling(cur())));
-        consume();
+        *out_name = parser.arena_.strdup(
+            std::string(parser.token_spelling(parser.cur())));
+        parser.consume();
     }
-    parse_declarator_array_suffixes(*this, ts, out_dims);
-    expect(TokenKind::RParen);
-    parse_declarator_array_suffixes(*this, ts, out_dims);
+    parse_declarator_array_suffixes(parser, ts, out_dims);
+    parser.expect(TokenKind::RParen);
+    parse_declarator_array_suffixes(parser, ts, out_dims);
     return true;
 }
 
-void Parser::parse_normal_declarator_tail(TypeSpec& ts, const char** out_name,
-                                          TextId* out_name_text_id,
-                                          std::vector<long long>* out_dims) {
-    parse_attributes(&ts);
+void parse_normal_declarator_tail(Parser& parser, TypeSpec& ts,
+                                  const char** out_name,
+                                  TextId* out_name_text_id,
+                                  std::vector<long long>* out_dims) {
+    parser.parse_attributes(&ts);
 
     // Normal declarator: optional identifier name, including C++ qualified names
     // such as `Type::method` or `Type::operator+=`, or free operator functions
     // like `operator==`.
-    if (out_name && is_cpp_mode() &&
-        (check(TokenKind::Identifier) || check(TokenKind::ColonColon) ||
-         check(TokenKind::KwOperator))) {
-        TentativeParseGuard guard(*this);
+    if (out_name && parser.is_cpp_mode() &&
+        (parser.check(TokenKind::Identifier) ||
+         parser.check(TokenKind::ColonColon) ||
+         parser.check(TokenKind::KwOperator))) {
+        Parser::TentativeParseGuard guard(parser);
         std::string qualified_name;
-        if (parse_qualified_declarator_name(&qualified_name, out_name_text_id)) {
-            *out_name = arena_.strdup(qualified_name.c_str());
+        if (parser.parse_qualified_declarator_name(&qualified_name,
+                                                   out_name_text_id)) {
+            *out_name = parser.arena_.strdup(qualified_name.c_str());
             guard.commit();
         }
         // guard restores pos_ on scope exit if not committed
     }
 
-    if (out_name && !*out_name && check(TokenKind::Identifier)) {
+    if (out_name && !*out_name && parser.check(TokenKind::Identifier)) {
         if (out_name_text_id) {
             *out_name_text_id =
-                parser_text_id_for_token(cur().text_id, token_spelling(cur()));
+                parser.parser_text_id_for_token(
+                    parser.cur().text_id, parser.token_spelling(parser.cur()));
         }
-        *out_name = arena_.strdup(std::string(token_spelling(cur())));
-        consume();
+        *out_name = parser.arena_.strdup(
+            std::string(parser.token_spelling(parser.cur())));
+        parser.consume();
     }
 
-    parse_attributes(&ts);
-    parse_declarator_array_suffixes(*this, ts, out_dims);
+    parser.parse_attributes(&ts);
+    parse_declarator_array_suffixes(parser, ts, out_dims);
 }
 
 void parse_declarator_parameter_list(
@@ -1562,11 +1570,12 @@ void parse_non_parenthesized_declarator_tail(
 void Parser::parse_non_parenthesized_declarator_suffixes(
     TypeSpec& ts, const char** out_name, TextId* out_name_text_id,
     std::vector<long long>* out_dims) {
-    if (try_parse_grouped_declarator(ts, out_name, out_name_text_id,
+    if (try_parse_grouped_declarator(*this, ts, out_name, out_name_text_id,
                                      out_dims)) {
         return;
     }
-    parse_normal_declarator_tail(ts, out_name, out_name_text_id, out_dims);
+    parse_normal_declarator_tail(*this, ts, out_name, out_name_text_id,
+                                 out_dims);
 }
 
 void parse_plain_function_declarator_suffix(

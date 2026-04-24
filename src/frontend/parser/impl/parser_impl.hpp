@@ -96,6 +96,14 @@ void parse_non_parenthesized_declarator_tail(
     bool decay_plain_function_suffix, TextId* out_name_text_id);
 void parse_plain_function_declarator_suffix(Parser& parser, TypeSpec& ts,
                                             bool decay_to_function_pointer);
+bool try_parse_grouped_declarator(Parser& parser, TypeSpec& ts,
+                                  const char** out_name,
+                                  TextId* out_name_text_id,
+                                  std::vector<long long>* out_dims);
+void parse_normal_declarator_tail(Parser& parser, TypeSpec& ts,
+                                  const char** out_name,
+                                  TextId* out_name_text_id,
+                                  std::vector<long long>* out_dims);
 
 bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);

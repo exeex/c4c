@@ -672,12 +672,6 @@ class Parser {
                                     bool consume_pointer_token = true);
   void consume_declarator_post_pointer_qualifiers();
   void parse_declarator_prefix(TypeSpec& ts, bool* out_is_parameter_pack);
-  bool try_parse_grouped_declarator(TypeSpec& ts, const char** out_name,
-                                    TextId* out_name_text_id,
-                                    std::vector<long long>* out_dims);
-  void parse_normal_declarator_tail(TypeSpec& ts, const char** out_name,
-                                    TextId* out_name_text_id,
-                                    std::vector<long long>* out_dims);
   void parse_non_parenthesized_declarator_suffixes(
       TypeSpec& ts, const char** out_name, TextId* out_name_text_id,
       std::vector<long long>* out_dims);
