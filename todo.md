@@ -8,32 +8,34 @@ Current Step Title: Final Structural Validation
 
 ## Just Finished
 
-Step 7 - Refresh HIR README completed the current header hierarchy and include
-boundary documentation for the HIR subsystem.
+Step 8 - Final Structural Validation confirmed the HIR header hierarchy work is
+ready for lifecycle closure review.
 
-- Rewrote `src/frontend/hir/README.md` to describe the live public facade:
-  `hir.hpp`, `hir_ir.hpp`, `compile_time_engine.hpp`, `inline_expand.hpp`, and
-  `hir_printer.hpp`.
-- Documented the private implementation indexes:
-  `impl/hir_impl.hpp`, `impl/lowerer.hpp`, `impl/compile_time/compile_time.hpp`,
-  and `impl/inspect/inspect.hpp`.
-- Documented the subdomain indexes under `impl/expr`, `impl/stmt`,
-  `impl/templates`, `impl/compile_time`, and `impl/inspect` without mentioning
-  aspirational files that are not present in the tree.
+- Confirmed top-level HIR headers now represent public/app-facing surfaces by
+  default: `hir.hpp`, `hir_ir.hpp`, `compile_time_engine.hpp`,
+  `inline_expand.hpp`, and `hir_printer.hpp`.
+- Confirmed private HIR indexes exist under `impl/`: `hir_impl.hpp`,
+  `lowerer.hpp`, `expr/expr.hpp`, `stmt/stmt.hpp`, `templates/templates.hpp`,
+  `compile_time/compile_time.hpp`, and `inspect/inspect.hpp`.
+- Confirmed former top-level private headers `hir_lowering.hpp` and
+  `hir_lowerer_internal.hpp` are no longer present.
+- Confirmed the Step 7 README documents the live layout rather than
+  aspirational files.
 
 ## Suggested Next
 
-Next packet: Step 8 - Final Structural Validation.
+Next packet: call the plan owner to decide whether to close the active
+runbook/source idea.
 
 ## Watchouts
 
-- The README now reflects the current live layout under `src/frontend/hir` and
-  `src/frontend/hir/impl`.
-- This slice is docs-only; behavior is unchanged.
+- Full validation passed after the final structural slice.
+- Remaining `hir_lowering` text hits are comments referring to existing
+  `hir_lowering_core.cpp`, not stale top-level private headers.
 
 ## Proof
 
-`rg --files src/frontend/hir src/frontend/hir/impl todo.md && sed -n '1,220p' src/frontend/hir/README.md && sed -n '1,80p' todo.md`
+`cmake --build build -j && ctest --test-dir build -j --output-on-failure`
 
-Result: passed for the docs-only Step 7 slice. Verified the live file list and
-updated README text against the current tree. No build proof required.
+Result: passed. Full CTest reported 2974/2974 passing. Proof log:
+`test_after.log`.
