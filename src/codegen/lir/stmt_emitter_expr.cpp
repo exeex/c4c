@@ -1,4 +1,4 @@
-#include "stmt_emitter.hpp"
+#include "hir_to_lir/lowering.hpp"
 #include "call_args_ops.hpp"
 
 namespace c4c::codegen::lir {

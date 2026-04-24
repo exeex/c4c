@@ -1,4 +1,4 @@
-#include "const_init_emitter.hpp"
+#include "hir_to_lir/lowering.hpp"
 #include "ir.hpp"
 
 #include <algorithm>
