@@ -1227,47 +1227,48 @@ void Parser::consume_declarator_post_pointer_qualifiers() {
     while (is_qualifier(cur().kind)) consume();
 }
 
-void Parser::parse_declarator_prefix(TypeSpec& ts, bool* out_is_parameter_pack) {
+void parse_declarator_prefix(Parser& parser, TypeSpec& ts,
+                             bool* out_is_parameter_pack) {
     if (out_is_parameter_pack) *out_is_parameter_pack = false;
 
     // Skip qualifiers/attributes that can appear before pointer stars.
     // This handles trailing qualifiers on the base type: e.g. `struct S const *p`
     // where `const` appears after the struct tag but before `*`.
-    parse_attributes(&ts);
-    while (is_qualifier(cur().kind)) consume();
-    parse_attributes(&ts);
+    parser.parse_attributes(&ts);
+    while (is_qualifier(parser.cur().kind)) parser.consume();
+    parser.parse_attributes(&ts);
 
     // C++ pointer-to-member declarator prefix: `C::*name` or `ns::C::*name`.
     // Model it as an additional pointer level for parser bring-up so headers
     // like EASTL's invoke_impl(R C::*func, ...) can parse successfully.
-    try_parse_declarator_member_pointer_prefix(ts);
+    parser.try_parse_declarator_member_pointer_prefix(ts);
 
     // Count pointer stars (and qualifiers between them).
-    while (check(TokenKind::Star)) {
+    while (parser.check(TokenKind::Star)) {
         // If the base type already has array dimensions, this star creates a
         // pointer-to-array (e.g. HARD_REG_SET *p where HARD_REG_SET = ulong[2]).
-        parse_pointer_ref_qualifiers(ts, TokenKind::Star,
-                                     /*preserve_array_base=*/true);
+        parser.parse_pointer_ref_qualifiers(ts, TokenKind::Star,
+                                            /*preserve_array_base=*/true);
     }
 
-    if (is_cpp_mode() && check(TokenKind::AmpAmp)) {
-        parse_pointer_ref_qualifiers(ts, TokenKind::AmpAmp,
-                                     /*preserve_array_base=*/false);
-    } else if (is_cpp_mode() && check(TokenKind::Amp)) {
-        parse_pointer_ref_qualifiers(ts, TokenKind::Amp,
-                                     /*preserve_array_base=*/false);
+    if (parser.is_cpp_mode() && parser.check(TokenKind::AmpAmp)) {
+        parser.parse_pointer_ref_qualifiers(ts, TokenKind::AmpAmp,
+                                            /*preserve_array_base=*/false);
+    } else if (parser.is_cpp_mode() && parser.check(TokenKind::Amp)) {
+        parser.parse_pointer_ref_qualifiers(ts, TokenKind::Amp,
+                                            /*preserve_array_base=*/false);
     }
 
-    consume_declarator_post_pointer_qualifiers();
+    parser.consume_declarator_post_pointer_qualifiers();
 
     // C++ template parameter pack declarator: `Args&&... args`
     // or `Ts... value`. The ellipsis belongs to the declarator, not the
     // function's variadic parameter list.
-    if (is_cpp_mode() && check(TokenKind::Ellipsis)) {
-        consume();
+    if (parser.is_cpp_mode() && parser.check(TokenKind::Ellipsis)) {
+        parser.consume();
         if (out_is_parameter_pack) *out_is_parameter_pack = true;
     }
-    parse_attributes(&ts);
+    parser.parse_attributes(&ts);
 }
 
 bool try_parse_grouped_declarator(Parser& parser, TypeSpec& ts,
@@ -1391,13 +1392,15 @@ void parse_parenthesized_function_pointer_suffix(
     if (is_nested_fn_ptr) {
         // For nested fn_ptr: inner params already set on out_fn_ptr_params;
         // the outer params here are the RETURN type's fn_ptr params.
-        parser.store_declarator_function_pointer_params(
+        store_declarator_function_pointer_params(
+            parser,
             out_ret_fn_ptr_params, out_n_ret_fn_ptr_params,
             out_ret_fn_ptr_variadic, fn_ptr_params, fn_ptr_variadic);
         return;
     }
 
-    parser.store_declarator_function_pointer_params(
+    store_declarator_function_pointer_params(
+        parser,
         out_fn_ptr_params, out_n_fn_ptr_params,
         out_fn_ptr_variadic, fn_ptr_params, fn_ptr_variadic);
 }
@@ -1592,14 +1595,15 @@ void parse_plain_function_declarator_suffix(
     ts.ptr_level += 1;
 }
 
-void Parser::store_declarator_function_pointer_params(
-    Node*** out_params, int* out_n_params, bool* out_variadic,
+void store_declarator_function_pointer_params(
+    Parser& parser, Node*** out_params, int* out_n_params, bool* out_variadic,
     const std::vector<Node*>& params, bool variadic) {
     if (out_n_params) *out_n_params = static_cast<int>(params.size());
     if (out_variadic) *out_variadic = variadic;
     if (!out_params || params.empty()) return;
 
-    *out_params = arena_.alloc_array<Node*>(static_cast<int>(params.size()));
+    *out_params =
+        parser.arena_.alloc_array<Node*>(static_cast<int>(params.size()));
     for (int i = 0; i < static_cast<int>(params.size()); ++i)
         (*out_params)[i] = params[i];
 }
@@ -1762,7 +1766,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     if (out_n_ret_fn_ptr_params) *out_n_ret_fn_ptr_params = 0;
     if (out_ret_fn_ptr_variadic) *out_ret_fn_ptr_variadic = false;
 
-    parse_declarator_prefix(ts, out_is_parameter_pack);
+    parse_declarator_prefix(*this, ts, out_is_parameter_pack);
 
     // Check for parenthesised declarator: (*name) or (ATTR *name) — function pointer
     if (is_parenthesized_pointer_declarator_start()) {

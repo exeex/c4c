@@ -107,6 +107,11 @@ void parse_normal_declarator_tail(Parser& parser, TypeSpec& ts,
 void parse_non_parenthesized_declarator_suffixes(
     Parser& parser, TypeSpec& ts, const char** out_name,
     TextId* out_name_text_id, std::vector<long long>* out_dims);
+void parse_declarator_prefix(Parser& parser, TypeSpec& ts,
+                             bool* out_is_parameter_pack);
+void store_declarator_function_pointer_params(
+    Parser& parser, Node*** out_params, int* out_n_params, bool* out_variadic,
+    const std::vector<Node*>& params, bool variadic);
 
 bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);
