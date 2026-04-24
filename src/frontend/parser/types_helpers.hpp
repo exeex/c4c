@@ -446,9 +446,7 @@ std::string resolve_qualified_known_type_name(
     if (is_qualified) {
         resolved = parser.resolve_qualified_type_name(qn);
         if (!resolved.empty() &&
-            (parser.has_template_struct_primary(
-                 parser.current_namespace_context_id(),
-                 parser.find_parser_text_id(resolved), resolved) ||
+            (parser.has_template_struct_primary(qn) ||
              parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {
             return resolved;
         }
@@ -499,6 +497,12 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
     probe.has_unresolved_qualified_fallback = true;
     probe.spelled_name = qualified_name_text(parser, qn);
     probe.namespace_context_id = parser.resolve_namespace_context(qn);
+    if (parser.has_template_struct_primary(qn) ||
+        parser.find_template_struct_specializations(qn) != nullptr) {
+        probe.has_resolved_typedef = true;
+        probe.resolved_typedef_name = probe.spelled_name;
+        probe.has_unresolved_qualified_fallback = false;
+    }
     return probe;
 }
 

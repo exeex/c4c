@@ -24,6 +24,10 @@ bool Parser::has_template_struct_primary(std::string_view name) const {
         current_namespace_context_id(), find_parser_text_id(name), name);
 }
 
+bool Parser::has_template_struct_primary(const QualifiedNameRef& name) const {
+    return find_template_struct_primary(name) != nullptr;
+}
+
 Node* Parser::find_template_struct_primary(
     int context_id, TextId name_text_id, std::string_view fallback_name) const {
     if (context_id < 0) return nullptr;
@@ -61,6 +65,15 @@ Node* Parser::find_template_struct_primary(
 Node* Parser::find_template_struct_primary(const std::string& name) const {
     return find_template_struct_primary(
         current_namespace_context_id(), find_parser_text_id(name), name);
+}
+
+Node* Parser::find_template_struct_primary(const QualifiedNameRef& name) const {
+    const int context_id =
+        name.qualifier_segments.empty()
+            ? (name.is_global_qualified ? 0 : current_namespace_context_id())
+            : resolve_namespace_context(name);
+    return find_template_struct_primary(
+        context_id, name.base_text_id, parser_text(name.base_text_id, name.base_name));
 }
 
 const std::vector<Node*>* Parser::find_template_struct_specializations(
@@ -122,6 +135,17 @@ const std::vector<Node*>* Parser::find_template_struct_specializations(
     return find_template_struct_specializations(
         current_namespace_context_id(), find_parser_text_id(primary_tpl->name),
         primary_tpl->name, primary_tpl);
+}
+
+const std::vector<Node*>* Parser::find_template_struct_specializations(
+    const QualifiedNameRef& name, const Node* primary_tpl) const {
+    const int context_id =
+        name.qualifier_segments.empty()
+            ? (name.is_global_qualified ? 0 : current_namespace_context_id())
+            : resolve_namespace_context(name);
+    return find_template_struct_specializations(
+        context_id, name.base_text_id, parser_text(name.base_text_id, name.base_name),
+        primary_tpl);
 }
 
 const Node* Parser::select_template_struct_pattern_for_args(
