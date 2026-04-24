@@ -6,15 +6,17 @@ Current Step Title: Inspect parser alias/template tables and active-context fiel
 
 # Current Packet
 ## Just Finished
-Activated idea 86 as a fresh runbook after the previous parser packet exhausted its boundary. The new active slice starts with inventorying parser identity-bearing state before any key-family migration.
+Completed the Step 1 inspection for parser alias/template identity. The concrete split is: `ParserTemplateState::alias_template_info` and the `template_struct_*_by_key` tables are semantic identity; the `template_struct_defs` / `template_struct_specializations` string maps are legacy bridge fallback; `last_using_alias_name`, `last_resolved_typedef`, and `current_struct_tag` are active-context copies whose `TextId` fields carry the semantic anchor; parse/debug strings stay diagnostics-only.
 
 ## Suggested Next
-Classify the parser alias/template tables and active-context fields into semantic identity, spelling bridge, and diagnostics-only buckets, then identify the first structured key family that can replace a string-keyed alias path.
+Use `QualifiedNameKey` through `alias_template_key_in_context(...)` as the first structured key family for Step 2, then retarget alias-template registration and lookup to that semantic path before touching any broader template-owned string maps.
 
 ## Watchouts
 - Keep the scope inside parser alias/template identity.
 - Do not widen into a repo-wide identity migration.
 - Leave rendered-name recovery in place only as explicit fallback bridge behavior.
+- The template struct string maps still matter as compatibility fallbacks, but they are not the semantic source of truth.
 
 ## Proof
-Pending. Use the plan validation ladder once implementation begins.
+Ran `bash -lc 'set -o pipefail; cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$' | tee test_after.log'`.
+`test_after.log` is preserved at the repo root.
