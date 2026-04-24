@@ -1,9 +1,9 @@
 #include "hir_to_lir.hpp"
 #include "call_args_ops.hpp"
 #include "hir_ir.hpp"
-#include "hir_to_lir/lowering.hpp"
-#include "../llvm/calling_convention.hpp"
-#include "../shared/llvm_helpers.hpp"
+#include "lowering.hpp"
+#include "../../llvm/calling_convention.hpp"
+#include "../../shared/llvm_helpers.hpp"
 
 #include <algorithm>
 #include <functional>

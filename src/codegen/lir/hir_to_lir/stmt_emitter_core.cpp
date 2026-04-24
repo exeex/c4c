@@ -1,7 +1,7 @@
-#include "hir_to_lir/lowering.hpp"
+#include "lowering.hpp"
 #include "ir.hpp"
 #include "canonical_symbol.hpp"
-#include "../llvm/calling_convention.hpp"
+#include "../../llvm/calling_convention.hpp"
 
 namespace c4c::codegen::lir {
 

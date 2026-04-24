@@ -1,5 +1,5 @@
-#include "hir_to_lir/lowering.hpp"
-#include "../llvm/calling_convention.hpp"
+#include "lowering.hpp"
+#include "../../llvm/calling_convention.hpp"
 
 namespace c4c::codegen::lir {
 
