@@ -441,6 +441,10 @@ class BirFunctionLowerer {
                                       std::vector<bir::Inst>* lowered_insts);
   bool lower_memory_gep_inst(const c4c::codegen::lir::LirGepOp& gep,
                              std::vector<bir::Inst>* lowered_insts);
+  bool lower_memory_store_inst(const c4c::codegen::lir::LirStoreOp& store,
+                               std::vector<bir::Inst>* lowered_insts);
+  bool lower_memory_load_inst(const c4c::codegen::lir::LirLoadOp& load,
+                              std::vector<bir::Inst>* lowered_insts);
   // Member declarations are indexed from `memory/memory_helpers.hpp` so
   // shared pure memory layout/projection helpers have one local surface while
   // this class remains the complete private lowerer index.

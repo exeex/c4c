@@ -2044,6 +2044,413 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_slot_base_gep(
   return true;
 }
 
+bool BirFunctionLowerer::lower_memory_store_inst(
+    const c4c::codegen::lir::LirStoreOp& store,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (store.ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue &&
+      store.ptr.kind() != c4c::codegen::lir::LirOperandKind::Global) {
+    return false;
+  }
+
+  const auto clear_local_scalar_slot_values = [&]() { local_scalar_slot_values_.clear(); };
+  const auto erase_local_scalar_slot_value = [&](std::string_view ptr_name) {
+    const auto ptr_it = local_pointer_slots_.find(std::string(ptr_name));
+    if (ptr_it != local_pointer_slots_.end()) {
+      local_scalar_slot_values_.erase(ptr_it->second);
+    }
+  };
+
+  const auto value_type = lower_scalar_or_function_pointer_type(store.type_str.str());
+  if (!value_type.has_value()) {
+    const auto aggregate_layout = lower_byval_aggregate_layout(store.type_str.str(), type_decls_);
+    if (!aggregate_layout.has_value() ||
+        store.ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+        store.val.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+
+    const auto target_aggregate_it = local_aggregate_slots_.find(store.ptr.str());
+    if (target_aggregate_it == local_aggregate_slots_.end()) {
+      return false;
+    }
+
+    if (const auto source_param_it = aggregate_params_.find(store.val.str());
+        source_param_it != aggregate_params_.end()) {
+      clear_local_scalar_slot_values();
+      const auto leaf_slots = collect_sorted_leaf_slots(target_aggregate_it->second);
+      for (const auto& [byte_offset, slot_name] : leaf_slots) {
+        const auto slot_type_it = local_slot_types_.find(slot_name);
+        if (slot_type_it == local_slot_types_.end()) {
+          return false;
+        }
+        const auto slot_size = type_size_bytes(slot_type_it->second);
+        if (slot_size == 0) {
+          return false;
+        }
+
+        const std::string temp_name =
+            store.ptr.str() + ".byval.copy." + std::to_string(byte_offset);
+        lowered_insts->push_back(bir::LoadLocalInst{
+            .result = bir::Value::named(slot_type_it->second, temp_name),
+            .slot_name = slot_name,
+            .address =
+                bir::MemoryAddress{
+                    .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                    .base_value = bir::Value::named(bir::TypeKind::Ptr, store.val.str()),
+                    .byte_offset = static_cast<std::int64_t>(byte_offset),
+                    .size_bytes = slot_size,
+                    .align_bytes = std::max(slot_size, source_param_it->second.layout.align_bytes),
+                },
+        });
+        lowered_insts->push_back(bir::StoreLocalInst{
+            .slot_name = slot_name,
+            .value = bir::Value::named(slot_type_it->second, temp_name),
+        });
+      }
+      return true;
+    }
+
+    const auto source_alias_it = aggregate_value_aliases_.find(store.val.str());
+    if (source_alias_it == aggregate_value_aliases_.end()) {
+      return false;
+    }
+    clear_local_scalar_slot_values();
+    const auto source_aggregate_it = local_aggregate_slots_.find(source_alias_it->second);
+    if (source_aggregate_it == local_aggregate_slots_.end()) {
+      return false;
+    }
+    return append_local_aggregate_copy_from_slots(source_aggregate_it->second,
+                                                 target_aggregate_it->second,
+                                                 store.ptr.str() + ".aggregate.copy",
+                                                 lowered_insts);
+  }
+
+  std::optional<bir::Value> value;
+  if (*value_type == bir::TypeKind::Ptr &&
+      store.val.kind() == c4c::codegen::lir::LirOperandKind::Global) {
+    const std::string global_name = store.val.str().substr(1);
+    if (is_known_function_symbol(global_name, function_symbols_)) {
+      value = bir::Value::named(bir::TypeKind::Ptr, "@" + global_name);
+    }
+  }
+  if (!value.has_value()) {
+    value = lower_value(store.val, *value_type, value_aliases_);
+  }
+  if (!value.has_value()) {
+    return false;
+  }
+
+  if (const auto pointer_store = try_lower_pointer_provenance_store(store.ptr.str(),
+                                                                    *value_type,
+                                                                    *value,
+                                                                    type_decls_,
+                                                                    local_slot_types_,
+                                                                    local_slot_pointer_values_,
+                                                                    pointer_value_addresses_,
+                                                                    lowered_insts);
+      pointer_store.has_value()) {
+    clear_local_scalar_slot_values();
+    return *pointer_store;
+  }
+
+  if (const auto dynamic_ptr_it = dynamic_pointer_value_arrays_.find(store.ptr.str());
+      dynamic_ptr_it != dynamic_pointer_value_arrays_.end()) {
+    clear_local_scalar_slot_values();
+    return append_dynamic_pointer_value_array_store(
+        store.ptr.str(), *value_type, *value, dynamic_ptr_it->second, lowered_insts);
+  }
+
+  bool handled_dynamic_local_aggregate_store = false;
+  if (!try_lower_dynamic_local_aggregate_store(store.ptr.str(),
+                                               *value_type,
+                                               *value,
+                                               dynamic_local_aggregate_arrays_,
+                                               type_decls_,
+                                               local_slot_types_,
+                                               lowered_insts,
+                                               &handled_dynamic_local_aggregate_store)) {
+    return false;
+  }
+  if (handled_dynamic_local_aggregate_store) {
+    clear_local_scalar_slot_values();
+    return true;
+  }
+
+  if (const auto global_store = try_lower_global_provenance_store(
+          store,
+          *value_type,
+          *value,
+          type_decls_,
+          global_types_,
+          function_symbols_,
+          global_pointer_slots_,
+          global_object_pointer_slots_,
+          pointer_value_addresses_,
+          &global_address_slots_,
+          &addressed_global_pointer_slots_,
+          &global_pointer_value_slots_,
+          &addressed_global_pointer_value_slots_,
+          lowered_insts);
+      global_store.has_value()) {
+    clear_local_scalar_slot_values();
+    return *global_store;
+  }
+
+  const auto local_slot_store = try_lower_local_slot_store(store.ptr.str(),
+                                                          store.val,
+                                                          *value_type,
+                                                          *value,
+                                                          value_aliases_,
+                                                          type_decls_,
+                                                          global_types_,
+                                                          function_symbols_,
+                                                          local_pointer_slots_,
+                                                          local_slot_types_,
+                                                          local_aggregate_field_slots_,
+                                                          local_array_slots_,
+                                                          local_aggregate_slots_,
+                                                          local_pointer_array_bases_,
+                                                          local_slot_pointer_values_,
+                                                          pointer_value_addresses_,
+                                                          global_pointer_slots_,
+                                                          global_address_ints_,
+                                                          &local_pointer_value_aliases_,
+                                                          &local_indirect_pointer_slots_,
+                                                          &local_pointer_slot_addresses_,
+                                                          &local_slot_address_slots_,
+                                                          &local_address_slots_,
+                                                          lowered_insts);
+  if (local_slot_store == LocalSlotStoreResult::NotHandled) {
+    return false;
+  }
+  if (local_slot_store == LocalSlotStoreResult::Lowered) {
+    const auto ptr_it = local_pointer_slots_.find(store.ptr.str());
+    if (ptr_it != local_pointer_slots_.end() && *value_type != bir::TypeKind::Ptr &&
+        value->kind == bir::Value::Kind::Immediate) {
+      local_scalar_slot_values_[ptr_it->second] = *value;
+    } else {
+      erase_local_scalar_slot_value(store.ptr.str());
+    }
+    return true;
+  }
+  erase_local_scalar_slot_value(store.ptr.str());
+  return false;
+}
+
+bool BirFunctionLowerer::lower_memory_load_inst(
+    const c4c::codegen::lir::LirLoadOp& load,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (load.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+      (load.ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue &&
+       load.ptr.kind() != c4c::codegen::lir::LirOperandKind::Global)) {
+    return false;
+  }
+
+  const auto value_type = lower_scalar_or_function_pointer_type(load.type_str.str());
+  if (!value_type.has_value()) {
+    const auto aggregate_layout = lower_byval_aggregate_layout(load.type_str.str(), type_decls_);
+    if (!aggregate_layout.has_value()) {
+      return false;
+    }
+    if (load.ptr.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+      if (local_aggregate_slots_.find(load.ptr.str()) == local_aggregate_slots_.end()) {
+        return false;
+      }
+      aggregate_value_aliases_[load.result.str()] = load.ptr.str();
+      return true;
+    }
+    if (load.ptr.kind() != c4c::codegen::lir::LirOperandKind::Global) {
+      return false;
+    }
+
+    const std::string global_name = load.ptr.str().substr(1);
+    const auto global_it = global_types_.find(global_name);
+    if (global_it == global_types_.end() || !global_it->second.supports_linear_addressing ||
+        global_it->second.storage_size_bytes < aggregate_layout->size_bytes) {
+      return false;
+    }
+
+    if (!declare_local_aggregate_slots(
+            load.type_str.str(), load.result.str(), aggregate_layout->align_bytes)) {
+      return false;
+    }
+    const auto aggregate_it = local_aggregate_slots_.find(load.result.str());
+    if (aggregate_it == local_aggregate_slots_.end()) {
+      return false;
+    }
+
+    const auto leaf_slots = collect_sorted_leaf_slots(aggregate_it->second);
+    for (const auto& [byte_offset, slot_name] : leaf_slots) {
+      const auto slot_type_it = local_slot_types_.find(slot_name);
+      if (slot_type_it == local_slot_types_.end()) {
+        return false;
+      }
+      const auto slot_size = type_size_bytes(slot_type_it->second);
+      if (slot_size == 0) {
+        return false;
+      }
+
+      const std::string temp_name =
+          load.result.str() + ".global.aggregate.load." + std::to_string(byte_offset);
+      lowered_insts->push_back(bir::LoadLocalInst{
+          .result = bir::Value::named(slot_type_it->second, temp_name),
+          .slot_name = slot_name,
+          .address =
+              bir::MemoryAddress{
+                  .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+                  .base_name = global_name,
+                  .byte_offset = static_cast<std::int64_t>(byte_offset),
+                  .size_bytes = slot_size,
+                  .align_bytes = std::max(slot_size, aggregate_layout->align_bytes),
+              },
+      });
+      lowered_insts->push_back(bir::StoreLocalInst{
+          .slot_name = slot_name,
+          .value = bir::Value::named(slot_type_it->second, temp_name),
+      });
+    }
+    aggregate_value_aliases_[load.result.str()] = load.result.str();
+    return true;
+  }
+
+  loaded_local_scalar_immediates_.erase(load.result.str());
+  if (load.ptr.kind() == c4c::codegen::lir::LirOperandKind::SsaValue &&
+      *value_type != bir::TypeKind::Ptr) {
+    const auto ptr_it = local_pointer_slots_.find(load.ptr.str());
+    if (ptr_it != local_pointer_slots_.end()) {
+      const auto slot_value_it = local_scalar_slot_values_.find(ptr_it->second);
+      if (slot_value_it != local_scalar_slot_values_.end() &&
+          slot_value_it->second.type == *value_type) {
+        loaded_local_scalar_immediates_[load.result.str()] = slot_value_it->second;
+      }
+    }
+  }
+
+  if (const auto global_load = try_lower_global_provenance_load(
+          load,
+          *value_type,
+          global_types_,
+          type_decls_,
+          global_address_slots_,
+          addressed_global_pointer_slots_,
+          global_pointer_value_slots_,
+          addressed_global_pointer_value_slots_,
+          &global_pointer_slots_,
+          &global_object_pointer_slots_,
+          &pointer_value_addresses_,
+          lowered_insts);
+      global_load.has_value()) {
+    return *global_load;
+  }
+
+  if (const auto pointer_load = try_lower_pointer_provenance_load(load.result.str(),
+                                                                  load.ptr.str(),
+                                                                  *value_type,
+                                                                  type_decls_,
+                                                                  local_slot_types_,
+                                                                  local_indirect_pointer_slots_,
+                                                                  local_address_slots_,
+                                                                  local_slot_address_slots_,
+                                                                  global_types_,
+                                                                  function_symbols_,
+                                                                  &value_aliases_,
+                                                                  &local_slot_pointer_values_,
+                                                                  &global_pointer_slots_,
+                                                                  pointer_value_addresses_,
+                                                                  lowered_insts);
+      pointer_load.has_value()) {
+    return *pointer_load;
+  }
+
+  if (const auto dynamic_ptr_it = dynamic_pointer_value_arrays_.find(load.ptr.str());
+      dynamic_ptr_it != dynamic_pointer_value_arrays_.end()) {
+    const auto selected_value = load_dynamic_pointer_value_array_value(
+        load.result.str(), *value_type, dynamic_ptr_it->second, lowered_insts);
+    if (!selected_value.has_value()) {
+      return false;
+    }
+    if (selected_value->kind == bir::Value::Kind::Named &&
+        selected_value->name == load.result.str()) {
+      return true;
+    }
+    value_aliases_[load.result.str()] = *selected_value;
+    return true;
+  }
+
+  if (const auto global_scalar_it = dynamic_global_scalar_arrays_.find(load.ptr.str());
+      global_scalar_it != dynamic_global_scalar_arrays_.end()) {
+    const auto selected_value = load_dynamic_global_scalar_array_value(
+        load.result.str(), *value_type, global_scalar_it->second, lowered_insts);
+    if (!selected_value.has_value()) {
+      return false;
+    }
+    if (selected_value->kind == bir::Value::Kind::Named &&
+        selected_value->name == load.result.str()) {
+      return true;
+    }
+    value_aliases_[load.result.str()] = *selected_value;
+    return true;
+  }
+
+  bool handled_dynamic_local_aggregate_load = false;
+  if (!try_lower_dynamic_local_aggregate_load(load.result.str(),
+                                              load.ptr.str(),
+                                              *value_type,
+                                              dynamic_local_aggregate_arrays_,
+                                              type_decls_,
+                                              local_slot_types_,
+                                              &value_aliases_,
+                                              lowered_insts,
+                                              &handled_dynamic_local_aggregate_load)) {
+    return false;
+  }
+  if (handled_dynamic_local_aggregate_load) {
+    return true;
+  }
+
+  const auto local_slot_load = try_lower_local_slot_load(load.result.str(),
+                                                        load.ptr.str(),
+                                                        *value_type,
+                                                        local_pointer_slots_,
+                                                        local_slot_types_,
+                                                        local_aggregate_field_slots_,
+                                                        local_array_slots_,
+                                                        local_pointer_value_aliases_,
+                                                        type_decls_,
+                                                        local_indirect_pointer_slots_,
+                                                        local_address_slots_,
+                                                        local_slot_address_slots_,
+                                                        local_pointer_slot_addresses_,
+                                                        global_types_,
+                                                        function_symbols_,
+                                                        &value_aliases_,
+                                                        &local_slot_pointer_values_,
+                                                        &local_aggregate_slots_,
+                                                        &local_pointer_array_bases_,
+                                                        &global_pointer_slots_,
+                                                        &pointer_value_addresses_,
+                                                        &global_address_ints_,
+                                                        lowered_insts);
+  if (local_slot_load == LocalSlotLoadResult::NotHandled) {
+    if (*value_type == bir::TypeKind::Ptr) {
+      if (const auto dynamic_pointer_array_load = try_lower_dynamic_pointer_array_load(
+              load.result.str(),
+              load.ptr.str(),
+              dynamic_local_pointer_arrays_,
+              dynamic_global_pointer_arrays_,
+              local_pointer_value_aliases_,
+              global_types_,
+              &value_aliases_,
+              lowered_insts);
+          dynamic_pointer_array_load.has_value()) {
+        return *dynamic_pointer_array_load;
+      }
+    }
+    return false;
+  }
+  return local_slot_load == LocalSlotLoadResult::Lowered;
+}
+
 bool BirFunctionLowerer::try_lower_local_slot_pointer_store(
     const LocalSlotAddress& local_slot_ptr,
     bir::TypeKind value_type,

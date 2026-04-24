@@ -1,23 +1,25 @@
 Status: Active
 Source Idea Path: ideas/open/03_bir-memory-coordinator-dispatch-split.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Split GEP Handling
+Current Step ID: Step 4
+Current Step Title: Split Load And Store Handling
 
 # Current Packet
 
 ## Just Finished
 
-Completed `Step 3: Split GEP Handling` by moving `LirGepOp` lowering out of
-the memory coordinator into the private GEP-family handler
-`BirFunctionLowerer::lower_memory_gep_inst` in `addressing.cpp`. The coordinator
-now delegates GEP instructions through a single dispatch call while the handler
-keeps local aggregate/local slot, global, dynamic global, dynamic local, and
-raw pointer projection branches explicit.
+Completed `Step 4: Split Load And Store Handling` by moving `LirLoadOp` and
+`LirStoreOp` lowering out of the memory coordinator into private load/store
+family handlers `BirFunctionLowerer::lower_memory_load_inst` and
+`BirFunctionLowerer::lower_memory_store_inst` in `local_slots.cpp`. The
+coordinator now delegates load/store instructions through single dispatch calls,
+while the handlers keep pointer provenance updates, local slot materialization,
+dynamic pointer arrays, dynamic scalar globals, and dynamic local aggregate
+load/store behavior explicit.
 
 ## Suggested Next
 
-Execute `Step 4: Split Load And Store Handling` from `plan.md`.
+Execute `Step 5: Split Runtime Memory Intrinsic Handling` from `plan.md`.
 
 ## Watchouts
 
@@ -33,6 +35,12 @@ Execute `Step 4: Split Load And Store Handling` from `plan.md`.
   from pulling GEP policy back into the coordinator.
 - `lower_memory_gep_inst` intentionally preserves the existing local/global/
   dynamic branch ordering and state mutations on `BirFunctionLowerer`.
+- Load/store lowering now lives behind private family handlers in
+  `local_slots.cpp`; keep the remaining runtime intrinsic split from folding
+  `memcpy`/`memset` policy into generic load/store helpers.
+- Provenance and alias mutations remain visible as calls to the existing
+  provenance/local-slot/dynamic-array lowering paths; do not hide them behind
+  generic catch-all helpers.
 
 ## Proof
 
