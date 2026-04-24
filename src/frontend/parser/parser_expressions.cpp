@@ -65,14 +65,14 @@ int bin_prec(TokenKind k) {
     }
 }
 
-Node* Parser::parse_expr() {
-    ParseContextGuard trace(this, __func__);
-    Node* lhs = parse_assign_expr();
-    while (check(TokenKind::Comma)) {
-        int ln = cur().line;
-        consume();
-        Node* rhs = parse_assign_expr();
-        Node* n = make_node(NK_COMMA_EXPR, ln);
+Node* parse_expr(Parser& parser) {
+    Parser::ParseContextGuard trace(&parser, __func__);
+    Node* lhs = parse_assign_expr(parser);
+    while (parser.check(TokenKind::Comma)) {
+        int ln = parser.cur().line;
+        parser.consume();
+        Node* rhs = parse_assign_expr(parser);
+        Node* n = parser.make_node(NK_COMMA_EXPR, ln);
         n->left  = lhs;
         n->right = rhs;
         lhs = n;
@@ -80,14 +80,14 @@ Node* Parser::parse_expr() {
     return lhs;
 }
 
-Node* Parser::parse_assign_expr() {
-    ParseContextGuard trace(this, __func__);
-    Node* lhs = parse_ternary(*this);
-    if (active_context_state_.template_arg_expr_depth > 0 &&
-        check_template_close())
+Node* parse_assign_expr(Parser& parser) {
+    Parser::ParseContextGuard trace(&parser, __func__);
+    Node* lhs = parse_ternary(parser);
+    if (parser.active_context_state_.template_arg_expr_depth > 0 &&
+        parser.check_template_close())
         return lhs;
-    int ln = cur().line;
-    TokenKind k = cur().kind;
+    int ln = parser.cur().line;
+    TokenKind k = parser.cur().kind;
     const char* op = nullptr;
     switch (k) {
         case TokenKind::Assign:               op = "=";   break;
@@ -104,12 +104,12 @@ Node* Parser::parse_assign_expr() {
         default: break;
     }
     if (op) {
-        consume();
-        Node* rhs = parse_assign_expr();  // right-associative
+        parser.consume();
+        Node* rhs = parse_assign_expr(parser);  // right-associative
         if (op[0] == '=' && op[1] == '\0') {
-            return make_assign("=", lhs, rhs, ln);
+            return parser.make_assign("=", lhs, rhs, ln);
         } else {
-            return make_assign(op, lhs, rhs, ln);
+            return parser.make_assign(op, lhs, rhs, ln);
         }
     }
     return lhs;
@@ -127,10 +127,10 @@ Node* parse_ternary(Parser& parser) {
         // GNU extension: cond ?: else  (omitted-middle)
         then_node = cond;
     } else {
-        then_node = parser.parse_expr();
+        then_node = parse_expr(parser);
     }
     parser.expect(TokenKind::Colon);
-    Node* else_node = parser.parse_assign_expr();
+    Node* else_node = parse_assign_expr(parser);
 
     Node* n = parser.make_node(NK_TERNARY, ln);
     n->cond  = cond;
@@ -186,7 +186,7 @@ Node* parse_sizeof_pack_expr(Parser& parser, int ln) {
     int pack_start = parser.core_input_state_.pos;
     Node* pack_expr = nullptr;
     if (!parser.check(TokenKind::RParen)) {
-        pack_expr = parser.parse_assign_expr();
+        pack_expr = parse_assign_expr(parser);
     }
     int pack_end = parser.core_input_state_.pos;
 
@@ -324,7 +324,7 @@ Node* Parser::parse_unary() {
                 {
                     // Parse as sizeof(expr) — pos_ already restored by guard above
                     consume();  // consume (
-                    Node* inner = parse_assign_expr();
+                    Node* inner = parse_assign_expr(*this);
                     expect(TokenKind::RParen);
                     Node* n = make_node(NK_SIZEOF_EXPR, ln);
                     n->left = inner;
@@ -340,7 +340,7 @@ Node* Parser::parse_unary() {
         case TokenKind::KwNoexcept: {
             consume();
             expect(TokenKind::LParen);
-            Node* inner = parse_assign_expr();
+            Node* inner = parse_assign_expr(*this);
             expect(TokenKind::RParen);
             return make_unary("noexcept", inner, ln);
         }
@@ -357,7 +357,7 @@ Node* Parser::parse_unary() {
                 n->type = ts;
                 return n;
             } else {
-                Node* inner = parse_assign_expr();
+                Node* inner = parse_assign_expr(*this);
                 expect(TokenKind::RParen);
                 Node* n = make_node(NK_ALIGNOF_EXPR, ln);
                 n->left = inner;
@@ -368,7 +368,7 @@ Node* Parser::parse_unary() {
             // __builtin_va_arg(ap, type)
             consume();
             expect(TokenKind::LParen);
-            Node* ap = parse_assign_expr();
+            Node* ap = parse_assign_expr(*this);
             expect(TokenKind::Comma);
             TypeSpec ts = parse_type_name();
             expect(TokenKind::RParen);
@@ -430,7 +430,7 @@ Node* parse_new_expr(Parser& parser, int ln, bool global_qualified) {
         // Parse comma-separated placement args.
         std::vector<Node*> pargs;
         while (!parser.check(TokenKind::RParen)) {
-            pargs.push_back(parser.parse_assign_expr());
+            pargs.push_back(parse_assign_expr(parser));
             if (!parser.check(TokenKind::RParen)) parser.expect(TokenKind::Comma);
         }
         parser.expect(TokenKind::RParen);
@@ -454,7 +454,7 @@ Node* parse_new_expr(Parser& parser, int ln, bool global_qualified) {
     // Check for array form: new T[n]
     if (parser.check(TokenKind::LBracket)) {
         parser.consume(); // '['
-        Node* size_expr = parser.parse_assign_expr();
+        Node* size_expr = parse_assign_expr(parser);
         parser.expect(TokenKind::RBracket);
         n->right = size_expr;
         n->ival = 1; // array new
@@ -467,7 +467,7 @@ Node* parse_new_expr(Parser& parser, int ln, bool global_qualified) {
         parser.consume(); // '('
         std::vector<Node*> args;
         while (!parser.check(TokenKind::RParen)) {
-            args.push_back(parser.parse_assign_expr());
+            args.push_back(parse_assign_expr(parser));
             if (!parser.check(TokenKind::RParen)) parser.expect(TokenKind::Comma);
         }
         parser.expect(TokenKind::RParen);
@@ -551,7 +551,7 @@ Node* parse_postfix(Parser& parser, Node* base) {
             }
             case TokenKind::LBracket: {
                 parser.consume();
-                Node* idx = parser.parse_expr();
+                Node* idx = parse_expr(parser);
                 parser.expect(TokenKind::RBracket);
                 Node* n = parser.make_node(NK_INDEX, ln);
                 n->left  = base;
@@ -568,7 +568,7 @@ Node* parse_postfix(Parser& parser, Node* base) {
                 }
                 std::vector<Node*> args;
                 while (!parser.at_end() && !parser.check(TokenKind::RParen)) {
-                    Node* arg = parser.parse_assign_expr();
+                    Node* arg = parse_assign_expr(parser);
                     // C++ pack expansion in call args: func(args...)
                     if (parser.is_cpp_mode() && parser.check(TokenKind::Ellipsis)) {
                         parser.consume();
@@ -1140,7 +1140,7 @@ Node* parse_primary(Parser& parser) {
         TypeSpec cast_ts = parser.parse_type_name();
         parser.expect(TokenKind::Greater);    // >
         parser.expect(TokenKind::LParen);     // (
-        Node* operand = parser.parse_assign_expr();
+        Node* operand = parse_assign_expr(parser);
         parser.expect(TokenKind::RParen);     // )
         Node* n = parser.make_node(NK_CAST, ln);
         n->type = cast_ts;
@@ -1230,7 +1230,7 @@ Node* parse_primary(Parser& parser) {
             return n;
         }
 
-        Node* inner = parser.parse_expr();
+        Node* inner = parse_expr(parser);
         parser.expect(TokenKind::RParen);
         return parse_postfix(parser, inner);
     }
@@ -1347,7 +1347,7 @@ Node* parse_primary(Parser& parser) {
                 std::vector<Node*> args;
                 if (!parser.check(TokenKind::RParen)) {
                     while (!parser.at_end() && !parser.check(TokenKind::RParen)) {
-                        args.push_back(parser.parse_assign_expr());
+                        args.push_back(parse_assign_expr(parser));
                         if (!parser.match(TokenKind::Comma)) break;
                     }
                 }
@@ -1452,7 +1452,7 @@ Node* parse_primary(Parser& parser) {
                     std::vector<Node*> args;
                     if (!parser.check(TokenKind::RParen)) {
                         while (!parser.at_end() && !parser.check(TokenKind::RParen)) {
-                            args.push_back(parser.parse_assign_expr());
+                            args.push_back(parse_assign_expr(parser));
                             if (!parser.match(TokenKind::Comma)) break;
                         }
                     }
@@ -1663,7 +1663,7 @@ Node* parse_primary(Parser& parser) {
     if (parser.check(TokenKind::KwGeneric)) {
         parser.consume();
         parser.expect(TokenKind::LParen);
-        Node* ctrl = parser.parse_assign_expr();
+        Node* ctrl = parse_assign_expr(parser);
         std::vector<Node*> assocs;
         while (!parser.check(TokenKind::RParen) && !parser.at_end()) {
             if (!parser.match(TokenKind::Comma)) break;
@@ -1676,7 +1676,7 @@ Node* parse_primary(Parser& parser) {
                 assoc->type = parser.parse_type_name();
             }
             parser.expect(TokenKind::Colon);
-            assoc->left = parser.parse_assign_expr();
+            assoc->left = parse_assign_expr(parser);
             assocs.push_back(assoc);
         }
         parser.expect(TokenKind::RParen);
@@ -1733,7 +1733,7 @@ Node* parse_primary(Parser& parser) {
                         arg = parser.make_var(nm, ln);
                         parser.apply_qualified_name(arg, operand_name, nm);
                     } else {
-                        arg = parser.parse_assign_expr();
+                        arg = parse_assign_expr(parser);
                     }
                     if (arg) args.push_back(arg);
                     if (!parser.match(TokenKind::Comma)) break;
@@ -1819,7 +1819,7 @@ Node* parse_initializer(Parser& parser) {
     if (parser.check(TokenKind::LBrace)) {
         return parse_init_list(parser);
     }
-    return parser.parse_assign_expr();
+    return parse_assign_expr(parser);
 }
 
 Node* parse_init_list(Parser& parser) {
@@ -1872,7 +1872,7 @@ Node* parse_init_list(Parser& parser) {
                         }
                     } else if (parser.check(TokenKind::LBracket)) {
                         parser.consume();
-                        Node* ie = parser.parse_assign_expr();
+                        Node* ie = parse_assign_expr(parser);
                         long long iv = (ie && ie->kind == NK_INT_LIT) ? ie->ival : 0;
                         parser.expect(TokenKind::RBracket);
                         inner->is_designated  = true;
@@ -1901,14 +1901,14 @@ Node* parse_init_list(Parser& parser) {
             parser.match(TokenKind::Assign);
         } else if (parser.check(TokenKind::LBracket)) {
             parser.consume();
-            Node* idx_expr = parser.parse_assign_expr();
+            Node* idx_expr = parse_assign_expr(parser);
             long long idx_lo = 0;
             if (idx_expr && idx_expr->kind == NK_INT_LIT) idx_lo = idx_expr->ival;
             // GCC range: [lo ... hi]
             long long idx_hi = idx_lo;
             if (parser.check(TokenKind::Ellipsis)) {
                 parser.consume();
-                Node* hi_expr = parser.parse_assign_expr();
+                Node* hi_expr = parse_assign_expr(parser);
                 if (hi_expr && hi_expr->kind == NK_INT_LIT) idx_hi = hi_expr->ival;
             }
             parser.expect(TokenKind::RBracket);

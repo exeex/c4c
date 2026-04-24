@@ -274,7 +274,7 @@ Node* Parser::parse_stmt() {
             consume();
             Node* val = nullptr;
             if (!check(TokenKind::Semi)) {
-                val = parse_expr();
+                val = parse_expr(*this);
             }
             match(TokenKind::Semi);
             Node* n = make_node(NK_RETURN, ln);
@@ -395,7 +395,7 @@ Node* Parser::parse_stmt() {
             if (cond_decl) {
                 cnd = make_var(cond_decl->name, cond_decl->line);
             } else {
-                cnd = parse_expr();
+                cnd = parse_expr(*this);
             }
             expect(TokenKind::RParen);
             if (is_cpp_mode()) {
@@ -530,7 +530,7 @@ Node* Parser::parse_stmt() {
             if (cond_decl) {
                 cnd = make_var(cond_decl->name, cond_decl->line);
             } else {
-                cnd = parse_expr();
+                cnd = parse_expr(*this);
             }
             expect(TokenKind::RParen);
             Node* bd = parse_stmt();
@@ -552,7 +552,7 @@ Node* Parser::parse_stmt() {
             Node* bd = parse_stmt();
             expect(TokenKind::KwWhile);
             expect(TokenKind::LParen);
-            Node* cnd = parse_expr();
+            Node* cnd = parse_expr(*this);
             expect(TokenKind::RParen);
             match(TokenKind::Semi);
             Node* n = make_node(NK_DO_WHILE, ln);
@@ -622,7 +622,7 @@ Node* Parser::parse_stmt() {
                         if (is_range_for) {
                             // Range-for: for (Type var : range_expr) body
                             consume(); // consume ':'
-                            Node* range_expr = parse_expr();
+                            Node* range_expr = parse_expr(*this);
                             expect(TokenKind::RParen);
                             LexicalBindingScopeGuard loop_scope(this);
                             if (decl && decl->name) {
@@ -647,12 +647,12 @@ Node* Parser::parse_stmt() {
                         // consume another one, or we eat the condition separator.
                         Node* for_cond = nullptr;
                         if (!check(TokenKind::Semi)) {
-                            for_cond = parse_expr();
+                            for_cond = parse_expr(*this);
                         }
                         match(TokenKind::Semi);
                         Node* for_update = nullptr;
                         if (!check(TokenKind::RParen)) {
-                            for_update = parse_expr();
+                            for_update = parse_expr(*this);
                         }
                         expect(TokenKind::RParen);
                         Node* bd = parse_stmt();
@@ -664,7 +664,7 @@ Node* Parser::parse_stmt() {
                         return n;
                     }
                 } else {
-                    for_init = parse_expr();
+                    for_init = parse_expr(*this);
                     match(TokenKind::Semi);
                 }
             } else {
@@ -672,12 +672,12 @@ Node* Parser::parse_stmt() {
             }
             Node* for_cond = nullptr;
             if (!check(TokenKind::Semi)) {
-                for_cond = parse_expr();
+                for_cond = parse_expr(*this);
             }
             match(TokenKind::Semi);
             Node* for_update = nullptr;
             if (!check(TokenKind::RParen)) {
-                for_update = parse_expr();
+                for_update = parse_expr(*this);
             }
             expect(TokenKind::RParen);
             Node* bd = parse_stmt();
@@ -798,7 +798,7 @@ Node* Parser::parse_stmt() {
             if (cond_decl) {
                 cnd = make_var(cond_decl->name, cond_decl->line);
             } else {
-                cnd = parse_expr();
+                cnd = parse_expr(*this);
             }
             expect(TokenKind::RParen);
             Node* bd = parse_stmt();
@@ -817,11 +817,11 @@ Node* Parser::parse_stmt() {
 
         case TokenKind::KwCase: {
             consume();
-            Node* val_lo = parse_assign_expr();
+            Node* val_lo = parse_assign_expr(*this);
             Node* val_hi = nullptr;
             if (check(TokenKind::Ellipsis)) {
                 consume();
-                val_hi = parse_assign_expr();
+                val_hi = parse_assign_expr(*this);
             }
             expect(TokenKind::Colon);
             // Accumulate case body as the next statement
@@ -898,7 +898,7 @@ Node* Parser::parse_stmt() {
                     op.constraint = consume_adjacent_string_literal(*this);
                 }
                 if (match(TokenKind::LParen)) {
-                    op.expr = parse_expr();
+                    op.expr = parse_expr(*this);
                     expect(TokenKind::RParen);
                 }
                 return op;
@@ -943,7 +943,7 @@ Node* Parser::parse_stmt() {
             if (check(TokenKind::StrLit)) {
                 asm_template = make_str_lit(consume_adjacent_string_literal(*this), cur().line);
             } else if (!check(TokenKind::Colon) && !check(TokenKind::RParen)) {
-                asm_template = parse_expr();
+                asm_template = parse_expr(*this);
             }
 
             std::vector<AsmOperand> outputs;
@@ -1242,7 +1242,7 @@ Node* Parser::parse_stmt() {
 expr_stmt:
 
     // Expression statement
-    Node* expr = parse_expr();
+    Node* expr = parse_expr(*this);
     match(TokenKind::Semi);
     Node* n = make_node(NK_EXPR_STMT, ln);
     n->left = expr;

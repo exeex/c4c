@@ -213,7 +213,7 @@ bool Parser::try_parse_template_non_type_expr(int expr_start,
     TentativeParseGuard guard(*this);
     try {
         ++active_context_state_.template_arg_expr_depth;
-        Node* expr = parse_assign_expr();
+        Node* expr = parse_assign_expr(*this);
         --active_context_state_.template_arg_expr_depth;
         if (core_input_state_.pos > expr_start &&
             (check(TokenKind::Comma) || check_template_close())) {
@@ -1659,7 +1659,7 @@ long long parse_one_declarator_array_dim(Parser& parser, TypeSpec& ts) {
             parser.expect(TokenKind::RBracket);
             return dim;
         }
-        Node* sz = parser.parse_assign_expr();
+        Node* sz = parse_assign_expr(parser);
         ts.array_size_expr = sz;
         long long cv = 0;
         if (sz &&

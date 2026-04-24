@@ -930,7 +930,7 @@ bool try_parse_record_enum_member(
             long long bf_width = -1;
             if (parser.check(TokenKind::Colon)) {
                 parser.consume();
-                Node* bfw = parser.parse_assign_expr();
+                Node* bfw = parse_assign_expr(parser);
                 if (bfw)
                     eval_const_int(
                         bfw, &bf_width, &parser.definition_state_.struct_tag_def_map);
@@ -1071,7 +1071,7 @@ bool try_parse_record_constructor_member(
             std::vector<Node*> args;
             if (!parser.check(TokenKind::RParen)) {
                 while (true) {
-                    Node* arg = parser.parse_assign_expr();
+                    Node* arg = parse_assign_expr(parser);
                     if (arg) args.push_back(arg);
                     if (!parser.match(TokenKind::Comma)) break;
                 }
@@ -1533,7 +1533,7 @@ bool try_parse_record_method_or_field_member(
     // Handle anonymous bitfield: just ': expr;'
     if (parser.check(TokenKind::Colon)) {
         parser.consume();
-        parser.parse_assign_expr();  // skip bitfield width
+        parse_assign_expr(parser);  // skip bitfield width
         parser.match(TokenKind::Semi);
         return true;
     }
@@ -1656,7 +1656,7 @@ bool try_parse_record_method_or_field_member(
         long long bf_width = -1;
         if (parser.check(TokenKind::Colon)) {
             parser.consume();
-            Node* bfw = parser.parse_assign_expr();
+            Node* bfw = parse_assign_expr(parser);
             if (bfw)
                 eval_const_int(
                     bfw, &bf_width, &parser.definition_state_.struct_tag_def_map);
@@ -1667,7 +1667,7 @@ bool try_parse_record_method_or_field_member(
             parser.consume(); // eat '='
             if (field_is_static) {
                 try {
-                    field_init_expr = parser.parse_assign_expr();
+                    field_init_expr = parse_assign_expr(parser);
                 } catch (...) {
                     field_init_expr = nullptr;
                 }
@@ -2441,7 +2441,7 @@ Node* parse_enum(Parser& parser) {
         parser.skip_attributes();
         long long vval = cur_val;
         if (parser.match(TokenKind::Assign)) {
-            Node* ve = parser.parse_assign_expr();
+            Node* ve = parse_assign_expr(parser);
             if (!eval_enum_expr(ve, local_enum_consts, &vval)) {
                 if (parser.is_cpp_mode() &&
                     is_dependent_enum_expr(ve, parser.binding_state_.enum_consts)) {

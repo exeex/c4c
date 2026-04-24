@@ -508,7 +508,7 @@ void Parser::parse_attributes(TypeSpec* ts) {
                 if (check(TokenKind::LParen)) {
                     consume();
                     if (!check(TokenKind::RParen)) {
-                        Node* align_expr = parse_assign_expr();
+                        Node* align_expr = parse_assign_expr(*this);
                         long long align_val = 0;
                         if (align_expr &&
                             eval_const_int(
@@ -528,7 +528,7 @@ void Parser::parse_attributes(TypeSpec* ts) {
             } else if (attr_name == "vector_size" || attr_name == "__vector_size__") {
                 if (check(TokenKind::LParen)) {
                     consume();
-                    Node* sz_expr = parse_assign_expr();
+                    Node* sz_expr = parse_assign_expr(*this);
                     long long sz_val = 0;
                     eval_const_int(sz_expr, &sz_val,
                                    &definition_state_.struct_tag_def_map,

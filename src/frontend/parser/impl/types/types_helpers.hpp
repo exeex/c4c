@@ -711,7 +711,7 @@ bool parse_alignas_specifier(Parser* parser, TypeSpec* ts, int line) {
             have_align =
                 parser->eval_const_int_with_parser_tables(align_node, &align_val);
         } else {
-            Node* align_expr = parser->parse_assign_expr();
+            Node* align_expr = parse_assign_expr(*parser);
             have_align =
                 parser->eval_const_int_with_parser_tables(align_expr, &align_val);
         }

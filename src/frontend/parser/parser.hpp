@@ -671,8 +671,6 @@ class Parser {
                                  std::string* struct_source_name);
 
   // ── expression parsing (Pratt) ────────────────────────────────────────────
-  Node* parse_expr();            // comma-level
-  Node* parse_assign_expr();     // assignment / ternary
   Node* parse_unary();           // prefix unary
 
   // ── statement parsing ─────────────────────────────────────────────────────

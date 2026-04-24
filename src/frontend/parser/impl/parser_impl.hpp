@@ -125,6 +125,8 @@ bool is_parenthesized_pointer_declarator_start(Parser& parser);
 bool try_parse_cpp_scoped_base_type(Parser& parser, bool already_have_base,
                                     TypeSpec* out_ts);
 bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts);
+Node* parse_expr(Parser& parser);
+Node* parse_assign_expr(Parser& parser);
 Node* parse_ternary(Parser& parser);
 Node* parse_binary(Parser& parser, int min_prec);
 Node* parse_postfix(Parser& parser, Node* base);

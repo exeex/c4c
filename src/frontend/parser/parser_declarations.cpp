@@ -281,7 +281,7 @@ bool try_skip_cpp_concept_declaration(Parser& parser) {
 
     // Reuse the existing expression / requires-expression parser for the
     // constraint-expression on the right-hand side of `concept Name = ...;`.
-    (void)parser.parse_expr();
+    (void)parse_expr(parser);
     parser.expect(TokenKind::Semi);
     if (concept_name_text_id != kInvalidText) {
         parser.binding_state_.concept_name_text_ids.insert(concept_name_text_id);
@@ -1003,7 +1003,7 @@ Node* Parser::parse_local_decl() {
                 if (!check(TokenKind::RParen)) {
                     while (!at_end()) {
                         if (check(TokenKind::RParen)) break;
-                        Node* arg = parse_assign_expr();
+                        Node* arg = parse_assign_expr(*this);
                         if (arg) ctor_args.push_back(arg);
                         if (!match(TokenKind::Comma)) break;
                     }
@@ -1141,10 +1141,10 @@ Node* parse_static_assert_declaration(Parser& parser) {
     const int ln = parser.cur().line;
     parser.consume();  // static_assert / _Static_assert
     parser.expect(TokenKind::LParen);
-    Node* cond = parser.parse_assign_expr();
+    Node* cond = parse_assign_expr(parser);
     Node* msg = nullptr;
     if (parser.match(TokenKind::Comma)) {
-        msg = parser.parse_assign_expr();
+        msg = parse_assign_expr(parser);
     }
     parser.expect(TokenKind::RParen);
     parser.match(TokenKind::Semi);
@@ -2557,7 +2557,7 @@ Node* Parser::parse_top_level() {
                         std::vector<Node*> args;
                         if (!check(TokenKind::RParen)) {
                             while (true) {
-                                Node* arg = parse_assign_expr();
+                                Node* arg = parse_assign_expr(*this);
                                 if (arg) args.push_back(arg);
                                 if (!match(TokenKind::Comma)) break;
                             }
@@ -2883,7 +2883,7 @@ top_level_base_ready:
             consume();  // [
             long long dim = -2;
             if (!check(TokenKind::RBracket)) {
-                Node* sz = parse_expr();
+                Node* sz = parse_expr(*this);
                 if (sz) { long long v; if (eval_const_int(sz, &v)) dim = v; }
             }
             expect(TokenKind::RBracket);
