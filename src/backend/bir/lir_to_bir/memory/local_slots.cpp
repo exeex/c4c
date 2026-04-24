@@ -1017,7 +1017,7 @@ std::optional<std::string> BirFunctionLowerer::resolve_local_aggregate_gep_slot(
         continue;
       }
       if (*index_value == 0 &&
-          can_reinterpret_byte_storage_view(current_type, gep_element_type, type_decls)) {
+          can_reinterpret_byte_storage_as_type(current_type, 0, gep_element_type, type_decls)) {
         current_type = gep_element_type;
         continue;
       }
@@ -1091,7 +1091,7 @@ BirFunctionLowerer::resolve_local_aggregate_pointer_array_slots(
     if (!saw_base_index) {
       saw_base_index = true;
       if (*index_value == 0 && gep_element_type != current_type &&
-          can_reinterpret_byte_storage_view(current_type, gep_element_type, type_decls)) {
+          can_reinterpret_byte_storage_as_type(current_type, 0, gep_element_type, type_decls)) {
         current_type = gep_element_type;
         continue;
       }
@@ -1371,7 +1371,7 @@ std::optional<LocalAggregateGepTarget> BirFunctionLowerer::resolve_local_aggrega
         continue;
       }
       if (*index_value == 0 &&
-          can_reinterpret_byte_storage_view(current_type, gep_element_type, type_decls)) {
+          can_reinterpret_byte_storage_as_type(current_type, 0, gep_element_type, type_decls)) {
         current_type = gep_element_type;
         continue;
       }

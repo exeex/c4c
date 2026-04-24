@@ -1,29 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/02_bir-memory-helper-consolidation.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Merge Repeated Aggregate And Pointer-Array Extent Helpers
+Current Step ID: Step 4
+Current Step Title: Normalize Byte-Storage Reinterpretation Checks
 
 # Current Packet
 
 ## Just Finished
 
-Completed `Step 3: Merge Repeated Aggregate And Pointer-Array Extent Helpers`.
-Added a pure `AggregateByteOffsetProjection` helper behind
-`memory/memory_helpers.hpp` and reused it in `memory/addressing.cpp` for both
-repeated aggregate extent lookup and pointer-array length-at-offset lookup.
+Completed `Step 4: Normalize Byte-Storage Reinterpretation Checks`.
+Moved the common byte-storage reinterpretation predicate behind the pure
+`memory/memory_helpers.hpp` helper surface as
+`can_reinterpret_byte_storage_as_type(...)` and reused it from the existing GEP
+walkers in `memory/addressing.cpp` and `memory/local_slots.cpp`.
 
-The shared helper owns only common array/struct byte-offset descent. Repeated
-extent acceptance, struct field-run policy, pointer-element requirements,
-fallback behavior, and dynamic result construction remain visible in the
+The shared helper owns only layout checks for unsigned-byte storage views and
+target type size compatibility. GEP fallback policy, provenance updates, alias
+map mutation, and caller-specific traversal behavior remain in the existing
 callers.
 
 ## Suggested Next
 
-Execute `Step 4: Normalize Byte-Storage Reinterpretation Checks`.
-Centralize only the common pure byte-storage reinterpretation checks while
-keeping provenance updates, alias map mutation, and fallback behavior in the
-existing callers.
+Execute `Step 5: Validate Helper Boundaries`.
+Run the structural checks for helper boundaries and the delegated backend proof
+before handing the plan back for close handling.
 
 ## Watchouts
 
@@ -32,9 +32,9 @@ existing callers.
 - Keep `BirFunctionLowerer` as the memory state owner.
 - Keep shared helpers pure and argument-driven behind `memory_helpers.hpp`.
 - Preserve behavior; do not rewrite expectations as proof.
-- For Step 4, normalize `can_reinterpret_byte_storage_view(...)`; do not fold
-  it into broader GEP helpers or move provenance/map mutation into shared
-  helpers.
+- The byte-storage helper currently preserves existing whole-view semantics by
+  accepting only `target_byte_offset == 0` and equal storage/target sizes.
+- Do not broaden offset or partial-view behavior during validation.
 
 ## Proof
 

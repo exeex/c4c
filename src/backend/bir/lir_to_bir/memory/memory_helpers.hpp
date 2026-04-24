@@ -42,6 +42,12 @@ std::optional<AggregateByteOffsetProjection> resolve_aggregate_byte_offset_proje
     std::size_t target_offset,
     const BirFunctionLowerer::TypeDeclMap& type_decls);
 
+bool can_reinterpret_byte_storage_as_type(
+    std::string_view storage_type_text,
+    std::size_t target_byte_offset,
+    std::string_view target_type_text,
+    const BirFunctionLowerer::TypeDeclMap& type_decls);
+
 }  // namespace c4c::backend
 
 #endif  // C4C_BACKEND_BIR_LIR_TO_BIR_MEMORY_HELPERS_SCALAR_FACTS_DECL
@@ -67,9 +73,6 @@ std::optional<AggregateByteOffsetProjection> resolve_aggregate_byte_offset_proje
 #define C4C_BACKEND_BIR_LIR_TO_BIR_MEMORY_HELPERS_MEMBERS_INCLUDED
 
 // Shared pure layout and address-projection helpers.
-static bool can_reinterpret_byte_storage_view(std::string_view storage_type_text,
-                                              std::string_view target_type_text,
-                                              const TypeDeclMap& type_decls);
 static std::optional<AggregateArrayExtent> find_repeated_aggregate_extent_at_offset(
     std::string_view type_text,
     std::size_t target_offset,

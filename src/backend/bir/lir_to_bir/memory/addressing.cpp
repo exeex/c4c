@@ -143,15 +143,17 @@ std::optional<AggregateByteOffsetProjection> resolve_aggregate_byte_offset_proje
   }
 }
 
-bool BirFunctionLowerer::can_reinterpret_byte_storage_view(
+bool can_reinterpret_byte_storage_as_type(
     std::string_view storage_type_text,
+    std::size_t target_byte_offset,
     std::string_view target_type_text,
-    const TypeDeclMap& type_decls) {
+    const BirFunctionLowerer::TypeDeclMap& type_decls) {
   const auto storage_layout = compute_aggregate_type_layout(storage_type_text, type_decls);
   const auto target_layout = compute_aggregate_type_layout(target_type_text, type_decls);
   if (storage_layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Array ||
       target_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
-      storage_layout.size_bytes == 0 || storage_layout.size_bytes != target_layout.size_bytes) {
+      storage_layout.size_bytes == 0 || target_layout.size_bytes == 0 ||
+      target_byte_offset != 0 || storage_layout.size_bytes != target_layout.size_bytes) {
     return false;
   }
   const auto element_layout = compute_aggregate_type_layout(storage_layout.element_type_text, type_decls);
@@ -235,7 +237,7 @@ BirFunctionLowerer::resolve_relative_gep_target(
 
     if (index_pos == 0) {
       if (gep_element_type != current_type && *index_value == 0 &&
-          can_reinterpret_byte_storage_view(current_type, gep_element_type, type_decls)) {
+          can_reinterpret_byte_storage_as_type(current_type, 0, gep_element_type, type_decls)) {
         current_type = gep_element_type;
         continue;
       }
