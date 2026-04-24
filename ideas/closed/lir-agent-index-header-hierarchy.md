@@ -168,3 +168,19 @@ the public/private signal simple:
 - Do not use headers primarily to enforce C++ interface purity.
 - Do not split every `.cpp` into a matching `.hpp`.
 - Do not change HIR-to-LIR lowering semantics as part of this layout work.
+
+## Completion Notes
+
+Closed after moving private HIR-to-LIR lowering declarations behind
+`src/codegen/lir/hir_to_lir/lowering.hpp`, retiring the top-level private
+`stmt_emitter.hpp` and `const_init_emitter.hpp` headers, and moving HIR-to-LIR
+implementation files under `src/codegen/lir/hir_to_lir/`.
+
+Top-level LIR headers are retained as exported surfaces or public index
+headers. `call_args.hpp` and `call_args_ops.hpp` remain top-level because they
+are used outside HIR-to-LIR lowering. `verify.hpp` remains top-level as a LIR
+validation surface used by printer and verifier code.
+
+Close-gate proof used matching full-suite CTest logs:
+`test_before.log` and `test_after.log` both reported 3071 passed, 0 failed,
+and the regression guard passed with no new failures.
