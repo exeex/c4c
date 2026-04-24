@@ -1,4 +1,4 @@
-#include "hir_lowerer_internal.hpp"
+#include "impl/lowerer.hpp"
 
 #include <climits>
 

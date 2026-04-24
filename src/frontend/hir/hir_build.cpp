@@ -27,7 +27,7 @@
 // - lower_pending_struct_methods
 
 #include "impl/hir_impl.hpp"
-#include "hir_lowerer_internal.hpp"
+#include "impl/lowerer.hpp"
 #include "consteval.hpp"
 #include "type_utils.hpp"
 #include "../parser/parser_support.hpp"

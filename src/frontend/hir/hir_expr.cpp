@@ -3,7 +3,7 @@
 // artifact for the eventual multi-translation-unit split.
 
 #include "impl/hir_impl.hpp"
-#include "hir_lowerer_internal.hpp"
+#include "impl/lowerer.hpp"
 #include <cctype>
 #include <sstream>
 

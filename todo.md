@@ -8,30 +8,33 @@ Current Step Title: Create Private HIR Implementation Boundary
 
 ## Just Finished
 
-Step 2 - Create Private HIR Implementation Boundary completed the first private
-HIR implementation index slice.
+Step 2 - Create Private HIR Implementation Boundary completed the private
+Lowerer engine index slice.
 
-- Added `src/frontend/hir/impl/hir_impl.hpp` with the shared HIR lowering
-  declarations that had lived in `hir_lowering.hpp`.
-- Reduced `src/frontend/hir/hir_lowering.hpp` to a compatibility shim that
-  includes the private implementation index.
-- Retargeted direct HIR implementation `.cpp` includes from `hir_lowering.hpp`
-  to `impl/hir_impl.hpp`: `hir.cpp`, `hir_build.cpp`, `hir_expr.cpp`,
-  `hir_functions.cpp`, `hir_lowering_core.cpp`, and `hir_types.cpp`.
+- Added `src/frontend/hir/impl/lowerer.hpp` with the implementation-only
+  `Lowerer` declarations and helper declarations that had lived in
+  `hir_lowerer_internal.hpp`.
+- Reduced `src/frontend/hir/hir_lowerer_internal.hpp` to a transitional shim
+  that includes the private Lowerer index.
+- Retargeted HIR implementation `.cpp` files that directly included
+  `hir_lowerer_internal.hpp` to include `impl/lowerer.hpp`.
+- Verified no direct `#include "hir_lowerer_internal.hpp"` sites remain under
+  `src/frontend/hir/`.
+- Tightened `impl/lowerer.hpp` to include `hir_impl.hpp` directly and to use
+  explicit relative includes for HIR-adjacent utility headers.
 
 ## Suggested Next
 
-Next Step 2 sub-slice: introduce the private `impl/lowerer.hpp` boundary for
-the declarations currently exposed through `hir_lowerer_internal.hpp`, then
-retarget implementation includes that need the `Lowerer` internals.
+Next Step 2 closure packet: decide whether the transitional shims
+`hir_lowering.hpp` and `hir_lowerer_internal.hpp` should stay for compatibility
+through this plan or be removed after any remaining include-boundary review.
 
 ## Watchouts
 
-- Remaining `hir_lowering.hpp` include site after this slice:
-  `src/frontend/hir/hir_lowerer_internal.hpp`. Leave that for the
-  `impl/lowerer.hpp` sub-slice unless the supervisor broadens ownership.
-- Preserve `hir_lowering.hpp` as a temporary shim while transitional include
-  sites still exist.
+- `hir_lowerer_internal.hpp` is now only a compatibility shim; new HIR
+  implementation code should include `impl/lowerer.hpp` for Lowerer internals.
+- `impl/lowerer.hpp` lives one directory deeper, so private/header utility
+  includes should stay explicit relative paths from `hir/impl/`.
 - Keep parser follow-up work from
   `ideas/open/94_parser_public_facade_pimpl_boundary.md` separate.
 
@@ -39,5 +42,5 @@ retarget implementation includes that need the `Lowerer` internals.
 
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^cpp_hir_'; } > test_after.log 2>&1`
 
-Result: passed after the Step 2 private implementation index slice. HIR subset
+Result: passed after the Step 2 private Lowerer engine index slice. HIR subset
 proof passed 71/71 `cpp_hir_*` tests. Proof log: `test_after.log`.
