@@ -46,6 +46,13 @@ void parse_top_level_parameter_list(
 void parse_declarator_parameter_list(Parser& parser,
                                      std::vector<Node*>* out_params,
                                      bool* out_variadic);
+void parse_parenthesized_function_pointer_suffix(
+    Parser& parser,
+    TypeSpec& ts, bool is_nested_fn_ptr,
+    Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
+    bool* out_fn_ptr_variadic,
+    Node*** out_ret_fn_ptr_params, int* out_n_ret_fn_ptr_params,
+    bool* out_ret_fn_ptr_variadic);
 
 bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);

@@ -3,16 +3,17 @@ Source Idea Path: ideas/open/94_parser_public_facade_pimpl_boundary.md
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Move Implementation-Only Method Declarations Behind The Boundary
+你該做code review了
 
 # Current Packet
 
 ## Just Finished
 
 Completed Step 3 declaration-boundary slice by removing the implementation-only
-declarator parameter-list parser helper from public `Parser` declarations in
-`src/frontend/parser/parser.hpp`, adding the equivalent private
-`parse_declarator_parameter_list(Parser& parser, ...)` declaration to
-`src/frontend/parser/impl/parser_impl.hpp`, converting the implementation in
+parenthesized function-pointer suffix parser helper from public `Parser`
+declarations in `src/frontend/parser/parser.hpp`, adding the equivalent private
+`parse_parenthesized_function_pointer_suffix(Parser& parser, ...)` declaration
+to `src/frontend/parser/impl/parser_impl.hpp`, converting the implementation in
 `src/frontend/parser/parser_types_declarator.cpp` to the private parser
 boundary, and retargeting the internal declarator-parser call site to pass
 `*this` explicitly.
@@ -55,11 +56,14 @@ plan, keeping implementation-only declarations behind
 - `parse_declarator_parameter_list` now lives behind `impl/parser_impl.hpp`;
   current source/test search found no remaining public declaration, member
   definition, or external direct member calls.
+- `parse_parenthesized_function_pointer_suffix` now lives behind
+  `impl/parser_impl.hpp`; current source/test search found no remaining public
+  declaration, member definition, or external direct member calls.
 
 ## Proof
 
-Executor Step 3 focused proof passed for the declarator parameter-list parser
-declaration-boundary slice:
+Executor Step 3 focused proof passed for the parenthesized function-pointer
+suffix parser declaration-boundary slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 
 Result: passed. Proof log: `test_after.log`.
