@@ -9,15 +9,15 @@ Current Step Title: Move Implementation-Only Method Declarations Behind The Boun
 ## Just Finished
 
 Completed Step 3 declaration-boundary slice by removing the implementation-only
-initializer parser entries from public `Parser` declarations in
-`src/frontend/parser/parser.hpp`, adding equivalent private
-`parse_initializer(Parser& parser)` and `parse_init_list(Parser& parser)`
-declarations to `src/frontend/parser/impl/parser_impl.hpp`, converting the
-implementations in `src/frontend/parser/parser_expressions.cpp` to the private
-parser boundary, and retargeting internal call sites in
+static-assert parser entry from public `Parser` declarations in
+`src/frontend/parser/parser.hpp`, adding the equivalent private
+`parse_static_assert_declaration(Parser& parser)` declaration to
+`src/frontend/parser/impl/parser_impl.hpp`, converting the implementation in
+`src/frontend/parser/parser_declarations.cpp` to the private parser boundary,
+and retargeting internal call sites in
 `src/frontend/parser/parser_declarations.cpp`,
-`src/frontend/parser/parser_expressions.cpp`, and
-`src/frontend/parser/parser_statements.cpp`.
+`src/frontend/parser/parser_statements.cpp`, and
+`src/frontend/parser/parser_types_struct.cpp`.
 
 ## Suggested Next
 
@@ -48,10 +48,13 @@ plan, keeping implementation-only declarations behind
 - `parse_initializer` and `parse_init_list` now live behind
   `impl/parser_impl.hpp`; current source/test search found no remaining public
   declaration or external direct calls.
+- `parse_static_assert_declaration` now lives behind `impl/parser_impl.hpp`;
+  current source/test search found no remaining public declaration or external
+  direct calls.
 
 ## Proof
 
-Executor Step 3 focused proof passed for the initializer parser entry
+Executor Step 3 focused proof passed for the static-assert parser entry
 declaration-boundary slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 

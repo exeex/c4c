@@ -751,7 +751,6 @@ class Parser {
 
   // ── statement parsing ─────────────────────────────────────────────────────
   Node* parse_stmt();
-  Node* parse_static_assert_declaration();
 
   // ── declaration and translation-unit entry points ────────────────────────
   // Parse a local declaration (inside function body). May return a NK_BLOCK

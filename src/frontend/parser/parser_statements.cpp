@@ -264,7 +264,7 @@ Node* Parser::parse_stmt() {
         }
 
         case TokenKind::KwStaticAssert: {
-            return parse_static_assert_declaration();
+            return parse_static_assert_declaration(*this);
         }
 
         case TokenKind::LBrace:

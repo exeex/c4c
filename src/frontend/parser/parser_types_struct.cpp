@@ -132,9 +132,9 @@ bool try_skip_record_static_assert_member(Parser& parser,
         return false;
 
     if (methods) {
-        methods->push_back(parser.parse_static_assert_declaration());
+        methods->push_back(parse_static_assert_declaration(parser));
     } else {
-        (void)parser.parse_static_assert_declaration();
+        (void)parse_static_assert_declaration(parser);
     }
     return true;
 }

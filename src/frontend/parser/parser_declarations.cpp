@@ -1134,18 +1134,18 @@ void Parser::parse_top_level_parameter_list(
     expect(TokenKind::RParen);
 }
 
-Node* Parser::parse_static_assert_declaration() {
-    const int ln = cur().line;
-    consume();  // static_assert / _Static_assert
-    expect(TokenKind::LParen);
-    Node* cond = parse_assign_expr();
+Node* parse_static_assert_declaration(Parser& parser) {
+    const int ln = parser.cur().line;
+    parser.consume();  // static_assert / _Static_assert
+    parser.expect(TokenKind::LParen);
+    Node* cond = parser.parse_assign_expr();
     Node* msg = nullptr;
-    if (match(TokenKind::Comma)) {
-        msg = parse_assign_expr();
+    if (parser.match(TokenKind::Comma)) {
+        msg = parser.parse_assign_expr();
     }
-    expect(TokenKind::RParen);
-    match(TokenKind::Semi);
-    Node* sa = make_node(NK_STATIC_ASSERT, ln);
+    parser.expect(TokenKind::RParen);
+    parser.match(TokenKind::Semi);
+    Node* sa = parser.make_node(NK_STATIC_ASSERT, ln);
     sa->left = cond;
     sa->right = msg;
     return sa;
@@ -2119,7 +2119,7 @@ Node* Parser::parse_top_level() {
 
     // _Static_assert
     if (check(TokenKind::KwStaticAssert)) {
-        return parse_static_assert_declaration();
+        return parse_static_assert_declaration(*this);
     }
 
     bool is_static   = false;
