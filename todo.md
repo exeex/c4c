@@ -1,14 +1,15 @@
 Status: Active
 Source Idea Path: ideas/open/86_parser_alias_template_structured_identity.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Tighten `current_struct_tag` Access
+Current Step ID: 4
+Current Step Title: Tighten `last_using_alias_name` Around Structured Alias Identity
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 code packet completed for `parser_types_struct.cpp`: member typedef
+Step 3 is exhausted. The final code packet completed for
+`parser_types_struct.cpp`: member typedef
 registration and constructor/destructor entry gates now use
 `current_struct_tag_text().empty()` instead of direct
 `active_context_state_.current_struct_tag.empty()` checks.
@@ -21,9 +22,20 @@ The existing owner and special-member spelling handoff remains unchanged:
 
 ## Suggested Next
 
-Step 3 appears exhausted. Next packet should be a lifecycle review/plan-owner
-decision on whether to advance to the next runbook step or close/deactivate the
-active runbook.
+Begin Step 4 with an inventory-only packet for `last_using_alias_name` active
+context handoff sites. Classify remaining consumers of
+`last_using_alias_name_text()`, `last_using_alias_name_text_id`, and
+`last_using_alias_key` in:
+
+- `src/frontend/parser/parser.hpp`
+- `src/frontend/parser/parser_declarations.cpp`
+- `src/frontend/parser/parser_types_base.cpp`
+- `src/frontend/parser/parser_types_template.cpp`
+
+The packet should identify the first safe code change that prefers
+`last_using_alias_key` or `last_using_alias_name_text_id` for semantic alias
+identity while keeping rendered alias spelling only as fallback, diagnostic, or
+compatibility bridge data.
 
 ## Watchouts
 
@@ -36,6 +48,10 @@ active runbook.
 - No direct `active_context_state_.current_struct_tag.empty()` gates remain in
   `parser_types_struct.cpp`; remaining raw `current_struct_tag` state in this
   file is save/restore fallback support.
+- Do not rework alias-template storage beyond the Step 4 active-context
+  handoff boundary.
+- Do not reopen completed template-struct primary/specialization/instantiation
+  lookup cleanup.
 
 ## Proof
 
