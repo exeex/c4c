@@ -3,24 +3,24 @@ Source Idea Path: ideas/open/91_advanced_prepared_call_authority_and_grouped_wid
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Make Grouped Width-Greater-Than-One Allocation Truthful
-Plan Review Counter: 2 / 6
+Plan Review Counter: 3 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 3 now makes the x86 route-debug surface consume grouped spill/reload
-authority through the shared `consume_plans` seam instead of stopping at frame,
-call, and storage summaries. The grouped spill/reload contract fixture now
-proves the debug summary and trace report grouped spill/reload counts plus
-value-id, span, and spill-slot authority directly from prepared regalloc
-output.
+Step 3 now makes the x86 module emitter consume grouped authority through the
+shared `consume_plans` seam before it falls back to the contract-first stub
+body. Grouped functions now emit comment summaries and detail lines for shared
+saved/preserved/clobber/storage authority plus grouped spill/reload value-id,
+span, and spill-slot facts, and the grouped spill/reload contract fixture
+proves that emitted asm reads those prepared facts directly.
 
 ## Suggested Next
 
-Use the widened x86 consumer surface to find the next grouped-width downstream
-consumer that still drops prepared regalloc authority outside debug/contracts,
-or shift to the next truthful Step 3 gap if the remaining width-`> 1` behavior
-problem is no longer on a consumer seam.
+Use the widened x86 module-emitter surface to find the next x86-native grouped
+call-boundary consumer seam, or shift from consumer comments back to the next
+truthful Step 3 behavior gap if the remaining width-`> 1` issue is now in
+allocator behavior rather than consumer publication.
 
 ## Watchouts
 
