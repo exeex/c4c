@@ -3334,7 +3334,10 @@ int check_phi_loop_cycle_move_resolution(const prepare::PreparedBirModule& prepa
   }
   const auto* control_flow =
       prepare::find_prepared_control_flow_function(prepared.control_flow, function->function_name);
-  if (control_flow == nullptr) {
+  const auto* value_locations =
+      prepare::find_prepared_value_location_function(prepared, function->function_name);
+  const auto* bir_function = find_module_function(prepared, "phi_loop_cycle_move_resolution");
+  if (control_flow == nullptr || value_locations == nullptr || bir_function == nullptr) {
     return fail("expected phi_loop_cycle_move_resolution to publish prepared control-flow data");
   }
   const auto* body_bundle =
@@ -3370,6 +3373,13 @@ int check_phi_loop_cycle_move_resolution(const prepare::PreparedBirModule& prepa
       body_bundle->steps[2].kind != prepare::PreparedParallelCopyStepKind::Move ||
       body_bundle->steps[2].move_index != 1 || !body_bundle->steps[2].uses_cycle_temp_source) {
     return fail("expected the loop backedge bundle to publish the cycle-break ordering directly");
+  }
+  const auto* body_move_bundle = prepare::find_prepared_out_of_ssa_parallel_copy_move_bundle(
+      prepared.names, *bir_function, *value_locations, *body_bundle);
+  if (body_move_bundle == nullptr ||
+      !prepare::prepared_move_bundle_has_out_of_ssa_parallel_copy_authority(*body_move_bundle)) {
+    return fail(
+        "expected the loop backedge bundle to publish a direct out-of-SSA move-bundle lookup seam");
   }
 
   const auto* a = find_regalloc_value(prepared, *function, "a");

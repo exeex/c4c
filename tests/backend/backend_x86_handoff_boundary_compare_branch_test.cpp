@@ -84,19 +84,6 @@ const prepare::PreparedValueLocationFunction* find_value_location_function(
   return prepare::find_prepared_value_location_function(prepared, function_name);
 }
 
-std::size_t count_phi_move_bundles_at_block(
-    const prepare::PreparedValueLocationFunction& function_locations,
-    std::size_t block_index) {
-  return static_cast<std::size_t>(std::count_if(
-      function_locations.move_bundles.begin(),
-      function_locations.move_bundles.end(),
-      [&](const prepare::PreparedMoveBundle& bundle) {
-        return bundle.phase == prepare::PreparedMovePhase::BlockEntry &&
-               bundle.block_index == block_index &&
-               prepare::prepared_move_bundle_has_out_of_ssa_parallel_copy_authority(bundle);
-      }));
-}
-
 bir::Module make_x86_param_passthrough_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -812,12 +799,14 @@ int check_compare_join_regalloc_consumes_predecessor_parallel_copy_execution_sit
                     .c_str());
   }
 
-  if (count_phi_move_bundles_at_block(*function_locations, *predecessor_block_index) == 0) {
+  const auto* move_bundle = prepare::find_prepared_out_of_ssa_parallel_copy_move_bundle(
+      prepared.names, prepared.module.functions.front(), *function_locations, *bundle);
+  if (move_bundle == nullptr) {
     return fail((std::string(failure_context) +
                  ": regalloc stopped placing predecessor-owned compare-join bundles at the published predecessor block")
                     .c_str());
   }
-  if (count_phi_move_bundles_at_block(*function_locations, *successor_block_index) != 0) {
+  if (move_bundle->block_index != *predecessor_block_index) {
     return fail((std::string(failure_context) +
                  ": regalloc unexpectedly relocated predecessor-owned compare-join bundles into the join block")
                     .c_str());
@@ -887,10 +876,8 @@ int check_compare_join_route_accepts_successor_entry_parallel_copy_handoff(
                  ": compare-join value-location publication became unstable during successor-entry relocation")
                     .c_str());
   }
-  auto* move_bundle = const_cast<prepare::PreparedMoveBundle*>(
-      prepare::find_prepared_unique_move_bundle(*function_locations,
-                                                prepare::PreparedMovePhase::BlockEntry,
-                                                *predecessor_block_index));
+  auto* move_bundle = prepare::find_prepared_out_of_ssa_parallel_copy_move_bundle(
+      prepared.names, prepared.module.functions.front(), *function_locations_it, *bundle);
   if (move_bundle == nullptr ||
       !prepare::prepared_move_bundle_has_out_of_ssa_parallel_copy_authority(*move_bundle)) {
     return fail((std::string(failure_context) +

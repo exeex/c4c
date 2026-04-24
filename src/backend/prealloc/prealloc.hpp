@@ -3952,6 +3952,65 @@ struct PreparedBirModule {
   return nullptr;
 }
 
+[[nodiscard]] inline std::optional<std::size_t> find_prepared_block_index_in_function(
+    const PreparedNameTables& names,
+    const bir::Function& function,
+    BlockLabelId block_label) {
+  if (block_label == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+  const auto block_name = prepared_block_label(names, block_label);
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    if (function.blocks[block_index].label == block_name) {
+      return block_index;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] inline const PreparedMoveBundle*
+find_prepared_out_of_ssa_parallel_copy_move_bundle(
+    const PreparedNameTables& names,
+    const bir::Function& function,
+    const PreparedValueLocationFunction& function_locations,
+    const PreparedParallelCopyBundle& parallel_copy_bundle) {
+  const auto execution_block_label =
+      published_prepared_parallel_copy_execution_block_label(parallel_copy_bundle);
+  if (!execution_block_label.has_value()) {
+    return nullptr;
+  }
+  const auto block_index =
+      find_prepared_block_index_in_function(names, function, *execution_block_label);
+  if (!block_index.has_value()) {
+    return nullptr;
+  }
+  const PreparedMoveBundle* match = nullptr;
+  for (const auto& move_bundle : function_locations.move_bundles) {
+    if (move_bundle.phase != PreparedMovePhase::BlockEntry ||
+        move_bundle.authority_kind != PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+        move_bundle.block_index != *block_index) {
+      continue;
+    }
+    if (match != nullptr) {
+      return nullptr;
+    }
+    match = &move_bundle;
+  }
+  return match;
+}
+
+[[nodiscard]] inline PreparedMoveBundle* find_prepared_out_of_ssa_parallel_copy_move_bundle(
+    const PreparedNameTables& names,
+    const bir::Function& function,
+    PreparedValueLocationFunction& function_locations,
+    const PreparedParallelCopyBundle& parallel_copy_bundle) {
+  return const_cast<PreparedMoveBundle*>(find_prepared_out_of_ssa_parallel_copy_move_bundle(
+      names,
+      function,
+      static_cast<const PreparedValueLocationFunction&>(function_locations),
+      parallel_copy_bundle));
+}
+
 [[nodiscard]] inline const PreparedMoveBundle* find_prepared_unique_move_bundle(
     const PreparedValueLocationFunction& function_locations,
     PreparedMovePhase phase,
