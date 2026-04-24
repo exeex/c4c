@@ -1,9 +1,10 @@
 # Stack Layout C++ vs Rust Comparison
 
 This note finishes the per-phase Step 5 comparison coverage for the active
-prealloc migration by comparing the live C++ stack-layout route in
-`stack_layout.cpp` plus `stack_layout/*.cpp` against the retained Rust
-reference module tree in `stack_layout/mod.rs` plus `stack_layout/*.rs`.
+prealloc migration by summarizing the live C++ stack-layout route in
+`stack_layout/coordinator.cpp` plus `stack_layout/*.cpp` against the historical
+Rust design. The prealloc-local `stack_layout/*.rs` files have been removed;
+use `ref/claudes-c-compiler/` only for explicit archaeology.
 
 ## Active Match Points
 
@@ -22,9 +23,9 @@ reference module tree in `stack_layout/mod.rs` plus `stack_layout/*.rs`.
 
 ### Prepared object discovery and explicit home-slot contracts
 
-- Rust `analysis.rs` and the early classification stages in
-  `slot_assignment.rs` distinguish address-exposed or parameter-owned storage
-  from values that may be reordered or coalesced.
+- The historical analysis and early slot-classification stages distinguish
+  address-exposed or parameter-owned storage from values that may be reordered
+  or coalesced.
 - C++ `analysis.cpp` publishes the same core contract into
   `PreparedStackObject`: byval-copy and phi local slots keep explicit
   permanent-home metadata, address-taken locals stay address-exposed, and
@@ -36,9 +37,9 @@ reference module tree in `stack_layout/mod.rs` plus `stack_layout/*.rs`.
 
 ### Copy-coalescing and frame-slot ordering behavior
 
-- Rust `copy_coalescing.rs` and `slot_assignment.rs` avoid unnecessary stack
-  homes for short-lived or aliasable values, then keep fixed-location storage
-  ahead of reorderable storage during slot assignment.
+- The historical copy-coalescing and slot-assignment stages avoid unnecessary
+  stack homes for short-lived or aliasable values, then keep fixed-location
+  storage ahead of reorderable storage during slot assignment.
 - C++ `copy_coalescing.cpp` marks single-store/single-load lowering-scratch
   locals as `copy_coalescing_candidate`, and `slot_assignment.cpp` excludes
   those candidates from dedicated frame-slot allocation while still anchoring
@@ -50,9 +51,8 @@ reference module tree in `stack_layout/mod.rs` plus `stack_layout/*.rs`.
 
 ### Regalloc- and inline-asm-aware stack-object preservation
 
-- Rust keeps stack layout aware of regalloc and inline asm through
-  `regalloc_helpers.rs` and `inline_asm.rs`, so stack-slot decisions respect
-  register pressure and asm clobber constraints.
+- The historical design keeps stack layout aware of regalloc and inline asm so
+  stack-slot decisions respect register pressure and asm clobber constraints.
 - C++ carries the same intent at the prepared-contract level: it summarizes
   inline-asm presence, then `apply_regalloc_hints(...)` preserves or strengthens
   home-slot requirements for address-exposed objects and parameter-owned
@@ -77,13 +77,13 @@ reference module tree in `stack_layout/mod.rs` plus `stack_layout/*.rs`.
   prepared object and frame-slot behavior, not a full backend codegen-time
   stack-space allocator replacement.
 
-### Alloca escape analysis and dead-param elision are still reference-only in Rust
+### Alloca escape analysis and dead-param elision remain unimplemented locally
 
-- Rust `alloca_coalescing.rs` performs real alloca escape analysis, tracks
-  GEP-derived aliases, and can classify dead or single-block allocas for
+- The historical alloca-coalescing route performs real alloca escape analysis,
+  tracks GEP-derived aliases, and can classify dead or single-block allocas for
   stronger slot reuse decisions.
-- Rust `analysis.rs` also removes dead parameter allocas when regalloc proves
-  the ABI value can live safely in a callee-saved register.
+- The historical analysis route also removes dead parameter allocas when
+  regalloc proves the ABI value can live safely in a callee-saved register.
 - C++ currently keeps aggregate byval/sret parameter objects materialized and
   uses lighter-weight metadata hints instead of porting the full alloca and
   dead-param analysis. The comment in `analysis.cpp` makes that limitation
@@ -92,9 +92,10 @@ reference module tree in `stack_layout/mod.rs` plus `stack_layout/*.rs`.
 
 ### Inline-asm and regalloc helper scope is deliberately narrower in C++
 
-- Rust `inline_asm.rs` scans explicit asm constraints and clobbers to mark
-  callee-saved-register pressure precisely, and `regalloc_helpers.rs` filters
-  available registers plus merges asm clobbers into backend regalloc state.
+- The historical inline-asm route scans explicit asm constraints and clobbers
+  to mark callee-saved-register pressure precisely, and its regalloc-helper
+  route filters available registers plus merges asm clobbers into backend
+  regalloc state.
 - C++ currently reduces that scope to a prepared `FunctionInlineAsmSummary`
   and a home-slot-preservation pass in `apply_regalloc_hints(...)`; it does
   not yet port Rust's explicit callee-saved clobber accounting or register-pool

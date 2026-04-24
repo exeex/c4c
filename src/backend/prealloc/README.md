@@ -55,5 +55,11 @@ Target backends should not:
 ## Current Status
 
 The new plan structs are present as contract scaffolding. Producer logic still
-needs to be filled in so `prealloc.cpp`, `stack_layout.cpp`, and `regalloc.cpp`
+needs to be filled in so `prealloc.cpp`,
+`stack_layout/coordinator.cpp`, `stack_layout/*.cpp`, and `regalloc.cpp`
 populate them from the existing prepared facts.
+
+Prealloc-local Rust reference files have been removed from this directory.
+Active implementation guidance lives in the C++ sources and the comparison
+notes here. Historical Rust material, when needed for archaeology, belongs
+under `ref/claudes-c-compiler/` rather than beside the active prealloc code.

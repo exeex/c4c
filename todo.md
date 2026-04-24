@@ -8,27 +8,19 @@ Current Step Title: Remove Prealloc-Local Rust Reference Files
 
 ## Just Finished
 
-Completed Step 3: Move the Stack-Layout Coordinator If Clean.
+Completed Step 4: Remove Prealloc-Local Rust Reference Files.
 
-Moved `src/backend/prealloc/stack_layout.cpp` to
-`src/backend/prealloc/stack_layout/coordinator.cpp` with `git mv`.
-Updated the moved coordinator's local includes from top-level prealloc-relative
-paths to the stack-layout directory context:
-
-- `prealloc.hpp` is now included as `../prealloc.hpp`.
-- `stack_layout/stack_layout.hpp` is now included as `stack_layout.hpp`.
-- `src/backend/CMakeLists.txt` did not need editing; its recursive prealloc
-  source glob discovered the moved coordinator and reconfigured during the
-  proof build.
+Deleted all prealloc-local `.rs` reference files under
+`src/backend/prealloc`. Updated the prealloc README, stack-layout README, and
+phase comparison notes so agents no longer treat those deleted local Rust files
+as active guidance. `stack_layout/README.md` now reflects
+`stack_layout.hpp` and `coordinator.cpp` as the active C++ stack-layout
+surfaces.
 
 ## Suggested Next
 
-Execute Step 4: Remove Prealloc-Local Rust Reference Files.
-
-Delete the prealloc-local `.rs` reference files under `src/backend/prealloc`
-and update prealloc-local docs/comparison notes that point agents at those
-deleted local Rust files as active guidance. Do not delete
-`ref/claudes-c-compiler/**`.
+Run final prealloc structural validation and decide whether this active plan is
+ready for lifecycle closure.
 
 ## Watchouts
 
@@ -41,9 +33,9 @@ deleted local Rust files as active guidance. Do not delete
 - Do not delete `ref/claudes-c-compiler/**`.
 - Do not change backend semantics or testcase expectations.
 - Do not introduce one header per `.cpp`.
-- Several docs and local Rust reference comments still mention
-  `stack_layout.cpp`; Step 4 owns the local Rust reference removal and nearby
-  documentation cleanup.
+- Historical Rust material remains available under `ref/claudes-c-compiler/`
+  for explicit archaeology, but prealloc-local `.rs` files are no longer an
+  active guidance source.
 
 ## Proof
 
@@ -51,8 +43,7 @@ Proof command:
 
 `bash -lc 'cmake --build --preset default --target c4c_backend' > test_after.log 2>&1`
 
-Result: passed. CMake detected the recursive glob mismatch, reconfigured, built
-`prealloc/stack_layout/coordinator.cpp.o`, and relinked `c4c_backend`.
+Result: passed. Ninja rechecked globbed directories and reported no work to do.
 `test_after.log` contains the canonical proof output for this packet.
 
 Baseline review: supervisor accepted `test_baseline.new.log` as
