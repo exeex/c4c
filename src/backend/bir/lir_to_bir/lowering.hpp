@@ -3,6 +3,7 @@
 #include "../lir_to_bir.hpp"
 #include "../../../target_profile.hpp"
 #include "../../../codegen/lir/call_args_ops.hpp"
+#include "memory/memory_types.hpp"
 
 #include <cstdint>
 #include <cstddef>
@@ -184,36 +185,15 @@ class BirFunctionLowerer {
   using ParsedTypedOperand = lir_to_bir_detail::ParsedTypedOperand;
   using TypeDeclMap = lir_to_bir_detail::TypeDeclMap;
 
-  struct GlobalPointerSlotKey {
-    std::string global_name;
-    std::size_t byte_offset = 0;
-
-    bool operator==(const GlobalPointerSlotKey& other) const {
-      return global_name == other.global_name && byte_offset == other.byte_offset;
-    }
-  };
-
-  struct GlobalPointerSlotKeyHash {
-    std::size_t operator()(const GlobalPointerSlotKey& key) const {
-      return std::hash<std::string>{}(key.global_name) ^
-             (std::hash<std::size_t>{}(key.byte_offset) << 1);
-    }
-  };
+  using GlobalPointerSlotKey = c4c::backend::GlobalPointerSlotKey;
+  using GlobalPointerSlotKeyHash = c4c::backend::GlobalPointerSlotKeyHash;
 
   using GlobalPointerMap = std::unordered_map<std::string, GlobalAddress>;
   using GlobalObjectPointerMap = std::unordered_map<std::string, GlobalAddress>;
   using GlobalAddressIntMap = std::unordered_map<std::string, GlobalAddress>;
   using GlobalObjectAddressIntMap = std::unordered_map<std::string, GlobalAddress>;
   using LocalAddressSlots = std::unordered_map<std::string, GlobalAddress>;
-  struct LocalSlotAddress {
-    std::string slot_name;
-    bir::TypeKind value_type = bir::TypeKind::Void;
-    std::int64_t byte_offset = 0;
-    std::string storage_type_text;
-    std::string type_text;
-    std::vector<std::string> array_element_slots;
-    std::size_t array_base_index = 0;
-  };
+  using LocalSlotAddress = c4c::backend::LocalSlotAddress;
   using LocalSlotAddressSlots = std::unordered_map<std::string, LocalSlotAddress>;
   using LocalSlotPointerValues = std::unordered_map<std::string, LocalSlotAddress>;
   using GlobalAddressSlots = std::unordered_map<std::string, std::optional<GlobalAddress>>;
@@ -222,109 +202,50 @@ class BirFunctionLowerer {
                          std::optional<GlobalAddress>,
                          GlobalPointerSlotKeyHash>;
 
-  struct LocalArraySlots {
-    bir::TypeKind element_type = bir::TypeKind::Void;
-    std::vector<std::string> element_slots;
-  };
+  using LocalArraySlots = c4c::backend::LocalArraySlots;
 
   using LocalArraySlotMap = std::unordered_map<std::string, LocalArraySlots>;
 
-  struct DynamicLocalPointerArrayAccess {
-    std::vector<std::string> element_slots;
-    bir::Value index;
-  };
+  using DynamicLocalPointerArrayAccess = c4c::backend::DynamicLocalPointerArrayAccess;
 
   using DynamicLocalPointerArrayMap =
       std::unordered_map<std::string, DynamicLocalPointerArrayAccess>;
 
-  struct DynamicLocalAggregateArrayAccess {
-    std::string element_type_text;
-    std::size_t byte_offset = 0;
-    std::size_t element_count = 0;
-    std::size_t element_stride_bytes = 0;
-    std::unordered_map<std::size_t, std::string> leaf_slots;
-    bir::Value index;
-  };
+  using DynamicLocalAggregateArrayAccess = c4c::backend::DynamicLocalAggregateArrayAccess;
 
   using DynamicLocalAggregateArrayMap =
       std::unordered_map<std::string, DynamicLocalAggregateArrayAccess>;
 
-  struct DynamicPointerValueArrayAccess {
-    bir::Value base_value;
-    bir::TypeKind element_type = bir::TypeKind::Void;
-    std::size_t byte_offset = 0;
-    std::size_t element_count = 0;
-    std::size_t element_stride_bytes = 0;
-    bir::Value index;
-  };
+  using DynamicPointerValueArrayAccess = c4c::backend::DynamicPointerValueArrayAccess;
 
   using DynamicPointerValueArrayMap =
       std::unordered_map<std::string, DynamicPointerValueArrayAccess>;
 
-  struct LocalPointerArrayBase {
-    std::vector<std::string> element_slots;
-    std::size_t base_index = 0;
-  };
+  using LocalPointerArrayBase = c4c::backend::LocalPointerArrayBase;
 
   using LocalPointerArrayBaseMap = std::unordered_map<std::string, LocalPointerArrayBase>;
 
-  struct DynamicGlobalPointerArrayAccess {
-    std::string global_name;
-    std::size_t byte_offset = 0;
-    std::size_t element_count = 0;
-    std::size_t element_stride_bytes = 0;
-    bir::Value index;
-  };
+  using DynamicGlobalPointerArrayAccess = c4c::backend::DynamicGlobalPointerArrayAccess;
 
   using DynamicGlobalPointerArrayMap =
       std::unordered_map<std::string, DynamicGlobalPointerArrayAccess>;
 
-  struct DynamicGlobalAggregateArrayAccess {
-    std::string global_name;
-    std::string element_type_text;
-    std::size_t byte_offset = 0;
-    std::size_t element_count = 0;
-    std::size_t element_stride_bytes = 0;
-    bir::Value index;
-  };
+  using DynamicGlobalAggregateArrayAccess = c4c::backend::DynamicGlobalAggregateArrayAccess;
 
   using DynamicGlobalAggregateArrayMap =
       std::unordered_map<std::string, DynamicGlobalAggregateArrayAccess>;
 
-  struct DynamicGlobalScalarArrayAccess {
-    std::string global_name;
-    bir::TypeKind element_type = bir::TypeKind::Void;
-    std::size_t byte_offset = 0;
-    std::size_t outer_element_count = 0;
-    std::size_t outer_element_stride_bytes = 0;
-    bir::Value outer_index;
-    std::size_t element_count = 0;
-    std::size_t element_stride_bytes = 0;
-    bir::Value index;
-  };
+  using DynamicGlobalScalarArrayAccess = c4c::backend::DynamicGlobalScalarArrayAccess;
 
   using DynamicGlobalScalarArrayMap =
       std::unordered_map<std::string, DynamicGlobalScalarArrayAccess>;
 
-  struct LocalAggregateSlots {
-    std::string storage_type_text;
-    std::string type_text;
-    std::size_t base_byte_offset = 0;
-    std::unordered_map<std::size_t, std::string> leaf_slots;
-  };
+  using LocalAggregateSlots = c4c::backend::LocalAggregateSlots;
 
   using LocalAggregateSlotMap = std::unordered_map<std::string, LocalAggregateSlots>;
   using LocalAggregateFieldSet = std::unordered_set<std::string>;
   using LocalPointerValueAliasMap = std::unordered_map<std::string, bir::Value>;
-  struct PointerAddress {
-    bir::Value base_value;
-    bir::TypeKind value_type = bir::TypeKind::Void;
-    std::size_t byte_offset = 0;
-    std::size_t dynamic_element_count = 0;
-    std::size_t dynamic_element_stride_bytes = 0;
-    std::string storage_type_text;
-    std::string type_text;
-  };
+  using PointerAddress = c4c::backend::PointerAddress;
 
   using PointerAddressMap = std::unordered_map<std::string, PointerAddress>;
   using PointerAddressIntMap = std::unordered_map<std::string, PointerAddress>;
@@ -391,15 +312,8 @@ class BirFunctionLowerer {
     bool returned_via_sret = false;
   };
 
-  struct AggregateArrayExtent {
-    std::size_t element_count = 0;
-    std::size_t element_stride_bytes = 0;
-  };
-
-  struct LocalAggregateGepTarget {
-    std::string type_text;
-    std::int64_t byte_offset = 0;
-  };
+  using AggregateArrayExtent = c4c::backend::AggregateArrayExtent;
+  using LocalAggregateGepTarget = c4c::backend::LocalAggregateGepTarget;
 
   enum class LocalSlotLoadResult {
     NotHandled,
