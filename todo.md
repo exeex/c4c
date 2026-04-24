@@ -1,35 +1,34 @@
 Status: Active
 Source Idea Path: ideas/open/04_bir-memory-entrypoints-and-helper-boundaries.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Normalize The Pure Helper Header
+Current Step ID: 4
+Current Step Title: Review Entrypoint And Helper Placement
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 of `plan.md` removed the `memory_helpers.hpp` member-fragment include
-from `BirFunctionLowerer`. `lowering.hpp` now explicitly declares the eight
-previously macro-included static memory helper members:
+Step 3 of `plan.md` verified the accepted header-normalization slice.
+`memory_helpers.hpp` is now a normal `#pragma once` header exposing only the
+pure helper result structs and free helper declarations recorded in Step 1:
 
-- `find_repeated_aggregate_extent_at_offset(...)`
-- `find_nested_repeated_aggregate_extent_at_offset(...)`
-- `resolve_relative_gep_target(...)`
-- `find_pointer_array_length_at_offset(...)`
-- `resolve_global_gep_address(...)`
-- `resolve_relative_global_gep_address(...)`
-- `resolve_global_dynamic_pointer_array_access(...)`
-- `resolve_global_dynamic_aggregate_array_access(...)`
+- `ScalarLayoutLeafFacts`
+- `ScalarLayoutByteOffsetFacts`
+- `AggregateByteOffsetProjection`
+- `resolve_scalar_layout_facts_at_byte_offset(...)`
+- `resolve_aggregate_byte_offset_projection(...)`
+- `can_reinterpret_byte_storage_as_type(...)`
 
-`memory_helpers.hpp` is now a normal `#pragma once` pure-helper header and no
-longer has a member-fragment macro mode or member-fragment include guards.
-No behavior, tests, or implementation bodies changed.
+No member-fragment macro mode, macro-mode guards, declaration-injection shape,
+or hidden stateful `BirFunctionLowerer` member declarations remain in
+`memory_helpers.hpp`.
 
 ## Suggested Next
 
-Supervisor should either treat Step 3 as satisfied by the accepted
-header-normalization slice or delegate a narrow verification packet that checks
-`memory_helpers.hpp` exposes only pure helper structs/functions.
+Delegate Step 4 as a narrow placement review packet: confirm memory entrypoints
+and stateful helper flows remain `BirFunctionLowerer` members in
+`lowering.hpp`, pure reusable reasoning stays in `memory_helpers.hpp`, and
+file-private glue stays local to the memory `.cpp` files.
 
 ## Watchouts
 
@@ -38,15 +37,13 @@ header-normalization slice or delegate a narrow verification packet that checks
 - `memory_helpers.hpp` still includes `../lowering.hpp` because the remaining
   pure helper declarations use `BirFunctionLowerer` nested aliases/types.
 - No local-slot helper movement was attempted in this packet.
+- Step 4 should be a placement review first; do not move local-slot code unless
+  the review finds a narrow, mechanical move that the supervisor explicitly
+  delegates with compile proof.
 
 ## Proof
 
-Ran delegated proof:
-
-`bash -o pipefail -c 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_" | tee test_after.log'`
-
-Result: passed. Build completed, and the backend CTest regex subset reported
-100% tests passed, 0 failed out of 97 tests run. The supervisor regression
-guard also passed with 97 before / 97 after, and `test_after.log` was rolled
-forward to `test_before.log`. Current canonical proof log path:
-`test_before.log`.
+Read-only verification packet; no build/test proof was delegated or run.
+No `test_after.log` was created. Step 2 already built and passed the
+`^backend_` subset after the same header normalization; current canonical proof
+log path remains `test_before.log`.
