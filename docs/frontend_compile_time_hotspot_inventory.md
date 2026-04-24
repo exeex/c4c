@@ -19,8 +19,8 @@ Build: `build` (`RelWithDebInfo`, optimized single-TU compile commands from
 | Rank | Translation unit | Optimized compile (s) | Preprocessed lines | Include entries |
 | --- | --- | ---: | ---: | ---: |
 | 1 | `src/codegen/lir/stmt_emitter_expr.cpp` | 6.578 | 85882 | 382 |
-| 2 | `src/frontend/hir/hir_expr.cpp` | 5.226 | 84245 | 362 |
-| 3 | `src/frontend/hir/hir_stmt.cpp` | 4.998 | 83946 | 345 |
+| 2 | `src/frontend/hir/impl/expr/expr.cpp` | 5.226 | 84245 | 362 |
+| 3 | `src/frontend/hir/impl/stmt/stmt.cpp` | 4.998 | 83946 | 345 |
 | 4 | `src/frontend/hir/hir_templates.cpp` | 4.886 | 85265 | 360 |
 | 5 | `src/codegen/lir/stmt_emitter_call.cpp` | 3.939 | 85628 | 384 |
 | 6 | `src/frontend/parser/impl/declarations.cpp` | 2.957 | 65266 | 310 |
@@ -42,8 +42,8 @@ Build: `build` (`RelWithDebInfo`, optimized single-TU compile commands from
 ## Step 2 Candidates
 
 - `src/codegen/lir/stmt_emitter_expr.cpp`
-- `src/frontend/hir/hir_expr.cpp`
-- `src/frontend/hir/hir_stmt.cpp`
+- `src/frontend/hir/impl/expr/expr.cpp`
+- `src/frontend/hir/impl/stmt/stmt.cpp`
 - `src/frontend/hir/hir_templates.cpp`
 - `src/codegen/lir/stmt_emitter_call.cpp`
 
@@ -65,8 +65,8 @@ Method:
 | Translation unit | `-fsyntax-only` (s) | `-O0 -c` (s) | `-O2 -c` (s) | Classification |
 | --- | ---: | ---: | ---: | --- |
 | `src/codegen/lir/stmt_emitter_expr.cpp` | 1.170 | 2.250 | 6.712 | Optimizer heavy |
-| `src/frontend/hir/hir_expr.cpp` | 0.685 | 1.793 | 4.899 | Optimizer heavy |
-| `src/frontend/hir/hir_stmt.cpp` | 0.799 | 1.959 | 5.098 | Optimizer heavy |
+| `src/frontend/hir/impl/expr/expr.cpp` | 0.685 | 1.793 | 4.899 | Optimizer heavy |
+| `src/frontend/hir/impl/stmt/stmt.cpp` | 0.799 | 1.959 | 5.098 | Optimizer heavy |
 | `src/frontend/hir/hir_templates.cpp` | 0.790 | 1.676 | 5.031 | Optimizer heavy |
 | `src/codegen/lir/stmt_emitter_call.cpp` | 0.744 | 1.781 | 4.246 | Optimizer heavy |
 
@@ -157,9 +157,9 @@ this updated hotspot order:
 
 | Rank | Translation unit | Optimized compile (s) |
 | --- | --- | ---: |
-| 1 | `src/frontend/hir/hir_expr.cpp` | 4.933 |
+| 1 | `src/frontend/hir/impl/expr/expr.cpp` | 4.933 |
 | 2 | `src/frontend/hir/hir_templates.cpp` | 4.295 |
-| 3 | `src/frontend/hir/hir_stmt.cpp` | 4.275 |
+| 3 | `src/frontend/hir/impl/stmt/stmt.cpp` | 4.275 |
 | 4 | `src/codegen/lir/stmt_emitter_call.cpp` | 3.547 |
 | 5 | `src/codegen/lir/stmt_emitter_expr.cpp` | 2.986 |
 
@@ -206,25 +206,25 @@ Interpretation:
   hotspot TU, this change should be treated as structure preparation for later
   HIR work rather than as a measured compile-time win.
 
-## Step 4: Refreshed Ranking Before The `hir_expr.cpp` Split
+## Step 4: Refreshed Ranking Before The `impl/expr/expr.cpp` Split
 
 Recreated `build/compile_commands.json`, rebuilt the tree, and re-ran the
 optimized single-TU timings that drive the active Step 4 choice:
 
 | Rank | Translation unit | Optimized compile (s) |
 | --- | --- | ---: |
-| 1 | `src/frontend/hir/hir_expr.cpp` | 9.281 |
-| 2 | `src/frontend/hir/hir_stmt.cpp` | 8.841 |
+| 1 | `src/frontend/hir/impl/expr/expr.cpp` | 9.281 |
+| 2 | `src/frontend/hir/impl/stmt/stmt.cpp` | 8.841 |
 | 3 | `src/frontend/hir/hir_templates.cpp` | 8.780 |
 | 4 | `src/codegen/lir/stmt_emitter_call.cpp` | 6.327 |
 | 5 | `src/codegen/lir/stmt_emitter_expr.cpp` | 3.770 |
 
 Interpretation:
 
-- `hir_expr.cpp` retook the lead hotspot position, with `hir_stmt.cpp` and
+- `impl/expr/expr.cpp` retook the lead hotspot position, with `impl/stmt/stmt.cpp` and
   `hir_templates.cpp` close behind in the same HIR-heavy tier.
 - The next extraction should therefore move from the earlier
-  `hir_templates.cpp` follow-up to a `hir_expr.cpp` seam with a focused HIR
+  `hir_templates.cpp` follow-up to a `impl/expr/expr.cpp` seam with a focused HIR
   and runtime validation surface.
 
 ## Step 4: Fourth Executed Slice
@@ -233,8 +233,8 @@ Interpretation:
   (`try_lower_template_struct_call`, `lower_call_arg`,
   `try_expand_pack_call_arg`, `try_lower_member_call_expr`,
   `lower_call_expr`, and `try_lower_consteval_call_expr`) out of
-  `src/frontend/hir/hir_expr.cpp` into the new
-  `src/frontend/hir/hir_expr_call.cpp`.
+  `src/frontend/hir/impl/expr/expr.cpp` into the new
+  `src/frontend/hir/impl/expr/call.cpp`.
 - Kept the logic as existing `Lowerer` methods, so this remains a
   translation-unit ownership split rather than a semantic rewrite.
 - Added focused HIR coverage in
@@ -249,17 +249,17 @@ Optimized single-TU compile timings after the split, using regenerated
 
 | Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
 | --- | ---: | ---: | --- |
-| `src/frontend/hir/hir_expr.cpp` | 9.281 | 3.549 | direct post-split rerun |
-| `src/frontend/hir/hir_expr_call.cpp` | n/a | 2.884 | new extracted helper TU |
-| `src/frontend/hir/hir_stmt.cpp` | 8.841 | 4.710 | refreshed comparison tier |
+| `src/frontend/hir/impl/expr/expr.cpp` | 9.281 | 3.549 | direct post-split rerun |
+| `src/frontend/hir/impl/expr/call.cpp` | n/a | 2.884 | new extracted helper TU |
+| `src/frontend/hir/impl/stmt/stmt.cpp` | 8.841 | 4.710 | refreshed comparison tier |
 | `src/frontend/hir/hir_templates.cpp` | 8.780 | 4.634 | refreshed comparison tier |
 
 Interpretation:
 
-- The targeted `hir_expr.cpp` hotspot dropped by `5.732s`, about `61.8%`,
+- The targeted `impl/expr/expr.cpp` hotspot dropped by `5.732s`, about `61.8%`,
   after moving the call-lowering cluster behind its own `.cpp` boundary.
 - The refreshed comparison tier after that split showed `hir_templates.cpp`
-  and `hir_stmt.cpp` still close enough to justify returning to HIR helper
+  and `impl/stmt/stmt.cpp` still close enough to justify returning to HIR helper
   extraction rather than shifting back to parser work.
 
 ## Step 4: Seventh Executed Slice
@@ -271,8 +271,8 @@ Interpretation:
 | --- | --- | ---: |
 | 1 | `src/frontend/hir/hir_templates.cpp` | 4.237 |
 | 2 | `src/codegen/lir/stmt_emitter_call.cpp` | 3.996 |
-| 3 | `src/frontend/hir/hir_stmt.cpp` | 3.901 |
-| 4 | `src/frontend/hir/hir_expr.cpp` | 3.834 |
+| 3 | `src/frontend/hir/impl/stmt/stmt.cpp` | 3.901 |
+| 4 | `src/frontend/hir/impl/expr/expr.cpp` | 3.834 |
 | 5 | `src/codegen/lir/stmt_emitter_expr.cpp` | 3.261 |
 
 - Because `hir_templates.cpp` remained the hottest unit, extracted the
@@ -306,18 +306,18 @@ Interpretation:
 | --- | --- | ---: |
 | 1 | `src/frontend/hir/hir_templates.cpp` | 4.247 |
 | 2 | `src/codegen/lir/stmt_emitter_call.cpp` | 4.097 |
-| 3 | `src/frontend/hir/hir_stmt.cpp` | 4.063 |
-| 4 | `src/frontend/hir/hir_expr.cpp` | 3.641 |
+| 3 | `src/frontend/hir/impl/stmt/stmt.cpp` | 4.063 |
+| 4 | `src/frontend/hir/impl/expr/expr.cpp` | 3.641 |
 | 5 | `src/codegen/lir/stmt_emitter_expr.cpp` | 3.258 |
-- The refreshed tier now shifts leadership to `hir_stmt.cpp` and
+- The refreshed tier now shifts leadership to `impl/stmt/stmt.cpp` and
   `hir_templates.cpp`, so a subsequent Step 4 slice should likely move there
-  rather than returning immediately to `hir_expr.cpp`.
+  rather than returning immediately to `impl/expr/expr.cpp`.
 
 ## Step 4: Fifth Executed Slice
 
 - Extracted the `NK_RANGE_FOR` lowering branch from
-  `src/frontend/hir/hir_stmt.cpp` into the new
-  `src/frontend/hir/hir_stmt_range_for.cpp`.
+  `src/frontend/hir/impl/stmt/stmt.cpp` into the new
+  `src/frontend/hir/impl/stmt/range_for.cpp`.
 - Added focused HIR coverage in
   `tests/cpp/internal/hir_case/hir_stmt_range_for_helper_hir.cpp` so the
   helper split keeps the synthetic iterator locals and iterator-call lowering
@@ -329,13 +329,13 @@ Optimized single-TU compile timings for the range-for split:
 
 | Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
 | --- | ---: | ---: | --- |
-| `src/frontend/hir/hir_stmt.cpp` | 5.231 | 10.111 | before compiled from `HEAD`, after from the working tree |
-| `src/frontend/hir/hir_stmt_range_for.cpp` | n/a | 1.958 | new extracted TU |
+| `src/frontend/hir/impl/stmt/stmt.cpp` | 5.231 | 10.111 | before compiled from `HEAD`, after from the working tree |
+| `src/frontend/hir/impl/stmt/range_for.cpp` | n/a | 1.958 | new extracted TU |
 
 Interpretation:
 
 - This slice preserved behavior and improved file structure, but the measured
-  hotspot timing for `hir_stmt.cpp` moved in the wrong direction.
+  hotspot timing for `impl/stmt/stmt.cpp` moved in the wrong direction.
 - It should therefore be treated as structure-only groundwork and not as a
   compile-time win.
 
@@ -405,14 +405,14 @@ Interpretation:
   by `0.456s`, about `10.2%`.
 - With `stmt_emitter_call.cpp` now lower than its pre-split measurement, the
   next extraction choice should refresh the current HIR/LIR tier before picking
-  the next seam between `hir_templates.cpp` and `hir_stmt.cpp`.
+  the next seam between `hir_templates.cpp` and `impl/stmt/stmt.cpp`.
 
 ## Step 4: Tenth Executed Slice
 
 - Extracted the switch-family lowering cluster (`NK_SWITCH`, `NK_CASE`,
   `NK_CASE_RANGE`, and `NK_DEFAULT`) from
-  `src/frontend/hir/hir_stmt.cpp` into the new
-  `src/frontend/hir/hir_stmt_switch.cpp`.
+  `src/frontend/hir/impl/stmt/stmt.cpp` into the new
+  `src/frontend/hir/impl/stmt/switch.cpp`.
 - Kept the extracted logic as existing `Lowerer` methods, so this remains a
   translation-unit ownership split around control-flow statement lowering
   rather than a semantic rewrite.
@@ -427,42 +427,42 @@ Optimized single-TU compile timings for the switch-family split:
 
 | Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
 | --- | ---: | ---: | --- |
-| `src/frontend/hir/hir_stmt.cpp` | 4.914 | 3.952 | before compiled from `HEAD`, after from the working tree |
-| `src/frontend/hir/hir_stmt_switch.cpp` | n/a | 1.074 | new extracted TU |
+| `src/frontend/hir/impl/stmt/stmt.cpp` | 4.914 | 3.952 | before compiled from `HEAD`, after from the working tree |
+| `src/frontend/hir/impl/stmt/switch.cpp` | n/a | 1.074 | new extracted TU |
 
 Interpretation:
 
-- Unlike the earlier range-for split, this `hir_stmt.cpp` slice did produce a
+- Unlike the earlier range-for split, this `impl/stmt/stmt.cpp` slice did produce a
   measured hotspot reduction on the main TU.
-- The main `hir_stmt.cpp` rebuild surface dropped by `0.962s`, about `19.6%`,
+- The main `impl/stmt/stmt.cpp` rebuild surface dropped by `0.962s`, about `19.6%`,
   while preserving switch/case/default lowering behavior.
 
-## Step 4: Refreshed Ranking After The `hir_stmt.cpp` Switch Split
+## Step 4: Refreshed Ranking After The `impl/stmt/stmt.cpp` Switch Split
 
 The targeted optimized single-TU rerun after the switch-family extraction
 produced this updated hotspot order:
 
 | Rank | Translation unit | Optimized compile (s) |
 | --- | --- | ---: |
-| 1 | `src/frontend/hir/hir_stmt.cpp` | 4.764 |
+| 1 | `src/frontend/hir/impl/stmt/stmt.cpp` | 4.764 |
 | 2 | `src/frontend/hir/hir_templates.cpp` | 3.945 |
-| 3 | `src/frontend/hir/hir_expr.cpp` | 3.712 |
+| 3 | `src/frontend/hir/impl/expr/expr.cpp` | 3.712 |
 | 4 | `src/codegen/lir/stmt_emitter_expr.cpp` | 3.707 |
 | 5 | `src/codegen/lir/stmt_emitter_call.cpp` | 3.180 |
 
 Interpretation:
 
-- `hir_stmt.cpp` still leads the refreshed tier, though by a narrower margin
+- `impl/stmt/stmt.cpp` still leads the refreshed tier, though by a narrower margin
   than before the split.
 - The next extraction choice should inspect whether another cohesive
-  control-flow seam remains in `hir_stmt.cpp` before returning to
+  control-flow seam remains in `impl/stmt/stmt.cpp` before returning to
   `hir_templates.cpp`.
 
 ## Step 4: Thirteenth Executed Slice
 
 - Extracted `Lowerer::lower_local_decl_stmt` from
-  `src/frontend/hir/hir_stmt.cpp` into the new
-  `src/frontend/hir/hir_stmt_decl.cpp`.
+  `src/frontend/hir/impl/stmt/stmt.cpp` into the new
+  `src/frontend/hir/impl/stmt/decl.cpp`.
 - Kept the extracted logic as an existing `Lowerer` method, so this remains a
   translation-unit ownership split around local declaration lowering rather
   than a semantic rewrite.
@@ -477,12 +477,12 @@ Optimized single-TU compile timings for the local-declaration split:
 
 | Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
 | --- | ---: | ---: | --- |
-| `src/frontend/hir/hir_stmt.cpp` | 3.725 | 2.540 | before compiled from `HEAD`, after from the working tree |
-| `src/frontend/hir/hir_stmt_decl.cpp` | n/a | 2.520 | new extracted TU |
+| `src/frontend/hir/impl/stmt/stmt.cpp` | 3.725 | 2.540 | before compiled from `HEAD`, after from the working tree |
+| `src/frontend/hir/impl/stmt/decl.cpp` | n/a | 2.520 | new extracted TU |
 
 Interpretation:
 
-- This slice preserved behavior and reduced the main `hir_stmt.cpp` hotspot TU
+- This slice preserved behavior and reduced the main `impl/stmt/stmt.cpp` hotspot TU
   by `1.185s`, about `31.8%`.
 - Unlike the earlier range-for split, this local-declaration extraction is a
   measured compile-time win on the primary TU.
@@ -494,16 +494,16 @@ produced this updated hotspot order:
 
 | Rank | Translation unit | Optimized compile (s) |
 | --- | --- | ---: |
-| 1 | `src/frontend/hir/hir_expr.cpp` | 3.653 |
+| 1 | `src/frontend/hir/impl/expr/expr.cpp` | 3.653 |
 | 2 | `src/frontend/hir/hir_templates.cpp` | 3.579 |
 | 3 | `src/codegen/lir/stmt_emitter_call.cpp` | 2.937 |
-| 4 | `src/frontend/hir/hir_stmt.cpp` | 2.540 |
+| 4 | `src/frontend/hir/impl/stmt/stmt.cpp` | 2.540 |
 
 Interpretation:
 
-- The refreshed tier is no longer `hir_stmt.cpp`-led; `hir_expr.cpp` now
+- The refreshed tier is no longer `impl/stmt/stmt.cpp`-led; `impl/expr/expr.cpp` now
   narrowly leads `hir_templates.cpp`.
-- The next extraction choice should inspect the remaining `hir_expr.cpp`
+- The next extraction choice should inspect the remaining `impl/expr/expr.cpp`
   helper families first, with `hir_templates.cpp` as the immediate fallback if
   its remaining seams are cleaner.
 
@@ -516,8 +516,8 @@ Interpretation:
   `materialize_initializer_list_arg`,
   `lower_compound_literal_expr`,
   `lower_new_expr`, and `lower_delete_expr`) out of
-  `src/frontend/hir/hir_expr.cpp` into the new
-  `src/frontend/hir/hir_expr_object.cpp`.
+  `src/frontend/hir/impl/expr/expr.cpp` into the new
+  `src/frontend/hir/impl/expr/object.cpp`.
 - Kept the logic as existing `Lowerer` methods, so this remains a
   translation-unit ownership split rather than a semantic rewrite of object
   materialization.
@@ -532,12 +532,12 @@ Optimized single-TU compile timings for the object-materialization split:
 
 | Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
 | --- | ---: | ---: | --- |
-| `src/frontend/hir/hir_expr.cpp` | 4.087 | 2.639 | before compiled from `HEAD`, after from the working tree |
-| `src/frontend/hir/hir_expr_object.cpp` | n/a | 2.179 | new extracted TU |
+| `src/frontend/hir/impl/expr/expr.cpp` | 4.087 | 2.639 | before compiled from `HEAD`, after from the working tree |
+| `src/frontend/hir/impl/expr/object.cpp` | n/a | 2.179 | new extracted TU |
 
 Interpretation:
 
-- This slice preserved behavior and reduced the main `hir_expr.cpp` hotspot TU
+- This slice preserved behavior and reduced the main `impl/expr/expr.cpp` hotspot TU
   by `1.448s`, about `35.4%`.
 - The extracted helpers are still non-trivial, but the main expression TU now
   sits below both `hir_templates.cpp` and `stmt_emitter_call.cpp` in the
@@ -552,12 +552,12 @@ extraction produced this updated hotspot order:
 | --- | --- | ---: |
 | 1 | `src/frontend/hir/hir_templates.cpp` | 3.522 |
 | 2 | `src/codegen/lir/stmt_emitter_call.cpp` | 3.036 |
-| 3 | `src/frontend/hir/hir_stmt.cpp` | 2.773 |
-| 4 | `src/frontend/hir/hir_expr.cpp` | 2.639 |
+| 3 | `src/frontend/hir/impl/stmt/stmt.cpp` | 2.773 |
+| 4 | `src/frontend/hir/impl/expr/expr.cpp` | 2.639 |
 
 Interpretation:
 
-- The refreshed tier is now led by `hir_templates.cpp`; `hir_expr.cpp` is no
+- The refreshed tier is now led by `hir_templates.cpp`; `impl/expr/expr.cpp` is no
   longer the primary hotspot after the object-materialization split.
 - The next extraction choice should move back to `hir_templates.cpp`, with
   `stmt_emitter_call.cpp` as the immediate fallback if the remaining template
@@ -602,9 +602,9 @@ produced this updated hotspot order:
 | Rank | Translation unit | Optimized compile (s) |
 | --- | --- | ---: |
 | 1 | `src/codegen/lir/stmt_emitter_call.cpp` | 3.216 |
-| 2 | `src/frontend/hir/hir_expr.cpp` | 2.629 |
+| 2 | `src/frontend/hir/impl/expr/expr.cpp` | 2.629 |
 | 3 | `src/frontend/hir/hir_templates.cpp` | 2.506 |
-| 4 | `src/frontend/hir/hir_stmt.cpp` | 2.465 |
+| 4 | `src/frontend/hir/impl/stmt/stmt.cpp` | 2.465 |
 | 5 | `src/codegen/lir/stmt_emitter_expr.cpp` | 2.367 |
 
 Interpretation:
@@ -621,10 +621,10 @@ Interpretation:
   `builtin_query_result_type`, `resolve_builtin_query_type`,
   `lower_builtin_sizeof_type`, `lower_builtin_alignof_type`,
   `builtin_alignof_expr_bytes`, and `lower_builtin_alignof_expr`) out of
-  `src/frontend/hir/hir_expr.cpp` into the new
-  `src/frontend/hir/hir_expr_builtin.cpp`.
+  `src/frontend/hir/impl/expr/expr.cpp` into the new
+  `src/frontend/hir/impl/expr/builtin.cpp`.
 - Kept the main expression dispatcher and operator/member lowering inside
-  `src/frontend/hir/hir_expr.cpp`, so this remains a translation-unit
+  `src/frontend/hir/impl/expr/expr.cpp`, so this remains a translation-unit
   ownership split rather than a semantic rewrite of expression lowering.
 - Tightened the focused HIR builtin-layout tests so the alignof checks now
   require the concrete `return 16` result in the dumped HIR.
@@ -635,16 +635,16 @@ Optimized single-TU compile timings for the builtin layout-query split:
 
 | Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
 | --- | ---: | ---: | --- |
-| `src/frontend/hir/hir_expr.cpp` | 3.148 | 2.667 | before compiled from `HEAD`, after from the working tree |
-| `src/frontend/hir/hir_expr_builtin.cpp` | n/a | 1.060 | new extracted TU |
+| `src/frontend/hir/impl/expr/expr.cpp` | 3.148 | 2.667 | before compiled from `HEAD`, after from the working tree |
+| `src/frontend/hir/impl/expr/builtin.cpp` | n/a | 1.060 | new extracted TU |
 
 Interpretation:
 
-- This slice preserved behavior and reduced the main `hir_expr.cpp` hotspot TU
+- This slice preserved behavior and reduced the main `impl/expr/expr.cpp` hotspot TU
   by `0.481s`, about `15.3%`.
-- With `hir_expr.cpp` reduced to `2.667s`, the next leading frontend hotspot
+- With `impl/expr/expr.cpp` reduced to `2.667s`, the next leading frontend hotspot
   in the current direct comparison is now `hir_templates.cpp` at `3.166s`,
-  followed closely by `hir_stmt.cpp` at `3.159s`.
+  followed closely by `impl/stmt/stmt.cpp` at `3.159s`.
 
 ## Step 4: Twenty-First Executed Slice
 
@@ -678,8 +678,8 @@ Interpretation:
 - This slice preserved behavior and reduced the main `hir_templates.cpp`
   hotspot TU by `0.108s`, about `3.1%`.
 - The refreshed direct comparison after the split now reads
-  `hir_templates.cpp` at `2.672s`, `hir_expr.cpp` at `2.402s`,
-  `hir_stmt.cpp` at `2.330s`, and the reduced
+  `hir_templates.cpp` at `2.672s`, `impl/expr/expr.cpp` at `2.402s`,
+  `impl/stmt/stmt.cpp` at `2.330s`, and the reduced
   `stmt_emitter_call_vaarg_amd64.cpp` at `2.147s`.
 - Because `hir_templates.cpp` still leads the remaining direct-TU hotspot
   tier, the next extraction choice should stay in that file.

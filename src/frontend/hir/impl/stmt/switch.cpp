@@ -1,4 +1,4 @@
-#include "impl/stmt/stmt.hpp"
+#include "stmt.hpp"
 #include "consteval.hpp"
 
 namespace c4c::hir {

@@ -1,6 +1,6 @@
 // HIR regression: basic control-flow lowering should keep the emitted
 // branch-and-loop block structure stable across helper extraction from
-// hir_stmt.cpp.
+// impl/stmt/stmt.cpp.
 
 int drive(int limit) {
   int total = 0;

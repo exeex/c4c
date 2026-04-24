@@ -1,4 +1,4 @@
-// HIR regression: object-materialization helpers extracted from hir_expr.cpp
+// HIR regression: object-materialization helpers extracted from impl/expr/expr.cpp
 // must preserve direct constructor temps, initializer-list materialization,
 // and class-object new/delete lowering.
 

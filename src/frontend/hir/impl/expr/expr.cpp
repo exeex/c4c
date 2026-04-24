@@ -1,8 +1,7 @@
-// Draft-only HIR expression lowering split extracted from hir_lowering_core.cpp.
-// This file is not yet wired into the build and is intended as a staging
-// artifact for the eventual multi-translation-unit split.
+// Core expression lowering implementation. Specialized expression helpers live
+// beside this file under impl/expr/.
 
-#include "impl/expr/expr.hpp"
+#include "expr.hpp"
 #include <cctype>
 #include <sstream>
 
