@@ -4,7 +4,7 @@ Status: Open
 Created: 2026-04-24
 Last Updated: 2026-04-24
 Parent Ideas:
-- [92_parser_agent_index_header_hierarchy.md](/workspaces/c4c/ideas/open/92_parser_agent_index_header_hierarchy.md)
+- [92_parser_agent_index_header_hierarchy.md](/workspaces/c4c/ideas/closed/92_parser_agent_index_header_hierarchy.md)
 
 ## Goal
 

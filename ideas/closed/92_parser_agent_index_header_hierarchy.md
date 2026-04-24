@@ -1,6 +1,6 @@
 # Parser Agent Index Header Hierarchy
 
-Status: Open
+Status: Closed
 Created: 2026-04-24
 Last Updated: 2026-04-24
 Parent Ideas:
@@ -193,6 +193,25 @@ At minimum:
 
 Escalate validation if the slice changes AST-facing declarations, HIR-facing
 include paths, app entry includes, or shared frontend infrastructure.
+
+## Completion Notes
+
+Closed: 2026-04-24
+
+The parser header hierarchy work is complete for this initiative:
+
+- parser-private state and type-helper headers now live under
+  `src/frontend/parser/impl/`
+- `src/frontend/parser/impl/parser_impl.hpp` is the private parser
+  implementation index for parser implementation translation units
+- top-level parser headers have been reduced to the public/parser-support
+  surfaces that remain in the current object layout
+- focused parser proof and the close-time regression guard passed
+
+The remaining public facade/PIMPL boundary is intentionally split into
+`ideas/open/94_parser_public_facade_pimpl_boundary.md`. That follow-on owns the
+larger object-layout rebuild needed before `parser.hpp` can stop including
+`impl/parser_state.hpp` and can hide parser-private state carriers completely.
 
 ## Non-Goals
 
