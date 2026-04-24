@@ -45,22 +45,23 @@ static void restore_current_struct_tag(Parser& parser, TextId text_id,
 
 // ── struct / union parsing ───────────────────────────────────────────────────
 
-bool Parser::try_parse_record_access_label() {
-    if (!(is_cpp_mode() &&
-          (check(TokenKind::KwPublic) || check(TokenKind::KwPrivate) ||
-           check(TokenKind::KwProtected) ||
-           (check(TokenKind::Identifier) &&
-            (token_spelling(cur()) == "public" || token_spelling(cur()) == "private" ||
-             token_spelling(cur()) == "protected"))) &&
-          core_input_state_.pos + 1 <
-              static_cast<int>(core_input_state_.tokens.size()) &&
-          core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+bool try_parse_record_access_label(Parser& parser) {
+    if (!(parser.is_cpp_mode() &&
+          (parser.check(TokenKind::KwPublic) || parser.check(TokenKind::KwPrivate) ||
+           parser.check(TokenKind::KwProtected) ||
+           (parser.check(TokenKind::Identifier) &&
+            (parser.token_spelling(parser.cur()) == "public" ||
+             parser.token_spelling(parser.cur()) == "private" ||
+             parser.token_spelling(parser.cur()) == "protected"))) &&
+          parser.core_input_state_.pos + 1 <
+              static_cast<int>(parser.core_input_state_.tokens.size()) &&
+          parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
               TokenKind::Colon)) {
         return false;
     }
 
-    consume();
-    consume();
+    parser.consume();
+    parser.consume();
     return true;
 }
 
@@ -138,43 +139,84 @@ bool try_skip_record_static_assert_member(Parser& parser,
     return true;
 }
 
-Parser::RecordMemberRecoveryResult
-Parser::recover_record_member_parse_error(int member_start_pos) {
-    if (!is_cpp_mode())
-        return RecordMemberRecoveryResult::Failed;
+Parser::RecordMemberRecoveryResult recover_record_member_parse_error(
+    Parser& parser, int member_start_pos) {
+    if (!parser.is_cpp_mode())
+        return Parser::RecordMemberRecoveryResult::Failed;
 
     int brace_depth = 0;
-    while (!at_end()) {
+    while (!parser.at_end()) {
         if (brace_depth == 0 &&
-            is_record_member_recovery_boundary(*this, member_start_pos)) {
-            return RecordMemberRecoveryResult::StoppedAtNextMember;
+            is_record_member_recovery_boundary(parser, member_start_pos)) {
+            return Parser::RecordMemberRecoveryResult::StoppedAtNextMember;
         }
-        if (check(TokenKind::LBrace)) {
+        if (parser.check(TokenKind::LBrace)) {
             ++brace_depth;
-            consume();
-        } else if (check(TokenKind::RBrace)) {
+            parser.consume();
+        } else if (parser.check(TokenKind::RBrace)) {
             if (brace_depth > 0) {
                 --brace_depth;
-                consume();
+                parser.consume();
             } else {
-                if (pos_ == member_start_pos && !at_end()) consume();
-                return RecordMemberRecoveryResult::StoppedAtRBrace;
+                if (parser.pos_ == member_start_pos && !parser.at_end()) parser.consume();
+                return Parser::RecordMemberRecoveryResult::StoppedAtRBrace;
             }
-        } else if (check(TokenKind::Semi) && brace_depth == 0) {
-            consume();
-            return RecordMemberRecoveryResult::SyncedAtSemicolon;
+        } else if (parser.check(TokenKind::Semi) && brace_depth == 0) {
+            parser.consume();
+            return Parser::RecordMemberRecoveryResult::SyncedAtSemicolon;
         } else {
-            consume();
+            parser.consume();
         }
     }
 
-    if (pos_ == member_start_pos && !at_end()) consume();
-    return RecordMemberRecoveryResult::Failed;
+    if (parser.pos_ == member_start_pos && !parser.at_end()) parser.consume();
+    return Parser::RecordMemberRecoveryResult::Failed;
 }
 
-void Parser::parse_record_template_member_prelude(
-    std::vector<InjectedTemplateParam>* injected_type_params,
+void parse_record_template_member_prelude(
+    Parser& parser,
+    std::vector<Parser::InjectedTemplateParam>* injected_type_params,
     bool* pushed_template_scope) {
+    auto at_end = [&]() { return parser.at_end(); };
+    auto check = [&](TokenKind kind) { return parser.check(kind); };
+    auto check_template_close = [&]() { return parser.check_template_close(); };
+    auto consume = [&]() { parser.consume(); };
+    auto consume_qualified_type_spelling =
+        [&](bool allow_global, bool consume_final_template_args,
+            std::string* out, Parser::QualifiedNameRef* out_qn) {
+            return parser.consume_qualified_type_spelling(
+                allow_global, consume_final_template_args, out, out_qn);
+        };
+    auto consume_template_parameter_type_start =
+        [&](bool allow_typename_keyword) {
+            return parser.consume_template_parameter_type_start(
+                allow_typename_keyword);
+        };
+    auto cur = [&]() -> const Token& { return parser.cur(); };
+    auto expect = [&](TokenKind kind) { parser.expect(kind); };
+    auto expect_template_close = [&]() { parser.expect_template_close(); };
+    auto is_cpp_mode = [&]() { return parser.is_cpp_mode(); };
+    auto match = [&](TokenKind kind) { return parser.match(kind); };
+    auto classify_typename_template_parameter = [&]() {
+        return parser.classify_typename_template_parameter();
+    };
+    auto parse_greater_than_in_template_list = [&](bool allow_shift) {
+        parser.parse_greater_than_in_template_list(allow_shift);
+    };
+    auto parse_type_name = [&]() { return parser.parse_type_name(); };
+    auto parser_text_id_for_token = [&](TextId token_text_id,
+                                        const std::string& fallback) {
+        return parser.parser_text_id_for_token(token_text_id, fallback);
+    };
+    auto register_synthesized_typedef_binding =
+        [&](TextId name_text_id, const std::string& name) {
+            parser.register_synthesized_typedef_binding(name_text_id, name);
+        };
+    auto token_spelling = [&](const Token& token) {
+        return parser.token_spelling(token);
+    };
+    auto& arena_ = parser.arena_;
+    auto& pos_ = parser.pos_;
     if (pushed_template_scope) *pushed_template_scope = false;
     if (!(is_cpp_mode() && check(TokenKind::KwTemplate)))
         return;
@@ -185,7 +227,7 @@ void Parser::parse_record_template_member_prelude(
         if (check(TokenKind::KwTypename) ||
             check(TokenKind::KwClass)) {
             if (classify_typename_template_parameter() ==
-                TypenameTemplateParamKind::TypedNonTypeParameter) {
+                Parser::TypenameTemplateParamKind::TypedNonTypeParameter) {
                 TypeSpec param_ts = parse_type_name();
                 (void)param_ts;
                 while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
@@ -239,7 +281,7 @@ void Parser::parse_record_template_member_prelude(
                 consume();
                 bool parsed_default_type = false;
                 {
-                    TentativeParseGuard guard(*this);
+                    Parser::TentativeParseGuard guard(parser);
                     try {
                         TypeSpec ignored_default = parse_type_name();
                         (void)ignored_default;
@@ -322,7 +364,7 @@ void Parser::parse_record_template_member_prelude(
         } else if (is_cpp_mode()) {
             bool parsed_constrained_type_param = false;
             {
-                TentativeParseGuard guard(*this);
+                Parser::TentativeParseGuard guard(parser);
                 std::string constraint_name;
                 if (consume_qualified_type_spelling(
                         /*allow_global=*/true,
@@ -343,7 +385,7 @@ void Parser::parse_record_template_member_prelude(
                         consume();
                         bool parsed_default_type = false;
                         {
-                            TentativeParseGuard default_guard(*this);
+                            Parser::TentativeParseGuard default_guard(parser);
                             try {
                                 TypeSpec ignored_default = parse_type_name();
                                 (void)ignored_default;
@@ -392,7 +434,7 @@ void Parser::parse_record_template_member_prelude(
             } else {
             bool parsed_typed_nttp = false;
             {
-                TentativeParseGuard guard(*this);
+                Parser::TentativeParseGuard guard(parser);
                 try {
                     TypeSpec param_ts = parse_type_name();
                     (void)param_ts;
@@ -502,7 +544,7 @@ void Parser::parse_record_template_member_prelude(
                             consume();
                             bool parsed_default_type = false;
                             {
-                                TentativeParseGuard default_guard(*this);
+                                Parser::TentativeParseGuard default_guard(parser);
                                 try {
                                     TypeSpec ignored_default = parse_type_name();
                                     (void)ignored_default;
@@ -555,22 +597,35 @@ void Parser::parse_record_template_member_prelude(
     }
     expect_template_close();
     if (!injected_type_params->empty()) {
-        std::vector<TemplateScopeParam> member_params;
+        std::vector<Parser::TemplateScopeParam> member_params;
         for (const auto& injected : *injected_type_params) {
-            TemplateScopeParam p;
+            Parser::TemplateScopeParam p;
             p.name_text_id = injected.name_text_id;
             p.name = injected.name;
             p.is_nttp = false;
             member_params.push_back(p);
         }
-        push_template_scope(TemplateScopeKind::MemberTemplate, member_params);
+        parser.push_template_scope(Parser::TemplateScopeKind::MemberTemplate,
+                                   member_params);
         if (pushed_template_scope) *pushed_template_scope = true;
     }
 }
 
-void Parser::parse_decl_attrs_for_record(int line, TypeSpec* attr_ts) {
+void parse_decl_attrs_for_record(Parser& parser, int line, TypeSpec* attr_ts) {
     if (!attr_ts)
         return;
+
+    auto check = [&](TokenKind kind) { return parser.check(kind); };
+    auto consume = [&]() { parser.consume(); };
+    auto parse_attributes = [&](TypeSpec* ts) {
+        parser.parse_attributes(ts);
+    };
+    auto parse_alignas_specifier = [&](TypeSpec* ts) {
+        c4c::parse_alignas_specifier(&parser, ts, line);
+    };
+    auto& core_input_state_ = parser.core_input_state_;
+    auto& pos_ = parser.pos_;
+    auto& tokens_ = parser.tokens_;
 
     auto skip_cpp11_attrs = [&]() {
         while (check(TokenKind::LBracket) &&
@@ -593,7 +648,7 @@ void Parser::parse_decl_attrs_for_record(int line, TypeSpec* attr_ts) {
 
     skip_cpp11_attrs();
     while (check(TokenKind::KwAlignas))
-        parse_alignas_specifier(this, attr_ts, line);
+        parse_alignas_specifier(attr_ts);
     parse_attributes(attr_ts);
     skip_cpp11_attrs();
 }
@@ -1715,7 +1770,7 @@ bool Parser::try_parse_record_member_with_template_prelude(
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
     RecordTemplatePreludeGuard tmpl_guard(this);
-    parse_record_template_member_prelude(&tmpl_guard.injected_type_params,
+    parse_record_template_member_prelude(*this, &tmpl_guard.injected_type_params,
                                          &tmpl_guard.pushed_template_scope);
     parse_optional_cpp20_requires_clause(*this);
     if (try_skip_record_friend_member(*this)) return true;
@@ -1732,7 +1787,7 @@ bool begin_record_member_parse(Parser& parser) {
 }
 
 bool Parser::try_parse_record_member_prelude(std::vector<Node*>* methods) {
-    if (try_parse_record_access_label()) return true;
+    if (try_parse_record_access_label(*this)) return true;
     if (try_skip_record_friend_member(*this)) return true;
     return try_skip_record_static_assert_member(*this, methods);
 }
@@ -1767,7 +1822,7 @@ bool Parser::try_parse_record_body_member(
                                        check_dup_field);
     } catch (const std::exception&) {
         const RecordMemberRecoveryResult recovery =
-            recover_record_member_parse_error(member_start_pos);
+            recover_record_member_parse_error(*this, member_start_pos);
         if (recovery != RecordMemberRecoveryResult::SyncedAtSemicolon &&
             recovery != RecordMemberRecoveryResult::StoppedAtNextMember)
             throw;
@@ -1870,7 +1925,7 @@ void Parser::parse_record_definition_prelude(
     specialization_args->clear();
     base_types->clear();
 
-    parse_decl_attrs_for_record(line, attr_ts);
+    parse_decl_attrs_for_record(*this, line, attr_ts);
 
     QualifiedNameRef tag_qn;
     bool has_tag_qn = false;
@@ -1886,7 +1941,7 @@ void Parser::parse_record_definition_prelude(
         *tag = arena_.strdup(std::string(token_spelling(cur())));
         consume();
     }
-    parse_decl_attrs_for_record(line, attr_ts);
+    parse_decl_attrs_for_record(*this, line, attr_ts);
 
     if (*tag && is_cpp_mode() && check(TokenKind::Less)) {
         int probe = core_input_state_.pos;

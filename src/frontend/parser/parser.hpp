@@ -791,12 +791,6 @@ class Parser {
       const std::string& struct_source_name,
       RecordBodyState* body_state,
       const std::function<void(const char*)>& check_dup_field);
-  bool try_parse_record_access_label();
-  RecordMemberRecoveryResult recover_record_member_parse_error(int member_start_pos);
-  void parse_record_template_member_prelude(
-      std::vector<InjectedTemplateParam>* injected_type_params,
-      bool* pushed_template_scope);
-  void parse_decl_attrs_for_record(int line, TypeSpec* attr_ts);
   void skip_record_base_specifier_tail();
   bool try_parse_record_base_specifier(TypeSpec* base_ts);
   void parse_record_base_clause(std::vector<TypeSpec>* base_types);

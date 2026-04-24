@@ -47,6 +47,14 @@ bool try_skip_record_friend_member(Parser& parser);
 bool try_skip_record_static_assert_member(Parser& parser,
                                           std::vector<Node*>* methods);
 bool begin_record_member_parse(Parser& parser);
+bool try_parse_record_access_label(Parser& parser);
+Parser::RecordMemberRecoveryResult recover_record_member_parse_error(
+    Parser& parser, int member_start_pos);
+void parse_record_template_member_prelude(
+    Parser& parser,
+    std::vector<Parser::InjectedTemplateParam>* injected_type_params,
+    bool* pushed_template_scope);
+void parse_decl_attrs_for_record(Parser& parser, int line, TypeSpec* attr_ts);
 
 bool lexeme_is_imaginary(const char* s);
 long long parse_int_lexeme(const char* s);
