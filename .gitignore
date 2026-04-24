@@ -22,3 +22,4 @@ __pycache__/
 .vscode
 Testing
 .plan_review_state.json
+CMakeUserPresets.json
