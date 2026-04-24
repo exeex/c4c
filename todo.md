@@ -1,31 +1,25 @@
 Status: Active
 Source Idea Path: ideas/open/94_parser_public_facade_pimpl_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Tighten Public Header And Include Proof
+Current Step ID: 7
+Current Step Title: Final Parser Facade Validation
 
 # Current Packet
 
 ## Just Finished
 
-Completed the Step 5/6 boundary transition by removing
-`#include "impl/parser_state.hpp"` from `src/frontend/parser/parser.hpp`.
-`parser.hpp` now forward-declares the private parser state carriers, snapshot
-types, tentative/parse-context guards, and template prelude guard types it only
-names by reference, alias, return type, or parameter type. The complete private
-definitions now enter parser implementation translation units through
-`src/frontend/parser/impl/parser_impl.hpp`, which explicitly includes
-`parser_state.hpp` after the public parser facade. `parser.hpp` also now
-includes `shared/qualified_name_table.hpp` directly because `QualifiedNameKey`
-is a public facade signature dependency that was previously arriving
-transitively through private state.
+Completed Step 7 final parser facade validation after the Step 5/6 boundary
+transition removed `#include "impl/parser_state.hpp"` from
+`src/frontend/parser/parser.hpp`. Acceptance checks found no public facade
+include of `impl/parser_state.hpp`; private parser implementation files include
+`impl/parser_impl.hpp`, and the only test include of `impl/parser_impl.hpp` is
+the explicit private-hook parser test file.
 
 ## Suggested Next
 
-Next executor packet: start Step 6 by shrinking the remaining parser facade
-exposure itself, especially public aliases and members that still name private
-snapshot/guard/carrier types, now that the public header no longer includes
-their definitions.
+Ask the plan owner to decide whether the active runbook and source idea are
+close-ready, or whether any remaining facade cleanup should become a separate
+follow-up idea.
 
 ## Watchouts
 
@@ -66,3 +60,8 @@ Supervisor include proof passed:
 
 Result: passed for a standalone source that includes only
 `frontend/parser/parser.hpp`.
+
+Supervisor Step 7 final validation passed:
+`ctest --test-dir build -j --output-on-failure`
+
+Result: passed, 2974/2974 tests.
