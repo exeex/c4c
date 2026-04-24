@@ -259,7 +259,7 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
         return true;
     }
     if (check(TokenKind::CharLit)) {
-        Node* lit = parse_primary();
+        Node* lit = parse_primary(*this);
         out_arg->is_value = true;
         out_arg->value = lit ? lit->ival * sign : 0;
         out_arg->nttp_name = nullptr;

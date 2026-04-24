@@ -674,8 +674,6 @@ class Parser {
   Node* parse_expr();            // comma-level
   Node* parse_assign_expr();     // assignment / ternary
   Node* parse_unary();           // prefix unary
-  Node* parse_postfix(Node* base); // postfix ops (left-recursive)
-  Node* parse_primary();         // primary expression
 
   // ── statement parsing ─────────────────────────────────────────────────────
   Node* parse_stmt();

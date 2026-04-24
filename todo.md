@@ -9,22 +9,18 @@ Current Step Title: Move Implementation-Only Method Declarations Behind The Boun
 ## Just Finished
 
 Completed Step 3 declaration-boundary slice by removing the implementation-only
-declarator/type qualification probe helpers
-`Parser::try_parse_declarator_member_pointer_prefix`,
-`Parser::try_parse_cpp_scoped_base_type`, and
-`Parser::try_parse_qualified_base_type` from public `Parser` declarations in
-`src/frontend/parser/parser.hpp`, adding equivalent private `Parser&` helper
-declarations to `src/frontend/parser/impl/parser_impl.hpp`, converting the
-implementations in `src/frontend/parser/parser_types_declarator.cpp` to the
-private parser boundary, and retargeting internal parser call sites in
-`src/frontend/parser/parser_types_declarator.cpp` and
-`src/frontend/parser/parser_types_base.cpp` to pass the parser explicitly.
+expression helpers `Parser::parse_postfix` and `Parser::parse_primary` from
+public `Parser` declarations in `src/frontend/parser/parser.hpp`, adding
+equivalent private `Parser&` helper declarations to
+`src/frontend/parser/impl/parser_impl.hpp`, converting their implementations in
+`src/frontend/parser/parser_expressions.cpp` to private parser-boundary helpers,
+and retargeting internal parser call sites to pass the parser explicitly.
 
 ## Suggested Next
 
-Continue with the next narrow parser facade boundary slice from the active
-plan, keeping implementation-only declarations behind
-`src/frontend/parser/impl/parser_impl.hpp` where practical.
+Continue with the next narrow parser facade boundary slice from the active plan,
+or have the supervisor review Step 3 progress if the planned declaration moves
+are now exhausted.
 
 ## Watchouts
 
@@ -106,6 +102,9 @@ plan, keeping implementation-only declarations behind
   current source/test search found no remaining public declarations, member
   definitions, or external direct member calls for the expression-parser
   helpers.
+- `parse_postfix` and `parse_primary` now live behind `impl/parser_impl.hpp`;
+  current source search found only parser implementation call sites, retargeted
+  to pass `Parser&` explicitly.
 - `try_parse_declarator_member_pointer_prefix`,
   `try_parse_cpp_scoped_base_type`, and `try_parse_qualified_base_type` now
   live behind `impl/parser_impl.hpp`; current source/test search found no
@@ -116,8 +115,8 @@ plan, keeping implementation-only declarations behind
 
 ## Proof
 
-Executor Step 3 focused proof passed for the declarator/type qualification
-probe helper declaration-boundary slice:
+Executor Step 3 focused proof passed for the expression helper
+declaration-boundary slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 
 Result: passed. Proof log: `test_after.log`.

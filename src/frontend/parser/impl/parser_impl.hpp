@@ -127,6 +127,8 @@ bool try_parse_cpp_scoped_base_type(Parser& parser, bool already_have_base,
 bool try_parse_qualified_base_type(Parser& parser, TypeSpec* out_ts);
 Node* parse_ternary(Parser& parser);
 Node* parse_binary(Parser& parser, int min_prec);
+Node* parse_postfix(Parser& parser, Node* base);
+Node* parse_primary(Parser& parser);
 
 bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);

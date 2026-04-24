@@ -3119,7 +3119,7 @@ top_level_base_ready:
                     val = 0;
                     consume();
                 } else if (check(TokenKind::CharLit)) {
-                    Node* lit = parse_primary();
+                    Node* lit = parse_primary(*this);
                     val = lit ? lit->ival : 0;
                 } else {
                     val = parse_int_lexeme(std::string(token_spelling(cur())).c_str());
