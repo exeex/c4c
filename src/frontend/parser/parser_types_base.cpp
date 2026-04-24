@@ -1293,7 +1293,9 @@ TypeSpec Parser::parse_base_type() {
         // just like 'Pair<int>' does via the typedef path. If the tag matches a known
         // template struct and '<' follows, fall through to the template instantiation
         // code below instead of returning immediately.
-        if (!(is_cpp_mode() && ts.tag && find_template_struct_primary(ts.tag) &&
+        if (!(is_cpp_mode() && ts.tag &&
+              find_template_struct_primary(current_namespace_context_id(),
+                                           find_parser_text_id(ts.tag), ts.tag) &&
               check(TokenKind::Less))) {
             return ts;
         }
@@ -1327,7 +1329,9 @@ TypeSpec Parser::parse_base_type() {
     // Template struct instantiation for 'struct Pair<int>' syntax (has_struct fall-through).
     // ts.base is already TB_STRUCT and ts.tag is the template name.
     if (has_struct && is_cpp_mode() && ts.tag &&
-        find_template_struct_primary(ts.tag) && check(TokenKind::Less)) {
+        find_template_struct_primary(current_namespace_context_id(),
+                                     find_parser_text_id(ts.tag), ts.tag) &&
+        check(TokenKind::Less)) {
         // Reuse the typedef-path template instantiation by setting has_typedef and
         // preparing ts as if the typedef had been resolved.
         has_typedef = true;
