@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-agent-index-header-hierarchy-and-rust-reference-removal.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Remove Prealloc-Local Rust Reference Files
+Current Step ID: 5
+Current Step Title: Final Structural Validation and Cleanup
 
 # Current Packet
 
@@ -19,8 +19,12 @@ surfaces.
 
 ## Suggested Next
 
-Run final prealloc structural validation and decide whether this active plan is
-ready for lifecycle closure.
+Step 5: Final Structural Validation and Cleanup.
+
+Re-scan `src/backend/prealloc` headers and docs for the intended visibility
+signal, confirm no one-header-per-`.cpp` pattern was introduced, run the
+supervisor-selected backend/prealloc proof, and then decide whether this active
+plan is ready for lifecycle closure.
 
 ## Watchouts
 
@@ -47,4 +51,4 @@ Result: passed. Ninja rechecked globbed directories and reported no work to do.
 `test_after.log` contains the canonical proof output for this packet.
 
 Baseline review: supervisor accepted `test_baseline.new.log` as
-`test_baseline.log`, green for `^backend_` at commit `92e1cd60`.
+`test_baseline.log`, green for `^backend_` at commit `a2a82934`.
