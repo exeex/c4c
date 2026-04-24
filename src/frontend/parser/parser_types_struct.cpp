@@ -841,7 +841,7 @@ bool try_parse_nested_record_member(
 
     bool inner_union = (parser.cur().kind == TokenKind::KwUnion);
     parser.consume();
-    Node* inner = parser.parse_struct_or_union(inner_union);
+    Node* inner = parse_struct_or_union(parser, inner_union);
     if (inner) parser.definition_state_.struct_defs.push_back(inner);
 
     TypeSpec anon_fts{};
@@ -1933,12 +1933,13 @@ void finish_record_body_context(Parser& parser,
                                saved_struct_tag);
 }
 
-void Parser::parse_record_definition_prelude(
+void parse_record_definition_prelude(
+    Parser& parser,
     int line,
     TypeSpec* attr_ts,
     const char** tag,
     const char** template_origin_name,
-    std::vector<TemplateArgParseResult>* specialization_args,
+    std::vector<Parser::TemplateArgParseResult>* specialization_args,
     std::vector<TypeSpec>* base_types) {
     if (!attr_ts || !tag || !template_origin_name || !specialization_args ||
         !base_types) {
@@ -1951,37 +1952,38 @@ void Parser::parse_record_definition_prelude(
     specialization_args->clear();
     base_types->clear();
 
-    parse_decl_attrs_for_record(*this, line, attr_ts);
+    parse_decl_attrs_for_record(parser, line, attr_ts);
 
-    QualifiedNameRef tag_qn;
+    Parser::QualifiedNameRef tag_qn;
     bool has_tag_qn = false;
-    if (is_cpp_mode()) {
-        if (peek_qualified_name(&tag_qn, /*allow_global=*/true)) {
-            tag_qn = parse_qualified_name(/*allow_global=*/true);
+    if (parser.is_cpp_mode()) {
+        if (parser.peek_qualified_name(&tag_qn, /*allow_global=*/true)) {
+            tag_qn = parser.parse_qualified_name(/*allow_global=*/true);
             has_tag_qn = true;
             const std::string spelled =
-                qualified_name_text(tag_qn, /*include_global_prefix=*/false);
-            *tag = arena_.strdup(spelled.c_str());
+                parser.qualified_name_text(tag_qn,
+                                           /*include_global_prefix=*/false);
+            *tag = parser.arena_.strdup(spelled.c_str());
         }
-    } else if (check(TokenKind::Identifier)) {
-        *tag = arena_.strdup(std::string(token_spelling(cur())));
-        consume();
+    } else if (parser.check(TokenKind::Identifier)) {
+        *tag = parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
+        parser.consume();
     }
-    parse_decl_attrs_for_record(*this, line, attr_ts);
+    parse_decl_attrs_for_record(parser, line, attr_ts);
 
-    if (*tag && is_cpp_mode() && check(TokenKind::Less)) {
-        int probe = core_input_state_.pos;
+    if (*tag && parser.is_cpp_mode() && parser.check(TokenKind::Less)) {
+        int probe = parser.core_input_state_.pos;
         int depth = 0;
         bool balanced = false;
-        while (probe < static_cast<int>(core_input_state_.tokens.size())) {
-            if (core_input_state_.tokens[probe].kind == TokenKind::Less) ++depth;
-            else if (core_input_state_.tokens[probe].kind == TokenKind::Greater) {
+        while (probe < static_cast<int>(parser.core_input_state_.tokens.size())) {
+            if (parser.core_input_state_.tokens[probe].kind == TokenKind::Less) ++depth;
+            else if (parser.core_input_state_.tokens[probe].kind == TokenKind::Greater) {
                 if (--depth <= 0) {
                     ++probe;
                     balanced = true;
                     break;
                 }
-            } else if (core_input_state_.tokens[probe].kind ==
+            } else if (parser.core_input_state_.tokens[probe].kind ==
                        TokenKind::GreaterGreater) {
                 depth -= 2;
                 if (depth <= 0) {
@@ -1994,28 +1996,28 @@ void Parser::parse_record_definition_prelude(
         }
         const bool is_specialization =
             balanced &&
-            probe < static_cast<int>(core_input_state_.tokens.size()) &&
-            (core_input_state_.tokens[probe].kind == TokenKind::LBrace ||
-             core_input_state_.tokens[probe].kind == TokenKind::Colon ||
-             core_input_state_.tokens[probe].kind == TokenKind::Semi);
+            probe < static_cast<int>(parser.core_input_state_.tokens.size()) &&
+            (parser.core_input_state_.tokens[probe].kind == TokenKind::LBrace ||
+             parser.core_input_state_.tokens[probe].kind == TokenKind::Colon ||
+             parser.core_input_state_.tokens[probe].kind == TokenKind::Semi);
         if (is_specialization) {
-            *template_origin_name = arena_.strdup(*tag);
+            *template_origin_name = parser.arena_.strdup(*tag);
             bool parse_ok = true;
             {
-                TentativeParseGuard guard(*this);
+                Parser::TentativeParseGuard guard(parser);
                 try {
                     const Node* primary_tpl = nullptr;
                     if (has_tag_qn &&
                         (!tag_qn.qualifier_segments.empty() ||
                          tag_qn.is_global_qualified)) {
-                        primary_tpl = find_template_struct_primary(tag_qn);
+                        primary_tpl = parser.find_template_struct_primary(tag_qn);
                     } else {
-                        primary_tpl = find_template_struct_primary(
-                            current_namespace_context_id(),
-                            find_parser_text_id(*tag), *tag);
+                        primary_tpl = parser.find_template_struct_primary(
+                            parser.current_namespace_context_id(),
+                            parser.find_parser_text_id(*tag), *tag);
                     }
-                    if (!parse_template_argument_list(specialization_args,
-                                                      primary_tpl)) {
+                    if (!parser.parse_template_argument_list(
+                            specialization_args, primary_tpl)) {
                         throw std::runtime_error(
                             "failed to parse specialization args");
                     }
@@ -2026,59 +2028,61 @@ void Parser::parse_record_definition_prelude(
                     // guard restores pos_ on scope exit
                 }
             }
-            if (!parse_ok && check(TokenKind::Less)) {
+            if (!parse_ok && parser.check(TokenKind::Less)) {
                 int angle_depth = 1;
-                consume();
-                while (!at_end() && angle_depth > 0) {
-                    if (check(TokenKind::Less)) ++angle_depth;
-                    else if (check_template_close()) {
+                parser.consume();
+                while (!parser.at_end() && angle_depth > 0) {
+                    if (parser.check(TokenKind::Less)) ++angle_depth;
+                    else if (parser.check_template_close()) {
                         --angle_depth;
                         if (angle_depth > 0) {
-                            match_template_close();
+                            parser.match_template_close();
                             continue;
                         }
                         break;
                     }
-                    consume();
+                    parser.consume();
                 }
-                if (check_template_close()) match_template_close();
+                if (parser.check_template_close()) parser.match_template_close();
             }
             (void)parse_ok;
             std::string mangled(*tag);
             mangled += "__spec_";
-            mangled += std::to_string(definition_state_.anon_counter++);
-            *tag = arena_.strdup(mangled.c_str());
+            mangled += std::to_string(parser.definition_state_.anon_counter++);
+            *tag = parser.arena_.strdup(mangled.c_str());
         }
     }
 
     // C++ class-virt-specifier support: accept the contextual `final`
     // keyword between the record name and any base-clause/body.
-    if (is_cpp_mode() && check(TokenKind::KwFinal)) {
-        consume();
+    if (parser.is_cpp_mode() && parser.check(TokenKind::KwFinal)) {
+        parser.consume();
     }
 
-    parse_record_base_clause(*this, base_types);
+    parse_record_base_clause(parser, base_types);
 }
 
-Node* Parser::parse_record_tag_setup(int line,
-                                     bool is_union,
-                                     const char** tag,
-                                     const char* template_origin_name,
-                                     const TypeSpec& attr_ts,
-                                     const std::vector<TemplateArgParseResult>& specialization_args) {
-    if (!check(TokenKind::LBrace)) {
+Node* parse_record_tag_setup(
+    Parser& parser,
+    int line,
+    bool is_union,
+    const char** tag,
+    const char* template_origin_name,
+    const TypeSpec& attr_ts,
+    const std::vector<Parser::TemplateArgParseResult>& specialization_args) {
+    if (!parser.check(TokenKind::LBrace)) {
         const char* resolved_tag = tag ? *tag : nullptr;
         if (!resolved_tag) {
             char buf[32];
             snprintf(buf, sizeof(buf), "_anon_%d",
-                     definition_state_.anon_counter++);
-            resolved_tag = arena_.strdup(buf);
+                     parser.definition_state_.anon_counter++);
+            resolved_tag = parser.arena_.strdup(buf);
         } else {
-            const std::string qtag = bridge_name_in_context(
-                current_namespace_context_id(),
-                parser_text_id_for_token(kInvalidText, resolved_tag),
+            const std::string qtag = parser.bridge_name_in_context(
+                parser.current_namespace_context_id(),
+                parser.parser_text_id_for_token(kInvalidText, resolved_tag),
                 resolved_tag);
-            resolved_tag = arena_.strdup(qtag.c_str());
+            resolved_tag = parser.arena_.strdup(qtag.c_str());
         }
 
         if (tag)
@@ -2089,22 +2093,23 @@ Node* Parser::parse_record_tag_setup(int line,
             !specialization_args.empty()) {
             std::vector<TypeSpec> empty_base_types;
             ref = build_record_definition_node(
-                line, is_union, resolved_tag, template_origin_name, attr_ts,
-                specialization_args, empty_base_types);
+                parser, line, is_union, resolved_tag, template_origin_name,
+                attr_ts, specialization_args, empty_base_types);
             ref->n_fields = -1;  // forward-declared explicit specialization
         } else {
-            ref = make_node(NK_STRUCT_DEF, line);
+            ref = parser.make_node(NK_STRUCT_DEF, line);
             ref->name = resolved_tag;
             ref->is_union = is_union;
             ref->n_fields = -1;  // -1 = forward reference (no body)
         }
-        if (is_cpp_mode() && resolved_tag && resolved_tag[0]) {
-            register_tag_type_binding(resolved_tag,
-                                      is_union ? TB_UNION : TB_STRUCT,
-                                      resolved_tag);
+        if (parser.is_cpp_mode() && resolved_tag && resolved_tag[0]) {
+            parser.register_tag_type_binding(resolved_tag,
+                                             is_union ? TB_UNION : TB_STRUCT,
+                                             resolved_tag);
         }
-        if (is_cpp_mode() && active_context_state_.parsing_top_level_context)
-            definition_state_.struct_defs.push_back(ref);
+        if (parser.is_cpp_mode() &&
+            parser.active_context_state_.parsing_top_level_context)
+            parser.definition_state_.struct_defs.push_back(ref);
         return ref;
     }
 
@@ -2112,29 +2117,29 @@ Node* Parser::parse_record_tag_setup(int line,
     if (!resolved_tag) {
         char buf[32];
         snprintf(buf, sizeof(buf), "_anon_%d",
-                 definition_state_.anon_counter++);
-        resolved_tag = arena_.strdup(buf);
+                 parser.definition_state_.anon_counter++);
+        resolved_tag = parser.arena_.strdup(buf);
     } else {
         const std::string qtag =
             std::strstr(resolved_tag, "::")
                 ? std::string(resolved_tag)
-                : bridge_name_in_context(
-                      current_namespace_context_id(),
-                      parser_text_id_for_token(kInvalidText, resolved_tag),
+                : parser.bridge_name_in_context(
+                      parser.current_namespace_context_id(),
+                      parser.parser_text_id_for_token(kInvalidText, resolved_tag),
                       resolved_tag);
-        if (definition_state_.defined_struct_tags.count(qtag)) {
-            if (active_context_state_.parsing_top_level_context &&
-                !is_cpp_mode()) {
+        if (parser.definition_state_.defined_struct_tags.count(qtag)) {
+            if (parser.active_context_state_.parsing_top_level_context &&
+                !parser.is_cpp_mode()) {
                 throw std::runtime_error(std::string("redefinition of ") +
                                          (is_union ? "union " : "struct ") +
                                          resolved_tag);
             }
             char buf[64];
             snprintf(buf, sizeof(buf), "%s.__shadow_%d", resolved_tag,
-                     definition_state_.anon_counter++);
-            resolved_tag = arena_.strdup(buf);
+                     parser.definition_state_.anon_counter++);
+            resolved_tag = parser.arena_.strdup(buf);
         }
-        definition_state_.defined_struct_tags.insert(qtag);
+        parser.definition_state_.defined_struct_tags.insert(qtag);
     }
 
     if (tag)
@@ -2143,38 +2148,44 @@ Node* Parser::parse_record_tag_setup(int line,
     return nullptr;
 }
 
-Node* Parser::build_record_definition_node(
+Node* build_record_definition_node(
+    Parser& parser,
     int line,
     bool is_union,
     const char* tag,
     const char* template_origin_name,
     const TypeSpec& attr_ts,
-    const std::vector<TemplateArgParseResult>& specialization_args,
+    const std::vector<Parser::TemplateArgParseResult>& specialization_args,
     const std::vector<TypeSpec>& base_types) {
-    Node* sd = make_node(NK_STRUCT_DEF, line);
+    Node* sd = parser.make_node(NK_STRUCT_DEF, line);
     sd->name = tag;
     sd->is_union = is_union;
     sd->template_origin_name = template_origin_name;
 
     if (!base_types.empty()) {
         sd->n_bases = static_cast<int>(base_types.size());
-        sd->base_types = arena_.alloc_array<TypeSpec>(sd->n_bases);
+        sd->base_types = parser.arena_.alloc_array<TypeSpec>(sd->n_bases);
         for (int i = 0; i < sd->n_bases; ++i)
             sd->base_types[i] = base_types[i];
     }
 
     // __attribute__((packed)) => pack_align=1; otherwise use #pragma pack state
-    sd->pack_align = attr_ts.is_packed ? 1 : pragma_state_.pack_alignment;
+    sd->pack_align =
+        attr_ts.is_packed ? 1 : parser.pragma_state_.pack_alignment;
     sd->struct_align = attr_ts.align_bytes;  // __attribute__((aligned(N)))
 
     if (!specialization_args.empty()) {
         sd->n_template_args = static_cast<int>(specialization_args.size());
-        sd->template_arg_types = arena_.alloc_array<TypeSpec>(sd->n_template_args);
-        sd->template_arg_is_value = arena_.alloc_array<bool>(sd->n_template_args);
-        sd->template_arg_values = arena_.alloc_array<long long>(sd->n_template_args);
+        sd->template_arg_types =
+            parser.arena_.alloc_array<TypeSpec>(sd->n_template_args);
+        sd->template_arg_is_value =
+            parser.arena_.alloc_array<bool>(sd->n_template_args);
+        sd->template_arg_values =
+            parser.arena_.alloc_array<long long>(sd->n_template_args);
         sd->template_arg_nttp_names =
-            arena_.alloc_array<const char*>(sd->n_template_args);
-        sd->template_arg_exprs = arena_.alloc_array<Node*>(sd->n_template_args);
+            parser.arena_.alloc_array<const char*>(sd->n_template_args);
+        sd->template_arg_exprs =
+            parser.arena_.alloc_array<Node*>(sd->n_template_args);
         for (int i = 0; i < sd->n_template_args; ++i) {
             sd->template_arg_is_value[i] = specialization_args[i].is_value;
             sd->template_arg_types[i] = specialization_args[i].type;
@@ -2187,47 +2198,49 @@ Node* Parser::build_record_definition_node(
     return sd;
 }
 
-Node* Parser::parse_record_definition_after_tag_setup(
+Node* parse_record_definition_after_tag_setup(
+    Parser& parser,
     int line,
     bool is_union,
     const char* tag,
     const char* template_origin_name,
     const TypeSpec& attr_ts,
-    const std::vector<TemplateArgParseResult>& specialization_args,
+    const std::vector<Parser::TemplateArgParseResult>& specialization_args,
     const std::vector<TypeSpec>& base_types) {
     const char* source_tag = tag;
-    Node* sd = build_record_definition_node(line, is_union, tag,
+    Node* sd = build_record_definition_node(parser, line, is_union, tag,
                                             template_origin_name, attr_ts,
                                             specialization_args, base_types);
-    parse_record_definition_body(sd, is_union, source_tag, tag,
+    parse_record_definition_body(parser, sd, is_union, source_tag, tag,
                                  template_origin_name);
     return sd;
 }
 
-void Parser::apply_record_trailing_type_attributes(Node* sd) {
-    if (!sd || !check(TokenKind::KwAttribute))
+void apply_record_trailing_type_attributes(Parser& parser, Node* sd) {
+    if (!sd || !parser.check(TokenKind::KwAttribute))
         return;
 
-    int save = pos_;
+    int save = parser.pos_;
     TypeSpec trailing_attr{};
-    parse_attributes(&trailing_attr);
+    parser.parse_attributes(&trailing_attr);
     if (trailing_attr.is_packed && sd->pack_align == 0)
         sd->pack_align = 1;
     if (trailing_attr.align_bytes > 0 && sd->struct_align == 0)
         sd->struct_align = trailing_attr.align_bytes;
     // Restore position so the caller can re-parse attributes for the declaration.
-    pos_ = save;
+    parser.pos_ = save;
 }
 
-void Parser::store_record_body_members(
+void store_record_body_members(
+    Parser& parser,
     Node* sd,
-    const RecordBodyState& body_state) {
+    const Parser::RecordBodyState& body_state) {
     if (!sd)
         return;
 
     sd->n_fields = static_cast<int>(body_state.fields.size());
     if (sd->n_fields > 0) {
-        sd->fields = arena_.alloc_array<Node*>(sd->n_fields);
+        sd->fields = parser.arena_.alloc_array<Node*>(sd->n_fields);
         for (int i = 0; i < sd->n_fields; ++i)
             sd->fields[i] = body_state.fields[i];
     }
@@ -2236,9 +2249,9 @@ void Parser::store_record_body_members(
         static_cast<int>(body_state.member_typedef_names.size());
     if (sd->n_member_typedefs > 0) {
         sd->member_typedef_names =
-            arena_.alloc_array<const char*>(sd->n_member_typedefs);
+            parser.arena_.alloc_array<const char*>(sd->n_member_typedefs);
         sd->member_typedef_types =
-            arena_.alloc_array<TypeSpec>(sd->n_member_typedefs);
+            parser.arena_.alloc_array<TypeSpec>(sd->n_member_typedefs);
         for (int i = 0; i < sd->n_member_typedefs; ++i) {
             sd->member_typedef_names[i] = body_state.member_typedef_names[i];
             sd->member_typedef_types[i] = body_state.member_typedef_types[i];
@@ -2247,83 +2260,89 @@ void Parser::store_record_body_members(
 
     sd->n_children = static_cast<int>(body_state.methods.size());
     if (sd->n_children > 0) {
-        sd->children = arena_.alloc_array<Node*>(sd->n_children);
+        sd->children = parser.arena_.alloc_array<Node*>(sd->n_children);
         for (int i = 0; i < sd->n_children; ++i)
             sd->children[i] = body_state.methods[i];
     }
 }
 
-void Parser::register_record_definition(Node* sd,
-                                        bool is_union,
-                                        const char* source_tag) {
+void register_record_definition(Parser& parser,
+                                Node* sd,
+                                bool is_union,
+                                const char* source_tag) {
     if (!sd || !(source_tag && source_tag[0]))
         return;
 
     const std::string canonical =
         std::strstr(source_tag, "::")
             ? std::string(source_tag)
-            : bridge_name_in_context(
-                  current_namespace_context_id(),
-                  parser_text_id_for_token(kInvalidText, source_tag),
+            : parser.bridge_name_in_context(
+                  parser.current_namespace_context_id(),
+                  parser.parser_text_id_for_token(kInvalidText, source_tag),
                   source_tag);
-    sd->name = arena_.strdup(canonical.c_str());
-    apply_decl_namespace(sd, current_namespace_context_id(), source_tag);
-    definition_state_.struct_tag_def_map[source_tag] = sd;
-    definition_state_.struct_tag_def_map[sd->name] = sd;
+    sd->name = parser.arena_.strdup(canonical.c_str());
+    parser.apply_decl_namespace(sd, parser.current_namespace_context_id(),
+                                source_tag);
+    parser.definition_state_.struct_tag_def_map[source_tag] = sd;
+    parser.definition_state_.struct_tag_def_map[sd->name] = sd;
 
-    if (!is_cpp_mode() || !(sd->name && sd->name[0]))
+    if (!parser.is_cpp_mode() || !(sd->name && sd->name[0]))
         return;
 
-    register_tag_type_binding(sd->name, is_union ? TB_UNION : TB_STRUCT,
-                              sd->name);
+    parser.register_tag_type_binding(sd->name, is_union ? TB_UNION : TB_STRUCT,
+                                     sd->name);
     if (source_tag && source_tag[0] && std::strcmp(source_tag, sd->name) != 0) {
-        register_tag_type_binding(source_tag, is_union ? TB_UNION : TB_STRUCT,
-                                  sd->name);
+        parser.register_tag_type_binding(source_tag,
+                                         is_union ? TB_UNION : TB_STRUCT,
+                                         sd->name);
     }
 }
 
-void Parser::finalize_record_definition(
+void finalize_record_definition(
+    Parser& parser,
     Node* sd,
     bool is_union,
     const char* source_tag,
-    const RecordBodyState& body_state) {
-    apply_record_trailing_type_attributes(sd);
-    store_record_body_members(sd, body_state);
-    register_record_definition(sd, is_union, source_tag);
-    definition_state_.struct_defs.push_back(sd);
+    const Parser::RecordBodyState& body_state) {
+    apply_record_trailing_type_attributes(parser, sd);
+    store_record_body_members(parser, sd, body_state);
+    register_record_definition(parser, sd, is_union, source_tag);
+    parser.definition_state_.struct_defs.push_back(sd);
 }
 
-void Parser::parse_record_definition_body(Node* sd,
-                                          bool is_union,
-                                          const char* source_tag,
-                                          const char* tag,
-                                          const char* template_origin_name) {
-    consume();  // consume {
+void parse_record_definition_body(Parser& parser,
+                                  Node* sd,
+                                  bool is_union,
+                                  const char* source_tag,
+                                  const char* tag,
+                                  const char* template_origin_name) {
+    parser.consume();  // consume {
 
-    RecordBodyState body_state;
-    parse_record_body_with_context(*this, tag, template_origin_name,
+    Parser::RecordBodyState body_state;
+    parse_record_body_with_context(parser, tag, template_origin_name,
                                    &body_state);
-    finalize_record_definition(sd, is_union, source_tag, body_state);
+    finalize_record_definition(parser, sd, is_union, source_tag, body_state);
 }
 
-Node* Parser::parse_struct_or_union(bool is_union) {
-    int ln = cur().line;
+Node* parse_struct_or_union(Parser& parser, bool is_union) {
+    int ln = parser.cur().line;
     TypeSpec attr_ts{};
     const char* tag = nullptr;
     const char* template_origin_name = nullptr;
     std::vector<ParsedTemplateArg> specialization_args;
     std::vector<TypeSpec> base_types;
-    parse_record_definition_prelude(ln, &attr_ts, &tag, &template_origin_name,
+    parse_record_definition_prelude(parser, ln, &attr_ts, &tag,
+                                    &template_origin_name,
                                     &specialization_args, &base_types);
 
-    if (Node* ref = parse_record_tag_setup(ln, is_union, &tag,
+    if (Node* ref = parse_record_tag_setup(parser, ln, is_union, &tag,
                                            template_origin_name, attr_ts,
                                            specialization_args))
         return ref;
 
     return parse_record_definition_after_tag_setup(
-        ln, is_union, tag, template_origin_name, attr_ts, specialization_args,
-        base_types);
+        parser, ln, is_union, tag, template_origin_name, attr_ts,
+        specialization_args, base_types);
 }
 
 // ── enum parsing ─────────────────────────────────────────────────────────────

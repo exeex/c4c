@@ -137,6 +137,60 @@ void parse_record_body_with_context(Parser& parser,
                                     Parser::RecordBodyState* body_state);
 void finish_record_body_context(Parser& parser,
                                 const std::string& saved_struct_tag);
+void parse_record_definition_prelude(
+    Parser& parser,
+    int line,
+    TypeSpec* attr_ts,
+    const char** tag,
+    const char** template_origin_name,
+    std::vector<Parser::TemplateArgParseResult>* specialization_args,
+    std::vector<TypeSpec>* base_types);
+Node* parse_record_tag_setup(
+    Parser& parser,
+    int line,
+    bool is_union,
+    const char** tag,
+    const char* template_origin_name,
+    const TypeSpec& attr_ts,
+    const std::vector<Parser::TemplateArgParseResult>& specialization_args);
+Node* build_record_definition_node(
+    Parser& parser,
+    int line,
+    bool is_union,
+    const char* tag,
+    const char* template_origin_name,
+    const TypeSpec& attr_ts,
+    const std::vector<Parser::TemplateArgParseResult>& specialization_args,
+    const std::vector<TypeSpec>& base_types);
+Node* parse_record_definition_after_tag_setup(
+    Parser& parser,
+    int line,
+    bool is_union,
+    const char* tag,
+    const char* template_origin_name,
+    const TypeSpec& attr_ts,
+    const std::vector<Parser::TemplateArgParseResult>& specialization_args,
+    const std::vector<TypeSpec>& base_types);
+void apply_record_trailing_type_attributes(Parser& parser, Node* sd);
+void store_record_body_members(Parser& parser,
+                               Node* sd,
+                               const Parser::RecordBodyState& body_state);
+void register_record_definition(Parser& parser,
+                                Node* sd,
+                                bool is_union,
+                                const char* source_tag);
+void finalize_record_definition(Parser& parser,
+                                Node* sd,
+                                bool is_union,
+                                const char* source_tag,
+                                const Parser::RecordBodyState& body_state);
+void parse_record_definition_body(Parser& parser,
+                                  Node* sd,
+                                  bool is_union,
+                                  const char* source_tag,
+                                  const char* tag,
+                                  const char* template_origin_name);
+Node* parse_struct_or_union(Parser& parser, bool is_union);
 
 bool lexeme_is_imaginary(const char* s);
 long long parse_int_lexeme(const char* s);

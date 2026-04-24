@@ -1293,7 +1293,7 @@ TypeSpec Parser::parse_base_type() {
 
     // Handle struct/union/enum after switch (needs extra parsing)
     if (has_struct) {
-        Node* sd = parse_struct_or_union(false);
+        Node* sd = parse_struct_or_union(*this, false);
         ts.base = TB_STRUCT;
         ts.tag  = sd ? sd->name : nullptr;
         // In C++ mode, 'struct Pair<int>' should trigger template struct instantiation
@@ -1309,7 +1309,7 @@ TypeSpec Parser::parse_base_type() {
         // Fall through to template struct instantiation below
     }
     if (has_union) {
-        Node* sd = parse_struct_or_union(true);
+        Node* sd = parse_struct_or_union(*this, true);
         ts.base = TB_UNION;
         ts.tag  = sd ? sd->name : nullptr;
         return ts;

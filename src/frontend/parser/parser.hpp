@@ -733,59 +733,12 @@ class Parser {
                                    const std::vector<long long>& decl_dims);
 
   // ── record parsing (struct / union) ──────────────────────────────────────
-  // This family handles both outer record definitions and in-record member
-  // dispatch, including recovery in class/struct bodies.
-  void parse_record_definition_prelude(
-      int line,
-      TypeSpec* attr_ts,
-      const char** tag,
-      const char** template_origin_name,
-      std::vector<TemplateArgParseResult>* specialization_args,
-      std::vector<TypeSpec>* base_types);
-  Node* parse_record_tag_setup(int line,
-                               bool is_union,
-                               const char** tag,
-                               const char* template_origin_name,
-                               const TypeSpec& attr_ts,
-                               const std::vector<TemplateArgParseResult>& specialization_args);
-  Node* build_record_definition_node(
-      int line,
-      bool is_union,
-      const char* tag,
-      const char* template_origin_name,
-      const TypeSpec& attr_ts,
-      const std::vector<TemplateArgParseResult>& specialization_args,
-      const std::vector<TypeSpec>& base_types);
-  Node* parse_record_definition_after_tag_setup(
-      int line,
-      bool is_union,
-      const char* tag,
-      const char* template_origin_name,
-      const TypeSpec& attr_ts,
-      const std::vector<TemplateArgParseResult>& specialization_args,
-      const std::vector<TypeSpec>& base_types);
+  // Test-facing record body context hook; implementation-only record helpers
+  // are declared privately in impl/parser_impl.hpp.
   void begin_record_body_context(const char* tag,
                                  const char* template_origin_name,
                                  std::string* saved_struct_tag,
                                  std::string* struct_source_name);
-  void apply_record_trailing_type_attributes(Node* sd);
-  void store_record_body_members(
-      Node* sd,
-      const RecordBodyState& body_state);
-  void register_record_definition(Node* sd,
-                                  bool is_union,
-                                  const char* source_tag);
-  void finalize_record_definition(
-      Node* sd,
-      bool is_union,
-      const char* source_tag,
-      const RecordBodyState& body_state);
-  void parse_record_definition_body(Node* sd,
-                                    bool is_union,
-                                    const char* source_tag,
-                                    const char* tag,
-                                    const char* template_origin_name);
-  Node* parse_struct_or_union(bool is_union);
 
   // ── enum parsing ──────────────────────────────────────────────────────────
   Node* parse_enum();
