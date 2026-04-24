@@ -130,17 +130,97 @@ Primary targets:
 
 Actions:
 
-- implement the missing width-aware grouped allocation behavior using the
-  published bank/span legality
-- repair spill, reload, and call-boundary handling where grouped width `> 1`
-  values still fall back to non-authoritative behavior
-- add focused proof that grouped allocator output is consumed without backend
-  policy recovery
+- execute the numbered substeps below in order
+- keep each packet focused on one grouped allocator truthfulness seam at a time
+- reject scalar base-register reconstruction when published grouped span
+  authority already exists
 
 Completion check:
 
+- all Step 3 substeps are complete
 - width `> 1` grouped values allocate and survive spill/reload and call-boundary
   cases through published allocator behavior rather than hidden special cases
+
+### Step 3.1: Make Grouped Call-Boundary Consumers Read Published Span Authority
+
+Goal: finish the first downstream consumer seam after grouped call-plan span
+publication so grouped call-boundary handling stops reconstructing ABI lanes
+from scalar base-register identity.
+
+Primary targets:
+
+- grouped call-boundary consumer surfaces that still read scalar register names
+  instead of grouped span metadata
+- prepared/regalloc dumps and focused backend fixtures for grouped
+  argument/result boundaries
+
+Actions:
+
+- replace grouped call-boundary consumer logic that still keys on scalar
+  base-register identity with the published contiguous-width and occupied-span
+  authority
+- keep grouped preserved/clobbered and movement ownership anchored to the
+  shared call-plan span fields instead of backend-local heuristics
+- add focused proof that grouped call-boundary consumers can follow the
+  published span directly in representative grouped argument/result cases
+
+Completion check:
+
+- grouped call-boundary consumers read published span authority directly
+- no owned grouped boundary case still depends on scalar lane reconstruction
+
+### Step 3.2: Make Width-Aware Grouped Allocation Decisions Truthful
+
+Goal: ensure width `> 1` grouped values are allocated as real contiguous spans
+through allocator decisions instead of scalarized placeholders.
+
+Primary targets:
+
+- grouped width-aware allocation decisions
+- grouped preserved/live-through decisions outside the already-published
+  call-plan seam
+- focused allocator dumps and fixtures that expose chosen grouped spans
+
+Actions:
+
+- implement the missing width-aware grouped allocation decisions using the
+  published bank/span legality as allocator authority
+- keep grouped preserved/live-through handling tied to whole-span ownership
+  rather than scalar alias reconstruction
+- add focused proof that grouped allocator output shows truthful contiguous
+  span choices for width `> 1` values
+
+Completion check:
+
+- width `> 1` grouped values receive truthful contiguous allocation decisions
+- grouped allocator consumers do not need to recover allocation policy locally
+
+### Step 3.3: Make Grouped Spill And Reload Publication Truthful
+
+Goal: repair grouped spill/reload behavior so width `> 1` values survive
+storage transitions through published allocator behavior rather than scalar
+surrogates.
+
+Primary targets:
+
+- grouped spill/reload publication
+- grouped storage and reload moves for width `> 1` values
+- focused backend/regalloc proof covering grouped allocation plus spill/reload
+
+Actions:
+
+- repair spill and reload handling where grouped width `> 1` values still fall
+  back to non-authoritative scalar-shaped behavior
+- keep grouped storage ownership and reload movement explicit in allocator
+  output and dumps
+- add focused proof that grouped values survive allocation, spill/reload, and
+  call-boundary cases without backend policy recovery
+
+Completion check:
+
+- grouped width `> 1` values survive spill/reload through published allocator
+  behavior
+- dumps and focused tests expose grouped storage transitions directly
 
 ## Step 4: Prove Consumer Use And Decide Closure
 

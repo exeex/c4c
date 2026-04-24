@@ -1,9 +1,9 @@
 Status: Active
 Source Idea Path: ideas/open/91_advanced_prepared_call_authority_and_grouped_width_allocation.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Make Grouped Width-Greater-Than-One Allocation Truthful
-Plan Review Counter: 6 / 6
+Current Step ID: 3.1
+Current Step Title: Make Grouped Call-Boundary Consumers Read Published Span Authority
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
@@ -17,9 +17,9 @@ argument/result fixtures.
 
 ## Suggested Next
 
-Use the new grouped call-plan span authority to tighten the next downstream
-consumer surface that still treats grouped call-boundary metadata as scalar
-base-register identity instead of reading the published span directly.
+Advance Step 3.1 by tightening the next downstream grouped call-boundary
+consumer surface that still treats published span metadata as scalar
+base-register identity instead of reading the shared call-plan span directly.
 
 ## Watchouts
 
