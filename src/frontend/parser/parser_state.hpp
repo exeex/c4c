@@ -323,7 +323,9 @@ struct ParserTemplateState {
   std::set<std::string> instantiated_template_struct_keys;
   std::unordered_map<std::string, std::vector<Token>>
       nttp_default_expr_tokens;
-  std::unordered_map<std::string, ParserAliasTemplateInfo> alias_template_info;
+  std::unordered_map<QualifiedNameKey, ParserAliasTemplateInfo,
+                     QualifiedNameKeyHash>
+      alias_template_info;
   std::vector<ParserTemplateScopeFrame> template_scope_stack;
 };
 

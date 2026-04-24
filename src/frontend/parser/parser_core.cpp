@@ -1099,6 +1099,12 @@ QualifiedNameKey Parser::struct_typedef_key_in_context(
                                     fallback_name, false);
 }
 
+QualifiedNameKey Parser::alias_template_key_in_context(
+    int context_id, TextId name_text_id, std::string_view fallback_name) const {
+    return qualified_key_in_context(*this, context_id, name_text_id,
+                                    fallback_name, true);
+}
+
 QualifiedNameKey Parser::qualified_name_key(const QualifiedNameRef& name) {
     QualifiedNameKey key;
     key.context_id = 0;
@@ -1136,6 +1142,31 @@ void Parser::register_known_fn_name(const std::string& name) {
 bool Parser::has_structured_concept_name(const QualifiedNameKey& key) const {
     return key.base_text_id != kInvalidText &&
            binding_state_.concept_qualified_names.count(key) > 0;
+}
+
+const ParserAliasTemplateInfo* Parser::find_alias_template_info_in_context(
+    int context_id, TextId name_text_id, std::string_view fallback_name) const {
+    if (context_id < 0) return nullptr;
+
+    const QualifiedNameKey key = alias_template_key_in_context(
+        context_id, name_text_id, fallback_name);
+    auto alias_it = template_state_.alias_template_info.find(key);
+    if (alias_it != template_state_.alias_template_info.end()) {
+        return &alias_it->second;
+    }
+
+    const std::string resolved =
+        resolve_visible_type_name(name_text_id, fallback_name);
+    if (!resolved.empty() && resolved != fallback_name) {
+        const TextId resolved_text_id = find_parser_text_id(resolved);
+        const QualifiedNameKey resolved_key = alias_template_key_in_context(
+            context_id, resolved_text_id, resolved);
+        alias_it = template_state_.alias_template_info.find(resolved_key);
+        if (alias_it != template_state_.alias_template_info.end()) {
+            return &alias_it->second;
+        }
+    }
+    return nullptr;
 }
 
 void Parser::register_concept_name_in_context(int context_id, TextId name_text_id,

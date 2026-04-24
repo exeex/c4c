@@ -1949,6 +1949,10 @@ Node* Parser::parse_top_level() {
                     find_visible_typedef_type(
                         active_context_state_.last_using_alias_name_text_id,
                         alias_name)) {
+                const QualifiedNameKey alias_key = alias_template_key_in_context(
+                    current_namespace_context_id(),
+                    active_context_state_.last_using_alias_name_text_id,
+                    alias_name);
                 ParserAliasTemplateInfo ati;
                 for (size_t i = 0; i < template_params.size(); ++i) {
                     ati.param_names.push_back(template_params[i]);
@@ -1959,8 +1963,7 @@ Node* Parser::parse_top_level() {
                     ati.param_default_values.push_back(template_param_default_values[i]);
                 }
                 ati.aliased_type = *aliased_type;
-                template_state_.alias_template_info[std::string(alias_name)] =
-                    std::move(ati);
+                template_state_.alias_template_info[alias_key] = std::move(ati);
             }
             clear_last_using_alias_name();
         }

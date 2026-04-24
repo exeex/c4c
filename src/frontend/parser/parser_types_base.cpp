@@ -1336,27 +1336,23 @@ TypeSpec Parser::parse_base_type() {
                 set_last_resolved_typedef(tname);
                 // Alias template application: e.g. bool_constant<expr> → integral_constant<bool, expr>
                 if (is_cpp_mode() && check(TokenKind::Less)) {
-                    auto ati_it = template_state_.alias_template_info.find(tname);
-                    if (ati_it == template_state_.alias_template_info.end()) {
-                        const std::string resolved_alias_name =
-                            resolve_visible_type_name(tname);
-                        if (!resolved_alias_name.empty())
-                            ati_it = template_state_.alias_template_info.find(
-                                resolved_alias_name);
-                    }
-                    if (ati_it != template_state_.alias_template_info.end()) {
-                        const ParserAliasTemplateInfo& ati = ati_it->second;
-                        const std::string alias_template_name = ati_it->first;
+                    const ParserAliasTemplateInfo* ati =
+                        find_alias_template_info_in_context(
+                            current_namespace_context_id(),
+                            active_context_state_.last_resolved_typedef_text_id,
+                            tname);
+                    if (ati) {
+                        const std::string alias_template_name(tname);
                         TentativeParseGuard alias_guard(*this);
                         std::vector<TemplateArgParseResult> alias_args;
                         auto alias_args_match = [&](const std::vector<TemplateArgParseResult>& args)
                             -> bool {
                             size_t ai = 0;
-                            for (size_t pi = 0; pi < ati.param_names.size(); ++pi) {
+                            for (size_t pi = 0; pi < ati->param_names.size(); ++pi) {
                                 const bool is_pack =
-                                    pi < ati.param_is_pack.size() && ati.param_is_pack[pi];
+                                    pi < ati->param_is_pack.size() && ati->param_is_pack[pi];
                                 const bool expects_value =
-                                    pi < ati.param_is_nttp.size() && ati.param_is_nttp[pi];
+                                    pi < ati->param_is_nttp.size() && ati->param_is_nttp[pi];
                                 if (is_pack) {
                                     while (ai < args.size()) {
                                         if (args[ai].is_value != expects_value) return false;
@@ -1366,8 +1362,8 @@ TypeSpec Parser::parse_base_type() {
                                 }
                                 if (ai >= args.size()) {
                                     const bool has_default =
-                                        pi < ati.param_has_default.size() &&
-                                        ati.param_has_default[pi];
+                                        pi < ati->param_has_default.size() &&
+                                        ati->param_has_default[pi];
                                     if (!has_default) return false;
                                     continue;
                                 }
@@ -1379,7 +1375,7 @@ TypeSpec Parser::parse_base_type() {
                         if (!parse_template_argument_list(
                                 &alias_args,
                                 nullptr,
-                                &ati.param_is_nttp) ||
+                                &ati->param_is_nttp) ||
                             !alias_args_match(alias_args)) {
                             // alias_guard restores pos_ on scope exit
                         } else {
@@ -1387,34 +1383,34 @@ TypeSpec Parser::parse_base_type() {
                             std::vector<TemplateArgParseResult> resolved_alias_args =
                                 alias_args;
                             for (size_t pi = resolved_alias_args.size();
-                                 pi < ati.param_names.size(); ++pi) {
+                                 pi < ati->param_names.size(); ++pi) {
                                 const bool is_pack =
-                                    pi < ati.param_is_pack.size() && ati.param_is_pack[pi];
+                                    pi < ati->param_is_pack.size() && ati->param_is_pack[pi];
                                 if (is_pack) break;
                                 const bool has_default =
-                                    pi < ati.param_has_default.size() &&
-                                    ati.param_has_default[pi];
+                                    pi < ati->param_has_default.size() &&
+                                    ati->param_has_default[pi];
                                 if (!has_default) {
                                     alias_parse_ok = false;
                                     break;
                                 }
                                 TemplateArgParseResult default_arg;
                                 default_arg.is_value =
-                                    pi < ati.param_is_nttp.size() &&
-                                    ati.param_is_nttp[pi];
+                                    pi < ati->param_is_nttp.size() &&
+                                    ati->param_is_nttp[pi];
                                 if (default_arg.is_value) {
-                                    if (pi >= ati.param_default_values.size() ||
-                                        ati.param_default_values[pi] == LLONG_MIN) {
+                                    if (pi >= ati->param_default_values.size() ||
+                                        ati->param_default_values[pi] == LLONG_MIN) {
                                         alias_parse_ok = false;
                                         break;
                                     }
-                                    default_arg.value = ati.param_default_values[pi];
+                                    default_arg.value = ati->param_default_values[pi];
                                 } else {
-                                    if (pi >= ati.param_default_types.size()) {
+                                    if (pi >= ati->param_default_types.size()) {
                                         alias_parse_ok = false;
                                         break;
                                     }
-                                    default_arg.type = ati.param_default_types[pi];
+                                    default_arg.type = ati->param_default_types[pi];
                                 }
                                 resolved_alias_args.push_back(default_arg);
                             }
@@ -1431,11 +1427,11 @@ TypeSpec Parser::parse_base_type() {
 
                             std::unordered_map<std::string, std::string> subst;
                             size_t bound_arg_index = 0;
-                            for (size_t pi = 0; pi < ati.param_names.size(); ++pi) {
+                            for (size_t pi = 0; pi < ati->param_names.size(); ++pi) {
                                 const bool is_pack =
-                                    pi < ati.param_is_pack.size() && ati.param_is_pack[pi];
+                                    pi < ati->param_is_pack.size() && ati->param_is_pack[pi];
                                 const bool expects_value =
-                                    pi < ati.param_is_nttp.size() && ati.param_is_nttp[pi];
+                                    pi < ati->param_is_nttp.size() && ati->param_is_nttp[pi];
                                 if (is_pack) {
                                     std::string packed_refs;
                                     while (bound_arg_index < resolved_alias_args.size()) {
@@ -1451,7 +1447,7 @@ TypeSpec Parser::parse_base_type() {
                                         ++bound_arg_index;
                                     }
                                     if (!alias_parse_ok) break;
-                                    subst[ati.param_names[pi]] = packed_refs;
+                                    subst[ati->param_names[pi]] = packed_refs;
                                     continue;
                                 }
                                 if (bound_arg_index >= resolved_alias_args.size()) {
@@ -1463,7 +1459,7 @@ TypeSpec Parser::parse_base_type() {
                                     alias_parse_ok = false;
                                     break;
                                 }
-                                subst[ati.param_names[pi]] =
+                                subst[ati->param_names[pi]] =
                                     render_template_arg_ref(
                                         resolved_alias_args[bound_arg_index]);
                                 ++bound_arg_index;
@@ -1476,7 +1472,7 @@ TypeSpec Parser::parse_base_type() {
                                 // alias_guard restores pos_ on scope exit
                             } else {
                             // Substitute alias params in the aliased type.
-                                ts = ati.aliased_type;
+                                ts = ati->aliased_type;
                                 auto split_template_arg_refs =
                                     [&](const std::string& refs)
                                     -> std::vector<std::string> {
@@ -2010,9 +2006,9 @@ TypeSpec Parser::parse_base_type() {
                                 if (!resolved_alias_member) {
                                     for (size_t ai = 0;
                                          ai < resolved_alias_args.size(); ++ai) {
-                                        if (ati.param_is_nttp[ai]) continue;
+                                        if (ati->param_is_nttp[ai]) continue;
                                         if (ts.base == TB_TYPEDEF && ts.tag &&
-                                            std::string(ts.tag) == ati.param_names[ai]) {
+                                            std::string(ts.tag) == ati->param_names[ai]) {
                                             const bool outer_lref = ts.is_lvalue_ref;
                                             const bool outer_rref = ts.is_rvalue_ref;
                                             const bool outer_const = ts.is_const;
