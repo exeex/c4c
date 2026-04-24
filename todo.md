@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/94_parser_public_facade_pimpl_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Retarget Callers And Test Hooks
+Current Step ID: 5
+Current Step Title: Separate Facade Types From Private State Carriers
 
 # Current Packet
 
@@ -21,9 +21,16 @@ compatibility shim.
 
 ## Suggested Next
 
-Have the supervisor review the completed Step 4 parser facade-boundary slice
-and decide whether the active runbook is ready for broader validation or plan
-owner handling.
+Next executor packet: perform Step 5 only. Classify the remaining
+`parser.hpp` dependencies on `impl/parser_state.hpp`, then move or isolate the
+private/test-facing type aliases, guard/snapshot types, helper signatures, and
+reference-member exposure that force the public facade to include private state
+carrier definitions.
+
+Keep this packet bounded to separating public facade API from private parser
+state/test hooks. Do not make the final include-removal proof the required
+outcome unless the dependency split naturally completes inside the narrow
+packet.
 
 ## Watchouts
 
@@ -33,6 +40,9 @@ owner handling.
   test-facing type aliases/signatures require complete snapshot, qualified-name,
   template-argument, and guard types; the object layout no longer stores those
   carrier objects directly.
+- Step 5 has been split from the include-proof step because removing
+  `impl/parser_state.hpp` now requires separating public/test-facing facade
+  types from private state carriers rather than one small hook move.
 - Keep implementation-only declarations behind
   `src/frontend/parser/impl/parser_impl.hpp` where practical.
 - Do not reintroduce macro compatibility shims for parser member access.
@@ -56,3 +66,8 @@ Supervisor broader validation for the same slice also passed:
 `ctest --test-dir build -j --output-on-failure`
 
 Result: passed, 2974/2974 tests.
+
+Plan-owner realignment:
+Step 5 is now `Separate Facade Types From Private State Carriers`; Step 6 is
+the final `Tighten Public Header And Include Proof`; final validation moved to
+Step 7.

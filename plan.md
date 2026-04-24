@@ -193,7 +193,42 @@ Completion check:
 - Test-only private access is explicit and does not become a normal public API.
 - `c4c_frontend`, `c4cll`, and focused parser tests build/pass.
 
-## Step 5: Tighten Public Header And Include Proof
+## Step 5: Separate Facade Types From Private State Carriers
+
+Goal: make `parser.hpp` stop requiring `impl/parser_state.hpp` for public and
+test-facing type names before the final include-removal proof.
+
+Primary targets:
+- `src/frontend/parser/parser.hpp`
+- `src/frontend/parser/impl/parser_impl.hpp`
+- `src/frontend/parser/impl/parser_state.hpp`
+- parser implementation declarations and parser test hooks that still name
+  facade aliases backed by private state carrier types
+
+Actions:
+- Inventory every remaining `Parser::...` alias, helper signature, snapshot
+  type, guard type, and reference member in `parser.hpp` that depends on
+  declarations from `impl/parser_state.hpp`.
+- Classify each dependency as public facade API, explicit parser-test hook, or
+  parser-private implementation state.
+- Move parser-private aliases and helper declarations behind
+  `impl/parser_impl.hpp` where implementation files can still share them.
+- For test-only hooks that must stay reachable, use explicit private-boundary
+  declarations or test-support access instead of making normal public callers
+  see private state carrier definitions.
+- Keep the public facade limited to construction, public debug/error controls,
+  `parse()`, and supported result/error inspection.
+- Do not remove `impl/parser_state.hpp` from `parser.hpp` in this step unless
+  the dependency split is complete and the focused proof remains narrow.
+
+Completion check:
+- `todo.md` records the classified public/test/private dependency list or the
+  exact private declarations moved.
+- Any remaining reason `parser.hpp` still includes `impl/parser_state.hpp` is
+  explicit and bounded for Step 6.
+- `c4c_frontend`, `c4cll`, and focused parser tests build/pass.
+
+## Step 6: Tighten Public Header And Include Proof
 
 Goal: prove the facade boundary is real and not only hidden by incidental
 include order.
@@ -204,8 +239,7 @@ Primary targets:
 - build dependency or include-order-sensitive parser tests
 
 Actions:
-- Confirm `parser.hpp` does not include
-  `src/frontend/parser/impl/parser_state.hpp`.
+- Remove `#include "impl/parser_state.hpp"` from `parser.hpp`.
 - Remove accidental public transitives that make private state visible through
   the facade.
 - Add or adjust a focused include/build proof only if existing tests do not
@@ -218,7 +252,7 @@ Completion check:
   boundary or explicit test-only hooks.
 - Focused parser proof is recorded in `todo.md`.
 
-## Step 6: Final Parser Facade Validation
+## Step 7: Final Parser Facade Validation
 
 Goal: prove the source idea acceptance criteria are satisfied and ready for
 plan-owner closure review.
