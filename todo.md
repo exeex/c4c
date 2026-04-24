@@ -1,8 +1,9 @@
 Status: Active
 Source Idea Path: ideas/open/87_parser_visible_name_resolution_structured_result.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Introduce Structured Visible Resolution Carrier
+Current Step ID: 3
+Current Step Title: Retarget Visible Type Lookup
+
 # Current Packet
 
 ## Just Finished
@@ -59,3 +60,6 @@ Ran exactly:
 
 Result: passed. `test_after.log` contains the successful build and focused
 `frontend_parser_tests` run.
+
+Baseline candidate for commit `86211995` was accepted after the just-finished
+Step 2 carrier packet.
