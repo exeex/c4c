@@ -2550,8 +2550,8 @@ Node* parse_param(Parser& parser) {
     parser.parse_declarator(pts, &pname, &fn_ptr_params, &n_fn_ptr_params,
                             &fn_ptr_variadic, &is_parameter_pack);
     skip_cpp11_attrs_only();
-    parser.parse_plain_function_declarator_suffix(
-        pts, /*decay_to_function_pointer=*/true);
+    parse_plain_function_declarator_suffix(
+        parser, pts, /*decay_to_function_pointer=*/true);
     parser.skip_attributes();
 
     // C++ default parameter value: skip '= expr' (balanced, stopping at , or ) at depth 0)

@@ -1539,22 +1539,24 @@ void parse_parenthesized_pointer_declarator(
         out_ret_fn_ptr_variadic);
 }
 
-void Parser::parse_non_parenthesized_declarator(TypeSpec& ts,
-                                                const char** out_name) {
+void parse_non_parenthesized_declarator(Parser& parser, TypeSpec& ts,
+                                        const char** out_name) {
     std::vector<long long> decl_dims;
-    parse_non_parenthesized_declarator_suffixes(ts, out_name, nullptr,
-                                                &decl_dims);
-    apply_declarator_array_dims(*this, ts, decl_dims);
+    parser.parse_non_parenthesized_declarator_suffixes(ts, out_name, nullptr,
+                                                       &decl_dims);
+    apply_declarator_array_dims(parser, ts, decl_dims);
 }
 
-void Parser::parse_non_parenthesized_declarator_tail(
+void parse_non_parenthesized_declarator_tail(
+    Parser& parser,
     TypeSpec& ts, const char** out_name,
     bool decay_plain_function_suffix, TextId* out_name_text_id) {
     std::vector<long long> decl_dims;
-    parse_non_parenthesized_declarator_suffixes(ts, out_name, out_name_text_id,
-                                                &decl_dims);
-    apply_declarator_array_dims(*this, ts, decl_dims);
-    parse_plain_function_declarator_suffix(ts, decay_plain_function_suffix);
+    parser.parse_non_parenthesized_declarator_suffixes(
+        ts, out_name, out_name_text_id, &decl_dims);
+    apply_declarator_array_dims(parser, ts, decl_dims);
+    parse_plain_function_declarator_suffix(
+        parser, ts, decay_plain_function_suffix);
 }
 
 void Parser::parse_non_parenthesized_declarator_suffixes(
@@ -1567,16 +1569,16 @@ void Parser::parse_non_parenthesized_declarator_suffixes(
     parse_normal_declarator_tail(ts, out_name, out_name_text_id, out_dims);
 }
 
-void Parser::parse_plain_function_declarator_suffix(
-    TypeSpec& ts, bool decay_to_function_pointer) {
-    if (!check(TokenKind::LParen)) return;
+void parse_plain_function_declarator_suffix(
+    Parser& parser, TypeSpec& ts, bool decay_to_function_pointer) {
+    if (!parser.check(TokenKind::LParen)) return;
 
     // Plain `name(params)` suffixes stay with the surrounding declaration
     // parser. Parameters are the one place where the caller immediately
     // decays function types to pointer-to-function after the declarator pass.
     if (!decay_to_function_pointer) return;
 
-    skip_paren_group();
+    parser.skip_paren_group();
     ts.is_fn_ptr = true;
     ts.ptr_level += 1;
 }
@@ -1765,6 +1767,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     }
 
     parse_non_parenthesized_declarator_tail(
+        *this,
         ts, out_name, /*decay_plain_function_suffix=*/false, out_name_text_id);
 }
 

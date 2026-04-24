@@ -88,6 +88,14 @@ void parse_parenthesized_pointer_declarator(
     bool* out_fn_ptr_variadic,
     Node*** out_ret_fn_ptr_params, int* out_n_ret_fn_ptr_params,
     bool* out_ret_fn_ptr_variadic, TextId* out_name_text_id);
+void parse_non_parenthesized_declarator(Parser& parser, TypeSpec& ts,
+                                        const char** out_name);
+void parse_non_parenthesized_declarator_tail(
+    Parser& parser,
+    TypeSpec& ts, const char** out_name,
+    bool decay_plain_function_suffix, TextId* out_name_text_id);
+void parse_plain_function_declarator_suffix(Parser& parser, TypeSpec& ts,
+                                            bool decay_to_function_pointer);
 
 bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);
