@@ -41,6 +41,7 @@
 
 #include "arena.hpp"
 #include "ast.hpp"
+#include "parser_types.hpp"
 #include "impl/parser_state.hpp"
 #include "source_profile.hpp"
 #include "token.hpp"
