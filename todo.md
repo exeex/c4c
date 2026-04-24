@@ -1,23 +1,23 @@
 Status: Active
 Source Idea Path: ideas/open/03_bir-memory-coordinator-dispatch-split.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Split Alloca And Local-Slot Handling
+Current Step ID: Step 3
+Current Step Title: Split GEP Handling
 
 # Current Packet
 
 ## Just Finished
 
-Completed `Step 2: Split Alloca And Local-Slot Handling` by moving alloca
-lowering, dynamic alloca address tracking, scalar local slot creation, scalar
-array slot creation, and aggregate slot declaration behind the private
-local-memory handler in `local_slots.cpp`. The memory coordinator now delegates
-the alloca family through a single dispatch call and preserves the existing
-alloca diagnostic/failure path.
+Completed `Step 3: Split GEP Handling` by moving `LirGepOp` lowering out of
+the memory coordinator into the private GEP-family handler
+`BirFunctionLowerer::lower_memory_gep_inst` in `addressing.cpp`. The coordinator
+now delegates GEP instructions through a single dispatch call while the handler
+keeps local aggregate/local slot, global, dynamic global, dynamic local, and
+raw pointer projection branches explicit.
 
 ## Suggested Next
 
-Execute `Step 3: Split GEP Handling` from `plan.md`.
+Execute `Step 4: Split Load And Store Handling` from `plan.md`.
 
 ## Watchouts
 
@@ -29,8 +29,10 @@ Execute `Step 3: Split GEP Handling` from `plan.md`.
 - `lower_scalar_or_local_memory_inst` still owns the address-int/provenance cast
   branches; those were intentionally left for the later address-int or memory
   families.
-- Alloca and local slot declaration state still lives on `BirFunctionLowerer`;
-  the new local-memory handler only groups the existing mutation paths.
+- GEP lowering now lives in `addressing.cpp`; keep future load/store extraction
+  from pulling GEP policy back into the coordinator.
+- `lower_memory_gep_inst` intentionally preserves the existing local/global/
+  dynamic branch ordering and state mutations on `BirFunctionLowerer`.
 
 ## Proof
 
