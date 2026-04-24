@@ -3,29 +3,31 @@ Source Idea Path: ideas/open/91_advanced_prepared_call_authority_and_grouped_wid
 Source Plan Path: plan.md
 Current Step ID: 3
 Current Step Title: Make Grouped Width-Greater-Than-One Allocation Truthful
-Plan Review Counter: 3 / 6
+Plan Review Counter: 4 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 3 now makes the x86 module emitter consume grouped authority through the
-shared `consume_plans` seam before it falls back to the contract-first stub
-body. Grouped functions now emit comment summaries and detail lines for shared
-saved/preserved/clobber/storage authority plus grouped spill/reload value-id,
-span, and spill-slot facts, and the grouped spill/reload contract fixture
-proves that emitted asm reads those prepared facts directly.
+Step 3 now proves the x86 module emitter reads grouped authority through the
+shared `consume_plans` seam for both grouped call-boundary and grouped
+spill/reload fixtures before it falls back to the contract-first stub body.
+Grouped functions now have direct backend contracts for emitted comment
+summaries and detail lines covering shared saved/preserved/clobber/storage
+authority plus grouped spill/reload value-id, span, and spill-slot facts.
 
 ## Suggested Next
 
-Use the widened x86 module-emitter surface to find the next x86-native grouped
-call-boundary consumer seam, or shift from consumer comments back to the next
-truthful Step 3 behavior gap if the remaining width-`> 1` issue is now in
-allocator behavior rather than consumer publication.
+Use the widened grouped proofs to identify the next truthful Step 3 gap beyond
+consumer publication, or move to the next x86-native grouped-width behavior
+that still lacks direct prepared-authority proof.
 
 ## Watchouts
 
 - Keep grouped-width proofs anchored to shared prepared plans; do not let x86
   rebuild regalloc or spill facts from target-local heuristics.
+- Keep grouped call-boundary proofs tied to preserved-value, saved-register,
+  caller-clobber, and storage identities from prepared authority rather than
+  brittle asm spelling outside the consumer seam.
 - Do not reopen out-of-SSA follow-on work from idea 90 inside this runbook.
 - Reject testcase-shaped shortcuts; grouped-width progress must generalize
   beyond one named spill/reload case.
@@ -36,5 +38,6 @@ allocator behavior rather than consumer publication.
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-Result: passed on this packet.
+Result: passed after adding the grouped call-boundary x86 module-emitter
+contract alongside the grouped spill/reload contract.
 Log: `test_after.log`

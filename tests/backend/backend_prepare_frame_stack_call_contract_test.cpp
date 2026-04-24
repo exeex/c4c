@@ -3367,6 +3367,135 @@ int check_x86_module_emitter_reads_grouped_spill_reload_authority() {
   return 0;
 }
 
+int check_x86_module_emitter_reads_grouped_call_boundary_authority() {
+  auto prepared = prepare_grouped_riscv_module_with_overrides(
+      make_grouped_cross_call_preservation_contract_module(),
+      {{"p.vcarry", 2}, {"carry.pre", 2}, {"post.local", 1}});
+  prepared.target_profile = x86_target_profile();
+  prepared.module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto asm_text = c4c::backend::x86::api::emit_prepared_module(prepared);
+  const auto consumed =
+      c4c::backend::x86::consume_plans(prepared, "grouped_cross_call_preservation_contract");
+
+  if (consumed.frame == nullptr || consumed.calls == nullptr || consumed.calls->calls.size() != 1 ||
+      consumed.storage == nullptr) {
+    return fail(
+        "x86 module emitter contract: grouped call-boundary fixture no longer exposes frame/call/storage authority");
+  }
+  const auto* carry = find_storage_value(prepared, *consumed.storage, "carry.pre");
+  if (carry == nullptr) {
+    return fail(
+        "x86 module emitter contract: grouped call-boundary fixture lost grouped storage identity");
+  }
+
+  const auto& call_plan = consumed.calls->calls.front();
+  const auto preserved_it = std::find_if(
+      call_plan.preserved_values.begin(),
+      call_plan.preserved_values.end(),
+      [carry](const prepare::PreparedCallPreservedValue& preserved) {
+        return preserved.value_id == carry->value_id;
+      });
+  if (preserved_it == call_plan.preserved_values.end()) {
+    return fail(
+        "x86 module emitter contract: grouped call-boundary fixture lost preserved-value authority");
+  }
+  const auto saved_it = std::find_if(
+      consumed.frame->saved_callee_registers.begin(),
+      consumed.frame->saved_callee_registers.end(),
+      [preserved_it](const prepare::PreparedSavedRegister& saved) {
+        return saved.occupied_register_names == preserved_it->occupied_register_names;
+      });
+  if (saved_it == consumed.frame->saved_callee_registers.end()) {
+    return fail(
+        "x86 module emitter contract: grouped call-boundary fixture lost saved-register authority");
+  }
+  const auto grouped_clobber_it = std::find_if(
+      call_plan.clobbered_registers.begin(),
+      call_plan.clobbered_registers.end(),
+      [](const prepare::PreparedClobberedRegister& clobber) {
+        return clobber.contiguous_width == 2 && clobber.occupied_register_names.size() == 2;
+      });
+  if (grouped_clobber_it == call_plan.clobbered_registers.end()) {
+    return fail("x86 module emitter contract: grouped call-boundary fixture lost clobber authority");
+  }
+
+  const auto is_grouped = [](std::size_t contiguous_width,
+                             const std::vector<std::string>& occupied_register_names) {
+    return contiguous_width > 1 || occupied_register_names.size() > 1;
+  };
+  const auto grouped_saved_count = static_cast<std::size_t>(std::count_if(
+      consumed.frame->saved_callee_registers.begin(),
+      consumed.frame->saved_callee_registers.end(),
+      [&is_grouped](const prepare::PreparedSavedRegister& saved) {
+        return is_grouped(saved.contiguous_width, saved.occupied_register_names);
+      }));
+  const auto grouped_preserved_count = static_cast<std::size_t>(std::count_if(
+      call_plan.preserved_values.begin(),
+      call_plan.preserved_values.end(),
+      [&is_grouped](const prepare::PreparedCallPreservedValue& preserved) {
+        return is_grouped(preserved.contiguous_width, preserved.occupied_register_names);
+      }));
+  const auto grouped_clobbered_count = static_cast<std::size_t>(std::count_if(
+      call_plan.clobbered_registers.begin(),
+      call_plan.clobbered_registers.end(),
+      [&is_grouped](const prepare::PreparedClobberedRegister& clobber) {
+        return is_grouped(clobber.contiguous_width, clobber.occupied_register_names);
+      }));
+  const auto grouped_storage_count = static_cast<std::size_t>(std::count_if(
+      consumed.storage->values.begin(),
+      consumed.storage->values.end(),
+      [&is_grouped](const prepare::PreparedStoragePlanValue& value) {
+        return is_grouped(value.contiguous_width, value.occupied_register_names);
+      }));
+
+  const auto expected_summary =
+      std::string("    # grouped authority: saved=") + std::to_string(grouped_saved_count) +
+      " preserved=" + std::to_string(grouped_preserved_count) +
+      " clobbered=" + std::to_string(grouped_clobbered_count) +
+      " spills=0 reloads=0" +
+      " storage=" + std::to_string(grouped_storage_count);
+  const auto expected_saved =
+      std::string("    # grouped saved save_index=") + std::to_string(saved_it->save_index) +
+      " span=" +
+      grouped_span_summary(saved_it->bank,
+                           std::string_view(saved_it->register_name),
+                           saved_it->contiguous_width,
+                           saved_it->occupied_register_names);
+  const auto expected_preserved =
+      std::string("    # grouped preserve call#0 value=") +
+      std::string(prepare::prepared_value_name(prepared.names, preserved_it->value_name)) +
+      " route=" + std::string(prepare::prepared_call_preservation_route_name(preserved_it->route)) +
+      " span=" +
+      grouped_span_summary(
+          preserved_it->register_bank.value_or(prepare::PreparedRegisterBank::None),
+          preserved_it->register_name.has_value()
+              ? std::optional<std::string_view>{*preserved_it->register_name}
+              : std::nullopt,
+          preserved_it->contiguous_width,
+          preserved_it->occupied_register_names) +
+      " save_index=" + std::to_string(*preserved_it->callee_saved_save_index);
+  const auto expected_clobber =
+      std::string("    # grouped clobber call#0 span=") + clobber_summary(*grouped_clobber_it);
+  const auto expected_storage =
+      std::string("    # grouped storage value=carry.pre span=") +
+      grouped_span_summary(carry->bank,
+                           carry->register_name.has_value()
+                               ? std::optional<std::string_view>{*carry->register_name}
+                               : std::nullopt,
+                           carry->contiguous_width,
+                           carry->occupied_register_names);
+
+  if (asm_text.find(expected_summary) == std::string::npos ||
+      asm_text.find(expected_saved) == std::string::npos ||
+      asm_text.find(expected_preserved) == std::string::npos ||
+      asm_text.find(expected_clobber) == std::string::npos ||
+      asm_text.find(expected_storage) == std::string::npos) {
+    return fail(
+        "x86 module emitter contract: grouped call-boundary comments no longer consume direct prepared authority");
+  }
+  return 0;
+}
+
 int check_x86_route_debug_reads_grouped_call_boundary_authority() {
   const auto prepared = prepare_grouped_riscv_module_with_overrides(
       make_grouped_cross_call_preservation_contract_module(),
@@ -3820,6 +3949,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_x86_consumer_surface_reads_grouped_spill_reload_authority(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_x86_module_emitter_reads_grouped_call_boundary_authority(); rc != 0) {
     return rc;
   }
   if (const int rc = check_x86_module_emitter_reads_grouped_spill_reload_authority(); rc != 0) {
