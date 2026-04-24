@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/prealloc-agent-index-header-hierarchy-and-rust-reference-removal.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Rename the Stack-Layout Private Index
+Current Step ID: 3
+Current Step Title: Move the Stack-Layout Coordinator If Clean
 
 # Current Packet
 
@@ -53,3 +53,6 @@ Proof command:
 
 Result: passed. `test_after.log` contains the canonical proof output for this
 packet.
+
+Baseline review: supervisor accepted `test_baseline.new.log` as
+`test_baseline.log`, green for `^backend_` at commit `36442b9d`.
