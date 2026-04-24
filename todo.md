@@ -1,47 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/03_bir-memory-coordinator-dispatch-split.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Split Runtime Memory Intrinsic Handling
+Current Step ID: Step 6
+Current Step Title: Validate Coordinator Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Completed `Step 5: Split Runtime Memory Intrinsic Handling` by moving direct
-`LirMemcpyOp` and `LirMemsetOp` lowering behind private runtime-memory family
-handlers in `local_slots.cpp`, and by moving direct-call `memcpy`/`memset`
-lowering behind `BirFunctionLowerer::try_lower_direct_memory_intrinsic_call`.
-The coordinator now delegates those runtime memory paths through concise family
-calls while reusing the existing immediate local memcpy/memset helpers.
+Completed `Step 6: Validate Coordinator Boundary` by validating the current
+BIR memory coordinator split against the source-idea boundary checks.
+`lower_scalar_or_local_memory_inst` is now a thin dispatcher for the split
+memory instruction families: alloca/local-slot setup, GEP, load/store, and
+runtime memory intrinsic lowering delegate to private family handlers. The
+remaining address-int cast, pointer subtraction, and call-lowering branches are
+unchanged coordinator responsibilities from the current runbook route.
+
+Structural checks passed:
+- instruction-family handlers are independently reviewable in existing
+  semantic homes (`scalar.cpp`, `memory/addressing.cpp`, and
+  `memory/local_slots.cpp`)
+- no new `.hpp` files were created under `src/backend/bir/lir_to_bir/memory`
+- `lowering.hpp` remains the complete private `BirFunctionLowerer` index
+- `BirFunctionLowerer` still owns memory state
+- no test expectation rewrites were used as proof
+- no remaining source-idea gap was found; the plan is close-ready
 
 ## Suggested Next
 
-Execute `Step 6: Validate Coordinator Boundary` from `plan.md`.
+Ask the plan owner to close the active plan if supervisor review accepts this
+validation packet.
 
 ## Watchouts
 
-- Do not create new `.hpp` files.
-- Keep `lowering.hpp` as the complete private `BirFunctionLowerer` index.
-- Keep memory state ownership on `BirFunctionLowerer`.
-- Split by real instruction-family boundaries, not one file per narrow case.
-- Preserve behavior and diagnostics; do not rewrite expectations as proof.
-- `lower_scalar_or_local_memory_inst` still owns the address-int/provenance cast
-  branches; those were intentionally left for the later address-int or memory
-  families.
-- GEP lowering now lives in `addressing.cpp`; keep future load/store extraction
-  from pulling GEP policy back into the coordinator.
-- `lower_memory_gep_inst` intentionally preserves the existing local/global/
-  dynamic branch ordering and state mutations on `BirFunctionLowerer`.
-- Load/store lowering lives behind private family handlers in
-  `local_slots.cpp`; runtime memcpy/memset lowering now does too, through the
-  existing immediate local memcpy/memset helper boundary.
-- `calloc` pointer-address inference remains in call dispatch because this
-  slice only moved cohesive memcpy/memset lowering paths that already had local
-  memory helper ownership.
-- Provenance and alias mutations remain visible as calls to the existing
-  provenance/local-slot/dynamic-array lowering paths; do not hide them behind
-  generic catch-all helpers.
+- Close review should preserve the current boundary: address-int casts, pointer
+  subtraction, and call lowering are still in the coordinator, while extracted
+  memory families stay behind their private handlers.
+- No implementation/header/test file was touched in this validation packet.
 
 ## Proof
 
