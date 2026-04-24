@@ -1,5 +1,11 @@
 # LIR HIR-To-LIR Index Tightening
 
+Closed: completed the header-index tightening runbook. Top-level LIR headers
+now read as exported package/model surfaces, `hir_to_lir.hpp` is the public
+HIR-to-LIR entry, nested HIR-to-LIR headers are private semantic indexes, no
+one-header-per-`.cpp` pattern was introduced, and backend regression comparison
+passed with 97 passed before and after.
+
 ## Intent
 
 Tighten the `src/codegen/lir` header layout after the first LIR hierarchy
