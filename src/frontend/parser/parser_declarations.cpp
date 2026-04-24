@@ -1563,6 +1563,8 @@ Node* Parser::parse_top_level() {
                 }
                 const TextId alias_name_text_id =
                     parser_text_id_for_token(kInvalidText, first_name);
+                const QualifiedNameKey alias_key = alias_template_key_in_context(
+                    using_context_id, alias_name_text_id, first_name);
                 const std::string qualified = bridge_name_in_context(
                     using_context_id, alias_name_text_id, first_name);
                 register_structured_typedef_binding_in_context(
@@ -1571,7 +1573,7 @@ Node* Parser::parse_top_level() {
                 if (using_context_id == 0) {
                     register_typedef_binding(first_name, alias_ts, true);
                 }
-                set_last_using_alias_name(qualified);
+                set_last_using_alias_name(alias_key, qualified);
                 return nullptr;
             }
             target_name.base_name = std::move(first_name);
@@ -1943,16 +1945,13 @@ Node* Parser::parse_top_level() {
         Node* templated = parse_top_level();
         // If parse_top_level() registered a using-alias, record alias template
         // info so that later Name<args> can rebuild the aliased template struct.
+        const QualifiedNameKey alias_key = active_context_state_.last_using_alias_key;
         const std::string_view alias_name = last_using_alias_name_text();
-        if (!alias_name.empty() && !template_params.empty()) {
+        if (alias_key.base_text_id != kInvalidText && !alias_name.empty() &&
+            !template_params.empty()) {
             if (const TypeSpec* aliased_type =
-                    find_visible_typedef_type(
-                        active_context_state_.last_using_alias_name_text_id,
-                        alias_name)) {
-                const QualifiedNameKey alias_key = alias_template_key_in_context(
-                    current_namespace_context_id(),
-                    active_context_state_.last_using_alias_name_text_id,
-                    alias_name);
+                    find_visible_typedef_type(alias_key.base_text_id,
+                                             alias_name)) {
                 ParserAliasTemplateInfo ati;
                 for (size_t i = 0; i < template_params.size(); ++i) {
                     ati.param_names.push_back(template_params[i]);

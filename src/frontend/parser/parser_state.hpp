@@ -363,6 +363,7 @@ struct ParserLexicalScopeState {
 // Transient parser context that moves with lexical/state transitions.
 // These fields are restored by snapshots or cleared by the matching pop path.
 struct ParserActiveContextState {
+  QualifiedNameKey last_using_alias_key;
   std::string last_using_alias_name;
   TextId last_using_alias_name_text_id = kInvalidText;
   std::string last_resolved_typedef;
