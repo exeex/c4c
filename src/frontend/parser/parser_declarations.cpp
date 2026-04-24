@@ -793,6 +793,31 @@ Node* Parser::parse_local_decl() {
                         is_known_simple_visible_type_head(*this, arg_text_id, arg_name);
                     single_value_arg = !arg_is_type;
                 }
+                // Keep zero-arg identifier calls on the expression side when
+                // the callee head is not already known as a type. This avoids
+                // misreading direct-init such as `bool flag(IsPositive());` as
+                // a function declaration while preserving the classic vexing
+                // parse for known type heads.
+                if (!single_value_arg && is_cpp_mode() &&
+                    core_input_state_.pos + 4 <
+                        static_cast<int>(core_input_state_.tokens.size()) &&
+                    core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+                        TokenKind::Identifier &&
+                    core_input_state_.tokens[core_input_state_.pos + 2].kind ==
+                        TokenKind::LParen &&
+                    core_input_state_.tokens[core_input_state_.pos + 3].kind ==
+                        TokenKind::RParen &&
+                    core_input_state_.tokens[core_input_state_.pos + 4].kind ==
+                        TokenKind::RParen) {
+                    const Token& arg_tok =
+                        core_input_state_.tokens[core_input_state_.pos + 1];
+                    const std::string arg_name =
+                        std::string(token_spelling(arg_tok));
+                    if (!is_known_simple_visible_type_head(*this, arg_tok.text_id,
+                                                           arg_name)) {
+                        single_value_arg = true;
+                    }
+                }
                 auto can_use_lite_ctor_init_probe = [&]() -> bool {
                     if (core_input_state_.pos + 1 >=
                         static_cast<int>(core_input_state_.tokens.size())) {
@@ -903,6 +928,9 @@ Node* Parser::parse_local_decl() {
                              TokenKind::Star) &&
                         core_input_state_.tokens[core_input_state_.pos + 3].kind ==
                             TokenKind::Identifier) {
+                        return false;
+                    }
+                    if (single_value_arg) {
                         return false;
                     }
                     const CtorInitVisibleHeadHandoff visible_head_handoff =

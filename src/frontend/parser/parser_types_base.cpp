@@ -247,6 +247,12 @@ int Parser::classify_visible_value_or_type_head(int pos, int* after_pos) {
         const std::string head_name = std::string(token_spelling(head_tok));
         if (find_visible_var_type(head_tok.text_id, head_name)) return 1;
         if (has_known_fn_name(head_name)) return 1;
+        if (is_cpp_mode() && !current_struct_tag_text().empty()) {
+            std::string current_member_name(current_struct_tag_text());
+            current_member_name += "::";
+            current_member_name += head_name;
+            if (has_known_fn_name(current_member_name)) return 1;
+        }
 
         const std::string resolved_value =
             resolve_visible_value_name(head_tok.text_id, head_name);
