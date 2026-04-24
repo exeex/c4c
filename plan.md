@@ -1,217 +1,177 @@
-# Parser Agent Index Header Hierarchy Runbook
+# Parser Public Facade Completion Runbook
 
 Status: Active
 Source Idea: ideas/open/92_parser_agent_index_header_hierarchy.md
 
 ## Purpose
 
-Make `src/frontend/parser` headers communicate semantic visibility by path
-depth: top-level headers are public parser/AST surfaces, and parser-private
-implementation indexes live under `src/frontend/parser/impl/`.
+Finish idea 92 after closure validation found that the directory hierarchy was
+moved but the public/private header boundary is not yet honest.
 
 ## Goal
 
-Shrink `parser.hpp` into the public parser entry surface while creating a
-private parser implementation index for the split parser `.cpp` files.
+Make `src/frontend/parser/parser.hpp` the public parser entry surface, with
+parser implementation navigation and private state living behind
+`src/frontend/parser/impl/`.
 
 ## Core Rule
 
-This is a structural header-boundary refactor. Preserve parser behavior,
+This remains a structural header-boundary refactor. Preserve parser behavior,
 AST output, testcase expectations, and visible-name semantics.
+
+## Closure Finding
+
+Step 6 validation passed, but close was rejected because source-idea acceptance
+criteria are not yet met:
+
+- `parser.hpp` still describes itself as the parser implementation navigation
+  index.
+- `parser.hpp` still exposes parser-private state carriers through
+  `#include "impl/parser_state.hpp"` and public data members.
+- `impl/parser_impl.hpp` is still a bridge that includes `../parser.hpp`
+  instead of being the private implementation index.
+- The public header still contains split translation-unit helper declarations
+  and debug/recovery/private lookup declarations that external parser callers
+  do not need to construct `Parser` and call `parse()`.
 
 ## Read First
 
 - `ideas/open/92_parser_agent_index_header_hierarchy.md`
 - `src/frontend/parser/parser.hpp`
-- `src/frontend/parser/parser_state.hpp`
-- `src/frontend/parser/types_helpers.hpp`
+- `src/frontend/parser/impl/parser_impl.hpp`
+- `src/frontend/parser/impl/parser_state.hpp`
+- `src/frontend/parser/impl/types/types_helpers.hpp`
 - parser implementation files under `src/frontend/parser/parser_*.cpp`
 
 ## Current Targets
 
 - `src/frontend/parser/parser.hpp`
-- `src/frontend/parser/parser_state.hpp`
-- `src/frontend/parser/types_helpers.hpp`
-- `src/frontend/parser/parser_core.cpp`
-- `src/frontend/parser/parser_declarations.cpp`
-- `src/frontend/parser/parser_expressions.cpp`
-- `src/frontend/parser/parser_statements.cpp`
-- `src/frontend/parser/parser_support.cpp`
-- `src/frontend/parser/parser_types_base.cpp`
-- `src/frontend/parser/parser_types_declarator.cpp`
-- `src/frontend/parser/parser_types_struct.cpp`
-- `src/frontend/parser/parser_types_template.cpp`
-- focused include-site updates in parser tests and frontend/app callers
+- `src/frontend/parser/impl/parser_impl.hpp`
+- `src/frontend/parser/impl/parser_state.hpp`
+- parser implementation files under `src/frontend/parser/parser_*.cpp`
+- focused parser/app/test call sites that construct `Parser` or inspect parser
+  debug state
 
 ## Non-Goals
 
 - Do not split or move `ast.hpp`.
 - Do not introduce a traditional separated `include/` tree.
 - Do not create one header per parser `.cpp` file.
-- Do not move parser `.cpp` files unless a later step proves it is necessary.
-- Do not rename directories around implementation algorithm names such as
-  `recursive_descent/`.
+- Do not move parser `.cpp` files.
+- Do not rename implementation directories around parser algorithms.
 - Do not change parser semantics or downgrade expectations as proof.
 - Do not absorb HIR header hierarchy work from idea 93.
 
 ## Working Model
 
-- `src/frontend/parser/*.hpp` is public by default.
-- `src/frontend/parser/impl/*.hpp` is private to parser implementation files.
-- `src/frontend/parser/impl/types/*.hpp` is private to type,
+- `src/frontend/parser/parser.hpp` is the public parser entry API.
+- `src/frontend/parser/impl/parser_impl.hpp` is the private implementation
+  index opened by parser implementation files.
+- `src/frontend/parser/impl/parser_state.hpp` holds parser-private state
+  carriers.
+- `src/frontend/parser/impl/types/types_helpers.hpp` remains private to type,
   declarator, struct, and template parsing internals.
-- `parser.hpp` should expose only the constructor, `parse()`, and public result
-  or option types that external callers need.
-- `impl/parser_impl.hpp` should become the private navigation index for
-  parser internals and split translation-unit method declarations.
 
 ## Execution Rules
 
 - Keep slices behavior-preserving and compile after each code-changing step.
-- Prefer compatibility includes only as an incremental bridge, and remove them
-  once callers are retargeted.
-- Move declarations only when their new visibility boundary is clear.
-- Keep AST and `TypeSpec` declarations centralized in `ast.hpp`.
-- If semantic cleanup is discovered, record it as a separate idea unless it is
-  required to keep the structural refactor compiling.
+- Prefer small mechanical movement over semantic cleanup.
+- If the existing "all members public" constraint prevents moving a member
+  declaration directly, either introduce an implementation-owned wrapper/facade
+  boundary or record the exact blocker in `todo.md` before widening scope.
+- Do not leave `impl/parser_impl.hpp` as a compatibility bridge at closure.
 - For code-changing steps, run:
   `cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`
-- Escalate validation if a slice changes AST-facing declarations,
-  HIR-facing include paths, app entry includes, or shared frontend
-  infrastructure.
+- Before closing, run the supervisor-selected broader validation and regression
+  guard.
 
-## Step 1: Inventory Parser Header Boundaries
+## Step 1: Inventory Public Parser Consumers
 
-Goal: classify the current public/private parser header surface before moving
-declarations.
+Goal: determine the true public surface that must remain in `parser.hpp`.
 
-Primary target: `src/frontend/parser/parser.hpp`,
-`src/frontend/parser/parser_state.hpp`, `src/frontend/parser/types_helpers.hpp`,
-and current include sites.
+Primary target: external include sites and direct `Parser` member use outside
+`src/frontend/parser/parser_*.cpp`.
 
 Concrete actions:
 
-- Inspect declarations in `parser.hpp` and group them as public parser API,
-  parser-private state, split-implementation method declarations, debug
-  plumbing, lookup tables, template/type helpers, or AST-facing data.
-- Inspect include sites for `parser.hpp`, `parser_state.hpp`, and
-  `types_helpers.hpp` and identify which are external callers versus parser
-  implementation files.
-- Record the proposed first movement boundary in `todo.md`; do not move files
-  or rewrite includes in this step unless a trivial correction is required for
-  plan accuracy.
+- Inspect non-parser implementation callers that include `parser.hpp`.
+- Classify each used `Parser` member as public API, debug/test API, or
+  accidental implementation access.
+- Record whether public debug/test access must remain in `parser.hpp` or can
+  move behind a narrower public support surface.
+- Identify parser implementation declarations that can move to
+  `impl/parser_impl.hpp` without changing call sites.
 
 Completion check:
 
-- `todo.md` names the first code-changing sub-slice and any include-site
-  hazards.
+- `todo.md` lists the public members that must remain in `parser.hpp`.
+- `todo.md` names the first code-changing sub-slice and any facade/wrapper
+  blocker.
 - No build proof is required if this remains inventory-only.
 
-## Step 2: Introduce Private Parser Implementation Index
+## Step 2: Move Implementation Navigation Behind `impl/parser_impl.hpp`
 
-Goal: create `src/frontend/parser/impl/parser_impl.hpp` and route parser
-implementation files through it.
+Goal: make parser implementation files get their private map from
+`impl/parser_impl.hpp`, not from public `parser.hpp`.
 
-Primary target: `parser.hpp`, new `impl/parser_impl.hpp`, parser `.cpp`
-includes.
-
-Concrete actions:
-
-- Add `impl/parser_impl.hpp` as the private implementation index.
-- Move private parser state aliases, helper declarations, debug plumbing, and
-  split translation-unit method declarations out of the public header where
-  possible.
-- Update parser implementation `.cpp` files to include the private index.
-- Keep `parser.hpp` usable by external callers that construct `Parser` and call
-  `parse()`.
-
-Completion check:
-
-- External users can include `parser.hpp` without depending on the full private
-  parser implementation index.
-- Parser implementation files compile through `impl/parser_impl.hpp`.
-- Focused parser validation passes.
-
-## Step 3: Move Parser State Support Under `impl/`
-
-Goal: make parser-private state carriers live under the private implementation
-boundary.
-
-Primary target: `parser_state.hpp` to `impl/parser_state.hpp` and affected
-includes.
+Primary target: `parser.hpp`, `impl/parser_impl.hpp`, parser `.cpp` files.
 
 Concrete actions:
 
-- Relocate parser-private state declarations to `src/frontend/parser/impl/`.
-- Retarget private include sites to the new path.
-- Keep a compatibility include only if required for an incremental slice, and
-  remove it before closing this idea if no external caller needs it.
+- Move declarations and helper APIs used only by parser implementation files
+  out of `parser.hpp` when the C++ shape allows it.
+- Where member declarations must remain on `Parser`, keep only the minimal
+  declaration in `parser.hpp` and move implementation-only aliases,
+  commentary, and navigation grouping to `impl/parser_impl.hpp`.
+- Remove bridge wording from `impl/parser_impl.hpp`; it must describe the
+  private implementation boundary.
+- Update parser implementation files if the include order or helper access
+  changes.
 
 Completion check:
 
-- Top-level parser headers no longer expose parser-private state carriers by
-  default.
+- Parser implementation files compile through `impl/parser_impl.hpp` as their
+  private index.
+- `parser.hpp` no longer presents itself as the implementation navigation map.
 - Focused parser validation passes.
 
-## Step 4: Move Type Parsing Helpers Under `impl/types/`
+## Step 3: Minimize Public Exposure Of Parser State
 
-Goal: give type/declarator/template parsing helpers a private subdomain index.
+Goal: stop external parser callers from pulling private state definitions
+unless the current parser object layout makes that unavoidable.
 
-Primary target: `types_helpers.hpp`, optional new `impl/types/types.hpp`, and
-type parser `.cpp` includes.
+Primary target: `parser.hpp`, `impl/parser_state.hpp`.
 
 Concrete actions:
 
-- Move `types_helpers.hpp` under `src/frontend/parser/impl/types/`.
-- Add `impl/types/types.hpp` only if there are meaningful shared
-  type/declarator/template declarations to index.
-- Do not create one-off headers such as `declarator.hpp`, `template.hpp`, or
-  `struct_types.hpp` unless a real subdirectory-level boundary emerges.
+- Try to remove `#include "impl/parser_state.hpp"` from `parser.hpp` by
+  introducing an implementation-owned state boundary.
+- If a full facade/PIMPL split is required, keep the slice small: preserve
+  constructor and `parse()` behavior while moving private state ownership out
+  of the public header.
+- If the project coding constraints make a facade split too large for this
+  idea, record the exact constraint and remaining exposure in `todo.md` and
+  create a separate open idea instead of closing silently.
 
 Completion check:
 
-- Type/declarator/template parser implementation files use the private type
-  helper path.
-- Top-level parser headers remain public surfaces by default.
+- External users can include `parser.hpp` without the full private parser
+  implementation state, or a separate open idea records why that requires a
+  larger follow-on rebuild.
 - Focused parser validation passes.
 
-## Step 5: Retarget External Include Sites And Remove Bridges
+## Step 4: Closure Validation
 
-Goal: finish the public/private parser header boundary and remove temporary
-compatibility includes.
-
-Primary target: external parser callers, parser tests, and remaining top-level
-private headers.
-
-Concrete actions:
-
-- Retarget external callers to include only public parser headers they need.
-- Remove compatibility includes once all callers have moved.
-- Confirm the number of thin single-purpose top-level parser headers decreases
-  or stays flat.
-- Check for stale references to private headers from outside parser
-  implementation code.
-
-Completion check:
-
-- `parser.hpp` is the public parser entry API.
-- Parser-private headers live under `src/frontend/parser/impl/` by default.
-- Focused parser validation passes.
-- Escalated validation has been run if non-parser frontend or app include
-  paths changed.
-
-## Step 6: Closure Validation
-
-Goal: prove the structural refactor is complete enough to close idea 92 or
-identify a follow-on split.
+Goal: prove the source idea is complete or split the unresolved public facade
+work before closing.
 
 Concrete actions:
 
 - Re-read the source idea acceptance criteria.
-- Check that remaining top-level parser headers are intentionally public.
-- Check that private parser and type parsing indexes are discoverable under
-  `impl/`.
-- Run the validation level selected by the supervisor for closure.
+- Check top-level parser headers are intentionally public.
+- Check `impl/parser_impl.hpp` is a real private index, not just a bridge.
+- Check stale top-level private headers and compatibility includes are absent.
+- Run the validation level selected by the supervisor.
 
 Completion check:
 
