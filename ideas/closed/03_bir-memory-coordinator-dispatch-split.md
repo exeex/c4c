@@ -86,3 +86,13 @@ or one tightly coupled pair, then compile and run the relevant narrow tests.
 - Do not combine this with helper/header extraction.
 - Do not downgrade or weaken testcase expectations.
 - Do not accept named-case shortcuts as progress.
+
+## Closure Note
+
+Closed after the active runbook split `lower_scalar_or_local_memory_inst` into
+reviewable scalar, alloca/local-slot, GEP, load/store, and runtime memory
+family handlers while preserving the fixed memory header budget and
+`lowering.hpp` as the private lowerer index. Address-int casts, pointer
+subtraction, and call lowering remain in the coordinator as intentional
+responsibilities for this route. Close validation used the backend subset and
+regression guard with 97 passed before and after, 0 failed.
