@@ -3,24 +3,23 @@ Source Idea Path: ideas/open/91_advanced_prepared_call_authority_and_grouped_wid
 Source Plan Path: plan.md
 Current Step ID: 3.1
 Current Step Title: Make Grouped Call-Boundary Consumers Read Published Span Authority
-Plan Review Counter: 2 / 6
+Plan Review Counter: 3 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 3.1 now makes the x86 module-emitter comments and route-debug trace report
-grouped call-argument destination spans and grouped call-result source spans
-directly from prepared call-plan authority. The grouped cross-call proof now
-checks those consumer-facing summaries alongside the existing
-saved/preserved/clobber/storage reporting so the call-boundary surface stays
-anchored to published span metadata.
+Step 3.1 now makes the grouped x86 call-boundary proof read published span
+authority directly for the remaining selector seam. The grouped consumer-surface
+contract now proves the argument/result selectors return the published prepared
+call-plan records themselves, and the grouped module-emitter and route-debug
+proofs share span-summary helpers instead of rebuilding those expectations from
+scalar `*_register_name` checks.
 
 ## Suggested Next
 
-Advance Step 3.1 by moving the next remaining x86 call-boundary helper or dump
-surface that still talks in scalar ABI register terms onto the prepared grouped
-argument/result span fields directly, or close Step 3.1 if no honest consumer
-surface remains beyond proof tightening.
+Audit the remaining x86 grouped call-boundary helpers and proofs for any last
+scalar ABI/base-register phrasing outside this packet; if none remain, hand
+Step 3.1 back for closure rather than widening into a new family here.
 
 ## Watchouts
 
@@ -38,8 +37,8 @@ surface remains beyond proof tightening.
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-Result: passed after teaching the x86 module-emitter comments and route-debug
-surface to report grouped call argument/result spans directly from prepared
-call-plan authority, with focused contract coverage for both grouped
-call-boundary and grouped spill/reload summaries.
+Result: passed after moving the remaining grouped call-boundary selector proof
+off scalar register-name presence checks and onto direct published span-record
+identity plus shared grouped span summaries across the x86 consumer/module/debug
+proof surfaces.
 Log: `test_after.log`

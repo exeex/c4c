@@ -219,6 +219,32 @@ std::string grouped_span_summary(prepare::PreparedRegisterBank bank,
   return summary;
 }
 
+std::optional<std::string_view> optional_string_view(
+    const std::optional<std::string>& value) {
+  if (!value.has_value()) {
+    return std::nullopt;
+  }
+  return std::string_view(*value);
+}
+
+std::string grouped_call_argument_destination_span_summary(
+    const prepare::PreparedCallArgumentPlan& argument) {
+  return grouped_span_summary(argument.destination_register_bank.value_or(
+                                  prepare::PreparedRegisterBank::None),
+                              optional_string_view(argument.destination_register_name),
+                              argument.destination_contiguous_width,
+                              argument.destination_occupied_register_names);
+}
+
+std::string grouped_call_result_source_span_summary(
+    const prepare::PreparedCallResultPlan& result) {
+  return grouped_span_summary(result.source_register_bank.value_or(
+                                  prepare::PreparedRegisterBank::None),
+                              optional_string_view(result.source_register_name),
+                              result.source_contiguous_width,
+                              result.source_occupied_register_names);
+}
+
 c4c::TargetProfile x86_target_profile() {
   return c4c::default_target_profile(c4c::TargetArch::X86_64);
 }
@@ -3142,18 +3168,24 @@ int check_x86_consumer_surface_reads_grouped_call_boundary_authority() {
     return fail(
         "x86 consumer surface contract: grouped argument/result fixture no longer exposes call-boundary authority through x86");
   }
+  const auto grouped_arg_dest_span =
+      grouped_call_argument_destination_span_summary(*grouped_arg);
+  const auto grouped_result_source_span =
+      grouped_call_result_source_span_summary(*grouped_result);
   if (grouped_call->direct_callee_name != std::optional<std::string>{"boundary_helper"} ||
+      grouped_arg != &grouped_call->arguments.front() ||
       grouped_arg->source_value_id != std::optional<prepare::PreparedValueId>{pre_only->value_id} ||
       grouped_arg->destination_contiguous_width != 2 ||
       grouped_arg->destination_occupied_register_names.size() != 2 ||
-      !grouped_arg->destination_register_name.has_value() ||
+      grouped_arg_dest_span.find("/w2[") == std::string::npos ||
       grouped_result->destination_value_id !=
           std::optional<prepare::PreparedValueId>{call_out->value_id} ||
+      !grouped_call->result.has_value() || grouped_result != &*grouped_call->result ||
       grouped_result->source_contiguous_width != 2 ||
       grouped_result->source_occupied_register_names.size() != 2 ||
-      !grouped_result->source_register_name.has_value()) {
+      grouped_result_source_span.find("/w2[") == std::string::npos) {
     return fail(
-        "x86 consumer surface contract: grouped call argument/result selectors reopened scalar call-lane reconstruction instead of following published span authority");
+        "x86 consumer surface contract: grouped call argument/result selectors no longer return the published grouped span authority directly");
   }
   return 0;
 }
@@ -3612,26 +3644,11 @@ int check_x86_module_emitter_reads_grouped_call_boundary_authority() {
       std::string("    # grouped arg call#0 arg#") +
       std::to_string(grouped_boundary_arg->arg_index) +
       " source_value_id=" + std::to_string(*grouped_boundary_arg->source_value_id) +
-      " dest_span=" +
-      grouped_span_summary(grouped_boundary_arg->destination_register_bank.value_or(
-                               prepare::PreparedRegisterBank::None),
-                           grouped_boundary_arg->destination_register_name.has_value()
-                               ? std::optional<std::string_view>(
-                                     std::string_view(*grouped_boundary_arg->destination_register_name))
-                               : std::nullopt,
-                           grouped_boundary_arg->destination_contiguous_width,
-                           grouped_boundary_arg->destination_occupied_register_names);
+      " dest_span=" + grouped_call_argument_destination_span_summary(*grouped_boundary_arg);
   const auto expected_boundary_result =
       std::string("    # grouped result call#0 destination_value_id=") +
       std::to_string(*grouped_boundary_result->destination_value_id) + " source_span=" +
-      grouped_span_summary(grouped_boundary_result->source_register_bank.value_or(
-                               prepare::PreparedRegisterBank::None),
-                           grouped_boundary_result->source_register_name.has_value()
-                               ? std::optional<std::string_view>(
-                                     std::string_view(*grouped_boundary_result->source_register_name))
-                               : std::nullopt,
-                           grouped_boundary_result->source_contiguous_width,
-                           grouped_boundary_result->source_occupied_register_names);
+      grouped_call_result_source_span_summary(*grouped_boundary_result);
   if (grouped_boundary_asm.find(expected_boundary_arg) == std::string::npos ||
       grouped_boundary_asm.find(expected_boundary_result) == std::string::npos) {
     return fail(
@@ -3857,26 +3874,11 @@ int check_x86_route_debug_reads_grouped_call_boundary_authority() {
       std::string("grouped arg call#0 arg#") +
       std::to_string(grouped_boundary_arg->arg_index) +
       " source_value_id=" + std::to_string(*grouped_boundary_arg->source_value_id) +
-      " dest_span=" +
-      grouped_span_summary(grouped_boundary_arg->destination_register_bank.value_or(
-                               prepare::PreparedRegisterBank::None),
-                           grouped_boundary_arg->destination_register_name.has_value()
-                               ? std::optional<std::string_view>(
-                                     std::string_view(*grouped_boundary_arg->destination_register_name))
-                               : std::nullopt,
-                           grouped_boundary_arg->destination_contiguous_width,
-                           grouped_boundary_arg->destination_occupied_register_names);
+      " dest_span=" + grouped_call_argument_destination_span_summary(*grouped_boundary_arg);
   const auto expected_boundary_result =
       std::string("grouped result call#0 destination_value_id=") +
       std::to_string(*grouped_boundary_result->destination_value_id) + " source_span=" +
-      grouped_span_summary(grouped_boundary_result->source_register_bank.value_or(
-                               prepare::PreparedRegisterBank::None),
-                           grouped_boundary_result->source_register_name.has_value()
-                               ? std::optional<std::string_view>(
-                                     std::string_view(*grouped_boundary_result->source_register_name))
-                               : std::nullopt,
-                           grouped_boundary_result->source_contiguous_width,
-                           grouped_boundary_result->source_occupied_register_names);
+      grouped_call_result_source_span_summary(*grouped_boundary_result);
   if (grouped_boundary_summary.find(expected_boundary_summary) == std::string::npos ||
       grouped_boundary_trace.find(expected_boundary_arg) == std::string::npos ||
       grouped_boundary_trace.find(expected_boundary_result) == std::string::npos) {
