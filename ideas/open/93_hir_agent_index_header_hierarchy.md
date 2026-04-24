@@ -1,31 +1,72 @@
 # HIR Agent Index Header Hierarchy
 
-Status: Closed
+Status: Open
 Created: 2026-04-24
 Last Updated: 2026-04-24
 Parent Ideas:
 - [92_parser_agent_index_header_hierarchy.md](/workspaces/c4c/ideas/closed/92_parser_agent_index_header_hierarchy.md)
 
-Closed: 2026-04-24
+Reopened: 2026-04-24
 
-## Closure Summary
+## Reopen Note
 
-The HIR header hierarchy was completed as a structural refactor. Top-level HIR
-headers now represent public/app-facing surfaces by default, private HIR
-indexes live under `src/frontend/hir/impl/`, expression/statement/template/
-compile-time/inspection subdomains have directory-level index headers, and the
-former top-level private headers `hir_lowering.hpp` and
-`hir_lowerer_internal.hpp` were removed.
+The earlier structural pass moved private HIR headers under `impl/`, but it did
+not move the implementation `.cpp` files into the semantic directories. That is
+not enough for the intended agent workflow. The source tree itself should show
+where an agent should work, and moving files should also remove repeated file
+name prefixes such as `hir_expr_`, `hir_stmt_`, `hir_templates_`, and
+`compile_time_engine`.
 
-Final validation passed with:
+The required shape is:
 
-```bash
-cmake --build build -j && ctest --test-dir build -j --output-on-failure
+```text
+src/frontend/hir/
+  hir.hpp
+  hir_ir.hpp
+  hir.cpp
+
+  impl/
+    hir_impl.hpp
+    lowerer.hpp
+
+    expr/
+      expr.hpp
+      expr.cpp
+      builtin.cpp
+      call.cpp
+      object.cpp
+      operator.cpp
+      scalar_control.cpp
+
+    stmt/
+      stmt.hpp
+      stmt.cpp
+      control_flow.cpp
+      decl.cpp
+      range_for.cpp
+      switch.cpp
+
+    templates/
+      templates.hpp
+      templates.cpp
+      deduction.cpp
+      deferred_nttp.cpp
+      global.cpp
+      materialization.cpp
+      member_typedef.cpp
+      struct_instantiation.cpp
+      type_resolution.cpp
+      value_args.cpp
+
+    compile_time/
+      compile_time.hpp
+      engine.cpp
+      inline_expand.cpp
 ```
 
-Result: 2974/2974 tests passing in `test_after.log`. Close-time regression
-guard also passed with matching full-suite `test_before.log` and
-`test_after.log`.
+The top-level `hir_*.cpp` implementation prefix is not the desired final agent
+surface. Once a file lives under a semantic directory, the directory should
+carry that context and the filename should be short.
 
 ## Goal
 
@@ -112,11 +153,6 @@ src/frontend/hir/
   hir_ir.hpp
   hir.cpp
 
-  hir_build.cpp
-  hir_functions.cpp
-  hir_lowering_core.cpp
-  hir_types.cpp
-
   impl/
     hir_impl.hpp
     lowerer.hpp
@@ -154,42 +190,29 @@ src/frontend/hir/
       compile_time.hpp
       engine.cpp
       inline_expand.cpp
-
-    inspect/
-      inspect.hpp
-      printer.cpp
 ```
 
-A deeper future split can move more top-level implementation `.cpp` files under
-`impl/`, but it should not be required for the first slices. A conservative
-intermediate layout is also valid:
+The key requirement is not merely adding private index headers. The
+implementation `.cpp` files should move into the semantic `impl/` subdirectory
+that owns them, and their filenames should drop duplicated prefixes that the
+directory path already communicates.
+
+Files that do not clearly belong to `expr/`, `stmt/`, `templates/`, or
+`compile_time/` may stay at the HIR top level only if they are genuinely part
+of the public facade or root HIR orchestration. Otherwise they should move
+under `impl/` with similarly shortened names. A possible root implementation
+shape is:
 
 ```text
-src/frontend/hir/
-  hir.hpp
-  hir_ir.hpp
-  hir.cpp
-
-  hir_build.cpp
-  hir_functions.cpp
-  hir_lowering_core.cpp
-  hir_types.cpp
-
-  impl/
-    hir_impl.hpp
-    lowerer.hpp
-    core.cpp
-    types.cpp
-
-    expr/
-    stmt/
-    templates/
-    compile_time/
+src/frontend/hir/impl/
+  build.cpp
+  functions.cpp
+  core.cpp
+  types.cpp
 ```
 
-This shape is a direction, not a requirement that the first slice must move all
-`.cpp` files. The first structural win is making header visibility honest and
-creating real directory indexes before broad file movement.
+The first reopened slice may move one family at a time, but the acceptance
+target is the file-tree migration, not only header visibility.
 
 ## Public Header Roles
 
@@ -316,13 +339,21 @@ are not part of the core public facade.
 3. Move expression and statement families behind subdomain indexes.
    - Introduce `src/frontend/hir/impl/expr/expr.hpp`.
    - Introduce `src/frontend/hir/impl/stmt/stmt.hpp`.
-   - Move expression and statement `.cpp` families only after the private HIR
-     implementation boundary is clean.
+   - Move expression and statement `.cpp` families under
+     `src/frontend/hir/impl/expr/` and `src/frontend/hir/impl/stmt/`.
+   - Rename moved files to remove duplicated prefixes:
+     `hir_expr.cpp` -> `impl/expr/expr.cpp`,
+     `hir_expr_builtin.cpp` -> `impl/expr/builtin.cpp`,
+     `hir_stmt.cpp` -> `impl/stmt/stmt.cpp`, and so on.
 
 4. Split template lowering only after the HIR implementation boundary is clean.
    - Move template-family implementation files under
      `src/frontend/hir/impl/templates/`.
    - Add one `templates.hpp` index for the subdomain.
+   - Rename moved files to remove the duplicated `hir_templates_` prefix:
+     `hir_templates.cpp` -> `impl/templates/templates.cpp`,
+     `hir_templates_deduction.cpp` -> `impl/templates/deduction.cpp`, and so
+     on.
    - Do not create one-off headers for deduction, materialization, NTTP, or
      member typedef work unless those become real directories.
 
@@ -333,6 +364,8 @@ are not part of the core public facade.
    - Move `inline_expand.hpp/cpp` into this area if it remains coupled to
      compile-time/materialized HIR state instead of becoming a generic pass
      subsystem.
+   - Rename `compile_time_engine.cpp` to `impl/compile_time/engine.cpp`.
+   - Move `inline_expand.cpp` to `impl/compile_time/inline_expand.cpp`.
 
 6. Move inspection support only when its public role is clear.
    - Keep `format_summary(...)` in the public facade if external callers use
@@ -364,13 +397,24 @@ are not part of the core public facade.
 - Agents editing expression or statement lowering can open
   `src/frontend/hir/impl/expr/expr.hpp` or
   `src/frontend/hir/impl/stmt/stmt.hpp` as subdomain indexes.
+- Expression `.cpp` implementation files live under
+  `src/frontend/hir/impl/expr/` with redundant `hir_expr_` prefixes removed.
+- Statement `.cpp` implementation files live under
+  `src/frontend/hir/impl/stmt/` with redundant `hir_stmt_` prefixes removed.
 - Agents editing template/dependent lowering can open
   `src/frontend/hir/impl/templates/templates.hpp` as the subdomain index
   if the template family is moved.
+- Template `.cpp` implementation files live under
+  `src/frontend/hir/impl/templates/` with redundant `hir_templates_` prefixes
+  removed.
 - Compile-time engine and inline expansion have an explicit
   `impl/compile_time/` directory-level index instead of floating at top-level,
   unless inline expansion is deliberately promoted into a separate transform
   subsystem later.
+- Compile-time `.cpp` implementation files live under
+  `src/frontend/hir/impl/compile_time/`, including `engine.cpp` and
+  `inline_expand.cpp` when inline expansion remains compile-time/materialized
+  HIR follow-up work.
 - Top-level HIR headers represent public surfaces by default.
 - Nested `impl/` HIR headers represent private or narrower subdomain surfaces by
   default.
