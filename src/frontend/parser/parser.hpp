@@ -326,6 +326,13 @@ class Parser {
   void replace_token_stream_for_testing(std::vector<Token> tokens, int pos = 0);
   int token_cursor_for_testing() const;
   const Token& token_at_for_testing(int index) const;
+  void register_concept_name_for_testing(TextId name_text_id);
+  void register_struct_definition_for_testing(std::string tag, Node* definition);
+  void register_using_value_alias_for_testing(
+      int context_id, TextId alias_text_id, const QualifiedNameKey& target_key,
+      std::string compatibility_name);
+  void register_alias_template_info_for_testing(
+      const QualifiedNameKey& key, const ParserAliasTemplateInfo& info);
   SymbolId symbol_id_for_token_text(TextId token_text_id,
                                     std::string_view fallback = {}) {
     return shared_lookup_state_.parser_name_tables.intern_identifier(

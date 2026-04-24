@@ -29,6 +29,27 @@ const Token& Parser::token_at_for_testing(int index) const {
     return tokens_.at(static_cast<size_t>(index));
 }
 
+void Parser::register_concept_name_for_testing(TextId name_text_id) {
+    binding_state_.concept_name_text_ids.insert(name_text_id);
+}
+
+void Parser::register_struct_definition_for_testing(std::string tag,
+                                                    Node* definition) {
+    definition_state_.struct_tag_def_map[std::move(tag)] = definition;
+}
+
+void Parser::register_using_value_alias_for_testing(
+    int context_id, TextId alias_text_id, const QualifiedNameKey& target_key,
+    std::string compatibility_name) {
+    namespace_state_.using_value_aliases[context_id][alias_text_id] = {
+        target_key, std::move(compatibility_name)};
+}
+
+void Parser::register_alias_template_info_for_testing(
+    const QualifiedNameKey& key, const ParserAliasTemplateInfo& info) {
+    template_state_.alias_template_info[key] = info;
+}
+
 Parser::ParserLiteSnapshot Parser::save_lite_state() const {
     ParserLiteSnapshot snap;
     snap.pos = pos_;

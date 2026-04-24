@@ -9,20 +9,23 @@ Current Step Title: Minimize Public Exposure Of Parser State
 ## Just Finished
 
 - Completed plan Step 3 sub-slice to minimize public parser state exposure by
-  adding narrow parser test/support helpers for injected token-stream
-  replacement, token inspection, and cursor observation.
-- Converted `tests/frontend/frontend_parser_tests.cpp` away from direct
-  `parser.tokens_`, `resolved_parser.tokens_`, and `parser.pos_` access.
-- The replacement keeps parser behavior and testcase expectations unchanged;
-  remaining direct parser state access in the frontend parser tests belongs to
-  other state families.
+  adding narrow parser test/support helpers for fixture seeding of concept
+  names, struct definitions, using-value aliases, and alias-template info.
+- Converted fixture-only writes in
+  `tests/frontend/frontend_parser_tests.cpp` away from direct
+  `binding_state_`, `definition_state_`, `namespace_state_`, and
+  `template_state_` access.
+- Left the two direct `namespace_state_.using_value_aliases` parse-output
+  inspections in place because they are white-box assertions/mutations rather
+  than fixture seeding.
 
 ## Suggested Next
 
-- Next Step 3 sub-slice: add a similarly narrow parser test/support facade for
-  the fixture-only state seeding still done through `binding_state_`,
-  `definition_state_`, `namespace_state_`, and `template_state_`, then convert
-  those direct test writes without changing expectations.
+- Next Step 3 sub-slice: add narrow observation or mutation helpers for the
+  remaining white-box parser-test state access families, starting with
+  `active_context_state_` and `shared_lookup_state_`, while keeping the
+  `namespace_state_.using_value_aliases` parse-output assertions separate from
+  fixture seeding.
 
 ## Watchouts
 
@@ -30,8 +33,10 @@ Current Step Title: Minimize Public Exposure Of Parser State
   implementation-internal despite living in a header; do not classify it as a
   public caller. It is still a facade/PIMPL blocker because a future private
   state split must give parser helper headers a private cursor interface.
-- `shared_lookup_state_` and `active_context_state_` reads in tests are still
-  white-box assertions and should be handled separately from fixture seeding.
+- Remaining direct parser-test access families found after this slice are
+  `shared_lookup_state_`, `active_context_state_`, and two
+  `namespace_state_.using_value_aliases` white-box checks. Avoid treating those
+  checks as fixture seeding.
 - Keep future helpers narrow; do not expose whole state carriers just to remove
   the remaining test accesses.
 
