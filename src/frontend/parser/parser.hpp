@@ -447,6 +447,9 @@ class Parser {
   std::string resolve_qualified_type_name(const QualifiedNameRef& name) const;
   bool lookup_using_value_alias(int context_id, TextId name_text_id,
                                 std::string_view fallback_name,
+                                VisibleNameResult* resolved) const;
+  bool lookup_using_value_alias(int context_id, TextId name_text_id,
+                                std::string_view fallback_name,
                                 std::string* resolved) const;
   bool lookup_value_in_context(int context_id, TextId name_text_id,
                                std::string_view name,

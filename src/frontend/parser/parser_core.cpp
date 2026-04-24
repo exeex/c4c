@@ -2110,23 +2110,10 @@ Parser::VisibleNameResult Parser::resolve_visible_value(
     for (int i = static_cast<int>(namespace_state_.namespace_stack.size()) - 1;
          i >= 0; --i) {
         const int context_id = namespace_state_.namespace_stack[i];
-        std::string alias_name;
+        VisibleNameResult alias_result;
         if (lookup_using_value_alias(context_id, name_text_id, spelled,
-                                     &alias_name)) {
-            const TextId alias_text_id = find_parser_text_id(alias_name);
-            if (lookup_value_in_context(context_id, alias_text_id, alias_name,
-                                        &result)) {
-                result.source = VisibleNameSource::UsingAlias;
-                return result;
-            }
-            result.found = true;
-            result.kind = VisibleNameKind::Value;
-            result.base_text_id = alias_text_id != kInvalidText ? alias_text_id
-                                                                : name_text_id;
-            result.context_id = context_id;
-            result.source = VisibleNameSource::UsingAlias;
-            result.compatibility_spelling = alias_name;
-            return result;
+                                     &alias_result)) {
+            return alias_result;
         }
         if (lookup_value_in_context(context_id, name_text_id, spelled,
                                     &result)) {
@@ -2523,23 +2510,10 @@ Parser::VisibleNameResult Parser::resolve_qualified_value(
     if (context_id < 0) return {};
 
     VisibleNameResult result;
-    std::string alias_name;
+    VisibleNameResult alias_result;
     if (lookup_using_value_alias(context_id, name.base_text_id, base_name,
-                                 &alias_name)) {
-        const TextId alias_text_id = find_parser_text_id(alias_name);
-        if (lookup_value_in_context(context_id, alias_text_id, alias_name,
-                                    &result)) {
-            result.source = VisibleNameSource::UsingAlias;
-            return result;
-        }
-        result.found = true;
-        result.kind = VisibleNameKind::Value;
-        result.base_text_id = alias_text_id != kInvalidText ? alias_text_id
-                                                            : name.base_text_id;
-        result.context_id = context_id;
-        result.source = VisibleNameSource::UsingAlias;
-        result.compatibility_spelling = alias_name;
-        return result;
+                                 &alias_result)) {
+        return alias_result;
     }
 
     if (lookup_value_in_context(context_id, name.base_text_id, base_name,
@@ -2596,7 +2570,7 @@ std::string Parser::resolve_qualified_type_name(
 
 bool Parser::lookup_using_value_alias(int context_id, TextId name_text_id,
                                       std::string_view fallback_name,
-                                      std::string* resolved) const {
+                                      VisibleNameResult* resolved) const {
     if (!resolved) return false;
     if (name_text_id == kInvalidText) {
         name_text_id = find_parser_text_id(fallback_name);
@@ -2608,14 +2582,41 @@ bool Parser::lookup_using_value_alias(int context_id, TextId name_text_id,
     const auto value_it = alias_it->second.find(name_text_id);
     if (value_it == alias_it->second.end()) return false;
     const ParserNamespaceState::UsingValueAlias& alias = value_it->second;
-    if (const std::string structured =
-            render_value_binding_name(*this, alias.target_key);
-        !structured.empty()) {
-        *resolved = structured;
-        return true;
+    std::string spelling = render_value_binding_name(*this, alias.target_key);
+    if (spelling.empty()) {
+        spelling = alias.compatibility_name;
     }
-    *resolved = alias.compatibility_name;
-    return true;
+
+    resolved->found = true;
+    resolved->kind = VisibleNameKind::Value;
+    resolved->key = alias.target_key;
+    resolved->base_text_id = alias.target_key.base_text_id != kInvalidText
+                                 ? alias.target_key.base_text_id
+                                 : name_text_id;
+    resolved->context_id =
+        alias.target_key.base_text_id != kInvalidText ? alias.target_key.context_id
+                                                      : context_id;
+    resolved->source = VisibleNameSource::UsingAlias;
+    resolved->compatibility_spelling = spelling;
+
+    if (alias.target_key.base_text_id != kInvalidText) {
+        if (has_known_fn_name(alias.target_key)) return true;
+        if (!spelling.empty() && has_var_type(spelling)) return true;
+    }
+    return !spelling.empty();
+}
+
+bool Parser::lookup_using_value_alias(int context_id, TextId name_text_id,
+                                      std::string_view fallback_name,
+                                      std::string* resolved) const {
+    if (!resolved) return false;
+    VisibleNameResult result;
+    if (!lookup_using_value_alias(context_id, name_text_id, fallback_name,
+                                  &result)) {
+        return false;
+    }
+    *resolved = visible_name_spelling(result);
+    return !resolved->empty();
 }
 
 bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
