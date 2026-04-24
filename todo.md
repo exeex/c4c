@@ -1,25 +1,23 @@
 Status: Active
 Source Idea Path: ideas/open/03_bir-memory-coordinator-dispatch-split.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Split Load And Store Handling
+Current Step ID: Step 5
+Current Step Title: Split Runtime Memory Intrinsic Handling
 
 # Current Packet
 
 ## Just Finished
 
-Completed `Step 4: Split Load And Store Handling` by moving `LirLoadOp` and
-`LirStoreOp` lowering out of the memory coordinator into private load/store
-family handlers `BirFunctionLowerer::lower_memory_load_inst` and
-`BirFunctionLowerer::lower_memory_store_inst` in `local_slots.cpp`. The
-coordinator now delegates load/store instructions through single dispatch calls,
-while the handlers keep pointer provenance updates, local slot materialization,
-dynamic pointer arrays, dynamic scalar globals, and dynamic local aggregate
-load/store behavior explicit.
+Completed `Step 5: Split Runtime Memory Intrinsic Handling` by moving direct
+`LirMemcpyOp` and `LirMemsetOp` lowering behind private runtime-memory family
+handlers in `local_slots.cpp`, and by moving direct-call `memcpy`/`memset`
+lowering behind `BirFunctionLowerer::try_lower_direct_memory_intrinsic_call`.
+The coordinator now delegates those runtime memory paths through concise family
+calls while reusing the existing immediate local memcpy/memset helpers.
 
 ## Suggested Next
 
-Execute `Step 5: Split Runtime Memory Intrinsic Handling` from `plan.md`.
+Execute `Step 6: Validate Coordinator Boundary` from `plan.md`.
 
 ## Watchouts
 
@@ -35,9 +33,12 @@ Execute `Step 5: Split Runtime Memory Intrinsic Handling` from `plan.md`.
   from pulling GEP policy back into the coordinator.
 - `lower_memory_gep_inst` intentionally preserves the existing local/global/
   dynamic branch ordering and state mutations on `BirFunctionLowerer`.
-- Load/store lowering now lives behind private family handlers in
-  `local_slots.cpp`; keep the remaining runtime intrinsic split from folding
-  `memcpy`/`memset` policy into generic load/store helpers.
+- Load/store lowering lives behind private family handlers in
+  `local_slots.cpp`; runtime memcpy/memset lowering now does too, through the
+  existing immediate local memcpy/memset helper boundary.
+- `calloc` pointer-address inference remains in call dispatch because this
+  slice only moved cohesive memcpy/memset lowering paths that already had local
+  memory helper ownership.
 - Provenance and alias mutations remain visible as calls to the existing
   provenance/local-slot/dynamic-array lowering paths; do not hide them behind
   generic catch-all helpers.

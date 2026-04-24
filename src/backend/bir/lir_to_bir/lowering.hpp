@@ -592,6 +592,16 @@ class BirFunctionLowerer {
       const LocalPointerArrayBaseMap& local_pointer_array_bases,
       const LocalAggregateSlotMap& local_aggregate_slots,
       std::vector<bir::Inst>* lowered_insts);
+  bool lower_memory_memcpy_inst(const c4c::codegen::lir::LirMemcpyOp& memcpy,
+                                std::vector<bir::Inst>* lowered_insts);
+  bool lower_memory_memset_inst(const c4c::codegen::lir::LirMemsetOp& memset,
+                                std::vector<bir::Inst>* lowered_insts);
+  std::optional<bool> try_lower_direct_memory_intrinsic_call(
+      std::string_view symbol_name,
+      const ParsedTypedCall& typed_call,
+      const c4c::codegen::lir::LirCallOp& call,
+      const LoweredReturnInfo& return_info,
+      std::vector<bir::Inst>* lowered_insts);
   bool try_lower_local_slot_pointer_store(
       const LocalSlotAddress& local_slot_ptr,
       bir::TypeKind value_type,

@@ -15,6 +15,7 @@ using DynamicLocalPointerArrayAccess = BirFunctionLowerer::DynamicLocalPointerAr
 using LocalAggregateGepTarget = BirFunctionLowerer::LocalAggregateGepTarget;
 using lir_to_bir_detail::compute_aggregate_type_layout;
 using lir_to_bir_detail::is_known_function_symbol;
+using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::parse_i64;
 using lir_to_bir_detail::parse_typed_operand;
 using lir_to_bir_detail::resolve_index_operand;
@@ -1039,6 +1040,177 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
   }
 
   return false;
+}
+
+bool BirFunctionLowerer::lower_memory_memcpy_inst(
+    const c4c::codegen::lir::LirMemcpyOp& memcpy,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (memcpy.dst.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+      memcpy.src.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+      memcpy.is_volatile) {
+    return false;
+  }
+
+  const auto copy_size = lower_value(memcpy.size, bir::TypeKind::I64, value_aliases_);
+  if (!copy_size.has_value() || copy_size->kind != bir::Value::Kind::Immediate ||
+      copy_size->immediate < 0) {
+    return false;
+  }
+
+  return try_lower_immediate_local_memcpy(memcpy.dst.str(),
+                                          memcpy.src.str(),
+                                          static_cast<std::size_t>(copy_size->immediate),
+                                          lowered_function_,
+                                          type_decls_,
+                                          local_slot_types_,
+                                          local_pointer_slots_,
+                                          local_array_slots_,
+                                          local_pointer_array_bases_,
+                                          local_aggregate_slots_,
+                                          lowered_insts);
+}
+
+bool BirFunctionLowerer::lower_memory_memset_inst(
+    const c4c::codegen::lir::LirMemsetOp& memset,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (memset.dst.kind() != c4c::codegen::lir::LirOperandKind::SsaValue || memset.is_volatile) {
+    return false;
+  }
+
+  const auto fill_value = lower_value(memset.byte_val, bir::TypeKind::I8, value_aliases_);
+  const auto fill_size = lower_value(memset.size, bir::TypeKind::I64, value_aliases_);
+  if (!fill_value.has_value() || fill_value->kind != bir::Value::Kind::Immediate ||
+      !fill_size.has_value() || fill_size->kind != bir::Value::Kind::Immediate ||
+      fill_size->immediate < 0) {
+    return false;
+  }
+
+  return try_lower_immediate_local_memset(memset.dst.str(),
+                                          static_cast<std::uint8_t>(fill_value->immediate & 0xff),
+                                          static_cast<std::size_t>(fill_size->immediate),
+                                          type_decls_,
+                                          local_slot_types_,
+                                          local_pointer_slots_,
+                                          local_array_slots_,
+                                          local_pointer_array_bases_,
+                                          local_aggregate_slots_,
+                                          lowered_insts);
+}
+
+std::optional<bool> BirFunctionLowerer::try_lower_direct_memory_intrinsic_call(
+    std::string_view symbol_name,
+    const ParsedTypedCall& typed_call,
+    const c4c::codegen::lir::LirCallOp& call,
+    const LoweredReturnInfo& return_info,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (symbol_name == "memcpy") {
+    const auto fail_memcpy_family = [&]() -> std::optional<bool> {
+      note_runtime_intrinsic_family_failure("memcpy runtime family");
+      return false;
+    };
+    if (typed_call.args.size() != 3 || typed_call.param_types.size() != 3 ||
+        c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[0]) != "ptr" ||
+        c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[1]) != "ptr" ||
+        c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[2]) != "i64") {
+      return fail_memcpy_family();
+    }
+
+    const auto copy_size =
+        lower_value(c4c::codegen::lir::LirOperand(std::string(typed_call.args[2].operand)),
+                    bir::TypeKind::I64,
+                    value_aliases_);
+    if (!copy_size.has_value() || copy_size->kind != bir::Value::Kind::Immediate ||
+        copy_size->immediate < 0) {
+      return fail_memcpy_family();
+    }
+
+    const std::string dst_operand(typed_call.args[0].operand);
+    const std::string src_operand(typed_call.args[1].operand);
+    if (!try_lower_immediate_local_memcpy(dst_operand,
+                                          src_operand,
+                                          static_cast<std::size_t>(copy_size->immediate),
+                                          lowered_function_,
+                                          type_decls_,
+                                          local_slot_types_,
+                                          local_pointer_slots_,
+                                          local_array_slots_,
+                                          local_pointer_array_bases_,
+                                          local_aggregate_slots_,
+                                          lowered_insts)) {
+      return fail_memcpy_family();
+    }
+
+    if (call.result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+      if (return_info.returned_via_sret || return_info.type != bir::TypeKind::Ptr) {
+        return fail_memcpy_family();
+      }
+      value_aliases_[call.result.str()] = bir::Value::named(bir::TypeKind::Ptr, dst_operand);
+      return true;
+    }
+    if (return_info.type != bir::TypeKind::Void) {
+      return fail_memcpy_family();
+    }
+    return true;
+  }
+
+  if (symbol_name == "memset") {
+    const auto fail_memset_family = [&]() -> std::optional<bool> {
+      note_runtime_intrinsic_family_failure("memset runtime family");
+      return false;
+    };
+    if (typed_call.args.size() != 3 || typed_call.param_types.size() != 3 ||
+        c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[0]) != "ptr" ||
+        c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[2]) != "i64") {
+      return fail_memset_family();
+    }
+
+    const auto fill_type =
+        lower_integer_type(c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[1]));
+    if (!fill_type.has_value()) {
+      return fail_memset_family();
+    }
+
+    const auto fill_value =
+        lower_value(c4c::codegen::lir::LirOperand(std::string(typed_call.args[1].operand)),
+                    *fill_type,
+                    value_aliases_);
+    const auto fill_size =
+        lower_value(c4c::codegen::lir::LirOperand(std::string(typed_call.args[2].operand)),
+                    bir::TypeKind::I64,
+                    value_aliases_);
+    if (!fill_value.has_value() || fill_value->kind != bir::Value::Kind::Immediate ||
+        !fill_size.has_value() || fill_size->kind != bir::Value::Kind::Immediate ||
+        fill_size->immediate < 0) {
+      return fail_memset_family();
+    }
+
+    const std::string dst_operand(typed_call.args[0].operand);
+    if (!try_lower_immediate_local_memset(dst_operand,
+                                          static_cast<std::uint8_t>(fill_value->immediate & 0xff),
+                                          static_cast<std::size_t>(fill_size->immediate),
+                                          type_decls_,
+                                          local_slot_types_,
+                                          local_pointer_slots_,
+                                          local_array_slots_,
+                                          local_pointer_array_bases_,
+                                          local_aggregate_slots_,
+                                          lowered_insts)) {
+      return fail_memset_family();
+    }
+    if (call.result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+      if (return_info.returned_via_sret || return_info.type != bir::TypeKind::Ptr) {
+        return fail_memset_family();
+      }
+      value_aliases_[call.result.str()] = bir::Value::named(bir::TypeKind::Ptr, dst_operand);
+      return true;
+    }
+    if (return_info.type != bir::TypeKind::Void) {
+      return fail_memset_family();
+    }
+    return true;
+  }
+
+  return std::nullopt;
 }
 
 std::optional<std::string> BirFunctionLowerer::resolve_local_aggregate_gep_slot(
