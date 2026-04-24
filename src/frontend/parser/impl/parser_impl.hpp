@@ -43,6 +43,9 @@ void parse_top_level_parameter_list(
     std::vector<Node*>* out_params,
     std::vector<const char*>* out_knr_param_names,
     bool* out_variadic);
+void parse_declarator_parameter_list(Parser& parser,
+                                     std::vector<Node*>* out_params,
+                                     bool* out_variadic);
 
 bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);

@@ -9,13 +9,13 @@ Current Step Title: Move Implementation-Only Method Declarations Behind The Boun
 ## Just Finished
 
 Completed Step 3 declaration-boundary slice by removing the implementation-only
-top-level parameter-list parser helper from public `Parser` declarations in
+declarator parameter-list parser helper from public `Parser` declarations in
 `src/frontend/parser/parser.hpp`, adding the equivalent private
-`parse_top_level_parameter_list(Parser& parser, ...)` declaration to
+`parse_declarator_parameter_list(Parser& parser, ...)` declaration to
 `src/frontend/parser/impl/parser_impl.hpp`, converting the implementation in
-`src/frontend/parser/parser_declarations.cpp` to the private parser boundary,
-and retargeting internal declaration-parser call sites to pass `*this`
-explicitly.
+`src/frontend/parser/parser_types_declarator.cpp` to the private parser
+boundary, and retargeting the internal declarator-parser call site to pass
+`*this` explicitly.
 
 ## Suggested Next
 
@@ -52,10 +52,13 @@ plan, keeping implementation-only declarations behind
 - `parse_top_level_parameter_list` now lives behind `impl/parser_impl.hpp`;
   current source/test search found no remaining public declaration, member
   definition, or external direct member calls.
+- `parse_declarator_parameter_list` now lives behind `impl/parser_impl.hpp`;
+  current source/test search found no remaining public declaration, member
+  definition, or external direct member calls.
 
 ## Proof
 
-Executor Step 3 focused proof passed for the top-level parameter-list parser
+Executor Step 3 focused proof passed for the declarator parameter-list parser
 declaration-boundary slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 

@@ -1323,32 +1323,33 @@ void Parser::parse_normal_declarator_tail(TypeSpec& ts, const char** out_name,
     parse_declarator_array_suffixes(ts, out_dims);
 }
 
-void Parser::parse_declarator_parameter_list(
+void parse_declarator_parameter_list(
+    Parser& parser,
     std::vector<Node*>* out_params, bool* out_variadic) {
-    ParseContextGuard trace(this, __func__);
+    Parser::ParseContextGuard trace(&parser, __func__);
     if (out_params) out_params->clear();
     if (out_variadic) *out_variadic = false;
 
-    expect(TokenKind::LParen);
-    if (!check(TokenKind::RParen)) {
-        while (!at_end()) {
-            if (check(TokenKind::Ellipsis)) {
+    parser.expect(TokenKind::LParen);
+    if (!parser.check(TokenKind::RParen)) {
+        while (!parser.at_end()) {
+            if (parser.check(TokenKind::Ellipsis)) {
                 if (out_variadic) *out_variadic = true;
-                consume();
+                parser.consume();
                 break;
             }
-            if (check(TokenKind::RParen)) break;
-            if (!can_start_parameter_type()) {
-                consume();
-                if (match(TokenKind::Comma)) continue;
+            if (parser.check(TokenKind::RParen)) break;
+            if (!parser.can_start_parameter_type()) {
+                parser.consume();
+                if (parser.match(TokenKind::Comma)) continue;
                 break;
             }
-            Node* p = parse_param(*this);
+            Node* p = parse_param(parser);
             if (p && out_params) out_params->push_back(p);
-            if (!match(TokenKind::Comma)) break;
+            if (!parser.match(TokenKind::Comma)) break;
         }
     }
-    expect(TokenKind::RParen);
+    parser.expect(TokenKind::RParen);
 }
 
 void Parser::parse_parenthesized_function_pointer_suffix(
@@ -1361,7 +1362,7 @@ void Parser::parse_parenthesized_function_pointer_suffix(
 
     std::vector<Node*> fn_ptr_params;
     bool fn_ptr_variadic = false;
-    parse_declarator_parameter_list(&fn_ptr_params, &fn_ptr_variadic);
+    parse_declarator_parameter_list(*this, &fn_ptr_params, &fn_ptr_variadic);
 
     // C++ pointer-to-member-function declarators may carry trailing
     // cv/ref-qualifiers after the parameter list:
