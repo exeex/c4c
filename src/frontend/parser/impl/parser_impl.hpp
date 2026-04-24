@@ -74,6 +74,20 @@ void parse_declarator_array_suffixes(Parser& parser, TypeSpec& ts,
                                      std::vector<long long>* out_dims);
 void apply_declarator_array_dims(Parser& parser, TypeSpec& ts,
                                  const std::vector<long long>& decl_dims);
+void finalize_parenthesized_pointer_declarator(
+    Parser& parser,
+    TypeSpec& ts, bool is_nested_fn_ptr, std::vector<long long>* decl_dims,
+    Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
+    bool* out_fn_ptr_variadic,
+    Node*** out_ret_fn_ptr_params, int* out_n_ret_fn_ptr_params,
+    bool* out_ret_fn_ptr_variadic);
+void parse_parenthesized_pointer_declarator(
+    Parser& parser,
+    TypeSpec& ts, const char** out_name,
+    Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
+    bool* out_fn_ptr_variadic,
+    Node*** out_ret_fn_ptr_params, int* out_n_ret_fn_ptr_params,
+    bool* out_ret_fn_ptr_variadic, TextId* out_name_text_id);
 
 bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);

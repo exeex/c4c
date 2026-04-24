@@ -1493,25 +1493,27 @@ bool parse_parenthesized_pointer_declarator_inner(
         out_fn_ptr_variadic, out_name_text_id);
 }
 
-void Parser::finalize_parenthesized_pointer_declarator(
+void finalize_parenthesized_pointer_declarator(
+    Parser& parser,
     TypeSpec& ts, bool is_nested_fn_ptr, std::vector<long long>* decl_dims,
     Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
     bool* out_fn_ptr_variadic,
     Node*** out_ret_fn_ptr_params, int* out_n_ret_fn_ptr_params,
     bool* out_ret_fn_ptr_variadic) {
-    expect(TokenKind::RParen);
+    parser.expect(TokenKind::RParen);
     parse_parenthesized_function_pointer_suffix(
-        *this,
+        parser,
         ts, is_nested_fn_ptr,
         out_fn_ptr_params, out_n_fn_ptr_params, out_fn_ptr_variadic,
         out_ret_fn_ptr_params, out_n_ret_fn_ptr_params,
         out_ret_fn_ptr_variadic);
-    parse_declarator_array_suffixes(*this, ts, decl_dims);
-    apply_declarator_array_dims(*this, ts, *decl_dims);
+    parse_declarator_array_suffixes(parser, ts, decl_dims);
+    apply_declarator_array_dims(parser, ts, *decl_dims);
     if (!decl_dims->empty()) ts.is_ptr_to_array = true;
 }
 
-void Parser::parse_parenthesized_pointer_declarator(
+void parse_parenthesized_pointer_declarator(
+    Parser& parser,
     TypeSpec& ts, const char** out_name,
     Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
     bool* out_fn_ptr_variadic,
@@ -1521,15 +1523,16 @@ void Parser::parse_parenthesized_pointer_declarator(
     bool is_nested_fn_ptr = false;
     std::vector<long long> decl_dims;
 
-    parse_parenthesized_pointer_declarator_prefix(*this, ts);
+    parse_parenthesized_pointer_declarator_prefix(parser, ts);
 
     is_nested_fn_ptr = parse_parenthesized_pointer_declarator_inner(
-        *this,
+        parser,
         ts, out_name,
         out_fn_ptr_params, out_n_fn_ptr_params,
         out_fn_ptr_variadic, out_name_text_id);
 
     finalize_parenthesized_pointer_declarator(
+        parser,
         ts, is_nested_fn_ptr, &decl_dims,
         out_fn_ptr_params, out_n_fn_ptr_params, out_fn_ptr_variadic,
         out_ret_fn_ptr_params, out_n_ret_fn_ptr_params,
@@ -1753,6 +1756,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     // Check for parenthesised declarator: (*name) or (ATTR *name) — function pointer
     if (is_parenthesized_pointer_declarator_start()) {
         parse_parenthesized_pointer_declarator(
+            *this,
             ts, out_name,
             out_fn_ptr_params, out_n_fn_ptr_params, out_fn_ptr_variadic,
             out_ret_fn_ptr_params, out_n_ret_fn_ptr_params,
