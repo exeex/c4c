@@ -1,4 +1,4 @@
-#include "impl/parser_impl.hpp"
+#include "parser_impl.hpp"
 #include "lexer.hpp"
 
 #include <climits>
@@ -13,7 +13,7 @@
 #define parse_optional_cpp20_requires_clause parse_optional_cpp20_requires_clause_types_helpers
 #define parse_optional_cpp20_trailing_requires_clause \
     parse_optional_cpp20_trailing_requires_clause_types_helpers
-#include "impl/types/types_helpers.hpp"
+#include "types/types_helpers.hpp"
 #undef finalize_pending_operator_name
 #undef is_cpp20_requires_clause_decl_boundary
 #undef skip_cpp20_constraint_atom
