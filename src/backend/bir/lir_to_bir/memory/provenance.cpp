@@ -1,4 +1,5 @@
 #include "../lowering.hpp"
+#include "memory_helpers.hpp"
 
 #include <optional>
 #include <string>
@@ -45,12 +46,13 @@ static bool can_address_scalar_subobject(std::int64_t byte_offset,
     return true;
   }
 
-  const auto view_layout = compute_aggregate_type_layout(type_text, type_decls);
-  if (view_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
-      view_layout.size_bytes == 0) {
+  const auto scalar_facts = resolve_scalar_layout_facts_at_byte_offset(
+      type_text, static_cast<std::size_t>(byte_offset), type_decls);
+  if (!scalar_facts.has_value() || scalar_facts->object_size_bytes == 0) {
     return false;
   }
-  return static_cast<std::size_t>(byte_offset) + access_size <= view_layout.size_bytes;
+  return static_cast<std::size_t>(byte_offset) + access_size <=
+         scalar_facts->object_size_bytes;
 }
 
 std::optional<std::vector<bir::Value>> BirFunctionLowerer::collect_local_pointer_values(

@@ -1,3 +1,32 @@
+#if !defined(C4C_BACKEND_BIR_LIR_TO_BIR_MEMORY_HELPERS_MEMBERS) && \
+    !defined(C4C_BACKEND_BIR_LIR_TO_BIR_MEMORY_HELPERS_SCALAR_FACTS_DECL)
+#define C4C_BACKEND_BIR_LIR_TO_BIR_MEMORY_HELPERS_SCALAR_FACTS_DECL
+
+#include "../lowering.hpp"
+
+namespace c4c::backend {
+
+struct ScalarLayoutLeafFacts {
+  std::string type_text;
+  bir::TypeKind type = bir::TypeKind::Void;
+  std::size_t size_bytes = 0;
+  std::size_t byte_offset = 0;
+};
+
+struct ScalarLayoutByteOffsetFacts {
+  std::size_t object_size_bytes = 0;
+  std::optional<ScalarLayoutLeafFacts> leaf;
+};
+
+std::optional<ScalarLayoutByteOffsetFacts> resolve_scalar_layout_facts_at_byte_offset(
+    std::string_view type_text,
+    std::size_t target_offset,
+    const BirFunctionLowerer::TypeDeclMap& type_decls);
+
+}  // namespace c4c::backend
+
+#endif  // C4C_BACKEND_BIR_LIR_TO_BIR_MEMORY_HELPERS_SCALAR_FACTS_DECL
+
 #ifndef C4C_BACKEND_BIR_LIR_TO_BIR_MEMORY_HELPERS_INDEX_HPP
 #define C4C_BACKEND_BIR_LIR_TO_BIR_MEMORY_HELPERS_INDEX_HPP
 

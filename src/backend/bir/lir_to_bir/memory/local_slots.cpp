@@ -1,4 +1,5 @@
 #include "../lowering.hpp"
+#include "memory_helpers.hpp"
 
 #include <algorithm>
 #include <optional>
@@ -18,6 +19,81 @@ using lir_to_bir_detail::parse_i64;
 using lir_to_bir_detail::parse_typed_operand;
 using lir_to_bir_detail::resolve_index_operand;
 using lir_to_bir_detail::type_size_bytes;
+
+static std::optional<ScalarLayoutLeafFacts> resolve_scalar_layout_leaf_facts_at_byte_offset(
+    std::string_view type_text,
+    std::size_t target_offset,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    std::size_t base_byte_offset) {
+  const auto layout = compute_aggregate_type_layout(type_text, type_decls);
+  if (layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
+      target_offset >= layout.size_bytes) {
+    return std::nullopt;
+  }
+
+  switch (layout.kind) {
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Scalar:
+      return target_offset == 0
+                 ? std::optional<ScalarLayoutLeafFacts>(ScalarLayoutLeafFacts{
+                       .type_text = c4c::backend::bir::render_type(layout.scalar_type),
+                       .type = layout.scalar_type,
+                       .size_bytes = layout.size_bytes,
+                       .byte_offset = base_byte_offset,
+                   })
+                 : std::nullopt;
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Array: {
+      const auto element_layout = compute_aggregate_type_layout(layout.element_type_text, type_decls);
+      if (element_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
+          element_layout.size_bytes == 0) {
+        return std::nullopt;
+      }
+      const auto element_index = target_offset / element_layout.size_bytes;
+      if (element_index >= layout.array_count) {
+        return std::nullopt;
+      }
+      const auto nested_offset = target_offset % element_layout.size_bytes;
+      return resolve_scalar_layout_leaf_facts_at_byte_offset(
+          layout.element_type_text,
+          nested_offset,
+          type_decls,
+          base_byte_offset + element_index * element_layout.size_bytes);
+    }
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Struct:
+      for (std::size_t index = 0; index < layout.fields.size(); ++index) {
+        const auto field_begin = layout.fields[index].byte_offset;
+        const auto field_end =
+            index + 1 < layout.fields.size() ? layout.fields[index + 1].byte_offset
+                                             : layout.size_bytes;
+        if (target_offset < field_begin || target_offset >= field_end) {
+          continue;
+        }
+        return resolve_scalar_layout_leaf_facts_at_byte_offset(
+            layout.fields[index].type_text,
+            target_offset - field_begin,
+            type_decls,
+            base_byte_offset + field_begin);
+      }
+      return std::nullopt;
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<ScalarLayoutByteOffsetFacts> resolve_scalar_layout_facts_at_byte_offset(
+    std::string_view type_text,
+    std::size_t target_offset,
+    const BirFunctionLowerer::TypeDeclMap& type_decls) {
+  const auto layout = compute_aggregate_type_layout(type_text, type_decls);
+  if (layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
+      target_offset >= layout.size_bytes) {
+    return std::nullopt;
+  }
+
+  return ScalarLayoutByteOffsetFacts{
+      .object_size_bytes = layout.size_bytes,
+      .leaf = resolve_scalar_layout_leaf_facts_at_byte_offset(type_text, target_offset, type_decls, 0),
+  };
+}
 
 namespace {
 
@@ -54,54 +130,6 @@ struct LocalAggregateRawByteSliceLeaf {
   std::size_t byte_offset = 0;
   std::string type_text;
 };
-
-std::optional<std::string> resolve_scalar_leaf_type_at_byte_offset(
-    std::string_view type_text,
-    std::size_t target_offset,
-    const BirFunctionLowerer::TypeDeclMap& type_decls) {
-  const auto layout = compute_aggregate_type_layout(type_text, type_decls);
-  if (layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
-      target_offset >= layout.size_bytes) {
-    return std::nullopt;
-  }
-
-  switch (layout.kind) {
-    case BirFunctionLowerer::AggregateTypeLayout::Kind::Scalar:
-      return target_offset == 0 ? std::optional<std::string>(c4c::backend::bir::render_type(layout.scalar_type))
-                                : std::nullopt;
-    case BirFunctionLowerer::AggregateTypeLayout::Kind::Array: {
-      const auto element_layout = compute_aggregate_type_layout(layout.element_type_text, type_decls);
-      if (element_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
-          element_layout.size_bytes == 0) {
-        return std::nullopt;
-      }
-      const auto element_index = target_offset / element_layout.size_bytes;
-      if (element_index >= layout.array_count) {
-        return std::nullopt;
-      }
-      const auto nested_offset = target_offset % element_layout.size_bytes;
-      return resolve_scalar_leaf_type_at_byte_offset(layout.element_type_text,
-                                                     nested_offset,
-                                                     type_decls);
-    }
-    case BirFunctionLowerer::AggregateTypeLayout::Kind::Struct:
-      for (std::size_t index = 0; index < layout.fields.size(); ++index) {
-        const auto field_begin = layout.fields[index].byte_offset;
-        const auto field_end =
-            index + 1 < layout.fields.size() ? layout.fields[index + 1].byte_offset
-                                             : layout.size_bytes;
-        if (target_offset < field_begin || target_offset >= field_end) {
-          continue;
-        }
-        return resolve_scalar_leaf_type_at_byte_offset(layout.fields[index].type_text,
-                                                       target_offset - field_begin,
-                                                       type_decls);
-      }
-      return std::nullopt;
-    default:
-      return std::nullopt;
-  }
-}
 
 std::optional<LocalAggregateRawByteSliceLeaf> resolve_local_aggregate_raw_byte_slice_leaf(
     std::string_view base_type_text,
@@ -144,11 +172,9 @@ std::optional<LocalAggregateRawByteSliceLeaf> resolve_local_aggregate_raw_byte_s
     return std::nullopt;
   }
 
-  const auto leaf_type =
-      resolve_scalar_leaf_type_at_byte_offset(base_type_text,
-                                              static_cast<std::size_t>(*byte_index),
-                                              type_decls);
-  if (!leaf_type.has_value()) {
+  const auto scalar_facts = resolve_scalar_layout_facts_at_byte_offset(
+      base_type_text, static_cast<std::size_t>(*byte_index), type_decls);
+  if (!scalar_facts.has_value() || !scalar_facts->leaf.has_value()) {
     return std::nullopt;
   }
 
@@ -157,7 +183,7 @@ std::optional<LocalAggregateRawByteSliceLeaf> resolve_local_aggregate_raw_byte_s
   return aggregate_slots.leaf_slots.find(absolute_byte_offset) != aggregate_slots.leaf_slots.end()
              ? std::optional<LocalAggregateRawByteSliceLeaf>(LocalAggregateRawByteSliceLeaf{
                    .byte_offset = absolute_byte_offset,
-                   .type_text = *leaf_type,
+                   .type_text = scalar_facts->leaf->type_text,
                })
              : std::nullopt;
 }
