@@ -3110,6 +3110,51 @@ int check_x86_consumer_surface_reads_grouped_call_boundary_authority() {
     return fail(
         "x86 consumer surface contract: grouped fixture lost direct grouped caller-clobber authority");
   }
+
+  const auto grouped_boundary_prepared = prepare_grouped_riscv_module_with_overrides(
+      make_cross_call_preservation_contract_module(),
+      {{"pre.only", 2}, {"call.out", 2}, {"carry", 2}});
+  const auto grouped_boundary_consumed =
+      c4c::backend::x86::consume_plans(grouped_boundary_prepared, "cross_call_preservation_contract");
+  const auto* grouped_boundary_storage =
+      grouped_boundary_consumed.storage == nullptr
+          ? nullptr
+          : find_storage_plan_function(grouped_boundary_prepared, "cross_call_preservation_contract");
+  const auto* pre_only = grouped_boundary_storage == nullptr
+                             ? nullptr
+                             : find_storage_value(grouped_boundary_prepared,
+                                                  *grouped_boundary_storage,
+                                                  "pre.only");
+  const auto* call_out = grouped_boundary_storage == nullptr
+                             ? nullptr
+                             : find_storage_value(grouped_boundary_prepared,
+                                                  *grouped_boundary_storage,
+                                                  "call.out");
+  const auto* grouped_call =
+      c4c::backend::x86::find_consumed_call_plan(grouped_boundary_consumed, 0, 2);
+  const auto* grouped_arg =
+      c4c::backend::x86::find_consumed_call_argument_plan(grouped_boundary_consumed, 0, 2, 0);
+  const auto* grouped_result =
+      c4c::backend::x86::find_consumed_call_result_plan(grouped_boundary_consumed, 0, 2);
+  if (grouped_boundary_consumed.calls == nullptr || grouped_boundary_storage == nullptr ||
+      pre_only == nullptr || call_out == nullptr || grouped_call == nullptr ||
+      grouped_arg == nullptr || grouped_result == nullptr) {
+    return fail(
+        "x86 consumer surface contract: grouped argument/result fixture no longer exposes call-boundary authority through x86");
+  }
+  if (grouped_call->direct_callee_name != std::optional<std::string>{"boundary_helper"} ||
+      grouped_arg->source_value_id != std::optional<prepare::PreparedValueId>{pre_only->value_id} ||
+      grouped_arg->destination_contiguous_width != 2 ||
+      grouped_arg->destination_occupied_register_names.size() != 2 ||
+      !grouped_arg->destination_register_name.has_value() ||
+      grouped_result->destination_value_id !=
+          std::optional<prepare::PreparedValueId>{call_out->value_id} ||
+      grouped_result->source_contiguous_width != 2 ||
+      grouped_result->source_occupied_register_names.size() != 2 ||
+      !grouped_result->source_register_name.has_value()) {
+    return fail(
+        "x86 consumer surface contract: grouped call argument/result selectors reopened scalar call-lane reconstruction instead of following published span authority");
+  }
   return 0;
 }
 

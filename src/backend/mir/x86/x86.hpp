@@ -18,6 +18,49 @@ struct ConsumedPlans {
   const c4c::backend::prepare::PreparedStoragePlanFunction* storage = nullptr;
 };
 
+[[nodiscard]] inline const c4c::backend::prepare::PreparedCallPlan* find_consumed_call_plan(
+    const ConsumedPlans& consumed,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  if (consumed.calls == nullptr) {
+    return nullptr;
+  }
+  for (const auto& call : consumed.calls->calls) {
+    if (call.block_index == block_index && call.instruction_index == instruction_index) {
+      return &call;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const c4c::backend::prepare::PreparedCallArgumentPlan*
+find_consumed_call_argument_plan(const ConsumedPlans& consumed,
+                                 std::size_t block_index,
+                                 std::size_t instruction_index,
+                                 std::size_t arg_index) {
+  const auto* call = find_consumed_call_plan(consumed, block_index, instruction_index);
+  if (call == nullptr) {
+    return nullptr;
+  }
+  for (const auto& argument : call->arguments) {
+    if (argument.arg_index == arg_index) {
+      return &argument;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const c4c::backend::prepare::PreparedCallResultPlan*
+find_consumed_call_result_plan(const ConsumedPlans& consumed,
+                               std::size_t block_index,
+                               std::size_t instruction_index) {
+  const auto* call = find_consumed_call_plan(consumed, block_index, instruction_index);
+  if (call == nullptr || !call->result.has_value()) {
+    return nullptr;
+  }
+  return &*call->result;
+}
+
 [[nodiscard]] inline ConsumedPlans consume_plans(
     const c4c::backend::prepare::PreparedBirModule& module,
     c4c::FunctionNameId function_name) {
@@ -47,6 +90,60 @@ struct ConsumedPlans {
     return {};
   }
   return consume_plans(module, *function_name_id);
+}
+
+[[nodiscard]] inline const c4c::backend::prepare::PreparedCallPlan* find_consumed_call_plan(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    c4c::FunctionNameId function_name,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  return find_consumed_call_plan(consume_plans(module, function_name), block_index, instruction_index);
+}
+
+[[nodiscard]] inline const c4c::backend::prepare::PreparedCallPlan* find_consumed_call_plan(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    std::string_view function_name,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  return find_consumed_call_plan(consume_plans(module, function_name), block_index, instruction_index);
+}
+
+[[nodiscard]] inline const c4c::backend::prepare::PreparedCallArgumentPlan*
+find_consumed_call_argument_plan(const c4c::backend::prepare::PreparedBirModule& module,
+                                 c4c::FunctionNameId function_name,
+                                 std::size_t block_index,
+                                 std::size_t instruction_index,
+                                 std::size_t arg_index) {
+  return find_consumed_call_argument_plan(
+      consume_plans(module, function_name), block_index, instruction_index, arg_index);
+}
+
+[[nodiscard]] inline const c4c::backend::prepare::PreparedCallArgumentPlan*
+find_consumed_call_argument_plan(const c4c::backend::prepare::PreparedBirModule& module,
+                                 std::string_view function_name,
+                                 std::size_t block_index,
+                                 std::size_t instruction_index,
+                                 std::size_t arg_index) {
+  return find_consumed_call_argument_plan(
+      consume_plans(module, function_name), block_index, instruction_index, arg_index);
+}
+
+[[nodiscard]] inline const c4c::backend::prepare::PreparedCallResultPlan* find_consumed_call_result_plan(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    c4c::FunctionNameId function_name,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  return find_consumed_call_result_plan(
+      consume_plans(module, function_name), block_index, instruction_index);
+}
+
+[[nodiscard]] inline const c4c::backend::prepare::PreparedCallResultPlan* find_consumed_call_result_plan(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    std::string_view function_name,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  return find_consumed_call_result_plan(
+      consume_plans(module, function_name), block_index, instruction_index);
 }
 
 inline std::string summarize_prepared_module_routes(

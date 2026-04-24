@@ -3,32 +3,35 @@ Source Idea Path: ideas/open/91_advanced_prepared_call_authority_and_grouped_wid
 Source Plan Path: plan.md
 Current Step ID: 3.1
 Current Step Title: Make Grouped Call-Boundary Consumers Read Published Span Authority
-Plan Review Counter: 0 / 6
+Plan Review Counter: 1 / 6
 # Current Packet
 
 ## Just Finished
 
-Step 3 now carries truthful grouped call-boundary span authority through
-derived call plans instead of stopping at regalloc move bundles. Prepared call
-argument destinations and call-result ABI sources now preserve contiguous width
-plus occupied ABI register spans in the shared call-plan surface, and the
-prepared printer shows those grouped spans directly for grouped RISC-V
-argument/result fixtures.
+Step 3.1 now exposes direct x86 call-boundary selectors for prepared call
+plans, arguments, and results keyed by block/instruction identity instead of
+forcing downstream consumers to reopen scalar ABI register reconstruction.
+The grouped call-boundary contract now proves x86 reads published grouped
+argument destination spans and grouped call-result source spans directly for a
+grouped cross-call fixture while preserving the existing grouped
+preserved/clobber/storage consumer checks.
 
 ## Suggested Next
 
-Advance Step 3.1 by tightening the next downstream grouped call-boundary
-consumer surface that still treats published span metadata as scalar
-base-register identity instead of reading the shared call-plan span directly.
+Advance Step 3.1 by tightening the next x86 bounded helper or emitter adapter
+that still accepts scalar ABI register callbacks for call argument/result
+selection instead of consuming the prepared grouped call-boundary selectors
+directly.
 
 ## Watchouts
 
-- Keep grouped-width consumers keyed to destination span metadata
-  (`destination_contiguous_width` and `destination_occupied_register_names`)
-  or the corresponding call-plan span fields instead of reconstructing grouped
-  ABI lanes from scalar base-register names.
-- Keep grouped call-boundary truth anchored to prepared authority rather than
-  target-local heuristics or testcase-shaped register-name reconstruction.
+- Grouped call-argument authority is published on the argument destination span,
+  while grouped call-result authority is published on the result source span;
+  do not expect result destination-home span duplication when storage-plan
+  identity already owns that side.
+- Keep grouped call-boundary consumers anchored to published call-plan span
+  fields rather than target-local ABI helper callbacks or scalar base-register
+  heuristics.
 - Do not reopen out-of-SSA follow-on work from idea 90 inside this runbook.
 - Reject testcase-shaped shortcuts; grouped-width progress must generalize
   beyond one named grouped call-boundary case.
@@ -36,6 +39,7 @@ base-register identity instead of reading the shared call-plan span directly.
 ## Proof
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-Result: passed after carrying grouped call-boundary span authority into shared
-call plans and prepared printer surfaces for grouped argument/result fixtures.
+Result: passed after adding direct x86 prepared call-boundary selectors and
+proving grouped argument/result span consumption through the x86 consumer
+surface.
 Log: `test_after.log`
