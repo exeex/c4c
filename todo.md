@@ -1,51 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/lir-agent-index-header-hierarchy.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Reassess Call Argument Surfaces
+Current Step ID: 5
+Current Step Title: Final Structural Validation and Cleanup
 
 # Current Packet
 
 ## Just Finished
 
-Step 4: Reassess Call Argument Surfaces completed the inspection-only
-classification for `call_args.hpp` and `call_args_ops.hpp`:
+Step 5: Final Structural Validation and Cleanup completed the final
+inspection and full validation pass for the LIR header hierarchy refactor:
 
-- Keep `src/codegen/lir/call_args.hpp` exported as a top-level LIR API. It owns
-  syntax-level call parsing, formatting, operand scanning, and typed argument
-  helpers used outside HIR-to-LIR.
-- Keep `src/codegen/lir/call_args_ops.hpp` exported as a top-level LIR API. It
-  adapts the same helpers to `LirCallOp` and is used by printer and BIR
-  lowering, not just by HIR-to-LIR emitters.
-- Relevant cross-component users found:
-  `src/codegen/lir/lir_printer.cpp`,
-  `src/backend/bir/lir_to_bir/lowering.hpp`,
-  `src/backend/bir/lir_to_bir/calling.cpp`,
-  `src/backend/bir/lir_to_bir/memory/coordinator.cpp`, and
-  `src/backend/mir/aarch64/codegen/emit.cpp`.
-- HIR-to-LIR users remain implementation consumers:
-  `src/codegen/lir/hir_to_lir/lowering.hpp`,
-  `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`, and the call/vaarg/expression
-  statement emitters.
-- No implementation-only call-lowering state was identified in these headers,
-  so a private `src/codegen/lir/hir_to_lir/call/` subdomain is not warranted
-  now.
+- No obsolete top-level private headers remain for statement emission or
+  constant initialization; `stmt_emitter.hpp` and `const_init_emitter.hpp` are
+  absent from `src/codegen/lir/`.
+- `src/codegen/lir/hir_to_lir/lowering.hpp` is the only private HIR-to-LIR
+  header and acts as the shared private lowering index for the moved
+  implementation files.
+- No one-header-per-`.cpp` pattern was introduced under
+  `src/codegen/lir/hir_to_lir/`; the moved implementation files share the
+  private index instead.
+- Top-level LIR headers are exported surfaces or public index headers:
+  `ir.hpp`, `hir_to_lir.hpp`, `lir_printer.hpp`, `call_args.hpp`,
+  `call_args_ops.hpp`, `operands.hpp`, `types.hpp`, and `verify.hpp`.
+- `verify.hpp` is intentionally retained as a top-level LIR validation surface:
+  it exports `verify_module` plus operand/type/render validation helpers used
+  by `lir_printer.cpp`, not HIR-to-LIR private lowering state.
+- Include inspection found no stale references to the retired top-level private
+  headers and no public caller that needs `hir_to_lir/lowering.hpp`.
 
 ## Suggested Next
 
-Start Step 5: Final Structural Validation and Cleanup. Confirm the final
-top-level LIR header set, including whether `verify.hpp` is an intentionally
-retained exported validation surface or should be cleaned up as part of the
-final structure pass.
+Supervisor should review and decide whether the active runbook is ready for
+lifecycle closure or any final commit-boundary cleanup.
 
 ## Watchouts
 
-Do not move `call_args.hpp` or `call_args_ops.hpp` under `hir_to_lir/` without
-first splitting out any truly private lowering-only helpers. The current
-top-level headers are shared LIR text/call semantics used by backend lowering
-and printing.
+`operands.hpp` and `types.hpp` were not part of the original private lowering
+move, but they are top-level public LIR value/type surfaces used by other
+top-level LIR APIs. No cleanup was needed for them in this packet.
 
 ## Proof
 
-No build proof required by packet; this was inspection-only and changed only
-`todo.md`. Existing `test_after.log` was not touched.
+Full-suite proof command run as delegated:
+
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure' > test_after.log 2>&1`
+
+Result: passed. CTest reported 100% tests passed, 0 tests failed out of 3071
+run tests, with 12 disabled tests not run. Proof log: `test_after.log`.
