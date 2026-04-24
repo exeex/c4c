@@ -95,7 +95,8 @@ Completion check:
 ## Step 2: Publish Critical-Edge And Bundle Semantics
 
 Goal: make harder CFG edge-copy obligations explicit in published
-`out_of_ssa` authority.
+`out_of_ssa` authority without collapsing ownership, dump visibility, and
+follow-on normalization into one oversized packet.
 
 Primary targets:
 
@@ -104,18 +105,84 @@ Primary targets:
   normalization
 - dumps and fixtures that expose the new edge-copy facts directly
 
-Actions:
-
-- strengthen the `out_of_ssa` data/publication path for critical-edge and
-  bundle semantics
-- keep copy ownership anchored to published edge/bundle records rather than
-  downstream reconstruction
-- add focused proof that the prepared output exposes the new authority
-
 Completion check:
 
 - covered critical-edge and bundle cases publish enough authority that later
   code does not need to infer missing edge-copy meaning locally
+
+### Step 2.1: Publish Branch-Owned Join Bundle Lookup Authority
+
+Goal: make existing branch-owned join-transfer bundle authority readable
+through one published lookup surface instead of downstream rescans.
+
+Primary targets:
+
+- authoritative lookup for branch-owned `true_bundle` / `false_bundle`
+- mixed `predecessor_terminator` and `critical_edge` join ownership
+- prepare-level proof for the published lookup seam
+
+Actions:
+
+- keep join-transfer ownership anchored to the published edge records
+- expose the matching branch-owned bundle through one target-independent
+  helper or equivalent publication surface
+- prove the helper on both plain branch joins and mixed critical-edge joins
+
+Completion check:
+
+- downstream readers can obtain existing branch-owned bundle authority without
+  reconstructing it from raw `parallel_copy_bundles`
+
+### Step 2.2: Publish Remaining Edge-Owned Bundle Authority
+
+Goal: decide and publish the next uncovered edge-owned bundle semantics that
+still force consumers to infer meaning locally.
+
+Primary targets:
+
+- non-join or non-lookup-covered edge-copy bundle ownership
+- explicit critical-edge publication boundaries for those bundles
+- bundle records that identify ownership without consumer-side CFG
+  reinterpretation
+
+Actions:
+
+- inspect which edge-owned bundle families are still outside the Step 2.1
+  lookup surface
+- choose the smallest target-independent publication seam that closes the
+  first remaining ownership gap
+- publish that seam in `out_of_ssa` data instead of relying on consumer-side
+  reconstruction
+
+Completion check:
+
+- the next uncovered edge-owned bundle family publishes direct ownership
+  authority through `out_of_ssa`
+
+### Step 2.3: Expose Bundle Authority In Dumps And Fixtures
+
+Goal: make the Step 2 publication seams visible and testable in prepared
+output.
+
+Primary targets:
+
+- prepared dumps for the touched edge-copy families
+- focused fixtures for critical-edge and bundle ownership facts
+- proof that the published output, not implementation detail, carries the
+  contract
+
+Actions:
+
+- extend prepared dumps so the Step 2 bundle ownership facts are visible
+  directly
+- add or update fixtures around the covered edge-copy families
+- keep the proof focused on published authority rather than backend-local
+  reconstruction
+
+Completion check:
+
+- prepared dumps and fixtures expose the Step 2 edge/bundle authority
+  directly enough for later consumers to trust the publication surface
 
 ## Step 3: Make Ordering, Cycle Breaking, And Carrier Use Truthful
 

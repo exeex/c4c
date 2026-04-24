@@ -1,9 +1,9 @@
 Status: Active
 Source Idea Path: ideas/open/90_out_of_ssa_critical_edge_and_parallel_copy_deepening.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish Critical-Edge And Bundle Semantics
-Plan Review Counter: 6 / 6
+Current Step ID: 2.2
+Current Step Title: Publish Remaining Edge-Owned Bundle Authority
+Plan Review Counter: 0 / 6
 # Current Packet
 
 ## Just Finished
@@ -20,11 +20,12 @@ that shared helper.
 
 ## Suggested Next
 
-Step 2 has reached its review threshold. Before taking another Step 2 packet,
-review whether `Publish Critical-Edge And Bundle Semantics` should split into
-numbered substeps, or whether the next honest packet should advance directly to
-Step 3 ordering / carrier publication using the now-explicit bundle lookup
-surface.
+The Step 2 review split is now recorded in `plan.md`. Treat the completed
+branch-owned lookup helper as Step 2.1 progress, then take Step 2.2 as the
+next packet: inspect which edge-owned bundle family still lacks a direct
+publication seam beyond the current join-transfer lookup surface, and publish
+that ownership target-independently before moving on to dump exposure or Step
+3 ordering/carrier work.
 
 ## Watchouts
 
