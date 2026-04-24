@@ -16,6 +16,67 @@ const Parser::ParserSymbolTables& Parser::parser_symbol_tables() const {
     return shared_lookup_state_.parser_name_tables;
 }
 
+int Parser::current_token_index() const {
+    return pos_;
+}
+
+int Parser::token_count() const {
+    return static_cast<int>(tokens_.size());
+}
+
+TokenKind Parser::token_kind(int index) const {
+    if (index < 0 || index >= static_cast<int>(tokens_.size())) {
+        return TokenKind::EndOfFile;
+    }
+    return tokens_[index].kind;
+}
+
+bool Parser::token_kind_at(int index, TokenKind kind) const {
+    return index >= 0 && index < static_cast<int>(tokens_.size()) &&
+           tokens_[index].kind == kind;
+}
+
+bool Parser::parse_injected_base_type(std::vector<Token> tokens,
+                                      const char* debug_reason,
+                                      TypeSpec* out_resolved) {
+    const int saved_pos = pos_;
+    const std::string injected_detail =
+        std::string("reason=") +
+        (debug_reason ? debug_reason : "template_instantiation") +
+        " saved_pos=" + std::to_string(saved_pos) +
+        " token_count=" + std::to_string(tokens.size());
+    auto saved_tokens = std::move(tokens_);
+    tokens_ = std::move(tokens);
+    pos_ = 0;
+    note_parse_debug_event_for("injected_parse_begin",
+                               "parse_base_type",
+                               injected_detail.c_str());
+    bool ok = false;
+    try {
+        TypeSpec resolved = parse_base_type();
+        if (out_resolved) *out_resolved = resolved;
+        ok = true;
+    } catch (...) {
+        ok = false;
+    }
+    note_parse_debug_event_for("injected_parse_end",
+                               "parse_base_type",
+                               injected_detail.c_str());
+    tokens_ = std::move(saved_tokens);
+    pos_ = saved_pos;
+    return ok;
+}
+
+bool Parser::has_defined_struct_tag(std::string_view tag) const {
+    if (tag.empty()) return false;
+    return definition_state_.defined_struct_tags.count(std::string(tag)) > 0;
+}
+
+bool Parser::eval_const_int_with_parser_tables(Node* n, long long* out) const {
+    return eval_const_int(n, out, &definition_state_.struct_tag_def_map,
+                          &binding_state_.const_int_bindings);
+}
+
 void Parser::replace_token_stream_for_testing(std::vector<Token> tokens, int pos) {
     tokens_ = std::move(tokens);
     pos_ = pos;

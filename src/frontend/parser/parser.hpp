@@ -323,6 +323,15 @@ class Parser {
   void set_parser_owned_spelling(Token& token, std::string_view spelling);
   Token make_injected_token(const Token& seed, TokenKind kind,
                             std::string_view spelling);
+  int current_token_index() const;
+  int token_count() const;
+  TokenKind token_kind(int index) const;
+  bool token_kind_at(int index, TokenKind kind) const;
+  bool parse_injected_base_type(std::vector<Token> tokens,
+                                const char* debug_reason,
+                                TypeSpec* out_resolved = nullptr);
+  bool has_defined_struct_tag(std::string_view tag) const;
+  bool eval_const_int_with_parser_tables(Node* n, long long* out) const;
   void replace_token_stream_for_testing(std::vector<Token> tokens, int pos = 0);
   int token_cursor_for_testing() const;
   const Token& token_at_for_testing(int index) const;

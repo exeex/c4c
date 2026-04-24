@@ -8,29 +8,29 @@ Current Step Title: Minimize Public Exposure Of Parser State
 
 ## Just Finished
 
-- Completed plan Step 3 follow-up fix for the frontend parser test compile
-  break introduced by the token-stream helper migration.
-- Corrected the two malformed local `std::vector<c4c::Token>` initializers in
-  `tests/frontend/frontend_parser_tests.cpp` from `});` to `};` without
-  changing parser expectations or reintroducing direct parser-state access.
+- Completed plan Step 3 sub-slice replacing direct `parser.tokens_`,
+  `parser.pos_`, and `parser.definition_state_` access in
+  `src/frontend/parser/impl/types/types_helpers.hpp`.
+- Added narrow Parser helpers for token cursor probing, injected base-type
+  parsing, defined-struct-tag lookup, and constant-expression evaluation through
+  parser-owned tables.
 
 ## Suggested Next
 
-- Next Step 3 sub-slice: continue reducing public parser state exposure outside
-  this delegated test family, now that the migrated frontend parser test binary
-  rebuilds again.
+- Next Step 3 sub-slice: continue removing parser helper/header dependencies on
+  public Parser state, prioritizing direct `binding_state_`,
+  `template_state_`, or `namespace_state_` reads that still force
+  `impl/parser_state.hpp` through `parser.hpp`.
 
 ## Watchouts
 
-- The `impl/types/types_helpers.hpp` direct `tokens_`/`pos_` usage is
-  implementation-internal despite living in a header; do not classify it as a
-  public caller. It is still a facade/PIMPL blocker because a future private
-  state split must give parser helper headers a private cursor interface.
-- `frontend_parser_tests.cpp` no longer directly references
-  `parser.shared_lookup_state_`, `parser.active_context_state_`, or
-  `parser.namespace_state_`.
-- This packet changed syntax only in migrated token-vector test setup; it did
-  not add or widen parser testing helpers.
+- `types_helpers.hpp` no longer directly references `parser.tokens_`,
+  `parser.pos_`, or `parser.definition_state_`; the delegated grep is clean.
+- Remaining blockers to removing `impl/parser_state.hpp` from `parser.hpp`
+  include public state members still read by parser implementation files and
+  any helper headers that need state-shaped types from `impl/parser_state.hpp`.
+- The new helpers are not test-only APIs; avoid routing implementation callers
+  through existing `*_for_testing` helpers when continuing the state split.
 
 ## Proof
 

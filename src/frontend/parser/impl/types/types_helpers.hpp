@@ -357,31 +357,8 @@ bool instantiate_template_struct_via_injected_parse(
     inject_toks.push_back(parser.make_injected_token(t, TokenKind::Greater, ">"));
     inject_toks.push_back(parser.make_injected_token(t, TokenKind::Semi, ";"));
 
-    const int saved_pos = parser.pos_;
-    const std::string injected_detail =
-        std::string("reason=") + (debug_reason ? debug_reason : "template_instantiation") +
-        " saved_pos=" + std::to_string(saved_pos) +
-        " token_count=" + std::to_string(inject_toks.size());
-    auto saved_toks = std::move(parser.tokens_);
-    parser.tokens_ = std::move(inject_toks);
-    parser.pos_ = 0;
-    parser.note_parse_debug_event_for("injected_parse_begin",
-                                      "parse_base_type",
-                                      injected_detail.c_str());
-    bool ok = false;
-    try {
-        TypeSpec resolved = parser.parse_base_type();
-        if (out_resolved) *out_resolved = resolved;
-        ok = true;
-    } catch (...) {
-        ok = false;
-    }
-    parser.note_parse_debug_event_for("injected_parse_end",
-                                      "parse_base_type",
-                                      injected_detail.c_str());
-    parser.tokens_ = std::move(saved_toks);
-    parser.pos_ = saved_pos;
-    return ok;
+    return parser.parse_injected_base_type(std::move(inject_toks), debug_reason,
+                                           out_resolved);
 }
 
 bool is_known_simple_type_head(const Parser& parser, TextId name_text_id,
@@ -398,9 +375,8 @@ bool is_known_simple_type_head(const Parser& parser, TextId name_text_id,
             parser.has_template_struct_primary(
                 parser.current_namespace_context_id(),
                 parser.find_parser_text_id(resolved), resolved)) ||
-           parser.definition_state_.defined_struct_tags.count(
-               std::string(name)) > 0 ||
-           parser.definition_state_.defined_struct_tags.count(resolved) > 0;
+           parser.has_defined_struct_tag(name) ||
+           parser.has_defined_struct_tag(resolved);
 }
 
 bool is_known_simple_visible_type_head(const Parser& parser,
@@ -549,7 +525,7 @@ std::string resolve_qualified_known_type_name(
         resolved = parser.visible_name_spelling(resolved_type);
         if (!resolved.empty() &&
             (parser.has_template_struct_primary(qn) ||
-             parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {
+             parser.has_defined_struct_tag(resolved))) {
             return resolved;
         }
     } else {
@@ -558,7 +534,7 @@ std::string resolve_qualified_known_type_name(
             (parser.has_template_struct_primary(
                  parser.current_namespace_context_id(), qn.base_text_id,
                  parser.parser_text(qn.base_text_id, qn.base_name)) ||
-             parser.definition_state_.defined_struct_tags.count(resolved) > 0)) {
+             parser.has_defined_struct_tag(resolved))) {
             return resolved;
         }
     }
@@ -570,7 +546,7 @@ std::string resolve_qualified_known_type_name(
     if (parser.has_template_struct_primary(
             parser.current_namespace_context_id(),
             parser.find_parser_text_id(resolved), resolved) ||
-        parser.definition_state_.defined_struct_tags.count(resolved) > 0) {
+        parser.has_defined_struct_tag(resolved)) {
         return resolved;
     }
     return {};
@@ -590,8 +566,7 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
             parser.current_namespace_context_id(),
             parser.find_parser_text_id(probe.resolved_typedef_name),
             probe.resolved_typedef_name) ||
-        parser.definition_state_.defined_struct_tags.count(
-            probe.resolved_typedef_name) > 0) {
+        parser.has_defined_struct_tag(probe.resolved_typedef_name)) {
         probe.has_resolved_typedef = true;
         return probe;
     }
@@ -617,24 +592,21 @@ bool has_qualified_type_parse_fallback(const QualifiedTypeProbe& probe) {
 
 bool starts_parenthesized_member_pointer_declarator(const Parser& parser,
                                                     int after_pos) {
-    if (after_pos < 0 || after_pos >= static_cast<int>(parser.tokens_.size()) ||
-        parser.tokens_[after_pos].kind != TokenKind::LParen) {
+    if (!parser.token_kind_at(after_pos, TokenKind::LParen)) {
         return false;
     }
 
     int probe = after_pos + 1;
     auto skip_attributes = [&]() {
-        while (probe < static_cast<int>(parser.tokens_.size()) &&
-               parser.tokens_[probe].kind == TokenKind::KwAttribute) {
+        while (parser.token_kind_at(probe, TokenKind::KwAttribute)) {
             ++probe;
-            for (int paren = 0; probe < static_cast<int>(parser.tokens_.size()) &&
-                                parser.tokens_[probe].kind == TokenKind::LParen;) {
+            for (int paren = 0; parser.token_kind_at(probe, TokenKind::LParen);) {
                 ++paren;
                 ++probe;
-                while (probe < static_cast<int>(parser.tokens_.size()) && paren > 0) {
-                    if (parser.tokens_[probe].kind == TokenKind::LParen) {
+                while (probe < parser.token_count() && paren > 0) {
+                    if (parser.token_kind_at(probe, TokenKind::LParen)) {
                         ++paren;
-                    } else if (parser.tokens_[probe].kind == TokenKind::RParen) {
+                    } else if (parser.token_kind_at(probe, TokenKind::RParen)) {
                         --paren;
                     }
                     ++probe;
@@ -644,52 +616,45 @@ bool starts_parenthesized_member_pointer_declarator(const Parser& parser,
     };
 
     skip_attributes();
-    if (probe < static_cast<int>(parser.tokens_.size()) &&
-        parser.tokens_[probe].kind == TokenKind::KwTypename) {
+    if (parser.token_kind_at(probe, TokenKind::KwTypename)) {
         ++probe;
     }
-    if (probe < static_cast<int>(parser.tokens_.size()) &&
-        parser.tokens_[probe].kind == TokenKind::ColonColon) {
+    if (parser.token_kind_at(probe, TokenKind::ColonColon)) {
         ++probe;
     }
-    if (probe >= static_cast<int>(parser.tokens_.size()) ||
-        parser.tokens_[probe].kind != TokenKind::Identifier) {
+    if (!parser.token_kind_at(probe, TokenKind::Identifier)) {
         return false;
     }
 
     ++probe;
-    while (probe + 1 < static_cast<int>(parser.tokens_.size()) &&
-           parser.tokens_[probe].kind == TokenKind::ColonColon &&
-           parser.tokens_[probe + 1].kind == TokenKind::Identifier) {
+    while (parser.token_kind_at(probe, TokenKind::ColonColon) &&
+           parser.token_kind_at(probe + 1, TokenKind::Identifier)) {
         probe += 2;
     }
 
-    return probe + 1 < static_cast<int>(parser.tokens_.size()) &&
-           parser.tokens_[probe].kind == TokenKind::ColonColon &&
-           parser.tokens_[probe + 1].kind == TokenKind::Star;
+    return parser.token_kind_at(probe, TokenKind::ColonColon) &&
+           parser.token_kind_at(probe + 1, TokenKind::Star);
 }
 
 bool starts_qualified_member_pointer_type_id(const Parser& parser,
                                              int start_pos) {
-    if (start_pos < 0 || start_pos >= static_cast<int>(parser.tokens_.size())) {
+    if (start_pos < 0 || start_pos >= parser.token_count()) {
         return false;
     }
 
     int probe = start_pos;
     bool saw_qualified = false;
-    if (parser.tokens_[probe].kind == TokenKind::ColonColon) {
+    if (parser.token_kind_at(probe, TokenKind::ColonColon)) {
         saw_qualified = true;
         ++probe;
     }
-    if (probe >= static_cast<int>(parser.tokens_.size()) ||
-        parser.tokens_[probe].kind != TokenKind::Identifier) {
+    if (!parser.token_kind_at(probe, TokenKind::Identifier)) {
         return false;
     }
 
     ++probe;
-    while (probe + 1 < static_cast<int>(parser.tokens_.size()) &&
-           parser.tokens_[probe].kind == TokenKind::ColonColon &&
-           parser.tokens_[probe + 1].kind == TokenKind::Identifier) {
+    while (parser.token_kind_at(probe, TokenKind::ColonColon) &&
+           parser.token_kind_at(probe + 1, TokenKind::Identifier)) {
         saw_qualified = true;
         probe += 2;
     }
@@ -743,14 +708,12 @@ bool parse_alignas_specifier(Parser* parser, TypeSpec* ts, int line) {
             TypeSpec align_ts = parser->parse_type_name();
             Node* align_node = parser->make_node(NK_ALIGNOF_TYPE, line);
             align_node->type = align_ts;
-            have_align = eval_const_int(align_node, &align_val,
-                                        &parser->definition_state_.struct_tag_def_map,
-                                        &parser->binding_state_.const_int_bindings);
+            have_align =
+                parser->eval_const_int_with_parser_tables(align_node, &align_val);
         } else {
             Node* align_expr = parser->parse_assign_expr();
-            have_align = eval_const_int(align_expr, &align_val,
-                                        &parser->definition_state_.struct_tag_def_map,
-                                        &parser->binding_state_.const_int_bindings);
+            have_align =
+                parser->eval_const_int_with_parser_tables(align_expr, &align_val);
         }
     }
     parser->expect(TokenKind::RParen);
@@ -1167,12 +1130,12 @@ bool is_cpp20_requires_clause_decl_boundary(Parser& parser) {
     if (parser.at_end()) return true;
     TokenKind kind = parser.cur().kind;
     if (kind == TokenKind::Identifier) {
-        if (parser.pos_ > 0 &&
-            parser.tokens_[parser.pos_ - 1].kind == TokenKind::ColonColon) {
+        const int current_pos = parser.current_token_index();
+        if (current_pos > 0 &&
+            parser.token_kind_at(current_pos - 1, TokenKind::ColonColon)) {
             return false;
         }
-        if (parser.pos_ + 1 < static_cast<int>(parser.tokens_.size()) &&
-            parser.tokens_[parser.pos_ + 1].kind == TokenKind::Less) {
+        if (parser.token_kind_at(current_pos + 1, TokenKind::Less)) {
             return false;
         }
         return true;
@@ -1232,8 +1195,8 @@ bool looks_like_record_member_decl_boundary(Parser& parser) {
     int bracket_depth = 0;
     int brace_depth = 0;
     bool saw_identifier = false;
-    for (int i = parser.pos_; i < static_cast<int>(parser.tokens_.size()); ++i) {
-        const TokenKind kind = parser.tokens_[i].kind;
+    for (int i = parser.current_token_index(); i < parser.token_count(); ++i) {
+        const TokenKind kind = parser.token_kind(i);
         if (kind == TokenKind::Identifier) {
             saw_identifier = true;
         }
@@ -1290,8 +1253,8 @@ bool looks_like_record_member_decl_boundary(Parser& parser) {
         }
 
         if (saw_identifier && kind == TokenKind::Semi) {
-            for (int j = i + 1; j < static_cast<int>(parser.tokens_.size()); ++j) {
-                const TokenKind next_kind = parser.tokens_[j].kind;
+            for (int j = i + 1; j < parser.token_count(); ++j) {
+                const TokenKind next_kind = parser.token_kind(j);
                 if (next_kind == TokenKind::RBrace) {
                     return true;
                 }
@@ -1313,8 +1276,8 @@ bool is_record_member_recovery_boundary(Parser& parser,
                                         int member_start_pos) {
     if (!parser.is_cpp_mode() || parser.at_end() ||
         member_start_pos < 0 ||
-        member_start_pos >= static_cast<int>(parser.tokens_.size()) ||
-        parser.pos_ <= member_start_pos) {
+        member_start_pos >= parser.token_count() ||
+        parser.current_token_index() <= member_start_pos) {
         return false;
     }
 
