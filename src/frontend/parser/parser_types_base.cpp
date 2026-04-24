@@ -714,6 +714,16 @@ TypeSpec Parser::parse_base_type() {
                     return ts;
                 };
                 auto try_lookup = [&](const std::string& scoped) -> bool {
+                    QualifiedNameRef scoped_qn;
+                    if (qualified_name_from_text(*this, scoped, &scoped_qn)) {
+                        const QualifiedNameKey scoped_key =
+                            qualified_name_key(scoped_qn);
+                        if (const TypeSpec* structured =
+                                find_structured_typedef_type(scoped_key)) {
+                            *out = *structured;
+                            return true;
+                        }
+                    }
                     const TypeSpec* type = find_typedef_type(scoped);
                     if (!type) return false;
                     *out = *type;
@@ -1344,11 +1354,20 @@ TypeSpec Parser::parse_base_type() {
                 set_last_resolved_typedef(tname);
                 // Alias template application: e.g. bool_constant<expr> → integral_constant<bool, expr>
                 if (is_cpp_mode() && check(TokenKind::Less)) {
+                    const QualifiedNameKey alias_key = alias_template_key_in_context(
+                        current_namespace_context_id(),
+                        active_context_state_.last_resolved_typedef_text_id,
+                        tname);
                     const ParserAliasTemplateInfo* ati =
-                        find_alias_template_info_in_context(
+                        find_alias_template_info(alias_key);
+                    if (!ati) {
+                        // Legacy rendered-name recovery stays fallback-only once the
+                        // structured alias key probe has been exhausted.
+                        ati = find_alias_template_info_in_context(
                             current_namespace_context_id(),
                             active_context_state_.last_resolved_typedef_text_id,
                             tname);
+                    }
                     if (ati) {
                         const std::string alias_template_name(tname);
                         TentativeParseGuard alias_guard(*this);

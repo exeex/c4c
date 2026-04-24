@@ -318,7 +318,10 @@ bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx,
     if (check(TokenKind::Identifier)) {
         const TextId name_text_id = cur().text_id;
         const std::string_view name = token_spelling(cur());
-        if (find_alias_template_info_in_context(current_namespace_context_id(),
+        const QualifiedNameKey alias_key = alias_template_key_in_context(
+            current_namespace_context_id(), name_text_id, name);
+        if (find_alias_template_info(alias_key) ||
+            find_alias_template_info_in_context(current_namespace_context_id(),
                                                 name_text_id, name)) {
             return false;
         }

@@ -655,6 +655,14 @@ const TypeSpec* Parser::find_structured_typedef_type(
     return it == binding_state_.struct_typedefs.end() ? nullptr : &it->second;
 }
 
+const ParserAliasTemplateInfo* Parser::find_alias_template_info(
+    const QualifiedNameKey& key) const {
+    if (key.base_text_id == kInvalidText) return nullptr;
+    const auto it = template_state_.alias_template_info.find(key);
+    return it == template_state_.alias_template_info.end() ? nullptr
+                                                           : &it->second;
+}
+
 void Parser::push_local_binding_scope() {
     lexical_scope_state_.push_scope();
 }
@@ -1150,9 +1158,9 @@ const ParserAliasTemplateInfo* Parser::find_alias_template_info_in_context(
 
     const QualifiedNameKey key = alias_template_key_in_context(
         context_id, name_text_id, fallback_name);
-    auto alias_it = template_state_.alias_template_info.find(key);
-    if (alias_it != template_state_.alias_template_info.end()) {
-        return &alias_it->second;
+    if (const ParserAliasTemplateInfo* structured =
+            find_alias_template_info(key)) {
+        return structured;
     }
 
     const std::string resolved =
@@ -1161,9 +1169,9 @@ const ParserAliasTemplateInfo* Parser::find_alias_template_info_in_context(
         const TextId resolved_text_id = find_parser_text_id(resolved);
         const QualifiedNameKey resolved_key = alias_template_key_in_context(
             context_id, resolved_text_id, resolved);
-        alias_it = template_state_.alias_template_info.find(resolved_key);
-        if (alias_it != template_state_.alias_template_info.end()) {
-            return &alias_it->second;
+        if (const ParserAliasTemplateInfo* structured =
+                find_alias_template_info(resolved_key)) {
+            return structured;
         }
     }
     return nullptr;

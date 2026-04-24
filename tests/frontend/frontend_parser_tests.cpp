@@ -2286,6 +2286,31 @@ void test_parser_alias_template_value_probes_use_token_spelling() {
               "resolved alias-template probes should use parser-owned spelling");
 }
 
+void test_parser_alias_template_info_prefers_structured_key_over_recovery() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  const c4c::QualifiedNameKey alias_key = parser.alias_template_key_in_context(
+      parser.current_namespace_context_id(), alias_text, "Alias");
+  c4c::ParserAliasTemplateInfo info;
+  info.param_names = {"T"};
+  info.aliased_type.array_size = -1;
+  info.aliased_type.inner_rank = -1;
+  info.aliased_type.base = c4c::TB_INT;
+  parser.template_state_.alias_template_info[alias_key] = info;
+  parser.namespace_state_.using_value_aliases[0][alias_text] = {
+      parser.intern_semantic_name_key("Bridge"), "Bridge"};
+
+  const c4c::ParserAliasTemplateInfo* found =
+      parser.find_alias_template_info_in_context(
+          parser.current_namespace_context_id(), alias_text, "Alias");
+  expect_true(found != nullptr && found->aliased_type.base == c4c::TB_INT,
+              "alias-template info lookup should prefer the structured key before any rendered-name recovery");
+}
+
 void test_parser_typename_template_parameter_probe_uses_token_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -2408,6 +2433,7 @@ int main() {
   test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias();
   test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases();
   test_parser_alias_template_value_probes_use_token_spelling();
+  test_parser_alias_template_info_prefers_structured_key_over_recovery();
   test_parser_typename_template_parameter_probe_uses_token_spelling();
   test_parser_post_pointer_qualifier_probes_use_token_spelling();
   test_parser_qualified_declarator_name_uses_token_spelling();

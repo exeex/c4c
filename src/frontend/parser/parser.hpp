@@ -318,6 +318,8 @@ class Parser {
   bool has_structured_typedef_type(const QualifiedNameKey& key) const;
   const TypeSpec* find_structured_typedef_type(
       const QualifiedNameKey& key) const;
+  const ParserAliasTemplateInfo* find_alias_template_info(
+      const QualifiedNameKey& key) const;
   bool has_visible_typedef_type(TextId name_text_id, std::string_view name) const;
   bool has_visible_typedef_type(std::string_view name) const;
   const TypeSpec* find_visible_typedef_type(TextId name_text_id,
