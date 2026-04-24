@@ -18,7 +18,26 @@ struct ScalarLayoutByteOffsetFacts {
   std::optional<ScalarLayoutLeafFacts> leaf;
 };
 
+struct AggregateByteOffsetProjection {
+  enum class Kind {
+    ArrayElement,
+    StructField,
+  };
+
+  Kind kind = Kind::ArrayElement;
+  BirFunctionLowerer::AggregateTypeLayout layout;
+  BirFunctionLowerer::AggregateTypeLayout child_layout;
+  std::string child_type_text;
+  std::size_t child_index = 0;
+  std::size_t child_byte_offset = 0;
+};
+
 std::optional<ScalarLayoutByteOffsetFacts> resolve_scalar_layout_facts_at_byte_offset(
+    std::string_view type_text,
+    std::size_t target_offset,
+    const BirFunctionLowerer::TypeDeclMap& type_decls);
+
+std::optional<AggregateByteOffsetProjection> resolve_aggregate_byte_offset_projection(
     std::string_view type_text,
     std::size_t target_offset,
     const BirFunctionLowerer::TypeDeclMap& type_decls);

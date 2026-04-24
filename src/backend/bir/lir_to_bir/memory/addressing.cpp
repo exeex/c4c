@@ -1,4 +1,5 @@
 #include "../lowering.hpp"
+#include "memory_helpers.hpp"
 
 #include <optional>
 #include <string>
@@ -23,6 +24,71 @@ find_repeated_aggregate_extent_at_offset_impl(
     std::string_view repeated_type_text,
     const BirFunctionLowerer::TypeDeclMap& type_decls,
     bool include_struct_field_runs) {
+  const auto projection =
+      resolve_aggregate_byte_offset_projection(type_text, target_offset, type_decls);
+  if (!projection.has_value()) {
+    return std::nullopt;
+  }
+
+  switch (projection->kind) {
+    case AggregateByteOffsetProjection::Kind::ArrayElement:
+      if (projection->child_byte_offset == 0 &&
+          c4c::codegen::lir::trim_lir_arg_text(projection->child_type_text) ==
+              c4c::codegen::lir::trim_lir_arg_text(repeated_type_text)) {
+        return BirFunctionLowerer::AggregateArrayExtent{
+            .element_count = projection->layout.array_count - projection->child_index,
+            .element_stride_bytes = projection->child_layout.size_bytes,
+        };
+      }
+      return find_repeated_aggregate_extent_at_offset_impl(
+          projection->child_type_text,
+          projection->child_byte_offset,
+          repeated_type_text,
+          type_decls,
+          include_struct_field_runs);
+    case AggregateByteOffsetProjection::Kind::StructField:
+      if (include_struct_field_runs && projection->child_byte_offset == 0 &&
+          projection->child_layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid &&
+          projection->child_layout.size_bytes != 0 &&
+          c4c::codegen::lir::trim_lir_arg_text(projection->child_type_text) ==
+              c4c::codegen::lir::trim_lir_arg_text(repeated_type_text)) {
+        std::size_t repeated_count = 0;
+        const auto field_begin = projection->layout.fields[projection->child_index].byte_offset;
+        for (std::size_t repeated_index = projection->child_index;
+             repeated_index < projection->layout.fields.size();
+             ++repeated_index) {
+          if (c4c::codegen::lir::trim_lir_arg_text(
+                  projection->layout.fields[repeated_index].type_text) !=
+                  c4c::codegen::lir::trim_lir_arg_text(repeated_type_text) ||
+              projection->layout.fields[repeated_index].byte_offset !=
+                  field_begin + repeated_count * projection->child_layout.size_bytes) {
+            break;
+          }
+          ++repeated_count;
+        }
+        if (repeated_count != 0) {
+          return BirFunctionLowerer::AggregateArrayExtent{
+              .element_count = repeated_count,
+              .element_stride_bytes = projection->child_layout.size_bytes,
+          };
+        }
+      }
+      return find_repeated_aggregate_extent_at_offset_impl(projection->child_type_text,
+                                                           projection->child_byte_offset,
+                                                           repeated_type_text,
+                                                           type_decls,
+                                                           include_struct_field_runs);
+    default:
+      return std::nullopt;
+  }
+}
+
+}  // namespace
+
+std::optional<AggregateByteOffsetProjection> resolve_aggregate_byte_offset_projection(
+    std::string_view type_text,
+    std::size_t target_offset,
+    const BirFunctionLowerer::TypeDeclMap& type_decls) {
   const auto layout = compute_aggregate_type_layout(type_text, type_decls);
   if (layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
       target_offset >= layout.size_bytes) {
@@ -41,17 +107,15 @@ find_repeated_aggregate_extent_at_offset_impl(
       if (element_index >= layout.array_count) {
         return std::nullopt;
       }
-      const auto nested_offset = target_offset % element_layout.size_bytes;
-      if (nested_offset == 0 &&
-          c4c::codegen::lir::trim_lir_arg_text(layout.element_type_text) ==
-              c4c::codegen::lir::trim_lir_arg_text(repeated_type_text)) {
-        return BirFunctionLowerer::AggregateArrayExtent{
-            .element_count = layout.array_count - element_index,
-            .element_stride_bytes = element_layout.size_bytes,
-        };
-      }
-      return find_repeated_aggregate_extent_at_offset_impl(
-          layout.element_type_text, nested_offset, repeated_type_text, type_decls, include_struct_field_runs);
+      return AggregateByteOffsetProjection{
+          .kind = AggregateByteOffsetProjection::Kind::ArrayElement,
+          .layout = layout,
+          .child_layout = element_layout,
+          .child_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(
+              layout.element_type_text)),
+          .child_index = element_index,
+          .child_byte_offset = target_offset % element_layout.size_bytes,
+      };
     }
     case BirFunctionLowerer::AggregateTypeLayout::Kind::Struct:
       for (std::size_t index = 0; index < layout.fields.size(); ++index) {
@@ -62,45 +126,22 @@ find_repeated_aggregate_extent_at_offset_impl(
         if (target_offset < field_begin || target_offset >= field_end) {
           continue;
         }
-        const auto field_layout =
-            compute_aggregate_type_layout(layout.fields[index].type_text, type_decls);
-        if (include_struct_field_runs && target_offset == field_begin &&
-            field_layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid &&
-            field_layout.size_bytes != 0 &&
-            c4c::codegen::lir::trim_lir_arg_text(layout.fields[index].type_text) ==
-                c4c::codegen::lir::trim_lir_arg_text(repeated_type_text)) {
-          std::size_t repeated_count = 0;
-          for (std::size_t repeated_index = index;
-               repeated_index < layout.fields.size();
-               ++repeated_index) {
-            if (c4c::codegen::lir::trim_lir_arg_text(layout.fields[repeated_index].type_text) !=
-                    c4c::codegen::lir::trim_lir_arg_text(repeated_type_text) ||
-                layout.fields[repeated_index].byte_offset !=
-                    field_begin + repeated_count * field_layout.size_bytes) {
-              break;
-            }
-            ++repeated_count;
-          }
-          if (repeated_count != 0) {
-            return BirFunctionLowerer::AggregateArrayExtent{
-                .element_count = repeated_count,
-                .element_stride_bytes = field_layout.size_bytes,
-            };
-          }
-        }
-        return find_repeated_aggregate_extent_at_offset_impl(layout.fields[index].type_text,
-                                                             target_offset - field_begin,
-                                                             repeated_type_text,
-                                                             type_decls,
-                                                             include_struct_field_runs);
+        return AggregateByteOffsetProjection{
+            .kind = AggregateByteOffsetProjection::Kind::StructField,
+            .layout = layout,
+            .child_layout = compute_aggregate_type_layout(layout.fields[index].type_text,
+                                                          type_decls),
+            .child_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(
+                layout.fields[index].type_text)),
+            .child_index = index,
+            .child_byte_offset = target_offset - field_begin,
+        };
       }
       return std::nullopt;
     default:
       return std::nullopt;
   }
 }
-
-}  // namespace
 
 bool BirFunctionLowerer::can_reinterpret_byte_storage_view(
     std::string_view storage_type_text,
@@ -240,44 +281,24 @@ std::optional<std::size_t> BirFunctionLowerer::find_pointer_array_length_at_offs
     std::string_view type_text,
     std::size_t target_offset,
     const TypeDeclMap& type_decls) {
-  const auto layout = compute_aggregate_type_layout(type_text, type_decls);
-  if (layout.kind == AggregateTypeLayout::Kind::Invalid || target_offset >= layout.size_bytes) {
+  const auto projection =
+      resolve_aggregate_byte_offset_projection(type_text, target_offset, type_decls);
+  if (!projection.has_value()) {
     return std::nullopt;
   }
 
-  switch (layout.kind) {
-    case AggregateTypeLayout::Kind::Array: {
-      const auto element_layout =
-          compute_aggregate_type_layout(layout.element_type_text, type_decls);
-      if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
-          element_layout.size_bytes == 0) {
-        return std::nullopt;
+  switch (projection->kind) {
+    case AggregateByteOffsetProjection::Kind::ArrayElement:
+      if (target_offset == 0 &&
+          projection->child_layout.kind == AggregateTypeLayout::Kind::Scalar &&
+          projection->child_layout.scalar_type == bir::TypeKind::Ptr) {
+        return projection->layout.array_count;
       }
-      if (target_offset == 0 && element_layout.kind == AggregateTypeLayout::Kind::Scalar &&
-          element_layout.scalar_type == bir::TypeKind::Ptr) {
-        return layout.array_count;
-      }
-      const auto element_index = target_offset / element_layout.size_bytes;
-      if (element_index >= layout.array_count) {
-        return std::nullopt;
-      }
-      const auto nested_offset = target_offset % element_layout.size_bytes;
       return find_pointer_array_length_at_offset(
-          layout.element_type_text, nested_offset, type_decls);
-    }
-    case AggregateTypeLayout::Kind::Struct:
-      for (std::size_t index = 0; index < layout.fields.size(); ++index) {
-        const auto field_begin = layout.fields[index].byte_offset;
-        const auto field_end =
-            index + 1 < layout.fields.size() ? layout.fields[index + 1].byte_offset
-                                             : layout.size_bytes;
-        if (target_offset < field_begin || target_offset >= field_end) {
-          continue;
-        }
-        return find_pointer_array_length_at_offset(
-            layout.fields[index].type_text, target_offset - field_begin, type_decls);
-      }
-      return std::nullopt;
+          projection->child_type_text, projection->child_byte_offset, type_decls);
+    case AggregateByteOffsetProjection::Kind::StructField:
+      return find_pointer_array_length_at_offset(
+          projection->child_type_text, projection->child_byte_offset, type_decls);
     default:
       return std::nullopt;
   }

@@ -1,31 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/02_bir-memory-helper-consolidation.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Merge Scalar Leaf And Scalar Subobject Reasoning
+Current Step ID: Step 3
+Current Step Title: Merge Repeated Aggregate And Pointer-Array Extent Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Completed `Step 2: Merge Scalar Leaf And Scalar Subobject Reasoning`.
-Added a pure `ScalarLayoutByteOffsetFacts`/`ScalarLayoutLeafFacts` result
-behind `memory/memory_helpers.hpp`, implemented shared scalar layout lookup in
-`memory/local_slots.cpp`, and reused it from both raw byte-slice local aggregate
-leaf resolution and provenance scalar subobject addressability.
+Completed `Step 3: Merge Repeated Aggregate And Pointer-Array Extent Helpers`.
+Added a pure `AggregateByteOffsetProjection` helper behind
+`memory/memory_helpers.hpp` and reused it in `memory/addressing.cpp` for both
+repeated aggregate extent lookup and pointer-array length-at-offset lookup.
 
-The shared helper is argument-driven and only reports layout facts. Provenance
-keeps access-size checks, stored-type handling, byte-wise scalar object
-representation policy, and opaque pointer base policy local to
-`memory/provenance.cpp`.
+The shared helper owns only common array/struct byte-offset descent. Repeated
+extent acceptance, struct field-run policy, pointer-element requirements,
+fallback behavior, and dynamic result construction remain visible in the
+callers.
 
 ## Suggested Next
 
-Execute `Step 3: Merge Repeated Aggregate And Pointer-Array Extent Helpers`.
-Extract only the common array/struct byte-offset descent where traversal
-semantics match, while keeping repeated-extent acceptance, pointer-element
-requirements, ambiguity/fallback behavior, and dynamic result construction in
-the callers.
+Execute `Step 4: Normalize Byte-Storage Reinterpretation Checks`.
+Centralize only the common pure byte-storage reinterpretation checks while
+keeping provenance updates, alias map mutation, and fallback behavior in the
+existing callers.
 
 ## Watchouts
 
@@ -34,10 +32,6 @@ the callers.
 - Keep `BirFunctionLowerer` as the memory state owner.
 - Keep shared helpers pure and argument-driven behind `memory_helpers.hpp`.
 - Preserve behavior; do not rewrite expectations as proof.
-- For Step 3, `find_repeated_aggregate_extent_at_offset_impl(...)` and
-  `find_pointer_array_length_at_offset(...)` have similar descent mechanics but
-  different success policy and return shapes; avoid hiding those differences in
-  a generic helper.
 - For Step 4, normalize `can_reinterpret_byte_storage_view(...)`; do not fold
   it into broader GEP helpers or move provenance/map mutation into shared
   helpers.
