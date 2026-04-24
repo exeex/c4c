@@ -6,7 +6,7 @@
 
 #include "lexer.hpp"
 #include "impl/parser_impl.hpp"
-#include "types_helpers.hpp"
+#include "impl/types/types_helpers.hpp"
 
 namespace c4c {
 namespace {
