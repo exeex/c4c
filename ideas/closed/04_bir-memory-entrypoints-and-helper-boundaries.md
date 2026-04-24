@@ -1,5 +1,21 @@
 # BIR Memory Entrypoints And Helper Boundaries
 
+Closed: 2026-04-24
+
+Closure Summary:
+The BIR memory lowering boundary is now explicit: stateful memory lowering
+entrypoints and member helpers are declared directly in `lowering.hpp`, while
+`memory_helpers.hpp` is a normal pure-helper header with no class-fragment
+macro mode. No memory semantics, test expectations, or new headers were added.
+`local_slots.cpp` did not grow as part of the refactor.
+
+Closure Proof:
+`c4c_codegen` built successfully and the backend subset
+`ctest --test-dir build -j --output-on-failure -R "^backend_"` passed with
+97/97 run tests. The close-time regression guard compared the rolled-forward
+backend proof against a fresh temporary backend run and passed with no new
+failures.
+
 ## Intent
 
 Tighten the BIR memory lowering shape after the first memory header/helper and
