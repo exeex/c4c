@@ -8,79 +8,40 @@ Current Step Title: Introduce Opaque Parser Implementation Ownership
 
 ## Just Finished
 
-Completed Step 1 inventory for the parser public facade/PIMPL boundary without
-editing implementation files.
-
-True public parser API:
-- `src/frontend/parser/parser.hpp` production callers need the constructor,
-  `parse()`, parse-debug channel constants, `set_parser_debug_channels()`, and
-  `had_parse_error()`.
-- Production direct `c4c::Parser` use is limited to `src/apps/c4cll.cpp` and
-  `tests/frontend/frontend_hir_tests.cpp`; other `#include "parser.hpp"` hits in
-  backend assembler paths are local assembler parser headers, not the frontend
-  facade.
-
-Private implementation-only surface currently exposed through the facade:
-- State carriers from `src/frontend/parser/impl/parser_state.hpp` are public
-  members or aliases in `Parser`: `ParserCoreInputState`,
-  `ParserSharedLookupState`, `ParserBindingState`, `ParserDefinitionState`,
-  `ParserTemplateState`, `ParserLexicalScopeState`,
-  `ParserActiveContextState`, `ParserNamespaceState`,
-  `ParserDiagnosticState`, and `ParserPragmaState`.
-- Implementation helper families in `Parser` operate directly on those state
-  carriers: token cursor/mutation, diagnostics and tentative parse snapshots,
-  namespace/name lookup, typedef/value binding, template metadata, qualified
-  names, declarators, record bodies, expressions, statements, and AST builders.
-- `src/frontend/parser/impl/parser_impl.hpp` is the private implementation
-  index and is included only by parser implementation translation units; it
-  currently adds free helper declarations such as enum-expression evaluation,
-  scalar alignment, qualifier/storage/type keyword predicates, and literal
-  lexeme parsing.
-
-Required opaque ownership special members for the next boundary:
-- Because `Parser` will own an incomplete implementation object, the facade will
-  need out-of-line ownership special members in the public header, at minimum a
-  destructor plus deleted copy construction/copy assignment.
-- Move construction/move assignment should be decided when Step 2 chooses the
-  actual opaque owner type; avoid exposing `impl/parser_state.hpp` just to make
-  the owner destructible inline.
-
-Test-only caller dependencies to preserve or isolate:
-- `tests/frontend/frontend_parser_tests.cpp` reaches many parser internals:
-  symbol IDs/tables, snapshot restore, token injection and cursor inspection,
-  typedef/value/concept/namespace/template registration, qualified-name parsing,
-  declarator/type/expression/statement entry points, and AST builders.
-- Test-only names already marked `*_for_testing` should remain isolated; many
-  current test dependencies are not yet marked that way and should move behind a
-  named testing access layer or remain explicitly test-only during later steps.
+Completed Step 2 by adding `ParserImpl` ownership in
+`src/frontend/parser/impl/parser_impl.hpp`, making `Parser` own that state
+through `std::unique_ptr<ParserImpl>`, rebinding existing state-facing members
+as references into the owned implementation object, and defining ownership
+special members out of line in `parser_core.cpp`. Constructor and `parse()`
+behavior were preserved.
 
 ## Suggested Next
 
-Execute Step 2 in `plan.md`: introduce opaque parser implementation ownership in
-the facade, add the required ownership special members, and keep behavior
-unchanged.
+Execute the next coherent parser facade packet: start moving implementation-only
+helper declarations or test-only access away from the public facade now that the
+state carrier has an owned implementation object.
 
 ## Watchouts
 
 - Preserve parser behavior, AST output, diagnostics behavior, and testcase
   expectations.
-- Do not expose `impl/parser_state.hpp` through the public facade.
+- `parser.hpp` still includes `impl/parser_state.hpp` because current public and
+  test-facing type aliases/signatures require complete snapshot, qualified-name,
+  template-argument, and guard types; the object layout no longer stores those
+  carrier objects directly.
 - Keep implementation-only declarations behind
   `src/frontend/parser/impl/parser_impl.hpp` where practical.
 - Keep any test-only hooks clearly named and isolated.
-- `parser.hpp` currently includes `impl/parser_state.hpp` solely to make the
-  public `Parser` layout, aliases, snapshots, guards, and test/helper signatures
-  complete; Step 2 should not try to move every helper at once.
-- The facade/PIMPL split must not confuse frontend `parser.hpp` with backend
-  assembler-local `parser.hpp` include hits.
+- `Parser` move operations are explicitly deleted in this slice because the
+  compatibility boundary keeps public reference members bound into `ParserImpl`.
 
 ## Proof
 
-Read-only inventory proof captured in `test_after.log`:
-- `rg -n "#include .*parser/parser\\.hpp|Parser\\b|ParserOptions|parse\\(|Parse" src tests`
-- direct reads of `src/frontend/parser/parser.hpp`,
-  `src/frontend/parser/impl/parser_impl.hpp`, and
-  `src/frontend/parser/impl/parser_state.hpp`
-- follow-up include/caller narrowing with `rg` over `src` and `tests`
+Executor Step 2 focused proof passed:
+`{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 
-No build was run because this packet changed only `todo.md`.
+Supervisor acceptance proof then escalated to a matching full-suite run:
+`cmake --build build -j && ctest --test-dir build -j --output-on-failure`
+
+Result: passed, 2974/2974 tests. Regression guard also passed against the
+matching full-suite `test_before.log`.

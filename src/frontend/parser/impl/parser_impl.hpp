@@ -8,6 +8,26 @@
 
 namespace c4c {
 
+struct ParserImpl {
+  ParserCoreInputState core_input_state;
+  ParserSharedLookupState shared_lookup_state;
+  ParserBindingState binding_state;
+  ParserDefinitionState definition_state;
+  ParserTemplateState template_state;
+  ParserLexicalScopeState lexical_scope_state;
+  ParserActiveContextState active_context_state;
+  ParserNamespaceState namespace_state;
+  ParserDiagnosticState diagnostic_state;
+  ParserPragmaState pragma_state;
+
+  ParserImpl(std::vector<Token> tokens, Arena& arena,
+             TextTable* token_texts, FileTable* token_files,
+             SourceProfile source_profile, std::string source_file)
+      : core_input_state(std::move(tokens), arena, source_profile,
+                         std::move(source_file)),
+        shared_lookup_state(token_texts, token_files) {}
+};
+
 bool eval_enum_expr(Node* n, const ParserEnumConstTable& consts, long long* out);
 bool is_dependent_enum_expr(Node* n, const ParserEnumConstTable& consts);
 TypeBase effective_scalar_base(const TypeSpec& ts);

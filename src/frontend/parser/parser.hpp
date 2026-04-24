@@ -31,6 +31,7 @@
 // Replace std::set with a sorted char*[] searched by strcmp.
 
 #include <functional>
+#include <memory>
 #include <set>
 #include <string>
 #include <string_view>
@@ -45,6 +46,8 @@
 #include "token.hpp"
 
 namespace c4c {
+
+struct ParserImpl;
 
 class Parser {
  public:
@@ -151,43 +154,51 @@ class Parser {
                   FileTable* token_files,
                   SourceProfile source_profile = SourceProfile::C,
                   const std::string& source_file = "<input>");
+  ~Parser();
+  Parser(const Parser&) = delete;
+  Parser& operator=(const Parser&) = delete;
+  Parser(Parser&&) = delete;
+  Parser& operator=(Parser&&) = delete;
 
   // Parse the entire token stream and return a NK_PROGRAM node.
   Node* parse();
 
+  // ── opaque parser implementation ownership ──────────────────────────────
+  std::unique_ptr<ParserImpl> impl_;
+
   // ── core parser state ─────────────────────────────────────────────────────
   using TokenMutation = ParserTokenMutation;
-  ParserCoreInputState core_input_state_;
-  std::vector<Token>& tokens_ = core_input_state_.tokens;
-  int& pos_ = core_input_state_.pos;
-  Arena& arena_ = core_input_state_.arena;
+  ParserCoreInputState& core_input_state_;
+  std::vector<Token>& tokens_;
+  int& pos_;
+  Arena& arena_;
 
   // ── parser-owned shared lookup tables ────────────────────────────────────
-  ParserSharedLookupState shared_lookup_state_;
+  ParserSharedLookupState& shared_lookup_state_;
 
   // ── parser name / binding tables ─────────────────────────────────────────
-  ParserBindingState binding_state_;
+  ParserBindingState& binding_state_;
 
   // ── record / enum definition tables ──────────────────────────────────────
-  ParserDefinitionState definition_state_;
+  ParserDefinitionState& definition_state_;
 
   // ── template metadata tables and active template scopes ──────────────────
-  ParserTemplateState template_state_;
+  ParserTemplateState& template_state_;
 
   // ── parser-local lexical binding scopes ──────────────────────────────────
-  ParserLexicalScopeState lexical_scope_state_;
+  ParserLexicalScopeState& lexical_scope_state_;
 
   // ── active parse context ──────────────────────────────────────────────────
-  ParserActiveContextState active_context_state_;
+  ParserActiveContextState& active_context_state_;
 
   // ── namespace / using-directive tables ───────────────────────────────────
-  ParserNamespaceState namespace_state_;
+  ParserNamespaceState& namespace_state_;
 
   // ── diagnostic and recovery state ────────────────────────────────────────
-  ParserDiagnosticState diagnostic_state_;
+  ParserDiagnosticState& diagnostic_state_;
 
   // ── pragma state ─────────────────────────────────────────────────────────
-  ParserPragmaState pragma_state_;
+  ParserPragmaState& pragma_state_;
 
   // ── pragma helpers ────────────────────────────────────────────────────────
   void handle_pragma_pack(const std::string& args);

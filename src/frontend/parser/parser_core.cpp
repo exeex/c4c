@@ -1300,8 +1300,22 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena,
                FileTable* token_files,
                SourceProfile source_profile,
                const std::string& source_file)
-    : core_input_state_(std::move(tokens), arena, source_profile, source_file),
-      shared_lookup_state_(token_texts, token_files) {
+    : impl_(std::make_unique<ParserImpl>(std::move(tokens), arena, token_texts,
+                                         token_files, source_profile,
+                                         source_file)),
+      core_input_state_(impl_->core_input_state),
+      tokens_(core_input_state_.tokens),
+      pos_(core_input_state_.pos),
+      arena_(core_input_state_.arena),
+      shared_lookup_state_(impl_->shared_lookup_state),
+      binding_state_(impl_->binding_state),
+      definition_state_(impl_->definition_state),
+      template_state_(impl_->template_state),
+      lexical_scope_state_(impl_->lexical_scope_state),
+      active_context_state_(impl_->active_context_state),
+      namespace_state_(impl_->namespace_state),
+      diagnostic_state_(impl_->diagnostic_state),
+      pragma_state_(impl_->pragma_state) {
     namespace_state_.namespace_contexts.push_back(
         NamespaceContext{0, -1, false, kInvalidText, arena_.strdup(""),
                          arena_.strdup("")});
@@ -1465,6 +1479,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena,
     }
     refresh_current_namespace_bridge();
 }
+
+Parser::~Parser() = default;
 
 // ── pragma helpers ────────────────────────────────────────────────────────────
 
