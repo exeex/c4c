@@ -6,7 +6,7 @@
 // hir_lowering_core.cpp until the shared Lowerer declaration surface is hoisted into
 // hir_lowering.hpp.
 
-#include "hir_lowering.hpp"
+#include "impl/hir_impl.hpp"
 #include "hir_lowerer_internal.hpp"
 #include "consteval.hpp"
 #include "type_utils.hpp"

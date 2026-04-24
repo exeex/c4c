@@ -1,6 +1,6 @@
 #include "hir.hpp"
 
-#include "hir_lowering.hpp"
+#include "impl/hir_impl.hpp"
 #include "compile_time_engine.hpp"
 
 #include <cstdio>
