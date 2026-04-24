@@ -2079,9 +2079,22 @@ std::string Parser::resolve_visible_type_name(TextId name_text_id,
         [&](int context_id, std::string* resolved) {
             if (lookup_using_value_alias(context_id, name_text_id, spelled,
                                          resolved)) {
+                const TextId resolved_text_id = find_parser_text_id(*resolved);
+                if (resolved->find("::") != std::string::npos) {
+                    if (has_typedef_type(*resolved)) {
+                        return true;
+                    }
+                    if (lookup_type_in_context(context_id, resolved_text_id,
+                                               *resolved, resolved)) {
+                        return true;
+                    }
+                    return false;
+                }
+                if (lookup_type_in_context(context_id, resolved_text_id, *resolved,
+                                           resolved)) {
+                    return true;
+                }
                 if (resolved->find("::") == std::string::npos) {
-                    const TextId resolved_text_id =
-                        find_parser_text_id(*resolved);
                     if (resolved_text_id != kInvalidText &&
                         find_local_visible_typedef_type(resolved_text_id)) {
                         return true;
@@ -2090,8 +2103,6 @@ std::string Parser::resolve_visible_type_name(TextId name_text_id,
                                                    *resolved)) {
                         return true;
                     }
-                } else if (has_typedef_type(*resolved)) {
-                    return true;
                 }
             }
             return lookup_type_in_context(context_id, name_text_id, spelled,
@@ -2402,13 +2413,6 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
         *resolved = structured_candidate;
         return true;
     }
-
-    const std::string candidate =
-        render_lookup_name_in_context(*this, context_id, name_text_id, name);
-    if (has_var_type(candidate)) {
-        *resolved = candidate;
-        return true;
-    }
     const std::string fallback_name(name);
     if (context_id == 0) {
         const QualifiedNameKey global_key =
@@ -2440,6 +2444,13 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
             }
         }
     }
+
+    const std::string candidate =
+        render_lookup_name_in_context(*this, context_id, name_text_id, name);
+    if (has_var_type(candidate)) {
+        *resolved = candidate;
+        return true;
+    }
     return false;
 }
 
@@ -2453,12 +2464,6 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
         if (resolved->empty()) {
             *resolved = bridge_name_in_context(context_id, name_text_id, name);
         }
-        return true;
-    }
-    const std::string candidate =
-        bridge_name_in_context(context_id, name_text_id, name);
-    if (has_typedef_type(candidate)) {
-        *resolved = candidate;
         return true;
     }
     if (context_id == 0 && name.find("::") == std::string_view::npos &&
@@ -2487,6 +2492,12 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
             if (lookup_type_in_context(imported_id, name_text_id, name, resolved))
                 return true;
         }
+    }
+    const std::string candidate =
+        bridge_name_in_context(context_id, name_text_id, name);
+    if (has_typedef_type(candidate)) {
+        *resolved = candidate;
+        return true;
     }
     return false;
 }
