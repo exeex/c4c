@@ -129,6 +129,7 @@ Node* parse_expr(Parser& parser);
 Node* parse_assign_expr(Parser& parser);
 Node* parse_ternary(Parser& parser);
 Node* parse_binary(Parser& parser, int min_prec);
+Node* parse_unary(Parser& parser);
 Node* parse_postfix(Parser& parser, Node* base);
 Node* parse_primary(Parser& parser);
 

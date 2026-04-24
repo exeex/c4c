@@ -873,7 +873,7 @@ Node* Parser::parse_stmt() {
             } else if (check(TokenKind::Star)) {
                 // computed goto: goto *expr;
                 consume();
-                Node* target = parse_unary();
+                Node* target = parse_unary(*this);
                 match(TokenKind::Semi);
                 Node* n = make_node(NK_GOTO, ln);
                 n->name = "__computed__";

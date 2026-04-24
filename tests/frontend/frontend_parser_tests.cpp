@@ -1,4 +1,5 @@
 #include "lexer.hpp"
+#include "impl/parser_impl.hpp"
 #include "parser.hpp"
 
 #include <cstdlib>
@@ -729,7 +730,7 @@ void test_parser_local_visible_typedef_cast_uses_scope_lookup() {
   });
   parser.clear_last_resolved_typedef();
 
-  c4c::Node* expr = parser.parse_unary();
+  c4c::Node* expr = c4c::parse_unary(parser);
 
   expect_true(expr != nullptr && expr->kind == c4c::NK_CAST,
               "local visible typedef casts should parse through the scope-local typedef facade");

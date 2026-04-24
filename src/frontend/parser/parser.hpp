@@ -670,9 +670,6 @@ class Parser {
                                  std::string* saved_struct_tag,
                                  std::string* struct_source_name);
 
-  // ── expression parsing (Pratt) ────────────────────────────────────────────
-  Node* parse_unary();           // prefix unary
-
   // ── statement parsing ─────────────────────────────────────────────────────
   Node* parse_stmt();
 

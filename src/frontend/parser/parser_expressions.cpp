@@ -140,7 +140,7 @@ Node* parse_ternary(Parser& parser) {
 }
 
 Node* parse_binary(Parser& parser, int min_prec) {
-    Node* lhs = parser.parse_unary();
+    Node* lhs = parse_unary(parser);
     while (true) {
         if (parser.active_context_state_.template_arg_expr_depth > 0 &&
             parser.check_template_close())
@@ -206,116 +206,116 @@ Node* parse_sizeof_pack_expr(Parser& parser, int ln) {
     return n;
 }
 
-Node* Parser::parse_unary() {
-    ParseContextGuard trace(this, __func__);
-    int ln = cur().line;
-    switch (cur().kind) {
+Node* parse_unary(Parser& parser) {
+    Parser::ParseContextGuard trace(&parser, __func__);
+    int ln = parser.cur().line;
+    switch (parser.cur().kind) {
         case TokenKind::Bang: {
-            consume();
-            Node* operand = parse_unary();
-            return make_unary("!", operand, ln);
+            parser.consume();
+            Node* operand = parse_unary(parser);
+            return parser.make_unary("!", operand, ln);
         }
         case TokenKind::Tilde: {
-            consume();
-            Node* operand = parse_unary();
-            return make_unary("~", operand, ln);
+            parser.consume();
+            Node* operand = parse_unary(parser);
+            return parser.make_unary("~", operand, ln);
         }
         case TokenKind::Minus: {
-            consume();
-            Node* operand = parse_unary();
-            return make_unary("-", operand, ln);
+            parser.consume();
+            Node* operand = parse_unary(parser);
+            return parser.make_unary("-", operand, ln);
         }
         case TokenKind::Plus: {
-            consume();
-            Node* operand = parse_unary();
-            return make_unary("+", operand, ln);
+            parser.consume();
+            Node* operand = parse_unary(parser);
+            return parser.make_unary("+", operand, ln);
         }
         case TokenKind::PlusPlus: {
-            consume();
-            Node* operand = parse_unary();
-            return make_unary("++pre", operand, ln);
+            parser.consume();
+            Node* operand = parse_unary(parser);
+            return parser.make_unary("++pre", operand, ln);
         }
         case TokenKind::MinusMinus: {
-            consume();
-            Node* operand = parse_unary();
-            return make_unary("--pre", operand, ln);
+            parser.consume();
+            Node* operand = parse_unary(parser);
+            return parser.make_unary("--pre", operand, ln);
         }
         case TokenKind::AmpAmp: {
             // GCC label-address: &&label_name  (computed goto extension)
-            consume();
-            if (check(TokenKind::Identifier)) {
+            parser.consume();
+            if (parser.check(TokenKind::Identifier)) {
                 // Emit as a null void* placeholder; computed goto not fully supported
                 const char* lbl_name =
-                    arena_.strdup(std::string(token_spelling(cur())));
-                consume();
-                Node* n = make_node(NK_INT_LIT, ln);
+                    parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
+                parser.consume();
+                Node* n = parser.make_node(NK_INT_LIT, ln);
                 n->ival = 0;
                 n->name = lbl_name;  // store label name for future use
                 return n;
             }
             // Fall back: treat as bitwise AND of two address-of
-            Node* operand = parse_unary();
-            Node* addr = make_node(NK_ADDR, ln);
+            Node* operand = parse_unary(parser);
+            Node* addr = parser.make_node(NK_ADDR, ln);
             addr->left = operand;
-            Node* addr2 = make_node(NK_ADDR, ln);
+            Node* addr2 = parser.make_node(NK_ADDR, ln);
             addr2->left = addr;
             return addr2;
         }
         case TokenKind::Amp: {
-            consume();
-            Node* operand = parse_unary();
-            Node* n = make_node(NK_ADDR, ln);
+            parser.consume();
+            Node* operand = parse_unary(parser);
+            Node* n = parser.make_node(NK_ADDR, ln);
             n->left = operand;
             return n;
         }
         case TokenKind::Star: {
-            consume();
-            Node* operand = parse_unary();
-            Node* n = make_node(NK_DEREF, ln);
+            parser.consume();
+            Node* operand = parse_unary(parser);
+            Node* n = parser.make_node(NK_DEREF, ln);
             n->left = operand;
             return n;
         }
         case TokenKind::KwDelete: {
             // C++ delete / delete[] expression.
-            consume();  // consume 'delete'
+            parser.consume();  // consume 'delete'
             bool is_array = false;
-            if (check(TokenKind::LBracket) &&
-                core_input_state_.pos + 1 <
-                    static_cast<int>(core_input_state_.tokens.size()) &&
-                core_input_state_.tokens[core_input_state_.pos + 1].kind ==
+            if (parser.check(TokenKind::LBracket) &&
+                parser.core_input_state_.pos + 1 <
+                    static_cast<int>(parser.core_input_state_.tokens.size()) &&
+                parser.core_input_state_.tokens[parser.core_input_state_.pos + 1].kind ==
                     TokenKind::RBracket) {
-                consume();  // '['
-                consume();  // ']'
+                parser.consume();  // '['
+                parser.consume();  // ']'
                 is_array = true;
             }
-            Node* operand = parse_unary();
-            Node* n = make_node(NK_DELETE_EXPR, ln);
+            Node* operand = parse_unary(parser);
+            Node* n = parser.make_node(NK_DELETE_EXPR, ln);
             n->left = operand;
             n->ival = is_array ? 1 : 0;
             return n;
         }
         case TokenKind::KwNew: {
             // C++ new expression: new T, new T(args), new T[n]
-            return parse_new_expr(*this, ln, false /*not global-qualified*/);
+            return parse_new_expr(parser, ln, false /*not global-qualified*/);
         }
         case TokenKind::KwSizeof: {
-            consume();
-            if (is_cpp_mode() && check(TokenKind::Ellipsis)) {
-                return parse_sizeof_pack_expr(*this, ln);
+            parser.consume();
+            if (parser.is_cpp_mode() && parser.check(TokenKind::Ellipsis)) {
+                return parse_sizeof_pack_expr(parser, ln);
             }
-            if (check(TokenKind::LParen)) {
+            if (parser.check(TokenKind::LParen)) {
                 // Could be sizeof(type) or sizeof(expr)
                 // Disambiguate: if first token inside is a type keyword, it's a type
                 {
-                    TentativeParseGuardLite guard(*this);
-                    consume();  // consume (
-                    if (is_type_start() ||
+                    Parser::TentativeParseGuardLite guard(parser);
+                    parser.consume();  // consume (
+                    if (parser.is_type_start() ||
                         starts_qualified_member_pointer_type_id(
-                            *this, core_input_state_.pos)) {
-                        TypeSpec ts = parse_type_name();
-                        expect(TokenKind::RParen);
+                            parser, parser.core_input_state_.pos)) {
+                        TypeSpec ts = parser.parse_type_name();
+                        parser.expect(TokenKind::RParen);
                         guard.commit();
-                        Node* n = make_node(NK_SIZEOF_TYPE, ln);
+                        Node* n = parser.make_node(NK_SIZEOF_TYPE, ln);
                         n->type = ts;
                         return n;
                     }
@@ -323,83 +323,83 @@ Node* Parser::parse_unary() {
                 }
                 {
                     // Parse as sizeof(expr) — pos_ already restored by guard above
-                    consume();  // consume (
-                    Node* inner = parse_assign_expr(*this);
-                    expect(TokenKind::RParen);
-                    Node* n = make_node(NK_SIZEOF_EXPR, ln);
+                    parser.consume();  // consume (
+                    Node* inner = parse_assign_expr(parser);
+                    parser.expect(TokenKind::RParen);
+                    Node* n = parser.make_node(NK_SIZEOF_EXPR, ln);
                     n->left = inner;
                     return n;
                 }
             } else {
-                Node* inner = parse_unary();
-                Node* n = make_node(NK_SIZEOF_EXPR, ln);
+                Node* inner = parse_unary(parser);
+                Node* n = parser.make_node(NK_SIZEOF_EXPR, ln);
                 n->left = inner;
                 return n;
             }
         }
         case TokenKind::KwNoexcept: {
-            consume();
-            expect(TokenKind::LParen);
-            Node* inner = parse_assign_expr(*this);
-            expect(TokenKind::RParen);
-            return make_unary("noexcept", inner, ln);
+            parser.consume();
+            parser.expect(TokenKind::LParen);
+            Node* inner = parse_assign_expr(parser);
+            parser.expect(TokenKind::RParen);
+            return parser.make_unary("noexcept", inner, ln);
         }
         case TokenKind::KwAlignof:
         case TokenKind::KwGnuAlignof: {
-            consume();
-            expect(TokenKind::LParen);
-            if (is_type_start() ||
+            parser.consume();
+            parser.expect(TokenKind::LParen);
+            if (parser.is_type_start() ||
                 starts_qualified_member_pointer_type_id(
-                    *this, core_input_state_.pos)) {
-                TypeSpec ts = parse_type_name();
-                expect(TokenKind::RParen);
-                Node* n = make_node(NK_ALIGNOF_TYPE, ln);
+                    parser, parser.core_input_state_.pos)) {
+                TypeSpec ts = parser.parse_type_name();
+                parser.expect(TokenKind::RParen);
+                Node* n = parser.make_node(NK_ALIGNOF_TYPE, ln);
                 n->type = ts;
                 return n;
             } else {
-                Node* inner = parse_assign_expr(*this);
-                expect(TokenKind::RParen);
-                Node* n = make_node(NK_ALIGNOF_EXPR, ln);
+                Node* inner = parse_assign_expr(parser);
+                parser.expect(TokenKind::RParen);
+                Node* n = parser.make_node(NK_ALIGNOF_EXPR, ln);
                 n->left = inner;
                 return n;
             }
         }
         case TokenKind::KwBuiltinVaArg: {
             // __builtin_va_arg(ap, type)
-            consume();
-            expect(TokenKind::LParen);
-            Node* ap = parse_assign_expr(*this);
-            expect(TokenKind::Comma);
-            TypeSpec ts = parse_type_name();
-            expect(TokenKind::RParen);
-            Node* n = make_node(NK_VA_ARG, ln);
+            parser.consume();
+            parser.expect(TokenKind::LParen);
+            Node* ap = parse_assign_expr(parser);
+            parser.expect(TokenKind::Comma);
+            TypeSpec ts = parser.parse_type_name();
+            parser.expect(TokenKind::RParen);
+            Node* n = parser.make_node(NK_VA_ARG, ln);
             n->left = ap;
             n->type = ts;
             return n;
         }
         case TokenKind::KwExtension: {
             // GNU __extension__: suppress extension warnings, semantically transparent.
-            consume();
-            return parse_unary();
+            parser.consume();
+            return parse_unary(parser);
         }
         case TokenKind::KwGccReal: {
             // GNU extension: __real__ expr
-            consume();
-            Node* operand = parse_unary();
-            Node* n = make_node(NK_REAL_PART, ln);
+            parser.consume();
+            Node* operand = parse_unary(parser);
+            Node* n = parser.make_node(NK_REAL_PART, ln);
             n->left = operand;
             return n;
         }
         case TokenKind::KwGccImag: {
             // GNU extension: __imag__ expr
-            consume();
-            Node* operand = parse_unary();
-            Node* n = make_node(NK_IMAG_PART, ln);
+            parser.consume();
+            Node* operand = parse_unary(parser);
+            Node* n = parser.make_node(NK_IMAG_PART, ln);
             n->left = operand;
             return n;
         }
         default:
-            return parse_postfix(*this, parse_primary(*this));
+            return parse_postfix(parser, parse_primary(parser));
     }
 }
 
@@ -1200,7 +1200,7 @@ Node* parse_primary(Parser& parser) {
                     return n;
                 }
                 // Regular cast
-                Node* operand = parser.parse_unary();
+                Node* operand = parse_unary(parser);
                 Node* n = parser.make_node(NK_CAST, ln);
                 n->type = cast_ts;
                 n->left = operand;
