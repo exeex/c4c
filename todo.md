@@ -1,42 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/92_parser_agent_index_header_hierarchy.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Move Type Parsing Helpers Under `impl/types/`
+Current Step ID: 5
+Current Step Title: Retarget External Include Sites And Remove Bridges
 
 # Current Packet
 
 ## Just Finished
 
-- Completed plan Step 4 by moving the parser type-helper implementation body
-  from `src/frontend/parser/types_helpers.hpp` to
-  `src/frontend/parser/impl/types/types_helpers.hpp`.
-- Retargeted frontend parser implementation include sites in
-  `parser_declarations.cpp`, `parser_expressions.cpp`,
-  `parser_statements.cpp`, `parser_types_base.cpp`,
-  `parser_types_declarator.cpp`, `parser_types_struct.cpp`, and
-  `parser_types_template.cpp` to include the private helper path directly.
-- Kept `src/frontend/parser/types_helpers.hpp` as a thin compatibility bridge
-  that includes `impl/types/types_helpers.hpp`; current parser implementation
-  users no longer include the top-level bridge directly.
-- Did not add `src/frontend/parser/impl/types/types.hpp`; the moved helper did
-  not need a private type-helper index for this packet.
+- Completed plan Step 5 by removing the now-unused top-level private
+  compatibility bridges `src/frontend/parser/parser_state.hpp` and
+  `src/frontend/parser/types_helpers.hpp`.
+- Confirmed `rg` include-site checks find no remaining external or parser
+  implementation includes of those top-level bridge paths.
+- Confirmed external app, HIR, and frontend test callers still include the
+  public parser surface through `parser.hpp`; no external include retargeting
+  was required.
+- Confirmed frontend parser implementation files include the private
+  implementation index `impl/parser_impl.hpp`, and type parser implementation
+  files include `impl/types/types_helpers.hpp` directly.
 
 ## Suggested Next
 
-- Next coherent movement boundary: Step 5 should remove or retire now-unused
-  top-level compatibility bridges after confirming no public or external
-  include sites still depend on `parser_state.hpp` or `types_helpers.hpp`.
+- Next coherent movement boundary: supervisor should review the completed
+  header-hierarchy runbook state and decide whether to route lifecycle closure
+  to the plan owner.
 
 ## Watchouts
 
-- Both top-level bridges, `parser_state.hpp` and `types_helpers.hpp`, appear
-  unused by current frontend parser implementation include sites after this
-  packet, but they were intentionally preserved for incremental compatibility.
-- The moved type helper is still an implementation-only include file with
-  anonymous-namespace/static helpers copied per translation unit; the move did
-  not change that linkage model.
-- Backend assembler local `parser.hpp` files were not touched.
+- No bridge had to remain: `parser_state.hpp` and `types_helpers.hpp` only
+  appeared as the deleted bridge files themselves before removal.
+- `parser.hpp` still includes `impl/parser_state.hpp` because the public
+  `Parser` class owns state fields that require those definitions; this packet
+  only removed the unused top-level compatibility bridge.
+- Backend assembler local `parser.hpp` files were not touched and remain
+  unrelated local assembler headers.
+- Closure-readiness hazard: broader lifecycle closure still belongs to the
+  supervisor and plan owner; this packet only proves the delegated
+  `frontend_parser_tests` subset.
 
 ## Proof
 
