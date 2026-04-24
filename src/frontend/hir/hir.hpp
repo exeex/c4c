@@ -15,7 +15,7 @@
 //
 // Implementation map:
 // - hir.cpp: facade entry point and pipeline-stage coordination
-// - hir_lowering.hpp + hir_lowerer_internal.hpp: shared lowering surfaces
+// - impl/hir_impl.hpp + impl/lowerer.hpp: private HIR lowering internals
 // - compile_time_engine.{hpp,cpp}: deferred compile-time fixpoint execution
 // - hir_printer.{hpp,cpp}: textual summaries and debug printing
 

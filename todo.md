@@ -8,31 +8,26 @@ Current Step Title: Create Private HIR Implementation Boundary
 
 ## Just Finished
 
-Step 2 - Create Private HIR Implementation Boundary completed the private
-Lowerer engine index slice.
+Step 2 - Create Private HIR Implementation Boundary is closed for the
+top-level private HIR compatibility shim cleanup.
 
-- Added `src/frontend/hir/impl/lowerer.hpp` with the implementation-only
-  `Lowerer` declarations and helper declarations that had lived in
-  `hir_lowerer_internal.hpp`.
-- Reduced `src/frontend/hir/hir_lowerer_internal.hpp` to a transitional shim
-  that includes the private Lowerer index.
-- Retargeted HIR implementation `.cpp` files that directly included
-  `hir_lowerer_internal.hpp` to include `impl/lowerer.hpp`.
-- Verified no direct `#include "hir_lowerer_internal.hpp"` sites remain under
-  `src/frontend/hir/`.
-- Tightened `impl/lowerer.hpp` to include `hir_impl.hpp` directly and to use
-  explicit relative includes for HIR-adjacent utility headers.
+- Verified there are no active `#include` users of `hir_lowering.hpp` or
+  `hir_lowerer_internal.hpp` under the repo.
+- Removed `src/frontend/hir/hir_lowering.hpp` and
+  `src/frontend/hir/hir_lowerer_internal.hpp`.
+- Updated active HIR source comments to name `impl/hir_impl.hpp` and
+  `impl/lowerer.hpp` as the private lowering boundary.
 
 ## Suggested Next
 
-Next Step 2 closure packet: decide whether the transitional shims
-`hir_lowering.hpp` and `hir_lowerer_internal.hpp` should stay for compatibility
-through this plan or be removed after any remaining include-boundary review.
+Next Step 3 packet: add the expression and statement subdomain indexes, moving
+shared expression/statement lowering declarations behind private implementation
+headers without widening into parser or backend/codegen work.
 
 ## Watchouts
 
-- `hir_lowerer_internal.hpp` is now only a compatibility shim; new HIR
-  implementation code should include `impl/lowerer.hpp` for Lowerer internals.
+- The top-level private compatibility shims are gone; new HIR implementation
+  code should include `impl/hir_impl.hpp` or `impl/lowerer.hpp` directly.
 - `impl/lowerer.hpp` lives one directory deeper, so private/header utility
   includes should stay explicit relative paths from `hir/impl/`.
 - Keep parser follow-up work from
@@ -42,5 +37,5 @@ through this plan or be removed after any remaining include-boundary review.
 
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^cpp_hir_'; } > test_after.log 2>&1`
 
-Result: passed after the Step 2 private Lowerer engine index slice. HIR subset
-proof passed 71/71 `cpp_hir_*` tests. Proof log: `test_after.log`.
+Result: passed for the Step 2 shim-removal cleanup. Build completed and HIR
+subset proof passed 71/71 `cpp_hir_*` tests. Proof log: `test_after.log`.

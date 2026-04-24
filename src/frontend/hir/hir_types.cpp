@@ -4,7 +4,7 @@
 //
 // Omitted for now: the template / program coordinator paths. Those stay in
 // hir_lowering_core.cpp until the shared Lowerer declaration surface is hoisted into
-// hir_lowering.hpp.
+// impl/lowerer.hpp.
 
 #include "impl/hir_impl.hpp"
 #include "impl/lowerer.hpp"
