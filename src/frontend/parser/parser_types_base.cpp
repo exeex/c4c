@@ -1979,26 +1979,8 @@ TypeSpec Parser::parse_base_type() {
                                         std::vector<std::pair<std::string, long long>>
                                             nttp_bindings;
                                         const std::vector<Node*>* specializations =
-                                            owner_lookup_qn_ptr
-                                                ? find_template_struct_specializations(
-                                                      *owner_lookup_qn_ptr,
-                                                      primary_tpl)
-                                                : find_template_struct_specializations(
-                                                      current_namespace_context_id(),
-                                                      find_parser_text_id(
-                                                          owner_lookup_name),
-                                                      owner_lookup_name,
-                                                      primary_tpl);
-                                        if (!specializations &&
-                                            !resolved_owner.empty() &&
-                                            resolved_owner != owner_lookup_name) {
-                                            specializations =
-                                                find_template_struct_specializations(
-                                                    current_namespace_context_id(),
-                                                    find_parser_text_id(
-                                                        resolved_owner),
-                                                    resolved_owner, primary_tpl);
-                                        }
+                                            find_template_struct_specializations(
+                                                primary_tpl);
                                         const Node* selected =
                                             select_template_struct_pattern_for_args(
                                                 actual_args, primary_tpl,

@@ -6,10 +6,10 @@ Current Step Title: Retarget template-struct specialization lookup to the same s
 
 # Current Packet
 ## Just Finished
-Step 3 cleaned up `parser_types_template.cpp::ensure_template_struct_instantiated_from_args(...)` so specialization pattern selection now calls `find_template_struct_specializations(primary_tpl)` when `primary_tpl` is already available. This moves that caller onto the primary-node identity path while preserving the existing `template_name` spelling for mangling and injected-parse instantiation.
+Step 3 completed the remaining `parser_types_base.cpp` transformed-owner caller cleanup: specialization pattern selection now calls `find_template_struct_specializations(primary_tpl)` after the transformed owner has resolved its primary template node, instead of probing by rendered owner spelling or qualified-owner spelling. The visible Step 3 caller cleanup is complete.
 
 ## Suggested Next
-Complete the remaining Step 3 caller cleanup in `parser_types_base.cpp` by replacing the transformed-owner fallback specialization probes that still have a `primary_tpl` with `find_template_struct_specializations(primary_tpl)` or equivalent primary-node identity lookup, leaving `QualifiedNameRef` callers intact.
+Move to Step 4 and inspect whether `instantiated_template_struct_keys`, `make_template_struct_instance_key(...)`, or transformed-owner instantiation decisions still use rendered names as lookup authority when a primary template node or structured identity is already available.
 
 ## Watchouts
 - Keep the scope inside parser alias/template identity.
@@ -20,6 +20,7 @@ Complete the remaining Step 3 caller cleanup in `parser_types_base.cpp` by repla
 - `find_template_struct_specializations(primary_tpl)` still falls through the shared context/`TextId`/fallback helper, so this cleanup should not remove compatibility behavior.
 - Do not migrate the `types_helpers.hpp` qualified-type probe away from `QualifiedNameRef`; it has no primary node and is already the structured source available at that point.
 - `instantiated_template_struct_keys` is string-shaped by design today; Step 4 should decide whether it remains an emitted-artifact guard or needs a structured primary component.
+- Step 3 specialization selection call sites now visibly use primary-node lookup when `primary_tpl` is available in `parser_types_base.cpp` and `parser_types_template.cpp`; keep any future `QualifiedNameRef` specialization callers only where no primary node exists.
 
 ## Proof
 Ran delegated proof:
