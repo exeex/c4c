@@ -1851,21 +1851,22 @@ bool try_parse_record_body_member(
     }
 }
 
-void Parser::begin_record_body_context(const char* tag,
-                                       const char* template_origin_name,
-                                       std::string* saved_struct_tag,
-                                       std::string* struct_source_name) {
+void begin_record_body_context(Parser& parser,
+                               const char* tag,
+                               const char* template_origin_name,
+                               std::string* saved_struct_tag,
+                               std::string* struct_source_name) {
     // Make the current record name available for self-type parsing within the
     // body before member dispatch starts.
-    if (is_cpp_mode() && tag && tag[0])
-        register_typedef_name(tag, false);
+    if (parser.is_cpp_mode() && tag && tag[0])
+        parser.register_typedef_name(tag, false);
 
     if (saved_struct_tag)
-        *saved_struct_tag = active_context_state_.current_struct_tag;
+        *saved_struct_tag = parser.active_context_state_.current_struct_tag;
     if (tag && tag[0]) {
-        set_current_struct_tag(tag);
+        parser.set_current_struct_tag(tag);
     } else {
-        clear_current_struct_tag();
+        parser.clear_current_struct_tag();
     }
 
     if (struct_source_name)
@@ -1875,16 +1876,16 @@ void Parser::begin_record_body_context(const char* tag,
 
     if (struct_source_name)
         *struct_source_name = template_origin_name;
-    if (!is_cpp_mode())
+    if (!parser.is_cpp_mode())
         return;
 
-    register_typedef_name(template_origin_name, false);
+    parser.register_typedef_name(template_origin_name, false);
     const bool has_existing_template_origin_type =
         std::strstr(template_origin_name, "::") == nullptr
-            ? has_visible_typedef_type(template_origin_name)
-            : has_typedef_type(template_origin_name);
+            ? parser.has_visible_typedef_type(template_origin_name)
+            : parser.has_typedef_type(template_origin_name);
     if (!has_existing_template_origin_type) {
-        register_tag_type_binding(template_origin_name, TB_STRUCT, tag);
+        parser.register_tag_type_binding(template_origin_name, TB_STRUCT, tag);
     }
 }
 
@@ -1917,8 +1918,8 @@ void parse_record_body_with_context(
     std::string saved_struct_tag =
         parser.active_context_state_.current_struct_tag;
     std::string struct_source_name;
-    parser.begin_record_body_context(tag, template_origin_name,
-                                     &saved_struct_tag, &struct_source_name);
+    begin_record_body_context(parser, tag, template_origin_name,
+                              &saved_struct_tag, &struct_source_name);
     parse_record_body(parser, struct_source_name, body_state);
     finish_record_body_context(parser, saved_struct_tag);
     restore_current_struct_tag(parser, saved_struct_tag_text_id,

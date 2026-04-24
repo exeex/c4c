@@ -889,8 +889,8 @@ void test_parser_record_body_context_keeps_visible_template_origin_lookup_local(
 
   std::string saved_struct_tag;
   std::string struct_source_name;
-  parser.begin_record_body_context("Widget", "Alias", &saved_struct_tag,
-                                   &struct_source_name);
+  c4c::begin_record_body_context(parser, "Widget", "Alias", &saved_struct_tag,
+                                 &struct_source_name);
 
   expect_eq(struct_source_name, "Alias",
             "record body setup should preserve the template origin spelling");

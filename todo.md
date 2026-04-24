@@ -8,15 +8,13 @@ Current Step Title: Retarget Callers And Test Hooks
 
 ## Just Finished
 
-Completed Step 4 test-hook isolation slice by removing the test-only
-`Parser::consume_declarator_post_pointer_qualifiers` and
-`Parser::parse_qualified_declarator_name` declarator hooks from public `Parser`
-declarations in `src/frontend/parser/parser.hpp`, adding equivalent
-private-boundary `Parser&` helper declarations to
-`src/frontend/parser/impl/parser_impl.hpp`, converting the implementations in
-`src/frontend/parser/parser_types_declarator.cpp` to private helper form, and
-retargeting parser implementation plus frontend parser test callers to pass the
-parser explicitly.
+Completed Step 4 record-body test-hook isolation slice by removing the
+test-only `Parser::begin_record_body_context` declaration from public
+`src/frontend/parser/parser.hpp`, adding the equivalent explicit `Parser&`
+helper declaration to `src/frontend/parser/impl/parser_impl.hpp`, converting
+the implementation in `src/frontend/parser/parser_types_struct.cpp` to the
+private-boundary helper form, and retargeting parser implementation plus
+frontend parser test callers to pass the parser explicitly.
 
 ## Suggested Next
 
@@ -37,13 +35,13 @@ owner handling.
 - Keep any test-only hooks clearly named and isolated.
 - `tests/frontend/frontend_parser_tests.cpp` now explicitly includes
   `impl/parser_impl.hpp` for private parser test hooks.
-- Current source search found no remaining `Parser::consume_declarator_post_pointer_qualifiers`
-  or `Parser::parse_qualified_declarator_name` declaration or direct member call
-  in the owned parser implementation/test files.
+- Current source search found no remaining `Parser::begin_record_body_context`
+  declaration or direct member call in the owned parser implementation/test
+  files.
 
 ## Proof
 
-Executor Step 4 focused proof passed for the declarator test-hook isolation
+Executor Step 4 focused proof passed for the record-body test-hook isolation
 slice:
 `{ cmake --build build -j --target c4c_frontend c4cll && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'; } > test_after.log 2>&1`
 

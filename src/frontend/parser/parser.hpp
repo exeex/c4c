@@ -659,14 +659,6 @@ class Parser {
                         TextId* out_name_text_id = nullptr);
   bool parse_operator_declarator_name(std::string* out_name);
 
-  // ── record parsing (struct / union) ──────────────────────────────────────
-  // Test-facing record body context hook; implementation-only record helpers
-  // are declared privately in impl/parser_impl.hpp.
-  void begin_record_body_context(const char* tag,
-                                 const char* template_origin_name,
-                                 std::string* saved_struct_tag,
-                                 std::string* struct_source_name);
-
   // ── statement parsing ─────────────────────────────────────────────────────
   Node* parse_stmt();
 

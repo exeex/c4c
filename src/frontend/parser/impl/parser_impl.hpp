@@ -231,6 +231,11 @@ bool try_parse_record_body_member(
     const std::string& struct_source_name,
     Parser::RecordBodyState* body_state,
     const std::function<void(const char*)>& check_dup_field);
+void begin_record_body_context(Parser& parser,
+                               const char* tag,
+                               const char* template_origin_name,
+                               std::string* saved_struct_tag,
+                               std::string* struct_source_name);
 void parse_record_body(Parser& parser,
                        const std::string& struct_source_name,
                        Parser::RecordBodyState* body_state);
