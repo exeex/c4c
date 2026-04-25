@@ -8,32 +8,39 @@ Current Step Title: Route Direct Method And Member Probes Through Helpers
 
 ## Just Finished
 
-Completed `plan.md` Step 3 by routing the direct operator-deref return-type
-probe in `infer_generic_ctrl_type` through
-`find_struct_method_return_type`.
+Completed the accumulated `plan.md` Step 3 helper-routing packets for direct
+method and member probes in `range_for.cpp`, `operator.cpp`, `object.cpp`, and
+the `NK_DEREF` branch in `hir_types.cpp`.
 
-The `NK_DEREF` branch now asks the helper for `operator_deref` with
-`is_const_obj == false`, preserving the previous base-before-const preference
-while leaving pointer and array fallback behavior unchanged.
+The broader HIR checkpoint also passed after those slices:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -L hir > test_after.log`
+reported 73/73 passing.
 
 ## Suggested Next
 
-Supervisor should choose the next packet. This slice leaves helper authority,
-method registration, ref-overload registration, tests, expectations, and the
-rendered maps unchanged.
+Supervisor should choose either Step 4 owner-aware record lookup work or plan
+review. Do not send another blind helper-routing packet for the remaining direct
+method-map hits without first narrowing an exact safe target.
 
 ## Watchouts
 
-- The targeted `NK_DEREF` branch no longer directly probes
-  `struct_method_ret_types_`.
-- The helper call intentionally passes `false` to preserve the non-const
-  class-specific lookup route before the `_const` fallback.
-- Pointer and array dereference fallback still runs when no struct
-  `operator_deref` return type is found.
+- Remaining `struct_methods_` and `struct_method_ret_types_` hits are not safe
+  Step 3 conversion targets by default.
+- The remaining hits cover helper internals, method registration,
+  ref-overload registration, and exact out-of-class method attach/skip checks in
+  `hir_build.cpp`.
+- Those registration and attach/skip paths require exact rendered keys, while
+  `find_struct_method_mangled` can fall back between const/non-const variants
+  and inherited bases.
 
 ## Proof
 
 Passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'cpp_(positive_sema_operator_deref|hir_expr_operator_member_helper)' > test_after.log`
+`git diff --check`
 
-Proof log: `test_after.log`.
+Previously recorded broader HIR checkpoint:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -L hir > test_after.log`
+passed 73/73.
+
+Proof log: metadata-only packet, no new `test_after.log` generated; broader
+checkpoint log path remains `test_after.log`.
