@@ -254,18 +254,49 @@ Completion check:
 - Supervisor has enough evidence to decide whether fallback demotion is safe
   or should remain parked.
 
-### Step 9: Demote legacy fallback only after approval
+### Step 9: Audit and remediate legacy fallback readiness
 
-Goal: shift semantic lookup authority away from rendered fallback only if the
-Step 8 evidence supports it.
+Goal: enumerate remaining legacy-rendered hits and metadata gaps before any
+fallback demotion is considered.
+
+Primary target: module function/global lookup proof output, declaration
+metadata propagation, and narrow HIR fixtures that exercise remaining
+legacy-rendered paths.
+
+Actions:
+
+- Use the accepted Step 8 authority proof to enumerate every remaining
+  legacy-rendered module function/global hit in focused coverage.
+- Classify each legacy hit as expected compatibility behavior, missing
+  declaration metadata, incomplete qualifier metadata, or another concrete
+  migration gap.
+- Remediate narrow metadata gaps only when existing AST/HIR metadata already
+  supports a behavior-preserving structured key.
+- Preserve legacy rendered fallback for cases that still lack complete
+  structured metadata or intentionally require rendered/link identity.
+- Do not change fallback precedence or remove rendered lookup in this step.
+- Record any remaining demotion blockers in `todo.md` for supervisor review.
+
+Completion check:
+
+- Focused proof identifies remaining legacy-rendered hits and metadata gaps.
+- Remediated cases move to structured lookup without behavior changes.
+- Remaining fallback users are explicitly classified.
+- Supervisor has enough evidence to approve, narrow, or reject any later
+  fallback demotion packet.
+
+### Step 10: Demote legacy fallback only after explicit approval
+
+Goal: shift semantic lookup authority away from rendered fallback only if
+Step 9 audit/remediation proves the remaining surface is safe.
 
 Primary target: lookup helper precedence and migration notes.
 
 Actions:
 
-- Review Step 8 proof results with the supervisor before changing fallback
-  authority.
-- Demote rendered fallback only if regression stability is approved.
+- Require explicit supervisor approval before changing fallback authority.
+- Demote rendered fallback only if Step 9 evidence and regression stability are
+  approved.
 - Keep rendered names and link IDs for codegen, diagnostics, and ABI/link
   output even if semantic lookup authority shifts.
 - If proof is incomplete or ambiguous, leave demotion parked for a later idea
@@ -273,7 +304,7 @@ Actions:
 
 Completion check:
 
-- Supervisor approves fallback demotion or explicitly leaves it parked.
+- Supervisor explicitly approves fallback demotion or leaves it parked.
 - Rendered-name preservation remains explicit.
 
 ## Acceptance Criteria

@@ -1,27 +1,24 @@
 Status: Active
 Source Idea Path: ideas/open/99_hir_module_symbol_structured_lookup_mirror.md
 Source Plan Path: plan.md
-Current Step ID: 8
-Current Step Title: Add targeted lookup proof/instrumentation
+Current Step ID: 9
+Current Step Title: Audit and remediate legacy fallback readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 8: Add targeted lookup proof/instrumentation. Added module declaration
-lookup hit instrumentation that records resolver hits by authority without
-changing precedence: structured, legacy rendered, concrete global-ID, and
-`LinkNameId`. The HIR dump now prints focused lookup-hit evidence and annotates
-qualified module refs with concrete/link authority, and a frontend-only HIR
-lookup unit test now directly exercises structured, legacy-rendered,
-concrete global-ID, and `LinkNameId` resolver hits while preserving the
-existing parity mismatch section and rendered fallback behavior.
+Step 8: Add targeted lookup proof/instrumentation. Reviewer accepted the Step 8
+proof as aligned and non-overfit: authority classification now distinguishes
+structured, legacy rendered, concrete global-ID, and `LinkNameId` module
+function/global hits without changing resolver precedence.
 
 ## Suggested Next
 
-Supervisor review/route decision for the next coherent packet after Step 8.
-Do not start fallback demotion unless the supervisor explicitly delegates the
-Step 9 demotion slice.
+Step 9: Audit and remediate legacy fallback readiness. Enumerate remaining
+legacy-rendered hits and declaration/qualifier metadata gaps, remediate narrow
+behavior-preserving metadata gaps where existing AST/HIR metadata is already
+available, and leave fallback precedence unchanged.
 
 ## Watchouts
 
@@ -44,6 +41,12 @@ Step 9 demotion slice.
 - Step 8 now explicitly proves legacy-rendered lookup hits with a direct
   frontend-only HIR `Module` resolver test, alongside structured,
   concrete global-ID, and `LinkNameId` hit coverage.
+- Reviewer recommendation from
+  `review/99_step8_lookup_authority_proof_review.md`: keep direct fallback
+  demotion parked. Step 9 should begin as an audit/remediation readiness
+  packet that enumerates remaining legacy-rendered hits and metadata gaps.
+- Do not change fallback precedence, remove rendered lookup, or start Step 10
+  demotion without explicit supervisor approval.
 - Do not broaden into struct/type, member/method, parser, or unrelated sema
   rewrites.
 - Do not downgrade expectations or add testcase-shaped shortcuts.
