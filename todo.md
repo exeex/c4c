@@ -8,40 +8,36 @@ Current Step Title: Route Direct Method And Member Probes Through Helpers
 
 ## Just Finished
 
-Completed `plan.md` Step 3 by routing direct operator-expression struct method
-probes in `src/frontend/hir/impl/expr/operator.cpp` through the existing helper
-APIs.
+Completed `plan.md` Step 3 by routing direct class-specific new/delete struct
+method probes in `src/frontend/hir/impl/expr/object.cpp` through
+`find_struct_method_mangled`.
 
-The `operator_arrow` chaining loop now uses `find_struct_method_mangled` for
-method lookup and `find_struct_method_return_type` for rendered return-type
-fallbacks, while preserving the existing `find_function_by_name_legacy`
-return-type lookup first. The chain keeps const-first method lookup only when
-the receiver result type is const, and keeps base-before-const return metadata
-fallback order.
+`lower_new_expr` now uses the helper for `operator_new` and
+`operator_new_array` lookup with `is_const_obj == false`, while preserving the
+global operator fallback when no class-specific method is found.
 
-`maybe_bool_convert` now uses `find_struct_method_mangled` for `operator_bool`
-lookup while preserving the old base-before-const preference.
+`lower_delete_expr` now uses the helper for `operator_delete` and
+`operator_delete_array` lookup with `is_const_obj == false`, while preserving
+the global operator fallback when no class-specific method is found.
 
 ## Suggested Next
 
 Supervisor should choose the next packet. This slice leaves helper authority and
-the rendered maps unchanged; it only makes the operator-expression paths
-exercise the parity-recording helper APIs.
+the rendered maps unchanged; it only makes the object-expression class-specific
+new/delete paths exercise the parity-recording helper API.
 
 ## Watchouts
 
-- `src/frontend/hir/impl/expr/operator.cpp` no longer directly probes
-  `struct_methods_` or `struct_method_ret_types_`.
-- The `operator_arrow` method helper call intentionally passes `rts.is_const`
-  to preserve const-object lookup preference.
-- The `operator_arrow` return-type helper call intentionally passes `false` to
-  preserve the prior base-return-metadata-first lookup order.
-- The `operator_bool` helper call intentionally passes `false` to preserve the
-  prior base-method-first lookup order.
+- `src/frontend/hir/impl/expr/object.cpp` no longer directly probes
+  `struct_methods_`.
+- The new/delete helper calls intentionally pass `false` to preserve the
+  non-const class-specific lookup route requested by the packet.
+- Fallback to the global operator names remains controlled by an empty
+  `op_fn`, as before.
 
 ## Proof
 
 Passed:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'cpp_(positive_sema_operator_(arrow|bool)|hir_expr_operator_member_helper)' > test_after.log`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'cpp_(positive_sema_(class_specific_new_delete|operator_new_delete|new_delete_side_effect)|hir_expr_object_materialization_helper)' > test_after.log`
 
 Proof log: `test_after.log`.

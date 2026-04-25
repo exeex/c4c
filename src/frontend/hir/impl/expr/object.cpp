@@ -634,10 +634,10 @@ ExprId Lowerer::lower_new_expr(FunctionCtx* ctx, const Node* n) {
   std::string op_fn;
   bool is_class_specific = false;
   if (!n->is_global_qualified && alloc_ts.base == TB_STRUCT && alloc_ts.tag) {
-    std::string class_key = std::string(alloc_ts.tag) + "::";
-    class_key += is_array ? "operator_new_array" : "operator_new";
-    if (struct_methods_.count(class_key)) {
-      op_fn = struct_methods_[class_key];
+    const char* method_name = is_array ? "operator_new_array" : "operator_new";
+    if (auto method =
+            find_struct_method_mangled(alloc_ts.tag, method_name, false)) {
+      op_fn = *method;
       is_class_specific = true;
     }
   }
@@ -734,10 +734,11 @@ ExprId Lowerer::lower_delete_expr(FunctionCtx* ctx, const Node* n) {
   std::string op_fn;
   bool is_class_specific = false;
   if (operand_ts.base == TB_STRUCT && operand_ts.tag && operand_ts.ptr_level > 0) {
-    std::string class_key = std::string(operand_ts.tag) + "::";
-    class_key += is_array ? "operator_delete_array" : "operator_delete";
-    if (struct_methods_.count(class_key)) {
-      op_fn = struct_methods_[class_key];
+    const char* method_name =
+        is_array ? "operator_delete_array" : "operator_delete";
+    if (auto method =
+            find_struct_method_mangled(operand_ts.tag, method_name, false)) {
+      op_fn = *method;
       is_class_specific = true;
     }
   }
