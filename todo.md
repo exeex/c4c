@@ -1,27 +1,31 @@
 Status: Active
 Source Idea Path: ideas/open/102_hir_struct_method_member_identity_dual_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Add Structured Mirrors for Member and Static-Member Lookup
+Current Step ID: 6
+Current Step Title: Run Parity and Baseline Validation
 
 # Current Packet
 
 ## Just Finished
 
-Completed the Step 5 parity-only structured dual-read slice for member and static-member lookup helpers.
+Completed Step 6 validation recording for the structured record-owner migration completed so far.
 
-Added local structured-key construction and parity counters for static member declarations, static member const values, and member symbol IDs. `find_struct_static_member_decl`, `find_struct_static_member_const_value`, and `find_struct_member_symbol_id` now compare rendered local hits against the structured owner/member mirrors when metadata is available, while still returning the same rendered/local-or-base-recursive result as before.
+The focused HIR proof passes with 73/73 HIR-labeled tests passing in `test_after.log`. The accepted supervisor-provided full-suite baseline evidence in `test_baseline.log` is commit `b9d55400bd518d2461f0eb787450d9f699252b18` (`Add struct member owner parity probes`) with 2976/2976 tests passing.
+
+No expectation downgrades are present in the current diff, and no code, tests, or expectation files were edited by this validation packet. Rendered output spelling, legacy rendered-name fallback reads, and codegen-facing output paths remain retained; the structured maps are still parity/semantic lookup mirrors rather than output spelling replacements.
 
 ## Suggested Next
 
-Step 5 appears ready to move to Step 6 from this executor slice; no remaining base/static parity work was identified inside the delegated scope.
+Step 6 appears complete from this validation packet. Suggested next owner action is supervisor/plan-owner handling to decide whether to close, deactivate, or split the active lifecycle state rather than editing `plan.md` from this executor packet.
 
 ## Watchouts
 
-Parity is recorded only on rendered local hits, matching the existing method parity pattern. Base-class recursion is unchanged, so inherited hits still record parity in the recursive base-tag call. Structured maps remain observational and do not affect `MemberExpr::resolved_owner_tag` spelling, rendered map writes, or codegen behavior.
+Follow-up legacy API demotion candidates, if authorized by a separate idea, are the rendered-owner lookup APIs/maps now covered by structured parity for struct definitions, methods, members, static member declarations, and static member const values. Do not demote or delete them in this runbook; `plan.md` requires legacy APIs to remain available until explicit follow-up authorization.
 
 ## Proof
 
 Ran exactly `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -L hir) > test_after.log 2>&1`.
 
 Result: passed. `test_after.log` reports 73/73 HIR-labeled tests passing.
+
+Accepted full-suite baseline evidence: `test_baseline.log` records commit `b9d55400bd518d2461f0eb787450d9f699252b18` with 2976/2976 tests passing.
