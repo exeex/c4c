@@ -1,6 +1,6 @@
 # HIR Compile-Time Template Consteval Dual Lookup
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
 
@@ -94,3 +94,14 @@ must remain preserved.
   parity proof.
 - Focused HIR compile-time/template/consteval tests pass without weakening
   expectations or adding testcase-shaped shortcuts.
+
+## Closure Note
+
+Closed on 2026-04-25 after the active runbook completed Step 6 broader
+validation and handoff. The implementation added structured mirrors and
+dual-read/dual-write coverage for the source idea's compile-time template,
+template struct, specialization-owner, and consteval registry scope while
+preserving legacy rendered-name fallback paths. Close-time regression guard
+used matching `test_before.log` and `test_after.log` for the broader HIR
+template/consteval subset, both with 174 passed and 0 failed tests, and passed
+with non-decreasing pass-count policy for this behavior-preserving migration.
