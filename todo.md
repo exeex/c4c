@@ -1,31 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/115_hir_to_lir_layout_legacy_decl_demotion.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Demote Const Initializer And Field Lookup Paths
+Current Step ID: Step 5
+Current Step Title: Consolidate Remaining HIR-to-LIR Size And Alignment Consumers
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 accounting/proof completed after the Step 2 helper work:
-const-initializer aggregate lookup no longer selects
-`StructuredLayoutLookup::legacy_decl` as declaration authority. It retains
-`lookup_structured_layout(..., "const-init-aggregate")` for structured/legacy
-observation and parity reporting, then uses the existing `mod_.struct_defs`
-lookup path for declaration identity.
+Step 5 final HIR-to-LIR `legacy_decl` consolidation scan completed after the
+structured size/alignment helper work. Focused reads of every remaining hit
+under `src/codegen/lir/hir_to_lir` found no remaining active semantic
+`legacy_decl` authority bug.
 
-Focused HIR-to-LIR `legacy_decl` scan found no remaining active semantic
-authority in the Step 3 paths. Nested field lookup and aggregate GEP/lvalue
-field-chain paths already use structured identity where available; current
-`legacy_decl` reads are limited to helper parity gates, observation reporting,
-and structured-first fallback behavior.
+Remaining reads classify as:
+- observation/carrier state: `StructuredLayoutLookup::legacy_decl` itself and
+  `record_structured_layout_observation` legacy presence, size, alignment, and
+  field-type reporting
+- helper parity gate: `structured_layout_align_bytes`,
+  `structured_layout_size_bytes`, and `lookup_structured_layout` compare
+  structured declarations against the legacy declaration before trusting
+  derived layout
+- structured-first fallback: module/statement object alignment, variadic
+  aggregate argument payload size, and `va_arg` aggregate payload size all ask
+  the structured helper first, then fall back only when structured coverage is
+  absent, conservative, or parity-rejected
 
 ## Suggested Next
 
-Next coherent packet should move to Step 5 and consolidate any remaining
-selected HIR-to-LIR size/alignment consumers, then classify the final
-`legacy_decl` scan results in `todo.md`.
+Next coherent packet should move to Step 6 acceptance validation for the
+HIR-to-LIR layout demotion route.
 
 ## Watchouts
 
@@ -33,9 +37,12 @@ selected HIR-to-LIR size/alignment consumers, then classify the final
   `StructuredLayoutLookup::legacy_decl`.
 - Do not edit `src/backend/mir/` as part of this route.
 - Do not weaken tests or add testcase-shaped shortcuts.
-- Step 3 was an accounting/proof packet only; no code churn was needed because
-  the reviewed implementation had already demoted const-init authority and the
-  field-chain/GEP paths did not expose active `legacy_decl` authority.
+- Step 5 was scan-only; no code churn was needed because the remaining
+  `legacy_decl` reads are observation, helper parity gates, or structured-first
+  fallbacks.
+- Deferred/out-of-scope coverage remains structured union/member layout
+  derivation and any broader raw LLVM type-text/nested-`LirStructDecl`
+  coverage that would allow fewer conservative helper fallbacks later.
 - `structured_layout_align_bytes` intentionally rejects unions because the
   current structured union mirror is `[N x i8]` and does not encode union
   member alignment.
@@ -47,7 +54,9 @@ selected HIR-to-LIR size/alignment consumers, then classify the final
 
 ## Proof
 
-Passed delegated proof, with output preserved in `test_after.log`:
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|positive_sema_ok_call_variadic_aggregate_runtime_c|cpp_positive_sema_inherited_base_aggregate_init_runtime_cpp|cpp_hir_record_field_array_layout|cpp_hir_record_packed_aligned_layout|abi_)') > test_after.log 2>&1`
+Passed delegated scan-only proof, with output preserved in `test_after.log`:
+`rg -n "legacy_decl" src/codegen/lir/hir_to_lir > test_after.log 2>&1`
 
-Result: build reported no work to do; CTest passed 11/11 tests.
+Result: the scan returned only classified observation, helper parity-gate, and
+structured-first fallback reads. No build was required because this packet made
+no code changes.
