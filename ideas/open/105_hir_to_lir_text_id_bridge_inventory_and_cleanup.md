@@ -6,7 +6,7 @@ Last Updated: 2026-04-25
 
 Parent Ideas:
 - [103_hir_post_dual_path_legacy_readiness_audit.md](/workspaces/c4c/ideas/closed/103_hir_post_dual_path_legacy_readiness_audit.md)
-- [104_hir_safe_legacy_lookup_demotion.md](/workspaces/c4c/ideas/open/104_hir_safe_legacy_lookup_demotion.md)
+- [104_hir_safe_legacy_lookup_demotion.md](/workspaces/c4c/ideas/closed/104_hir_safe_legacy_lookup_demotion.md)
 
 ## Goal
 
