@@ -80,6 +80,19 @@ std::optional<SemaStructuredNameKey> sema_symbol_name_key(const Node* node) {
   return key;
 }
 
+static std::optional<SemaStructuredNameKey> sema_template_param_local_name_key(
+    const Node* node, int param_index) {
+  if (!node || param_index < 0 || param_index >= node->n_template_params ||
+      !node->template_param_name_text_ids) {
+    return std::nullopt;
+  }
+  const TextId text_id = node->template_param_name_text_ids[param_index];
+  if (text_id == kInvalidText) return std::nullopt;
+  SemaStructuredNameKey key;
+  key.base_text_id = text_id;
+  return key;
+}
+
 SemaDualLookupMatch compare_sema_lookup_presence(bool legacy_found, bool structured_found) {
   if (!legacy_found && !structured_found) return SemaDualLookupMatch::BothMissing;
   if (legacy_found && structured_found) return SemaDualLookupMatch::Match;
@@ -1262,7 +1275,8 @@ class Validator {
       nttp_ts.base = TB_INT;
       nttp_ts.array_size = -1;
       nttp_ts.inner_rank = -1;
-      bind_local(n->template_param_names[i], nttp_ts, true, line);
+      bind_local(n->template_param_names[i], nttp_ts, true, line,
+                 sema_template_param_local_name_key(n, i));
     }
   }
 

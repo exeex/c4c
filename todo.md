@@ -1,30 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/98_parser_sema_post_cleanup_structured_identity_leftovers.md
 Source Plan Path: plan.md
-Current Step ID: 4A
-Current Step Title: Add AST/Parser Template Parameter TextId Metadata
+Current Step ID: 4B
+Current Step Title: Mirror Template NTTP Validation Bindings
 
 # Current Packet
 
 ## Just Finished
 
-Step 4A - Add AST/Parser Template Parameter TextId Metadata is complete.
+Step 4B - Mirror Template NTTP Validation Bindings is complete.
 
-`Node` now carries `template_param_name_text_ids` parallel to
-`template_param_names`. Template declaration parsing stores definition-time
-parser token `TextId` values for real type, NTTP, constrained, and
-template-template parameter names, while anonymous synthetic names keep
-`kInvalidText` in the AST metadata slot. Alias-template bookkeeping and
-instantiated struct copies preserve the parallel identity array without
-changing rendered names, defaults, flags, or template behavior.
+Template NTTP validation placeholders now pass parser-owned
+`template_param_name_text_ids[i]` into sema structured local binding mirrors
+when the metadata is valid. The rendered local binding remains unchanged, and
+missing metadata or `kInvalidText` safely keeps the existing name-only fallback.
 
 ## Suggested Next
 
-Step 4B sema NTTP validation mirror packet: consume
-`Node::template_param_name_text_ids` to populate sema-side structured mirrors
-for template type parameters and NTTP validation, while preserving rendered
-template parameter lookup bridges and avoiding HIR/type/codegen identity
-changes.
+Step 5 template type-parameter validation mirror packet: consume
+`Node::template_param_name_text_ids` for sema-owned template type-parameter
+checks, adding structured or `TextId` mirrors where stable metadata is
+available while preserving rendered-name fallback behavior.
 
 ## Watchouts
 
@@ -38,11 +34,13 @@ changes.
 - Do not treat the parser `struct_tag_def_map` argument to `eval_const_int` as a
   removable string leftover; it is still the rendered tag bridge used by
   `sizeof`, `alignof`, and `offsetof`.
-- Step 4A intentionally did not add sema mirrors; Step 4B should validate
-  `template_param_name_text_ids` presence before relying on structured identity
-  and keep `kInvalidText` as the fallback for anonymous/synthetic parameters.
-- Keep Step 4B sema-only: no HIR/type/codegen migration, no template
-  rendered-name cleanup, and no expectation rewrites.
+- Step 4B added sema structured local mirrors only for NTTP placeholders in
+  `validate.cpp`; it did not alter parser metadata, HIR/type/codegen identity,
+  template rendering, diagnostics, expectations, or consteval NTTP call
+  binding maps.
+- Keep Step 5 sema-only unless the supervisor explicitly delegates consteval
+  mirror plumbing; no HIR/type/codegen migration, template rendered-name
+  cleanup, or expectation rewrites.
 - Enum mirror population now depends on parser-owned `enum_name_text_ids`; keep
   any future enum work on that definition-time metadata and do not re-derive
   stable identity from rendered strings.
