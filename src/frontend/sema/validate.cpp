@@ -487,6 +487,8 @@ class Validator {
   std::unordered_set<std::string> template_type_params_;
   std::string current_method_struct_tag_;
   std::vector<std::unordered_map<std::string, ScopedSym>> scopes_;
+  std::vector<std::unordered_map<SemaStructuredNameKey, const ScopedSym*, SemaStructuredNameKeyHash>>
+      structured_scopes_;
   bool suppress_uninit_read_ = false;
 
   int loop_depth_ = 0;
@@ -556,24 +558,31 @@ class Validator {
 
   void enter_scope() {
     scopes_.emplace_back();
+    structured_scopes_.emplace_back();
     enum_const_vals_scopes_.emplace_back();
     local_const_vals_scopes_.emplace_back();
   }
 
   void leave_scope() {
     if (!scopes_.empty()) scopes_.pop_back();
+    if (!structured_scopes_.empty()) structured_scopes_.pop_back();
     if (!enum_const_vals_scopes_.empty()) enum_const_vals_scopes_.pop_back();
     if (!local_const_vals_scopes_.empty()) local_const_vals_scopes_.pop_back();
   }
 
-  void bind_local(const std::string& name, const TypeSpec& ts, bool initialized, int line) {
+  void bind_local(const std::string& name, const TypeSpec& ts, bool initialized, int line,
+                  std::optional<SemaStructuredNameKey> structured_key = std::nullopt) {
     if (scopes_.empty()) enter_scope();
     auto& scope = scopes_.back();
     if (scope.find(name) != scope.end()) {
       emit(line, "redefinition of symbol '" + name + "' in same scope");
       return;
     }
-    scope[name] = ScopedSym{ts, initialized};
+    auto [it, inserted] = scope.emplace(name, ScopedSym{ts, initialized});
+    if (inserted && structured_key.has_value() && structured_key->valid()) {
+      if (structured_scopes_.size() < scopes_.size()) structured_scopes_.resize(scopes_.size());
+      structured_scopes_.back().emplace(*structured_key, &it->second);
+    }
   }
 
   TypeSpec deduce_local_decl_type(const Node* decl, const ExprInfo* init_info = nullptr) {
@@ -598,11 +607,32 @@ class Validator {
     return deduced;
   }
 
-  std::optional<ScopedSym> lookup_symbol(const std::string& name) const {
+  const ScopedSym* lookup_local_symbol_by_name(const std::string& name) const {
     for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
       auto f = it->find(name);
+      if (f != it->end()) return &f->second;
+    }
+    return nullptr;
+  }
+
+  const ScopedSym* lookup_local_symbol_by_key(const SemaStructuredNameKey& key) const {
+    for (auto it = structured_scopes_.rbegin(); it != structured_scopes_.rend(); ++it) {
+      auto f = it->find(key);
       if (f != it->end()) return f->second;
     }
+    return nullptr;
+  }
+
+  std::optional<ScopedSym> lookup_symbol(const std::string& name,
+                                         const Node* reference = nullptr) const {
+    const ScopedSym* local = lookup_local_symbol_by_name(name);
+    if (reference) {
+      if (auto key = sema_local_name_key(reference); key.has_value()) {
+        const ScopedSym* structured = lookup_local_symbol_by_key(*key);
+        (void)compare_sema_lookup_ptrs(local, structured);
+      }
+    }
+    if (local) return *local;
     auto g = globals_.find(name);
     if (g != globals_.end()) return ScopedSym{g->second, true};
     auto fn = funcs_.find(name);
@@ -648,9 +678,17 @@ class Validator {
       return;
     }
     if (n->kind != NK_VAR || !n->name || !n->name[0]) return;
-    for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
-      auto f = it->find(n->name);
-      if (f != it->end()) {
+    const auto key = sema_local_name_key(n);
+    for (std::size_t i = scopes_.size(); i > 0; --i) {
+      auto& scope = scopes_[i - 1];
+      auto f = scope.find(n->name);
+      if (f != scope.end()) {
+        if (key.has_value() && i <= structured_scopes_.size()) {
+          const ScopedSym* structured = nullptr;
+          auto sf = structured_scopes_[i - 1].find(*key);
+          if (sf != structured_scopes_[i - 1].end()) structured = sf->second;
+          (void)compare_sema_lookup_ptrs(&f->second, structured);
+        }
         f->second.initialized = true;
         return;
       }
@@ -1097,7 +1135,7 @@ class Validator {
     for (int i = 0; i < fn->n_params; ++i) {
       const Node* p = fn->params[i];
       if (!p || !p->name || !p->name[0]) continue;
-      bind_local(p->name, p->type, true, p->line);
+      bind_local(p->name, p->type, true, p->line, sema_local_name_key(p));
     }
     if (auto owner = enclosing_method_owner_struct(fn); owner.has_value()) {
       current_method_struct_tag_ = *owner;
@@ -1194,7 +1232,7 @@ class Validator {
         }
         if (n->name && n->name[0]) {
           bind_local(n->name, effective_decl_type ? *effective_decl_type : n->type,
-                     n->init != nullptr || n->is_ctor_init, n->line);
+                     n->init != nullptr || n->is_ctor_init, n->line, sema_local_name_key(n));
         }
         validate_decl_init(n, effective_decl_type ? &*effective_decl_type : nullptr);
         // Track const/constexpr locals with foldable initializers for case label evaluation.
@@ -1264,7 +1302,7 @@ class Validator {
           const Node* rv = n->left;
           if (!fn_has_goto_ && !fn_has_loop_ &&
               rv->kind == NK_VAR && rv->name && rv->name[0]) {
-            auto sym = lookup_symbol(rv->name);
+            auto sym = lookup_symbol(rv->name, rv);
             if (sym.has_value() && !sym->initialized &&
                 tracks_uninit_read(sym->type)) {
               emit(rv, std::string("read of uninitialized variable '") +
@@ -1328,7 +1366,8 @@ class Validator {
         // references — the init is synthesized during HIR desugaring.
         if (n->init) {
           if (n->init->kind == NK_DECL && n->init->name && n->init->name[0])
-            bind_local(n->init->name, n->init->type, true /*will be initialized*/, n->init->line);
+            bind_local(n->init->name, n->init->type, true /*will be initialized*/,
+                       n->init->line, sema_local_name_key(n->init));
           // Still validate the init expression if present, but skip ref-init checks
           if (n->init->init) (void)infer_expr(n->init->init);
         }
@@ -1490,7 +1529,7 @@ class Validator {
             return out;
           }
         }
-        auto sym = lookup_symbol(n->name);
+        auto sym = lookup_symbol(n->name, n);
         if (!sym.has_value() && !n->is_global_qualified &&
             n->n_qualifier_segments == 0 && n->unqualified_name &&
             n->unqualified_name[0] &&
@@ -1499,7 +1538,7 @@ class Validator {
           // namespace value spelling (for example `eastl::size`) before sema
           // has bound function parameters and locals. Fall back to the source
           // spelling for truly unqualified ids so local scope wins.
-          sym = lookup_symbol(n->unqualified_name);
+          sym = lookup_symbol(n->unqualified_name, n);
         }
         if (!sym.has_value()) {
           // In an out-of-class method body, unqualified names may refer to
