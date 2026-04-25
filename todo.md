@@ -8,22 +8,17 @@ Current Step Title: Add Structured Mirrors for Struct Definitions
 
 ## Just Finished
 
-Completed the next Step 3 slice by dual-writing lowerer-local structured record-owner mirrors for template struct primary and specialization registration without changing existing template lookup authority.
+Completed the Step 3 dual-read/parity probe slice for template struct primary and specialization lookup without changing existing lookup authority.
 
-Added:
-- `template_struct_defs_by_owner_` beside `template_struct_defs_`, keyed by the primary template struct declaration owner key when metadata is complete.
-- `template_struct_specializations_by_owner_` beside `template_struct_specializations_`, keyed by the primary template struct declaration owner key when metadata is complete.
-- Dual-writes in `register_template_struct_primary` and `register_template_struct_specialization` while leaving `find_template_struct_primary` and `find_template_struct_specializations` on the rendered-name / `ct_state_` path.
-
-Existing rendered-name maps, `ct_state_` template lookup behavior, HIR dumps, codegen spelling, tests, and expectation files remain authoritative and unchanged.
+Added lowerer-local parity probes in `find_template_struct_primary` and `find_template_struct_specializations` that compare the rendered-name / `ct_state_` result with the structured owner-key mirrors and record check/mismatch counters. Existing consumers still receive the rendered or `ct_state_` answer, and no HIR dump, codegen spelling, test, or expectation behavior was redirected.
 
 ## Suggested Next
 
-Continue Step 3 by adding focused dual-read/parity probes that compare structured and rendered template-struct lookup results without redirecting existing consumers.
+Step 3 is ready to move to Step 4 unless the supervisor wants these private parity counters surfaced through a formal HIR inspection artifact first.
 
 ## Watchouts
 
-Keep `TypeSpec::tag`, `HirStructDef::tag`, `Module::struct_defs`, `struct_def_order`, and lowerer template lookup consumers as the rendered output-spelling bridge. This slice records structured mirrors only; no existing reader has been redirected. Template-struct specialization mirrors are keyed by primary declaration owner identity, matching the rendered map's primary-name ownership, not by a full specialization identity.
+The probes intentionally skip primary lookups with no rendered result because there is no owner-key metadata to compare from a bare name miss. Specialization parity treats absent/empty rendered and structured vectors as matching, and otherwise compares vector size/order/pointer identity. Template-struct specialization mirrors remain keyed by primary declaration owner identity, not by a full specialization identity.
 
 ## Proof
 

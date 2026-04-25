@@ -930,6 +930,11 @@ class Lowerer {
   const Node* find_template_struct_primary(const std::string& name) const;
   const std::vector<const Node*>* find_template_struct_specializations(
       const Node* primary_tpl) const;
+  void record_template_struct_primary_lookup_parity(
+      const Node* rendered_primary) const;
+  void record_template_struct_specialization_lookup_parity(
+      const Node* primary_tpl,
+      const std::vector<const Node*>* rendered_specializations) const;
   const Node* find_template_global_primary(const std::string& name) const;
   const std::vector<const Node*>* find_template_global_specializations(
       const Node* primary_tpl) const;
@@ -961,10 +966,14 @@ class Lowerer {
   std::unordered_map<std::string, const Node*> template_struct_defs_;
   std::unordered_map<HirRecordOwnerKey, const Node*, HirRecordOwnerKeyHash>
       template_struct_defs_by_owner_;
+  mutable size_t template_struct_primary_lookup_parity_checks_ = 0;
+  mutable size_t template_struct_primary_lookup_parity_mismatches_ = 0;
   // Template struct specializations indexed by primary template name.
   std::unordered_map<std::string, std::vector<const Node*>> template_struct_specializations_;
   std::unordered_map<HirRecordOwnerKey, std::vector<const Node*>, HirRecordOwnerKeyHash>
       template_struct_specializations_by_owner_;
+  mutable size_t template_struct_specialization_lookup_parity_checks_ = 0;
+  mutable size_t template_struct_specialization_lookup_parity_mismatches_ = 0;
   std::unordered_map<std::string, const Node*> template_global_defs_;
   std::unordered_map<std::string, std::vector<const Node*>> template_global_specializations_;
   std::unordered_map<TemplateStructInstanceKey, GlobalId, TemplateStructInstanceKeyHash>

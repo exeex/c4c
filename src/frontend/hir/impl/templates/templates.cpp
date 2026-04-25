@@ -435,19 +435,71 @@ SelectedTemplateStructPattern select_template_struct_pattern_hir(
 
 const Node* Lowerer::find_template_struct_primary(const std::string& name) const {
   auto it = template_struct_defs_.find(name);
-  return it != template_struct_defs_.end() ? it->second : nullptr;
+  const Node* rendered_primary =
+      it != template_struct_defs_.end() ? it->second : nullptr;
+  record_template_struct_primary_lookup_parity(rendered_primary);
+  return rendered_primary;
 }
 
 const std::vector<const Node*>* Lowerer::find_template_struct_specializations(
     const Node* primary_tpl) const {
   if (!primary_tpl || !primary_tpl->name) return nullptr;
+  const std::vector<const Node*>* rendered_specializations = nullptr;
   if (const auto* specializations =
           ct_state_->find_template_struct_specializations(primary_tpl,
                                                           primary_tpl->name)) {
-    return specializations;
+    rendered_specializations = specializations;
+  } else {
+    auto it = template_struct_specializations_.find(primary_tpl->name);
+    rendered_specializations =
+        it != template_struct_specializations_.end() ? &it->second : nullptr;
   }
-  auto it = template_struct_specializations_.find(primary_tpl->name);
-  return it != template_struct_specializations_.end() ? &it->second : nullptr;
+  record_template_struct_specialization_lookup_parity(
+      primary_tpl, rendered_specializations);
+  return rendered_specializations;
+}
+
+void Lowerer::record_template_struct_primary_lookup_parity(
+    const Node* rendered_primary) const {
+  if (!rendered_primary) return;
+  auto key = make_struct_def_node_owner_key(rendered_primary);
+  if (!key) return;
+  auto it = template_struct_defs_by_owner_.find(*key);
+  ++template_struct_primary_lookup_parity_checks_;
+  if (it == template_struct_defs_by_owner_.end() ||
+      it->second != rendered_primary) {
+    ++template_struct_primary_lookup_parity_mismatches_;
+  }
+}
+
+void Lowerer::record_template_struct_specialization_lookup_parity(
+    const Node* primary_tpl,
+    const std::vector<const Node*>* rendered_specializations) const {
+  if (!primary_tpl) return;
+  auto key = make_struct_def_node_owner_key(primary_tpl);
+  if (!key) return;
+  auto it = template_struct_specializations_by_owner_.find(*key);
+
+  ++template_struct_specialization_lookup_parity_checks_;
+  const std::vector<const Node*>* structured_specializations =
+      it == template_struct_specializations_by_owner_.end() ? nullptr
+                                                            : &it->second;
+  const bool both_missing =
+      (!rendered_specializations || rendered_specializations->empty()) &&
+      (!structured_specializations || structured_specializations->empty());
+  if (both_missing) return;
+  if (!rendered_specializations ||
+      !structured_specializations ||
+      rendered_specializations->size() != structured_specializations->size()) {
+    ++template_struct_specialization_lookup_parity_mismatches_;
+    return;
+  }
+  for (size_t i = 0; i < rendered_specializations->size(); ++i) {
+    if ((*rendered_specializations)[i] != (*structured_specializations)[i]) {
+      ++template_struct_specialization_lookup_parity_mismatches_;
+      return;
+    }
+  }
 }
 
 TemplateStructEnv Lowerer::build_template_struct_env(const Node* primary_tpl) const {
