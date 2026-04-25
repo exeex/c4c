@@ -90,6 +90,8 @@ std::optional<ScalarLayoutByteOffsetFacts> resolve_scalar_layout_facts_at_byte_o
 
   return ScalarLayoutByteOffsetFacts{
       .object_size_bytes = layout.size_bytes,
+      .target_byte_offset = target_offset,
+      .remaining_object_bytes = layout.size_bytes - target_offset,
       .leaf = resolve_scalar_layout_leaf_facts_at_byte_offset(type_text, target_offset, type_decls, 0),
   };
 }

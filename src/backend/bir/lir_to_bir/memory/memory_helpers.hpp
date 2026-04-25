@@ -20,6 +20,8 @@ struct ScalarLayoutLeafFacts {
 
 struct ScalarLayoutByteOffsetFacts {
   std::size_t object_size_bytes = 0;
+  std::size_t target_byte_offset = 0;
+  std::size_t remaining_object_bytes = 0;
   std::optional<ScalarLayoutLeafFacts> leaf;
 };
 
@@ -35,6 +37,9 @@ struct AggregateByteOffsetProjection {
   std::string child_type_text;
   std::size_t child_index = 0;
   std::size_t child_byte_offset = 0;
+  std::size_t target_byte_offset = 0;
+  std::size_t child_absolute_byte_offset = 0;
+  std::size_t child_stride_bytes = 0;
 };
 
 std::optional<ScalarLayoutByteOffsetFacts> resolve_scalar_layout_facts_at_byte_offset(

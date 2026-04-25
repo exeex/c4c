@@ -44,7 +44,7 @@ find_repeated_aggregate_extent_at_offset_impl(
               c4c::codegen::lir::trim_lir_arg_text(repeated_type_text)) {
         return BirFunctionLowerer::AggregateArrayExtent{
             .element_count = projection->layout.array_count - projection->child_index,
-            .element_stride_bytes = projection->child_layout.size_bytes,
+            .element_stride_bytes = projection->child_stride_bytes,
         };
       }
       return find_repeated_aggregate_extent_at_offset_impl(
@@ -60,7 +60,7 @@ find_repeated_aggregate_extent_at_offset_impl(
           c4c::codegen::lir::trim_lir_arg_text(projection->child_type_text) ==
               c4c::codegen::lir::trim_lir_arg_text(repeated_type_text)) {
         std::size_t repeated_count = 0;
-        const auto field_begin = projection->layout.fields[projection->child_index].byte_offset;
+        const auto field_begin = projection->child_absolute_byte_offset;
         for (std::size_t repeated_index = projection->child_index;
              repeated_index < projection->layout.fields.size();
              ++repeated_index) {
@@ -68,7 +68,7 @@ find_repeated_aggregate_extent_at_offset_impl(
                   projection->layout.fields[repeated_index].type_text) !=
                   c4c::codegen::lir::trim_lir_arg_text(repeated_type_text) ||
               projection->layout.fields[repeated_index].byte_offset !=
-                  field_begin + repeated_count * projection->child_layout.size_bytes) {
+                  field_begin + repeated_count * projection->child_stride_bytes) {
             break;
           }
           ++repeated_count;
@@ -76,7 +76,7 @@ find_repeated_aggregate_extent_at_offset_impl(
         if (repeated_count != 0) {
           return BirFunctionLowerer::AggregateArrayExtent{
               .element_count = repeated_count,
-              .element_stride_bytes = projection->child_layout.size_bytes,
+              .element_stride_bytes = projection->child_stride_bytes,
           };
         }
       }
@@ -122,6 +122,9 @@ std::optional<AggregateByteOffsetProjection> resolve_aggregate_byte_offset_proje
               layout.element_type_text)),
           .child_index = element_index,
           .child_byte_offset = target_offset % element_layout.size_bytes,
+          .target_byte_offset = target_offset,
+          .child_absolute_byte_offset = element_index * element_layout.size_bytes,
+          .child_stride_bytes = element_layout.size_bytes,
       };
     }
     case BirFunctionLowerer::AggregateTypeLayout::Kind::Struct:
@@ -133,15 +136,19 @@ std::optional<AggregateByteOffsetProjection> resolve_aggregate_byte_offset_proje
         if (target_offset < field_begin || target_offset >= field_end) {
           continue;
         }
+        const auto child_layout =
+            compute_aggregate_type_layout(layout.fields[index].type_text, type_decls);
         return AggregateByteOffsetProjection{
             .kind = AggregateByteOffsetProjection::Kind::StructField,
             .layout = layout,
-            .child_layout = compute_aggregate_type_layout(layout.fields[index].type_text,
-                                                          type_decls),
+            .child_layout = child_layout,
             .child_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(
                 layout.fields[index].type_text)),
             .child_index = index,
             .child_byte_offset = target_offset - field_begin,
+            .target_byte_offset = target_offset,
+            .child_absolute_byte_offset = field_begin,
+            .child_stride_bytes = child_layout.size_bytes,
         };
       }
       return std::nullopt;
@@ -298,7 +305,7 @@ std::optional<std::size_t> BirFunctionLowerer::find_pointer_array_length_at_offs
 
   switch (projection->kind) {
     case AggregateByteOffsetProjection::Kind::ArrayElement:
-      if (target_offset == 0 &&
+      if (projection->target_byte_offset == 0 &&
           projection->child_layout.kind == AggregateTypeLayout::Kind::Scalar &&
           projection->child_layout.scalar_type == bir::TypeKind::Ptr) {
         return projection->layout.array_count;

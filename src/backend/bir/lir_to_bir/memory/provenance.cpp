@@ -48,11 +48,11 @@ static bool can_address_scalar_subobject(std::int64_t byte_offset,
 
   const auto scalar_facts = resolve_scalar_layout_facts_at_byte_offset(
       type_text, static_cast<std::size_t>(byte_offset), type_decls);
-  if (!scalar_facts.has_value() || scalar_facts->object_size_bytes == 0) {
+  if (!scalar_facts.has_value() || scalar_facts->object_size_bytes == 0 ||
+      scalar_facts->target_byte_offset != static_cast<std::size_t>(byte_offset)) {
     return false;
   }
-  return static_cast<std::size_t>(byte_offset) + access_size <=
-         scalar_facts->object_size_bytes;
+  return access_size <= scalar_facts->remaining_object_bytes;
 }
 
 std::optional<std::vector<bir::Value>> BirFunctionLowerer::collect_local_pointer_values(
