@@ -1,42 +1,34 @@
 Status: Active
 Source Idea Path: ideas/open/09_bir-call-signature-and-abi-family-extraction.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Audit helper boundaries and wire the new file
+Current Step ID: Step 2
+Current Step Title: Move pure target ABI and return classification helpers
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 completed the helper-boundary audit and initial wiring. The ABI helper
-candidate boundary in `calling.cpp` is the top-of-file cluster made up of
-`use_float_return_registers`, `use_float_arg_registers`,
+Step 2 moved the audited pure ABI helper cluster from `calling.cpp` into
+`call_abi.cpp`: `use_float_return_registers`, `use_float_arg_registers`,
 `lower_function_return_abi`, `lower_call_arg_abi`, and the two
-`lir_to_bir_detail::compute_*_abi` wrappers. Its current dependencies are
-`lowering.hpp`, `c4c::TargetProfile`/`TargetArch`, `bir::TypeKind`,
-`bir::AbiValueClass`, `bir::CallResultAbiInfo`, `bir::CallArgAbiInfo`, and
-`lir_to_bir_detail::type_size_bytes`. Created
-`src/backend/bir/lir_to_bir/call_abi.cpp` with only the normal include and
-namespace skeleton, and wired it into `backend_lir_to_bir_notes_test`.
+`lir_to_bir_detail::compute_*_abi` wrappers. `calling.cpp` now calls the
+existing `compute_*_abi` detail entry points and no longer defines those helper
+bodies.
 
 ## Suggested Next
 
-Execute the next Step 1/Step 2 packet by moving the audited ABI helper cluster
-from `calling.cpp` into `call_abi.cpp` without changing declarations or call
-lowering behavior.
+Execute Step 3 by moving function signature and parameter helpers, keeping
+typed-call parsing, extern/decl behavior, call lowering, runtime intrinsic
+lowering, and failure-note behavior unchanged.
 
 ## Watchouts
 
-- This is a behavior-preserving extraction; do not rewrite expectations.
+- This was a behavior-preserving extraction; do not rewrite expectations.
 - Do not add new headers.
-- Keep `lower_call_inst` and `lower_runtime_intrinsic_inst` in `calling.cpp`.
-- `calling.cpp` also has unrelated helpers such as link-name resolution,
-  function reporting names, `parse_byval_pointee_type`, parameter/signature
-  parsing, call lowering, runtime intrinsic lowering, and stack/spill handling;
-  those are outside the audited ABI-helper extraction boundary.
-- `src/codegen/CMakeLists.txt` uses recursive source discovery; the delegated
-  proof log showed the build reconfigured after detecting the new
-  `call_abi.cpp` file.
+- Keep `lower_call_inst` and `lower_runtime_intrinsic_inst` in `calling.cpp`
+  unless a future packet explicitly owns moving them.
+- Step 3 should avoid moving typed-call parsing, extern/decl behavior, or
+  failure-note behavior unless specifically delegated.
 
 ## Proof
 
