@@ -1,49 +1,57 @@
 Status: Active
 Source Idea Path: ideas/open/105_hir_to_lir_text_id_bridge_inventory_and_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Prefer LinkNameId And TextId For Symbol Identity Handoffs
+Current Step ID: 3
+Current Step Title: Separate Type Identity From Rendered LLVM Type Text
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 cleanup for the HIR-to-LIR function/global dedup
-seam in `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`. `dedup_globals` and
-`dedup_functions` now prefer valid `LinkNameId` maps, then valid
-`name_text_id` maps for invalid-LinkNameId entries, and use raw rendered `name`
-maps only when both stable ids are invalid. Existing selection behavior is
-preserved: globals still prefer initialized definitions, functions still prefer
-definitions over declarations, and lowering still copies the original
-spelling/link id into emitted LIR fields without changing printed symbol
-spelling.
+Inspected `plan.md` Step 3 rendered LLVM type-text seams in
+`src/codegen/lir/types.hpp`, `src/codegen/lir/hir_to_lir/types.cpp`,
+`src/codegen/lir/hir_to_lir/hir_to_lir.cpp`, and
+`src/codegen/shared/llvm_helpers.hpp`. No behavior-preserving typed-reference
+cleanup was narrow enough for the delegated ownership. `LirTypeRef` already
+wraps many instruction operand type strings and verifies cached kind/width
+against rendered text, but the remaining Step 3 identity authority is still
+held by pre-rendered module/function/global text fields or by HIR `TypeSpec`
+and struct tags before final rendering.
 
 ## Suggested Next
 
-Continue Step 2 with the next low-risk identity handoff only if the supervisor
-selects one. The function/global dedup fallback now has the intended stable-id
-ordering; avoid crossing into printer output, type refs, const-init payload
-bytes, or dead-internal rendered operand scanning without a separate packet.
+Defer Step 3 implementation to a packet that explicitly owns the LIR public
+surface and printer boundary, or route to Step 4 classification if the
+supervisor wants to avoid a type-surface rewrite in this runbook.
 
 ## Watchouts
 
-- Do not remove rendered fallback or change emitted spelling while this bridge
-  cleanup is in progress.
-- Do not absorb HIR-internal legacy lookup cleanup already covered by idea 104.
-- Keep printer-only, diagnostic, ABI/link spelling, and literal-byte strings
-  separate from semantic identity handoffs.
-- Do not downgrade tests or expectations to claim bridge cleanup progress.
-- Dead-internal elimination still scans rendered `@name` strings and indexes
-  functions by `LirFunction::name`; treat it as a later cleanup because it
-  crosses printed operand scanning and reachability behavior.
-- Type string cleanup is higher risk than symbol dedup because `LirTypeRef`,
-  `type_decls`, `signature_text`, and const-init aggregate text currently feed
-  printer/backend compatibility.
+- `build_type_decls()` renders struct/union declarations into
+  `LirModule::type_decls` as final LLVM text. Replacement authority should be
+  a structured LIR type-decl model keyed by HIR `struct_def_order`/record owner
+  and field `TypeSpec`, with rendering delayed to the printer.
+- `build_fn_signature()` and `llvm_fn_type_suffix_str()` render function
+  signatures and callee suffixes from HIR `TypeSpec`. Replacement authority
+  should be `LirFunction::return_type`, `LirFunction::params`, and a structured
+  call-signature/type-ref object, not `signature_text`.
+- `lower_global()` stores `LirGlobal::llvm_type` as precomputed text even
+  though `LirGlobal::type` is available. Replacement authority should be
+  `LirGlobal::type`, plus an explicit structured escape hatch for flexible
+  array literal aggregate types.
+- `finalize_module()` fills both `LirExternDecl::return_type_str` and
+  `LirExternDecl::return_type`, but the printer still consumes
+  `return_type_str`. Replacing that text authority requires changing the LIR
+  public model/printer, not just `hir_to_lir.cpp`.
+- Const-init aggregate, GEP, and initializer strings use rendered type text in
+  payload/backend compatibility paths. Do not change them under Step 3 without
+  a packet that explicitly owns const-init text behavior and byte-for-byte
+  output proof.
+- A proof-capable Step 3 implementation should own `src/codegen/lir/ir.hpp`,
+  `src/codegen/lir/lir_printer.cpp`, the chosen HIR-to-LIR producer, and
+  narrowly relevant backend tests, then run:
+  `cmake --build build --target c4cll && ctest --test-dir build -R '^backend_' --output-on-failure`.
 
 ## Proof
 
-Ran the supervisor-selected proof exactly and saved full output to
-`test_after.log`:
-`cmake --build build --target c4cll && ctest --test-dir build -R '^(frontend_hir_tests|positive_sema_ok_call_target_resolution_runtime_c|positive_sema_inline_call_discovery_c|cpp_positive_sema_namespace_global_var_runtime_cpp|cpp_positive_sema_namespace_function_call_runtime_cpp|cpp_positive_sema_anon_namespace_fn_lookup_cpp|cpp_llvm_spec_key_metadata|cpp_llvm_forward_pick_specialization_metadata)$' --output-on-failure`.
-
-Result: green. `c4cll` rebuilt successfully and all 7 selected tests passed.
+No tests run. This was a blocker/candidate inventory only, per the delegated
+proof rule, and `test_after.log` was not created or modified by this packet.
