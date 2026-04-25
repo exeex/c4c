@@ -8,30 +8,31 @@ Current Step Title: Add Structured Template Instantiation De-Dup Keys
 
 ## Just Finished
 
-Step 5 - Add Structured Template Instantiation De-Dup Keys completed. Added
-`ParserTemplateState::TemplateInstantiationKey` keyed by `QualifiedNameKey`
-plus canonical argument signature beside the rendered-string instantiation
-de-dup set, and mirrored both parser-owned instantiation de-dup paths:
+Step 5 - Add Structured Template Instantiation De-Dup Keys follow-up completed.
+`TemplateInstantiationKey` now stores a structured vector of type/value argument
+entries built from `ParsedTemplateArg` data instead of deriving the argument
+identity from the rendered legacy instance key suffix. Both
 `ensure_template_struct_instantiated_from_args` and the direct concrete struct
-emission guard in `types/base.cpp`.
+emission guard now use the same canonical argument-key builder.
 
-Focused parser coverage now proves explicit specialization/helper reuse and
-direct primary-template emission both populate the structured and rendered key
-families, keep the rendered legacy set behavior-compatible, and detect/heal a
-missing structured mirror.
+Focused parser coverage now also proves direct-emission structured-present /
+rendered-missing mirror healing: clearing only the rendered legacy set is
+detected, the rendered mirror is restored, and the already-instantiated tag is
+reused.
 
 ## Suggested Next
 
-Next coherent packet: supervisor review or the next plan step. This slice is
-ready for review with the focused parser proof passing.
+Next coherent packet: supervisor review, then the next plan step if accepted.
+This Step 5 follow-up is ready for review with the focused parser proof passing.
 
 ## Watchouts
 
-- The direct emission guard remains legacy-led for behavior compatibility:
-  rendered-present skips emission and heals a missing structured mirror;
-  rendered-missing still emits and then marks both key families.
-- `rg 'instantiated_template_struct_keys' src/frontend/parser/impl` now shows
-  structured mirror checks/inserts beside both parser-owned rendered-set paths.
+- Direct emission now treats either mirrored key family as sufficient and heals
+  the missing side before returning reuse, matching the helper-path mirror
+  behavior.
+- The structured argument entry still uses the existing canonical type-key
+  spelling and NTTP value/deferred-expression payloads as the parser's current
+  structured `ParsedTemplateArg` identity.
 
 ## Proof
 

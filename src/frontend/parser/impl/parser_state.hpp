@@ -110,13 +110,23 @@ struct ParserTemplateState {
   };
 
   struct TemplateInstantiationKey {
+    struct Argument {
+      bool is_value = false;
+      std::string canonical_key;
+
+      [[nodiscard]] bool operator==(const Argument& other) const {
+        return is_value == other.is_value &&
+               canonical_key == other.canonical_key;
+      }
+    };
+
     QualifiedNameKey template_key;
-    std::string argument_key;
+    std::vector<Argument> arguments;
 
     [[nodiscard]] bool operator==(
         const TemplateInstantiationKey& other) const {
       return template_key == other.template_key &&
-             argument_key == other.argument_key;
+             arguments == other.arguments;
     }
   };
 
@@ -127,7 +137,15 @@ struct ParserTemplateState {
           kIdHashSeed, static_cast<uint32_t>(key.template_key.context_id),
           key.template_key.qualifier_path_id, key.template_key.base_text_id,
           static_cast<uint32_t>(key.template_key.is_global_qualified));
-      const size_t args_hash = std::hash<std::string>{}(key.argument_key);
+      size_t args_hash = 0;
+      for (const auto& arg : key.arguments) {
+        const size_t arg_hash =
+            std::hash<std::string>{}(arg.canonical_key) ^
+            (static_cast<size_t>(arg.is_value) + 0x9e3779b9U +
+             (args_hash << 6U) + (args_hash >> 2U));
+        args_hash ^= arg_hash + 0x9e3779b9U + (args_hash << 6U) +
+                     (args_hash >> 2U);
+      }
       return static_cast<size_t>(name_hash) ^ (args_hash + 0x9e3779b9U +
                                                (static_cast<size_t>(name_hash) << 6U) +
                                                (static_cast<size_t>(name_hash) >> 2U));

@@ -86,14 +86,6 @@ static QualifiedNameKey template_instantiation_name_key_for_direct_emit(
     return parser.alias_template_key_in_context(context_id, name_text_id, name);
 }
 
-static std::string template_instantiation_argument_key_for_direct_emit(
-    const std::string& rendered_instance_key) {
-    const size_t arg_pos = rendered_instance_key.find('<');
-    return arg_pos == std::string::npos
-               ? rendered_instance_key
-               : rendered_instance_key.substr(arg_pos);
-}
-
 static bool has_template_instantiation_dedup_key_for_direct_emit(
     Parser& parser,
     const ParserTemplateState::TemplateInstantiationKey& structured_key,
@@ -115,8 +107,11 @@ static bool has_template_instantiation_dedup_key_for_direct_emit(
     if (legacy_present && !structured_present) {
         parser.template_state_.instantiated_template_struct_keys_by_key.insert(
             structured_key);
+    } else if (structured_present && !legacy_present) {
+        parser.template_state_.instantiated_template_struct_keys.insert(
+            legacy_key);
     }
-    return legacy_present;
+    return legacy_present || structured_present;
 }
 
 static void mark_template_instantiation_dedup_key_for_direct_emit(
@@ -2496,8 +2491,8 @@ TypeSpec Parser::parse_base_type() {
                         structured_emitted_instance_key{
                             template_instantiation_name_key_for_direct_emit(
                                 *this, primary_tpl, tpl_name),
-                            template_instantiation_argument_key_for_direct_emit(
-                                emitted_instance_key)};
+                            make_template_instantiation_argument_keys(
+                                concrete_args)};
 
                     // Build mangled name from the concrete family arguments.
                     const std::string family_name =

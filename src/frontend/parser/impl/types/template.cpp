@@ -38,14 +38,6 @@ QualifiedNameKey template_instantiation_name_key(
     return parser.alias_template_key_in_context(context_id, name_text_id, name);
 }
 
-std::string template_instantiation_argument_key(
-    const std::string& rendered_instance_key) {
-    const size_t arg_pos = rendered_instance_key.find('<');
-    return arg_pos == std::string::npos
-               ? rendered_instance_key
-               : rendered_instance_key.substr(arg_pos);
-}
-
 void sync_template_instantiation_dedup_keys(
     Parser& parser,
     const ParserTemplateState::TemplateInstantiationKey& structured_key,
@@ -363,7 +355,7 @@ bool Parser::ensure_template_struct_instantiated_from_args(
         make_template_struct_instance_key(primary_tpl, args);
     const ParserTemplateState::TemplateInstantiationKey structured_instance_key{
         template_instantiation_name_key(*this, primary_tpl, template_name),
-        template_instantiation_argument_key(rendered_instance_key)};
+        make_template_instantiation_argument_keys(args)};
     sync_template_instantiation_dedup_keys(
         *this, structured_instance_key, rendered_instance_key);
 

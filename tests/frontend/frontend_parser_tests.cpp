@@ -2581,6 +2581,28 @@ void test_parser_template_instantiation_dedup_keys_mirror_direct_emission() {
           parser.template_state_.template_struct_instantiation_key_mismatch_count),
       1,
       "direct template emission should detect a missing structured mirror");
+
+  parser.template_state_.instantiated_template_struct_keys.clear();
+  c4c::TypeSpec third = parse_box_int();
+  expect_true(third.base == c4c::TB_STRUCT && third.tag != nullptr,
+              "structured direct-emission de-dup should keep behavior-compatible reuse");
+  expect_eq(first.tag, third.tag,
+            "structured direct-emission de-dup should preserve the instantiated tag");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_.instantiated_template_struct_keys.size()),
+      1,
+      "direct template emission should heal a missing rendered mirror");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_.instantiated_template_struct_keys_by_key.size()),
+      1,
+      "direct template emission should keep one structured de-dup key after reuse");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_.template_struct_instantiation_key_mismatch_count),
+      2,
+      "direct template emission should detect a missing rendered mirror");
 }
 
 void test_parser_alias_template_value_probes_use_token_spelling() {

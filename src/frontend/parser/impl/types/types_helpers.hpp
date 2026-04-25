@@ -963,6 +963,34 @@ std::string make_template_struct_instance_key(
     return key;
 }
 
+ParserTemplateState::TemplateInstantiationKey::Argument
+make_template_instantiation_argument_key(const ParsedTemplateArg& arg) {
+    ParserTemplateState::TemplateInstantiationKey::Argument key;
+    key.is_value = arg.is_value;
+    if (arg.is_value) {
+        if (arg.nttp_name && arg.nttp_name[0] &&
+            std::strncmp(arg.nttp_name, "$expr:", 6) == 0) {
+            key.canonical_key = arg.nttp_name;
+        } else {
+            key.canonical_key = std::to_string(arg.value);
+        }
+    } else {
+        key.canonical_key = canonical_template_struct_type_key(arg.type);
+    }
+    return key;
+}
+
+std::vector<ParserTemplateState::TemplateInstantiationKey::Argument>
+make_template_instantiation_argument_keys(
+    const std::vector<ParsedTemplateArg>& concrete_args) {
+    std::vector<ParserTemplateState::TemplateInstantiationKey::Argument> keys;
+    keys.reserve(concrete_args.size());
+    for (const ParsedTemplateArg& arg : concrete_args) {
+        keys.push_back(make_template_instantiation_argument_key(arg));
+    }
+    return keys;
+}
+
 const Node* select_template_struct_pattern(
     const std::vector<ParsedTemplateArg>& actual_args,
     const Node* primary_tpl,
