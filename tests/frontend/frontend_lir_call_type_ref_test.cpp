@@ -104,6 +104,12 @@ struct Pair make_pair(struct Pair input) {
 struct Pair call_pair(struct Pair value) {
   return make_pair(value);
 }
+
+int sink(int seed, ...);
+
+int call_variadic(struct Pair tail) {
+  return sink(1, tail);
+}
 )c");
   hir_module.target_profile =
       c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -129,6 +135,14 @@ struct Pair call_pair(struct Pair value) {
   expect_true(llvm_ir.find("call %struct.Pair (%struct.Pair) @make_pair(%struct.Pair ") !=
                   std::string::npos,
               "printer should keep using formatted call-site text");
+
+  c4c::codegen::lir::LirFunction& call_variadic =
+      require_function(lir_module, "call_variadic");
+  c4c::codegen::lir::LirCallOp& variadic_call =
+      require_call_to(call_variadic, "@sink");
+  expect_eq(std::to_string(variadic_call.arg_type_refs.size()), "0",
+            "variadic aggregate call should not carry argument mirrors when "
+            "the call signature cannot parse against emitted ABI arguments");
 
   c4c::codegen::lir::LirModule missing_return_name = lir_module;
   c4c::codegen::lir::LirCallOp& missing_return_call =

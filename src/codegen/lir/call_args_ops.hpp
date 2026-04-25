@@ -11,12 +11,18 @@
 namespace c4c::codegen::lir {
 
 inline std::vector<LirTypeRef> lir_call_arg_type_refs(
+    const FormattedLirTypedCall& formatted,
     const std::vector<OwnedLirTypedCallArg>& args) {
   const bool has_explicit_mirror =
       std::any_of(args.begin(), args.end(), [](const OwnedLirTypedCallArg& arg) {
         return !arg.type_ref.empty();
       });
   if (!has_explicit_mirror) return {};
+
+  if (!parse_lir_typed_call_or_infer_params(formatted.callee_type_suffix,
+                                            formatted.args_str)) {
+    return {};
+  }
 
   std::vector<LirTypeRef> refs;
   refs.reserve(args.size());
@@ -40,7 +46,7 @@ inline LirCallOp make_lir_call_op_with_return_type_ref(
                    direct_callee_link_name_id,
                    formatted.callee_type_suffix,
                    formatted.args_str,
-                   lir_call_arg_type_refs(args)};
+                   lir_call_arg_type_refs(formatted, args)};
 }
 
 inline LirCallOp make_lir_call_op(std::string result,
