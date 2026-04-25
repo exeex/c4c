@@ -3,8 +3,6 @@ Source Idea Path: ideas/open/112_lir_backend_legacy_type_surface_readiness_audit
 Source Plan Path: plan.md
 Current Step ID: 4
 Current Step Title: Record Proof Gaps And Validation Recommendations
-你該做code review了
-你該做test baseline review了
 
 # Current Packet
 
