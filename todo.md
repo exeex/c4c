@@ -4,9 +4,8 @@ Source Plan Path: plan.md
 Current Step ID: Step 3
 Current Step Title: Reuse Shared Projection Helpers
 
-
 Code Review Reminder Handled: review/address-projection-inventory-review.md found Step 1 inventory aligned and recommended continuing into Step 2.
-Test Baseline Reminder Handled: no test_baseline.new.log exists for this todo-only metadata repair; no baseline was accepted.
+Test Baseline Reminder Handled: accepted full-suite test_baseline.log for commit c97d5e69 after 3071 passed, 0 failed.
 
 # Current Packet
 
