@@ -30,6 +30,28 @@ std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
   return resolved.empty() ? std::string(fallback) : std::string(resolved);
 }
 
+LirTypeRef lir_aggregate_type_ref(const std::string& rendered_text, LirModule* lir_module,
+                                  const char* tag, bool is_union) {
+  if (!lir_module || !tag || !tag[0]) return LirTypeRef(rendered_text);
+  const StructNameId name_id = lir_module->struct_names.intern(rendered_text);
+  return is_union ? LirTypeRef::union_type(rendered_text, name_id)
+                  : LirTypeRef::struct_type(rendered_text, name_id);
+}
+
+LirTypeRef lir_field_type_ref(const std::string& rendered_text, LirModule* lir_module,
+                              const TypeSpec& type) {
+  if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
+      type.array_rank > 0) {
+    return LirTypeRef(rendered_text);
+  }
+  return lir_aggregate_type_ref(rendered_text, lir_module, type.tag, type.base == TB_UNION);
+}
+
+LirTypeRef lir_field_type_ref(const HirStructField& field, LirModule* lir_module) {
+  if (field.array_first_dim >= 0) return LirTypeRef(llvm_field_ty(field));
+  return lir_field_type_ref(llvm_field_ty(field), lir_module, field.elem_type);
+}
+
 }  // namespace
 
 // ── Module-level orchestration helpers ───────────────────────────────────────
@@ -358,7 +380,8 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
         base_ts.tag = base.tag.c_str();
         const std::string base_ty = llvm_ty(base_ts);
         line << base_ty;
-        structured_decl.fields.push_back({LirTypeRef(base_ty)});
+        structured_decl.fields.push_back(
+            {lir_aggregate_type_ref(base_ty, lir_module, base_ts.tag, base.is_union)});
         cur_offset = base_offset + std::max(0, base.size_bytes);
       }
       int last_idx = -1;
@@ -378,7 +401,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
         first = false;
         const std::string field_ty = llvm_field_ty(f);
         line << field_ty;
-        structured_decl.fields.push_back({LirTypeRef(field_ty)});
+        structured_decl.fields.push_back({lir_field_type_ref(f, lir_module)});
         cur_offset = f.offset_bytes + std::max(0, f.size_bytes);
       }
       if (sd.size_bytes > cur_offset) {

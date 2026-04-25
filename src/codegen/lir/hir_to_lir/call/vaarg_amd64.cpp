@@ -6,20 +6,31 @@ namespace c4c::codegen::lir {
 namespace llvm_cc = c4c::codegen::llvm_backend;
 using namespace stmt_emitter_detail;
 
+namespace {
+
+LirTypeRef lir_va_list_tag_type_ref(lir::LirModule* module) {
+  constexpr const char* kVaListTagType = "%struct.__va_list_tag_";
+  if (!module) return LirTypeRef(kVaListTagType);
+  return LirTypeRef::struct_type(kVaListTagType, module->struct_names.intern(kVaListTagType));
+}
+
+}  // namespace
+
 StmtEmitter::Amd64VaListPtrs StmtEmitter::load_amd64_va_list_ptrs(
     FnCtx& ctx, const std::string& ap_ptr) {
   Amd64VaListPtrs access;
+  const LirTypeRef va_list_tag_ty = lir_va_list_tag_type_ref(module_);
   access.gp_offset_ptr = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirGepOp{access.gp_offset_ptr, "%struct.__va_list_tag_",
+  emit_lir_op(ctx, lir::LirGepOp{access.gp_offset_ptr, va_list_tag_ty,
                                  ap_ptr, false, {"i32 0", "i32 0"}});
   access.fp_offset_ptr = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirGepOp{access.fp_offset_ptr, "%struct.__va_list_tag_",
+  emit_lir_op(ctx, lir::LirGepOp{access.fp_offset_ptr, va_list_tag_ty,
                                  ap_ptr, false, {"i32 0", "i32 1"}});
   access.overflow_ptr_ptr = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirGepOp{access.overflow_ptr_ptr, "%struct.__va_list_tag_",
+  emit_lir_op(ctx, lir::LirGepOp{access.overflow_ptr_ptr, va_list_tag_ty,
                                  ap_ptr, false, {"i32 0", "i32 2"}});
   const std::string reg_save_ptr_ptr = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirGepOp{reg_save_ptr_ptr, "%struct.__va_list_tag_",
+  emit_lir_op(ctx, lir::LirGepOp{reg_save_ptr_ptr, va_list_tag_ty,
                                  ap_ptr, false, {"i32 0", "i32 3"}});
   access.reg_save_area_ptr = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirLoadOp{access.reg_save_area_ptr, "ptr", reg_save_ptr_ptr});

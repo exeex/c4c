@@ -14,6 +14,14 @@ std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
   return resolved.empty() ? std::string(fallback) : std::string(resolved);
 }
 
+LirTypeRef lir_aggregate_gep_type_ref(const std::string& rendered_text,
+                                      lir::LirModule* module, bool is_union) {
+  if (!module) return LirTypeRef(rendered_text);
+  const StructNameId name_id = module->struct_names.intern(rendered_text);
+  return is_union ? LirTypeRef::union_type(rendered_text, name_id)
+                  : LirTypeRef::struct_type(rendered_text, name_id);
+}
+
 }
 
 // Draft-only staging file for Step 3 of the stmt_emitter split refactor.
@@ -24,14 +32,15 @@ std::string StmtEmitter::emit_member_gep(FnCtx& ctx, const std::string& base_ptr
   std::string cur_ptr = base_ptr;
   for (const auto& step : chain) {
     const std::string sty = llvm_struct_type_str(step.tag);
+    const LirTypeRef sty_ref = lir_aggregate_gep_type_ref(sty, module_, step.is_union);
     if (step.is_union) {
       const std::string tmp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirGepOp{tmp, sty, cur_ptr, false, {"i32 0", "i32 0"}});
+      emit_lir_op(ctx, lir::LirGepOp{tmp, sty_ref, cur_ptr, false, {"i32 0", "i32 0"}});
       cur_ptr = tmp;
     } else {
       const std::string tmp = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirGepOp{
-                           tmp, sty, cur_ptr, false,
+                           tmp, sty_ref, cur_ptr, false,
                            {"i32 0", "i32 " + std::to_string(step.llvm_idx)}});
       cur_ptr = tmp;
     }
