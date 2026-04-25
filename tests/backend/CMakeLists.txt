@@ -183,6 +183,7 @@ add_executable(backend_lir_to_bir_notes_test
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/memory/addressing.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/memory/coordinator.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/memory/intrinsics.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/memory/local_gep.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/memory/local_slots.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/memory/provenance.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/memory/value_materialization.cpp"
