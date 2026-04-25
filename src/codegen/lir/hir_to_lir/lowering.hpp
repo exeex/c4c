@@ -174,6 +174,7 @@ class ConstInitEmitter {
 
   // ── Field type reconstruction ───────────────────────────────────────────
   TypeSpec field_decl_type(const c4c::hir::HirStructField& f) const;
+  const c4c::hir::HirStructDef* lookup_const_init_struct_def(const TypeSpec& ts) const;
 
   // ── Global object lookup ────────────────────────────────────────────────
   const c4c::hir::GlobalVar* select_global_object(const std::string& name) const;

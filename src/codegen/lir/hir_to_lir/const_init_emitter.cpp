@@ -91,6 +91,15 @@ TypeSpec ConstInitEmitter::field_decl_type(const HirStructField& f) const {
   return ts;
 }
 
+const HirStructDef* ConstInitEmitter::lookup_const_init_struct_def(const TypeSpec& ts) const {
+  const stmt_emitter_detail::StructuredLayoutLookup layout =
+      stmt_emitter_detail::lookup_structured_layout(mod_, &module_, ts);
+  if (layout.legacy_decl) return layout.legacy_decl;
+  if (!ts.tag || !ts.tag[0]) return nullptr;
+  const auto it = mod_.struct_defs.find(ts.tag);
+  return it == mod_.struct_defs.end() ? nullptr : &it->second;
+}
+
 // ── Global object lookup ──────────────────────────────────────────────────────
 
 const GlobalVar* ConstInitEmitter::select_global_object(const std::string& name) const {
@@ -1268,10 +1277,9 @@ std::vector<std::string> ConstInitEmitter::emit_const_struct_fields_impl(const T
 }
 
 std::string ConstInitEmitter::emit_const_struct(const TypeSpec& ts, const GlobalInit& init) {
-  if (!ts.tag || !ts.tag[0]) return "zeroinitializer";
-  const auto it = mod_.struct_defs.find(ts.tag);
-  if (it == mod_.struct_defs.end()) return "zeroinitializer";
-  const HirStructDef& sd = it->second;
+  const HirStructDef* sd_ptr = lookup_const_init_struct_def(ts);
+  if (!sd_ptr) return "zeroinitializer";
+  const HirStructDef& sd = *sd_ptr;
   if (sd.is_union) return emit_const_union(ts, sd, init);
   return format_struct_literal(sd, emit_const_struct_fields_impl(ts, sd, init, nullptr));
 }
@@ -1344,9 +1352,9 @@ std::string ConstInitEmitter::emit_const_union(const TypeSpec& ts, const HirStru
     }
 
     if ((cur_ts.base == TB_STRUCT || cur_ts.base == TB_UNION) && cur_ts.tag && cur_ts.tag[0]) {
-      const auto sit = mod_.struct_defs.find(cur_ts.tag);
-      if (sit == mod_.struct_defs.end()) return false;
-      const HirStructDef& cur_sd = sit->second;
+      const HirStructDef* cur_sd_ptr = lookup_const_init_struct_def(cur_ts);
+      if (!cur_sd_ptr) return false;
+      const HirStructDef& cur_sd = *cur_sd_ptr;
       if (cur_sd.is_union) {
         if (const auto canonical = try_select_canonical_union_field_init(cur_sd, cur_init)) {
           if (canonical->first >= cur_sd.fields.size()) return true;
