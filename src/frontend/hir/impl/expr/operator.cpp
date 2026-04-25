@@ -323,24 +323,19 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
         TypeSpec rts = res_expr->type.spec;
         if (rts.ptr_level > 0) break;
         if (rts.base != TB_STRUCT || !rts.tag) break;
-        std::string base_key = std::string(rts.tag) + "::operator_arrow";
-        std::string const_key = base_key + "_const";
-        auto mit = rts.is_const ? struct_methods_.find(const_key) : struct_methods_.find(base_key);
-        if (mit == struct_methods_.end()) {
-          mit = rts.is_const ? struct_methods_.find(base_key) : struct_methods_.find(const_key);
-        }
-        if (mit == struct_methods_.end()) break;
+        auto method = find_struct_method_mangled(
+            rts.tag, "operator_arrow", rts.is_const);
+        if (!method) break;
         TypeSpec fn_ts{};
         fn_ts.base = TB_VOID;
-        if (const Function* fn = module_->find_function_by_name_legacy(mit->second)) {
+        if (const Function* fn = module_->find_function_by_name_legacy(*method)) {
           fn_ts = fn->return_type.spec;
         }
         if (fn_ts.base == TB_VOID) {
-          auto rit2 = struct_method_ret_types_.find(std::string(rts.tag) + "::operator_arrow");
-          if (rit2 == struct_method_ret_types_.end()) {
-            rit2 = struct_method_ret_types_.find(std::string(rts.tag) + "::operator_arrow_const");
+          if (auto rit2 = find_struct_method_return_type(
+                  rts.tag, "operator_arrow", false)) {
+            fn_ts = *rit2;
           }
-          if (rit2 != struct_method_ret_types_.end()) fn_ts = rit2->second;
         }
         LocalDecl tmp{};
         tmp.id = next_local_id();
@@ -357,7 +352,7 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
         ExprId tmp_id = append_expr(n, tmp_ref, rts, ValueCategory::LValue);
         CallExpr cc{};
         DeclRef dr{};
-        dr.name = mit->second;
+        dr.name = *method;
         dr.link_name_id = module_->link_names.find(dr.name);
         TypeSpec callee_ts = fn_ts;
         callee_ts.ptr_level++;
@@ -447,15 +442,12 @@ ExprId Lowerer::maybe_bool_convert(FunctionCtx* ctx, ExprId expr, const Node* n)
   if (!expr.valid() || !n) return expr;
   TypeSpec ts = infer_generic_ctrl_type(ctx, n);
   if (ts.ptr_level != 0 || ts.base != TB_STRUCT || !ts.tag) return expr;
-  std::string base_key = std::string(ts.tag) + "::operator_bool";
-  std::string const_key = base_key + "_const";
-  auto mit = struct_methods_.find(base_key);
-  if (mit == struct_methods_.end()) mit = struct_methods_.find(const_key);
-  if (mit == struct_methods_.end()) return expr;
+  auto method = find_struct_method_mangled(ts.tag, "operator_bool", false);
+  if (!method) return expr;
 
   CallExpr c{};
   DeclRef dr{};
-  dr.name = mit->second;
+  dr.name = *method;
   dr.link_name_id = module_->link_names.find(dr.name);
   TypeSpec fn_ts{};
   fn_ts.base = TB_BOOL;
