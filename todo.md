@@ -1,34 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/09_bir-call-signature-and-abi-family-extraction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Move pure target ABI and return classification helpers
+Current Step ID: Step 3
+Current Step Title: Move function signature and parameter helpers
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 moved the audited pure ABI helper cluster from `calling.cpp` into
-`call_abi.cpp`: `use_float_return_registers`, `use_float_arg_registers`,
-`lower_function_return_abi`, `lower_call_arg_abi`, and the two
-`lir_to_bir_detail::compute_*_abi` wrappers. `calling.cpp` now calls the
-existing `compute_*_abi` detail entry points and no longer defines those helper
-bodies.
+Step 3 moved the accepted function signature and parameter helper cluster from
+`calling.cpp` into `call_abi.cpp`: `is_void_param_sentinel`,
+`lower_param_type`, `parse_function_signature_params`,
+`lower_return_info_from_type`, `infer_function_return_info`,
+`lower_signature_return_info`, and `lower_function_params`. Main typed-call
+parsing, extern/decl lowering, call instruction lowering, runtime intrinsic
+lowering, and failure-note behavior remain in `calling.cpp`.
 
 ## Suggested Next
 
-Execute Step 3 by moving function signature and parameter helpers, keeping
-typed-call parsing, extern/decl behavior, call lowering, runtime intrinsic
-lowering, and failure-note behavior unchanged.
+Execute Step 4 by proving call-family behavior did not change with the
+supervisor-selected call/ABI route coverage.
 
 ## Watchouts
 
 - This was a behavior-preserving extraction; do not rewrite expectations.
-- Do not add new headers.
-- Keep `lower_call_inst` and `lower_runtime_intrinsic_inst` in `calling.cpp`
-  unless a future packet explicitly owns moving them.
-- Step 3 should avoid moving typed-call parsing, extern/decl behavior, or
-  failure-note behavior unless specifically delegated.
+- No new headers were added; declarations remain in `lowering.hpp`.
+- Step 4 should validate direct/indirect calls, byval/sret, extern/decl
+  functions, and runtime intrinsic routes rather than moving more behavior.
 
 ## Proof
 
