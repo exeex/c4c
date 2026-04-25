@@ -13,18 +13,19 @@
 // deferred consteval reduction, and deferred NTTP-related work is coordinated
 // by compile_time_engine after initial HIR construction.
 //
-// Implementation map:
-// - hir.cpp: facade entry point and pipeline-stage coordination
-// - hir_lowering.hpp + hir_lowerer_internal.hpp: shared lowering surfaces
-// - compile_time_engine.{hpp,cpp}: deferred compile-time fixpoint execution
-// - hir_printer.{hpp,cpp}: textual summaries and debug printing
+// Public surface:
+// - build_hir(...): facade entry point for AST -> HIR pipeline construction
+// - format_summary(...): compact public module summary
+//
+// Private lowering internals are reachable through impl/hir_impl.hpp and
+// impl/lowerer.hpp. Full dump formatting remains in hir_printer.hpp rather
+// than being re-exported from this facade.
 
 #include <string>
 
 #include "../../target_profile.hpp"
 #include "ast.hpp"
 #include "canonical_symbol.hpp"
-#include "hir_printer.hpp"
 #include "hir_ir.hpp"
 
 namespace c4c::hir {

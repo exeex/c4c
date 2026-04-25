@@ -1,6 +1,6 @@
 // HIR regression: local declaration lowering should keep default construction,
 // copy initialization, aggregate array setup, and rvalue-reference temporaries
-// stable across helper extraction from hir_stmt.cpp.
+// stable across helper extraction from impl/stmt/stmt.cpp.
 
 struct Box {
   int value;

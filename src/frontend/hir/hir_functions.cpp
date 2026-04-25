@@ -9,11 +9,11 @@
 // - initializer normalization helpers
 // - template collection / template-struct realization helpers
 
-#include "hir_lowering.hpp"
-#include "hir_lowerer_internal.hpp"
+#include "impl/hir_impl.hpp"
+#include "impl/lowerer.hpp"
 #include "consteval.hpp"
 #include "type_utils.hpp"
-#include "../parser/parser.hpp"
+#include "../parser/parser_support.hpp"
 
 #include <algorithm>
 #include <stdexcept>

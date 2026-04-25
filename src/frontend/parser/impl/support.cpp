@@ -1,0 +1,985 @@
+#include "parser_impl.hpp"
+
+#include <cstring>
+#include <cstdlib>
+#include <utility>
+
+namespace c4c {
+
+// ── ParserSnapshot save / restore ────────────────────────────────────────────
+
+Parser::ParserSymbolTables& Parser::parser_symbol_tables() {
+    return shared_lookup_state_.parser_name_tables;
+}
+
+const Parser::ParserSymbolTables& Parser::parser_symbol_tables() const {
+    return shared_lookup_state_.parser_name_tables;
+}
+
+TextId Parser::parser_text_id_for_token(TextId token_text_id,
+                                        std::string_view fallback) const {
+    if (token_text_id != kInvalidText) return token_text_id;
+    if (fallback.empty()) return kInvalidText;
+    return shared_lookup_state_.token_texts
+               ? shared_lookup_state_.token_texts->intern(fallback)
+               : kInvalidText;
+}
+
+TextId Parser::find_parser_text_id(std::string_view text) const {
+    if (text.empty() || !shared_lookup_state_.token_texts) return kInvalidText;
+    return shared_lookup_state_.token_texts->find(text);
+}
+
+std::string_view Parser::parser_text(TextId text_id,
+                                     std::string_view fallback) const {
+    if (shared_lookup_state_.token_texts && text_id != kInvalidText) {
+        return shared_lookup_state_.token_texts->lookup(text_id);
+    }
+    return fallback;
+}
+
+void Parser::clear_current_struct_tag() {
+    active_context_state_.current_struct_tag.clear();
+    active_context_state_.current_struct_tag_text_id = kInvalidText;
+}
+
+void Parser::set_current_struct_tag(std::string_view tag) {
+    active_context_state_.current_struct_tag = std::string(tag);
+    active_context_state_.current_struct_tag_text_id =
+        parser_text_id_for_token(kInvalidText, tag);
+}
+
+std::string_view Parser::current_struct_tag_text() const {
+    return parser_text(active_context_state_.current_struct_tag_text_id,
+                       active_context_state_.current_struct_tag);
+}
+
+void Parser::clear_last_resolved_typedef() {
+    active_context_state_.last_resolved_typedef.clear();
+    active_context_state_.last_resolved_typedef_text_id = kInvalidText;
+}
+
+void Parser::set_last_resolved_typedef(std::string_view name) {
+    active_context_state_.last_resolved_typedef = std::string(name);
+    active_context_state_.last_resolved_typedef_text_id =
+        parser_text_id_for_token(kInvalidText, name);
+}
+
+void Parser::clear_last_using_alias_name() {
+    active_context_state_.last_using_alias_key = {};
+    active_context_state_.last_using_alias_name.clear();
+    active_context_state_.last_using_alias_name_text_id = kInvalidText;
+}
+
+void Parser::set_last_using_alias_name(const QualifiedNameKey& key) {
+    active_context_state_.last_using_alias_key = key;
+    active_context_state_.last_using_alias_name.clear();
+    active_context_state_.last_using_alias_name_text_id = key.base_text_id;
+}
+
+std::string_view Parser::last_using_alias_name_text() const {
+    return parser_text(active_context_state_.last_using_alias_name_text_id,
+                       active_context_state_.last_using_alias_name);
+}
+
+const Parser::FnPtrTypedefInfo* Parser::find_typedef_fn_ptr_info(
+    TextId text_id) const {
+    if (text_id == kInvalidText) return nullptr;
+    const auto it = binding_state_.typedef_fn_ptr_info.find(text_id);
+    return it == binding_state_.typedef_fn_ptr_info.end() ? nullptr
+                                                          : &it->second;
+}
+
+const Parser::FnPtrTypedefInfo* Parser::find_current_typedef_fn_ptr_info()
+    const {
+    return find_typedef_fn_ptr_info(
+        active_context_state_.last_resolved_typedef_text_id);
+}
+
+int Parser::current_token_index() const {
+    return pos_;
+}
+
+int Parser::token_count() const {
+    return static_cast<int>(tokens_.size());
+}
+
+TokenKind Parser::token_kind(int index) const {
+    if (index < 0 || index >= static_cast<int>(tokens_.size())) {
+        return TokenKind::EndOfFile;
+    }
+    return tokens_[index].kind;
+}
+
+bool Parser::token_kind_at(int index, TokenKind kind) const {
+    return index >= 0 && index < static_cast<int>(tokens_.size()) &&
+           tokens_[index].kind == kind;
+}
+
+bool Parser::parse_injected_base_type(std::vector<Token> tokens,
+                                      const char* debug_reason,
+                                      TypeSpec* out_resolved) {
+    const int saved_pos = pos_;
+    const std::string injected_detail =
+        std::string("reason=") +
+        (debug_reason ? debug_reason : "template_instantiation") +
+        " saved_pos=" + std::to_string(saved_pos) +
+        " token_count=" + std::to_string(tokens.size());
+    auto saved_tokens = std::move(tokens_);
+    tokens_ = std::move(tokens);
+    pos_ = 0;
+    note_parse_debug_event_for("injected_parse_begin",
+                               "parse_base_type",
+                               injected_detail.c_str());
+    bool ok = false;
+    try {
+        TypeSpec resolved = parse_base_type();
+        if (out_resolved) *out_resolved = resolved;
+        ok = true;
+    } catch (...) {
+        ok = false;
+    }
+    note_parse_debug_event_for("injected_parse_end",
+                               "parse_base_type",
+                               injected_detail.c_str());
+    tokens_ = std::move(saved_tokens);
+    pos_ = saved_pos;
+    return ok;
+}
+
+bool Parser::has_defined_struct_tag(std::string_view tag) const {
+    if (tag.empty()) return false;
+    return definition_state_.defined_struct_tags.count(std::string(tag)) > 0;
+}
+
+bool Parser::eval_const_int_with_parser_tables(Node* n, long long* out) const {
+    return eval_const_int(n, out, &definition_state_.struct_tag_def_map,
+                          &binding_state_.const_int_bindings);
+}
+
+void Parser::replace_token_stream_for_testing(std::vector<Token> tokens, int pos) {
+    tokens_ = std::move(tokens);
+    pos_ = pos;
+}
+
+int Parser::token_cursor_for_testing() const {
+    return pos_;
+}
+
+const Token& Parser::token_at_for_testing(int index) const {
+    return tokens_.at(static_cast<size_t>(index));
+}
+
+bool Parser::parser_symbols_use_text_table_for_testing(
+    const TextTable* texts) const {
+    return shared_lookup_state_.parser_symbols.texts_ == texts;
+}
+
+size_t Parser::parser_symbol_count_for_testing() const {
+    return shared_lookup_state_.parser_symbols.size();
+}
+
+void Parser::register_concept_name_for_testing(TextId name_text_id) {
+    binding_state_.concept_name_text_ids.insert(name_text_id);
+}
+
+void Parser::register_struct_definition_for_testing(std::string tag,
+                                                    Node* definition) {
+    definition_state_.struct_tag_def_map[std::move(tag)] = definition;
+}
+
+void Parser::register_using_value_alias_for_testing(
+    int context_id, TextId alias_text_id, const QualifiedNameKey& target_key,
+    std::string compatibility_name) {
+    namespace_state_.using_value_aliases[context_id][alias_text_id] = {
+        target_key, std::move(compatibility_name)};
+}
+
+bool Parser::replace_using_value_alias_compatibility_name_for_testing(
+    int context_id, TextId alias_text_id, std::string compatibility_name) {
+    const auto context_it = namespace_state_.using_value_aliases.find(context_id);
+    if (context_it == namespace_state_.using_value_aliases.end()) return false;
+    const auto alias_it = context_it->second.find(alias_text_id);
+    if (alias_it == context_it->second.end()) return false;
+    alias_it->second.compatibility_name = std::move(compatibility_name);
+    return true;
+}
+
+void Parser::register_alias_template_info_for_testing(
+    const QualifiedNameKey& key, const ParserAliasTemplateInfo& info) {
+    template_state_.alias_template_info[key] = info;
+}
+
+bool Parser::has_last_using_alias_name_text_id_for_testing() const {
+    return active_context_state_.last_using_alias_name_text_id != kInvalidText;
+}
+
+void Parser::replace_last_using_alias_name_fallback_for_testing(
+    std::string name) {
+    active_context_state_.last_using_alias_name = std::move(name);
+}
+
+std::string_view Parser::last_resolved_typedef_text() const {
+    return parser_text(active_context_state_.last_resolved_typedef_text_id,
+                       active_context_state_.last_resolved_typedef);
+}
+
+Parser::SymbolId Parser::symbol_id_for_token_text(TextId token_text_id,
+                                                  std::string_view fallback) {
+    return shared_lookup_state_.parser_name_tables.intern_identifier(
+        parser_text_id_for_token(token_text_id, fallback));
+}
+
+std::string_view Parser::symbol_spelling(SymbolId id) const {
+    return shared_lookup_state_.parser_symbols.spelling(id);
+}
+
+bool Parser::is_cpp_mode() const {
+    return core_input_state_.source_profile == SourceProfile::CppSubset ||
+           core_input_state_.source_profile == SourceProfile::C4;
+}
+
+Parser::ParserLiteSnapshot Parser::save_lite_state() const {
+    ParserLiteSnapshot snap;
+    snap.pos = pos_;
+    if (active_context_state_.last_resolved_typedef_text_id != kInvalidText) {
+        snap.last_resolved_typedef.kind = TentativeTextRefKind::TextId;
+        snap.last_resolved_typedef.text_id =
+            active_context_state_.last_resolved_typedef_text_id;
+    }
+    snap.template_arg_expr_depth = active_context_state_.template_arg_expr_depth;
+    snap.token_mutation_count = core_input_state_.token_mutations.size();
+    return snap;
+}
+
+void Parser::restore_lite_state(const ParserLiteSnapshot& snap) {
+    pos_ = snap.pos;
+    clear_last_resolved_typedef();
+    if (snap.last_resolved_typedef.kind == TentativeTextRefKind::TextId &&
+        snap.last_resolved_typedef.text_id != kInvalidText &&
+        shared_lookup_state_.token_texts) {
+        set_last_resolved_typedef(shared_lookup_state_.token_texts->lookup(
+            snap.last_resolved_typedef.text_id));
+    }
+    active_context_state_.template_arg_expr_depth =
+        snap.template_arg_expr_depth;
+    while (core_input_state_.token_mutations.size() > snap.token_mutation_count) {
+        const TokenMutation& mutation =
+            core_input_state_.token_mutations.back();
+        tokens_[mutation.pos] = mutation.token;
+        core_input_state_.token_mutations.pop_back();
+    }
+}
+
+Parser::ParserSnapshot Parser::save_state() const {
+    ParserSnapshot snap;
+    snap.lite = save_lite_state();
+#if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
+    snap.symbol_tables = parser_symbol_tables();
+    snap.non_atom_typedefs = binding_state_.non_atom_typedefs;
+    snap.non_atom_user_typedefs = binding_state_.non_atom_user_typedefs;
+    snap.non_atom_typedef_types = binding_state_.non_atom_typedef_types;
+    snap.non_atom_var_types = binding_state_.non_atom_var_types;
+    snap.lexical_scope_state = lexical_scope_state_;
+#endif
+    return snap;
+}
+
+void Parser::restore_state(const ParserSnapshot& snap) {
+    restore_lite_state(snap.lite);
+#if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
+    parser_symbol_tables() = snap.symbol_tables;
+    shared_lookup_state_.parser_name_tables.symbols =
+        &shared_lookup_state_.parser_symbols;
+    binding_state_.non_atom_typedefs = snap.non_atom_typedefs;
+    binding_state_.non_atom_user_typedefs = snap.non_atom_user_typedefs;
+    binding_state_.non_atom_typedef_types = snap.non_atom_typedef_types;
+    binding_state_.non_atom_var_types = snap.non_atom_var_types;
+    lexical_scope_state_ = snap.lexical_scope_state;
+#endif
+}
+
+
+static bool lookup_enum_const_value(const Node* n,
+                                    const ParserEnumConstTable& consts,
+                                    long long* out) {
+    if (!n || !out) return false;
+    if (n->unqualified_text_id != kInvalidText) {
+        const auto it = consts.find(n->unqualified_text_id);
+        if (it != consts.end()) {
+            *out = it->second;
+            return true;
+        }
+        return false;
+    }
+    if (n->name) {
+        // Compatibility fallback for AST nodes that still only carry spelling.
+        // Enum initializer identifiers should normally arrive with unqualified_text_id.
+    }
+    return false;
+}
+
+bool eval_enum_expr(Node* n, const ParserEnumConstTable& consts, long long* out) {
+    if (!n || !out) return false;
+    if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) { *out = n->ival; return true; }
+    if (n->kind == NK_VAR && n->name) {
+        return lookup_enum_const_value(n, consts, out);
+    }
+    if (n->kind == NK_CAST && n->left) return eval_enum_expr(n->left, consts, out);
+    if (n->kind == NK_SIZEOF_TYPE) {
+        if (n->type.base == TB_TYPEDEF && n->type.tag) {
+            return false;  // dependent or unresolved type
+        }
+        *out = sizeof_type_spec(n->type);
+        return true;
+    }
+    if (n->kind == NK_UNARY && n->op && n->left) {
+        long long v = 0;
+        if (!eval_enum_expr(n->left, consts, &v)) return false;
+        if (strcmp(n->op, "-") == 0) { *out = -v; return true; }
+        if (strcmp(n->op, "+") == 0) { *out = v;  return true; }
+        return false;
+    }
+    if (n->kind == NK_BINOP && n->op && n->left && n->right) {
+        long long l = 0, r = 0;
+        if (!eval_enum_expr(n->left, consts, &l)) return false;
+        if (!eval_enum_expr(n->right, consts, &r)) return false;
+        if (strcmp(n->op, "+") == 0) { *out = l + r; return true; }
+        if (strcmp(n->op, "-") == 0) { *out = l - r; return true; }
+        if (strcmp(n->op, "*") == 0) { *out = l * r; return true; }
+        if (strcmp(n->op, "&") == 0) { *out = l & r; return true; }
+        if (strcmp(n->op, "|") == 0) { *out = l | r; return true; }
+        if (strcmp(n->op, "^") == 0) { *out = l ^ r; return true; }
+        if (strcmp(n->op, "<<") == 0) { *out = l << r; return true; }
+        if (strcmp(n->op, ">>") == 0) { *out = l >> r; return true; }
+        if (strcmp(n->op, "/") == 0 && r != 0) { *out = l / r; return true; }
+        if (strcmp(n->op, "%") == 0 && r != 0) { *out = l % r; return true; }
+    }
+    if (n->kind == NK_TERNARY && n->cond && n->then_ && n->else_) {
+        long long c = 0;
+        if (!eval_enum_expr(n->cond, consts, &c)) return false;
+        return eval_enum_expr(c ? n->then_ : n->else_, consts, out);
+    }
+    return false;
+}
+
+bool is_dependent_enum_expr(Node* n,
+                            const ParserEnumConstTable& consts) {
+    if (!n) return false;
+    if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) return false;
+    if (n->kind == NK_VAR && n->name) {
+        long long ignored = 0;
+        if (lookup_enum_const_value(n, consts, &ignored)) return false;
+        return true;
+    }
+    if (n->kind == NK_SIZEOF_TYPE) {
+        return n->type.base == TB_TYPEDEF && n->type.tag;
+    }
+    if (n->kind == NK_SIZEOF_EXPR) {
+        return true;
+    }
+    if (n->kind == NK_SIZEOF_PACK) {
+        return true;
+    }
+    if (n->kind == NK_CAST && n->left) return is_dependent_enum_expr(n->left, consts);
+    if (n->kind == NK_UNARY && n->left) return is_dependent_enum_expr(n->left, consts);
+    if (n->kind == NK_BINOP && n->left && n->right) {
+        return is_dependent_enum_expr(n->left, consts) ||
+               is_dependent_enum_expr(n->right, consts);
+    }
+    if (n->kind == NK_TERNARY && n->cond && n->then_ && n->else_) {
+        return is_dependent_enum_expr(n->cond, consts) ||
+               is_dependent_enum_expr(n->then_, consts) ||
+               is_dependent_enum_expr(n->else_, consts);
+    }
+    return false;
+}
+
+TypeBase effective_scalar_base(const TypeSpec& ts) {
+    if (ts.base == TB_ENUM && ts.enum_underlying_base != TB_VOID)
+        return ts.enum_underlying_base;
+    return ts.base;
+}
+
+// ── constant expression evaluator ─────────────────────────────────────────────
+// Evaluate a simple AST subtree as an integer constant (for array sizes).
+// Returns true and sets *out on success; false if the expression is dynamic.
+long long sizeof_base(TypeBase b) {
+    switch (b) {
+        case TB_VOID: return 1;
+        case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: return 1;
+        case TB_SHORT: case TB_USHORT: return 2;
+        case TB_INT: case TB_UINT: case TB_FLOAT: return 4;
+        case TB_LONG: case TB_ULONG: case TB_LONGLONG: case TB_ULONGLONG:
+        case TB_DOUBLE: return 8;
+        case TB_LONGDOUBLE: return 16;
+        case TB_INT128: case TB_UINT128: return 16;
+        case TB_COMPLEX_CHAR:
+        case TB_COMPLEX_SCHAR:
+        case TB_COMPLEX_UCHAR:
+            return 2;
+        case TB_COMPLEX_SHORT:
+        case TB_COMPLEX_USHORT:
+            return 4;
+        case TB_COMPLEX_INT:
+        case TB_COMPLEX_UINT:
+        case TB_COMPLEX_FLOAT:
+            return 8;
+        case TB_COMPLEX_LONG:
+        case TB_COMPLEX_ULONG:
+        case TB_COMPLEX_LONGLONG:
+        case TB_COMPLEX_ULONGLONG:
+        case TB_COMPLEX_DOUBLE:
+            return 16;
+        case TB_COMPLEX_LONGDOUBLE:
+            return 32;
+        default: return 4;
+    }
+}
+
+long long sizeof_type_spec(const TypeSpec& ts) {
+    if (ts.ptr_level > 0 || ts.is_fn_ptr) return 8;
+    return sizeof_base(effective_scalar_base(ts));
+}
+
+long long align_base(TypeBase b, int ptr_level) {
+    if (ptr_level > 0) return 8;
+    switch (b) {
+        case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: return 1;
+        case TB_SHORT: case TB_USHORT: return 2;
+        case TB_INT: case TB_UINT: case TB_FLOAT: case TB_ENUM: return 4;
+        case TB_LONG: case TB_ULONG:
+        case TB_LONGLONG: case TB_ULONGLONG:
+        case TB_DOUBLE:
+            return 8;
+        case TB_LONGDOUBLE:
+        case TB_INT128: case TB_UINT128:
+            return 16;
+        case TB_COMPLEX_CHAR:
+        case TB_COMPLEX_SCHAR:
+        case TB_COMPLEX_UCHAR:
+            return 1;
+        case TB_COMPLEX_SHORT:
+        case TB_COMPLEX_USHORT:
+            return 2;
+        case TB_COMPLEX_INT:
+        case TB_COMPLEX_UINT:
+        case TB_COMPLEX_FLOAT:
+            return 4;
+        case TB_COMPLEX_LONG:
+        case TB_COMPLEX_ULONG:
+        case TB_COMPLEX_LONGLONG:
+        case TB_COMPLEX_ULONGLONG:
+        case TB_COMPLEX_DOUBLE:
+            return 8;
+        case TB_COMPLEX_LONGDOUBLE:
+            return 16;
+        default: return 8;
+    }
+}
+
+long long alignof_type_spec(const TypeSpec& ts) {
+    return align_base(effective_scalar_base(ts), ts.ptr_level);
+}
+
+bool eval_const_int(Node* n, long long* out,
+    const std::unordered_map<std::string, Node*>* struct_map,
+    const std::unordered_map<TextId, long long>* named_consts);
+bool eval_const_int(Node* n, long long* out,
+    const std::unordered_map<std::string, Node*>* struct_map,
+    const std::unordered_map<std::string, long long>* named_consts);
+
+// Forward declaration
+static long long struct_align(const char* tag,
+    const std::unordered_map<std::string, Node*>* struct_map);
+static long long struct_sizeof(const char* tag,
+    const std::unordered_map<std::string, Node*>* struct_map);
+
+// Compute the ABI alignment of a field type.
+static long long field_align(const TypeSpec& ts,
+    const std::unordered_map<std::string, Node*>* struct_map) {
+    long long natural = 0;
+    if (ts.ptr_level > 0) return 8;
+    if (ts.is_vector && ts.vector_bytes > 0) {
+        natural = ts.vector_bytes > 16 ? 16 : ts.vector_bytes;
+    } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag) {
+        natural = struct_align(ts.tag, struct_map);
+    } else {
+        natural = alignof_type_spec(ts);
+    }
+    if (ts.align_bytes > 0 && ts.align_bytes > natural) return ts.align_bytes;
+    return natural;
+}
+
+// Compute the alignment of a struct/union (max alignment of its fields).
+static long long struct_align(const char* tag,
+    const std::unordered_map<std::string, Node*>* struct_map) {
+    if (!struct_map || !tag) return 8;
+    auto it = struct_map->find(tag);
+    if (it == struct_map->end()) return 8;
+    Node* sd = it->second;
+    if (!sd || sd->kind != NK_STRUCT_DEF) return 8;
+    long long max_align = 1;
+    for (int i = 0; i < sd->n_fields; i++) {
+        Node* f = sd->fields[i];
+        if (!f) continue;
+        long long a = field_align(f->type, struct_map);
+        if (a > max_align) max_align = a;
+    }
+    if (sd->struct_align > max_align) max_align = sd->struct_align;
+    return max_align;
+}
+
+// Compute sizeof a struct (with alignment padding).
+static long long struct_sizeof(const char* tag,
+    const std::unordered_map<std::string, Node*>* struct_map) {
+    if (!struct_map || !tag) return 8;
+    auto it = struct_map->find(tag);
+    if (it == struct_map->end()) return 8;
+    Node* sd = it->second;
+    if (!sd || sd->kind != NK_STRUCT_DEF) return 8;
+    long long offset = 0, max_align = 1;
+    for (int i = 0; i < sd->n_fields; i++) {
+        Node* f = sd->fields[i];
+        if (!f) continue;
+        long long a = field_align(f->type, struct_map);
+        if (a > max_align) max_align = a;
+        offset = (offset + a - 1) / a * a;
+        long long sz;
+        if (f->type.ptr_level > 0) sz = 8;
+        else if (f->type.is_vector && f->type.vector_bytes > 0)
+            sz = f->type.vector_bytes;
+        else if (f->type.base == TB_STRUCT || f->type.base == TB_UNION)
+            sz = struct_sizeof(f->type.tag, struct_map);
+        else sz = sizeof_type_spec(f->type);
+        if (f->type.array_rank > 0)
+            for (int d = 0; d < f->type.array_rank; d++)
+                if (f->type.array_dims[d] > 0) sz *= f->type.array_dims[d];
+        offset += sz;
+    }
+    return (offset + max_align - 1) / max_align * max_align;
+}
+
+// Helper: compute offsetof(tag, field_name) using struct_tag_def_map
+static bool compute_offsetof(const char* tag, const char* field_name,
+    const std::unordered_map<std::string, Node*>* struct_map, long long* out) {
+    if (!struct_map || !tag || !field_name) return false;
+    auto it = struct_map->find(tag);
+    if (it == struct_map->end()) return false;
+    Node* sd = it->second;
+    if (!sd || sd->kind != NK_STRUCT_DEF) return false;
+    std::string path(field_name);
+    std::string head = path;
+    std::string tail;
+    size_t dot = path.find('.');
+    if (dot != std::string::npos) {
+        head = path.substr(0, dot);
+        tail = path.substr(dot + 1);
+    }
+
+    long long offset = 0;
+    for (int i = 0; i < sd->n_fields; i++) {
+        Node* f = sd->fields[i];
+        if (!f) continue;
+        long long align = field_align(f->type, struct_map);
+        // Align offset
+        offset = (offset + align - 1) / align * align;
+        if (f->name && head == f->name) {
+            if (tail.empty()) {
+                *out = offset;
+                return true;
+            }
+            if ((f->type.base == TB_STRUCT || f->type.base == TB_UNION) && f->type.tag) {
+                long long inner = 0;
+                if (!compute_offsetof(f->type.tag, tail.c_str(), struct_map, &inner)) return false;
+                *out = offset + inner;
+                return true;
+            }
+            return false;
+        }
+        // Advance by field size
+        long long sz;
+        if (f->type.ptr_level > 0) sz = 8;
+        else if (f->type.base == TB_STRUCT || f->type.base == TB_UNION)
+            sz = struct_sizeof(f->type.tag, struct_map);
+        else sz = sizeof_type_spec(f->type);
+        if (f->type.array_rank > 0) {
+            for (int d = 0; d < f->type.array_rank; d++)
+                if (f->type.array_dims[d] > 0) sz *= f->type.array_dims[d];
+        }
+        offset += sz;
+    }
+    return false;
+}
+
+template <typename NamedConstTable>
+static bool lookup_unqualified_const_int_binding(
+    const Node* n, const NamedConstTable* named_consts, long long* out) {
+    if (!n || !named_consts || !out) return false;
+    if (n->is_global_qualified || n->n_qualifier_segments != 0 ||
+        n->unqualified_text_id == kInvalidText) {
+        return false;
+    }
+    const auto it = named_consts->find(n->unqualified_text_id);
+    if (it == named_consts->end()) return false;
+    *out = it->second;
+    return true;
+}
+
+bool eval_const_int(Node* n, long long* out,
+    const std::unordered_map<std::string, Node*>* struct_map,
+    const std::unordered_map<TextId, long long>* named_consts) {
+    if (!n) return false;
+    if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) {
+        *out = n->ival;
+        return true;
+    }
+    if (n->kind == NK_VAR && n->name) {
+        return lookup_unqualified_const_int_binding(n, named_consts, out);
+    }
+    if (n->kind == NK_CAST && n->left) {
+        return eval_const_int(n->left, out, struct_map, named_consts);
+    }
+    if (n->kind == NK_OFFSETOF) {
+        if (n->type.base == TB_STRUCT || n->type.base == TB_UNION) {
+            return compute_offsetof(n->type.tag, n->name, struct_map, out);
+        }
+        return false;
+    }
+    if (n->kind == NK_ALIGNOF_TYPE) {
+        *out = field_align(n->type, struct_map);
+        return true;
+    }
+    if (n->kind == NK_SIZEOF_TYPE) {
+        long long sz = sizeof_type_spec(n->type);
+        if ((n->type.base == TB_STRUCT || n->type.base == TB_UNION) && n->type.tag) {
+            sz = struct_sizeof(n->type.tag, struct_map);
+        }
+        if (n->type.array_rank > 0) {
+            for (int i = 0; i < n->type.array_rank; ++i)
+                if (n->type.array_dims[i] > 0) sz *= n->type.array_dims[i];
+        }
+        *out = sz;
+        return true;
+    }
+    if (n->kind == NK_SIZEOF_EXPR) {
+        return false;
+    }
+    if (n->kind == NK_SIZEOF_PACK) {
+        return false;
+    }
+    if (n->kind == NK_UNARY && n->op && n->left) {
+        long long v;
+        if (!eval_const_int(n->left, &v, struct_map, named_consts)) return false;
+        if (strcmp(n->op, "-") == 0) { *out = -v; return true; }
+        if (strcmp(n->op, "+") == 0) { *out = v; return true; }
+        if (strcmp(n->op, "~") == 0) { *out = ~v; return true; }
+        if (strcmp(n->op, "!") == 0) { *out = !v; return true; }
+    }
+    if (n->kind == NK_BINOP && n->op) {
+        long long l, r;
+        if (!eval_const_int(n->left, &l, struct_map, named_consts)) return false;
+        if (!eval_const_int(n->right, &r, struct_map, named_consts)) return false;
+        if (strcmp(n->op, "+")  == 0) { *out = l + r; return true; }
+        if (strcmp(n->op, "-")  == 0) { *out = l - r; return true; }
+        if (strcmp(n->op, "*")  == 0) { *out = l * r; return true; }
+        if (strcmp(n->op, "/")  == 0 && r != 0) { *out = l / r; return true; }
+        if (strcmp(n->op, "%")  == 0 && r != 0) { *out = l % r; return true; }
+        if (strcmp(n->op, "<<") == 0) { *out = l << r; return true; }
+        if (strcmp(n->op, ">>") == 0) { *out = l >> r; return true; }
+        if (strcmp(n->op, "&")  == 0) { *out = l & r;  return true; }
+        if (strcmp(n->op, "|")  == 0) { *out = l | r;  return true; }
+        if (strcmp(n->op, "^")  == 0) { *out = l ^ r;  return true; }
+        if (strcmp(n->op, "<")  == 0) { *out = l < r;  return true; }
+        if (strcmp(n->op, "<=") == 0) { *out = l <= r; return true; }
+        if (strcmp(n->op, ">")  == 0) { *out = l > r;  return true; }
+        if (strcmp(n->op, ">=") == 0) { *out = l >= r; return true; }
+        if (strcmp(n->op, "==") == 0) { *out = l == r; return true; }
+        if (strcmp(n->op, "!=") == 0) { *out = l != r; return true; }
+        if (strcmp(n->op, "&&") == 0) { *out = (l && r); return true; }
+        if (strcmp(n->op, "||") == 0) { *out = (l || r); return true; }
+    }
+    if (n->kind == NK_TERNARY && n->cond && n->then_ && n->else_) {
+        long long c;
+        if (!eval_const_int(n->cond, &c, struct_map, named_consts)) return false;
+        return eval_const_int(c ? n->then_ : n->else_, out, struct_map, named_consts);
+    }
+    return false;
+}
+
+bool eval_const_int(Node* n, long long* out,
+    const std::unordered_map<std::string, Node*>* struct_map,
+    const std::unordered_map<std::string, long long>* named_consts) {
+    if (!n) return false;
+    if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) {
+        *out = n->ival;
+        return true;
+    }
+    if (n->kind == NK_VAR && n->name) {
+        if (named_consts) {
+            auto it = named_consts->find(n->name);
+            if (it != named_consts->end()) {
+                *out = it->second;
+                return true;
+            }
+        }
+        return false;
+    }
+    if (n->kind == NK_CAST && n->left) {
+        return eval_const_int(n->left, out, struct_map, named_consts);
+    }
+    if (n->kind == NK_OFFSETOF) {
+        if (n->type.base == TB_STRUCT || n->type.base == TB_UNION) {
+            return compute_offsetof(n->type.tag, n->name, struct_map, out);
+        }
+        return false;
+    }
+    if (n->kind == NK_ALIGNOF_TYPE) {
+        *out = field_align(n->type, struct_map);
+        return true;
+    }
+    if (n->kind == NK_SIZEOF_TYPE) {
+        // sizeof(type): use LP64 sizes
+        long long sz = sizeof_type_spec(n->type);
+        if ((n->type.base == TB_STRUCT || n->type.base == TB_UNION) && n->type.tag) {
+            sz = struct_sizeof(n->type.tag, struct_map);
+        }
+        if (n->type.array_rank > 0) {
+            for (int i = 0; i < n->type.array_rank; ++i)
+                if (n->type.array_dims[i] > 0) sz *= n->type.array_dims[i];
+        }
+        *out = sz;
+        return true;
+    }
+    if (n->kind == NK_SIZEOF_EXPR) {
+        // sizeof(expr): approximate from the expression type if it's a literal
+        // For non-literals, return a conservative estimate
+        return false;  // complex: skip for now
+    }
+    if (n->kind == NK_SIZEOF_PACK) {
+        return false;
+    }
+    if (n->kind == NK_UNARY && n->op && n->left) {
+        long long v;
+        if (!eval_const_int(n->left, &v, struct_map, named_consts)) return false;
+        if (strcmp(n->op, "-") == 0) { *out = -v; return true; }
+        if (strcmp(n->op, "+") == 0) { *out = v; return true; }
+        if (strcmp(n->op, "~") == 0) { *out = ~v; return true; }
+        if (strcmp(n->op, "!") == 0) { *out = !v; return true; }
+    }
+    if (n->kind == NK_BINOP && n->op) {
+        long long l, r;
+        if (!eval_const_int(n->left, &l, struct_map, named_consts)) return false;
+        if (!eval_const_int(n->right, &r, struct_map, named_consts)) return false;
+        if (strcmp(n->op, "+")  == 0) { *out = l + r; return true; }
+        if (strcmp(n->op, "-")  == 0) { *out = l - r; return true; }
+        if (strcmp(n->op, "*")  == 0) { *out = l * r; return true; }
+        if (strcmp(n->op, "/")  == 0 && r != 0) { *out = l / r; return true; }
+        if (strcmp(n->op, "%")  == 0 && r != 0) { *out = l % r; return true; }
+        if (strcmp(n->op, "<<") == 0) { *out = l << r; return true; }
+        if (strcmp(n->op, ">>") == 0) { *out = l >> r; return true; }
+        if (strcmp(n->op, "&")  == 0) { *out = l & r;  return true; }
+        if (strcmp(n->op, "|")  == 0) { *out = l | r;  return true; }
+        if (strcmp(n->op, "^")  == 0) { *out = l ^ r;  return true; }
+        if (strcmp(n->op, "<")  == 0) { *out = l < r;  return true; }
+        if (strcmp(n->op, "<=") == 0) { *out = l <= r; return true; }
+        if (strcmp(n->op, ">")  == 0) { *out = l > r;  return true; }
+        if (strcmp(n->op, ">=") == 0) { *out = l >= r; return true; }
+        if (strcmp(n->op, "==") == 0) { *out = l == r; return true; }
+        if (strcmp(n->op, "!=") == 0) { *out = l != r; return true; }
+        if (strcmp(n->op, "&&") == 0) { *out = (l && r); return true; }
+        if (strcmp(n->op, "||") == 0) { *out = (l || r); return true; }
+    }
+    if (n->kind == NK_TERNARY && n->cond && n->then_ && n->else_) {
+        long long c;
+        if (!eval_const_int(n->cond, &c, struct_map, named_consts)) return false;
+        return eval_const_int(c ? n->then_ : n->else_, out, struct_map, named_consts);
+    }
+    return false;
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+bool is_qualifier(TokenKind k) {
+    return k == TokenKind::KwConst    || k == TokenKind::KwVolatile ||
+           k == TokenKind::KwRestrict || k == TokenKind::KwAtomic   ||
+           k == TokenKind::KwInline;
+}
+
+bool is_storage_class(TokenKind k) {
+    return k == TokenKind::KwStatic   || k == TokenKind::KwExtern ||
+           k == TokenKind::KwRegister || k == TokenKind::KwAuto   ||
+           k == TokenKind::KwTypedef  || k == TokenKind::KwInline ||
+           k == TokenKind::KwExtension || k == TokenKind::KwNoreturn ||
+           k == TokenKind::KwThreadLocal || k == TokenKind::KwMutable;
+}
+
+bool is_type_kw(TokenKind k) {
+    switch (k) {
+        case TokenKind::KwVoid:
+        case TokenKind::KwChar:
+        case TokenKind::KwShort:
+        case TokenKind::KwInt:
+        case TokenKind::KwLong:
+        case TokenKind::KwFloat:
+        case TokenKind::KwDouble:
+        case TokenKind::KwSigned:
+        case TokenKind::KwUnsigned:
+        case TokenKind::KwBool:
+        case TokenKind::KwStruct:
+        case TokenKind::KwClass:
+        case TokenKind::KwUnion:
+        case TokenKind::KwEnum:
+        case TokenKind::KwDecltype:
+        case TokenKind::KwInt128:
+        case TokenKind::KwUInt128:
+        case TokenKind::KwBuiltin:   // __builtin_va_list
+        case TokenKind::KwAutoType:  // __auto_type
+        case TokenKind::KwTypeof:
+        case TokenKind::KwTypeofUnqual:
+        case TokenKind::KwComplex:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// parse an integer literal from a lexeme string
+// Returns true if a numeric literal lexeme has an imaginary suffix (i/j/I/J).
+bool lexeme_is_imaginary(const char* s) {
+    size_t len = strlen(s);
+    for (size_t k = 0; k < len; k++) {
+        char c = s[k];
+        if (c == 'i' || c == 'I' || c == 'j' || c == 'J') return true;
+    }
+    return false;
+}
+
+long long parse_int_lexeme(const char* s) {
+    // strip u/U, l/L and imaginary i/j/I/J suffixes (any order)
+    char buf[64];
+    int  len = (int)strlen(s);
+    int  end = len;
+    while (end > 0) {
+        char cc = s[end - 1];
+        if (cc == 'u' || cc == 'U' || cc == 'l' || cc == 'L' ||
+            cc == 'i' || cc == 'I' || cc == 'j' || cc == 'J') {
+            --end;
+        } else {
+            break;
+        }
+    }
+    if (end >= (int)sizeof(buf)) end = (int)sizeof(buf) - 1;
+    strncpy(buf, s, (size_t)end);
+    buf[end] = '\0';
+
+    if (buf[0] == '0' && (buf[1] == 'x' || buf[1] == 'X')) {
+        return (long long)strtoull(buf, nullptr, 16);
+    } else if (buf[0] == '0' && (buf[1] == 'b' || buf[1] == 'B')) {
+        return (long long)strtoull(buf + 2, nullptr, 2);
+    } else if (buf[0] == '0' && buf[1] != '\0') {
+        return (long long)strtoull(buf, nullptr, 8);
+    } else {
+        return (long long)strtoull(buf, nullptr, 10);
+    }
+}
+
+double parse_float_lexeme(const char* s) {
+    // strip f/F, l/L, f16/F16, f32/F32, f64/F64, f128/F128, bf16/BF16,
+    // and imaginary i/j/I/J suffixes
+    char buf[64];
+    size_t len = strlen(s);
+    if (len >= sizeof(buf)) len = sizeof(buf) - 1;
+    strncpy(buf, s, len);
+    buf[len] = '\0';
+    bool is_float_suffix = false;  // 'f'/'F' suffix → single-precision
+    size_t end = len;
+    while (end > 0) {
+        if (end >= 4 &&
+            ((buf[end - 4] == 'f' && buf[end - 3] == '1' &&
+              buf[end - 2] == '2' && buf[end - 1] == '8') ||
+             (buf[end - 4] == 'F' && buf[end - 3] == '1' &&
+              buf[end - 2] == '2' && buf[end - 1] == '8') ||
+             (buf[end - 4] == 'b' && buf[end - 3] == 'f' &&
+              buf[end - 2] == '1' && buf[end - 1] == '6') ||
+             (buf[end - 4] == 'B' && buf[end - 3] == 'F' &&
+              buf[end - 2] == '1' && buf[end - 1] == '6'))) {
+            is_float_suffix = true;
+            end -= 4;
+            continue;
+        }
+        if (end >= 3 &&
+            ((buf[end - 3] == 'f' && buf[end - 2] == '1' &&
+              buf[end - 1] == '6') ||
+             (buf[end - 3] == 'F' && buf[end - 2] == '1' &&
+              buf[end - 1] == '6') ||
+             (buf[end - 3] == 'f' && buf[end - 2] == '3' &&
+              buf[end - 1] == '2') ||
+             (buf[end - 3] == 'F' && buf[end - 2] == '3' &&
+              buf[end - 1] == '2') ||
+             (buf[end - 3] == 'f' && buf[end - 2] == '6' &&
+              buf[end - 1] == '4') ||
+             (buf[end - 3] == 'F' && buf[end - 2] == '6' &&
+              buf[end - 1] == '4'))) {
+            is_float_suffix = true;
+            end -= 3;
+            continue;
+        }
+        char c = buf[end - 1];
+        if (c == 'f' || c == 'F') { is_float_suffix = true; --end; }
+        else if (c == 'l' || c == 'L' ||
+                 c == 'i' || c == 'I' || c == 'j' || c == 'J') { --end; }
+        else { break; }
+    }
+    buf[end] = '\0';
+    // For float (F suffix) literals, round to single-precision first so that fval
+    // stores the exact float-rounded value when promoted to double.
+    if (is_float_suffix) return (double)(float)strtod(buf, nullptr);
+    return strtod(buf, nullptr);
+}
+
+TypeSpec resolve_typedef_chain(TypeSpec ts,
+                                      const std::unordered_map<std::string, TypeSpec>& tmap) {
+    for (int depth = 0; depth < 16; ++depth) {
+        if (ts.base != TB_TYPEDEF || ts.ptr_level > 0 || ts.array_rank > 0) break;
+        if (!ts.tag) break;
+        auto it = tmap.find(ts.tag);
+        if (it == tmap.end()) break;
+        bool c = ts.is_const, v = ts.is_volatile;
+        ts = it->second;
+        ts.is_const   |= c;
+        ts.is_volatile |= v;
+    }
+    return ts;
+}
+
+// Returns true if type a and type b are compatible per GCC __builtin_types_compatible_p rules.
+bool types_compatible_p(TypeSpec a, TypeSpec b,
+                                const std::unordered_map<std::string, TypeSpec>& tmap) {
+    a = resolve_typedef_chain(a, tmap);
+    b = resolve_typedef_chain(b, tmap);
+    // Strip top-level cv-qualifiers (they don't affect compatibility at the value level).
+    // But for pointer types, qualifiers on the pointed-to type DO matter (char* vs const char*).
+    if (a.ptr_level == 0 && a.array_rank == 0) { a.is_const = false; a.is_volatile = false; }
+    if (b.ptr_level == 0 && b.array_rank == 0) { b.is_const = false; b.is_volatile = false; }
+    if (a.is_vector != b.is_vector) return false;
+    if (a.is_vector &&
+        (a.vector_lanes != b.vector_lanes || a.vector_bytes != b.vector_bytes))
+        return false;
+    if (a.base != b.base) return false;
+    if (a.ptr_level != b.ptr_level) return false;
+    if (a.is_const != b.is_const || a.is_volatile != b.is_volatile) return false;
+    if (a.array_rank != b.array_rank) return false;
+    for (int i = 0; i < a.array_rank; ++i) {
+        long long da = a.array_dims[i], db = b.array_dims[i];
+        // -2 means unsized ([]) — compatible with any same-rank dimension
+        if (da != db && da != -2 && db != -2) return false;
+    }
+    // Struct/union/enum: same tag required
+    if (a.base == TB_STRUCT || a.base == TB_UNION || a.base == TB_ENUM) {
+        if (!a.tag || !b.tag || strcmp(a.tag, b.tag) != 0) return false;
+    }
+    return true;
+}
+
+}  // namespace c4c

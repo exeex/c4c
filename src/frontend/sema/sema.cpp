@@ -1,7 +1,6 @@
 #include "sema.hpp"
 
 #include "hir.hpp"
-#include "hir_printer.hpp"
 
 #include <cstdlib>
 

@@ -1,6 +1,6 @@
 // HIR regression: range-for lowering should keep the synthesized iterator
 // locals, iterator method calls, and loop-carried element binding stable
-// across helper extraction from hir_stmt.cpp.
+// across helper extraction from impl/stmt/stmt.cpp.
 
 struct Iter {
   int* p;

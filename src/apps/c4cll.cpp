@@ -24,6 +24,7 @@
 #include "preprocessor.hpp"
 #include "sema.hpp"
 #include "hir.hpp"
+#include "hir_printer.hpp"
 #include "compile_time_engine.hpp"
 #include "inline_expand.hpp"
 #include "source_profile.hpp"
@@ -657,7 +658,7 @@ int main(int argc, char **argv) {
     }
     parser.set_parser_debug_channels(parser_debug_channels);
     c4c::Node* prog = parser.parse();
-    if (parser.diagnostic_state_.had_error) {
+    if (parser.had_parse_error()) {
       return 1;
     }
 

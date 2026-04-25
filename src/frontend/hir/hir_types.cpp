@@ -4,13 +4,13 @@
 //
 // Omitted for now: the template / program coordinator paths. Those stay in
 // hir_lowering_core.cpp until the shared Lowerer declaration surface is hoisted into
-// hir_lowering.hpp.
+// impl/lowerer.hpp.
 
-#include "hir_lowering.hpp"
-#include "hir_lowerer_internal.hpp"
+#include "impl/hir_impl.hpp"
+#include "impl/lowerer.hpp"
 #include "consteval.hpp"
 #include "type_utils.hpp"
-#include "../parser/parser.hpp"
+#include "../parser/parser_support.hpp"
 
 #include <algorithm>
 #include <cstring>

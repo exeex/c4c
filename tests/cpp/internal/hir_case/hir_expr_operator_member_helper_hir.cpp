@@ -1,5 +1,5 @@
 // HIR regression: overloaded operator/member-expression helpers extracted from
-// hir_expr.cpp must preserve implicit operator-bool conversion together with
+// impl/expr/expr.cpp must preserve implicit operator-bool conversion together with
 // operator-> member access.
 
 struct Inner {

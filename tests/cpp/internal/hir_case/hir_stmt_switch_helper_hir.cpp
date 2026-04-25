@@ -1,5 +1,5 @@
 // HIR regression: switch lowering should keep the emitted case/default block
-// structure stable across helper extraction from hir_stmt.cpp.
+// structure stable across helper extraction from impl/stmt/stmt.cpp.
 
 int classify(int x) {
   constexpr int first = 1;

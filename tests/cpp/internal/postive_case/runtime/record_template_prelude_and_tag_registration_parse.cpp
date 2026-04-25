@@ -1,6 +1,6 @@
 // Parse-only regression: record-member template prelude typedef seeding plus
 // record/enum self-tag registration should remain stable while
-// `parser_types_struct.cpp` routes those mutations through parser-local
+// `impl/types/struct.cpp` routes those mutations through parser-local
 // helpers.
 // RUN: %c4cll --parse-only %s
 

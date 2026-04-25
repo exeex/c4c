@@ -1,6 +1,6 @@
 // HIR regression: constructor calls, member calls, and ref-qualified
 // operator-call lowering should keep the same helper-driven call shape after
-// the call-lowering extraction from hir_expr.cpp.
+// the call-lowering extraction from impl/expr/expr.cpp.
 
 struct Box {
   int value;

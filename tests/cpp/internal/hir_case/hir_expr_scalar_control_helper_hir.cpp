@@ -1,4 +1,4 @@
-// HIR regression: scalar/control helpers extracted from hir_expr.cpp must
+// HIR regression: scalar/control helpers extracted from impl/expr/expr.cpp must
 // preserve implicit field lookup, scalar operator lowering, GNU statement
 // expressions, and complex real/imag access.
 

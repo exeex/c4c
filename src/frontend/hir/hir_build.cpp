@@ -26,11 +26,11 @@
 // - lower_non_method_functions_and_globals
 // - lower_pending_struct_methods
 
-#include "hir_lowering.hpp"
-#include "hir_lowerer_internal.hpp"
+#include "impl/hir_impl.hpp"
+#include "impl/lowerer.hpp"
 #include "consteval.hpp"
 #include "type_utils.hpp"
-#include "../parser/parser.hpp"
+#include "../parser/parser_support.hpp"
 
 #include <algorithm>
 #include <functional>
