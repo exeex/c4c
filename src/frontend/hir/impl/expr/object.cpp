@@ -24,14 +24,14 @@ ExprId Lowerer::hoist_compound_literal_to_global(const Node* addr_node,
     cg.type.spec = resolve_array_ts(cg.type.spec, cg.init);
     cg.init = normalize_global_init(cg.type.spec, cg.init);
   }
-  module_->global_index[clit_name] = cg.id;
+  module_->index_global_decl(cg);
   module_->globals.push_back(std::move(cg));
 
   TypeSpec ptr_ts = clit->type;
   ptr_ts.ptr_level++;
   DeclRef dr{};
   dr.name = clit_name;
-  dr.global = module_->global_index[clit_name];
+  dr.global = cg.id;
   ExprId dr_id = append_expr(clit, dr, clit->type, ValueCategory::LValue);
   UnaryExpr addr{};
   addr.op = UnaryOp::AddrOf;

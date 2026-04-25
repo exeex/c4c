@@ -88,7 +88,7 @@ bool normalize_zero_sized_struct_return_from_body(Module* module, Function* fn) 
 }  // namespace
 
 void Lowerer::register_bodyless_callable(Function&& fn) {
-  module_->fn_index[fn.name] = fn.id;
+  module_->index_function_decl(fn);
   ensure_function_slot(module_, fn.id);
   module_->functions[fn.id.value] = std::move(fn);
 }
@@ -101,7 +101,7 @@ bool Lowerer::maybe_register_bodyless_callable(Function* fn,
 }
 
 BlockId Lowerer::begin_callable_body_lowering(Function& fn, FunctionCtx& ctx) {
-  module_->fn_index[fn.name] = fn.id;
+  module_->index_function_decl(fn);
   ensure_function_slot(module_, fn.id);
   // Reserve a skeleton; callers replace it after body lowering completes.
   Function skeleton{};

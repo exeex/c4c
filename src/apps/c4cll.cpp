@@ -142,16 +142,18 @@ c4c::hir::Module filter_hir_module_for_domain(const c4c::hir::Module& input,
   filtered.globals.clear();
   filtered.fn_index.clear();
   filtered.global_index.clear();
+  filtered.fn_structured_index.clear();
+  filtered.global_structured_index.clear();
 
   const bool want_device = domain == c4c::ExecutionDomain::Device;
   for (const auto& fn : input.functions) {
     if (!execution_domain_matches(fn.execution_domain, want_device)) continue;
-    filtered.fn_index[fn.name] = fn.id;
+    filtered.index_function_decl(fn);
     filtered.functions.push_back(fn);
   }
   for (const auto& gv : input.globals) {
     if (!execution_domain_matches(gv.execution_domain, want_device)) continue;
-    filtered.global_index[gv.name] = gv.id;
+    filtered.index_global_decl(gv);
     filtered.globals.push_back(gv);
   }
   filtered.sync_next_ids_from_contents();

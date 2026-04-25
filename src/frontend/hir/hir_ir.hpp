@@ -1010,6 +1010,10 @@ struct Module {
 
   std::unordered_map<SymbolName, FunctionId> fn_index;
   std::unordered_map<SymbolName, GlobalId> global_index;
+  std::unordered_map<ModuleDeclLookupKey, FunctionId, ModuleDeclLookupKeyHash>
+      fn_structured_index;
+  std::unordered_map<ModuleDeclLookupKey, GlobalId, ModuleDeclLookupKeyHash>
+      global_structured_index;
 
   // Struct/union definitions (populated by build_hir)
   std::unordered_map<SymbolName, HirStructDef> struct_defs;
@@ -1055,6 +1059,20 @@ struct Module {
   [[nodiscard]] LocalId alloc_local_id() { return LocalId{next_local_id++}; }
   [[nodiscard]] BlockId alloc_block_id() { return BlockId{next_block_id++}; }
   [[nodiscard]] ExprId alloc_expr_id() { return ExprId{next_expr_id++}; }
+
+  void index_function_decl(const Function& fn) {
+    fn_index[fn.name] = fn.id;
+    if (fn.name_text_id == kInvalidText) return;
+    fn_structured_index[make_module_decl_lookup_key(
+        ModuleDeclKind::Function, fn.ns_qual, fn.name_text_id)] = fn.id;
+  }
+
+  void index_global_decl(const GlobalVar& gv) {
+    global_index[gv.name] = gv.id;
+    if (gv.name_text_id == kInvalidText) return;
+    global_structured_index[make_module_decl_lookup_key(
+        ModuleDeclKind::Global, gv.ns_qual, gv.name_text_id)] = gv.id;
+  }
 
   void attach_link_name_texts(std::shared_ptr<TextTable> texts) {
     link_name_texts = texts ? std::move(texts) : std::make_shared<TextTable>();

@@ -506,7 +506,7 @@ void Lowerer::lower_non_method_functions_and_globals(
           param.span = make_span(p);
           ce_fn.params.push_back(std::move(param));
         }
-        m.fn_index[ce_fn.name] = ce_fn.id;
+        m.index_function_decl(ce_fn);
         m.functions.push_back(std::move(ce_fn));
         continue;
       }

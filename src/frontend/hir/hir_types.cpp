@@ -1109,7 +1109,7 @@ GlobalId Lowerer::lower_static_local_global(FunctionCtx& ctx, const Node* n) {
     g.type.spec = resolve_array_ts(g.type.spec, g.init);
     g.init = normalize_global_init(g.type.spec, g.init);
   }
-  module_->global_index[g.name] = g.id;
+  module_->index_global_decl(g);
   module_->globals.push_back(std::move(g));
   return g.id;
 }
@@ -1636,7 +1636,7 @@ void Lowerer::lower_global(const Node* gv,
     }
   }
 
-  module_->global_index[g.name] = g.id;
+  module_->index_global_decl(g);
   module_->globals.push_back(std::move(g));
 }
 
