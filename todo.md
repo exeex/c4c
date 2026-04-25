@@ -4,7 +4,7 @@ Source Plan Path: plan.md
 Current Step ID: Step 3
 Current Step Title: Reuse Shared Projection Helpers
 
-Code Review Reminder Handled: review/address-projection-inventory-review.md found Step 1 inventory aligned and recommended continuing into Step 2.
+Code Review Reminder Handled: review/address-projection-step3-review.md found Step 3 helper reuse aligned and recommended continuing Step 3.
 Test Baseline Reminder Handled: accepted full-suite test_baseline.log for commit c97d5e69 after 3071 passed, 0 failed.
 
 # Current Packet
