@@ -579,9 +579,45 @@ class BirFunctionLowerer {
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls);
+  static std::optional<GlobalAddress> resolve_global_gep_address(
+      std::string_view global_name,
+      std::string_view type_text,
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts);
+  static std::optional<GlobalAddress> resolve_global_gep_address(
+      std::string_view global_name,
+      std::string_view type_text,
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts);
   static std::optional<GlobalAddress> resolve_relative_global_gep_address(
       const GlobalAddress& base_address,
       std::string_view type_text,
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls);
+  static std::optional<GlobalAddress> resolve_relative_global_gep_address(
+      const GlobalAddress& base_address,
+      std::string_view type_text,
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts);
+  static std::optional<GlobalAddress> resolve_relative_global_gep_address(
+      const GlobalAddress& base_address,
+      std::string_view type_text,
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts);
+  static std::optional<DynamicGlobalPointerArrayAccess> resolve_global_dynamic_pointer_array_access(
+      std::string_view global_name,
+      std::string_view base_type_text,
+      std::size_t initial_byte_offset,
+      bool relative_base,
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls);
@@ -592,7 +628,17 @@ class BirFunctionLowerer {
       bool relative_base,
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
-      const TypeDeclMap& type_decls);
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts);
+  static std::optional<DynamicGlobalPointerArrayAccess> resolve_global_dynamic_pointer_array_access(
+      std::string_view global_name,
+      std::string_view base_type_text,
+      std::size_t initial_byte_offset,
+      bool relative_base,
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts);
   static std::optional<DynamicGlobalAggregateArrayAccess>
   resolve_global_dynamic_aggregate_array_access(const GlobalAddress& base_address,
                                                 std::string_view base_type_text,
@@ -600,6 +646,24 @@ class BirFunctionLowerer {
                                                 const ValueMap& value_aliases,
                                                 const GlobalTypes& global_types,
                                                 const TypeDeclMap& type_decls);
+  static std::optional<DynamicGlobalAggregateArrayAccess>
+  resolve_global_dynamic_aggregate_array_access(
+      const GlobalAddress& base_address,
+      std::string_view base_type_text,
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const GlobalTypes& global_types,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts);
+  static std::optional<DynamicGlobalAggregateArrayAccess>
+  resolve_global_dynamic_aggregate_array_access(
+      const GlobalAddress& base_address,
+      std::string_view base_type_text,
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const GlobalTypes& global_types,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts);
 
   static std::optional<bir::Value> lower_zero_initializer_value(bir::TypeKind type);
   static std::optional<bir::Value> lower_repeated_byte_initializer_value(

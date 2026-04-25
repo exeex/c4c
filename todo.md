@@ -8,54 +8,55 @@ Current Step Title: Convert Initializer And Aggregate Load/Store Consumers
 
 ## Just Finished
 
-Step 5 - Convert Initializer And Aggregate Load/Store Consumers converted
-backend-owned global aggregate size/layout, aggregate initializer recursion, and
-global GEP initializer parsing to prefer the backend structured layout table
-when the module has structured facts available, while preserving explicit
-fallback behavior.
+Step 5 - Convert Initializer And Aggregate Load/Store Consumers converted the
+global GEP address and dynamic global array addressing helpers to prefer the
+backend structured layout table when invoked from member lowering paths, while
+preserving the legacy no-table overloads.
 
 Changed files:
 
-- `src/backend/bir/lir_to_bir/global_initializers.cpp`
-- `src/backend/bir/lir_to_bir/globals.cpp`
 - `src/backend/bir/lir_to_bir/lowering.hpp`
-- `src/backend/bir/lir_to_bir/module.cpp`
+- `src/backend/bir/lir_to_bir/memory/addressing.cpp`
 - `todo.md`
 - `test_after.log`
 
 Converted consumers:
 
-- `lower_module()` now passes the module `BackendStructuredLayoutTable` into
-  `lower_minimal_global()`.
-- `lower_minimal_global()` now uses structured-aware aggregate layout lookup for
-  aggregate-backed global size, alignment, storage size, and initializer layout.
-- `parse_global_address_initializer()` has a structured-aware overload used by
-  scalar pointer globals, pointer aggregate fields, and GEP initializer parsing.
-- `lower_aggregate_initializer()` has a structured-aware overload threaded
-  through aggregate recursion, zero aggregate fill, nested array element sizing,
-  struct field offsets, and pointer field address parsing.
+- `resolve_global_gep_address()` now has a structured-aware overload and a
+  nullable-table implementation that uses structured lookup for child
+  projection and leaf layout.
+- `resolve_relative_global_gep_address()` now has the same structured-aware
+  path for global-pointer member GEPs and dynamic global aggregate projections.
+- `resolve_global_dynamic_pointer_array_access()` now uses structured layout
+  for aggregate traversal and pointer-array element layout when called from
+  member lowering.
+- `resolve_global_dynamic_aggregate_array_access()` now uses structured layout
+  for base aggregate classification and repeated-aggregate extent lookup.
+- `lower_memory_gep_inst()` now passes `structured_layouts_` at the global
+  member-lowering call sites for direct globals, relative global pointers, and
+  dynamic global aggregate leaf projection.
 
 Remaining fallback-only paths: legacy public overloads for
-`parse_global_address_initializer()`, `lower_aggregate_initializer()`, and
-`lower_minimal_global()` still route through the null-table layout path for
-callers without module structured layout state. Integer-array global lowering
-continues to use its existing integer-array parser because it does not consult
-aggregate struct layout.
+`resolve_global_gep_address()`, `resolve_relative_global_gep_address()`,
+`resolve_global_dynamic_pointer_array_access()`, and
+`resolve_global_dynamic_aggregate_array_access()` still route through the
+null-table layout path for callers without module structured layout state.
 
-ABI classification files, memory/addressing.cpp, unrelated MIR files, test
-expectations, `plan.md`, and the source idea were not changed.
+ABI classification files, global initializer files, globals/module files,
+unrelated MIR files, test expectations, `plan.md`, and the source idea were not
+changed.
 
 ## Suggested Next
 
 Next coherent packet: send Step 5 to review, or delegate the next plan step the
-supervisor selects after confirming this completes the structured-aware globals
-and initializer consumer conversion.
+supervisor selects after confirming this completes the structured-aware global
+addressing helper conversion.
 
 ## Watchouts
 
-The structured lookup helper still intentionally accepts structured layouts only
-when the table has checked matching legacy parity for a named `%` type; otherwise
-these consumers fall back to legacy computed layout.
+The new overloads are intentionally plumbing-only: emitted behavior should stay
+unchanged because structured lookup still falls back unless the backend table
+has usable checked facts for the named aggregate type.
 
 ## Proof
 

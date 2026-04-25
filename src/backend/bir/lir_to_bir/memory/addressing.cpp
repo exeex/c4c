@@ -625,6 +625,28 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_global_gep_address(
     const c4c::codegen::lir::LirGepOp& gep,
     const ValueMap& value_aliases,
     const TypeDeclMap& type_decls) {
+  return resolve_global_gep_address(
+      global_name, type_text, gep, value_aliases, type_decls, nullptr);
+}
+
+std::optional<GlobalAddress> BirFunctionLowerer::resolve_global_gep_address(
+    std::string_view global_name,
+    std::string_view type_text,
+    const c4c::codegen::lir::LirGepOp& gep,
+    const ValueMap& value_aliases,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts) {
+  return resolve_global_gep_address(
+      global_name, type_text, gep, value_aliases, type_decls, &structured_layouts);
+}
+
+std::optional<GlobalAddress> BirFunctionLowerer::resolve_global_gep_address(
+    std::string_view global_name,
+    std::string_view type_text,
+    const c4c::codegen::lir::LirGepOp& gep,
+    const ValueMap& value_aliases,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
   if (gep.indices.empty()) {
     return std::nullopt;
   }
@@ -641,7 +663,7 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_global_gep_address(
       return std::nullopt;
     }
 
-    const auto layout = compute_aggregate_type_layout(current_type, type_decls);
+    const auto layout = lookup_addressing_layout(current_type, type_decls, structured_layouts);
     if (layout.kind == AggregateTypeLayout::Kind::Invalid || layout.size_bytes == 0) {
       return std::nullopt;
     }
@@ -653,8 +675,8 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_global_gep_address(
       continue;
     }
 
-    const auto projection = resolve_aggregate_child_index_projection(
-        current_type, static_cast<std::size_t>(*index_value), type_decls);
+    const auto projection = resolve_addressing_child_index_projection(
+        current_type, static_cast<std::size_t>(*index_value), type_decls, structured_layouts);
     if (!projection.has_value()) {
       return std::nullopt;
     }
@@ -669,7 +691,7 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_global_gep_address(
     }
   }
 
-  const auto leaf_layout = compute_aggregate_type_layout(current_type, type_decls);
+  const auto leaf_layout = lookup_addressing_layout(current_type, type_decls, structured_layouts);
   return GlobalAddress{
       .global_name = std::string(global_name),
       .value_type = leaf_layout.kind == AggregateTypeLayout::Kind::Scalar
@@ -685,6 +707,28 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_relative_global_gep_add
     const c4c::codegen::lir::LirGepOp& gep,
     const ValueMap& value_aliases,
     const TypeDeclMap& type_decls) {
+  return resolve_relative_global_gep_address(
+      base_address, type_text, gep, value_aliases, type_decls, nullptr);
+}
+
+std::optional<GlobalAddress> BirFunctionLowerer::resolve_relative_global_gep_address(
+    const GlobalAddress& base_address,
+    std::string_view type_text,
+    const c4c::codegen::lir::LirGepOp& gep,
+    const ValueMap& value_aliases,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts) {
+  return resolve_relative_global_gep_address(
+      base_address, type_text, gep, value_aliases, type_decls, &structured_layouts);
+}
+
+std::optional<GlobalAddress> BirFunctionLowerer::resolve_relative_global_gep_address(
+    const GlobalAddress& base_address,
+    std::string_view type_text,
+    const c4c::codegen::lir::LirGepOp& gep,
+    const ValueMap& value_aliases,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
   if (gep.indices.empty()) {
     return std::nullopt;
   }
@@ -701,7 +745,7 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_relative_global_gep_add
       return std::nullopt;
     }
 
-    const auto layout = compute_aggregate_type_layout(current_type, type_decls);
+    const auto layout = lookup_addressing_layout(current_type, type_decls, structured_layouts);
     if (layout.kind == AggregateTypeLayout::Kind::Invalid || layout.size_bytes == 0) {
       return std::nullopt;
     }
@@ -719,8 +763,8 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_relative_global_gep_add
       continue;
     }
 
-    const auto projection = resolve_aggregate_child_index_projection(
-        current_type, static_cast<std::size_t>(*index_value), type_decls);
+    const auto projection = resolve_addressing_child_index_projection(
+        current_type, static_cast<std::size_t>(*index_value), type_decls, structured_layouts);
     if (!projection.has_value()) {
       return std::nullopt;
     }
@@ -735,7 +779,7 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_relative_global_gep_add
     }
   }
 
-  const auto leaf_layout = compute_aggregate_type_layout(current_type, type_decls);
+  const auto leaf_layout = lookup_addressing_layout(current_type, type_decls, structured_layouts);
   return GlobalAddress{
       .global_name = base_address.global_name,
       .value_type = leaf_layout.kind == AggregateTypeLayout::Kind::Scalar
@@ -754,6 +798,36 @@ BirFunctionLowerer::resolve_global_dynamic_pointer_array_access(
     const c4c::codegen::lir::LirGepOp& gep,
     const ValueMap& value_aliases,
     const TypeDeclMap& type_decls) {
+  return resolve_global_dynamic_pointer_array_access(
+      global_name, base_type_text, initial_byte_offset, relative_base, gep,
+      value_aliases, type_decls, nullptr);
+}
+
+std::optional<DynamicGlobalPointerArrayAccess>
+BirFunctionLowerer::resolve_global_dynamic_pointer_array_access(
+    std::string_view global_name,
+    std::string_view base_type_text,
+    std::size_t initial_byte_offset,
+    bool relative_base,
+    const c4c::codegen::lir::LirGepOp& gep,
+    const ValueMap& value_aliases,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts) {
+  return resolve_global_dynamic_pointer_array_access(
+      global_name, base_type_text, initial_byte_offset, relative_base, gep,
+      value_aliases, type_decls, &structured_layouts);
+}
+
+std::optional<DynamicGlobalPointerArrayAccess>
+BirFunctionLowerer::resolve_global_dynamic_pointer_array_access(
+    std::string_view global_name,
+    std::string_view base_type_text,
+    std::size_t initial_byte_offset,
+    bool relative_base,
+    const c4c::codegen::lir::LirGepOp& gep,
+    const ValueMap& value_aliases,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
   if (gep.indices.empty()) {
     return std::nullopt;
   }
@@ -766,7 +840,7 @@ BirFunctionLowerer::resolve_global_dynamic_pointer_array_access(
       return std::nullopt;
     }
 
-    const auto layout = compute_aggregate_type_layout(current_type, type_decls);
+    const auto layout = lookup_addressing_layout(current_type, type_decls, structured_layouts);
     if (layout.kind == AggregateTypeLayout::Kind::Invalid || layout.size_bytes == 0) {
       return std::nullopt;
     }
@@ -793,8 +867,8 @@ BirFunctionLowerer::resolve_global_dynamic_pointer_array_access(
       if (*index_value < 0) {
         return std::nullopt;
       }
-      const auto projection = resolve_aggregate_child_index_projection(
-          current_type, static_cast<std::size_t>(*index_value), type_decls);
+      const auto projection = resolve_addressing_child_index_projection(
+          current_type, static_cast<std::size_t>(*index_value), type_decls, structured_layouts);
       if (!projection.has_value()) {
         return std::nullopt;
       }
@@ -817,7 +891,7 @@ BirFunctionLowerer::resolve_global_dynamic_pointer_array_access(
     switch (layout.kind) {
       case AggregateTypeLayout::Kind::Array: {
         const auto element_layout =
-            compute_aggregate_type_layout(layout.element_type_text, type_decls);
+            lookup_addressing_layout(layout.element_type_text, type_decls, structured_layouts);
         if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
             element_layout.size_bytes == 0) {
           return std::nullopt;
@@ -851,12 +925,39 @@ BirFunctionLowerer::resolve_global_dynamic_aggregate_array_access(
     const ValueMap& value_aliases,
     const GlobalTypes& global_types,
     const TypeDeclMap& type_decls) {
+  return resolve_global_dynamic_aggregate_array_access(
+      base_address, base_type_text, gep, value_aliases, global_types, type_decls, nullptr);
+}
+
+std::optional<DynamicGlobalAggregateArrayAccess>
+BirFunctionLowerer::resolve_global_dynamic_aggregate_array_access(
+    const GlobalAddress& base_address,
+    std::string_view base_type_text,
+    const c4c::codegen::lir::LirGepOp& gep,
+    const ValueMap& value_aliases,
+    const GlobalTypes& global_types,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts) {
+  return resolve_global_dynamic_aggregate_array_access(
+      base_address, base_type_text, gep, value_aliases, global_types, type_decls,
+      &structured_layouts);
+}
+
+std::optional<DynamicGlobalAggregateArrayAccess>
+BirFunctionLowerer::resolve_global_dynamic_aggregate_array_access(
+    const GlobalAddress& base_address,
+    std::string_view base_type_text,
+    const c4c::codegen::lir::LirGepOp& gep,
+    const ValueMap& value_aliases,
+    const GlobalTypes& global_types,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
   if (gep.indices.size() != 1) {
     return std::nullopt;
   }
 
-  const auto base_layout = compute_aggregate_type_layout(
-      c4c::codegen::lir::trim_lir_arg_text(base_type_text), type_decls);
+  const auto base_layout = lookup_addressing_layout(
+      c4c::codegen::lir::trim_lir_arg_text(base_type_text), type_decls, structured_layouts);
   if (base_layout.kind != AggregateTypeLayout::Kind::Struct &&
       base_layout.kind != AggregateTypeLayout::Kind::Array) {
     return std::nullopt;
@@ -878,8 +979,13 @@ BirFunctionLowerer::resolve_global_dynamic_aggregate_array_access(
     return std::nullopt;
   }
 
-  const auto extent = find_repeated_aggregate_extent_at_offset(
-      global_it->second.type_text, base_address.byte_offset, base_type_text, type_decls);
+  const auto extent = find_repeated_aggregate_extent_at_offset_impl(
+      global_it->second.type_text,
+      base_address.byte_offset,
+      base_type_text,
+      type_decls,
+      structured_layouts,
+      true);
   if (!extent.has_value()) {
     return std::nullopt;
   }
@@ -944,7 +1050,12 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
       return fail_gep();
     }
     const auto resolved_address = resolve_global_gep_address(
-        global_name, global_it->second.type_text, gep, gep_index_value_aliases, type_decls);
+        global_name,
+        global_it->second.type_text,
+        gep,
+        gep_index_value_aliases,
+        type_decls,
+        structured_layouts_);
     if (resolved_address.has_value()) {
       global_pointer_slots[gep.result.str()] = *resolved_address;
       return true;
@@ -956,7 +1067,8 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         false,
         gep,
         gep_index_value_aliases,
-        type_decls);
+        type_decls,
+        structured_layouts_);
     if (!dynamic_array.has_value()) {
       return fail_gep();
     }
@@ -1232,7 +1344,8 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         gep.element_type.str(),
         gep,
         gep_index_value_aliases,
-        type_decls);
+        type_decls,
+        structured_layouts_);
     if (resolved_address.has_value()) {
       global_pointer_slots[gep.result.str()] = *resolved_address;
       return true;
@@ -1244,7 +1357,8 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         true,
         gep,
         gep_index_value_aliases,
-        type_decls);
+        type_decls,
+        structured_layouts_);
     if (!dynamic_array.has_value()) {
       const auto dynamic_aggregate = resolve_global_dynamic_aggregate_array_access(
           base_address,
@@ -1252,7 +1366,8 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
           gep,
           gep_index_value_aliases,
           global_types,
-          type_decls);
+          type_decls,
+          structured_layouts_);
       if (dynamic_aggregate.has_value()) {
         dynamic_global_aggregate_arrays[gep.result.str()] = std::move(*dynamic_aggregate);
         return true;
@@ -1358,7 +1473,8 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         global_aggregate_it->second.element_type_text,
         gep,
         value_aliases,
-        type_decls);
+        type_decls,
+        structured_layouts_);
     if (!element_leaf.has_value() || element_leaf->value_type != bir::TypeKind::Ptr) {
       return fail_gep();
     }
