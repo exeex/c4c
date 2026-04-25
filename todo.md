@@ -1,36 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/97_structured_identity_completion_audit_and_hir_plan.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: HIR inventory and first-slice analysis
+Current Step ID: 5
+Current Step Title: Follow-on idea drafting
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 HIR inventory and first-slice analysis grouped the HIR identity surfaces by subsystem in `review/97_structured_identity_completion_audit.md`.
+Step 5 follow-on idea drafting materialized the idea 97 audit conclusions.
 
-HIR result:
-- Module function/global lookup is the recommended first behavior-preserving HIR dual-lookup slice. It can use existing AST/HIR source-name metadata (`NamespaceQualifier`, qualifier text IDs, unqualified `TextId`) plus new HIR declaration-side name text IDs, while preserving rendered `name` and `LinkNameId` for codegen/link output.
-- Struct/type tag and layout identity remains too broad for the first slice because `Module::struct_defs`, `struct_def_order`, codegen type declarations, and many `TypeSpec::tag` consumers still require rendered tags.
-- Member/static-member/method lookup has useful `MemberSymbolId` and `field_text_id` surfaces, but owner identity is still tag-string based, so it should follow module symbol mirrors and struct/type-key groundwork.
-- Function-local, template/compile-time registry, enum/const-int, and consteval environments all have mirror candidates, but each has either wider blast radius or parser/sema metadata dependencies.
-- Downstream link/codegen handoff should preserve `LinkNameId` and rendered spelling as bridge-required output, not treat it as accidental semantic lookup.
+Drafting result:
+- Idea 98 exists at `ideas/open/98_parser_sema_post_cleanup_structured_identity_leftovers.md` because the audit found meaningful parser/sema leftovers.
+- Idea 98 is limited to parser helper overload leftovers plus sema enum variant mirrors, template NTTP/type-parameter validation mirrors, consteval NTTP binding mirrors, and type-binding text mirror cleanup.
+- Idea 99 exists at `ideas/open/99_hir_module_symbol_structured_lookup_mirror.md`.
+- Idea 99 starts HIR migration with the module function/global structured lookup mirror and preserves rendered names, mangled/template names, diagnostics, `LinkNameId`, and codegen/link output.
+- `review/97_structured_identity_completion_audit.md` now names the concrete idea files and scopes instead of Step 5 placeholders.
 
 ## Suggested Next
 
-Run Step 5 follow-on idea drafting. Create idea 98 for parser/sema leftovers found in Steps 2 and 3, and create idea 99 for the HIR module function/global dual-lookup starting slice recommended in Step 4. Keep idea 98 parser/sema-only and idea 99 HIR-only.
+Run Step 6 final audit consistency check. Re-read the review artifact against idea 97 acceptance criteria, confirm the idea 98 and idea 99 scopes remain separated, confirm no implementation/test files were modified, and prepare the supervisor lifecycle closure decision without closing idea 97 yet.
 
 ## Watchouts
 
 - This runbook is audit and planning only; do not edit implementation files or tests.
 - Leave unrelated files under `review/` alone; `review/parser_step8_demotion_route_review.md` was already untracked before this packet and was not touched.
-- Parser-only evidence does not justify a broad new parser route after idea 95; the parser-owned leftovers found are narrow helper overloads.
-- Step 3 found meaningful sema leftovers specific enough for idea 98: enum variant structured mirrors, template NTTP/type-parameter validation placeholders, consteval NTTP binding mirrors, and type-binding text mirror population.
+- Idea 98 should stay parser/sema-only and must not absorb HIR module, type/tag, method/member, compile-time engine, or codegen cleanup.
 - Idea 99 should not start with `TypeSpec::tag`, `Module::struct_defs`, method maps, or consteval constants. Those are later HIR slices after a module function/global mirror proves the route.
 - Treat `LinkNameId` and rendered/mangled names as required bridge output for codegen/linking even after HIR source-key lookup mirrors exist.
 - The first HIR slice may need declaration-side `Function::name_text_id` and `GlobalVar::name_text_id`, but that is HIR metadata preservation from existing AST fields, not a parser/sema rewrite.
 
 ## Proof
 
-No build or test run. The delegated proof for Step 4 was source-evidence audit only; no HIR claim needed runtime proof. No `test_after.log` was produced for this audit-only packet.
+No build or test run. Step 5 was lifecycle/planning-only drafting from the completed parser, sema, and HIR audit classifications. No `test_after.log` was produced for this audit-only packet.

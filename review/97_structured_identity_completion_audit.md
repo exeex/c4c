@@ -1,8 +1,8 @@
 # Idea 97 Structured Identity Completion Audit
 
-Status: Step 4 HIR inventory and first-slice analysis complete
+Status: Step 5 follow-on idea drafting complete
 Source Idea: `ideas/open/97_structured_identity_completion_audit_and_hir_plan.md`
-Plan Step: Step 4 - HIR inventory and first-slice analysis
+Plan Step: Step 5 - Follow-on idea drafting
 
 ## Scope Guard
 
@@ -345,7 +345,9 @@ Reasoning:
 - Sema classification proof candidates: focused frontend/sema cases for scoped locals, overloads, consteval, enum/const-int bindings, and member/static-member lookup.
 - HIR first-slice proof candidates: HIR dump/summary CTest cases touching module function/global/struct lookup, template instantiation, consteval, member lookup, and LIR/codegen link-name preservation.
 
-## Follow-On Recommendation Placeholders
+## Follow-On Recommendations
 
-- Idea 98 decision: pending Step 5, with Step 3 identifying sema leftovers in enum variant mirrors, template NTTP/type-parameter validation placeholders, consteval NTTP binding mirrors, and type-binding text mirror population.
-- Idea 99 scope: pending Step 5 drafting, with Step 4 recommending a HIR module function/global structured lookup mirror as the first behavior-preserving slice.
+- Idea 98 is required and has been drafted as `ideas/open/98_parser_sema_post_cleanup_structured_identity_leftovers.md`.
+- Idea 98 scope is parser/sema-only post-cleanup work: parser helper overload leftovers, sema enum variant mirror population, sema template NTTP/type-parameter validation mirrors, consteval NTTP binding mirrors, and type-binding text mirror cleanup. It explicitly excludes HIR module maps, `TypeSpec::tag`, struct layout, member/method owner identity, compile-time engine registries, codegen names, diagnostics, and link-name output.
+- Idea 99 has been drafted as `ideas/open/99_hir_module_symbol_structured_lookup_mirror.md`.
+- Idea 99 scope is the HIR module function/global structured lookup mirror as the first behavior-preserving HIR slice. It should add declaration-side name text IDs, dual-write structured module mirrors beside rendered `fn_index` / `global_index`, preserve concrete IDs and `LinkNameId` precedence, keep rendered names for diagnostics/codegen/link output, and avoid struct/type, member/method, template registry, enum/const-int, and consteval environment cleanup in the first slice.
