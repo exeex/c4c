@@ -12,6 +12,8 @@
 #include <string>
 #include <string_view>
 
+#include "../../shared/struct_name_table.hpp"
+
 namespace c4c::codegen::lir {
 
 enum class LirTypeKind : unsigned char {
@@ -53,6 +55,18 @@ class LirTypeRef {
   [[nodiscard]] LirTypeKind kind() const { return kind_; }
   [[nodiscard]] std::optional<unsigned> integer_bit_width() const {
     return integer_bit_width_;
+  }
+  [[nodiscard]] StructNameId struct_name_id() const { return struct_name_id_; }
+  [[nodiscard]] bool has_struct_name_id() const {
+    return struct_name_id_ != kInvalidStructName;
+  }
+  void set_struct_name_id(StructNameId struct_name_id) {
+    struct_name_id_ = struct_name_id;
+  }
+  [[nodiscard]] LirTypeRef with_struct_name_id(StructNameId struct_name_id) const {
+    LirTypeRef copy = *this;
+    copy.set_struct_name_id(struct_name_id);
+    return copy;
   }
   [[nodiscard]] bool empty() const { return text_.empty(); }
 
@@ -178,6 +192,7 @@ class LirTypeRef {
   std::string text_;
   LirTypeKind kind_ = LirTypeKind::RawText;
   std::optional<unsigned> integer_bit_width_;
+  StructNameId struct_name_id_ = kInvalidStructName;
 };
 
 enum class LirBinaryOpcode : unsigned char {
