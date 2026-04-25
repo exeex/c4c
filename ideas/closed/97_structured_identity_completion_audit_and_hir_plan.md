@@ -1,8 +1,9 @@
 # Structured Identity Completion Audit and HIR Plan
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
+Closed: 2026-04-25
 
 Parent Ideas:
 - [95_parser_dual_lookup_structured_identity_cleanup.md](/workspaces/c4c/ideas/closed/95_parser_dual_lookup_structured_identity_cleanup.md)
@@ -213,3 +214,11 @@ Recommended checks:
 - Idea 99 exists under `ideas/open/` and defines the HIR dual-lookup starting
   strategy.
 - HIR cleanup remains separated from parser/sema completion work.
+
+## Closure Notes
+
+Closed after Step 6 final consistency review. The audit artifact
+`review/97_structured_identity_completion_audit.md` records final acceptance,
+idea 98 remains open for parser/sema leftovers, and idea 99 remains open for
+the first HIR module function/global structured lookup mirror. No
+implementation files, tests, or expectations were modified by this audit.
