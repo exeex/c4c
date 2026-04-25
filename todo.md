@@ -1,24 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/112_lir_backend_legacy_type_surface_readiness_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Map Follow-Up Scope For Ideas 113, 114, And 115
+Current Step ID: 4
+Current Step Title: Record Proof Gaps And Validation Recommendations
+你該做code review了
+你該做test baseline review了
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 follow-up scope mapping completed for the active report-only audit. The
-review artifact now maps Step 2 findings to ideas 113, 114, and 115, separates
-out-of-scope findings for each follow-up, lists only proof-only or
-proof-gap-aware demotion candidates for idea 114, records HIR-to-LIR
-`legacy_decl` consumers and required fallbacks for idea 115, and explicitly
-states that MIR is not a migration target or blocker for these follow-ups.
+Step 3 follow-up scope mapping completed for the active report-only audit. A
+route quality review then found lifecycle drift: `todo.md` had marked the
+runbook exhausted even though Step 4 and Step 5 remain in `plan.md`. This
+lifecycle repair keeps the existing runbook and advances the active pointer to
+Step 4.
 
 ## Suggested Next
 
-Supervisor should review whether the report-only audit satisfies idea 112 and
-decide whether to close, retire, or expand the active runbook.
+Delegate the next report-only packet for Step 4. The packet should add
+actionable proof gaps and validation recommendations to
+`review/112_lir_backend_legacy_type_surface_readiness_audit.md`, covering
+aggregate, HFA, sret, variadic, global-init, memory-addressing, GEP,
+initializer, `va_arg`, byval/byref, verifier, and printer proof areas.
 
 ## Watchouts
 
@@ -31,11 +35,10 @@ decide whether to close, retire, or expand the active runbook.
   incomplete structured coverage.
 - MIR/aarch64 legacy consumers are `planned-rebuild` only. Do not treat MIR
   migration as required cleanup or as a blocker for BIR/LIR follow-up work.
+- Step 5 remains after Step 4 and should perform the final report sanity check.
 
 ## Proof
 
-Report-only packet; no build required. Sanity proof commands:
-`git diff --name-only` showed only
-`review/112_lir_backend_legacy_type_surface_readiness_audit.md` and `todo.md`;
-`git diff --check` passed clean. No `test_after.log` is required for this
-supervisor-delegated report-only packet.
+Lifecycle-only repair; no build required. Checked `plan.md` and
+`review/112_route_quality_after_step3.md`; Step 4 is the next valid active
+runbook step, and `plan.md` does not require a rewrite.
