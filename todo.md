@@ -1,10 +1,10 @@
 Status: Active
 Source Idea Path: ideas/open/08_bir-address-projection-model-consolidation.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Inventory Projection Paths
-你該做code review了
-你該做test baseline review了
+Current Step ID: Step 2
+Current Step Title: Strengthen Helper Result Facts
+Code Review Reminder Handled: review/address-projection-inventory-review.md found Step 1 inventory aligned and recommended continuing into Step 2.
+Test Baseline Reminder Handled: no test_baseline.new.log exists for this todo-only metadata repair; no baseline was accepted.
 
 # Current Packet
 
@@ -107,5 +107,11 @@ call-site logic. First target files:
 
 ## Proof
 
-No build required for this read-only inventory packet. No test logs were
+No build required for the read-only Step 1 inventory packet. No test logs were
 created or modified.
+
+Review/address-projection-inventory-review.md handled the hook reminders:
+Step 1 inventory is aligned with the active plan and source idea, the source
+idea is not complete, and the active route should continue into Step 2
+Strengthen Helper Result Facts. No test_baseline.new.log exists for this
+todo-only metadata repair, so no baseline was accepted.
