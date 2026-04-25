@@ -1,26 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/106_shared_struct_name_table_for_lir_type_identity.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Add Shared Struct Name Table
+Current Step ID: 2
+Current Step Title: Attach Struct Names To LIR Module
 
 # Current Packet
 
-Implement Step 1 by adding the shared `StructNameId` / `StructNameTable`
-building block under `src/shared/`, then compile-check the narrow include path.
+Implement Step 2 by making `LirModule` own a `StructNameTable` attached to the
+same shared `TextTable` used by link names, without changing emitted output.
 
 ## Just Finished
 
-Step 1: Add Shared Struct Name Table is complete. Added
-`src/shared/struct_name_table.hpp` with `StructNameId`,
-`kInvalidStructName`, and `StructNameTable` reusing
-`TextTable` / `SemanticNameTable`, then included the shared header from the LIR
-package index for later ownership work.
+Step 2: Attach Struct Names To LIR Module is complete. Added
+`c4c::StructNameTable` ownership to `LirModule` and attached it during
+`lower()` to the same shared text table carried by `link_name_texts` /
+`link_names`. Legacy `type_decls` storage and printer-facing output behavior
+remain unchanged.
 
 ## Suggested Next
 
-Implement Step 2 by adding structured LIR storage that owns/attaches the struct
-name table while keeping legacy `type_decls` behavior intact.
+Implement the next packet that interns LIR struct identities into
+`module.struct_names` while continuing to preserve rendered `type_decls`.
 
 ## Watchouts
 
@@ -28,8 +28,8 @@ name table while keeping legacy `type_decls` behavior intact.
 - Keep printer output unchanged.
 - Keep C++ record semantics out of LIR; this is LLVM struct layout identity
   only.
-- `struct_name_table.hpp` is only the shared ID/table building block so far;
-  no LIR ownership or printer behavior has changed yet.
+- `module.struct_names` is attached but intentionally not consumed by the
+  printer yet.
 
 ## Proof
 

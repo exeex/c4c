@@ -561,6 +561,7 @@ struct LirModule {
   std::string data_layout;
   std::shared_ptr<c4c::TextTable> link_name_texts;
   c4c::LinkNameTable link_names;
+  c4c::StructNameTable struct_names;
 
   std::vector<LirGlobal> globals;
   std::vector<LirFunction> functions;
