@@ -506,8 +506,46 @@ void verify_extern_decl_shadows(const LirModule& mod) {
 void verify_global_type_ref_shadows(const LirModule& mod) {
   for (const auto& global : mod.globals) {
     if (!global.llvm_type_ref.has_value()) continue;
+    const LirTypeRef& mirror = *global.llvm_type_ref;
     const std::string& shadow =
-        require_module_type_ref(mod, *global.llvm_type_ref, "LirGlobal.llvm_type_ref");
+        require_type_ref(mirror, "LirGlobal.llvm_type_ref");
+
+    if (mirror.has_struct_name_id()) {
+      if (mirror.kind() != LirTypeKind::Struct) {
+        fail_verify("LirGlobal.llvm_type_ref",
+                    "StructNameId mirror must be a struct type");
+      }
+      const std::string_view rendered_name =
+          mod.struct_names.spelling(mirror.struct_name_id());
+      if (rendered_name.empty()) {
+        fail_verify("LirGlobal.llvm_type_ref",
+                    "StructNameId mirror must resolve to a struct name");
+      }
+      if (!mod.find_struct_decl(mirror.struct_name_id())) {
+        fail_verify("LirGlobal.llvm_type_ref",
+                    "StructNameId mirror must resolve to a declared struct");
+      }
+
+      const StructNameId global_struct_name_id =
+          find_declared_struct_name_id(mod, global.llvm_type);
+      if (global_struct_name_id != kInvalidStructName) {
+        if (mirror.struct_name_id() != global_struct_name_id) {
+          std::ostringstream detail;
+          detail << "structured type mirror for global '" << global.name
+                 << "' names '" << rendered_name
+                 << "' but llvm_type names '" << global.llvm_type << "'";
+          fail_verify("LirGlobal.llvm_type_ref", detail.str());
+        }
+        continue;
+      }
+
+      if (const auto mismatch =
+              type_ref_struct_name_mismatch_detail(mod.struct_names, mirror);
+          mismatch.has_value()) {
+        fail_verify("LirGlobal.llvm_type_ref", *mismatch);
+      }
+    }
+
     if (shadow != global.llvm_type) {
       std::ostringstream detail;
       detail << "structured type mirror for global '" << global.name

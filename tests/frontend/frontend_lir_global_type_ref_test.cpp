@@ -63,6 +63,18 @@ const c4c::codegen::lir::LirGlobal& require_global(
   return *it;
 }
 
+c4c::codegen::lir::LirGlobal& require_global(
+    c4c::codegen::lir::LirModule& module,
+    std::string_view name) {
+  const auto it = std::find_if(module.globals.begin(), module.globals.end(),
+                               [&](const c4c::codegen::lir::LirGlobal& global) {
+                                 return global.name == name;
+                               });
+  expect_true(it != module.globals.end(),
+              "fixture global should lower into LIR: " + std::string(name));
+  return *it;
+}
+
 void expect_global_type_ref(
     const c4c::codegen::lir::LirModule& module,
     const c4c::codegen::lir::LirGlobal& global,
@@ -111,6 +123,23 @@ union Slot slot_global = {.int_value = 3};
               "printer should keep using legacy llvm_type text for struct globals");
   expect_true(llvm_ir.find("@slot_global = global %struct.Slot ") != std::string::npos,
               "printer should keep using legacy llvm_type text for union globals");
+
+  c4c::codegen::lir::LirModule structured_identity = lir_module;
+  c4c::codegen::lir::LirGlobal& identity_pair =
+      require_global(structured_identity, "pair_global");
+  identity_pair.llvm_type_ref->str() = "%struct.StaleMirrorText";
+  c4c::codegen::lir::verify_module(structured_identity);
+
+  c4c::codegen::lir::LirModule text_fallback = lir_module;
+  c4c::codegen::lir::LirGlobal& fallback_slot =
+      require_global(text_fallback, "slot_global");
+  fallback_slot.llvm_type_ref =
+      c4c::codegen::lir::LirTypeRef("%struct.Pair");
+  try {
+    c4c::codegen::lir::verify_module(text_fallback);
+    fail("verifier should reject a global mirror text mismatch without StructNameId");
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
 
   std::cout << "PASS: frontend_lir_global_type_ref\n";
   return 0;
