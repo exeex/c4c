@@ -396,6 +396,16 @@ class Lowerer {
 
   static bool template_struct_has_pack_params(const Node* primary_tpl);
 
+  std::optional<HirRecordOwnerKey> make_struct_def_node_owner_key(
+      const Node* sd) const;
+  void register_struct_def_node_owner(const Node* sd);
+  void register_template_struct_instance_owner(
+      const HirStructDef& def,
+      const Node* primary_tpl,
+      const Node* struct_node,
+      const TemplateStructInstanceKey& instance_key,
+      bool append_order);
+
   ResolvedTemplateArgs materialize_template_args(
       const Node* primary_tpl,
       const TypeSpec& owner_ts,
@@ -946,6 +956,8 @@ class Lowerer {
   InstantiationRegistry& registry_ = ct_state_->registry;
   // Template struct definitions indexed by struct tag name.
   std::unordered_map<std::string, const Node*> struct_def_nodes_;
+  std::unordered_map<HirRecordOwnerKey, const Node*, HirRecordOwnerKeyHash>
+      struct_def_nodes_by_owner_;
   std::unordered_map<std::string, const Node*> template_struct_defs_;
   // Template struct specializations indexed by primary template name.
   std::unordered_map<std::string, std::vector<const Node*>> template_struct_specializations_;

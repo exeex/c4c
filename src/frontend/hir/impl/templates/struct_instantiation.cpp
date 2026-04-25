@@ -152,6 +152,25 @@ void Lowerer::append_instantiated_template_struct_fields(
   }
 }
 
+void Lowerer::register_template_struct_instance_owner(
+    const HirStructDef& def,
+    const Node* primary_tpl,
+    const Node* struct_node,
+    const TemplateStructInstanceKey& instance_key,
+    bool append_order) {
+  if (!module_ || !primary_tpl || instance_key.spec_key.empty()) return;
+  TextTable* texts = module_->link_name_texts.get();
+  const TextId primary_text_id = make_unqualified_text_id(primary_tpl, texts);
+  HirRecordOwnerTemplateIdentity identity;
+  identity.primary_declaration_text_id = primary_text_id;
+  identity.specialization_key = instance_key.spec_key.canonical;
+  HirRecordOwnerKey key =
+      make_hir_template_record_owner_key(def.ns_qual, primary_text_id, std::move(identity));
+  if (!hir_record_owner_key_has_complete_metadata(key)) return;
+  module_->index_struct_def_owner(key, def.tag, append_order);
+  struct_def_nodes_by_owner_[key] = struct_node ? struct_node : primary_tpl;
+}
+
 void Lowerer::instantiate_template_struct_body(
     const std::string& mangled,
     const Node* primary_tpl,
@@ -184,6 +203,7 @@ void Lowerer::instantiate_template_struct_body(
       def, mangled, tpl_def, selected_type_bindings, selected_nttp_bindings_map);
 
   compute_struct_layout(module_, def);
+  register_template_struct_instance_owner(def, primary_tpl, tpl_def, instance_key, true);
   module_->struct_def_order.push_back(mangled);
   module_->struct_defs[mangled] = std::move(def);
   struct_def_nodes_[mangled] = tpl_def;

@@ -1,29 +1,30 @@
 Status: Active
 Source Idea Path: ideas/open/102_hir_struct_method_member_identity_dual_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define HIR Record-Owner Key Shape
+Current Step ID: 3
+Current Step Title: Add Structured Mirrors for Struct Definitions
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 by defining the HIR record-owner structured key contract in `src/frontend/hir/hir_ir.hpp`.
+Completed the first Step 3 slice by dual-writing structured record-owner mirrors for struct definitions without changing existing rendered-name authority.
 
 Added:
-- `HirRecordOwnerKeyKind`, `HirRecordOwnerTemplateIdentity`, `HirRecordOwnerKey`, and `HirRecordOwnerKeyHash` for future semantic record-owner maps.
-- `HirRecordOwnerKey::debug_label()` for map diagnostics and parity/mismatch messages without requiring rendered output changes.
-- Construction helpers from `NamespaceQualifier` plus declaration `TextId`, from `HirStructDef`, and template-instantiation helpers carrying explicit primary-declaration/specialization bridge identity.
+- `Module::struct_def_owner_index`, `struct_def_owner_order`, and `struct_def_owner_parity_mismatches` beside `struct_defs` / `struct_def_order`.
+- `Module` helpers for structured struct-definition lookup and rendered-vs-structured parity recording.
+- Lowerer-side `struct_def_nodes_by_owner_` plus registration helpers for AST struct-definition node mirrors.
+- Dual-writes from ordinary `lower_struct_def`, initial struct-node collection, and template struct instantiation when declaration/template key metadata is complete.
 
-Existing rendered-name maps, lookup behavior, HIR dumps, codegen spelling, tests, and expectation files were untouched.
+Existing rendered-name maps, `struct_def_order`, lookup behavior, HIR dumps, codegen spelling, tests, and expectation files remain authoritative and unchanged.
 
 ## Suggested Next
 
-Proceed to Step 3 by dual-writing the first structured mirror beside `Module::struct_defs`/`struct_def_order` and the lowerer struct-definition registration path, while keeping rendered-name lookup as the authority until parity is proven.
+Continue Step 3 by adding structured mirrors for `template_struct_defs_` and `template_struct_specializations_`, then start focused dual-read/parity probes that compare structured and rendered lookups without redirecting existing consumers.
 
 ## Watchouts
 
-Keep `TypeSpec::tag`, `HirStructDef::tag`, `Module::struct_defs`, and `struct_def_order` as the rendered output-spelling bridge. The new key intentionally excludes rendered tags; Step 3 should populate a parallel mirror and mismatch/debug labels rather than redirecting existing codegen or dump consumers.
+Keep `TypeSpec::tag`, `HirStructDef::tag`, `Module::struct_defs`, and `struct_def_order` as the rendered output-spelling bridge. This slice records parity state and structured lookup helpers, but no existing reader has been redirected. Explicit template-specialization AST-node mirrors still use declaration keys unless a later slice supplies full specialization identity at registration time.
 
 ## Proof
 

@@ -1253,7 +1253,12 @@ void Lowerer::lower_struct_def(const Node* sd) {
 
   HirStructDef def;
   def.tag = tag;
-  def.tag_text_id = make_text_id(def.tag, module_ ? module_->link_name_texts.get() : nullptr);
+  def.tag_text_id = make_unqualified_text_id(
+      sd, module_ ? module_->link_name_texts.get() : nullptr);
+  if (def.tag_text_id == kInvalidText) {
+    def.tag_text_id = make_text_id(
+        def.tag, module_ ? module_->link_name_texts.get() : nullptr);
+  }
   def.ns_qual = make_ns_qual(sd, module_ ? module_->link_name_texts.get() : nullptr);
   def.is_union = sd->is_union;
   def.pack_align = sd->pack_align;
@@ -1487,7 +1492,9 @@ void Lowerer::lower_struct_def(const Node* sd) {
 
   compute_struct_layout(module_, def);
 
-  if (!module_->struct_defs.count(tag))
+  const bool append_struct_def_order = !module_->struct_defs.count(tag);
+  module_->index_struct_def_owner(def, append_struct_def_order);
+  if (append_struct_def_order)
     module_->struct_def_order.push_back(tag);
   module_->struct_defs[tag] = std::move(def);
 

@@ -115,11 +115,32 @@ void Lowerer::collect_enum_def(const Node* ed, bool register_structured_globals)
   }
 }
 
+std::optional<HirRecordOwnerKey> Lowerer::make_struct_def_node_owner_key(
+    const Node* sd) const {
+  if (!sd || sd->kind != NK_STRUCT_DEF || !sd->name || !sd->name[0]) {
+    return std::nullopt;
+  }
+  TextTable* texts = module_ ? module_->link_name_texts.get() : nullptr;
+  HirRecordOwnerKey key =
+      make_hir_record_owner_key(make_ns_qual(sd, texts), make_unqualified_text_id(sd, texts));
+  if (!hir_record_owner_key_has_complete_metadata(key)) return std::nullopt;
+  return key;
+}
+
+void Lowerer::register_struct_def_node_owner(const Node* sd) {
+  const auto key = make_struct_def_node_owner_key(sd);
+  if (!key) return;
+  struct_def_nodes_by_owner_[*key] = sd;
+}
+
 void Lowerer::collect_initial_type_definitions(const std::vector<const Node*>& items) {
   for (const Node* item : items) {
       if (item->kind == NK_STRUCT_DEF) {
       lower_struct_def(item);
-      if (item->name) struct_def_nodes_[item->name] = item;
+      if (item->name) {
+        struct_def_nodes_[item->name] = item;
+        register_struct_def_node_owner(item);
+      }
       if (is_primary_template_struct_def(item) && item->name) {
         register_template_struct_primary(item->name, item);
       }

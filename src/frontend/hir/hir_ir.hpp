@@ -327,6 +327,12 @@ struct ModuleDeclLookupParityMismatch {
   uint32_t legacy_id = std::numeric_limits<uint32_t>::max();
 };
 
+struct HirStructDefOwnerParityMismatch {
+  std::string owner_key_label;
+  SymbolName rendered_tag;
+  SymbolName structured_rendered_tag;
+};
+
 enum class ModuleDeclLookupAuthority : uint8_t {
   Structured,
   LegacyRendered,
@@ -1010,6 +1016,21 @@ struct HirRecordOwnerKeyHash {
       def.ns_qual, def.tag_text_id, std::move(template_identity));
 }
 
+[[nodiscard]] inline bool hir_record_owner_key_has_complete_metadata(
+    const HirRecordOwnerKey& key) {
+  if (key.declaration_text_id == kInvalidText) return false;
+  if (std::find(key.qualifier_segment_text_ids.begin(),
+                key.qualifier_segment_text_ids.end(),
+                kInvalidText) != key.qualifier_segment_text_ids.end()) {
+    return false;
+  }
+  if (key.kind == HirRecordOwnerKeyKind::TemplateInstantiation) {
+    return key.template_identity.primary_declaration_text_id != kInvalidText &&
+           !key.template_identity.specialization_key.empty();
+  }
+  return true;
+}
+
 // ── Template function definition metadata (populated by hir build) ───────────
 
 /// Type bindings for template parameter substitution.
@@ -1171,6 +1192,11 @@ struct Module {
   // Struct/union definitions (populated by build_hir)
   std::unordered_map<SymbolName, HirStructDef> struct_defs;
   std::vector<SymbolName> struct_def_order;  // insertion order for deterministic emission
+  std::unordered_map<HirRecordOwnerKey, SymbolName, HirRecordOwnerKeyHash>
+      struct_def_owner_index;
+  std::vector<HirRecordOwnerKey> struct_def_owner_order;
+  mutable std::vector<HirStructDefOwnerParityMismatch>
+      struct_def_owner_parity_mismatches;
 
   // Template function definitions (populated by build_hir)
   std::unordered_map<SymbolName, HirTemplateDef> template_defs;
@@ -1225,6 +1251,65 @@ struct Module {
     if (gv.name_text_id == kInvalidText) return;
     global_structured_index[make_module_decl_lookup_key(
         ModuleDeclKind::Global, gv.ns_qual, gv.name_text_id)] = gv.id;
+  }
+
+  void record_struct_def_owner_parity_mismatch(
+      const HirRecordOwnerKey& key,
+      SymbolName rendered_tag,
+      SymbolName structured_rendered_tag) const {
+    const std::string owner_key_label = key.debug_label(rendered_tag);
+    for (const auto& mismatch : struct_def_owner_parity_mismatches) {
+      if (mismatch.owner_key_label == owner_key_label &&
+          mismatch.rendered_tag == rendered_tag &&
+          mismatch.structured_rendered_tag == structured_rendered_tag) {
+        return;
+      }
+    }
+    struct_def_owner_parity_mismatches.push_back(
+        HirStructDefOwnerParityMismatch{
+            owner_key_label, std::move(rendered_tag), std::move(structured_rendered_tag)});
+  }
+
+  void index_struct_def_owner(
+      const HirRecordOwnerKey& key, std::string_view rendered_tag, bool append_order) {
+    if (!hir_record_owner_key_has_complete_metadata(key) || rendered_tag.empty()) return;
+    SymbolName rendered(rendered_tag);
+    const auto existing = struct_def_owner_index.find(key);
+    if (existing != struct_def_owner_index.end() && existing->second != rendered) {
+      record_struct_def_owner_parity_mismatch(key, rendered, existing->second);
+    }
+    if (append_order && existing == struct_def_owner_index.end()) {
+      struct_def_owner_order.push_back(key);
+    }
+    struct_def_owner_index[key] = std::move(rendered);
+  }
+
+  void index_struct_def_owner(const HirStructDef& def, bool append_order) {
+    index_struct_def_owner(make_hir_record_owner_key(def), def.tag, append_order);
+  }
+
+  [[nodiscard]] const SymbolName* find_struct_def_tag_by_owner(
+      const HirRecordOwnerKey& key) const {
+    const auto it = struct_def_owner_index.find(key);
+    return it == struct_def_owner_index.end() ? nullptr : &it->second;
+  }
+
+  [[nodiscard]] const HirStructDef* find_struct_def_by_owner_structured(
+      const HirRecordOwnerKey& key) const {
+    const SymbolName* tag = find_struct_def_tag_by_owner(key);
+    if (!tag) return nullptr;
+    const auto it = struct_defs.find(*tag);
+    return it == struct_defs.end() ? nullptr : &it->second;
+  }
+
+  [[nodiscard]] bool struct_def_owner_matches_rendered(
+      const HirRecordOwnerKey& key, std::string_view rendered_tag) const {
+    const SymbolName* structured_tag = find_struct_def_tag_by_owner(key);
+    if (!structured_tag) return false;
+    if (*structured_tag == rendered_tag) return true;
+    record_struct_def_owner_parity_mismatch(
+        key, SymbolName(rendered_tag), *structured_tag);
+    return false;
   }
 
   void attach_link_name_texts(std::shared_ptr<TextTable> texts) {
