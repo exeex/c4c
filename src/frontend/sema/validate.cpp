@@ -526,14 +526,27 @@ class Validator {
       structured_cpp_overload_sigs_;
   std::unordered_set<std::string> complete_structs_;
   std::unordered_set<std::string> complete_unions_;
+  std::unordered_map<std::string, SemaStructuredNameKey> structured_record_keys_by_tag_;
+  std::unordered_set<std::string> ambiguous_structured_record_tags_;
+  std::unordered_set<SemaStructuredNameKey, SemaStructuredNameKeyHash> complete_structs_by_key_;
+  std::unordered_set<SemaStructuredNameKey, SemaStructuredNameKeyHash> complete_unions_by_key_;
   std::unordered_map<const Node*, const Node*> method_owner_records_;
   std::unordered_map<std::string, std::vector<const Node*>> struct_defs_by_unqualified_name_;
   // Struct field names for implicit member lookup in out-of-class method bodies.
   std::unordered_map<std::string, std::unordered_set<std::string>> struct_field_names_;
   std::unordered_map<std::string, std::unordered_map<std::string, TypeSpec>> struct_static_member_types_;
   std::unordered_map<std::string, std::vector<std::string>> struct_base_tags_;
+  std::unordered_map<SemaStructuredNameKey, std::unordered_set<TextId>, SemaStructuredNameKeyHash>
+      struct_field_text_ids_by_key_;
+  std::unordered_map<SemaStructuredNameKey, std::unordered_map<TextId, TypeSpec>,
+                     SemaStructuredNameKeyHash>
+      struct_static_member_types_by_key_;
+  std::unordered_map<SemaStructuredNameKey, std::vector<SemaStructuredNameKey>,
+                     SemaStructuredNameKeyHash>
+      struct_base_keys_by_key_;
   std::unordered_set<std::string> template_type_params_;
   std::string current_method_struct_tag_;
+  std::optional<SemaStructuredNameKey> current_method_struct_key_;
   std::vector<std::unordered_map<std::string, ScopedSym>> scopes_;
   std::vector<std::unordered_map<SemaStructuredNameKey, const ScopedSym*, SemaStructuredNameKeyHash>>
       structured_scopes_;
@@ -943,8 +956,16 @@ class Validator {
     if (ts.tpl_struct_origin) return true;  // pending template struct — resolved at HIR level
     if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || !ts.tag || !ts.tag[0]) return true;
     const std::string tag(ts.tag);
-    if (ts.base == TB_STRUCT) return complete_structs_.count(tag) > 0;
-    return complete_unions_.count(tag) > 0;
+    const bool legacy_complete =
+        ts.base == TB_STRUCT ? complete_structs_.count(tag) > 0
+                             : complete_unions_.count(tag) > 0;
+    if (auto record_key = structured_record_key_for_tag(tag); record_key.has_value()) {
+      const bool structured_complete =
+          ts.base == TB_STRUCT ? complete_structs_by_key_.count(*record_key) > 0
+                               : complete_unions_by_key_.count(*record_key) > 0;
+      (void)compare_sema_lookup_presence(legacy_complete, structured_complete);
+    }
+    return legacy_complete;
   }
 
   static std::string unqualified_name(const std::string& name) {
@@ -952,32 +973,97 @@ class Validator {
     return sep == std::string::npos ? name : name.substr(sep + 2);
   }
 
+  std::optional<SemaStructuredNameKey> structured_record_key_for_tag(
+      const std::string& tag) const {
+    if (ambiguous_structured_record_tags_.count(tag) > 0) return std::nullopt;
+    auto it = structured_record_keys_by_tag_.find(tag);
+    if (it == structured_record_keys_by_tag_.end()) return std::nullopt;
+    return it->second;
+  }
+
+  void note_structured_record_key_for_tag(const std::string& tag,
+                                          const SemaStructuredNameKey& key) {
+    if (ambiguous_structured_record_tags_.count(tag) > 0) return;
+    auto [it, inserted] = structured_record_keys_by_tag_.emplace(tag, key);
+    if (!inserted && it->second != key) {
+      structured_record_keys_by_tag_.erase(it);
+      ambiguous_structured_record_tags_.insert(tag);
+    }
+  }
+
+  static void compare_optional_type_lookup(const std::optional<TypeSpec>& legacy,
+                                           const std::optional<TypeSpec>& structured) {
+    (void)compare_sema_lookup_presence(legacy.has_value(), structured.has_value());
+    if (legacy.has_value() && structured.has_value()) {
+      (void)type_binding_values_equivalent(*legacy, *structured);
+    }
+  }
+
   void note_struct_def(const Node* n) {
     if (!n || n->kind != NK_STRUCT_DEF || !n->name || !n->name[0]) return;
     // Zero-sized structs/unions are a GCC extension; treat them as complete.
     const std::string tag(n->name);
+    const auto record_key = sema_symbol_name_key(n);
+    if (record_key.has_value() && record_key->valid()) {
+      note_structured_record_key_for_tag(tag, *record_key);
+    }
     struct_defs_by_unqualified_name_[unqualified_name(tag)].push_back(n);
     if (n->is_union) {
       complete_unions_.insert(tag);
+      if (record_key.has_value() && record_key->valid()) complete_unions_by_key_.insert(*record_key);
     } else {
       complete_structs_.insert(tag);
+      if (record_key.has_value() && record_key->valid()) complete_structs_by_key_.insert(*record_key);
     }
     // Collect field names for implicit member lookup in method bodies.
     auto& fnames = struct_field_names_[tag];
     for (int i = 0; i < n->n_fields; ++i) {
       if (!n->fields[i] || !n->fields[i]->name || !n->fields[i]->name[0]) continue;
       struct_static_member_types_[tag][n->fields[i]->name] = n->fields[i]->type;
-      if (!n->fields[i]->is_static)
+      if (record_key.has_value() && record_key->valid() &&
+          n->fields[i]->unqualified_text_id != kInvalidText) {
+        struct_static_member_types_by_key_[*record_key][n->fields[i]->unqualified_text_id] =
+            n->fields[i]->type;
+      }
+      if (!n->fields[i]->is_static) {
         fnames.insert(n->fields[i]->name);
+        if (record_key.has_value() && record_key->valid() &&
+            n->fields[i]->unqualified_text_id != kInvalidText) {
+          struct_field_text_ids_by_key_[*record_key].insert(n->fields[i]->unqualified_text_id);
+        }
+      }
     }
     auto& bases = struct_base_tags_[tag];
     for (int i = 0; i < n->n_bases; ++i) {
       const TypeSpec& base = n->base_types[i];
       if (base.tag && base.tag[0]) bases.emplace_back(base.tag);
+      if (record_key.has_value() && record_key->valid() && base.tag && base.tag[0]) {
+        if (auto base_key = structured_record_key_for_tag(base.tag); base_key.has_value()) {
+          struct_base_keys_by_key_[*record_key].push_back(*base_key);
+        }
+      }
     }
   }
 
-  std::optional<TypeSpec> lookup_struct_static_member_type(
+  std::optional<TypeSpec> lookup_struct_static_member_type_by_key(
+      const SemaStructuredNameKey& record_key, TextId member_text_id) const {
+    if (member_text_id == kInvalidText) return std::nullopt;
+    auto sit = struct_static_member_types_by_key_.find(record_key);
+    if (sit != struct_static_member_types_by_key_.end()) {
+      auto mit = sit->second.find(member_text_id);
+      if (mit != sit->second.end()) return mit->second;
+    }
+    auto bit = struct_base_keys_by_key_.find(record_key);
+    if (bit != struct_base_keys_by_key_.end()) {
+      for (const auto& base_key : bit->second) {
+        auto from_base = lookup_struct_static_member_type_by_key(base_key, member_text_id);
+        if (from_base.has_value()) return from_base;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<TypeSpec> lookup_struct_static_member_type_legacy(
       const std::string& tag, const std::string& member) const {
     auto sit = struct_static_member_types_.find(tag);
     if (sit != struct_static_member_types_.end()) {
@@ -987,24 +1073,66 @@ class Validator {
     auto bit = struct_base_tags_.find(tag);
     if (bit != struct_base_tags_.end()) {
       for (const auto& base_tag : bit->second) {
-        auto from_base = lookup_struct_static_member_type(base_tag, member);
+        auto from_base = lookup_struct_static_member_type_legacy(base_tag, member);
         if (from_base.has_value()) return from_base;
       }
     }
     return std::nullopt;
   }
 
-  bool has_struct_instance_field(const std::string& tag,
-                                 const std::string& member) const {
+  std::optional<TypeSpec> lookup_struct_static_member_type(
+      const std::string& tag, const std::string& member, const Node* reference = nullptr) const {
+    auto legacy = lookup_struct_static_member_type_legacy(tag, member);
+    if (reference && reference->unqualified_text_id != kInvalidText) {
+      if (auto record_key = structured_record_key_for_tag(tag); record_key.has_value()) {
+        auto structured =
+            lookup_struct_static_member_type_by_key(*record_key, reference->unqualified_text_id);
+        compare_optional_type_lookup(legacy, structured);
+      }
+    }
+    return legacy;
+  }
+
+  bool has_struct_instance_field_by_key(
+      const SemaStructuredNameKey& record_key, TextId member_text_id) const {
+    if (member_text_id == kInvalidText) return false;
+    auto fit = struct_field_text_ids_by_key_.find(record_key);
+    if (fit != struct_field_text_ids_by_key_.end() && fit->second.count(member_text_id)) {
+      return true;
+    }
+    auto bit = struct_base_keys_by_key_.find(record_key);
+    if (bit != struct_base_keys_by_key_.end()) {
+      for (const auto& base_key : bit->second) {
+        if (has_struct_instance_field_by_key(base_key, member_text_id)) return true;
+      }
+    }
+    return false;
+  }
+
+  bool has_struct_instance_field_legacy(const std::string& tag,
+                                        const std::string& member) const {
     auto fit = struct_field_names_.find(tag);
     if (fit != struct_field_names_.end() && fit->second.count(member)) return true;
     auto bit = struct_base_tags_.find(tag);
     if (bit != struct_base_tags_.end()) {
       for (const auto& base_tag : bit->second) {
-        if (has_struct_instance_field(base_tag, member)) return true;
+        if (has_struct_instance_field_legacy(base_tag, member)) return true;
       }
     }
     return false;
+  }
+
+  bool has_struct_instance_field(const std::string& tag,
+                                 const std::string& member,
+                                 TextId member_text_id = kInvalidText) const {
+    const bool legacy = has_struct_instance_field_legacy(tag, member);
+    std::optional<SemaStructuredNameKey> record_key = current_method_struct_key_;
+    if (!record_key.has_value()) record_key = structured_record_key_for_tag(tag);
+    if (record_key.has_value() && member_text_id != kInvalidText) {
+      const bool structured = has_struct_instance_field_by_key(*record_key, member_text_id);
+      (void)compare_sema_lookup_presence(legacy, structured);
+    }
+    return legacy;
   }
 
   std::optional<std::string> resolve_owner_in_namespace_context(
@@ -1372,7 +1500,9 @@ class Validator {
     const TypeSpec old_fn_ret = current_fn_ret_;
     const Node* old_fn_node = current_fn_node_;
     const std::string old_method_struct = current_method_struct_tag_;
+    const std::optional<SemaStructuredNameKey> old_method_struct_key = current_method_struct_key_;
     current_method_struct_tag_.clear();
+    current_method_struct_key_.reset();
     in_function_ = true;
     current_fn_ret_ = fn->type;
     current_fn_node_ = fn;
@@ -1403,6 +1533,7 @@ class Validator {
     }
     if (auto owner = enclosing_method_owner_struct(fn); owner.has_value()) {
       current_method_struct_tag_ = *owner;
+      current_method_struct_key_ = structured_record_key_for_tag(*owner);
       TypeSpec this_ts{};
       this_ts.base = TB_STRUCT;
       this_ts.tag = current_method_struct_tag_.c_str();
@@ -1436,6 +1567,7 @@ class Validator {
     current_fn_ret_ = old_fn_ret;
     current_fn_node_ = old_fn_node;
     current_method_struct_tag_ = old_method_struct;
+    current_method_struct_key_ = old_method_struct_key;
   }
 
 
@@ -1770,7 +1902,7 @@ class Validator {
         if (scope_pos != std::string::npos) {
           std::string struct_tag = qname.substr(0, scope_pos);
           std::string member = qname.substr(scope_pos + 2);
-          if (auto mts = lookup_struct_static_member_type(struct_tag, member)) {
+          if (auto mts = lookup_struct_static_member_type(struct_tag, member, n)) {
             out.valid = true;
             out.type = *mts;
             out.is_lvalue = true;
@@ -1804,7 +1936,8 @@ class Validator {
           // struct fields (implicit this->field).  Accept them here; the HIR
           // lowerer resolves them via MemberExpr.
           if (!current_method_struct_tag_.empty()) {
-            if (has_struct_instance_field(current_method_struct_tag_, n->name)) {
+            if (has_struct_instance_field(current_method_struct_tag_, n->name,
+                                          n->unqualified_text_id)) {
               out.valid = true;
               out.is_lvalue = true;
               return out;

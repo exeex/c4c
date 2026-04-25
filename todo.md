@@ -3,28 +3,28 @@
 Status: Complete
 Source Idea Path: ideas/open/96_sema_dual_lookup_structured_identity_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 6
-Current Step Title: Add Dual Type-Binding Lookup
+Current Step ID: Step 7
+Current Step Title: Add Struct Completeness and Member Lookup Mirrors
 
 ## Just Finished
 
-Step 6 - Add Dual Type-Binding Lookup: added advisory sema-owned type-binding
-mirrors for consteval template substitutions. `ConstEvalEnv` now carries
-optional type-binding `TextId` and structured-key maps beside the rendered
-`TypeBindings` map, and type resolution compares advisory mirror results while
-keeping `TypeSpec::tag` string lookup authoritative.
+Step 7 - Add Struct Completeness and Member Lookup Mirrors: added advisory
+structured record mirrors for complete struct/union sets, field-name lookup,
+static-member type lookup, and base-record traversal where sema can derive a
+stable record key from the struct definition's namespace context and
+`unqualified_text_id`.
 
-Consteval call binding now records structured type-binding keys from the
-callee template declaration identity plus template parameter index when that
-metadata exists. Sema static-assert consteval calls also bind explicit/default
-template type arguments before interpretation, using the same advisory mirror
-storage.
+Rendered `TypeSpec::tag`, `complete_structs_`/`complete_unions_`, rendered
+field/static-member maps, and rendered base-tag lists remain authoritative.
+The structured maps are dual-written from `note_struct_def` and dual-checked
+from struct completeness checks, qualified static-member lookup, and implicit
+method-body field lookup without changing HIR-facing behavior.
 
 ## Suggested Next
 
-Delegate Step 7 to add struct completeness and member/static-member lookup
-mirrors only where sema can derive stable structured record identity without
-requiring HIR data-model cleanup.
+Delegate Step 8 to inventory the retained string fallbacks and remove only
+sema-owned fallbacks that are proven structured-stable and not required as
+HIR, diagnostics, consteval, or codegen bridges.
 
 ## Watchouts
 
@@ -69,6 +69,18 @@ requiring HIR data-model cleanup.
   advisory and do not affect HIR-facing type tags or diagnostics.
 - HIR compile-time-engine type bindings still use rendered strings and were
   not converted in this packet.
+- `TypeSpec` still has rendered `tag` and string qualifier segments but no
+  base-name/qualifier `TextId` metadata, so struct completeness remains
+  string-authoritative and only compares against structured mirrors when the
+  rendered tag can be bridged to a recorded struct definition key.
+- Struct static-member mirrors intentionally follow the existing
+  `struct_static_member_types_` behavior, including its current field-type
+  contents; this packet did not tighten static-vs-instance member semantics.
+- Base-record structured traversal is populated only when the base tag already
+  maps to a stable recorded struct key; unresolved/pending template base
+  records remain on the rendered/HIR-facing path.
+- The rendered tag to structured record-key bridge now opts out on ambiguous
+  tag-to-key mappings, so mirrored checks run only for stable record identity.
 
 ## Proof
 
