@@ -214,6 +214,46 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
   expect_true(!parser.has_var_type("wrong_value_fallback"),
               "ID-first value registration should not prefer fallback spelling");
 
+  c4c::TypeSpec fallback_typedef_ts{};
+  fallback_typedef_ts.array_size = -1;
+  fallback_typedef_ts.inner_rank = -1;
+  fallback_typedef_ts.base = c4c::TB_DOUBLE;
+
+  c4c::TypeSpec fallback_var_ts{};
+  fallback_var_ts.array_size = -1;
+  fallback_var_ts.inner_rank = -1;
+  fallback_var_ts.base = c4c::TB_FLOAT;
+
+  const c4c::TextId lookup_typedef_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "IdFirstLookupType");
+  const c4c::TextId lookup_value_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "idFirstLookupValue");
+  parser.register_typedef_binding(lookup_typedef_id, "typedefLookupBridge",
+                                  typedef_ts, true);
+  parser.register_typedef_binding("typedefLookupBridge", fallback_typedef_ts,
+                                  true);
+  parser.register_var_type_binding(lookup_value_id, "valueLookupBridge",
+                                   var_ts);
+  parser.register_var_type_binding("valueLookupBridge", fallback_var_ts);
+
+  const c4c::TypeSpec* id_typedef =
+      parser.find_typedef_type(lookup_typedef_id, "typedefLookupBridge");
+  expect_true(id_typedef != nullptr && id_typedef->base == c4c::TB_INT,
+              "ID-first typedef lookup should prefer the TextId spelling over a mismatched fallback");
+  const c4c::TypeSpec* visible_typedef =
+      parser.find_visible_typedef_type(lookup_typedef_id,
+                                       "typedefLookupBridge");
+  expect_true(visible_typedef != nullptr && visible_typedef->base == c4c::TB_INT,
+              "visible typedef lookup should prefer the TextId-backed global binding before fallback spelling");
+  const c4c::TypeSpec* id_var =
+      parser.find_var_type(lookup_value_id, "valueLookupBridge");
+  expect_true(id_var != nullptr && id_var->base == c4c::TB_LONG,
+              "ID-first value lookup should prefer the TextId spelling over a mismatched fallback");
+  const c4c::TypeSpec* visible_var =
+      parser.find_visible_var_type(lookup_value_id, "valueLookupBridge");
+  expect_true(visible_var != nullptr && visible_var->base == c4c::TB_LONG,
+              "visible value lookup should prefer the TextId-backed global binding before fallback spelling");
+
   const c4c::QualifiedNameKey value_key =
       parser.intern_semantic_name_key("idFirstValue");
   expect_true(parser.has_structured_var_type(value_key),

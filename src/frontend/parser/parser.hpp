@@ -334,6 +334,8 @@ class Parser {
   bool has_typedef_name(std::string_view name) const;
   bool is_typedef_name(TextId name_text_id, std::string_view name) const;
   bool has_typedef_type(std::string_view name) const;
+  const TypeSpec* find_typedef_type(TextId name_text_id,
+                                    std::string_view fallback_name) const;
   const TypeSpec* find_typedef_type(std::string_view name) const;
   const TypeSpec* find_typedef_type(const QualifiedNameKey& key,
                                     std::string_view fallback_name) const;
@@ -389,6 +391,8 @@ class Parser {
       int context_id, TextId name_text_id, std::string_view fallback_name,
       const TypeSpec& type);
   bool has_var_type(const std::string& name) const;
+  const TypeSpec* find_var_type(TextId name_text_id,
+                                std::string_view fallback_name) const;
   const TypeSpec* find_var_type(const std::string& name) const;
   const TypeSpec* find_var_type(const QualifiedNameKey& key,
                                 std::string_view fallback_name) const;

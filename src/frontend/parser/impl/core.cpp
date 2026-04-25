@@ -639,7 +639,10 @@ bool Parser::has_typedef_type(std::string_view name) const {
         shared_lookup_state_.parser_name_tables.find_identifier(name));
 }
 
-const TypeSpec* Parser::find_typedef_type(std::string_view name) const {
+const TypeSpec* Parser::find_typedef_type(TextId name_text_id,
+                                          std::string_view fallback_name) const {
+    const std::string_view name = parser_text(name_text_id, fallback_name);
+    if (name.empty()) return nullptr;
     if (name.find("::") != std::string_view::npos) {
         const QualifiedNameKey key = known_fn_name_key(
             0, parser_text_id_for_token(kInvalidText, name), name);
@@ -648,14 +651,29 @@ const TypeSpec* Parser::find_typedef_type(std::string_view name) const {
         }
     }
     if (!uses_symbol_identity(name)) {
-        const TextId id = find_parser_text_id(name);
+        const TextId id = name_text_id != kInvalidText
+                              ? name_text_id
+                              : find_parser_text_id(name);
         if (id == kInvalidText) return nullptr;
         const auto it = binding_state_.non_atom_typedef_types.find(id);
         return it == binding_state_.non_atom_typedef_types.end() ? nullptr
                                                                  : &it->second;
     }
     return shared_lookup_state_.parser_name_tables.lookup_typedef_type(
-        shared_lookup_state_.parser_name_tables.find_identifier(name));
+        name_text_id != kInvalidText
+            ? shared_lookup_state_.parser_name_tables.find_identifier(name_text_id)
+            : shared_lookup_state_.parser_name_tables.find_identifier(name));
+}
+
+const TypeSpec* Parser::find_typedef_type(std::string_view name) const {
+    if (name.find("::") != std::string_view::npos) {
+        const QualifiedNameKey key = known_fn_name_key(
+            0, parser_text_id_for_token(kInvalidText, name), name);
+        if (const TypeSpec* structured = find_structured_typedef_type(key)) {
+            return structured;
+        }
+    }
+    return find_typedef_type(find_parser_text_id(name), name);
 }
 
 const TypeSpec* Parser::find_typedef_type(
@@ -774,6 +792,7 @@ const TypeSpec* Parser::find_visible_typedef_type(TextId name_text_id,
             return type;
         }
     }
+    if (const TypeSpec* type = find_typedef_type(name_text_id, name)) return type;
     if (const TypeSpec* type = find_typedef_type(name)) return type;
     const VisibleNameResult resolved_result =
         resolve_visible_type(name_text_id, name);
@@ -1086,19 +1105,31 @@ bool Parser::has_var_type(const std::string& name) const {
            shared_lookup_state_.parser_name_tables.var_types.count(id) > 0;
 }
 
-const TypeSpec* Parser::find_var_type(const std::string& name) const {
+const TypeSpec* Parser::find_var_type(TextId name_text_id,
+                                      std::string_view fallback_name) const {
+    const std::string_view name = parser_text(name_text_id, fallback_name);
+    if (name.empty()) return nullptr;
     if (!uses_symbol_identity(name)) {
-        const TextId id = find_parser_text_id(name);
+        const TextId id = name_text_id != kInvalidText
+                              ? name_text_id
+                              : find_parser_text_id(name);
         if (id == kInvalidText) return nullptr;
         const auto it = binding_state_.non_atom_var_types.find(id);
         return it == binding_state_.non_atom_var_types.end() ? nullptr
                                                              : &it->second;
     }
-    const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name);
+    const SymbolId id =
+        name_text_id != kInvalidText
+            ? shared_lookup_state_.parser_name_tables.find_identifier(name_text_id)
+            : shared_lookup_state_.parser_name_tables.find_identifier(name);
     if (id == kInvalidSymbol) return nullptr;
     const auto it = shared_lookup_state_.parser_name_tables.var_types.find(id);
     if (it == shared_lookup_state_.parser_name_tables.var_types.end()) return nullptr;
     return &it->second;
+}
+
+const TypeSpec* Parser::find_var_type(const std::string& name) const {
+    return find_var_type(find_parser_text_id(name), name);
 }
 
 const TypeSpec* Parser::find_var_type(
@@ -1136,6 +1167,7 @@ const TypeSpec* Parser::find_visible_var_type(TextId name_text_id,
             return type;
         }
     }
+    if (const TypeSpec* type = find_var_type(name_text_id, name)) return type;
     if (const TypeSpec* type = find_var_type(std::string(name))) return type;
     const VisibleNameResult resolved_result =
         resolve_visible_value(name_text_id, name);
