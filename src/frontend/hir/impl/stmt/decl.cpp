@@ -194,7 +194,9 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
       (effective_decl_ts.is_const || n->is_constexpr) &&
       !effective_decl_ts.is_lvalue_ref && !effective_decl_ts.is_rvalue_ref &&
       effective_decl_ts.ptr_level == 0 && effective_decl_ts.array_rank == 0) {
-    ConstEvalEnv cenv{&enum_consts_, &const_int_bindings_, &ctx.local_const_bindings};
+    LowererConstEvalStructuredMaps structured_maps;
+    ConstEvalEnv cenv =
+        make_lowerer_consteval_env(structured_maps, &ctx.local_const_bindings);
     if (auto cr = evaluate_constant_expr(n->init, cenv); cr.ok()) {
       ctx.local_const_bindings[n->name] = cr.as_int();
     }

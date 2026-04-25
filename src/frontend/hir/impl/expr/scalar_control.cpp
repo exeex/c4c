@@ -442,7 +442,9 @@ ExprId Lowerer::lower_index_expr(FunctionCtx* ctx, const Node* n) {
 
 ExprId Lowerer::lower_ternary_expr(FunctionCtx* ctx, const Node* n) {
   if (const Node* cond = (n->cond ? n->cond : n->left)) {
-    ConstEvalEnv env{&enum_consts_, nullptr, ctx ? &ctx->local_const_bindings : nullptr};
+    LowererConstEvalStructuredMaps structured_maps;
+    ConstEvalEnv env = make_lowerer_consteval_env(
+        structured_maps, ctx ? &ctx->local_const_bindings : nullptr, false);
     if (auto r = evaluate_constant_expr(cond, env); r.ok()) {
       return lower_expr(ctx, (r.as_int() != 0) ? n->then_ : n->else_);
     }

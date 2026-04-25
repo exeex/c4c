@@ -36,6 +36,29 @@ std::string_view init_list_field_designator_text(const InitListItem& item,
   return {};
 }
 
+std::optional<ConstEvalStructuredNameKey> to_consteval_name_key(
+    const CompileTimeValueBindingKey& key) {
+  if (!key.valid()) return std::nullopt;
+  ConstEvalStructuredNameKey out;
+  out.namespace_context_id = key.namespace_context_id;
+  out.is_global_qualified = key.is_global_qualified;
+  out.qualifier_text_ids = key.qualifier_segment_text_ids;
+  out.base_text_id = key.unqualified_text_id;
+  return out;
+}
+
+template <typename SourceMap>
+void copy_consteval_structured_bindings(const SourceMap& source,
+                                        ConstStructuredMap& out) {
+  out.clear();
+  out.reserve(source.size());
+  for (const auto& [key, value] : source) {
+    auto consteval_key = to_consteval_name_key(key);
+    if (!consteval_key.has_value() || !consteval_key->valid()) continue;
+    out[*consteval_key] = value;
+  }
+}
+
 }  // namespace
 
 bool Lowerer::is_lvalue_ref_ts(const TypeSpec& ts) {
@@ -43,6 +66,30 @@ bool Lowerer::is_lvalue_ref_ts(const TypeSpec& ts) {
 }
 
 std::shared_ptr<CompileTimeState> Lowerer::ct_state() const { return ct_state_; }
+
+void Lowerer::refresh_global_consteval_structured_maps(
+    LowererConstEvalStructuredMaps& maps) const {
+  maps.enum_consts_by_key.clear();
+  maps.named_consts_by_key.clear();
+  if (!ct_state_) return;
+  copy_consteval_structured_bindings(ct_state_->enum_consts_by_key(),
+                                     maps.enum_consts_by_key);
+  copy_consteval_structured_bindings(ct_state_->const_int_bindings_by_key(),
+                                     maps.named_consts_by_key);
+}
+
+ConstEvalEnv Lowerer::make_lowerer_consteval_env(
+    LowererConstEvalStructuredMaps& maps,
+    const ConstMap* local_consts,
+    bool include_named_consts) const {
+  refresh_global_consteval_structured_maps(maps);
+  ConstEvalEnv env{&enum_consts_,
+                   include_named_consts ? &const_int_bindings_ : nullptr,
+                   local_consts};
+  env.enum_consts_by_key = &maps.enum_consts_by_key;
+  if (include_named_consts) env.named_consts_by_key = &maps.named_consts_by_key;
+  return env;
+}
 
 void Lowerer::resolve_typedef_to_struct(TypeSpec& ts) const {
   if (ts.base != TB_TYPEDEF || !ts.tag) return;
@@ -1126,7 +1173,8 @@ GlobalInit Lowerer::lower_global_init(const Node* n,
   }
   InitScalar s{};
   if (!ctx && allow_named_const_fold) {
-    ConstEvalEnv env{&enum_consts_, &const_int_bindings_};
+    LowererConstEvalStructuredMaps structured_maps;
+    ConstEvalEnv env = make_lowerer_consteval_env(structured_maps);
     if (auto r = evaluate_constant_expr(n, env); r.ok()) {
       TypeSpec ts = n->type;
       if (ts.base == TB_VOID) ts.base = TB_INT;

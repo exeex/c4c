@@ -6,7 +6,9 @@ namespace c4c::hir {
 void Lowerer::lower_if_stmt(FunctionCtx& ctx, const Node* n) {
   if (n->is_constexpr) {
     const Node* cond_node = n->cond ? n->cond : n->left;
-    ConstEvalEnv cenv{&enum_consts_, &const_int_bindings_, &ctx.local_const_bindings};
+    LowererConstEvalStructuredMaps structured_maps;
+    ConstEvalEnv cenv =
+        make_lowerer_consteval_env(structured_maps, &ctx.local_const_bindings);
     auto cr = evaluate_constant_expr(cond_node, cenv);
     if (cr.ok()) {
       if (cr.as_int()) {

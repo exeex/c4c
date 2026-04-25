@@ -18,6 +18,7 @@
 // - impl/expr/expr.hpp: expression lowering implementation index
 
 #include "hir_impl.hpp"
+#include "../../sema/consteval.hpp"
 #include "../../sema/type_utils.hpp"
 #include "../../parser/parser_support.hpp"
 
@@ -978,6 +979,18 @@ class Lowerer {
     TypeBindings tpl_bindings;
     NttpBindings nttp_bindings;
   };
+
+  struct LowererConstEvalStructuredMaps {
+    ConstStructuredMap enum_consts_by_key;
+    ConstStructuredMap named_consts_by_key;
+  };
+
+  void refresh_global_consteval_structured_maps(
+      LowererConstEvalStructuredMaps& maps) const;
+  ConstEvalEnv make_lowerer_consteval_env(
+      LowererConstEvalStructuredMaps& maps,
+      const ConstMap* local_consts = nullptr,
+      bool include_named_consts = true) const;
   std::vector<PendingMethod> pending_methods_;
   // Deduced template call info: call_node → mangled name + bindings.
   struct DeducedTemplateCall {

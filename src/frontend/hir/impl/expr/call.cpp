@@ -565,8 +565,9 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
   const Node* ce_fn_def = ct_state_->find_consteval_def(n->left->name);
   if (!ce_fn_def) return std::nullopt;
 
-  ConstEvalEnv arg_env{&enum_consts_, &const_int_bindings_,
-                       ctx ? &ctx->local_const_bindings : nullptr};
+  LowererConstEvalStructuredMaps structured_maps;
+  ConstEvalEnv arg_env = make_lowerer_consteval_env(
+      structured_maps, ctx ? &ctx->local_const_bindings : nullptr);
   TypeBindings tpl_bindings;
   NttpBindings ce_nttp_bindings;
   const Node* fn_def = ce_fn_def;

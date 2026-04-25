@@ -61,7 +61,9 @@ void Lowerer::lower_case_stmt(FunctionCtx& ctx, const Node* n) {
     if (n->left->kind == NK_INT_LIT) {
       case_val = n->left->ival;
     } else {
-      ConstEvalEnv env{&enum_consts_, nullptr, &ctx.local_const_bindings};
+      LowererConstEvalStructuredMaps structured_maps;
+      ConstEvalEnv env = make_lowerer_consteval_env(
+          structured_maps, &ctx.local_const_bindings, false);
       if (auto r = evaluate_constant_expr(n->left, env); r.ok()) case_val = r.as_int();
     }
   }
@@ -81,7 +83,9 @@ void Lowerer::lower_case_range_stmt(FunctionCtx& ctx, const Node* n) {
   long long lo = 0;
   long long hi = 0;
   {
-    ConstEvalEnv env{&enum_consts_, nullptr, &ctx.local_const_bindings};
+    LowererConstEvalStructuredMaps structured_maps;
+    ConstEvalEnv env = make_lowerer_consteval_env(
+        structured_maps, &ctx.local_const_bindings, false);
     if (n->left) {
       if (n->left->kind == NK_INT_LIT) lo = n->left->ival;
       else if (auto r = evaluate_constant_expr(n->left, env); r.ok()) lo = r.as_int();
