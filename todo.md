@@ -15,21 +15,22 @@ Step 3 continued shared projection-helper reuse in `addressing.cpp`.
 
 Consolidated traversal:
 
-- The non-first-index array/struct child traversal in
-  `resolve_relative_global_gep_address` now consumes
+- The non-first-index constant array/struct child traversal in
+  `resolve_global_dynamic_pointer_array_access` now consumes
   `resolve_aggregate_child_index_projection`.
-- Relative first-index handling remains local to
-  `resolve_relative_global_gep_address` and still applies whole-object layout
-  scaling from the relative base address.
-- Scalar leaf indexing policy remains local to the relative global path.
-- The helper's `child_absolute_byte_offset` and `child_type_text` now provide
-  the child offset and next type for the relative global GEP walk.
+- Absolute and relative first-index handling remains local to
+  `resolve_global_dynamic_pointer_array_access`.
+- Dynamic-index lowering, pointer-array return policy, and publication policy
+  remain local to the caller path.
+- The helper's `child_absolute_byte_offset`, `child_type_text`, and child layout
+  now provide the constant child offset, next type, and preserved array-element
+  size check for the dynamic global pointer-array walk.
 
 ## Suggested Next
 
-Continue Step 3 with a bounded dynamic aggregate traversal that still open-codes
-array/struct child selection, while keeping dynamic-index and publication
-policy local to the caller.
+Continue Step 3 by applying the shared projection helper to another bounded
+constant-index aggregate traversal that still open-codes distinct dynamic-index
+or publication policy.
 
 ## Watchouts
 
@@ -43,10 +44,9 @@ policy local to the caller.
 - Be careful with first-index policy: local aggregate GEP, absolute global GEP,
   relative global GEP, dynamic aggregate GEP, and runtime pointer provenance use
   similar layout math but different acceptance rules.
-- `resolve_global_dynamic_pointer_array_access`,
-  `resolve_local_aggregate_dynamic_pointer_array_access`, and dynamic aggregate
-  GEP paths still open-code related traversal and were intentionally left
-  outside this bounded packet.
+- `resolve_local_aggregate_dynamic_pointer_array_access` and dynamic aggregate
+  GEP paths still open-code related traversal and remain candidates for separate
+  bounded packets.
 
 ## Proof
 

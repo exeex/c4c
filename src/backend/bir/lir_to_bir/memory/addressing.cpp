@@ -504,7 +504,7 @@ BirFunctionLowerer::resolve_global_dynamic_pointer_array_access(
     return std::nullopt;
   }
 
-  std::string_view current_type = c4c::codegen::lir::trim_lir_arg_text(base_type_text);
+  std::string current_type(c4c::codegen::lir::trim_lir_arg_text(base_type_text));
   std::size_t byte_offset = initial_byte_offset;
   for (std::size_t index_pos = 0; index_pos < gep.indices.size(); ++index_pos) {
     const auto parsed_index = parse_typed_operand(gep.indices[index_pos]);
@@ -534,6 +534,32 @@ BirFunctionLowerer::resolve_global_dynamic_pointer_array_access(
       continue;
     }
 
+    if (const auto index_value = resolve_index_operand(parsed_index->operand, value_aliases);
+        index_value.has_value()) {
+      if (*index_value < 0) {
+        return std::nullopt;
+      }
+      const auto projection = resolve_aggregate_child_index_projection(
+          current_type, static_cast<std::size_t>(*index_value), type_decls);
+      if (!projection.has_value()) {
+        return std::nullopt;
+      }
+      switch (projection->kind) {
+        case AggregateByteOffsetProjection::Kind::ArrayElement:
+          if (projection->child_layout.size_bytes == 0) {
+            return std::nullopt;
+          }
+          [[fallthrough]];
+        case AggregateByteOffsetProjection::Kind::StructField:
+          byte_offset += projection->child_absolute_byte_offset;
+          current_type = projection->child_type_text;
+          break;
+        default:
+          return std::nullopt;
+      }
+      continue;
+    }
+
     switch (layout.kind) {
       case AggregateTypeLayout::Kind::Array: {
         const auto element_layout =
@@ -542,17 +568,6 @@ BirFunctionLowerer::resolve_global_dynamic_pointer_array_access(
             element_layout.size_bytes == 0) {
           return std::nullopt;
         }
-
-        if (const auto index_value = resolve_index_operand(parsed_index->operand, value_aliases);
-            index_value.has_value()) {
-          if (*index_value < 0 || static_cast<std::size_t>(*index_value) >= layout.array_count) {
-            return std::nullopt;
-          }
-          byte_offset += static_cast<std::size_t>(*index_value) * element_layout.size_bytes;
-          current_type = c4c::codegen::lir::trim_lir_arg_text(layout.element_type_text);
-          break;
-        }
-
         const auto lowered_index = lower_typed_index_value(*parsed_index, value_aliases);
         if (!lowered_index.has_value() || index_pos + 1 != gep.indices.size() ||
             element_layout.kind != AggregateTypeLayout::Kind::Scalar ||
@@ -565,17 +580,6 @@ BirFunctionLowerer::resolve_global_dynamic_pointer_array_access(
             .element_count = layout.array_count,
             .index = *lowered_index,
         };
-      }
-      case AggregateTypeLayout::Kind::Struct: {
-        const auto index_value = resolve_index_operand(parsed_index->operand, value_aliases);
-        if (!index_value.has_value() || *index_value < 0 ||
-            static_cast<std::size_t>(*index_value) >= layout.fields.size()) {
-          return std::nullopt;
-        }
-        byte_offset += layout.fields[static_cast<std::size_t>(*index_value)].byte_offset;
-        current_type = c4c::codegen::lir::trim_lir_arg_text(
-            layout.fields[static_cast<std::size_t>(*index_value)].type_text);
-        break;
       }
       default:
         return std::nullopt;
