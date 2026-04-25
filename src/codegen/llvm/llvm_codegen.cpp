@@ -5,7 +5,7 @@
 #endif
 #include "../target_profile.hpp"
 #include "hir_to_lir.hpp"
-#include "lir_printer.hpp"
+#include "ir.hpp"
 
 #include <iostream>
 #include <stdexcept>

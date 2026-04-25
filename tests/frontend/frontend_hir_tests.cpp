@@ -2,13 +2,13 @@
 #include "hir_to_lir.hpp"
 #include "hir/hir_ir.hpp"
 #include "hir/hir_printer.hpp"
-#include "lir_printer.hpp"
+#include "ir.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "sema.hpp"
 #include "source_profile.hpp"
 #include "target_profile.hpp"
-#include "backend/bir/lir_to_bir.hpp"
+#include "backend/bir/lir_to_bir/lowering.hpp"
 
 #include <algorithm>
 #include <cstdlib>

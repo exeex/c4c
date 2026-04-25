@@ -1,7 +1,5 @@
-#include "lir_printer.hpp"
-#include "call_args_ops.hpp"
 #include "ir.hpp"
-#include "verify.hpp"
+#include "call_args_ops.hpp"
 #include "../shared/llvm_helpers.hpp"
 
 #include <cctype>

@@ -15,8 +15,8 @@ function state into:
 - aggregate frame metrics such as `frame_size_bytes` and `frame_alignment_bytes`
 
 The current C++ implementation is a first-pass bridge. It compiles and produces
-consistent `PreparedStackLayout` output, but it does not yet port the full Rust
-three-tier allocation model.
+consistent `PreparedStackLayout` output, but it does not yet implement the full
+three-tier allocation model described in the historical upstream material.
 
 ## Current Inputs
 
@@ -54,35 +54,33 @@ This data is written into:
 
 | File | Purpose |
 |------|---------|
-| `support.hpp` | Shared private helpers and function declarations for the C++ port |
+| `stack_layout.hpp` | Shared private helpers and function declarations for the C++ implementation |
 | `analysis.cpp` | Collects `PreparedStackObject` records from BIR functions |
 | `alloca_coalescing.cpp` | Applies conservative address-exposed and home-slot hints |
 | `copy_coalescing.cpp` | Applies provisional copy-coalescing metadata hints |
 | `inline_asm.cpp` | Summarizes inline-asm presence and side-effect metadata |
 | `regalloc_helpers.cpp` | Applies conservative home-slot hints informed by local-slot metadata |
 | `slot_assignment.cpp` | Performs aligned sequential frame-slot assignment |
-| `*.rs` | Reference-only Rust source retained to guide future semantic porting |
-| `../stack_layout.cpp` | Orchestrates the phase and writes `PreparedStackLayout` |
+| `coordinator.cpp` | Orchestrates the phase and writes `PreparedStackLayout` |
 
 ## Current Design Constraints
 
 - The current bridge is intentionally conservative. It prefers over-allocating
   stack slots to missing required home slots.
 - `PreparedFrameSlot` is still a dedicated object-to-slot record. The active
-  contract does not represent Rust Tier 2 / Tier 3 shared-slot reuse, deferred
-  slot finalization, or value-owned slot aliases.
+  contract does not represent Tier 2 / Tier 3 shared-slot reuse, deferred slot
+  finalization, or value-owned slot aliases.
 - Frame-slot offsets are currently assigned as dedicated home slots per
   function, not by value liveness or interval packing.
-- The remaining Rust `slot_assignment.rs` reuse logic depends on value-level
-  interval data that belongs with Step 3 `liveness`, not on more
-  `PreparedStackObject` heuristics.
-- The Rust files are not part of the active build; they remain as design and
-  porting references only.
+- Future shared-slot reuse should be designed against the active prepared
+  liveness contract, not by adding more `PreparedStackObject` heuristics.
+- There are no active prealloc-local `.rs` guidance files in this directory.
+  Historical upstream Rust material should be consulted under
+  `ref/claudes-c-compiler/` only when a task explicitly calls for archaeology.
 
 ## Planned Direction
 
-The intended end state is still the richer stack-layout model described by the
-Rust reference sources:
+The intended end state is still a richer stack-layout model:
 
 - tiered allocation
 - alloca escape analysis
@@ -90,5 +88,5 @@ Rust reference sources:
 - liveness-packed multi-block slot sharing
 - tighter interaction with later liveness and regalloc phases
 
-That behavior has not been fully ported yet, so this README should be read as a
-description of the active C++ contract first, not of the legacy Rust algorithm.
+That behavior has not been fully implemented yet, so this README should be read
+as a description of the active C++ contract.

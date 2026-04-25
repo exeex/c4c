@@ -1,8 +1,9 @@
 # Liveness C++ vs Rust Comparison
 
 This note starts Step 5 acceptance for the active prealloc migration by
-comparing the live C++ liveness phase in `liveness.cpp` against the retained
-Rust reference in `liveness.rs`.
+summarizing the live C++ liveness phase in `liveness.cpp` against the
+historical Rust design. The prealloc-local `liveness.rs` file has been removed;
+use `ref/claudes-c-compiler/` only for explicit archaeology.
 
 ## Active Match Points
 
@@ -59,15 +60,15 @@ Rust reference in `liveness.rs`.
   and each value records prepared-contract flags such as `address_taken`,
   `requires_home_slot`, and `crosses_call`.
 
-### Still-reference-only Rust behavior
+### Remaining historical-design gaps
 
-- Rust still has `extend_gep_base_liveness(...)`,
+- The historical design still has `extend_gep_base_liveness(...)`,
   `extend_f128_source_liveness(...)`, and `extend_intervals_for_setjmp(...)`.
   The active C++ liveness path does not port those extensions yet.
 - This omission is currently bounded rather than hidden: the active C++ tests
   prove the core named-value, phi-edge, call-point, and loop-depth route, but
-  Step 5 is not complete until the remaining Rust-only extensions are either
-  ported or explicitly retired with justification.
+  acceptance should not claim those extensions until they are either
+  implemented or explicitly retired with justification.
 
 ## Runtime Proof
 

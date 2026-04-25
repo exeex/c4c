@@ -1,8 +1,9 @@
 # Regalloc C++ vs Rust Comparison
 
 This note continues Step 5 acceptance for the active prealloc migration by
-comparing the live C++ regalloc phase in `regalloc.cpp` against the retained
-Rust reference in `regalloc.rs`.
+summarizing the live C++ regalloc phase in `regalloc.cpp` against the
+historical Rust design. The prealloc-local `regalloc.rs` file has been removed;
+use `ref/claudes-c-compiler/` only for explicit archaeology.
 
 ## Active Match Points
 

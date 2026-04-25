@@ -1,4 +1,4 @@
-#include "../lir_to_bir.hpp"
+#include "lowering.hpp"
 
 #include <cerrno>
 #include <charconv>
@@ -515,6 +515,95 @@ bool BirFunctionLowerer::lower_scalar_compare_inst(const c4c::codegen::lir::LirI
   }
 
   return false;
+}
+
+std::optional<bool> BirFunctionLowerer::lower_scalar_family_inst(
+    const c4c::codegen::lir::LirInst& inst,
+    ValueMap& value_aliases,
+    CompareMap& compare_exprs,
+    std::vector<bir::Inst>* lowered_insts) const {
+  if (std::holds_alternative<c4c::codegen::lir::LirCmpOp>(inst)) {
+    return lower_scalar_compare_inst(inst, value_aliases, compare_exprs, lowered_insts);
+  }
+
+  if (const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&inst)) {
+    if (lower_scalar_compare_inst(inst, value_aliases, compare_exprs, lowered_insts)) {
+      return true;
+    }
+
+    if (cast->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+
+    const auto opcode = lower_cast_opcode(cast->kind);
+    const auto from_type = lower_scalar_or_function_pointer_type(cast->from_type.str());
+    const auto to_type = lower_scalar_or_function_pointer_type(cast->to_type.str());
+    if (!opcode.has_value() || !from_type.has_value() || !to_type.has_value()) {
+      return false;
+    }
+
+    const auto operand = lower_value(cast->operand, *from_type, value_aliases);
+    if (!operand.has_value()) {
+      return false;
+    }
+
+    if (cast->kind == c4c::codegen::lir::LirCastKind::Bitcast && operand->type == *to_type) {
+      value_aliases[cast->result.str()] = *operand;
+      return true;
+    }
+
+    if (const auto folded = fold_integer_cast(cast->kind, *operand, *to_type);
+        folded.has_value()) {
+      value_aliases[cast->result.str()] = *folded;
+      return true;
+    }
+
+    lowered_insts->push_back(bir::CastInst{
+        .opcode = *opcode,
+        .result = bir::Value::named(*to_type, cast->result.str()),
+        .operand = *operand,
+    });
+    value_aliases[cast->result.str()] = bir::Value::named(*to_type, cast->result.str());
+    return true;
+  }
+
+  if (const auto* bin = std::get_if<c4c::codegen::lir::LirBinOp>(&inst)) {
+    if (bin->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return false;
+    }
+
+    const auto opcode = lower_scalar_binary_opcode(bin->opcode);
+    const auto value_type = lower_scalar_or_function_pointer_type(bin->type_str.str());
+    if (!opcode.has_value() || !value_type.has_value() || *value_type == bir::TypeKind::Ptr) {
+      return false;
+    }
+
+    const auto operands = lower_scalar_binop_operands(*bin, *value_type, value_aliases);
+    if (!operands.has_value()) {
+      return false;
+    }
+    const auto& [lhs, rhs] = *operands;
+
+    if (*value_type == bir::TypeKind::I64 && lhs.kind == bir::Value::Kind::Immediate &&
+        rhs.kind == bir::Value::Kind::Immediate) {
+      const auto folded = fold_i64_binary_immediates(*opcode, lhs.immediate, rhs.immediate);
+      if (folded.has_value()) {
+        value_aliases[bin->result.str()] = *folded;
+        return true;
+      }
+    }
+
+    lowered_insts->push_back(bir::BinaryInst{
+        .opcode = *opcode,
+        .result = bir::Value::named(*value_type, bin->result.str()),
+        .operand_type = *value_type,
+        .lhs = lhs,
+        .rhs = rhs,
+    });
+    return true;
+  }
+
+  return std::nullopt;
 }
 
 bool BirFunctionLowerer::resolve_select_chain_inst(const c4c::codegen::lir::LirInst& inst,

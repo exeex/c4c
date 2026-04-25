@@ -1,5 +1,10 @@
 #pragma once
 
+// Exported LIR call-operation helpers.
+//
+// This adapter binds the call-argument helpers to `LirCallOp`; include it from
+// printer, verifier, HIR-to-LIR, or backend code that operates on LIR call ops.
+
 #include "call_args.hpp"
 #include "ir.hpp"
 
