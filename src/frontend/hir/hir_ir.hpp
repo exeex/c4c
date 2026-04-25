@@ -1154,9 +1154,48 @@ struct Module {
     return id.valid() ? find_function(id) : nullptr;
   }
 
+  [[nodiscard]] std::optional<ModuleDeclLookupKey> make_decl_ref_lookup_key(
+      ModuleDeclKind kind, const DeclRef& ref) const {
+    if (ref.name_text_id == kInvalidText) return std::nullopt;
+    if (ref.ns_qual.segment_text_ids.size() != ref.ns_qual.segments.size()) {
+      return std::nullopt;
+    }
+    if (std::find(ref.ns_qual.segment_text_ids.begin(),
+                  ref.ns_qual.segment_text_ids.end(),
+                  kInvalidText) != ref.ns_qual.segment_text_ids.end()) {
+      return std::nullopt;
+    }
+    return make_module_decl_lookup_key(kind, ref.ns_qual, ref.name_text_id);
+  }
+
+  [[nodiscard]] std::optional<ModuleDeclLookupKey> make_function_decl_lookup_key(
+      const DeclRef& ref) const {
+    return make_decl_ref_lookup_key(ModuleDeclKind::Function, ref);
+  }
+
+  [[nodiscard]] std::optional<ModuleDeclLookupKey> make_global_decl_lookup_key(
+      const DeclRef& ref) const {
+    return make_decl_ref_lookup_key(ModuleDeclKind::Global, ref);
+  }
+
+  Function* find_function_by_decl_ref_structured(const DeclRef& ref) {
+    const auto key = make_function_decl_lookup_key(ref);
+    if (!key) return nullptr;
+    const auto it = fn_structured_index.find(*key);
+    return it == fn_structured_index.end() ? nullptr : find_function(it->second);
+  }
+
+  const Function* find_function_by_decl_ref_structured(const DeclRef& ref) const {
+    const auto key = make_function_decl_lookup_key(ref);
+    if (!key) return nullptr;
+    const auto it = fn_structured_index.find(*key);
+    return it == fn_structured_index.end() ? nullptr : find_function(it->second);
+  }
+
   const Function* resolve_function_decl(const DeclRef& ref) const {
     if (ref.local || ref.param_index || ref.global) return nullptr;
     if (const Function* fn = find_function(ref.link_name_id)) return fn;
+    if (const Function* fn = find_function_by_decl_ref_structured(ref)) return fn;
     return find_function_by_name_legacy(ref.name);
   }
 
@@ -1196,12 +1235,27 @@ struct Module {
     return id.valid() ? find_global(id) : nullptr;
   }
 
+  GlobalVar* find_global_by_decl_ref_structured(const DeclRef& ref) {
+    const auto key = make_global_decl_lookup_key(ref);
+    if (!key) return nullptr;
+    const auto it = global_structured_index.find(*key);
+    return it == global_structured_index.end() ? nullptr : find_global(it->second);
+  }
+
+  const GlobalVar* find_global_by_decl_ref_structured(const DeclRef& ref) const {
+    const auto key = make_global_decl_lookup_key(ref);
+    if (!key) return nullptr;
+    const auto it = global_structured_index.find(*key);
+    return it == global_structured_index.end() ? nullptr : find_global(it->second);
+  }
+
   const GlobalVar* resolve_global_decl(const DeclRef& ref) const {
     if (ref.local || ref.param_index) return nullptr;
     if (ref.global) {
       if (const GlobalVar* gv = find_global(*ref.global)) return gv;
     }
     if (const GlobalVar* gv = find_global(ref.link_name_id)) return gv;
+    if (const GlobalVar* gv = find_global_by_decl_ref_structured(ref)) return gv;
     return find_global_by_name_legacy(ref.name);
   }
 
