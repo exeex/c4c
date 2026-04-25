@@ -1,8 +1,8 @@
 # Idea 97 Structured Identity Completion Audit
 
-Status: Step 2 parser completion audit complete
+Status: Step 3 sema completion audit complete
 Source Idea: `ideas/open/97_structured_identity_completion_audit_and_hir_plan.md`
-Plan Step: Step 2 - Parser completion audit
+Plan Step: Step 3 - Sema completion audit
 
 ## Scope Guard
 
@@ -206,7 +206,49 @@ No build or test command was run; Step 1 proof is source inventory only.
 
 ## Sema Findings By Classification
 
-Step 1 inventory only. Step 3 should classify the sema surfaces above as `bridge-required`, `diagnostic-only`, `legacy-proof`, `sema-leftover`, or `blocked-by-hir`.
+### bridge-required
+
+- Canonical-symbol names are bridge/canonicalization strings rather than post-96 validation lookup owners. Evidence: `src/frontend/sema/canonical_symbol.hpp:221` through `src/frontend/sema/canonical_symbol.hpp:237` define `CanonicalIdentity::name` and identity lookup, while `src/frontend/sema/canonical_symbol.cpp:936` through `src/frontend/sema/canonical_symbol.cpp:943` and `src/frontend/sema/canonical_symbol.cpp:958` through `src/frontend/sema/canonical_symbol.cpp:985` encode source spellings for ABI-style type/name mangling.
+- Canonical helper conversion still writes nominal type spelling into `TypeSpec::tag`, which is a compatibility handoff to the current type representation rather than an independent sema lookup table. Evidence: `src/frontend/sema/canonical_symbol.cpp:711` through `src/frontend/sema/canonical_symbol.cpp:717`.
+- Consteval entry points keep string registries in their public API for existing callers while accepting text/key mirrors. Evidence: `src/frontend/sema/consteval.hpp:313` through `src/frontend/sema/consteval.hpp:320` requires `consteval_fns` and optional text/key maps, and `src/frontend/sema/validate.cpp:1422` through `src/frontend/sema/validate.cpp:1424` passes the legacy registry plus mirrors.
+
+### diagnostic-only
+
+- Sema dual-lookup match helpers are comparison telemetry; their results are intentionally discarded at call sites. Evidence: `src/frontend/sema/validate.hpp:39` through `src/frontend/sema/validate.hpp:57` define the match enum and pointer comparison helper, and calls such as `src/frontend/sema/validate.cpp:680` through `src/frontend/sema/validate.cpp:682`, `src/frontend/sema/validate.cpp:693` through `src/frontend/sema/validate.cpp:695`, and `src/frontend/sema/validate.cpp:973` through `src/frontend/sema/validate.cpp:978` cast the comparison result to `void`.
+- Consteval and type-binding mirror comparisons are also advisory proof checks. Evidence: `src/frontend/sema/consteval.hpp:205` through `src/frontend/sema/consteval.hpp:210` compares legacy/text/key constant lookup then returns the legacy result; `src/frontend/sema/consteval.cpp:119` through `src/frontend/sema/consteval.cpp:122` compares type-binding mirrors and returns the legacy substitution; `src/frontend/sema/consteval.cpp:577` through `src/frontend/sema/consteval.cpp:581` compares consteval function mirrors and returns the legacy callee.
+- User-facing diagnostic strings are not semantic lookup ownership. Evidence: undeclared-name and unknown-type diagnostics render `n->name` or `n->type.tag` at `src/frontend/sema/validate.cpp:1957` and `src/frontend/sema/validate.cpp:2285` through `src/frontend/sema/validate.cpp:2288`.
+
+### legacy-proof
+
+- Scoped local symbols are structured-preferred when a local `TextId` key exists, with the string map retained as the legacy mirror and for declarations that do not yet have a structured key. Evidence: `src/frontend/sema/validate.cpp:551` through `src/frontend/sema/validate.cpp:553` define both local maps, `src/frontend/sema/validate.cpp:769` through `src/frontend/sema/validate.cpp:781` dual-writes `bind_local`, and `src/frontend/sema/validate.cpp:822` through `src/frontend/sema/validate.cpp:831` compares both maps and returns the structured local before the legacy local.
+- Local initialization updates use the same dual path, so uninitialized-read tracking is covered by structured proof instead of a standalone string-only path. Evidence: `src/frontend/sema/validate.cpp:939` through `src/frontend/sema/validate.cpp:960`.
+- Global variables, function signatures, and overload sets retain legacy maps with structured mirrors and comparison checks. Evidence: `src/frontend/sema/validate.cpp:494` through `src/frontend/sema/validate.cpp:527` define legacy and structured maps; `src/frontend/sema/validate.cpp:614` through `src/frontend/sema/validate.cpp:620` mirrors globals; `src/frontend/sema/validate.cpp:623` through `src/frontend/sema/validate.cpp:640` mirrors functions/ref-overloads/C++ overloads; lookup comparisons appear at `src/frontend/sema/validate.cpp:675` through `src/frontend/sema/validate.cpp:710`.
+- Function and overload call paths go through the dual lookup helpers. Evidence: function-name expression classification uses `lookup_function_by_name` and `lookup_cpp_overloads_by_name` at `src/frontend/sema/validate.cpp:1970` through `src/frontend/sema/validate.cpp:1971`, and call validation checks ref overloads, C++ overloads, then plain functions at `src/frontend/sema/validate.cpp:2118` through `src/frontend/sema/validate.cpp:2196`.
+- Global and local const-int bindings are dual-written for non-enum declarations and are exposed to `ConstEvalEnv` with text/key mirrors. Evidence: const maps are declared at `src/frontend/sema/validate.cpp:501` through `src/frontend/sema/validate.cpp:512`; `record_global_const_binding` writes name/text/key maps at `src/frontend/sema/validate.cpp:882` through `src/frontend/sema/validate.cpp:890`; `record_local_const_binding` writes scoped name/text/key maps at `src/frontend/sema/validate.cpp:893` through `src/frontend/sema/validate.cpp:904`; `populate_const_eval_env` exports them at `src/frontend/sema/validate.cpp:859` through `src/frontend/sema/validate.cpp:871`.
+- Consteval function registry and interpreter locals are dual-written with legacy names retained as proof/compatibility. Evidence: `record_consteval_function` writes name/text/key maps at `src/frontend/sema/validate.cpp:642` through `src/frontend/sema/validate.cpp:650`; `lookup_consteval_function_by_name` compares the mirrors at `src/frontend/sema/validate.cpp:727` through `src/frontend/sema/validate.cpp:737`; `InterpreterBindings` carries `by_name`, `by_text`, and `by_key` at `src/frontend/sema/consteval.cpp:596` through `src/frontend/sema/consteval.cpp:610`, with snapshot/restore preserving all three at `src/frontend/sema/consteval.cpp:613` through `src/frontend/sema/consteval.cpp:655`.
+
+### sema-leftover
+
+- Enum type/value bindings still have structured containers that are not populated for enum variants. Evidence: `structured_enum_consts_`, `enum_const_vals_global_by_text_`, `enum_const_vals_global_by_key_`, `enum_const_vals_scopes_by_text_`, and `enum_const_vals_scopes_by_key_` are declared at `src/frontend/sema/validate.cpp:498` through `src/frontend/sema/validate.cpp:506`, but global enum binding writes only `enum_consts_` and `enum_const_vals_global_` at `src/frontend/sema/validate.cpp:907` through `src/frontend/sema/validate.cpp:914`, and local enum binding calls `bind_local` without a structured key and writes only `enum_const_vals_scopes_` at `src/frontend/sema/validate.cpp:917` through `src/frontend/sema/validate.cpp:927`. The lookup path compares `structured_enum_consts_` at `src/frontend/sema/validate.cpp:847` through `src/frontend/sema/validate.cpp:855`, so the mirror is currently inert for enum variants.
+- Template NTTP placeholders in validation local scopes are string-only. Evidence: `bind_template_nttps` creates an integer local for each NTTP and calls `bind_local(n->template_param_names[i], ...)` without a `SemaStructuredNameKey` at `src/frontend/sema/validate.cpp:1204` through `src/frontend/sema/validate.cpp:1216`; the AST stores template parameter names as `const char**` without parallel `TextId` fields at `src/frontend/parser/ast.hpp:330` through `src/frontend/parser/ast.hpp:337`.
+- Template type-parameter tracking in validation is still name-set based. Evidence: `template_type_params_` is a `std::unordered_set<std::string>` at `src/frontend/sema/validate.cpp:548`; `record_template_type_params_recursive` inserts `template_param_names` at `src/frontend/sema/validate.cpp:1219` through `src/frontend/sema/validate.cpp:1228`; cast validation scans `current_fn_node_->template_param_names` and `template_type_params_` by string at `src/frontend/sema/validate.cpp:2251` through `src/frontend/sema/validate.cpp:2283`.
+- Consteval call NTTP bindings expose structured/text slots but bind only the legacy name map. Evidence: `ConstEvalEnv` has `nttp_bindings`, `nttp_bindings_by_text`, and `nttp_bindings_by_key` at `src/frontend/sema/consteval.hpp:154` through `src/frontend/sema/consteval.hpp:157`, and lookup checks all three at `src/frontend/sema/consteval.hpp:276` through `src/frontend/sema/consteval.hpp:297`; `bind_consteval_call_env` writes only `out_nttp_bindings` for explicit/default NTTP values at `src/frontend/sema/consteval.cpp:438` through `src/frontend/sema/consteval.cpp:452` and `src/frontend/sema/consteval.cpp:475` through `src/frontend/sema/consteval.cpp:477`, then installs only `env.nttp_bindings` at `src/frontend/sema/consteval.cpp:506`.
+- Type-binding text mirrors are declared and threaded but deliberately unused. Evidence: `TypeBindingTextMap` and `TypeBindingNameTextMap` exist at `src/frontend/sema/consteval.hpp:91` through `src/frontend/sema/consteval.hpp:123`; `record_type_binding_mirrors` discards the text outputs at `src/frontend/sema/consteval.cpp:136` through `src/frontend/sema/consteval.cpp:145`, while only structured keys are written at `src/frontend/sema/consteval.cpp:146` through `src/frontend/sema/consteval.cpp:150`.
+
+### blocked-by-hir
+
+- Struct completeness still returns legacy tag-set results because sema receives record identity through `TypeSpec::tag`. Evidence: complete record maps and structured tag bridge maps are declared at `src/frontend/sema/validate.cpp:528` through `src/frontend/sema/validate.cpp:533`; `is_complete_object_type` extracts `ts.tag`, compares the structured record key when available, and returns `legacy_complete` at `src/frontend/sema/validate.cpp:965` through `src/frontend/sema/validate.cpp:979`.
+- Record-key recovery is a tag-string bridge, not a complete structured owner model. Evidence: `structured_record_key_for_tag` and `note_structured_record_key_for_tag` use rendered tags at `src/frontend/sema/validate.cpp:987` through `src/frontend/sema/validate.cpp:1003`, and `note_struct_def` records the tag plus structured key at `src/frontend/sema/validate.cpp:1013` through `src/frontend/sema/validate.cpp:1028`.
+- Member and static-member lookup have structured mirrors but still enter and return through rendered record tags and member strings. Evidence: `struct_field_names_`, `struct_static_member_types_`, and `struct_base_tags_` sit beside text/key mirrors at `src/frontend/sema/validate.cpp:536` through `src/frontend/sema/validate.cpp:547`; static-member lookup compares by-key lookup but returns the legacy result at `src/frontend/sema/validate.cpp:1059` through `src/frontend/sema/validate.cpp:1104`; instance-field lookup compares by-key lookup but returns the legacy result at `src/frontend/sema/validate.cpp:1107` through `src/frontend/sema/validate.cpp:1146`; `infer_expr` still splits static member spelling from `n->name` using `"::"` at `src/frontend/sema/validate.cpp:1911` through `src/frontend/sema/validate.cpp:1924`.
+- Out-of-class method owner resolution and implicit `this` setup are constrained by rendered record names. Evidence: `qualified_method_owner_struct` parses `fn->name` text at `src/frontend/sema/validate.cpp:377` through `src/frontend/sema/validate.cpp:383`; `struct_defs_by_unqualified_name_` indexes record nodes by string at `src/frontend/sema/validate.cpp:535` and is queried at `src/frontend/sema/validate.cpp:1149` through `src/frontend/sema/validate.cpp:1173`; `validate_function` stores `current_method_struct_tag_` and assigns `this_ts.tag` from it at `src/frontend/sema/validate.cpp:1545` through `src/frontend/sema/validate.cpp:1556`.
+- Consteval record layout lookup is HIR-structure keyed by rendered `TypeSpec::tag`. Evidence: `ConstEvalEnv::struct_defs` is a `std::unordered_map<std::string, HirStructDef>` at `src/frontend/sema/consteval.hpp:159` through `src/frontend/sema/consteval.hpp:162`, and `lookup_record_layout` looks up `ts.tag` at `src/frontend/sema/consteval.cpp:154` through `src/frontend/sema/consteval.cpp:160`.
+- `static_eval_int` remains a string-map helper for HIR and legacy constant evaluation callers, not a sema validation owner after idea 96. Evidence: the API accepts `std::unordered_map<std::string, long long>` at `src/frontend/sema/type_utils.hpp:69` through `src/frontend/sema/type_utils.hpp:72`, lookup is by `n->name` at `src/frontend/sema/type_utils.cpp:861` through `src/frontend/sema/type_utils.cpp:870`, and current references are HIR/lowering-side string maps such as `src/frontend/hir/hir_types.cpp:1279` and `src/frontend/hir/impl/expr/scalar_control.cpp:131`.
+
+### Step 3 Handoff
+
+- Sema value/function/overload/local/consteval lookup is broadly dual-written and either structured-preferred for locals or legacy-returning with structured proof for global/function-like maps.
+- Meaningful sema leftovers remain in enum variant mirrors, template NTTP/type-parameter validation placeholders, consteval NTTP binding mirrors, and dead text-binding mirror parameters.
+- Struct completeness, member/static-member lookup, `TypeSpec::tag`, record layout lookup, and `static_eval_int` should remain out of idea 98 unless a narrow sema metadata handoff is needed; the main cleanup there is blocked by HIR/type identity migration.
 
 ## HIR Inventory By Subsystem
 
@@ -215,11 +257,12 @@ Step 1 inventory only. Step 4 should classify each HIR subsystem by upstream str
 ## Proof Gaps And Validation Candidates
 
 - No proof gap was discovered that required a build during Step 1.
+- No Step 3 sema leftover claim required runtime proof; source evidence was sufficient for classification.
 - Parser classification proof candidates: parse-only namespace/using/template cases covering structured lookup and legacy mismatch counters.
 - Sema classification proof candidates: focused frontend/sema cases for scoped locals, overloads, consteval, enum/const-int bindings, and member/static-member lookup.
 - HIR first-slice proof candidates: HIR dump/summary CTest cases touching module function/global/struct lookup, template instantiation, consteval, member lookup, and LIR/codegen link-name preservation.
 
 ## Follow-On Recommendation Placeholders
 
-- Idea 98 decision: pending Step 2 and Step 3 classification.
+- Idea 98 decision: pending Step 5, with Step 3 identifying sema leftovers in enum variant mirrors, template NTTP/type-parameter validation placeholders, consteval NTTP binding mirrors, and type-binding text mirror population.
 - Idea 99 scope: pending Step 4 first-slice analysis.
