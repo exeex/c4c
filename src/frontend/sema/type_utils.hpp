@@ -57,6 +57,7 @@ TypeSpec classify_binop_result_type(
     int rhs_size);
 TypeSpec classify_known_builtin_return_type(BuiltinId id, bool* known);
 TypeSpec classify_known_call_return_type(const char* callee_name, bool* known);
+bool type_binding_values_equivalent(const TypeSpec& lhs, const TypeSpec& rhs);
 
 bool is_wide_str_lit(Node* n);
 int str_lit_byte_len(Node* n);

@@ -438,6 +438,78 @@ TypeSpec classify_known_call_return_type(const char* callee_name, bool* known) {
   return int_ts();
 }
 
+namespace {
+
+bool same_optional_cstr(const char* lhs, const char* rhs) {
+  if (lhs == rhs) return true;
+  if (!lhs || !rhs) return false;
+  return std::strcmp(lhs, rhs) == 0;
+}
+
+bool same_template_arg_ref_list(const TemplateArgRefList& lhs,
+                                const TemplateArgRefList& rhs);
+
+bool same_template_arg_ref(const TemplateArgRef& lhs, const TemplateArgRef& rhs) {
+  if (lhs.kind != rhs.kind) return false;
+  if (lhs.value != rhs.value) return false;
+  if (!same_optional_cstr(lhs.debug_text, rhs.debug_text)) return false;
+  return type_binding_values_equivalent(lhs.type, rhs.type);
+}
+
+bool same_template_arg_ref_list(const TemplateArgRefList& lhs,
+                                const TemplateArgRefList& rhs) {
+  if (lhs.size != rhs.size) return false;
+  if (lhs.data == rhs.data) return true;
+  if (lhs.size <= 0) return true;
+  if (!lhs.data || !rhs.data) return false;
+  for (int i = 0; i < lhs.size; ++i) {
+    if (!same_template_arg_ref(lhs.data[i], rhs.data[i])) return false;
+  }
+  return true;
+}
+
+}  // namespace
+
+bool type_binding_values_equivalent(const TypeSpec& lhs, const TypeSpec& rhs) {
+  if (lhs.base != rhs.base) return false;
+  if (lhs.enum_underlying_base != rhs.enum_underlying_base) return false;
+  if (!same_optional_cstr(lhs.tag, rhs.tag)) return false;
+  if (lhs.n_qualifier_segments != rhs.n_qualifier_segments) return false;
+  for (int i = 0; i < lhs.n_qualifier_segments; ++i) {
+    const char* lseg = lhs.qualifier_segments ? lhs.qualifier_segments[i] : nullptr;
+    const char* rseg = rhs.qualifier_segments ? rhs.qualifier_segments[i] : nullptr;
+    if (!same_optional_cstr(lseg, rseg)) return false;
+  }
+  if (lhs.is_global_qualified != rhs.is_global_qualified) return false;
+  if (lhs.ptr_level != rhs.ptr_level) return false;
+  if (lhs.is_lvalue_ref != rhs.is_lvalue_ref) return false;
+  if (lhs.is_rvalue_ref != rhs.is_rvalue_ref) return false;
+  if (lhs.align_bytes != rhs.align_bytes) return false;
+  if (lhs.array_size != rhs.array_size) return false;
+  if (lhs.array_rank != rhs.array_rank) return false;
+  for (int i = 0; i < 8; ++i) {
+    if (lhs.array_dims[i] != rhs.array_dims[i]) return false;
+  }
+  if (lhs.is_ptr_to_array != rhs.is_ptr_to_array) return false;
+  if (lhs.inner_rank != rhs.inner_rank) return false;
+  if (lhs.is_vector != rhs.is_vector) return false;
+  if (lhs.vector_lanes != rhs.vector_lanes) return false;
+  if (lhs.vector_bytes != rhs.vector_bytes) return false;
+  if (lhs.array_size_expr != rhs.array_size_expr) return false;
+  if (lhs.is_const != rhs.is_const) return false;
+  if (lhs.is_volatile != rhs.is_volatile) return false;
+  if (lhs.is_fn_ptr != rhs.is_fn_ptr) return false;
+  if (lhs.is_packed != rhs.is_packed) return false;
+  if (lhs.is_noinline != rhs.is_noinline) return false;
+  if (lhs.is_always_inline != rhs.is_always_inline) return false;
+  if (!same_optional_cstr(lhs.tpl_struct_origin, rhs.tpl_struct_origin)) return false;
+  if (!same_template_arg_ref_list(lhs.tpl_struct_args, rhs.tpl_struct_args)) return false;
+  if (!same_optional_cstr(lhs.deferred_member_type_name, rhs.deferred_member_type_name)) {
+    return false;
+  }
+  return true;
+}
+
 bool is_wide_str_lit(Node* n) {
   if (!n || n->kind != NK_STR_LIT || !n->sval) return false;
   const char* s = n->sval;

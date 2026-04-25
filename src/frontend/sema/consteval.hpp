@@ -89,6 +89,38 @@ using ConstEvalFunctionStructuredMap =
 
 // Map from template parameter name to concrete TypeSpec (for template-substituted evaluation).
 using TypeBindings = std::unordered_map<std::string, TypeSpec>;
+using TypeBindingTextMap = std::unordered_map<TextId, TypeSpec>;
+
+struct TypeBindingStructuredKey {
+  int namespace_context_id = -1;
+  TextId template_text_id = kInvalidText;
+  int param_index = -1;
+  TextId param_text_id = kInvalidText;
+
+  bool valid() const { return template_text_id != kInvalidText && param_index >= 0; }
+  bool operator==(const TypeBindingStructuredKey& other) const {
+    return namespace_context_id == other.namespace_context_id &&
+           template_text_id == other.template_text_id &&
+           param_index == other.param_index &&
+           param_text_id == other.param_text_id;
+  }
+};
+
+struct TypeBindingStructuredKeyHash {
+  std::size_t operator()(const TypeBindingStructuredKey& key) const {
+    std::size_t h = std::hash<int>{}(key.namespace_context_id);
+    h ^= std::hash<TextId>{}(key.template_text_id) + 0x9e3779b9u + (h << 6) + (h >> 2);
+    h ^= std::hash<int>{}(key.param_index) + 0x9e3779b9u + (h << 6) + (h >> 2);
+    h ^= std::hash<TextId>{}(key.param_text_id) + 0x9e3779b9u + (h << 6) + (h >> 2);
+    return h;
+  }
+};
+
+using TypeBindingStructuredMap =
+    std::unordered_map<TypeBindingStructuredKey, TypeSpec, TypeBindingStructuredKeyHash>;
+using TypeBindingNameTextMap = std::unordered_map<std::string, TextId>;
+using TypeBindingNameStructuredMap =
+    std::unordered_map<std::string, TypeBindingStructuredKey>;
 
 struct ConstEvalEnv {
   // Flat maps (used by hir.cpp where scoping is managed externally).
@@ -114,6 +146,10 @@ struct ConstEvalEnv {
 
   // Template type substitution map (template param name → concrete type).
   const TypeBindings* type_bindings = nullptr;
+  const TypeBindingTextMap* type_bindings_by_text = nullptr;
+  const TypeBindingStructuredMap* type_bindings_by_key = nullptr;
+  const TypeBindingNameTextMap* type_binding_text_ids_by_name = nullptr;
+  const TypeBindingNameStructuredMap* type_binding_keys_by_name = nullptr;
 
   // Non-type template parameter bindings (NTTP name → constant value).
   const std::unordered_map<std::string, long long>* nttp_bindings = nullptr;
@@ -291,7 +327,11 @@ ConstEvalEnv bind_consteval_call_env(
     const Node* func_def,
     const ConstEvalEnv& outer_env,
     TypeBindings* out_type_bindings,
-    std::unordered_map<std::string, long long>* out_nttp_bindings);
+    std::unordered_map<std::string, long long>* out_nttp_bindings,
+    TypeBindingTextMap* out_type_bindings_by_text = nullptr,
+    TypeBindingStructuredMap* out_type_bindings_by_key = nullptr,
+    TypeBindingNameTextMap* out_type_binding_text_ids_by_name = nullptr,
+    TypeBindingNameStructuredMap* out_type_binding_keys_by_name = nullptr);
 
 // ── String literal helpers ───────────────────────────────────────────────────
 

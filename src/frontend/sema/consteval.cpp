@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <cstring>
 
+#include "type_utils.hpp"
+
 namespace c4c::hir {
 namespace {
 
@@ -81,12 +83,72 @@ ConstValue apply_integer_cast(long long value, const TypeSpec& ts) {
   return ConstValue::make_int(static_cast<long long>(uv));
 }
 
+const TypeSpec* lookup_type_binding_by_text(const ConstEvalEnv& env,
+                                            const std::string& name) {
+  if (!env.type_bindings_by_text || !env.type_binding_text_ids_by_name) return nullptr;
+  auto text_it = env.type_binding_text_ids_by_name->find(name);
+  if (text_it == env.type_binding_text_ids_by_name->end() ||
+      text_it->second == kInvalidText) {
+    return nullptr;
+  }
+  auto it = env.type_bindings_by_text->find(text_it->second);
+  return it != env.type_bindings_by_text->end() ? &it->second : nullptr;
+}
+
+const TypeSpec* lookup_type_binding_by_key(const ConstEvalEnv& env,
+                                           const std::string& name) {
+  if (!env.type_bindings_by_key || !env.type_binding_keys_by_name) return nullptr;
+  auto key_it = env.type_binding_keys_by_name->find(name);
+  if (key_it == env.type_binding_keys_by_name->end() || !key_it->second.valid()) {
+    return nullptr;
+  }
+  auto it = env.type_bindings_by_key->find(key_it->second);
+  return it != env.type_bindings_by_key->end() ? &it->second : nullptr;
+}
+
+bool compare_type_binding_values(const TypeSpec* legacy, const TypeSpec* advisory) {
+  if (!advisory) return true;
+  return legacy && type_binding_values_equivalent(*legacy, *advisory);
+}
+
 // Resolve a TypeSpec through type_bindings if it's a TB_TYPEDEF with a known substitution.
-TypeSpec resolve_type(const TypeSpec& ts, const TypeBindings* bindings) {
-  if (!bindings || ts.base != TB_TYPEDEF || !ts.tag) return ts;
-  auto it = bindings->find(ts.tag);
-  if (it == bindings->end()) return ts;
-  return it->second;
+TypeSpec resolve_type(const TypeSpec& ts, const ConstEvalEnv& env) {
+  if (ts.base != TB_TYPEDEF || !ts.tag || !env.type_bindings) return ts;
+  const std::string name = ts.tag;
+  auto it = env.type_bindings->find(name);
+  const TypeSpec* legacy = it != env.type_bindings->end() ? &it->second : nullptr;
+  (void)compare_type_binding_values(legacy, lookup_type_binding_by_text(env, name));
+  (void)compare_type_binding_values(legacy, lookup_type_binding_by_key(env, name));
+  return legacy ? *legacy : ts;
+}
+
+TypeBindingStructuredKey type_binding_key_for_param(const Node* func_def, int param_index) {
+  TypeBindingStructuredKey key;
+  if (!func_def || param_index < 0 || func_def->unqualified_text_id == kInvalidText) {
+    return key;
+  }
+  key.namespace_context_id = func_def->namespace_context_id;
+  key.template_text_id = func_def->unqualified_text_id;
+  key.param_index = param_index;
+  return key;
+}
+
+void record_type_binding_mirrors(
+    const std::string& param_name,
+    const TypeSpec& arg_ts,
+    const TypeBindingStructuredKey& structured_key,
+    TypeBindingTextMap* out_type_bindings_by_text,
+    TypeBindingStructuredMap* out_type_bindings_by_key,
+    TypeBindingNameTextMap* out_type_binding_text_ids_by_name,
+    TypeBindingNameStructuredMap* out_type_binding_keys_by_name) {
+  (void)out_type_bindings_by_text;
+  (void)out_type_binding_text_ids_by_name;
+  if (structured_key.valid()) {
+    if (out_type_bindings_by_key) (*out_type_bindings_by_key)[structured_key] = arg_ts;
+    if (out_type_binding_keys_by_name) {
+      (*out_type_binding_keys_by_name)[param_name] = structured_key;
+    }
+  }
 }
 
 const HirStructDef* lookup_record_layout(const TypeSpec& ts, const ConstEvalEnv& env) {
@@ -266,18 +328,18 @@ ConstEvalResult eval_impl(const Node* n, const ConstEvalEnv& env) {
       return eval_impl(cr.as_int() ? n->then_ : n->else_, env);
     }
     case NK_SIZEOF_TYPE:
-      return compute_sizeof_type(resolve_type(n->type, env.type_bindings), env);
+      return compute_sizeof_type(resolve_type(n->type, env), env);
     case NK_SIZEOF_EXPR:
       // sizeof(expr) — use the expression's type from the AST.
-      if (n->left) return compute_sizeof_type(resolve_type(n->left->type, env.type_bindings), env);
+      if (n->left) return compute_sizeof_type(resolve_type(n->left->type, env), env);
       return ConstEvalResult::failure("sizeof(expr): missing expression");
     case NK_SIZEOF_PACK:
       return ConstEvalResult::failure("sizeof...(pack) requires template pack instantiation");
     case NK_ALIGNOF_TYPE:
-      return compute_alignof_type(resolve_type(n->type, env.type_bindings), env);
+      return compute_alignof_type(resolve_type(n->type, env), env);
     case NK_ALIGNOF_EXPR:
       // alignof(expr) — use the expression's type from the AST.
-      if (n->left) return compute_alignof_type(resolve_type(n->left->type, env.type_bindings), env);
+      if (n->left) return compute_alignof_type(resolve_type(n->left->type, env), env);
       return ConstEvalResult::failure("alignof(expr): missing expression");
     default:
       return ConstEvalResult::failure(
@@ -348,9 +410,17 @@ ConstEvalEnv bind_consteval_call_env(
     const Node* func_def,
     const ConstEvalEnv& outer_env,
     TypeBindings* out_type_bindings,
-    std::unordered_map<std::string, long long>* out_nttp_bindings) {
+    std::unordered_map<std::string, long long>* out_nttp_bindings,
+    TypeBindingTextMap* out_type_bindings_by_text,
+    TypeBindingStructuredMap* out_type_bindings_by_key,
+    TypeBindingNameTextMap* out_type_binding_text_ids_by_name,
+    TypeBindingNameStructuredMap* out_type_binding_keys_by_name) {
   if (out_type_bindings) out_type_bindings->clear();
   if (out_nttp_bindings) out_nttp_bindings->clear();
+  if (out_type_bindings_by_text) out_type_bindings_by_text->clear();
+  if (out_type_bindings_by_key) out_type_bindings_by_key->clear();
+  if (out_type_binding_text_ids_by_name) out_type_binding_text_ids_by_name->clear();
+  if (out_type_binding_keys_by_name) out_type_binding_keys_by_name->clear();
 
   ConstEvalEnv env = outer_env;
   if (!callee_expr || !func_def || func_def->n_template_params <= 0 ||
@@ -385,11 +455,12 @@ ConstEvalEnv bind_consteval_call_env(
 
     if (!out_type_bindings || !callee_expr->template_arg_types) continue;
     TypeSpec arg_ts = callee_expr->template_arg_types[i];
-    if (arg_ts.base == TB_TYPEDEF && arg_ts.tag && outer_env.type_bindings) {
-      auto it = outer_env.type_bindings->find(arg_ts.tag);
-      if (it != outer_env.type_bindings->end()) arg_ts = it->second;
-    }
+    arg_ts = resolve_type(arg_ts, outer_env);
     (*out_type_bindings)[param_name] = arg_ts;
+    record_type_binding_mirrors(
+        param_name, arg_ts, type_binding_key_for_param(func_def, i),
+        out_type_bindings_by_text, out_type_bindings_by_key,
+        out_type_binding_text_ids_by_name, out_type_binding_keys_by_name);
   }
 
   if (func_def->template_param_has_default) {
@@ -406,12 +477,32 @@ ConstEvalEnv bind_consteval_call_env(
         (*out_nttp_bindings)[param_name] = func_def->template_param_default_values[i];
       } else {
         if (!out_type_bindings) continue;
-        (*out_type_bindings)[param_name] = func_def->template_param_default_types[i];
+        TypeSpec arg_ts = func_def->template_param_default_types[i];
+        arg_ts = resolve_type(arg_ts, outer_env);
+        (*out_type_bindings)[param_name] = arg_ts;
+        record_type_binding_mirrors(
+            param_name, arg_ts, type_binding_key_for_param(func_def, i),
+            out_type_bindings_by_text, out_type_bindings_by_key,
+            out_type_binding_text_ids_by_name, out_type_binding_keys_by_name);
       }
     }
   }
 
-  if (out_type_bindings && !out_type_bindings->empty()) env.type_bindings = out_type_bindings;
+  if (out_type_bindings && !out_type_bindings->empty()) {
+    env.type_bindings = out_type_bindings;
+    if (out_type_bindings_by_text && !out_type_bindings_by_text->empty()) {
+      env.type_bindings_by_text = out_type_bindings_by_text;
+    }
+    if (out_type_bindings_by_key && !out_type_bindings_by_key->empty()) {
+      env.type_bindings_by_key = out_type_bindings_by_key;
+    }
+    if (out_type_binding_text_ids_by_name && !out_type_binding_text_ids_by_name->empty()) {
+      env.type_binding_text_ids_by_name = out_type_binding_text_ids_by_name;
+    }
+    if (out_type_binding_keys_by_name && !out_type_binding_keys_by_name->empty()) {
+      env.type_binding_keys_by_name = out_type_binding_keys_by_name;
+    }
+  }
   if (out_nttp_bindings && !out_nttp_bindings->empty()) env.nttp_bindings = out_nttp_bindings;
   return env;
 }
@@ -598,7 +689,7 @@ ConstEvalResult interp_expr(const Node* n, InterpreterBindings& locals,
                            consteval_fns_by_text, consteval_fns_by_key, depth);
       if (!r.ok()) return r;
       return ConstEvalResult::success(apply_integer_cast(r.as_int(),
-          resolve_type(n->type, env.type_bindings)));
+          resolve_type(n->type, env)));
     }
 
     case NK_UNARY: {
@@ -704,9 +795,15 @@ ConstEvalResult interp_expr(const Node* n, InterpreterBindings& locals,
       }
 
       TypeBindings tpl_bindings;
+      TypeBindingTextMap tpl_bindings_by_text;
+      TypeBindingStructuredMap tpl_bindings_by_key;
+      TypeBindingNameTextMap tpl_binding_text_ids_by_name;
+      TypeBindingNameStructuredMap tpl_binding_keys_by_name;
       std::unordered_map<std::string, long long> nttp_bindings;
       ConstEvalEnv call_env = bind_consteval_call_env(
-          n->left, callee_def, outer_env, &tpl_bindings, &nttp_bindings);
+          n->left, callee_def, outer_env, &tpl_bindings, &nttp_bindings,
+          &tpl_bindings_by_text, &tpl_bindings_by_key,
+          &tpl_binding_text_ids_by_name, &tpl_binding_keys_by_name);
       return evaluate_consteval_call(callee_def, args, call_env, consteval_fns, depth + 1,
                                      consteval_fns_by_text, consteval_fns_by_key);
     }
@@ -732,16 +829,16 @@ ConstEvalResult interp_expr(const Node* n, InterpreterBindings& locals,
     }
 
     case NK_SIZEOF_TYPE:
-      return compute_sizeof_type(resolve_type(n->type, env.type_bindings), env);
+      return compute_sizeof_type(resolve_type(n->type, env), env);
     case NK_SIZEOF_EXPR:
-      if (n->left) return compute_sizeof_type(resolve_type(n->left->type, env.type_bindings), env);
+      if (n->left) return compute_sizeof_type(resolve_type(n->left->type, env), env);
       return ConstEvalResult::failure("sizeof(expr): missing expression");
     case NK_SIZEOF_PACK:
       return ConstEvalResult::failure("sizeof...(pack) requires template pack instantiation");
     case NK_ALIGNOF_TYPE:
-      return compute_alignof_type(resolve_type(n->type, env.type_bindings), env);
+      return compute_alignof_type(resolve_type(n->type, env), env);
     case NK_ALIGNOF_EXPR:
-      if (n->left) return compute_alignof_type(resolve_type(n->left->type, env.type_bindings), env);
+      if (n->left) return compute_alignof_type(resolve_type(n->left->type, env), env);
       return ConstEvalResult::failure("alignof(expr): missing expression");
 
     default:
