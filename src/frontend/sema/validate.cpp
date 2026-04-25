@@ -18,6 +18,8 @@
 namespace c4c::sema {
 
 using hir::ConstEvalEnv;
+using hir::ConstEvalFunctionStructuredMap;
+using hir::ConstEvalFunctionTextMap;
 using hir::ConstEvalStructuredNameKey;
 using hir::ConstMap;
 using hir::ConstStructuredMap;
@@ -511,6 +513,8 @@ class Validator {
   std::unordered_map<SemaStructuredNameKey, const FunctionSig*, SemaStructuredNameKeyHash>
       structured_funcs_;
   std::unordered_map<std::string, const Node*> consteval_funcs_;
+  ConstEvalFunctionTextMap consteval_funcs_by_text_;
+  ConstEvalFunctionStructuredMap consteval_funcs_by_key_;
   // Ref-overloaded function signatures: name → multiple overloads differing in ref-qualifier.
   std::unordered_map<std::string, std::vector<FunctionSig>> ref_overload_sigs_;
   std::unordered_map<std::string, std::vector<FunctionSig>> cpp_overload_sigs_;
@@ -621,6 +625,17 @@ class Validator {
     }
   }
 
+  void record_consteval_function(const Node* n) {
+    if (!n || !n->name || !n->name[0]) return;
+    consteval_funcs_[n->name] = n;
+    if (n->unqualified_text_id != kInvalidText) {
+      consteval_funcs_by_text_[n->unqualified_text_id] = n;
+    }
+    if (auto key = sema_symbol_name_key(n); key.has_value() && key->valid()) {
+      consteval_funcs_by_key_[to_consteval_key(*key)] = n;
+    }
+  }
+
   const TypeSpec* lookup_global_by_key(const SemaStructuredNameKey& key) const {
     auto it = structured_globals_.find(key);
     return it != structured_globals_.end() ? it->second : nullptr;
@@ -676,6 +691,33 @@ class Validator {
     if (reference) {
       if (auto key = sema_symbol_name_key(reference); key.has_value()) {
         (void)compare_sema_lookup_ptrs(legacy, lookup_cpp_overloads_by_key(*key));
+      }
+    }
+    return legacy;
+  }
+
+  const Node* lookup_consteval_function_by_key(const SemaStructuredNameKey& key) const {
+    auto it = consteval_funcs_by_key_.find(to_consteval_key(key));
+    return it != consteval_funcs_by_key_.end() ? it->second : nullptr;
+  }
+
+  const Node* lookup_consteval_function_by_text(const Node* reference) const {
+    if (!reference || reference->unqualified_text_id == kInvalidText ||
+        reference->is_global_qualified || reference->n_qualifier_segments > 0) {
+      return nullptr;
+    }
+    auto it = consteval_funcs_by_text_.find(reference->unqualified_text_id);
+    return it != consteval_funcs_by_text_.end() ? it->second : nullptr;
+  }
+
+  const Node* lookup_consteval_function_by_name(
+      const std::string& name, const Node* reference = nullptr) const {
+    auto it = consteval_funcs_.find(name);
+    const Node* legacy = it != consteval_funcs_.end() ? it->second : nullptr;
+    if (reference) {
+      (void)compare_sema_lookup_ptrs(legacy, lookup_consteval_function_by_text(reference));
+      if (auto key = sema_symbol_name_key(reference); key.has_value()) {
+        (void)compare_sema_lookup_ptrs(legacy, lookup_consteval_function_by_key(*key));
       }
     }
     return legacy;
@@ -1102,7 +1144,7 @@ class Validator {
       }
     } else if (n->kind == NK_FUNCTION) {
       if (!n->name || !n->name[0]) return;
-      if (n->is_consteval && n->body) consteval_funcs_[n->name] = n;
+      if (n->is_consteval && n->body) record_consteval_function(n);
       if (qualified_method_owner_struct(n).has_value()) return;
       FunctionSig sig;
       sig.ret = n->type;
@@ -1214,8 +1256,9 @@ class Validator {
 
     if (n->left->kind == NK_CALL && n->left->left &&
         n->left->left->kind == NK_VAR && n->left->left->name) {
-      auto it = consteval_funcs_.find(n->left->left->name);
-      if (it != consteval_funcs_.end()) {
+      const Node* consteval_fn =
+          lookup_consteval_function_by_name(n->left->left->name, n->left->left);
+      if (consteval_fn) {
         std::vector<hir::ConstValue> args;
         bool args_ok = true;
         for (int i = 0; i < n->left->n_children; ++i) {
@@ -1227,7 +1270,9 @@ class Validator {
           args.push_back(*arg.value);
         }
         if (args_ok) {
-          auto r = hir::evaluate_consteval_call(it->second, args, env, consteval_funcs_);
+          auto r = hir::evaluate_consteval_call(
+              consteval_fn, args, env, consteval_funcs_, 0,
+              &consteval_funcs_by_text_, &consteval_funcs_by_key_);
           if (r.ok()) {
             if (r.as_int() == 0) emit(n, "_Static_assert condition is false");
             return;

@@ -433,20 +433,157 @@ struct StmtResult {
   std::string error;  // non-empty if evaluation failed
 };
 
-StmtResult interp_stmt(const Node* n, ConstMap& locals,
+std::optional<ConstEvalStructuredNameKey> consteval_local_key(const Node* n) {
+  if (!n || n->unqualified_text_id == kInvalidText) return std::nullopt;
+  if (n->is_global_qualified || n->n_qualifier_segments > 0) return std::nullopt;
+  ConstEvalStructuredNameKey key;
+  key.base_text_id = n->unqualified_text_id;
+  return key;
+}
+
+std::optional<ConstEvalStructuredNameKey> consteval_symbol_key(const Node* n) {
+  if (!n || n->namespace_context_id < 0 ||
+      n->unqualified_text_id == kInvalidText) {
+    return std::nullopt;
+  }
+  ConstEvalStructuredNameKey key;
+  key.namespace_context_id = n->namespace_context_id;
+  key.base_text_id = n->unqualified_text_id;
+  return key;
+}
+
+template <typename T>
+bool compare_ptrs(const T* legacy, const T* structured) {
+  if (!structured) return true;
+  return legacy && legacy == structured;
+}
+
+const Node* lookup_consteval_function_by_text(const ConstEvalFunctionTextMap* map,
+                                              const Node* callee) {
+  if (!map || !callee || callee->unqualified_text_id == kInvalidText ||
+      callee->is_global_qualified || callee->n_qualifier_segments > 0) {
+    return nullptr;
+  }
+  auto it = map->find(callee->unqualified_text_id);
+  return it != map->end() ? it->second : nullptr;
+}
+
+const Node* lookup_consteval_function_by_key(const ConstEvalFunctionStructuredMap* map,
+                                             const Node* callee) {
+  if (!map) return nullptr;
+  auto key = consteval_symbol_key(callee);
+  if (!key.has_value() || !key->valid()) return nullptr;
+  auto it = map->find(*key);
+  return it != map->end() ? it->second : nullptr;
+}
+
+const Node* lookup_consteval_function(
+    const Node* callee,
+    const std::unordered_map<std::string, const Node*>& consteval_fns,
+    const ConstEvalFunctionTextMap* consteval_fns_by_text,
+    const ConstEvalFunctionStructuredMap* consteval_fns_by_key) {
+  if (!callee || !callee->name) return nullptr;
+  auto it = consteval_fns.find(callee->name);
+  const Node* legacy = it != consteval_fns.end() ? it->second : nullptr;
+  (void)compare_ptrs(legacy, lookup_consteval_function_by_text(consteval_fns_by_text, callee));
+  (void)compare_ptrs(legacy, lookup_consteval_function_by_key(consteval_fns_by_key, callee));
+  return legacy;
+}
+
+struct InterpreterBindingSnapshot {
+  std::string name;
+  bool had_name = false;
+  long long name_value = 0;
+  TextId text_id = kInvalidText;
+  bool had_text = false;
+  long long text_value = 0;
+  std::optional<ConstEvalStructuredNameKey> key;
+  bool had_key = false;
+  long long key_value = 0;
+};
+
+struct InterpreterBindings {
+  ConstMap by_name;
+  ConstTextMap by_text;
+  ConstStructuredMap by_key;
+
+  void bind(const Node* n, long long value) {
+    if (!n || !n->name || !n->name[0]) return;
+    by_name[n->name] = value;
+    if (n->unqualified_text_id != kInvalidText &&
+        !n->is_global_qualified && n->n_qualifier_segments == 0) {
+      by_text[n->unqualified_text_id] = value;
+    }
+    if (auto key = consteval_local_key(n); key.has_value() && key->valid()) {
+      by_key[*key] = value;
+    }
+  }
+
+  InterpreterBindingSnapshot snapshot(const Node* n) const {
+    InterpreterBindingSnapshot out;
+    if (!n || !n->name || !n->name[0]) return out;
+    out.name = n->name;
+    auto name_it = by_name.find(out.name);
+    if (name_it != by_name.end()) {
+      out.had_name = true;
+      out.name_value = name_it->second;
+    }
+    if (n->unqualified_text_id != kInvalidText &&
+        !n->is_global_qualified && n->n_qualifier_segments == 0) {
+      out.text_id = n->unqualified_text_id;
+      auto text_it = by_text.find(out.text_id);
+      if (text_it != by_text.end()) {
+        out.had_text = true;
+        out.text_value = text_it->second;
+      }
+    }
+    out.key = consteval_local_key(n);
+    if (out.key.has_value() && out.key->valid()) {
+      auto key_it = by_key.find(*out.key);
+      if (key_it != by_key.end()) {
+        out.had_key = true;
+        out.key_value = key_it->second;
+      }
+    }
+    return out;
+  }
+
+  void restore(const InterpreterBindingSnapshot& snapshot) {
+    if (!snapshot.name.empty()) {
+      if (snapshot.had_name) by_name[snapshot.name] = snapshot.name_value;
+      else by_name.erase(snapshot.name);
+    }
+    if (snapshot.text_id != kInvalidText) {
+      if (snapshot.had_text) by_text[snapshot.text_id] = snapshot.text_value;
+      else by_text.erase(snapshot.text_id);
+    }
+    if (snapshot.key.has_value() && snapshot.key->valid()) {
+      if (snapshot.had_key) by_key[*snapshot.key] = snapshot.key_value;
+      else by_key.erase(*snapshot.key);
+    }
+  }
+};
+
+StmtResult interp_stmt(const Node* n, InterpreterBindings& locals,
                        const ConstEvalEnv& outer_env,
                        const std::unordered_map<std::string, const Node*>& consteval_fns,
+                       const ConstEvalFunctionTextMap* consteval_fns_by_text,
+                       const ConstEvalFunctionStructuredMap* consteval_fns_by_key,
                        int depth, int& steps);
 
-ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
+ConstEvalResult interp_expr(const Node* n, InterpreterBindings& locals,
                             const ConstEvalEnv& outer_env,
                             const std::unordered_map<std::string, const Node*>& consteval_fns,
+                            const ConstEvalFunctionTextMap* consteval_fns_by_text,
+                            const ConstEvalFunctionStructuredMap* consteval_fns_by_key,
                             int depth) {
   if (!n) return ConstEvalResult::failure("null expression in consteval body");
 
   // Build an env that includes the interpreter locals on top of the outer env.
   ConstEvalEnv env = outer_env;
-  env.local_consts = &locals;
+  env.local_consts = &locals.by_name;
+  env.local_consts_by_text = &locals.by_text;
+  env.local_consts_by_key = &locals.by_key;
 
   switch (n->kind) {
     case NK_INT_LIT:
@@ -457,14 +594,16 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
       return eval_impl(n, env);
 
     case NK_CAST: {
-      auto r = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+      auto r = interp_expr(n->left, locals, outer_env, consteval_fns,
+                           consteval_fns_by_text, consteval_fns_by_key, depth);
       if (!r.ok()) return r;
       return ConstEvalResult::success(apply_integer_cast(r.as_int(),
           resolve_type(n->type, env.type_bindings)));
     }
 
     case NK_UNARY: {
-      auto r = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+      auto r = interp_expr(n->left, locals, outer_env, consteval_fns,
+                           consteval_fns_by_text, consteval_fns_by_key, depth);
       if (!r.ok()) return r;
       if (!n->op) return ConstEvalResult::failure("unary operator missing");
       long long v = r.as_int();
@@ -479,23 +618,29 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
     case NK_BINOP: {
       if (!n->op) return ConstEvalResult::failure("binary operator missing");
       if (std::strcmp(n->op, "&&") == 0) {
-        auto lr = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+        auto lr = interp_expr(n->left, locals, outer_env, consteval_fns,
+                              consteval_fns_by_text, consteval_fns_by_key, depth);
         if (!lr.ok()) return lr;
         if (!lr.as_int()) return ConstEvalResult::success(ConstValue::make_int(0));
-        auto rr = interp_expr(n->right, locals, outer_env, consteval_fns, depth);
+        auto rr = interp_expr(n->right, locals, outer_env, consteval_fns,
+                              consteval_fns_by_text, consteval_fns_by_key, depth);
         if (!rr.ok()) return rr;
         return ConstEvalResult::success(ConstValue::make_int(static_cast<long long>(!!rr.as_int())));
       }
       if (std::strcmp(n->op, "||") == 0) {
-        auto lr = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+        auto lr = interp_expr(n->left, locals, outer_env, consteval_fns,
+                              consteval_fns_by_text, consteval_fns_by_key, depth);
         if (!lr.ok()) return lr;
         if (lr.as_int()) return ConstEvalResult::success(ConstValue::make_int(1));
-        auto rr = interp_expr(n->right, locals, outer_env, consteval_fns, depth);
+        auto rr = interp_expr(n->right, locals, outer_env, consteval_fns,
+                              consteval_fns_by_text, consteval_fns_by_key, depth);
         if (!rr.ok()) return rr;
         return ConstEvalResult::success(ConstValue::make_int(static_cast<long long>(!!rr.as_int())));
       }
-      auto lr = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
-      auto rr = interp_expr(n->right, locals, outer_env, consteval_fns, depth);
+      auto lr = interp_expr(n->left, locals, outer_env, consteval_fns,
+                            consteval_fns_by_text, consteval_fns_by_key, depth);
+      auto rr = interp_expr(n->right, locals, outer_env, consteval_fns,
+                            consteval_fns_by_text, consteval_fns_by_key, depth);
       if (!lr.ok()) return lr;
       if (!rr.ok()) return rr;
       long long l = lr.as_int(), r = rr.as_int();
@@ -527,17 +672,20 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
     }
 
     case NK_TERNARY: {
-      auto cr = interp_expr(n->cond ? n->cond : n->left, locals, outer_env, consteval_fns, depth);
+      auto cr = interp_expr(n->cond ? n->cond : n->left, locals, outer_env, consteval_fns,
+                            consteval_fns_by_text, consteval_fns_by_key, depth);
       if (!cr.ok()) return cr;
-      return interp_expr(cr.as_int() ? n->then_ : n->else_, locals, outer_env, consteval_fns, depth);
+      return interp_expr(cr.as_int() ? n->then_ : n->else_, locals, outer_env, consteval_fns,
+                         consteval_fns_by_text, consteval_fns_by_key, depth);
     }
 
     case NK_CALL: {
       // Check if the callee is a consteval function we can interpret.
       if (!n->left || n->left->kind != NK_VAR || !n->left->name)
         return ConstEvalResult::failure("non-trivial callee in consteval context");
-      auto it = consteval_fns.find(n->left->name);
-      if (it == consteval_fns.end())
+      const Node* callee_def = lookup_consteval_function(
+          n->left, consteval_fns, consteval_fns_by_text, consteval_fns_by_key);
+      if (!callee_def)
         return ConstEvalResult::failure(
             std::string("call to non-consteval function '") + n->left->name +
             "' is not allowed in constant evaluation");
@@ -545,7 +693,8 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
       // Evaluate all arguments.
       std::vector<ConstValue> args;
       for (int i = 0; i < n->n_children; ++i) {
-        auto r = interp_expr(n->children[i], locals, outer_env, consteval_fns, depth);
+        auto r = interp_expr(n->children[i], locals, outer_env, consteval_fns,
+                             consteval_fns_by_text, consteval_fns_by_key, depth);
         if (!r.ok())
           return ConstEvalResult::failure(
               std::string("argument ") + std::to_string(i) +
@@ -557,25 +706,29 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
       TypeBindings tpl_bindings;
       std::unordered_map<std::string, long long> nttp_bindings;
       ConstEvalEnv call_env = bind_consteval_call_env(
-          n->left, it->second, outer_env, &tpl_bindings, &nttp_bindings);
-      return evaluate_consteval_call(it->second, args, call_env, consteval_fns, depth + 1);
+          n->left, callee_def, outer_env, &tpl_bindings, &nttp_bindings);
+      return evaluate_consteval_call(callee_def, args, call_env, consteval_fns, depth + 1,
+                                     consteval_fns_by_text, consteval_fns_by_key);
     }
 
     case NK_ASSIGN: {
       // left = right: evaluate right, assign to left (must be NK_VAR).
       if (!n->left || !n->right || n->left->kind != NK_VAR || !n->left->name)
         return ConstEvalResult::failure("unsupported assignment target in consteval context");
-      auto r = interp_expr(n->right, locals, outer_env, consteval_fns, depth);
+      auto r = interp_expr(n->right, locals, outer_env, consteval_fns,
+                           consteval_fns_by_text, consteval_fns_by_key, depth);
       if (!r.ok()) return r;
-      locals[n->left->name] = r.as_int();
+      locals.bind(n->left, r.as_int());
       return r;
     }
 
     case NK_COMMA_EXPR: {
       // left, right — evaluate both, return right.
-      auto left = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+      auto left = interp_expr(n->left, locals, outer_env, consteval_fns,
+                              consteval_fns_by_text, consteval_fns_by_key, depth);
       if (!left.ok()) return left;
-      return interp_expr(n->right, locals, outer_env, consteval_fns, depth);
+      return interp_expr(n->right, locals, outer_env, consteval_fns,
+                         consteval_fns_by_text, consteval_fns_by_key, depth);
     }
 
     case NK_SIZEOF_TYPE:
@@ -598,29 +751,30 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
   }
 }
 
-StmtResult interp_block(const Node* block, ConstMap& locals,
+StmtResult interp_block(const Node* block, InterpreterBindings& locals,
                         const ConstEvalEnv& outer_env,
                         const std::unordered_map<std::string, const Node*>& consteval_fns,
+                        const ConstEvalFunctionTextMap* consteval_fns_by_text,
+                        const ConstEvalFunctionStructuredMap* consteval_fns_by_key,
                         int depth, int& steps) {
   if (!block) return {};
   if (block->kind == NK_BLOCK) {
     const bool new_scope = (block->ival != 1);
-    std::unordered_map<std::string, std::optional<long long>> shadowed;
+    std::unordered_map<std::string, InterpreterBindingSnapshot> shadowed;
     for (int i = 0; i < block->n_children; ++i) {
       if (new_scope) {
         const Node* child = block->children[i];
         if (child && child->kind == NK_DECL && child->name && !shadowed.count(child->name)) {
-          auto it = locals.find(child->name);
-          if (it != locals.end()) shadowed[child->name] = it->second;
-          else shadowed[child->name] = std::nullopt;
+          shadowed.emplace(child->name, locals.snapshot(child));
         }
       }
-      auto r = interp_stmt(block->children[i], locals, outer_env, consteval_fns, depth, steps);
+      auto r = interp_stmt(block->children[i], locals, outer_env, consteval_fns,
+                           consteval_fns_by_text, consteval_fns_by_key, depth, steps);
       if (r.returned || r.did_break || r.did_continue) {
         if (new_scope) {
           for (const auto& [name, old] : shadowed) {
-            if (old) locals[name] = *old;
-            else locals.erase(name);
+            (void)name;
+            locals.restore(old);
           }
         }
         return r;
@@ -628,19 +782,22 @@ StmtResult interp_block(const Node* block, ConstMap& locals,
     }
     if (new_scope) {
       for (const auto& [name, old] : shadowed) {
-        if (old) locals[name] = *old;
-        else locals.erase(name);
+        (void)name;
+        locals.restore(old);
       }
     }
     return {};
   }
   // Single statement (not wrapped in block).
-  return interp_stmt(block, locals, outer_env, consteval_fns, depth, steps);
+  return interp_stmt(block, locals, outer_env, consteval_fns,
+                     consteval_fns_by_text, consteval_fns_by_key, depth, steps);
 }
 
-StmtResult interp_stmt(const Node* n, ConstMap& locals,
+StmtResult interp_stmt(const Node* n, InterpreterBindings& locals,
                         const ConstEvalEnv& outer_env,
                         const std::unordered_map<std::string, const Node*>& consteval_fns,
+                        const ConstEvalFunctionTextMap* consteval_fns_by_text,
+                        const ConstEvalFunctionStructuredMap* consteval_fns_by_key,
                         int depth, int& steps) {
   if (!n) return {};
   if (++steps > kMaxConstevalSteps)
@@ -649,7 +806,8 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
   switch (n->kind) {
     case NK_RETURN: {
       if (!n->left) return {true, false, false, ConstValue::make_int(0)};
-      auto r = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+      auto r = interp_expr(n->left, locals, outer_env, consteval_fns,
+                           consteval_fns_by_text, consteval_fns_by_key, depth);
       if (!r.ok())
         return {true, false, false, ConstValue::unknown(),
                 "return expression is not a constant expression" +
@@ -660,9 +818,10 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
     case NK_DECL: {
       // Local variable declaration — mutable or const with initializer.
       if (n->name && n->init) {
-        auto r = interp_expr(n->init, locals, outer_env, consteval_fns, depth);
+        auto r = interp_expr(n->init, locals, outer_env, consteval_fns,
+                             consteval_fns_by_text, consteval_fns_by_key, depth);
         if (r.ok()) {
-          locals[n->name] = r.as_int();
+          locals.bind(n, r.as_int());
         } else {
           return {true, false, false, ConstValue::unknown(),
                   std::string("initializer of '") + n->name +
@@ -671,34 +830,39 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
         }
       } else if (n->name) {
         // Declaration without initializer — default to 0.
-        locals[n->name] = 0;
+        locals.bind(n, 0);
       }
       return {};
     }
 
     case NK_IF: {
-      auto cr = interp_expr(n->cond, locals, outer_env, consteval_fns, depth);
+      auto cr = interp_expr(n->cond, locals, outer_env, consteval_fns,
+                            consteval_fns_by_text, consteval_fns_by_key, depth);
       if (!cr.ok())
         return {true, false, false, ConstValue::unknown(),
                 "if condition is not a constant expression" +
                 (cr.error.empty() ? std::string{} : ": " + cr.error)};
       if (cr.as_int()) {
-        return interp_block(n->then_, locals, outer_env, consteval_fns, depth, steps);
+        return interp_block(n->then_, locals, outer_env, consteval_fns,
+                            consteval_fns_by_text, consteval_fns_by_key, depth, steps);
       } else if (n->else_) {
-        return interp_block(n->else_, locals, outer_env, consteval_fns, depth, steps);
+        return interp_block(n->else_, locals, outer_env, consteval_fns,
+                            consteval_fns_by_text, consteval_fns_by_key, depth, steps);
       }
       return {};
     }
 
     case NK_WHILE: {
       while (true) {
-        auto cr = interp_expr(n->cond, locals, outer_env, consteval_fns, depth);
+        auto cr = interp_expr(n->cond, locals, outer_env, consteval_fns,
+                              consteval_fns_by_text, consteval_fns_by_key, depth);
         if (!cr.ok())
           return {true, false, false, ConstValue::unknown(),
                   "while condition is not a constant expression" +
                   (cr.error.empty() ? std::string{} : ": " + cr.error)};
         if (!cr.as_int()) break;
-        auto r = interp_block(n->body, locals, outer_env, consteval_fns, depth, steps);
+        auto r = interp_block(n->body, locals, outer_env, consteval_fns,
+                              consteval_fns_by_text, consteval_fns_by_key, depth, steps);
         if (r.returned) return r;
         if (r.did_break) break;
         // did_continue: just continue the loop
@@ -711,13 +875,15 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
     case NK_FOR: {
       // init
       if (n->init) {
-        auto r = interp_stmt(n->init, locals, outer_env, consteval_fns, depth, steps);
+        auto r = interp_stmt(n->init, locals, outer_env, consteval_fns,
+                             consteval_fns_by_text, consteval_fns_by_key, depth, steps);
         if (r.returned) return r;
       }
       while (true) {
         // cond
         if (n->cond) {
-          auto cr = interp_expr(n->cond, locals, outer_env, consteval_fns, depth);
+          auto cr = interp_expr(n->cond, locals, outer_env, consteval_fns,
+                                consteval_fns_by_text, consteval_fns_by_key, depth);
           if (!cr.ok())
             return {true, false, false, ConstValue::unknown(),
                     "for condition is not a constant expression" +
@@ -725,12 +891,14 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
           if (!cr.as_int()) break;
         }
         // body
-        auto r = interp_block(n->body, locals, outer_env, consteval_fns, depth, steps);
+        auto r = interp_block(n->body, locals, outer_env, consteval_fns,
+                              consteval_fns_by_text, consteval_fns_by_key, depth, steps);
         if (r.returned) return r;
         if (r.did_break) break;
         // update
         if (n->update) {
-          auto ur = interp_expr(n->update, locals, outer_env, consteval_fns, depth);
+          auto ur = interp_expr(n->update, locals, outer_env, consteval_fns,
+                                consteval_fns_by_text, consteval_fns_by_key, depth);
           if (!ur.ok())
             return {true, false, false, ConstValue::unknown(),
                     "for update is not a constant expression" +
@@ -748,10 +916,12 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
 
     case NK_DO_WHILE: {
       do {
-        auto r = interp_block(n->body, locals, outer_env, consteval_fns, depth, steps);
+        auto r = interp_block(n->body, locals, outer_env, consteval_fns,
+                              consteval_fns_by_text, consteval_fns_by_key, depth, steps);
         if (r.returned) return r;
         if (r.did_break) break;
-        auto cr = interp_expr(n->cond, locals, outer_env, consteval_fns, depth);
+        auto cr = interp_expr(n->cond, locals, outer_env, consteval_fns,
+                              consteval_fns_by_text, consteval_fns_by_key, depth);
         if (!cr.ok())
           return {true, false, false, ConstValue::unknown(),
                   "do-while condition is not a constant expression" +
@@ -766,7 +936,8 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
     case NK_EXPR_STMT: {
       // Expression statement: evaluate the expression for side effects.
       if (n->left) {
-        auto r = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+        auto r = interp_expr(n->left, locals, outer_env, consteval_fns,
+                             consteval_fns_by_text, consteval_fns_by_key, depth);
         if (!r.ok())
           return {true, false, false, ConstValue::unknown(),
                   "expression statement is not a constant expression" +
@@ -782,11 +953,13 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
       return {false, false, true, ConstValue::unknown()};
 
     case NK_BLOCK:
-      return interp_block(n, locals, outer_env, consteval_fns, depth, steps);
+      return interp_block(n, locals, outer_env, consteval_fns,
+                          consteval_fns_by_text, consteval_fns_by_key, depth, steps);
 
     default:
       // Expression used as statement (e.g., assignment in for-init) — evaluate for side effects.
-      if (auto r = interp_expr(n, locals, outer_env, consteval_fns, depth); !r.ok()) {
+      if (auto r = interp_expr(n, locals, outer_env, consteval_fns,
+                               consteval_fns_by_text, consteval_fns_by_key, depth); !r.ok()) {
         return {true, false, false, ConstValue::unknown(),
                 "statement is not a constant expression" +
                 (r.error.empty() ? std::string{} : ": " + r.error)};
@@ -802,25 +975,28 @@ ConstEvalResult evaluate_consteval_call(
     const std::vector<ConstValue>& args,
     const ConstEvalEnv& env,
     const std::unordered_map<std::string, const Node*>& consteval_fns,
-    int depth) {
+    int depth,
+    const ConstEvalFunctionTextMap* consteval_fns_by_text,
+    const ConstEvalFunctionStructuredMap* consteval_fns_by_key) {
   if (!func_def || func_def->kind != NK_FUNCTION)
     return ConstEvalResult::failure("consteval target is not a function definition");
   if (depth > kMaxConstevalDepth)
     return ConstEvalResult::failure("consteval recursion depth limit exceeded");
 
   // Build local bindings from parameters.
-  ConstMap locals;
+  InterpreterBindings locals;
   const int n_params = func_def->n_params;
   for (int i = 0; i < n_params && i < static_cast<int>(args.size()); ++i) {
     const Node* p = func_def->params[i];
     if (p && p->name && args[i].is_known()) {
-      locals[p->name] = args[i].as_int();
+      locals.bind(p, args[i].as_int());
     }
   }
 
   // Interpret the body.
   int steps = 0;
-  auto result = interp_block(func_def->body, locals, env, consteval_fns, depth, steps);
+  auto result = interp_block(func_def->body, locals, env, consteval_fns,
+                             consteval_fns_by_text, consteval_fns_by_key, depth, steps);
   if (result.returned && result.return_val.is_known()) {
     return ConstEvalResult::success(result.return_val);
   }

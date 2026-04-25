@@ -3,26 +3,28 @@
 Status: Complete
 Source Idea Path: ideas/open/96_sema_dual_lookup_structured_identity_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Add Dual Enum and Const-Int Binding Maps
+Current Step ID: Step 5
+Current Step Title: Add Dual Consteval Registry and Interpreter Bindings
 
 ## Just Finished
 
-Step 4 - Add Dual Enum and Const-Int Binding Maps: added consteval-facing
-`TextId` and structured-key constant lookup mirrors beside the existing
-rendered-name maps, then changed constant evaluation to dual-read/compare those
-mirrors while still returning the rendered-name result as authoritative.
+Step 5 - Add Dual Consteval Registry and Interpreter Bindings: added
+consteval function registry mirrors keyed by `TextId` and structured
+`ConstEvalStructuredNameKey` values beside the existing rendered-name registry.
+Sema static assertions and recursive consteval interpreter calls now dual-read
+and compare those advisory mirrors while the rendered function map remains
+authoritative.
 
-Global and local const-int bindings now dual-write string, `TextId`, and
-structured mirrors where declaration metadata exists. Sema static assertions,
-local const folding, case-label evaluation, and consteval expression lookup all
-receive the mirror maps through `ConstEvalEnv`.
+The consteval interpreter now carries parameter/local bindings as string,
+`TextId`, and structured-key maps where declaration or assignment `Node`
+metadata exists. Local declarations, parameter binding, assignment, scope
+shadow restore, and expression lookup keep the rendered-name values as behavior
+source and use mirrors for comparison.
 
 ## Suggested Next
 
-Delegate Step 5 to add dual consteval function registry and interpreter binding
-maps, including structured lookup for consteval callees plus interpreter
-locals/parameter bindings where source `TextId` metadata is available.
+Delegate Step 6 to add dual type-binding lookup for sema-owned template/type
+substitutions while preserving HIR-facing `TypeSpec::tag` behavior.
 
 ## Watchouts
 
@@ -38,6 +40,15 @@ locals/parameter bindings where source `TextId` metadata is available.
   results.
 - Const-int structured/text mirrors are advisory; rendered constant maps remain
   authoritative for sema, consteval, and HIR-facing lookup behavior.
+- Consteval function registry mirrors are advisory; rendered-name
+  `consteval_funcs_` and HIR compile-time engine string maps remain
+  authoritative behavior sources.
+- Consteval interpreter parameter/local mirrors are advisory; string-keyed
+  locals remain authoritative for binding, assignment, and return evaluation.
+- `ConstEvalEnv` now has optional NTTP text/key mirror slots, but
+  `Node::template_param_names` and forwarded `template_arg_nttp_names` still do
+  not carry source `TextId` metadata, so current NTTP binding behavior remains
+  string-authoritative.
 - `NK_ENUM_DEF` still carries enum variant names and values but no per-variant
   `TextId` metadata, so enum value/type rendered maps remain the only populated
   behavior source for enum constants in this packet.

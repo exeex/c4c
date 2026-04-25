@@ -83,6 +83,9 @@ struct ConstEvalStructuredNameKeyHash {
 
 using ConstStructuredMap =
     std::unordered_map<ConstEvalStructuredNameKey, long long, ConstEvalStructuredNameKeyHash>;
+using ConstEvalFunctionTextMap = std::unordered_map<TextId, const Node*>;
+using ConstEvalFunctionStructuredMap =
+    std::unordered_map<ConstEvalStructuredNameKey, const Node*, ConstEvalStructuredNameKeyHash>;
 
 // Map from template parameter name to concrete TypeSpec (for template-substituted evaluation).
 using TypeBindings = std::unordered_map<std::string, TypeSpec>;
@@ -114,6 +117,8 @@ struct ConstEvalEnv {
 
   // Non-type template parameter bindings (NTTP name → constant value).
   const std::unordered_map<std::string, long long>* nttp_bindings = nullptr;
+  const ConstTextMap* nttp_bindings_by_text = nullptr;
+  const ConstStructuredMap* nttp_bindings_by_key = nullptr;
 
   // Optional late-known record layouts from HIR lowering. When present, the
   // constant evaluator can resolve sizeof/alignof on tagged records that were
@@ -232,6 +237,7 @@ struct ConstEvalEnv {
     }
     if (auto v = lookup_text_map(local_consts_by_text, text_id)) return v;
     if (auto v = lookup_text_map(named_consts_by_text, text_id)) return v;
+    if (auto v = lookup_text_map(nttp_bindings_by_text, text_id)) return v;
     return std::nullopt;
   }
 
@@ -252,6 +258,7 @@ struct ConstEvalEnv {
     }
     if (auto v = lookup_key_map(local_consts_by_key, local)) return v;
     if (auto v = lookup_key_map(named_consts_by_key, symbol)) return v;
+    if (auto v = lookup_key_map(nttp_bindings_by_key, local)) return v;
     return std::nullopt;
   }
 };
@@ -272,7 +279,9 @@ ConstEvalResult evaluate_consteval_call(
     const std::vector<ConstValue>& args,
     const ConstEvalEnv& env,
     const std::unordered_map<std::string, const Node*>& consteval_fns,
-    int depth = 0);
+    int depth = 0,
+    const ConstEvalFunctionTextMap* consteval_fns_by_text = nullptr,
+    const ConstEvalFunctionStructuredMap* consteval_fns_by_key = nullptr);
 
 // Apply explicit template arguments from a consteval call-site onto an
 // evaluation environment so template/NTTP-dependent consteval bodies can be
