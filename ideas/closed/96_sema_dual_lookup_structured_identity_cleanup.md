@@ -1,8 +1,9 @@
 # Sema Dual-Lookup Structured Identity Cleanup
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
+Closed: 2026-04-25
 
 Parent Ideas:
 - [95_parser_dual_lookup_structured_identity_cleanup.md](/workspaces/c4c/ideas/closed/95_parser_dual_lookup_structured_identity_cleanup.md)
@@ -244,3 +245,28 @@ Focused proof should include:
 - Focused sema/frontend proof passes.
 - Any touched broader baseline has matching before/after regression logs with
   no unexpected drift.
+
+## Closure Summary
+
+Closed after Step 8 demoted the only identified sema-owned string fallback that
+was both structured-stable and independent of HIR, diagnostics, consteval, or
+codegen bridge behavior: unqualified local symbol lookup now prefers the
+structured scoped mirror when a valid local `TextId` key exists.
+
+The remaining rendered-string paths are intentionally retained as diagnostic
+surfaces, HIR/consteval/codegen bridges, legacy proof/advisory mirrors, or
+HIR-blocked record/type identity paths. No additional sema-owned string
+fallback was identified as removable within this idea without starting the
+separate HIR-facing identity cleanup initiative already called out by the
+source scope.
+
+Close validation:
+
+- `cmake --preset default`
+- `cmake --build --preset default`
+- `ctest --test-dir build -j --output-on-failure > test_before.log 2>&1`
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure > test_after.log 2>&1`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: full-suite before/after guard passed with 2974/2974 tests passing in
+both logs and no new failures.
