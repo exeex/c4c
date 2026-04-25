@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/08_bir-address-projection-model-consolidation.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Normalize Projection Naming
+Current Step ID: Step 5
+Current Step Title: Final Behavior-Preservation Proof
 
 Code Review Reminder Handled: review/address-projection-step3-review.md found Step 3 helper reuse aligned and recommended continuing Step 3.
 Test Baseline Reminder Handled: accepted full-suite test_baseline.log for commit f294c3a4 after 3071 passed, 0 failed.
@@ -25,8 +25,15 @@ were not changed.
 
 ## Suggested Next
 
-Have the supervisor decide whether Step 4 needs another narrow naming packet or
-whether the active runbook is ready for review, lifecycle handling, or commit.
+Proceed to Step 5 Final Behavior-Preservation Proof.
+
+Expected proof:
+
+- Build `c4c_codegen`.
+- Run relevant BIR/LIR-to-BIR GEP, aggregate, provenance, and memory tests.
+- Escalate to a broader repo-native check if the supervisor wants milestone
+  confidence beyond the accepted full-suite baseline for commit f294c3a4.
+- Do not rewrite expectations.
 
 ## Watchouts
 
