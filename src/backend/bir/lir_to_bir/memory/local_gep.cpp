@@ -282,7 +282,7 @@ BirFunctionLowerer::resolve_local_aggregate_dynamic_pointer_array_access(
     const ValueMap& value_aliases,
     const TypeDeclMap& type_decls,
     const LocalAggregateSlots& aggregate_slots) {
-  std::string_view current_type = c4c::codegen::lir::trim_lir_arg_text(base_type_text);
+  std::string current_type(c4c::codegen::lir::trim_lir_arg_text(base_type_text));
   std::size_t byte_offset = aggregate_slots.base_byte_offset;
   bool saw_base_index = false;
 
@@ -307,6 +307,32 @@ BirFunctionLowerer::resolve_local_aggregate_dynamic_pointer_array_access(
       continue;
     }
 
+    const auto index_value = resolve_index_operand(parsed_index->operand, value_aliases);
+    if (index_value.has_value()) {
+      if (*index_value < 0) {
+        return std::nullopt;
+      }
+      const auto projection = resolve_aggregate_child_index_projection(
+          current_type, static_cast<std::size_t>(*index_value), type_decls);
+      if (!projection.has_value()) {
+        return std::nullopt;
+      }
+      switch (projection->kind) {
+        case AggregateByteOffsetProjection::Kind::ArrayElement:
+          if (projection->child_layout.size_bytes == 0) {
+            return std::nullopt;
+          }
+          [[fallthrough]];
+        case AggregateByteOffsetProjection::Kind::StructField:
+          byte_offset += projection->child_absolute_byte_offset;
+          current_type = projection->child_type_text;
+          break;
+        default:
+          return std::nullopt;
+      }
+      continue;
+    }
+
     switch (layout.kind) {
       case AggregateTypeLayout::Kind::Array: {
         const auto element_layout =
@@ -316,24 +342,13 @@ BirFunctionLowerer::resolve_local_aggregate_dynamic_pointer_array_access(
           return std::nullopt;
         }
 
-        if (const auto index_value = resolve_index_operand(parsed_index->operand, value_aliases);
-            index_value.has_value()) {
-          if (*index_value < 0 || static_cast<std::size_t>(*index_value) >= layout.array_count) {
-            return std::nullopt;
-          }
-          byte_offset += static_cast<std::size_t>(*index_value) * element_layout.size_bytes;
-          current_type = c4c::codegen::lir::trim_lir_arg_text(layout.element_type_text);
-          break;
-        }
-
         const auto lowered_index = lower_typed_index_value(*parsed_index, value_aliases);
         if (!lowered_index.has_value()) {
           return std::nullopt;
         }
 
         std::size_t element_leaf_offset = 0;
-        std::string_view element_type =
-            c4c::codegen::lir::trim_lir_arg_text(layout.element_type_text);
+        std::string element_type(c4c::codegen::lir::trim_lir_arg_text(layout.element_type_text));
         for (std::size_t tail_pos = index_pos + 1; tail_pos < gep.indices.size(); ++tail_pos) {
           const auto tail_index = parse_typed_operand(gep.indices[tail_pos]);
           if (!tail_index.has_value()) {
@@ -350,28 +365,16 @@ BirFunctionLowerer::resolve_local_aggregate_dynamic_pointer_array_access(
             return std::nullopt;
           }
 
-          switch (tail_layout.kind) {
-            case AggregateTypeLayout::Kind::Array: {
-              const auto nested_layout =
-                  compute_aggregate_type_layout(tail_layout.element_type_text, type_decls);
-              if (nested_layout.kind == AggregateTypeLayout::Kind::Invalid ||
-                  static_cast<std::size_t>(*tail_value) >= tail_layout.array_count) {
-                return std::nullopt;
-              }
-              element_leaf_offset +=
-                  static_cast<std::size_t>(*tail_value) * nested_layout.size_bytes;
-              element_type =
-                  c4c::codegen::lir::trim_lir_arg_text(tail_layout.element_type_text);
-              break;
-            }
-            case AggregateTypeLayout::Kind::Struct:
-              if (static_cast<std::size_t>(*tail_value) >= tail_layout.fields.size()) {
-                return std::nullopt;
-              }
-              element_leaf_offset +=
-                  tail_layout.fields[static_cast<std::size_t>(*tail_value)].byte_offset;
-              element_type = c4c::codegen::lir::trim_lir_arg_text(
-                  tail_layout.fields[static_cast<std::size_t>(*tail_value)].type_text);
+          const auto projection = resolve_aggregate_child_index_projection(
+              element_type, static_cast<std::size_t>(*tail_value), type_decls);
+          if (!projection.has_value()) {
+            return std::nullopt;
+          }
+          switch (projection->kind) {
+            case AggregateByteOffsetProjection::Kind::ArrayElement:
+            case AggregateByteOffsetProjection::Kind::StructField:
+              element_leaf_offset += projection->child_absolute_byte_offset;
+              element_type = projection->child_type_text;
               break;
             default:
               return std::nullopt;
@@ -398,17 +401,6 @@ BirFunctionLowerer::resolve_local_aggregate_dynamic_pointer_array_access(
             .element_slots = std::move(element_slots),
             .index = *lowered_index,
         };
-      }
-      case AggregateTypeLayout::Kind::Struct: {
-        const auto index_value = resolve_index_operand(parsed_index->operand, value_aliases);
-        if (!index_value.has_value() || *index_value < 0 ||
-            static_cast<std::size_t>(*index_value) >= layout.fields.size()) {
-          return std::nullopt;
-        }
-        byte_offset += layout.fields[static_cast<std::size_t>(*index_value)].byte_offset;
-        current_type = c4c::codegen::lir::trim_lir_arg_text(
-            layout.fields[static_cast<std::size_t>(*index_value)].type_text);
-        break;
       }
       default:
         return std::nullopt;
