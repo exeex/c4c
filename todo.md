@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/109_hir_to_lir_struct_layout_lookup_by_struct_name_id.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prefer Structured Lookup For Size And Alignment Helpers
+Current Step ID: none
+Current Step Title: none
 
 # Current Packet
 
