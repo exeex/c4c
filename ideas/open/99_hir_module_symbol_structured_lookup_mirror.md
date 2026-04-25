@@ -5,7 +5,7 @@ Created: 2026-04-25
 Last Updated: 2026-04-25
 
 Parent Ideas:
-- [97_structured_identity_completion_audit_and_hir_plan.md](/workspaces/c4c/ideas/open/97_structured_identity_completion_audit_and_hir_plan.md)
+- [97_structured_identity_completion_audit_and_hir_plan.md](/workspaces/c4c/ideas/closed/97_structured_identity_completion_audit_and_hir_plan.md)
 
 ## Goal
 
