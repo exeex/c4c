@@ -8,26 +8,20 @@ Current Step Title: Add AST/Parser Enumerator TextId Metadata
 
 ## Just Finished
 
-Step 3 - Populate Sema Enum Variant Mirrors was blocked before code changes and
-has been split into Step 3A then Step 3B in `plan.md`.
+Step 3A - Add AST/Parser Enumerator TextId Metadata is complete.
 
-`src/frontend/sema/validate.cpp` has the target mirror containers
-(`structured_enum_consts_`, `enum_const_vals_global_by_text_`,
-`enum_const_vals_global_by_key_`, `enum_const_vals_scopes_by_text_`, and
-`enum_const_vals_scopes_by_key_`) and the global/local enum binders, but
-`NK_ENUM_DEF` exposes only rendered `enum_names` plus `enum_vals`. There is no
-parallel per-variant `TextId` or structured identity in the AST, and sema has no
-`TextTable` handle to derive a valid parser `TextId` from those rendered names.
-Populating the mirrors in sema-only code would require inventing IDs or deriving
-bindings from later references, which would not be stable binding metadata.
+`NK_ENUM_DEF` now exposes `enum_name_text_ids`, a parallel per-enumerator
+parser-owned `TextId` array beside the existing rendered `enum_names` and
+`enum_vals` arrays. `parse_enum` stores the already-computed `vname_text_id`
+for each definition enumerator into that array. Forward enum references and
+empty enum definitions remain safe with null arrays or invalid text metadata,
+and rendered `enum_names`/`enum_vals` behavior is unchanged.
 
 ## Suggested Next
 
-Step 3A AST/parser enum variant identity packet: add stable per-enumerator
-`TextId` metadata to `NK_ENUM_DEF` during enum parsing while preserving rendered
-`enum_names`/`enum_vals` bridge behavior. After Step 3A is proven, run Step 3B
-so sema can dual-write enum variant type and const-value text/key mirrors from
-definition metadata without changing lookup behavior.
+Step 3B sema enum mirror packet: use definition-time `NK_ENUM_DEF`
+`enum_name_text_ids` metadata to dual-write enum variant type and const-value
+text/key mirrors without changing lookup behavior.
 
 ## Watchouts
 
@@ -49,11 +43,8 @@ definition metadata without changing lookup behavior.
 
 ## Proof
 
-Not run; the original Step 3 sema-only packet was blocked before code changes
-by missing per-enumerator stable AST identity.
-
-Delegated proof, not attempted:
+Passed.
 
 `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "(enum|frontend_parser_tests|positive_sema_ok_enum_scope_|negative_tests_bad_enum_)"' > test_after.log 2>&1`
 
-Proof log: no fresh `test_after.log` for this blocked packet.
+Proof log: `test_after.log`. The delegated subset passed 17/17 tests.

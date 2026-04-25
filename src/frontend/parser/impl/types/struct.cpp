@@ -2419,6 +2419,7 @@ Node* parse_enum(Parser& parser) {
     parser.consume();  // consume {
 
     std::vector<const char*> names;
+    std::vector<TextId> name_text_ids;
     std::vector<long long>   vals;
     std::unordered_set<TextId> seen_names;
     ParserEnumConstTable local_enum_consts = parser.binding_state_.enum_consts;
@@ -2456,6 +2457,7 @@ Node* parse_enum(Parser& parser) {
         parser.skip_attributes();
         cur_val = vval + 1;
         names.push_back(vname);
+        name_text_ids.push_back(vname_text_id);
         vals.push_back(vval);
         // Track enum constants for subsequent initializers in this enum body.
         if (vname_text_id != kInvalidText) local_enum_consts[vname_text_id] = vval;
@@ -2469,10 +2471,13 @@ Node* parse_enum(Parser& parser) {
     if (ed->n_enum_variants > 0) {
         ed->enum_names =
             parser.arena_.alloc_array<const char*>(ed->n_enum_variants);
+        ed->enum_name_text_ids =
+            parser.arena_.alloc_array<TextId>(ed->n_enum_variants);
         ed->enum_vals =
             parser.arena_.alloc_array<long long>(ed->n_enum_variants);
         for (int i = 0; i < ed->n_enum_variants; ++i) {
             ed->enum_names[i] = names[i];
+            ed->enum_name_text_ids[i] = name_text_ids[i];
             ed->enum_vals[i]  = vals[i];
         }
     }
@@ -2480,7 +2485,7 @@ Node* parse_enum(Parser& parser) {
         for (int i = 0; i < ed->n_enum_variants; ++i)
             if (ed->enum_names[i] && ed->enum_names[i][0]) {
                 const TextId enum_name_text_id =
-                    parser.parser_text_id_for_token(kInvalidText, ed->enum_names[i]);
+                    ed->enum_name_text_ids ? ed->enum_name_text_ids[i] : kInvalidText;
                 if (enum_name_text_id != kInvalidText)
                     parser.binding_state_.enum_consts[enum_name_text_id] =
                         ed->enum_vals[i];

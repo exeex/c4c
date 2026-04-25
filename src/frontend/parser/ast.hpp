@@ -369,6 +369,7 @@ struct Node {
 
     // NK_ENUM_DEF variants
     const char** enum_names;  // arena-allocated array of variant names
+    TextId*      enum_name_text_ids; // parallel parser-owned identity for enum_names
     long long*   enum_vals;   // arena-allocated array of variant values
     int          n_enum_variants;
     int          enum_has_explicit;   // bitmask: bit i = variant i has explicit value
