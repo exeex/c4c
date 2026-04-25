@@ -317,6 +317,36 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
       parser.find_var_type(invalid_key, "valueLookupBridge");
   expect_true(fallback_var != nullptr && fallback_var->base == c4c::TB_FLOAT,
               "direct qualified-key value lookup should preserve invalid-key fallback compatibility");
+  c4c::TypeSpec legacy_only_var_ts{};
+  legacy_only_var_ts.array_size = -1;
+  legacy_only_var_ts.inner_rank = -1;
+  legacy_only_var_ts.base = c4c::TB_SHORT;
+  const c4c::TextId legacy_only_value_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "legacyOnlyValue");
+  const c4c::Parser::SymbolId legacy_only_symbol =
+      parser.parser_symbol_tables().intern_identifier("legacyOnlyValue");
+  parser.parser_symbol_tables().var_types[legacy_only_symbol] =
+      legacy_only_var_ts;
+  const c4c::QualifiedNameKey legacy_only_key =
+      parser.known_fn_name_key_in_context(0, legacy_only_value_id,
+                                          "legacyOnlyValue");
+  expect_true(parser.find_var_type(legacy_only_key, "legacyOnlyValue") ==
+                  nullptr,
+              "direct qualified-key value lookup should not promote legacy-only rendered cache entries");
+  expect_true(parser.find_var_type("legacyOnlyValue") != nullptr &&
+                  parser.find_var_type("legacyOnlyValue")->base ==
+                      c4c::TB_SHORT,
+              "string value lookup should preserve explicit legacy cache compatibility");
+  expect_true(parser.find_var_type(invalid_key, "legacyOnlyValue") != nullptr &&
+                  parser.find_var_type(invalid_key, "legacyOnlyValue")->base ==
+                      c4c::TB_SHORT,
+              "invalid-key value lookup should preserve TextId-less fallback compatibility");
+  expect_true(parser.find_visible_var_type(c4c::kInvalidText,
+                                           "legacyOnlyValue") != nullptr &&
+                  parser.find_visible_var_type(c4c::kInvalidText,
+                                               "legacyOnlyValue")
+                          ->base == c4c::TB_SHORT,
+              "TextId-less visible value lookup should preserve legacy cache compatibility");
   std::string resolved_value_name;
   expect_true(parser.lookup_value_in_context(0, lookup_value_id,
                                              "valueLookupBridge",
@@ -524,7 +554,7 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
 #endif
 }
 
-void test_parser_structured_value_registration_keeps_legacy_lookup() {
+void test_parser_structured_value_registration_uses_string_bridge_without_legacy_mirror() {
   c4c::Arena arena;
   c4c::TextTable texts;
   c4c::FileTable files;
@@ -538,6 +568,9 @@ void test_parser_structured_value_registration_keeps_legacy_lookup() {
   const c4c::QualifiedNameKey value_key =
       parser.intern_semantic_name_key("ns::registered");
   parser.register_structured_var_type_binding(value_key, value_ts);
+  const c4c::QualifiedNameKey unqualified_value_key =
+      parser.intern_semantic_name_key("registered");
+  parser.register_structured_var_type_binding(unqualified_value_key, value_ts);
 
   expect_true(parser.has_structured_var_type(value_key),
               "structured value registration should populate structured storage");
@@ -546,11 +579,26 @@ void test_parser_structured_value_registration_keeps_legacy_lookup() {
                       c4c::TB_LONG,
               "structured value registration should recover the stored TypeSpec");
   expect_true(parser.has_var_type("ns::registered"),
-              "structured value registration should keep the legacy string table populated");
+              "string-facing value lookup should bridge to structured storage");
   expect_true(parser.find_var_type("ns::registered") != nullptr &&
                   parser.find_var_type("ns::registered")->base ==
                       c4c::TB_LONG,
-              "legacy string lookup should agree with structured value storage");
+              "string-facing value lookup should agree with structured value storage");
+  expect_true(parser.has_var_type("registered"),
+              "unqualified string-facing value lookup should bridge to structured storage");
+  expect_true(parser.find_var_type("registered") != nullptr &&
+                  parser.find_var_type("registered")->base == c4c::TB_LONG,
+              "unqualified string-facing lookup should recover structured storage");
+  const c4c::Parser::SymbolId registered_symbol =
+      parser.parser_symbol_tables().find_identifier("registered");
+  expect_true(registered_symbol == c4c::Parser::kInvalidSymbol ||
+                  parser.parser_symbol_tables().var_types.count(
+                      registered_symbol) == 0,
+              "direct structured value registration should not populate the legacy symbol cache");
+  expect_true(parser.find_var_type(
+                  parser.find_parser_text_id("registered"), "registered") ==
+                  nullptr,
+              "direct TextId value lookup should not observe a legacy mirror for structured-only registrations");
 
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
   const auto snapshot = parser.save_state();
@@ -562,7 +610,7 @@ void test_parser_structured_value_registration_keeps_legacy_lookup() {
   expect_true(!parser.has_structured_var_type(temp_key),
               "restore_state should roll back direct structured value bindings");
   expect_true(!parser.has_var_type("ns::temporary_registered"),
-              "restore_state should roll back the legacy mirror for direct structured value bindings");
+              "restore_state should roll back the string bridge for direct structured value bindings");
 #endif
 }
 
@@ -3047,7 +3095,7 @@ int main() {
   test_parser_id_first_binding_helpers_prefer_text_ids();
   test_parser_heavy_snapshot_restores_symbol_id_keyed_tables();
   test_parser_keeps_qualified_bindings_string_keyed();
-  test_parser_structured_value_registration_keeps_legacy_lookup();
+  test_parser_structured_value_registration_uses_string_bridge_without_legacy_mirror();
   test_parser_last_using_alias_name_prefers_text_id_storage();
   test_parser_parse_qualified_name_populates_atom_symbol_ids();
   test_parser_apply_qualified_name_preserves_text_ids_on_ast_nodes();

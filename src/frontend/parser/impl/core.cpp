@@ -157,6 +157,58 @@ bool uses_symbol_identity(std::string_view name) {
     return true;
 }
 
+QualifiedNameKey find_existing_value_binding_key_from_spelling(
+    const Parser& parser, TextId name_text_id, std::string_view name) {
+    QualifiedNameKey key;
+    key.context_id = 0;
+    if (name.empty()) return key;
+
+    size_t start = 0;
+    if (name.rfind("::", 0) == 0) {
+        key.is_global_qualified = true;
+        start = 2;
+    }
+
+    std::vector<TextId> qualifier_text_ids;
+    size_t segment_start = start;
+    while (segment_start < name.size()) {
+        const size_t sep = name.find("::", segment_start);
+        if (sep == std::string_view::npos) break;
+        const std::string_view segment =
+            name.substr(segment_start, sep - segment_start);
+        if (!segment.empty()) {
+            const TextId segment_id = parser.find_parser_text_id(segment);
+            if (segment_id == kInvalidText) return {};
+            qualifier_text_ids.push_back(segment_id);
+        }
+        segment_start = sep + 2;
+    }
+
+    const std::string_view base = name.substr(segment_start);
+    if (base.empty()) return {};
+    key.base_text_id = name_text_id != kInvalidText &&
+                               name.find("::") == std::string_view::npos
+                           ? name_text_id
+                           : parser.find_parser_text_id(base);
+    if (key.base_text_id == kInvalidText) return {};
+
+    if (!qualifier_text_ids.empty()) {
+        key.qualifier_path_id =
+            parser.shared_lookup_state_.parser_name_paths.find(
+                qualifier_text_ids);
+        if (key.qualifier_path_id == kInvalidNamePath) return {};
+    }
+    return key;
+}
+
+const TypeSpec* find_structured_var_type_by_spelling(
+    const Parser& parser, TextId name_text_id, std::string_view name) {
+    const QualifiedNameKey key =
+        find_existing_value_binding_key_from_spelling(parser, name_text_id,
+                                                      name);
+    return parser.find_structured_var_type(key);
+}
+
 bool should_track_local_binding(const Parser& parser,
                                 TextId name_text_id,
                                 std::string_view name) {
@@ -1098,10 +1150,13 @@ void Parser::register_structured_typedef_binding_in_context(
 }
 
 bool Parser::has_var_type(const std::string& name) const {
+    const TextId name_text_id = find_parser_text_id(name);
+    if (find_structured_var_type_by_spelling(*this, name_text_id, name)) {
+        return true;
+    }
     if (!uses_symbol_identity(name)) {
-        const TextId id = find_parser_text_id(name);
-        return id != kInvalidText &&
-               binding_state_.non_atom_var_types.count(id) > 0;
+        return name_text_id != kInvalidText &&
+               binding_state_.non_atom_var_types.count(name_text_id) > 0;
     }
     const SymbolId id = shared_lookup_state_.parser_name_tables.find_identifier(name);
     return id != kInvalidSymbol &&
@@ -1132,7 +1187,12 @@ const TypeSpec* Parser::find_var_type(TextId name_text_id,
 }
 
 const TypeSpec* Parser::find_var_type(const std::string& name) const {
-    return find_var_type(find_parser_text_id(name), name);
+    const TextId name_text_id = find_parser_text_id(name);
+    if (const TypeSpec* structured =
+            find_structured_var_type_by_spelling(*this, name_text_id, name)) {
+        return structured;
+    }
+    return find_var_type(name_text_id, name);
 }
 
 const TypeSpec* Parser::find_var_type(
@@ -1140,14 +1200,7 @@ const TypeSpec* Parser::find_var_type(
     if (const TypeSpec* structured = find_structured_var_type(key)) {
         return structured;
     }
-    const std::string rendered = render_value_binding_name(*this, key);
-    if (!rendered.empty()) {
-        if (const TypeSpec* legacy = find_var_type(rendered)) {
-            return legacy;
-        }
-    }
-    if (key.base_text_id == kInvalidText && !fallback_name.empty() &&
-        fallback_name != rendered) {
+    if (key.base_text_id == kInvalidText && !fallback_name.empty()) {
         return find_var_type(std::string(fallback_name));
     }
     return nullptr;
@@ -1226,10 +1279,6 @@ void Parser::register_structured_var_type_binding(const QualifiedNameKey& key,
                                                   const TypeSpec& type) {
     if (key.base_text_id == kInvalidText) return;
     binding_state_.value_bindings[key] = type;
-    const std::string rendered = render_value_binding_name(*this, key);
-    if (!rendered.empty()) {
-        cache_legacy_var_type_binding(*this, rendered, type);
-    }
 }
 
 void Parser::register_structured_var_type_binding_in_context(
