@@ -63,6 +63,76 @@ static std::vector<std::string> split_template_arg_ref_text(
     return parts;
 }
 
+static QualifiedNameKey template_instantiation_name_key_for_direct_emit(
+    Parser& parser,
+    const Node* primary_tpl,
+    std::string_view fallback_name) {
+    if (!primary_tpl) return {};
+    int context_id = primary_tpl->namespace_context_id >= 0
+                         ? primary_tpl->namespace_context_id
+                         : parser.current_namespace_context_id();
+    const char* name = primary_tpl->unqualified_name;
+    TextId name_text_id = primary_tpl->unqualified_text_id;
+    if ((!name || !name[0]) && primary_tpl->name) {
+        name = std::strrchr(primary_tpl->name, ':');
+        name = name ? name + 1 : primary_tpl->name;
+    }
+    if (!name || !name[0]) {
+        name = fallback_name.data();
+    }
+    if (name_text_id == kInvalidText && name && name[0]) {
+        name_text_id = parser.parser_text_id_for_token(kInvalidText, name);
+    }
+    return parser.alias_template_key_in_context(context_id, name_text_id, name);
+}
+
+static std::string template_instantiation_argument_key_for_direct_emit(
+    const std::string& rendered_instance_key) {
+    const size_t arg_pos = rendered_instance_key.find('<');
+    return arg_pos == std::string::npos
+               ? rendered_instance_key
+               : rendered_instance_key.substr(arg_pos);
+}
+
+static bool has_template_instantiation_dedup_key_for_direct_emit(
+    Parser& parser,
+    const ParserTemplateState::TemplateInstantiationKey& structured_key,
+    const std::string& legacy_key) {
+    const bool legacy_present =
+        !legacy_key.empty() &&
+        parser.template_state_.instantiated_template_struct_keys.count(
+            legacy_key) > 0;
+    if (structured_key.template_key.base_text_id == kInvalidText) {
+        return legacy_present;
+    }
+    const bool structured_present =
+        parser.template_state_.instantiated_template_struct_keys_by_key.count(
+            structured_key) > 0;
+    if (legacy_present != structured_present) {
+        ++parser.template_state_
+              .template_struct_instantiation_key_mismatch_count;
+    }
+    if (legacy_present && !structured_present) {
+        parser.template_state_.instantiated_template_struct_keys_by_key.insert(
+            structured_key);
+    }
+    return legacy_present;
+}
+
+static void mark_template_instantiation_dedup_key_for_direct_emit(
+    Parser& parser,
+    const ParserTemplateState::TemplateInstantiationKey& structured_key,
+    const std::string& legacy_key) {
+    if (!legacy_key.empty()) {
+        parser.template_state_.instantiated_template_struct_keys.insert(
+            legacy_key);
+    }
+    if (structured_key.template_key.base_text_id != kInvalidText) {
+        parser.template_state_.instantiated_template_struct_keys_by_key.insert(
+            structured_key);
+    }
+}
+
 bool Parser::is_type_start() const {
     TokenKind k = cur().kind;
     if (k == TokenKind::LBracket &&
@@ -2422,6 +2492,12 @@ TypeSpec Parser::parse_base_type() {
                     }
                     const std::string emitted_instance_key =
                         make_template_struct_instance_key(primary_tpl, concrete_args);
+                    const ParserTemplateState::TemplateInstantiationKey
+                        structured_emitted_instance_key{
+                            template_instantiation_name_key_for_direct_emit(
+                                *this, primary_tpl, tpl_name),
+                            template_instantiation_argument_key_for_direct_emit(
+                                emitted_instance_key)};
 
                     // Build mangled name from the concrete family arguments.
                     const std::string family_name =
@@ -2516,12 +2592,11 @@ TypeSpec Parser::parse_base_type() {
                         return ts;
                     }
 
-                    // Structured primary/specialization selection has already
-                    // resolved tpl_def. This string key is only a duplicate
-                    // guard for emitting the concrete struct definition.
-                    if (!template_state_.instantiated_template_struct_keys.count(
+                    if (!has_template_instantiation_dedup_key_for_direct_emit(
+                            *this, structured_emitted_instance_key,
                             emitted_instance_key)) {
-                        template_state_.instantiated_template_struct_keys.insert(
+                        mark_template_instantiation_dedup_key_for_direct_emit(
+                            *this, structured_emitted_instance_key,
                             emitted_instance_key);
                         // Create a concrete NK_STRUCT_DEF with substituted field types
                         Node* inst = make_node(NK_STRUCT_DEF, tpl_def->line);

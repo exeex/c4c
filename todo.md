@@ -1,24 +1,24 @@
 Status: Active
 Source Idea Path: ideas/open/95_parser_dual_lookup_structured_identity_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add Structured NTTP Default Cache Keys
+Current Step ID: 5
+Current Step Title: Add Structured Template Instantiation De-Dup Keys
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 - Add Structured NTTP Default Cache Keys completed. Added
-`ParserTemplateState::NttpDefaultExprKey` keyed by `QualifiedNameKey` plus
-parameter index, routed parser-owned NTTP default token caching through a helper
-that populates both the structured map and rendered-name compatibility mirror,
-and corrected deferred NTTP default evaluation to dual-read structured and
-rendered cache entries when both exist.
+Step 5 - Add Structured Template Instantiation De-Dup Keys completed. Added
+`ParserTemplateState::TemplateInstantiationKey` keyed by `QualifiedNameKey`
+plus canonical argument signature beside the rendered-string instantiation
+de-dup set, and mirrored both parser-owned instantiation de-dup paths:
+`ensure_template_struct_instantiated_from_args` and the direct concrete struct
+emission guard in `types/base.cpp`.
 
-Focused parser tests now cover parsed deferred NTTP defaults populating both
-caches, mismatched structured/rendered entries being detected while preserving
-the rendered legacy result, and legacy rendered cache fallback remaining
-behavior-compatible when no structured entry is present.
+Focused parser coverage now proves explicit specialization/helper reuse and
+direct primary-template emission both populate the structured and rendered key
+families, keep the rendered legacy set behavior-compatible, and detect/heal a
+missing structured mirror.
 
 ## Suggested Next
 
@@ -27,14 +27,11 @@ ready for review with the focused parser proof passing.
 
 ## Watchouts
 
-- `src/frontend/parser/impl/declarations.cpp` was touched narrowly to route the
-  existing NTTP default-token storage through the new mirror-populating helper;
-  no broader declaration parsing behavior was changed.
-- The rendered `template:param` cache remains populated and still preserves
-  legacy behavior when both cache families contain divergent entries.
-- Structured NTTP default lookup currently uses the evaluator's current
-  namespace-context key path; structured-only lookup remains available only when
-  no rendered cache entry exists.
+- The direct emission guard remains legacy-led for behavior compatibility:
+  rendered-present skips emission and heals a missing structured mirror;
+  rendered-missing still emits and then marks both key families.
+- `rg 'instantiated_template_struct_keys' src/frontend/parser/impl` now shows
+  structured mirror checks/inserts beside both parser-owned rendered-set paths.
 
 ## Proof
 

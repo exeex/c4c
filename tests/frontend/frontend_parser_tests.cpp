@@ -2414,6 +2414,175 @@ void test_parser_nttp_default_cache_dual_reads_legacy_mismatch() {
                 "legacy NTTP default cache fallback should preserve behavior");
 }
 
+void test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  const c4c::TextId trait_text = texts.intern("Trait");
+  c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  primary->name = arena.strdup("Trait");
+  primary->unqualified_name = arena.strdup("Trait");
+  primary->unqualified_text_id = trait_text;
+  primary->namespace_context_id = parser.current_namespace_context_id();
+  primary->n_template_params = 1;
+  primary->template_param_names = arena.alloc_array<const char*>(1);
+  primary->template_param_names[0] = arena.strdup("T");
+  primary->template_param_is_nttp = arena.alloc_array<bool>(1);
+  primary->template_param_is_nttp[0] = false;
+  primary->template_param_is_pack = arena.alloc_array<bool>(1);
+  primary->template_param_is_pack[0] = false;
+  parser.register_template_struct_primary(
+      parser.current_namespace_context_id(), trait_text, "Trait", primary);
+
+  c4c::Node* specialization = parser.make_node(c4c::NK_STRUCT_DEF, 2);
+  specialization->name = arena.strdup("Trait_T_int");
+  specialization->unqualified_name = arena.strdup("Trait");
+  specialization->unqualified_text_id = trait_text;
+  specialization->namespace_context_id = parser.current_namespace_context_id();
+  specialization->template_origin_name = arena.strdup("Trait");
+  specialization->n_template_args = 1;
+  specialization->template_arg_types = arena.alloc_array<c4c::TypeSpec>(1);
+  specialization->template_arg_types[0].array_size = -1;
+  specialization->template_arg_types[0].inner_rank = -1;
+  specialization->template_arg_types[0].base = c4c::TB_INT;
+  specialization->template_arg_is_value = arena.alloc_array<bool>(1);
+  specialization->template_arg_is_value[0] = false;
+  c4c::Node* value_field = parser.make_node(c4c::NK_DECL, 2);
+  value_field->name = arena.strdup("value");
+  value_field->is_static = true;
+  value_field->ival = 19;
+  specialization->n_fields = 1;
+  specialization->fields = arena.alloc_array<c4c::Node*>(1);
+  specialization->fields[0] = value_field;
+  parser.register_template_struct_specialization(
+      parser.current_namespace_context_id(), trait_text, "Trait",
+      specialization);
+
+  primary = parser.find_template_struct_primary("Trait");
+  expect_true(primary != nullptr,
+              "template specialization fixture should register the primary");
+  expect_true(parser.find_template_struct_specializations(primary) != nullptr,
+              "template specialization fixture should register the specialization");
+
+  const std::vector<c4c::Token> toks = {
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Trait"),
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::ColonColon, "::"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "value"),
+  };
+
+  long long value = 0;
+  expect_true(parser.eval_deferred_nttp_expr_tokens("Trait", toks, {}, {}, &value),
+              "template instantiation reuse should resolve explicit specialization members");
+  expect_eq_int(value, 19,
+                "explicit specialization reuse should preserve the specialized static member value");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_.instantiated_template_struct_keys.size()),
+      1,
+      "template instantiation should populate the rendered de-dup key");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_.instantiated_template_struct_keys_by_key.size()),
+      1,
+      "template instantiation should populate the structured de-dup key");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_.template_struct_instantiation_key_mismatch_count),
+      0,
+      "fresh mirrored template instantiation keys should not report a mismatch");
+
+  parser.template_state_.instantiated_template_struct_keys_by_key.clear();
+  value = 0;
+  expect_true(parser.eval_deferred_nttp_expr_tokens("Trait", toks, {}, {}, &value),
+              "template instantiation reuse should keep legacy behavior when the structured mirror is missing");
+  expect_eq_int(value, 19,
+                "legacy rendered de-dup state should remain behavior-compatible");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_.instantiated_template_struct_keys_by_key.size()),
+      1,
+      "template instantiation lookup should heal a missing structured mirror");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_.template_struct_instantiation_key_mismatch_count),
+      1,
+      "missing structured template instantiation mirrors should be detected");
+}
+
+void test_parser_template_instantiation_dedup_keys_mirror_direct_emission() {
+  c4c::Lexer lexer(
+      "template<typename T>\n"
+      "struct Box { T value; };\n",
+      c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  (void)parse_top_level(parser);
+  expect_true(parser.find_template_struct_primary("Box") != nullptr,
+              "direct emission fixture should register the template primary");
+
+  auto parse_box_int = [&]() {
+    parser.replace_token_stream_for_testing({
+        parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Box"),
+        parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+        parser.make_injected_token(seed, c4c::TokenKind::KwInt, "int"),
+        parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+        parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
+    });
+    return parser.parse_base_type();
+  };
+
+  c4c::TypeSpec first = parse_box_int();
+  expect_true(first.base == c4c::TB_STRUCT && first.tag != nullptr,
+              "template type parsing should emit a concrete struct type");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_.instantiated_template_struct_keys.size()),
+      1,
+      "direct template emission should populate the rendered de-dup key");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_.instantiated_template_struct_keys_by_key.size()),
+      1,
+      "direct template emission should populate the structured de-dup key");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_.template_struct_instantiation_key_mismatch_count),
+      0,
+      "fresh direct template emission should not report a de-dup key mismatch");
+
+  parser.template_state_.instantiated_template_struct_keys_by_key.clear();
+  c4c::TypeSpec second = parse_box_int();
+  expect_true(second.base == c4c::TB_STRUCT && second.tag != nullptr,
+              "legacy rendered direct-emission de-dup should keep behavior-compatible reuse");
+  expect_eq(first.tag, second.tag,
+            "legacy rendered direct-emission de-dup should preserve the instantiated tag");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_.instantiated_template_struct_keys.size()),
+      1,
+      "direct template emission should keep one rendered de-dup key after reuse");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_.instantiated_template_struct_keys_by_key.size()),
+      1,
+      "direct template emission should heal a missing structured mirror");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_.template_struct_instantiation_key_mismatch_count),
+      1,
+      "direct template emission should detect a missing structured mirror");
+}
+
 void test_parser_alias_template_value_probes_use_token_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -2617,6 +2786,8 @@ int main() {
   test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias();
   test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases();
   test_parser_nttp_default_cache_dual_reads_legacy_mismatch();
+  test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse();
+  test_parser_template_instantiation_dedup_keys_mirror_direct_emission();
   test_parser_alias_template_value_probes_use_token_spelling();
   test_parser_alias_template_info_prefers_structured_key_over_recovery();
   test_parser_typename_template_parameter_probe_uses_token_spelling();

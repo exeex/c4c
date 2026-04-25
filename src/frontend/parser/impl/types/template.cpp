@@ -13,6 +13,81 @@
 
 namespace c4c {
 
+namespace {
+
+QualifiedNameKey template_instantiation_name_key(
+    Parser& parser,
+    const Node* primary_tpl,
+    std::string_view fallback_name) {
+    if (!primary_tpl) return {};
+    int context_id = primary_tpl->namespace_context_id >= 0
+                         ? primary_tpl->namespace_context_id
+                         : parser.current_namespace_context_id();
+    const char* name = primary_tpl->unqualified_name;
+    TextId name_text_id = primary_tpl->unqualified_text_id;
+    if ((!name || !name[0]) && primary_tpl->name) {
+        name = std::strrchr(primary_tpl->name, ':');
+        name = name ? name + 1 : primary_tpl->name;
+    }
+    if (!name || !name[0]) {
+        name = fallback_name.data();
+    }
+    if (name_text_id == kInvalidText && name && name[0]) {
+        name_text_id = parser.parser_text_id_for_token(kInvalidText, name);
+    }
+    return parser.alias_template_key_in_context(context_id, name_text_id, name);
+}
+
+std::string template_instantiation_argument_key(
+    const std::string& rendered_instance_key) {
+    const size_t arg_pos = rendered_instance_key.find('<');
+    return arg_pos == std::string::npos
+               ? rendered_instance_key
+               : rendered_instance_key.substr(arg_pos);
+}
+
+void sync_template_instantiation_dedup_keys(
+    Parser& parser,
+    const ParserTemplateState::TemplateInstantiationKey& structured_key,
+    const std::string& legacy_key) {
+    if (legacy_key.empty() ||
+        structured_key.template_key.base_text_id == kInvalidText) {
+        return;
+    }
+
+    const bool legacy_present =
+        parser.template_state_.instantiated_template_struct_keys.count(
+            legacy_key) > 0;
+    const bool structured_present =
+        parser.template_state_.instantiated_template_struct_keys_by_key.count(
+            structured_key) > 0;
+    if (legacy_present != structured_present) {
+        ++parser.template_state_
+              .template_struct_instantiation_key_mismatch_count;
+    }
+    if (legacy_present && !structured_present) {
+        parser.template_state_.instantiated_template_struct_keys_by_key.insert(
+            structured_key);
+    } else if (structured_present && !legacy_present) {
+        parser.template_state_.instantiated_template_struct_keys.insert(
+            legacy_key);
+    }
+}
+
+void mark_template_instantiation_dedup_keys(
+    Parser& parser,
+    const ParserTemplateState::TemplateInstantiationKey& structured_key,
+    const std::string& legacy_key) {
+    if (legacy_key.empty()) return;
+    parser.template_state_.instantiated_template_struct_keys.insert(legacy_key);
+    if (structured_key.template_key.base_text_id != kInvalidText) {
+        parser.template_state_.instantiated_template_struct_keys_by_key.insert(
+            structured_key);
+    }
+}
+
+}  // namespace
+
 bool Parser::has_template_struct_primary(
     int context_id, TextId name_text_id, std::string_view fallback_name) const {
     return find_template_struct_primary(context_id, name_text_id, fallback_name) !=
@@ -284,6 +359,13 @@ bool Parser::ensure_template_struct_instantiated_from_args(
 
     *out_mangled = build_template_struct_mangled_name(
         template_name, primary_tpl, selected, args);
+    const std::string rendered_instance_key =
+        make_template_struct_instance_key(primary_tpl, args);
+    const ParserTemplateState::TemplateInstantiationKey structured_instance_key{
+        template_instantiation_name_key(*this, primary_tpl, template_name),
+        template_instantiation_argument_key(rendered_instance_key)};
+    sync_template_instantiation_dedup_keys(
+        *this, structured_instance_key, rendered_instance_key);
 
     // Typed fast path: an explicit full specialization already exists as a
     // concrete struct node, so we can register/use it directly without
@@ -302,6 +384,8 @@ bool Parser::ensure_template_struct_instantiated_from_args(
             out_resolved->base = TB_STRUCT;
             out_resolved->tag = core_input_state_.arena.strdup(out_mangled->c_str());
         }
+        mark_template_instantiation_dedup_keys(
+            *this, structured_instance_key, rendered_instance_key);
         return true;
     }
 
@@ -312,6 +396,8 @@ bool Parser::ensure_template_struct_instantiated_from_args(
             return false;
         }
     }
+    mark_template_instantiation_dedup_keys(
+        *this, structured_instance_key, rendered_instance_key);
 
     if (out_resolved && !out_resolved->tag &&
         definition_state_.struct_tag_def_map.count(*out_mangled)) {
