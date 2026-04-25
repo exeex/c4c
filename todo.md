@@ -11,15 +11,16 @@ building block under `src/shared/`, then compile-check the narrow include path.
 
 ## Just Finished
 
-Activated the runbook from idea 106 after updating the idea to require
-dual-track structured/legacy operation, parity proof, and no legacy demotion in
-the first slice.
+Step 1: Add Shared Struct Name Table is complete. Added
+`src/shared/struct_name_table.hpp` with `StructNameId`,
+`kInvalidStructName`, and `StructNameTable` reusing
+`TextTable` / `SemanticNameTable`, then included the shared header from the LIR
+package index for later ownership work.
 
 ## Suggested Next
 
-Add `src/shared/struct_name_table.hpp` with `StructNameId`,
-`kInvalidStructName`, and `StructNameTable`, then include it from the LIR model
-surface that will own the table in Step 2.
+Implement Step 2 by adding structured LIR storage that owns/attaches the struct
+name table while keeping legacy `type_decls` behavior intact.
 
 ## Watchouts
 
@@ -27,10 +28,10 @@ surface that will own the table in Step 2.
 - Keep printer output unchanged.
 - Keep C++ record semantics out of LIR; this is LLVM struct layout identity
   only.
-- Preserve the existing shared `TextTable` / `SemanticNameTable` pattern.
+- `struct_name_table.hpp` is only the shared ID/table building block so far;
+  no LIR ownership or printer behavior has changed yet.
 
 ## Proof
 
-Not run yet. Step 1 proof should start with `cmake --build --preset default`
-or a narrower compile check if the repo has one available for shared/LIR
-headers.
+Passed: `cmake --build --preset default > test_after.log 2>&1`.
+Proof log: `test_after.log`.
