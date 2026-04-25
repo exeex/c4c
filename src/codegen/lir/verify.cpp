@@ -621,6 +621,55 @@ void verify_function_signature_type_ref_shadows(const LirModule& mod) {
   }
 }
 
+std::string join_layout_fields(const std::vector<std::string>& fields) {
+  std::ostringstream out;
+  out << "[";
+  for (size_t index = 0; index < fields.size(); ++index) {
+    if (index != 0) out << ", ";
+    out << fields[index];
+  }
+  out << "]";
+  return out.str();
+}
+
+void verify_structured_layout_observations(const LirModule& mod) {
+  for (const auto& observation : mod.structured_layout_observations) {
+    if (observation.site.empty()) {
+      fail_verify("LirStructuredLayoutObservation.site", "must not be empty");
+    }
+    if (observation.type_name.empty()) {
+      fail_verify("LirStructuredLayoutObservation.type_name", "must not be empty");
+    }
+    if (observation.name_id == kInvalidStructName) {
+      fail_verify("LirStructuredLayoutObservation.name_id", "must be valid");
+    }
+
+    const std::string_view rendered_name = mod.struct_names.spelling(observation.name_id);
+    if (rendered_name.empty()) {
+      fail_verify("LirStructuredLayoutObservation.name_id",
+                  "must resolve to a struct name");
+    }
+    if (rendered_name != observation.type_name) {
+      std::ostringstream detail;
+      detail << "StructNameId mirror '" << rendered_name
+             << "' disagrees with observed type '" << observation.type_name << "'";
+      fail_verify("LirStructuredLayoutObservation.type_name", detail.str());
+    }
+
+    if (!observation.parity_checked || observation.parity_matches) continue;
+
+    std::ostringstream detail;
+    detail << "structured layout mismatch at " << observation.site << " for "
+           << observation.type_name << "; legacy size "
+           << observation.legacy_size_bytes << ", legacy align "
+           << observation.legacy_align_bytes << ", legacy fields "
+           << join_layout_fields(observation.legacy_field_types)
+           << ", structured fields "
+           << join_layout_fields(observation.structured_field_types);
+    fail_verify("LirStructuredLayoutObservation.parity", detail.str());
+  }
+}
+
 }  // namespace
 
 const std::string& require_operand_kind(
@@ -675,6 +724,7 @@ std::string_view render_cmp_predicate(const LirCmpPredicateRef& predicate,
 
 void verify_module(const LirModule& mod) {
   verify_struct_decl_shadows(mod);
+  verify_structured_layout_observations(mod);
   verify_extern_decl_shadows(mod);
   verify_global_type_ref_shadows(mod);
   verify_function_signature_type_ref_shadows(mod);

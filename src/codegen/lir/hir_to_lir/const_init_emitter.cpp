@@ -93,7 +93,8 @@ TypeSpec ConstInitEmitter::field_decl_type(const HirStructField& f) const {
 
 const HirStructDef* ConstInitEmitter::lookup_const_init_struct_def(const TypeSpec& ts) const {
   const stmt_emitter_detail::StructuredLayoutLookup layout =
-      stmt_emitter_detail::lookup_structured_layout(mod_, &module_, ts);
+      stmt_emitter_detail::lookup_structured_layout(mod_, &module_, ts,
+                                                    "const-init-aggregate");
   if (layout.legacy_decl) return layout.legacy_decl;
   if (!ts.tag || !ts.tag[0]) return nullptr;
   const auto it = mod_.struct_defs.find(ts.tag);

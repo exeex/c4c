@@ -147,7 +147,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const
       res_ts.array_rank == 0 && res_ts.tag && res_ts.tag[0];
   StructuredLayoutLookup aggregate_layout;
   if (is_named_aggregate) {
-    aggregate_layout = lookup_structured_layout(mod_, module_, res_ts);
+    aggregate_layout = lookup_structured_layout(mod_, module_, res_ts, "va_arg-aggregate");
     if (aggregate_layout.legacy_decl) {
       const HirStructDef& sd = *aggregate_layout.legacy_decl;
       int payload_sz = 0;

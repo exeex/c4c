@@ -45,7 +45,7 @@ stmt_emitter_detail::StructuredLayoutLookup StmtEmitter::lookup_field_chain_layo
   TypeSpec ts{};
   ts.base = sd.is_union ? TB_UNION : TB_STRUCT;
   ts.tag = tag.c_str();
-  return lookup_structured_layout(mod_, module_, ts);
+  return lookup_structured_layout(mod_, module_, ts, "field-chain");
 }
 
 bool StmtEmitter::find_field_chain(const std::string& tag, const std::string& field_name,

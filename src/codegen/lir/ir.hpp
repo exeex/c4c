@@ -557,6 +557,20 @@ struct LirStructDecl {
   bool is_opaque = false;
 };
 
+struct LirStructuredLayoutObservation {
+  std::string site;
+  std::string type_name;
+  StructNameId name_id = kInvalidStructName;
+  bool legacy_found = false;
+  bool structured_found = false;
+  bool parity_checked = false;
+  bool parity_matches = false;
+  int legacy_size_bytes = 0;
+  int legacy_align_bytes = 0;
+  std::vector<std::string> legacy_field_types;
+  std::vector<std::string> structured_field_types;
+};
+
 // ── Specialization metadata entry ────────────────────────────────────────────
 
 struct LirSpecEntry {
@@ -663,6 +677,7 @@ struct LirModule {
   // until HIR lowering starts populating it and the printer is taught to use it.
   std::vector<LirStructDecl> struct_decls;
   std::unordered_map<StructNameId, std::size_t> struct_decl_index;
+  mutable std::vector<LirStructuredLayoutObservation> structured_layout_observations;
 
   LirStructDecl* find_struct_decl(StructNameId name_id) {
     const auto it = struct_decl_index.find(name_id);

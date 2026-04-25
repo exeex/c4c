@@ -71,9 +71,42 @@ static bool structured_fields_match_legacy_layout(const Module& mod,
   return true;
 }
 
+static std::vector<std::string> structured_layout_field_types(
+    const LirStructDecl& structured) {
+  std::vector<std::string> fields;
+  fields.reserve(structured.fields.size());
+  for (const auto& field : structured.fields) fields.push_back(field.type.str());
+  return fields;
+}
+
+static void record_structured_layout_observation(
+    const Module& mod, const LirModule& lir_module, const TypeSpec& ts, const char* site,
+    const StructuredLayoutLookup& lookup) {
+  LirStructuredLayoutObservation observation;
+  observation.site = site ? site : "lookup_structured_layout";
+  observation.type_name = ts.tag ? llvm_struct_type_str(ts.tag) : std::string();
+  observation.name_id = lookup.structured_name_id;
+  observation.legacy_found = lookup.legacy_decl != nullptr;
+  observation.structured_found = lookup.structured_decl != nullptr;
+  observation.parity_checked = lookup.structured_parity_checked;
+  observation.parity_matches = lookup.structured_parity_matches;
+  if (lookup.legacy_decl) {
+    observation.legacy_size_bytes = lookup.legacy_decl->size_bytes;
+    observation.legacy_align_bytes = lookup.legacy_decl->align_bytes;
+    append_legacy_layout_field_types(mod, *lookup.legacy_decl,
+                                     observation.legacy_field_types);
+  }
+  if (lookup.structured_decl) {
+    observation.structured_field_types =
+        structured_layout_field_types(*lookup.structured_decl);
+  }
+  lir_module.structured_layout_observations.push_back(std::move(observation));
+}
+
 StructuredLayoutLookup lookup_structured_layout(const Module& mod,
                                                 const LirModule* lir_module,
-                                                const TypeSpec& ts) {
+                                                const TypeSpec& ts,
+                                                const char* site) {
   StructuredLayoutLookup result;
   if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || ts.ptr_level != 0 ||
       ts.array_rank != 0 || !ts.tag || !ts.tag[0]) {
@@ -90,11 +123,15 @@ StructuredLayoutLookup lookup_structured_layout(const Module& mod,
 
   result.structured_lookup_attempted = true;
   result.structured_decl = lir_module->find_struct_decl(result.structured_name_id);
-  if (!result.structured_decl || !result.legacy_decl) return result;
+  if (!result.structured_decl || !result.legacy_decl) {
+    record_structured_layout_observation(mod, *lir_module, ts, site, result);
+    return result;
+  }
 
   result.structured_parity_checked = true;
   result.structured_parity_matches =
       structured_fields_match_legacy_layout(mod, *result.legacy_decl, *result.structured_decl);
+  record_structured_layout_observation(mod, *lir_module, ts, site, result);
   return result;
 }
 
@@ -426,7 +463,8 @@ int object_align_bytes(const Module& mod, const LirModule* lir_module,
   } else if (ts.ptr_level > 0 || ts.is_fn_ptr) {
     align = 8;
   } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
-    const StructuredLayoutLookup layout = lookup_structured_layout(mod, lir_module, ts);
+    const StructuredLayoutLookup layout =
+        lookup_structured_layout(mod, lir_module, ts, "stmt-object-align");
     align = layout.legacy_decl ? std::max(1, layout.legacy_decl->align_bytes) : 8;
   } else if (ts.base == TB_VA_LIST && ts.ptr_level == 0 && ts.array_rank == 0) {
     align = llvm_va_list_alignment(mod.target_profile);

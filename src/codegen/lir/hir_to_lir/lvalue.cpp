@@ -659,7 +659,8 @@ LirTypeRef StmtEmitter::indexed_gep_elem_ty(const TypeSpec& base_ts) {
   }
   if ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) && elem_ts.ptr_level == 0 &&
       elem_ts.array_rank == 0) {
-    const StructuredLayoutLookup layout = lookup_structured_layout(mod_, module_, elem_ts);
+    const StructuredLayoutLookup layout =
+        lookup_structured_layout(mod_, module_, elem_ts, "indexed-gep-aggregate");
     if (layout.structured_decl) {
       return lir_aggregate_gep_type_ref(rendered_text, module_, layout.structured_name_id,
                                         elem_ts.base == TB_UNION);
