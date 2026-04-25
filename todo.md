@@ -1,28 +1,30 @@
 Status: Active
 Source Idea Path: ideas/open/108_lir_struct_name_id_for_globals_functions_and_externs.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Dual-Write Function Signature Mirrors
+Current Step ID: 4
+Current Step Title: Dual-Write Extern Declaration Mirrors
 
 # Current Packet
 
 ## Just Finished
 
-Repaired `plan.md` Step 3 function signature mirror dual-write for ABI-expanded
-aggregate parameters. `LirFunction` still carries optional structured return
-type mirrors and emitted parameter type mirrors, but HIR-to-LIR now only attaches
-`StructNameId` identity when the mirror text is the canonical aggregate type
-text. Focused frontend/LIR coverage now proves normal struct return and
-parameter mirrors carry `StructNameId`, while a large AMD64 SysV byval aggregate
-parameter keeps its emitted `ptr byval(...) align ...` mirror text raw and
-without invalid struct-name identity. Printed LLVM signatures remain unchanged.
+Implemented `plan.md` Step 4 extern declaration mirror dual-write.
+`LirModule::ExternDeclInfo` now preserves a structured return type mirror during
+record/dedup, `finalize_module()` carries that mirror into `LirExternDecl`, and
+known struct return declarations receive matching `StructNameId` identity while
+`LirExternDecl::return_type_str` remains the printed declaration text. The
+verifier now checks extern return mirror text parity against `return_type_str`
+and rejects known struct extern returns that lack the matching `StructNameId`.
+Focused frontend/LIR coverage records a `%struct.Pair` extern declaration,
+observes its structured mirror, verifies missing-`StructNameId` rejection, and
+confirms printed extern declaration output remains `declare %struct.Pair ...`.
 
 ## Suggested Next
 
-Next bounded implementation packet: implement Step 4 extern declaration return
-type mirrors while preserving `LirExternDecl::return_type_str` as the printer
-authority. Keep function signature and call-site mirror surfaces out of that
-slice unless the supervisor explicitly widens it.
+Next bounded implementation packet: implement Step 5 call return and argument
+type mirrors where structured identity is already available. Keep extern
+declaration mirrors as the completed input surface and avoid widening into ABI
+classification or printer authority changes.
 
 ## Watchouts
 
@@ -33,8 +35,10 @@ signature parameter mirrors intentionally shadow the emitted signature fragment;
 for ABI-expanded aggregate parameters, the current `LirTypeRef` field shape
 cannot represent both the emitted byval fragment and underlying aggregate
 identity without violating `StructNameId`/text parity, so those parameter
-mirrors are raw/no-`StructNameId` for now. Extern declaration and call mirror
-paths are still untouched.
+mirrors are raw/no-`StructNameId` for now. Extern declaration mirrors only attach
+structured identity when `return_type_str` resolves to an existing
+`LirStructDecl`; raw non-struct and unknown return text remains unstructured.
+Call mirror paths are still untouched.
 
 ## Proof
 
@@ -42,7 +46,8 @@ Ran the supervisor-selected proof exactly:
 
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|positive_split_llvm_|abi_)'; } > test_after.log 2>&1`
 
-Result: passed. `test_after.log` contains a successful build and 6/6 passing
+Result: passed. `test_after.log` contains a successful build and 7/7 passing
 focused tests: `frontend_lir_global_type_ref`,
 `frontend_lir_function_signature_type_ref`,
-`positive_split_llvm_pragma_exec`, and the three `abi_` tests.
+`frontend_lir_extern_decl_type_ref`, `positive_split_llvm_pragma_exec`, and the
+three `abi_` tests.

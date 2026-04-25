@@ -406,7 +406,21 @@ void verify_struct_decl_shadows(const LirModule& mod) {
 void verify_extern_decl_shadows(const LirModule& mod) {
   for (const auto& decl : mod.extern_decls) {
     if (!decl.return_type.empty()) {
-      require_module_type_ref(mod, decl.return_type, "LirExternDecl.return_type", true);
+      const std::string& shadow =
+          require_module_type_ref(mod, decl.return_type, "LirExternDecl.return_type", true);
+      if (shadow != decl.return_type_str) {
+        std::ostringstream detail;
+        detail << "return_type does not match return_type_str; shadow '" << shadow
+               << "', return_type_str '" << decl.return_type_str << "'";
+        fail_verify("LirExternDecl.return_type", detail.str());
+      }
+      const StructNameId known_struct_name_id = mod.struct_names.find(decl.return_type_str);
+      if (known_struct_name_id != kInvalidStructName &&
+          mod.find_struct_decl(known_struct_name_id) &&
+          decl.return_type.struct_name_id() != known_struct_name_id) {
+        fail_verify("LirExternDecl.return_type",
+                    "known struct return type must carry matching StructNameId");
+      }
     }
   }
 }

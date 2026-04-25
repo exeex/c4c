@@ -571,6 +571,7 @@ struct LirModule {
   struct ExternDeclInfo {
     std::string name;
     std::string return_type_str;
+    LirTypeRef return_type;
     LinkNameId link_name_id = kInvalidLinkName;
   };
 
@@ -590,12 +591,26 @@ struct LirModule {
   std::unordered_map<LinkNameId, ExternDeclInfo> extern_decl_link_name_map;
   std::unordered_map<std::string, ExternDeclInfo> extern_decl_name_map;
 
+  [[nodiscard]] LirTypeRef extern_return_type_ref(const std::string& ret_ty) const {
+    const StructNameId struct_name_id = struct_names.find(ret_ty);
+    if (struct_name_id != kInvalidStructName && find_struct_decl(struct_name_id)) {
+      return LirTypeRef::struct_type(ret_ty, struct_name_id);
+    }
+    return LirTypeRef(ret_ty);
+  }
+
   void merge_extern_decl_info(ExternDeclInfo& info, const std::string& name,
                               const std::string& ret_ty,
+                              const LirTypeRef& ret_type,
                               LinkNameId link_name_id) {
     if (info.name.empty()) info.name = name;
     if (info.return_type_str == "void" && ret_ty != "void") {
       info.return_type_str = ret_ty;
+      info.return_type = ret_type;
+    } else if (info.return_type_str == ret_ty &&
+               !info.return_type.has_struct_name_id() &&
+               ret_type.has_struct_name_id()) {
+      info.return_type = ret_type;
     }
     if (info.link_name_id == kInvalidLinkName &&
         link_name_id != kInvalidLinkName) {
@@ -609,6 +624,7 @@ struct LirModule {
   /// seen.
   void record_extern_decl(const std::string& name, const std::string& ret_ty,
                           LinkNameId link_name_id = kInvalidLinkName) {
+    const LirTypeRef ret_type = extern_return_type_ref(ret_ty);
     if (link_name_id != kInvalidLinkName) {
       auto it = extern_decl_link_name_map.find(link_name_id);
       if (it == extern_decl_link_name_map.end()) {
@@ -616,24 +632,25 @@ struct LirModule {
         if (by_name != extern_decl_name_map.end()) {
           ExternDeclInfo info = std::move(by_name->second);
           extern_decl_name_map.erase(by_name);
-          merge_extern_decl_info(info, name, ret_ty, link_name_id);
+          merge_extern_decl_info(info, name, ret_ty, ret_type, link_name_id);
           extern_decl_link_name_map.emplace(link_name_id, std::move(info));
           return;
         }
         extern_decl_link_name_map.emplace(
-            link_name_id, ExternDeclInfo{name, ret_ty, link_name_id});
+            link_name_id, ExternDeclInfo{name, ret_ty, ret_type, link_name_id});
         return;
       }
-      merge_extern_decl_info(it->second, name, ret_ty, link_name_id);
+      merge_extern_decl_info(it->second, name, ret_ty, ret_type, link_name_id);
       return;
     }
 
     auto it = extern_decl_name_map.find(name);
     if (it == extern_decl_name_map.end()) {
-      extern_decl_name_map.emplace(name, ExternDeclInfo{name, ret_ty, link_name_id});
+      extern_decl_name_map.emplace(
+          name, ExternDeclInfo{name, ret_ty, ret_type, link_name_id});
       return;
     }
-    merge_extern_decl_info(it->second, name, ret_ty, link_name_id);
+    merge_extern_decl_info(it->second, name, ret_ty, ret_type, link_name_id);
   }
 
   // Type declarations (struct definitions) needed by the output.

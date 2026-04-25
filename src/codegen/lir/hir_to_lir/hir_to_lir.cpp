@@ -597,7 +597,14 @@ static void finalize_module(LirModule& module,
     LirExternDecl ed;
     ed.name = fallback_name;
     ed.return_type_str = decl_info.return_type_str;
-    ed.return_type = c4c::codegen::lir::LirTypeRef(decl_info.return_type_str);
+    ed.return_type = decl_info.return_type.empty()
+        ? module.extern_return_type_ref(decl_info.return_type_str)
+        : decl_info.return_type;
+    if (!ed.return_type.has_struct_name_id()) {
+      const LirTypeRef finalized_type =
+          module.extern_return_type_ref(decl_info.return_type_str);
+      if (finalized_type.has_struct_name_id()) ed.return_type = finalized_type;
+    }
     ed.link_name_id = decl_info.link_name_id;
     module.extern_decls.push_back(std::move(ed));
   };
