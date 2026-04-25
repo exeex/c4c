@@ -793,7 +793,9 @@ const TypeSpec* Parser::find_visible_typedef_type(TextId name_text_id,
         }
     }
     if (const TypeSpec* type = find_typedef_type(name_text_id, name)) return type;
-    if (const TypeSpec* type = find_typedef_type(name)) return type;
+    if (name_text_id == kInvalidText) {
+        if (const TypeSpec* type = find_typedef_type(name)) return type;
+    }
     const VisibleNameResult resolved_result =
         resolve_visible_type(name_text_id, name);
     if (!resolved_result) return nullptr;

@@ -245,6 +245,12 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
                                        "typedefLookupBridge");
   expect_true(visible_typedef != nullptr && visible_typedef->base == c4c::TB_INT,
               "visible typedef lookup should prefer the TextId-backed global binding before fallback spelling");
+  const c4c::TextId missing_typedef_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText,
+                                      "MissingTextIdTypedef");
+  expect_true(parser.find_visible_typedef_type(missing_typedef_id,
+                                               "typedefLookupBridge") == nullptr,
+              "visible typedef lookup should not promote fallback spelling when a valid TextId lookup misses");
   const c4c::TypeSpec* id_var =
       parser.find_var_type(lookup_value_id, "valueLookupBridge");
   expect_true(id_var != nullptr && id_var->base == c4c::TB_LONG,
