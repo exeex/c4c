@@ -10,6 +10,7 @@
 namespace c4c::backend {
 
 using lir_to_bir_detail::lower_integer_type;
+using lir_to_bir_detail::lookup_backend_aggregate_type_layout;
 using lir_to_bir_detail::parse_i64;
 using lir_to_bir_detail::type_size_bytes;
 using BackendStructuredLayoutTable = lir_to_bir_detail::BackendStructuredLayoutTable;
@@ -46,6 +47,24 @@ struct LocalMemsetScalarSlot {
 };
 
 }  // namespace
+
+std::optional<BirFunctionLowerer::AggregateTypeLayout>
+BirFunctionLowerer::lower_intrinsic_aggregate_layout(
+    std::string_view text,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
+  if (structured_layouts == nullptr) {
+    return lower_byval_aggregate_layout(text, type_decls);
+  }
+
+  const auto layout = lookup_backend_aggregate_type_layout(text, type_decls, *structured_layouts);
+  if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
+       layout.kind != AggregateTypeLayout::Kind::Array) ||
+      layout.size_bytes == 0 || layout.align_bytes == 0) {
+    return std::nullopt;
+  }
+  return layout;
+}
 
 bool BirFunctionLowerer::try_lower_immediate_local_memset(
     std::string_view dst_operand,
@@ -204,7 +223,8 @@ bool BirFunctionLowerer::try_lower_immediate_local_memset(
   };
   const auto collect_sorted_leaf_slots_for_memops =
       [&](const LocalAggregateSlots& aggregate_slots) -> std::vector<std::pair<std::size_t, std::string>> {
-    const auto layout = lower_byval_aggregate_layout(aggregate_slots.type_text, type_decls);
+    const auto layout =
+        lower_intrinsic_aggregate_layout(aggregate_slots.type_text, type_decls, structured_layouts);
     if (!layout.has_value()) {
       return {};
     }
@@ -263,7 +283,9 @@ bool BirFunctionLowerer::try_lower_immediate_local_memset(
   if (const auto aggregate_it = local_aggregate_slots.find(std::string(dst_operand));
       aggregate_it != local_aggregate_slots.end()) {
     const auto aggregate_layout =
-        lower_byval_aggregate_layout(aggregate_it->second.type_text, type_decls);
+        lower_intrinsic_aggregate_layout(aggregate_it->second.type_text,
+                                         type_decls,
+                                         structured_layouts);
     if (!aggregate_layout.has_value()) {
       return false;
     }
@@ -344,7 +366,9 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
   const auto build_memcpy_leaf_view_from_aggregate =
       [&](const LocalAggregateSlots& aggregate_slots) -> std::optional<LocalMemcpyLeafView> {
     const auto aggregate_layout =
-        lower_byval_aggregate_layout(aggregate_slots.type_text, type_decls);
+        lower_intrinsic_aggregate_layout(aggregate_slots.type_text,
+                                         type_decls,
+                                         structured_layouts);
     if (!aggregate_layout.has_value()) {
       return std::nullopt;
     }
@@ -494,7 +518,9 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
           continue;
         }
         const auto aggregate_layout =
-            lower_byval_aggregate_layout(aggregate_slots.type_text, type_decls);
+            lower_intrinsic_aggregate_layout(aggregate_slots.type_text,
+                                             type_decls,
+                                             structured_layouts);
         if (!aggregate_layout.has_value()) {
           continue;
         }

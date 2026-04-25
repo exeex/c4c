@@ -364,6 +364,10 @@ class BirFunctionLowerer {
   static std::optional<AggregateTypeLayout> lower_byval_aggregate_layout(
       std::string_view text,
       const TypeDeclMap& type_decls);
+  static std::optional<AggregateTypeLayout> lower_intrinsic_aggregate_layout(
+      std::string_view text,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts);
   static std::string aggregate_param_slot_base(std::string_view param_name);
   static std::optional<bir::Value> lower_value(const c4c::codegen::lir::LirOperand& operand,
                                                bir::TypeKind expected_type,

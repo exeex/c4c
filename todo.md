@@ -9,8 +9,8 @@ Current Step Title: Convert Aggregate Size And Addressing Consumers
 ## Just Finished
 
 Step 3 - Convert Aggregate Size And Addressing Consumers converted the memory
-intrinsic aggregate repeated-extent paths by threading optional structured
-layout access into the immediate local `memset`/`memcpy` helper surface.
+intrinsic aggregate whole-object size and leaf-view paths to prefer structured
+layout when the optional backend structured layout table is available.
 
 Changed files:
 
@@ -20,30 +20,30 @@ Changed files:
 - `test_after.log`
 
 Converted consumers: `try_lower_immediate_local_memset()` and
-`try_lower_immediate_local_memcpy()` now have structured-aware overloads that
-accept an optional `BackendStructuredLayoutTable*`, with legacy wrappers that
-delegate through `nullptr`. Member callers in `lower_memory_memset_inst()`,
-`lower_memory_memcpy_inst()`, and direct `memset`/`memcpy` runtime intrinsic
-call lowering now pass `&structured_layouts_`.
+`try_lower_immediate_local_memcpy()` now route aggregate whole-object layout
+queries through `lower_intrinsic_aggregate_layout()`, which uses
+`lookup_backend_aggregate_type_layout()` when callers provide a structured
+layout table and keeps `lower_byval_aggregate_layout()` as the `nullptr`
+wrapper fallback.
 
-The aggregate pointer-to-local-array recovery inside both helpers now calls the
-structured `find_repeated_aggregate_extent_at_offset()` overload when a
-structured table is available, and keeps the legacy extent lookup for wrapper
-callers without structured layout access.
+Converted call sites: `collect_sorted_leaf_slots_for_memops()`, whole-aggregate
+`memset` size lookup, `build_memcpy_leaf_view_from_aggregate()`, and the
+pointer-to-first-leaf aggregate best-match size comparison in `memcpy` leaf view
+resolution.
 
-Remaining fallback-only paths: the intrinsic aggregate whole-object size/leaf
-view helpers still use `lower_byval_aggregate_layout`; raw-byte slice scalar
-leaf discovery still uses `resolve_scalar_layout_facts_at_byte_offset`;
-`collect_local_scalar_array_slots` still uses the legacy local-slots helper;
-static global-address helper wrappers, ABI and call lowering, globals,
-initializers, and unrelated load/store-heavy lowering still use the legacy
-layout path unless a caller explicitly opts into a structured overload.
+Remaining fallback-only paths: legacy wrapper callers that pass `nullptr` to
+the intrinsic helper surface intentionally keep `lower_byval_aggregate_layout`;
+raw-byte slice scalar leaf discovery still uses
+`resolve_scalar_layout_facts_at_byte_offset`; `collect_local_scalar_array_slots`
+still uses the legacy local-slots helper; static global-address helper
+wrappers, ABI and call lowering, globals, initializers, local slots, and
+unrelated load/store-heavy lowering remain outside this packet.
 
 ## Suggested Next
 
 Next coherent conversion packet: convert the remaining local scalar array
-collection or intrinsic aggregate size/leaf-view fallback-only path by adding a
-structured-aware overload while preserving legacy wrappers.
+collection or raw-byte scalar leaf discovery path with the same
+structured-when-available, legacy-wrapper-fallback shape.
 
 ## Watchouts
 
@@ -51,8 +51,8 @@ structured-aware overload while preserving legacy wrappers.
 first delegated build may report no work for backend objects. The delegated
 proof includes the backend-enabled `c4c_backend` target.
 
-Do not convert ABI, globals, initializers, or load/store-heavy consumers unless
-the supervisor explicitly widens ownership.
+Do not convert ABI, globals, initializers, local slots, or load/store-heavy
+consumers unless the supervisor explicitly widens ownership.
 
 ## Proof
 
