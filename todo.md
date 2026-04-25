@@ -16,14 +16,16 @@ Step 3 continued shared projection-helper reuse in `local_gep.cpp`.
 
 Consolidated traversal:
 
-- The duplicate non-first-index aggregate child traversal in
-  `resolve_local_aggregate_gep_slot` and `resolve_local_aggregate_gep_target`
-  now consumes `resolve_aggregate_child_index_projection` and uses the helper's
-  `child_absolute_byte_offset` and `child_type_text`.
-- Raw `i8` byte-slice handling remains in the local raw-slice helper.
-- First-index reinterpret and repeated-extent policy remain in the local call
-  sites.
-- Publication and state-map policy were not moved.
+- The constant non-first-index array/struct child traversal in
+  `resolve_local_aggregate_pointer_array_slots` now consumes
+  `resolve_aggregate_child_index_projection` and uses the helper's
+  `child_absolute_byte_offset`, `child_type_text`, `child_layout`, and parent
+  array count facts.
+- The final pointer-array slot collection remains local to
+  `resolve_local_aggregate_pointer_array_slots`.
+- First-index reinterpret, repeated-extent policy, and the scalar-array
+  early collection branch remain in the local call site.
+- Publication and local-state policy were not moved.
 
 ## Suggested Next
 
@@ -43,8 +45,7 @@ publication policy local to the caller.
 - Be careful with first-index policy: local aggregate GEP, absolute global GEP,
   relative global GEP, dynamic aggregate GEP, and runtime pointer provenance use
   similar layout math but different acceptance rules.
-- `resolve_local_aggregate_pointer_array_slots`,
-  `resolve_local_aggregate_dynamic_pointer_array_access`, and dynamic aggregate
+- `resolve_local_aggregate_dynamic_pointer_array_access` and dynamic aggregate
   GEP paths still open-code related traversal and were intentionally left
   outside this bounded packet.
 
