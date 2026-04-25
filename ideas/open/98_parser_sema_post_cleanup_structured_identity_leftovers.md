@@ -7,7 +7,7 @@ Last Updated: 2026-04-25
 Parent Ideas:
 - [95_parser_dual_lookup_structured_identity_cleanup.md](/workspaces/c4c/ideas/closed/95_parser_dual_lookup_structured_identity_cleanup.md)
 - [96_sema_dual_lookup_structured_identity_cleanup.md](/workspaces/c4c/ideas/closed/96_sema_dual_lookup_structured_identity_cleanup.md)
-- [97_structured_identity_completion_audit_and_hir_plan.md](/workspaces/c4c/ideas/open/97_structured_identity_completion_audit_and_hir_plan.md)
+- [97_structured_identity_completion_audit_and_hir_plan.md](/workspaces/c4c/ideas/closed/97_structured_identity_completion_audit_and_hir_plan.md)
 
 ## Goal
 
