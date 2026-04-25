@@ -73,11 +73,26 @@ int main() {
             "%struct.Pair",
             "extern declaration StructNameId should resolve to return text");
 
+  expect_eq(std::to_string(module.type_decls.size()), "1",
+            "struct fixture should retain one legacy type_decls shadow");
+  expect_eq(module.type_decls.front(), "%struct.Pair = type { i32 }",
+            "legacy type_decls shadow should stay populated");
+
   c4c::codegen::lir::verify_module(module);
   const std::string llvm_ir = c4c::codegen::lir::print_llvm(module);
+  expect_true(llvm_ir.find("%struct.Pair = type { i32 }") != std::string::npos,
+              "printer should emit matching struct_decls/type_decls declaration");
   expect_true(llvm_ir.find("declare %struct.Pair @extern_pair(...)") !=
                   std::string::npos,
               "printer should keep using return_type_str for extern declarations");
+
+  c4c::codegen::lir::LirModule mismatched_shadow = module;
+  mismatched_shadow.type_decls.front() = "%struct.Pair = type { i64 }";
+  try {
+    c4c::codegen::lir::verify_module(mismatched_shadow);
+    fail("verifier should reject mismatched struct_decls/type_decls shadows");
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
 
   c4c::codegen::lir::LirModule missing_mirror = module;
   missing_mirror.extern_decls.front().return_type =
