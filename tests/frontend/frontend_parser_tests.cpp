@@ -162,6 +162,14 @@ void test_parser_string_wrappers_use_symbol_id_keyed_name_tables() {
   expect_true(parser.find_var_type("counter") != nullptr &&
                   parser.find_var_type("counter")->base == c4c::TB_DOUBLE,
               "var-type wrapper should recover the stored TypeSpec");
+  const c4c::QualifiedNameKey counter_key =
+      parser.intern_semantic_name_key("counter");
+  expect_true(parser.has_structured_var_type(counter_key),
+              "var-type wrapper should also populate structured value storage");
+  expect_true(parser.find_structured_var_type(counter_key) != nullptr &&
+                  parser.find_structured_var_type(counter_key)->base ==
+                      c4c::TB_DOUBLE,
+              "structured value storage should recover the stored TypeSpec");
 }
 
 void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {
@@ -185,6 +193,8 @@ void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {
   const size_t typedef_count_before =
       parser.parser_symbol_tables().typedefs.size();
   const auto snapshot = parser.save_state();
+  const c4c::QualifiedNameKey scratch_key =
+      parser.intern_semantic_name_key("scratch");
   parser.register_typedef_binding("Temp", temp_ts, true);
   parser.register_var_type_binding("scratch", temp_ts);
   parser.restore_state(snapshot);
@@ -195,6 +205,8 @@ void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {
               "restore_state should roll back typedefs added after the snapshot");
   expect_true(!parser.has_var_type("scratch"),
               "restore_state should roll back var bindings added after the snapshot");
+  expect_true(!parser.has_structured_var_type(scratch_key),
+              "restore_state should roll back structured var bindings added after the snapshot");
   expect_eq_int(
       static_cast<int>(parser.parser_symbol_tables().typedefs.size()),
                 static_cast<int>(typedef_count_before),
@@ -246,8 +258,16 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
   expect_true(parser.find_typedef_type("ns::Type") != nullptr &&
                   parser.find_typedef_type("ns::Type")->base == c4c::TB_INT,
               "qualified typedef type lookup should recover the stored TypeSpec");
+  const c4c::QualifiedNameKey value_key =
+      parser.intern_semantic_name_key("ns::value");
+  expect_true(parser.has_structured_var_type(value_key),
+              "qualified value bindings should populate structured storage");
+  expect_true(parser.find_structured_var_type(value_key) != nullptr &&
+                  parser.find_structured_var_type(value_key)->base ==
+                      c4c::TB_DOUBLE,
+              "qualified structured value lookup should recover the stored TypeSpec");
   expect_true(parser.has_var_type("ns::value"),
-              "qualified value bindings should remain lookupable");
+              "qualified value bindings should remain string-lookupable");
   expect_true(parser.find_var_type("ns::value") != nullptr &&
                   parser.find_var_type("ns::value")->base == c4c::TB_DOUBLE,
               "qualified value lookup should recover the stored TypeSpec");
@@ -265,6 +285,8 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
 
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
   const auto snapshot = parser.save_state();
+  const c4c::QualifiedNameKey scratch_key =
+      parser.intern_semantic_name_key("ns::scratch");
 
   c4c::TypeSpec temp_ts{};
   temp_ts.array_size = -1;
@@ -279,6 +301,50 @@ void test_parser_keeps_qualified_bindings_string_keyed() {
               "restore_state should roll back qualified typedefs from fallback storage");
   expect_true(!parser.has_var_type("ns::scratch"),
               "restore_state should roll back qualified values from fallback storage");
+  expect_true(!parser.has_structured_var_type(scratch_key),
+              "restore_state should roll back qualified values from structured storage");
+#endif
+}
+
+void test_parser_structured_value_registration_keeps_legacy_lookup() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files);
+
+  c4c::TypeSpec value_ts{};
+  value_ts.array_size = -1;
+  value_ts.inner_rank = -1;
+  value_ts.base = c4c::TB_LONG;
+
+  const c4c::QualifiedNameKey value_key =
+      parser.intern_semantic_name_key("ns::registered");
+  parser.register_structured_var_type_binding(value_key, value_ts);
+
+  expect_true(parser.has_structured_var_type(value_key),
+              "structured value registration should populate structured storage");
+  expect_true(parser.find_structured_var_type(value_key) != nullptr &&
+                  parser.find_structured_var_type(value_key)->base ==
+                      c4c::TB_LONG,
+              "structured value registration should recover the stored TypeSpec");
+  expect_true(parser.has_var_type("ns::registered"),
+              "structured value registration should keep the legacy string table populated");
+  expect_true(parser.find_var_type("ns::registered") != nullptr &&
+                  parser.find_var_type("ns::registered")->base ==
+                      c4c::TB_LONG,
+              "legacy string lookup should agree with structured value storage");
+
+#if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
+  const auto snapshot = parser.save_state();
+  const c4c::QualifiedNameKey temp_key =
+      parser.intern_semantic_name_key("ns::temporary_registered");
+  parser.register_structured_var_type_binding(temp_key, value_ts);
+  parser.restore_state(snapshot);
+
+  expect_true(!parser.has_structured_var_type(temp_key),
+              "restore_state should roll back direct structured value bindings");
+  expect_true(!parser.has_var_type("ns::temporary_registered"),
+              "restore_state should roll back the legacy mirror for direct structured value bindings");
 #endif
 }
 
@@ -2360,6 +2426,7 @@ int main() {
   test_parser_string_wrappers_use_symbol_id_keyed_name_tables();
   test_parser_heavy_snapshot_restores_symbol_id_keyed_tables();
   test_parser_keeps_qualified_bindings_string_keyed();
+  test_parser_structured_value_registration_keeps_legacy_lookup();
   test_parser_last_using_alias_name_prefers_text_id_storage();
   test_parser_parse_qualified_name_populates_atom_symbol_ids();
   test_parser_apply_qualified_name_preserves_text_ids_on_ast_nodes();

@@ -207,6 +207,20 @@ std::string render_lookup_name_in_context(const Parser& parser, int context_id,
                                                           fallback_name);
 }
 
+void cache_legacy_var_type_binding(Parser& parser, std::string_view name,
+                                   const TypeSpec& type) {
+    if (!uses_symbol_identity(name)) {
+        const TextId id = parser.parser_text_id_for_token(kInvalidText, name);
+        if (id == kInvalidText) return;
+        parser.binding_state_.non_atom_var_types[id] = type;
+        return;
+    }
+    const Parser::SymbolId id =
+        parser.shared_lookup_state_.parser_name_tables.intern_identifier(name);
+    if (id == Parser::kInvalidSymbol) return;
+    parser.shared_lookup_state_.parser_name_tables.var_types[id] = type;
+}
+
 bool is_unqualified_lookup_name(std::string_view name) {
     return !name.empty() && name.find("::") == std::string_view::npos;
 }
@@ -1047,6 +1061,17 @@ const TypeSpec* Parser::find_var_type(const std::string& name) const {
     return &it->second;
 }
 
+bool Parser::has_structured_var_type(const QualifiedNameKey& key) const {
+    return find_structured_var_type(key) != nullptr;
+}
+
+const TypeSpec* Parser::find_structured_var_type(
+    const QualifiedNameKey& key) const {
+    if (key.base_text_id == kInvalidText) return nullptr;
+    const auto it = binding_state_.value_bindings.find(key);
+    return it == binding_state_.value_bindings.end() ? nullptr : &it->second;
+}
+
 const TypeSpec* Parser::find_visible_var_type(TextId name_text_id,
                                               std::string_view name) const {
     if (can_probe_local_binding(name_text_id, name)) {
@@ -1080,16 +1105,30 @@ void Parser::register_var_type_binding(const std::string& name,
         bind_local_value(local_name_id, type);
         return;
     }
-    if (!uses_symbol_identity(name)) {
-        const TextId id = parser_text_id_for_token(kInvalidText, name);
-        if (id == kInvalidText) return;
-        binding_state_.non_atom_var_types[id] = type;
-        return;
+    const QualifiedNameKey key = intern_known_fn_name_key_from_spelling(
+        *this, 0, local_name_id, name);
+    if (key.base_text_id != kInvalidText) {
+        binding_state_.value_bindings[key] = type;
     }
-    const SymbolId id =
-        shared_lookup_state_.parser_name_tables.intern_identifier(name);
-    if (id == kInvalidSymbol) return;
-    shared_lookup_state_.parser_name_tables.var_types[id] = type;
+    cache_legacy_var_type_binding(*this, name, type);
+}
+
+void Parser::register_structured_var_type_binding(const QualifiedNameKey& key,
+                                                  const TypeSpec& type) {
+    if (key.base_text_id == kInvalidText) return;
+    binding_state_.value_bindings[key] = type;
+    const std::string rendered = render_value_binding_name(*this, key);
+    if (!rendered.empty()) {
+        cache_legacy_var_type_binding(*this, rendered, type);
+    }
+}
+
+void Parser::register_structured_var_type_binding_in_context(
+    int context_id, TextId name_text_id, std::string_view fallback_name,
+    const TypeSpec& type) {
+    const QualifiedNameKey key = qualified_key_in_context(
+        *this, context_id, name_text_id, fallback_name, true);
+    register_structured_var_type_binding(key, type);
 }
 
 QualifiedNameKey Parser::known_fn_name_key(int context_id, TextId name_text_id,

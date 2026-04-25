@@ -384,10 +384,18 @@ class Parser {
       const TypeSpec& type);
   bool has_var_type(const std::string& name) const;
   const TypeSpec* find_var_type(const std::string& name) const;
+  bool has_structured_var_type(const QualifiedNameKey& key) const;
+  const TypeSpec* find_structured_var_type(
+      const QualifiedNameKey& key) const;
   const TypeSpec* find_visible_var_type(TextId name_text_id,
                                         std::string_view name) const;
   const TypeSpec* find_visible_var_type(const std::string& name) const;
   void register_var_type_binding(const std::string& name, const TypeSpec& type);
+  void register_structured_var_type_binding(const QualifiedNameKey& key,
+                                            const TypeSpec& type);
+  void register_structured_var_type_binding_in_context(
+      int context_id, TextId name_text_id, std::string_view fallback_name,
+      const TypeSpec& type);
   bool has_known_fn_name(const std::string& name) const;
   bool has_known_fn_name(const QualifiedNameKey& key) const;
   void register_known_fn_name(const std::string& name);
