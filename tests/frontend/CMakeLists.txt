@@ -1,4 +1,4 @@
-set(frontend_test_targets frontend_lexer_tests frontend_parser_tests)
+set(frontend_test_targets frontend_lexer_tests frontend_parser_tests frontend_hir_lookup_tests)
 if(ENABLE_C4C_BACKEND)
   list(APPEND frontend_test_targets frontend_hir_tests)
 endif()
@@ -17,5 +17,7 @@ endif()
 
 add_test(NAME frontend_lexer_tests  COMMAND frontend_lexer_tests)
 add_test(NAME frontend_parser_tests COMMAND frontend_parser_tests)
+add_test(NAME frontend_hir_lookup_tests COMMAND frontend_hir_lookup_tests)
 set_tests_properties(frontend_lexer_tests  PROPERTIES LABELS "internal;lex")
 set_tests_properties(frontend_parser_tests PROPERTIES LABELS "internal;parse")
+set_tests_properties(frontend_hir_lookup_tests PROPERTIES LABELS "internal;hir")

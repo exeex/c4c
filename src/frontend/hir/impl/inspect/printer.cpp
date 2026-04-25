@@ -34,6 +34,16 @@ static std::string_view module_decl_kind_str(ModuleDeclKind kind) {
   return "?";
 }
 
+static std::string_view module_decl_lookup_authority_str(ModuleDeclLookupAuthority authority) {
+  switch (authority) {
+    case ModuleDeclLookupAuthority::Structured: return "structured";
+    case ModuleDeclLookupAuthority::LegacyRendered: return "legacy-rendered";
+    case ModuleDeclLookupAuthority::ConcreteGlobalId: return "global-id";
+    case ModuleDeclLookupAuthority::LinkNameId: return "link-name";
+  }
+  return "?";
+}
+
 // ── TypeSpec -> readable string ───────────────────────────────────────────────
 
 static std::string ts_str(const TypeSpec& ts) {
@@ -160,6 +170,16 @@ class Printer {
         << " blocks=" << s.blocks
         << " stmts=" << s.statements
         << " exprs=" << s.expressions << "\n";
+
+    if (!m_.decl_lookup_hits.empty()) {
+      out << "\n--- module decl lookup hits ---\n";
+      for (const auto& hit : m_.decl_lookup_hits) {
+        out << "  " << module_decl_kind_str(hit.kind)
+            << " " << hit.name
+            << " via " << module_decl_lookup_authority_str(hit.authority)
+            << "#" << hit.resolved_id << "\n";
+      }
+    }
 
     if (!m_.decl_lookup_parity_mismatches.empty()) {
       out << "\n--- module decl lookup parity mismatches ---\n";
@@ -528,6 +548,18 @@ class Printer {
     else if (x.param_index) out << "#P" << *x.param_index;
     else if (x.global) out << "#G" << x.global->value;
     if (!x.ns_qual.empty()) out << ns_qual_str(x.ns_qual);
+    const bool qualified_module_ref = !x.ns_qual.empty() || x.name.find("::") != std::string::npos;
+    if (qualified_module_ref && !x.local && !x.param_index) {
+      if (const auto global_hit = m_.classify_global_decl_lookup(x)) {
+        out << " lookup=" << module_decl_kind_str(global_hit->kind)
+            << ":" << module_decl_lookup_authority_str(global_hit->authority)
+            << "#" << global_hit->resolved_id;
+      } else if (const auto fn_hit = m_.classify_function_decl_lookup(x)) {
+        out << " lookup=" << module_decl_kind_str(fn_hit->kind)
+            << ":" << module_decl_lookup_authority_str(fn_hit->authority)
+            << "#" << fn_hit->resolved_id;
+      }
+    }
   }
 
   void print_expr_payload(std::ostringstream& out, const UnaryExpr& x) {

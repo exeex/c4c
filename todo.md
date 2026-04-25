@@ -8,22 +8,20 @@ Current Step Title: Add targeted lookup proof/instrumentation
 
 ## Just Finished
 
-Step 7: Strengthen focused HIR proof if needed. Added a focused HIR dump
-fixture for namespace-qualified module function/global references through the
-structured mirror proof surface. The CTest entry asserts the expected
-namespace-qualified HIR shape and fails if the dump prints a
-`module decl lookup parity mismatches` section.
-
-Route review in `review/99_step8_pre_demotion_route_review.md` found the
-implementation on track through Step 7, but not enough evidence to demote
-rendered fallback yet.
+Step 8: Add targeted lookup proof/instrumentation. Added module declaration
+lookup hit instrumentation that records resolver hits by authority without
+changing precedence: structured, legacy rendered, concrete global-ID, and
+`LinkNameId`. The HIR dump now prints focused lookup-hit evidence and annotates
+qualified module refs with concrete/link authority, and a frontend-only HIR
+lookup unit test now directly exercises structured, legacy-rendered,
+concrete global-ID, and `LinkNameId` resolver hits while preserving the
+existing parity mismatch section and rendered fallback behavior.
 
 ## Suggested Next
 
-Execute Step 8 by adding targeted proof or instrumentation that distinguishes
-structured hits, legacy rendered hits, concrete-ID hits, and `LinkNameId` hits
-for module function/global references. Keep rendered fallback parked until
-that evidence is green and supervisor approves any demotion.
+Supervisor review/route decision for the next coherent packet after Step 8.
+Do not start fallback demotion unless the supervisor explicitly delegates the
+Step 9 demotion slice.
 
 ## Watchouts
 
@@ -43,6 +41,9 @@ that evidence is green and supervisor approves any demotion.
 - The reviewer specifically noted that resolver parity currently runs after
   concrete-ID and `LinkNameId` bridge paths, so targeted proof must make those
   paths distinguishable from structured and legacy rendered hits.
+- Step 8 now explicitly proves legacy-rendered lookup hits with a direct
+  frontend-only HIR `Module` resolver test, alongside structured,
+  concrete global-ID, and `LinkNameId` hit coverage.
 - Do not broaden into struct/type, member/method, parser, or unrelated sema
   rewrites.
 - Do not downgrade expectations or add testcase-shaped shortcuts.
@@ -52,5 +53,3 @@ that evidence is green and supervisor approves any demotion.
 Passed. Proof output is captured in `test_after.log`.
 
 - `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -L "^hir$"`
-
-No Step 8 proof has been run yet after the route review.

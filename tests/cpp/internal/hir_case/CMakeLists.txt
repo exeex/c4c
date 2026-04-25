@@ -330,7 +330,7 @@ add_test(
 )
 set_tests_properties(cpp_hir_module_decl_lookup_structured_mirror PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
-  PASS_REGULAR_EXPRESSION "global api::value: int ns=api\\(ctx=[0-9]+\\) = 7.*fn api::bump\\(x: int\\) -> int ns=api\\(ctx=[0-9]+\\).*return \\(x#P0 \\+ api::value#G[0-9]+\\).*decl local: int = api::value#G[0-9]+ ns=api\\(ctx=[0-9]+\\).*return api::bump ns=api\\(ctx=[0-9]+\\)\\(local#L[0-9]+\\)"
+  PASS_REGULAR_EXPRESSION "module decl lookup hits.*global api::value via global-id#[0-9]+.*function api::bump via structured#[0-9]+.*global api::value: int ns=api\\(ctx=[0-9]+\\) = 7.*fn api::bump\\(x: int\\) -> int ns=api\\(ctx=[0-9]+\\).*return \\(x#P0 \\+ api::value#G[0-9]+ lookup=global:global-id#[0-9]+\\).*decl local: int = api::value#G[0-9]+ ns=api\\(ctx=[0-9]+\\) lookup=global:global-id#[0-9]+.*return api::bump ns=api\\(ctx=[0-9]+\\) lookup=function:link-name#[0-9]+\\(local#L[0-9]+\\)"
   FAIL_REGULAR_EXPRESSION "module decl lookup parity mismatches"
 )
 
