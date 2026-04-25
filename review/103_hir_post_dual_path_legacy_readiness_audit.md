@@ -134,3 +134,58 @@ behavior.
   symbols; the direct caller command reported no same-TU callers for those
   method-qualified/cross-TU paths, so classification used AST availability
   checks plus focused source scans.
+
+## Step 3 - Diagnostics, Dumps, ABI, And Printer Spelling
+
+Scope for this step: classify HIR textual surfaces separately from semantic
+lookup authority. This step did not change implementation behavior.
+
+### Textual Surface Classification
+
+| Surface Family | Classification | Semantic Lookup Authority? | Evidence / Boundary |
+|---|---|---|---|
+| HIR printer type spelling via `ts_str` | `printer-only` | No | `src/frontend/hir/impl/inspect/printer.cpp:49` formats `TypeSpec` for dumps, including `struct/union/enum` `ts.tag` text at lines `71`-`73`. This is display output and should not block demoting lookup authority. |
+| HIR module dump section ordering and struct printing | `dump` / `printer-only` | No, except it reads existing rendered order | `Printer::run` iterates `struct_def_order` and reads `m_.struct_defs.find(tag)` only to print known structs at `src/frontend/hir/impl/inspect/printer.cpp:194`-`199`; `print_struct_def` emits `sd.tag`, layout, and field text at lines `301`-`323`. This is dump presentation over current storage, not an independent lookup contract. |
+| HIR decl lookup hit/parity dump text | `dump` / `legacy-proof-only` | No new authority | The printer renders recorded lookup hits and mismatches at `src/frontend/hir/impl/inspect/printer.cpp:174`-`191`; `DeclRef` inline printing calls `classify_*_decl_lookup` for qualified refs at lines `551`-`560`. The authority is the classifier result from `Module`, not the printer. Keep as proof/debug output until parity records are retired. |
+| Template, consteval, and pending-consteval HIR print text | `printer-only` | No | Template instances print `inst.mangled_name`, `spec_key`, and type bindings at `src/frontend/hir/impl/inspect/printer.cpp:248`-`279`; consteval and pending consteval print `fn_name` and `ts_str` bindings at lines `281`-`298` and `664`-`680`. These are inspectable names only. |
+| Compile-time diagnostics stored in `CompileTimeDiagnostic` and `Module::ct_info.diagnostics` | `diagnostic-only` | No | Diagnostic records carry human-readable descriptions at `src/frontend/hir/compile_time_engine.hpp:1390`-`1420`; `build_hir` converts them to `file:line:column: error:` strings at `src/frontend/hir/hir.cpp:34`-`43`. These strings report irreducible work and should not be treated as lookup keys. |
+| Compile-time diagnostic descriptions using template / consteval names | `diagnostic-only` | No | The engine builds messages such as unresolved template calls, unreduced consteval calls, and static assert failures at `src/frontend/hir/impl/compile_time/engine.cpp:124`-`139`, `203`-`229`, `320`-`335`, and `558`-`566`, then appends them to debug stats at lines `750`-`753`. The underlying work queues still need separate lookup classification from Step 2. |
+| Compile-time debug dumps and registry parity dumps | `dump` / `legacy-proof-only` | No new authority | `InstantiationRegistry::dump_parity` prints seed/instance counts and per-function detail at `src/frontend/hir/compile_time_engine.hpp:752`-`765`; `CompileTimeState::dump` prints rendered and structured registry sizes at lines `1292`-`1310`. These are proof visibility, not demotion blockers by themselves. |
+| `canonical_type_str`, `type_suffix_for_mangling`, and pending type refs | `TypeSpec::tag textual surface`; mixed display/ABI input | Not semantic lookup by itself | `canonical_type_str` uses `struct.` / `union.` / `enum.` plus `ts.tag` at `src/frontend/hir/hir_ir.hpp:1121`-`1123`; `type_suffix_for_mangling` and `encode_pending_type_ref` use `ts.tag` at `src/frontend/hir/compile_time_engine.hpp:381` and `493`-`509`. These are textual fingerprints. Demotion requires preserving stable spellings or replacing them with structured canonical keys before treating them as removable strings. |
+| Range-for and call lowering error messages containing rendered tags or names | `diagnostic-only`, but adjacent to semantic lookup | No, but do not hide adjacent lookups | Range-for messages embed `range_ts.tag` / `iter_ts.tag` at `src/frontend/hir/impl/stmt/range_for.cpp:30`-`33`, `113`-`115`, `143`-`145`, and `193`-`196`; template and consteval call errors embed source names at `src/frontend/hir/impl/expr/call.cpp:471`-`476` and `628`-`632`. The messages are diagnostic-only, while the surrounding rendered method/function lookups remain Step 2 bridge-required. |
+| HIR-to-LIR runtime/lowering error text | `diagnostic-only` | No | Member-lvalue errors include `m.field` and resolved `access.tag` at `src/codegen/lir/hir_to_lir/lvalue.cpp:309`-`315`. They report failed lowering after lookup attempts and are not themselves lookup authority. |
+| HIR-to-LIR emitted link spelling helper | `ABI/link-spelling` | Yes for emitted symbol spelling, not semantic lookup | `emitted_link_name` prefers `LinkNameId` spelling and falls back to raw names in `src/codegen/lir/hir_to_lir/hir_to_lir.cpp:27`-`31` and `src/codegen/lir/hir_to_lir/const_init_emitter.cpp:43`-`47`. This is the ABI-visible spelling surface; it must retain exact output while semantic lookup migrates away from rendered names. |
+| LIR global/function/extern printer link-name resolution | `ABI/link-spelling` / `printer-only final emission` | Uses link IDs when present | `src/codegen/lir/lir_printer.cpp:17`-`67` resolves link names for signatures, direct calls, globals, and extern decls; final printing uses those names at lines `515`-`517`, `545`-`548`, `555`-`557`, and metadata lines `563`-`569`. This is output spelling and dedup rendering, not HIR semantic lookup authority. |
+| HIR-to-LIR extern declaration dedup and filtering | `ABI/link-spelling` with fallback bridge | Partly semantic at the link boundary | `finalize_module` filters extern decls by `LinkNameId` first and falls back to `fn_index` by rendered name at `src/codegen/lir/hir_to_lir/hir_to_lir.cpp:394`-`423`. Keep classified apart from HIR-internal lookup: it is downstream link-boundary behavior and remains bridge-required for idea 105. |
+| LLVM struct type declarations and `TypeSpec::tag`-derived LLVM types | `TypeSpec::tag textual surface` / `ABI/layout spelling` | Yes for layout/type emission until bridged | `build_type_decls` walks `struct_def_order`, renders `%struct` type names from tags, and follows `base_tags` through `mod.struct_defs` at `src/codegen/lir/hir_to_lir/hir_to_lir.cpp:235`-`275`. This is not just display text: it is emitted IR/layout spelling and remains bridge-required outside HIR-only cleanup. |
+| HIR-to-LIR `TypeSpec::tag` layout and field consumers | `TypeSpec::tag textual surface` / semantic codegen input | Yes until owner/layout bridge exists | Object alignment and globals use `mod.struct_defs.find(ts.tag)` at `src/codegen/lir/hir_to_lir/hir_to_lir.cpp:54`-`56` and `151`-`155`; const-init and member lowering use tag lookups at `src/codegen/lir/hir_to_lir/const_init_emitter.cpp:1271`-`1272` and `src/codegen/lir/hir_to_lir/lvalue.cpp:601`-`616`. These are downstream semantic consumers and remain bridge-required. |
+| `HirRecordOwnerKey` comments and owner-to-rendered tag bridge | `dump/codegen compatibility note` plus structured target | Structured target is separate from spelling | `src/frontend/hir/hir_ir.hpp:890`-`891` explicitly says owner keys identify records without using rendered tag spelling that codegen and dumps still consume. `index_struct_def_owner` stores owner-to-rendered mappings at lines `1338`-`1347`. This supports separating structured authority from textual tag compatibility. |
+
+### Classification Boundary
+
+- `diagnostic-only` and `printer-only` surfaces may keep rendered names for
+  readability while semantic lookup authority is demoted elsewhere.
+- `dump` surfaces that expose parity records are proof tooling, not lookup
+  authority. Keep them until the matching proof infrastructure is retired.
+- `ABI/link-spelling` surfaces must preserve emitted symbol spelling even after
+  lookup authority moves to `LinkNameId`, concrete IDs, or structured keys.
+- `TypeSpec::tag` is not one class of work: HIR printer and diagnostic uses are
+  textual, while HIR-to-LIR layout/type emission and `mod.struct_defs.find(tag)`
+  remain semantic/codegen bridge work.
+
+### Lightweight Checks Run For Step 3
+
+- Focused `rg` scans over `src/frontend/hir`, `src/codegen/lir/hir_to_lir`,
+  and `src/codegen/lir` for diagnostics, dumps, printer paths, `TypeSpec::tag`,
+  link-name spelling, ABI-visible symbol rendering, and `struct_defs.find`
+  consumers.
+- Read-only inspection of `src/frontend/hir/impl/inspect/printer.cpp`,
+  `src/frontend/hir/impl/compile_time/engine.cpp`,
+  `src/frontend/hir/compile_time_engine.hpp`, `src/frontend/hir/hir.cpp`,
+  `src/frontend/hir/hir_ir.hpp`, `src/frontend/hir/impl/stmt/range_for.cpp`,
+  `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`,
+  `src/codegen/lir/hir_to_lir/const_init_emitter.cpp`,
+  `src/codegen/lir/hir_to_lir/lvalue.cpp`, and
+  `src/codegen/lir/lir_printer.cpp`.
+- No `c4c-clang-tool` query was needed for this packet because the owned work
+  classified textual surfaces from concrete print/diagnostic/render call sites.
