@@ -8,10 +8,11 @@ Current Step Title: Convert Aggregate Size And Addressing Consumers
 
 ## Just Finished
 
-Step 3 - Convert Aggregate Size And Addressing Consumers converted loaded local
-pointer-slot state recording to prefer the backend structured layout table when
-the caller has one, with the legacy compute-layout path preserved as an
-explicit wrapper.
+Step 3 - Convert Aggregate Size And Addressing Consumers converted dynamic
+local aggregate array value load/store helper layout queries to prefer the
+backend structured layout table when reached from the member dynamic local
+aggregate load/store paths, with legacy compute-layout behavior preserved as
+explicit no-table wrappers.
 
 Changed files:
 
@@ -20,34 +21,39 @@ Changed files:
 - `todo.md`
 - `test_after.log`
 
-Converted consumer: `record_loaded_local_pointer_slot_state()` now has a
-structured-aware overload that receives `structured_layouts_` from
-`try_lower_tracked_local_pointer_slot_load()` and uses the shared
-`lookup_scalar_byte_offset_layout()` path for both the loaded aggregate layout
-and nested element layout queries.
+Converted consumers:
 
-Legacy behavior: the original no-structured-table overload remains available
-and forwards through the same implementation with a null table, preserving the
-existing `compute_aggregate_type_layout()` fallback path.
+- `load_dynamic_local_aggregate_array_value()` now has structured-table and
+  null-table overloads and uses `lookup_scalar_byte_offset_layout()` for the
+  dynamic element layout check.
+- `append_dynamic_local_aggregate_store()` now has structured-table and
+  null-table overloads and uses `lookup_scalar_byte_offset_layout()` for the
+  dynamic element layout check.
+- The member dynamic local aggregate load/store paths pass `structured_layouts_`
+  through `try_lower_dynamic_local_aggregate_load()` and
+  `try_lower_dynamic_local_aggregate_store()`.
 
-Remaining fallback-only paths: dynamic local aggregate array value load/store
-helpers still call `compute_aggregate_type_layout()` directly because they were
-explicitly outside this packet unless required for compilation. ABI, globals,
-initializers, unrelated MIR files, addressing edits, and test expectations
-remain outside this packet.
+Legacy behavior: the original no-structured-table helper overloads remain
+available and forward through the same implementations with a null table,
+preserving the existing `compute_aggregate_type_layout()` fallback path.
+
+Remaining fallback-only Step 3 paths: no dynamic local aggregate array
+load/store helper layout query remains direct-only fallback in this file set.
+ABI, globals, initializers, unrelated MIR files, addressing edits, and test
+expectations remain outside this packet.
 
 ## Suggested Next
 
 Next coherent packet: send Step 3 to review, or delegate a separate bounded
-packet for the dynamic local aggregate array value load/store helpers if the
-supervisor wants those fallback-only local slot paths converted.
+packet for any remaining aggregate size/addressing consumer the supervisor
+identifies outside the local slot dynamic aggregate array helpers.
 
 ## Watchouts
 
 `ENABLE_C4C_BACKEND` remains off in the current `default` build tree, so the
-first delegated build may report no work for backend objects. The delegated
-proof includes the backend-enabled `c4c_backend` target and rebuilt
-`memory/local_slots.cpp.o`.
+first delegated build may report no work for backend objects. A pre-proof
+backend-only compile rebuilt `memory/local_slots.cpp.o` successfully after the
+signature threading.
 
 Do not convert ABI, globals, initializers, or test expectations unless the
 supervisor explicitly widens ownership.
@@ -59,5 +65,5 @@ Delegated proof passed and wrote `test_after.log`:
 `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|positive_split_llvm_|abi_)' && cmake --build build-backend --target c4c_backend -j) > test_after.log 2>&1`
 
 Result: default build completed with no work, selected ctest subset passed 8/8,
-and `build-backend` rebuilt the backend objects needed by `c4c_backend`,
-including `memory/local_slots.cpp.o`, successfully.
+and the backend `c4c_backend` target completed with no further work after the
+pre-proof compile.

@@ -434,6 +434,7 @@ bool BirFunctionLowerer::lower_memory_store_inst(
                                                *value,
                                                dynamic_local_aggregate_arrays_,
                                                type_decls_,
+                                               structured_layouts_,
                                                local_slot_types_,
                                                lowered_insts,
                                                &handled_dynamic_local_aggregate_store)) {
@@ -666,6 +667,7 @@ bool BirFunctionLowerer::lower_memory_load_inst(
                                               *value_type,
                                               dynamic_local_aggregate_arrays_,
                                               type_decls_,
+                                              structured_layouts_,
                                               local_slot_types_,
                                               &value_aliases_,
                                               lowered_insts,
@@ -1347,13 +1349,32 @@ std::optional<bir::Value> BirFunctionLowerer::load_dynamic_local_aggregate_array
     bir::TypeKind value_type,
     const DynamicLocalAggregateArrayAccess& access,
     const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts,
+    const LocalSlotTypes& local_slot_types,
+    std::vector<bir::Inst>* lowered_insts) {
+  return load_dynamic_local_aggregate_array_value(result_name,
+                                                  value_type,
+                                                  access,
+                                                  type_decls,
+                                                  &structured_layouts,
+                                                  local_slot_types,
+                                                  lowered_insts);
+}
+
+std::optional<bir::Value> BirFunctionLowerer::load_dynamic_local_aggregate_array_value(
+    std::string_view result_name,
+    bir::TypeKind value_type,
+    const DynamicLocalAggregateArrayAccess& access,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts,
     const LocalSlotTypes& local_slot_types,
     std::vector<bir::Inst>* lowered_insts) {
   if (access.element_count == 0) {
     return std::nullopt;
   }
 
-  const auto element_layout = compute_aggregate_type_layout(access.element_type_text, type_decls);
+  const auto element_layout =
+      lookup_scalar_byte_offset_layout(access.element_type_text, type_decls, structured_layouts);
   if (element_layout.kind != AggregateTypeLayout::Kind::Scalar ||
       element_layout.scalar_type != value_type) {
     return std::nullopt;
@@ -1384,19 +1405,56 @@ std::optional<bir::Value> BirFunctionLowerer::load_dynamic_local_aggregate_array
   return synthesize_value_array_selects(result_name, element_values, access.index, lowered_insts);
 }
 
+std::optional<bir::Value> BirFunctionLowerer::load_dynamic_local_aggregate_array_value(
+    std::string_view result_name,
+    bir::TypeKind value_type,
+    const DynamicLocalAggregateArrayAccess& access,
+    const TypeDeclMap& type_decls,
+    const LocalSlotTypes& local_slot_types,
+    std::vector<bir::Inst>* lowered_insts) {
+  return load_dynamic_local_aggregate_array_value(result_name,
+                                                  value_type,
+                                                  access,
+                                                  type_decls,
+                                                  nullptr,
+                                                  local_slot_types,
+                                                  lowered_insts);
+}
+
 bool BirFunctionLowerer::append_dynamic_local_aggregate_store(
     std::string_view scratch_prefix,
     bir::TypeKind value_type,
     const bir::Value& value,
     const DynamicLocalAggregateArrayAccess& access,
     const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts,
+    const LocalSlotTypes& local_slot_types,
+    std::vector<bir::Inst>* lowered_insts) {
+  return append_dynamic_local_aggregate_store(scratch_prefix,
+                                              value_type,
+                                              value,
+                                              access,
+                                              type_decls,
+                                              &structured_layouts,
+                                              local_slot_types,
+                                              lowered_insts);
+}
+
+bool BirFunctionLowerer::append_dynamic_local_aggregate_store(
+    std::string_view scratch_prefix,
+    bir::TypeKind value_type,
+    const bir::Value& value,
+    const DynamicLocalAggregateArrayAccess& access,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts,
     const LocalSlotTypes& local_slot_types,
     std::vector<bir::Inst>* lowered_insts) {
   if (access.element_count == 0) {
     return false;
   }
 
-  const auto element_layout = compute_aggregate_type_layout(access.element_type_text, type_decls);
+  const auto element_layout =
+      lookup_scalar_byte_offset_layout(access.element_type_text, type_decls, structured_layouts);
   if (element_layout.kind != AggregateTypeLayout::Kind::Scalar ||
       element_layout.scalar_type != value_type) {
     return false;
@@ -1449,12 +1507,31 @@ bool BirFunctionLowerer::append_dynamic_local_aggregate_store(
   return true;
 }
 
+bool BirFunctionLowerer::append_dynamic_local_aggregate_store(
+    std::string_view scratch_prefix,
+    bir::TypeKind value_type,
+    const bir::Value& value,
+    const DynamicLocalAggregateArrayAccess& access,
+    const TypeDeclMap& type_decls,
+    const LocalSlotTypes& local_slot_types,
+    std::vector<bir::Inst>* lowered_insts) {
+  return append_dynamic_local_aggregate_store(scratch_prefix,
+                                              value_type,
+                                              value,
+                                              access,
+                                              type_decls,
+                                              nullptr,
+                                              local_slot_types,
+                                              lowered_insts);
+}
+
 bool BirFunctionLowerer::try_lower_dynamic_local_aggregate_store(
     std::string_view ptr_name,
     bir::TypeKind value_type,
     const bir::Value& value,
     const DynamicLocalAggregateArrayMap& dynamic_local_aggregate_arrays,
     const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts,
     const LocalSlotTypes& local_slot_types,
     std::vector<bir::Inst>* lowered_insts,
     bool* handled) {
@@ -1470,6 +1547,7 @@ bool BirFunctionLowerer::try_lower_dynamic_local_aggregate_store(
                                               value,
                                               dynamic_local_aggregate_it->second,
                                               type_decls,
+                                              structured_layouts,
                                               local_slot_types,
                                               lowered_insts);
 }
@@ -1480,6 +1558,7 @@ bool BirFunctionLowerer::try_lower_dynamic_local_aggregate_load(
     bir::TypeKind value_type,
     const DynamicLocalAggregateArrayMap& dynamic_local_aggregate_arrays,
     const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts,
     const LocalSlotTypes& local_slot_types,
     ValueMap* value_aliases,
     std::vector<bir::Inst>* lowered_insts,
@@ -1495,6 +1574,7 @@ bool BirFunctionLowerer::try_lower_dynamic_local_aggregate_load(
                                                                        value_type,
                                                                        dynamic_local_aggregate_it->second,
                                                                        type_decls,
+                                                                       structured_layouts,
                                                                        local_slot_types,
                                                                        lowered_insts);
   if (!selected_value.has_value()) {
