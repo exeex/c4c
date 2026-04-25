@@ -86,6 +86,11 @@ int main() {
                   std::string::npos,
               "printer should keep using return_type_str for extern declarations");
 
+  c4c::codegen::lir::LirModule structured_identity = module;
+  structured_identity.extern_decls.front().return_type.str() =
+      "%struct.StaleMirrorText";
+  c4c::codegen::lir::verify_module(structured_identity);
+
   c4c::codegen::lir::LirModule mismatched_shadow = module;
   mismatched_shadow.type_decls.front() = "%struct.Pair = type { i64 }";
   try {
@@ -100,6 +105,14 @@ int main() {
   try {
     c4c::codegen::lir::verify_module(missing_mirror);
     fail("verifier should reject a known struct extern return without StructNameId");
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
+
+  c4c::codegen::lir::LirModule text_fallback = module;
+  text_fallback.extern_decls.front().return_type_str = "%struct.NotDeclared";
+  try {
+    c4c::codegen::lir::verify_module(text_fallback);
+    fail("verifier should reject an extern return text mismatch without declared struct boundary");
   } catch (const c4c::codegen::lir::LirVerifyError&) {
   }
 
