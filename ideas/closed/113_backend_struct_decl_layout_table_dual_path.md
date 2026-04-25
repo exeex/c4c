@@ -1,8 +1,9 @@
 # Backend StructDecl Layout Table Dual Path
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
+Closed: 2026-04-25
 
 Parent Ideas:
 - [112_lir_backend_legacy_type_surface_readiness_audit.md](/workspaces/c4c/ideas/open/112_lir_backend_legacy_type_surface_readiness_audit.md)
@@ -67,3 +68,36 @@ Out of scope:
 - Structured-vs-legacy layout parity is checked for the touched backend paths.
 - Focused aggregate, HFA, sret, variadic, global-init, and memory-addressing
   proof passes without output drift.
+
+## Closure Notes
+
+Idea 113 is closed after the Step 6 broader parity and regression checkpoint.
+The active runbook converted the structured layout table and the Step 3-5
+backend consumers to prefer structured layout where module state can provide
+it, while keeping legacy `type_decls` parsing available as fallback and parity
+source.
+
+The final checkpoint recorded a fresh default build, full `ctest`, and backend
+target rebuild:
+
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure && cmake --build build-backend --target c4c_backend -j) > test_after.log 2>&1`
+
+Recorded result: default build completed, full ctest passed 2980/2980, and
+the backend `c4c_backend` target rebuilt successfully. The close-time
+regression guard was run read-only using the recorded full-suite baseline
+summary and latest full-suite proof with non-decreasing pass semantics:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_baseline.log --after test_before.log --allow-non-decreasing-passed`
+
+Guard result: PASS, with 2980 passed before and after, 0 failed before and
+after, and no new failing or suspicious-timeout tests.
+
+Remaining fallback-only backend paths are intentional compatibility surfaces:
+legacy public overloads for `resolve_global_gep_address()`,
+`resolve_relative_global_gep_address()`,
+`resolve_global_dynamic_pointer_array_access()`, and
+`resolve_global_dynamic_aggregate_array_access()` still route through
+null-table wrappers for callers without module structured layout state. Core
+parity and legacy layout functions also remain fallback-only by design where
+they serve as the compatibility path under structured lookup miss or absent
+table state.
