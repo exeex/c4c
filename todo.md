@@ -8,43 +8,43 @@ Current Step Title: Convert Aggregate Size And Addressing Consumers
 
 ## Just Finished
 
-Step 3 - Convert Aggregate Size And Addressing Consumers converted local GEP
-raw-byte scalar leaf discovery to prefer structured scalar byte-offset facts
-when the optional backend structured layout table is available.
+Step 3 - Convert Aggregate Size And Addressing Consumers converted local scalar
+array slot collection to prefer the backend structured layout table when the
+caller has one, with the legacy compute-layout path preserved as an explicit
+wrapper.
 
 Changed files:
 
-- `src/backend/bir/lir_to_bir/memory/memory_helpers.hpp`
 - `src/backend/bir/lir_to_bir/memory/local_slots.cpp`
-- `src/backend/bir/lir_to_bir/memory/local_gep.cpp`
+- `src/backend/bir/lir_to_bir/memory/addressing.cpp`
+- `src/backend/bir/lir_to_bir/lowering.hpp`
 - `todo.md`
 - `test_after.log`
 
-Converted consumers: `resolve_scalar_layout_facts_at_byte_offset()` now has a
+Converted consumers: `collect_local_scalar_array_slots()` now has a
 structured-aware overload that uses `lookup_backend_aggregate_type_layout()`
-when a structured table is supplied and keeps the original three-argument
-legacy helper as a `nullptr` fallback wrapper. The recursive scalar leaf walker
-uses the same lookup path for nested array elements and struct fields.
+and the structured `find_nested_repeated_aggregate_extent_at_offset()` path.
+The original three-argument helper remains as the legacy fallback wrapper.
 
-Converted call sites: `resolve_local_aggregate_raw_byte_slice_leaf()` now passes
-its optional structured table into scalar byte-offset fact resolution, so the
-raw-byte slice fast path used by local aggregate GEP slot and target discovery
-uses structured layout when available.
+Converted call sites: local aggregate GEP scalar-array publication in
+`addressing.cpp` and local pointer-slot address propagation in
+`local_slots.cpp` now pass `structured_layouts_` into scalar array slot
+collection. The nearby local aggregate target layout query in pointer-slot
+store propagation also uses `lookup_backend_aggregate_type_layout()`.
 
 Remaining fallback-only paths: legacy callers of the three-argument scalar
-byte-offset helper intentionally keep `compute_aggregate_type_layout()`;
-`collect_local_scalar_array_slots()` still uses the legacy local-slots helper;
-`provenance.cpp` still calls the legacy scalar byte-offset helper; static
-global-address helper wrappers, ABI and call lowering, globals, initializers,
-local slot load/store-heavy lowering, and unrelated local slot paths remain
+array slot helper still use `compute_aggregate_type_layout()` through the
+wrapper; `record_loaded_local_pointer_slot_state()` and dynamic local aggregate
+array value load/store helpers remain fallback-only because they do not receive
+`structured_layouts_`; ABI, globals, initializers, and test expectations remain
 outside this packet.
 
 ## Suggested Next
 
-Next coherent conversion packet: convert `collect_local_scalar_array_slots()` or
-the remaining provenance scalar byte-offset query with the same
-structured-when-available, legacy-wrapper-fallback shape, if the supervisor
-wants to continue Step 3 before broader review.
+Next coherent packet: convert the remaining fallback-only local slot helpers
+that currently lack a structured-layout parameter, or send Step 3 to review if
+the supervisor considers local aggregate size/addressing consumers sufficiently
+covered.
 
 ## Watchouts
 
@@ -52,8 +52,8 @@ wants to continue Step 3 before broader review.
 first delegated build may report no work for backend objects. The delegated
 proof includes the backend-enabled `c4c_backend` target.
 
-Do not convert ABI, globals, initializers, local slots, or load/store-heavy
-consumers unless the supervisor explicitly widens ownership.
+Do not convert ABI, globals, initializers, or test expectations unless the
+supervisor explicitly widens ownership.
 
 ## Proof
 

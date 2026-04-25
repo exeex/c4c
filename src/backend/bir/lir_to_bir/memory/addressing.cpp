@@ -991,7 +991,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         std::optional<std::vector<std::string>> scalar_array_slots;
         if (target_layout.kind == AggregateTypeLayout::Kind::Array) {
           scalar_array_slots = collect_local_scalar_array_slots(
-              subobject_slots.type_text, type_decls, subobject_slots);
+              subobject_slots.type_text, type_decls, structured_layouts_, subobject_slots);
         }
         const auto leaf_it = aggregate_it->second.leaf_slots.find(
             static_cast<std::size_t>(resolved_target->byte_offset));
@@ -1076,7 +1076,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         aggregate_it->second);
     if (resolved_slot.has_value()) {
       const auto scalar_array_slots = collect_local_scalar_array_slots(
-          aggregate_it->second.type_text, type_decls, aggregate_it->second);
+          aggregate_it->second.type_text, type_decls, structured_layouts_, aggregate_it->second);
       if (resolved_target.has_value()) {
         const auto target_layout =
             lookup_backend_aggregate_type_layout(resolved_target->type_text,

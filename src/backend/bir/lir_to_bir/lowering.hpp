@@ -483,6 +483,11 @@ class BirFunctionLowerer {
       std::string_view type_text,
       const TypeDeclMap& type_decls,
       const LocalAggregateSlots& aggregate_slots);
+  static std::optional<std::vector<std::string>> collect_local_scalar_array_slots(
+      std::string_view type_text,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts,
+      const LocalAggregateSlots& aggregate_slots);
   static bool is_local_array_element_slot(std::string_view slot_name,
                                           const LocalArraySlotMap& local_array_slots);
   static std::optional<std::pair<std::size_t, bir::TypeKind>> parse_local_array_type(
