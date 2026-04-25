@@ -985,13 +985,13 @@ void Parser::unregister_typedef_binding(const std::string& name) {
 
 void Parser::register_synthesized_typedef_binding(TextId name_text_id,
                                                   std::string_view name) {
+    const std::string_view resolved_name = parser_text(name_text_id, name);
     TypeSpec synthesized_ts{};
     synthesized_ts.array_size = -1;
     synthesized_ts.inner_rank = -1;
     synthesized_ts.base = TB_TYPEDEF;
-    synthesized_ts.tag = arena_.strdup(std::string(name).c_str());
-    register_typedef_binding(std::string(parser_text(name_text_id, name)),
-                             synthesized_ts, false);
+    synthesized_ts.tag = arena_.strdup(std::string(resolved_name).c_str());
+    register_typedef_binding(name_text_id, name, synthesized_ts, false);
 }
 
 void Parser::register_synthesized_typedef_binding(const std::string& name) {

@@ -8,37 +8,31 @@ Current Step Title: Prefer ID-First Parser Helpers
 
 ## Just Finished
 
-Step 6 - Prefer ID-First Parser Helpers continued by migrating the `using`
-import value/type lookup path to structured helpers where the target
-`QualifiedNameKey` or resolved `VisibleNameResult` key is already available.
-New `find_typedef_type(QualifiedNameKey, fallback)` and
-`find_var_type(QualifiedNameKey, fallback)` helpers probe structured storage
-first, then rendered compatibility spelling, then the explicit fallback.
+Step 6 - Prefer ID-First Parser Helpers continued with a narrow synthesized
+typedef cleanup. `register_synthesized_typedef_binding(TextId, spelling)` now
+resolves the semantic spelling from the `TextId`, stores that spelling in the
+synthesized `TypeSpec`, and registers through the ID-first
+`register_typedef_binding(TextId, spelling, ...)` path directly instead of
+reconstructing a string and calling the compatibility overload.
 
-`using` type imports now use the resolved type key plus visible spelling before
-legacy string fallback. `using` value imports now use the directly computed
-target key first, then the resolved value key for namespace/context lookups and
-known-function aliases, while preserving bridge registration names and
-compatibility alias spellings.
-
-Focused parser coverage now proves `using ns::Target;` value imports and
-`using ns::Alias;` type imports prefer structured target storage over corrupted
-rendered fallback names.
+Focused parser coverage now verifies synthesized typedef registration with a
+mismatched fallback stores `SynthParam`, does not register `corrupted`, and
+still unregisters by the semantic `TextId`.
 
 ## Suggested Next
 
 Next coherent packet: continue Step 6 by auditing remaining parser-owned
-string fallback probes that already have a `QualifiedNameKey` or
-context-plus-`TextId` carrier, especially outside the `using` import block.
+string fallback probes that already have a `TextId` or `QualifiedNameKey`
+carrier and can be routed through an ID-first helper without changing public
+compatibility overloads.
 
 ## Watchouts
 
-- Bridge registrations for imported typedef/value aliases still use
-  `bridge_name_in_context` so legacy string consumers remain populated.
-- The new key-plus-fallback helpers intentionally preserve rendered and explicit
-  string fallback lookup after structured lookup misses.
-- Qualified operator/constructor known-function registrations and qualified
-  declarator bridge names remain on their existing rendered-string paths.
+- `find_visible_typedef_type(TextId, fallback)` does not currently perform a
+  general global TextId lookup before the string fallback path; the strengthened
+  synthesized typedef test inspects the registered `SynthParam` type directly.
+- The string overload for synthesized typedef registration remains a
+  compatibility bridge into the ID-first overload.
 
 ## Proof
 

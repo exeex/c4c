@@ -2339,6 +2339,16 @@ void test_parser_synthesized_typedef_binding_unregisters_by_text_id() {
   parser.register_synthesized_typedef_binding(synth_text_id, "corrupted");
   expect_true(parser.is_typedef_name(synth_text_id, "SynthParam"),
               "synthesized typedef registration should prefer the semantic TextId");
+  const c4c::TypeSpec* synthesized_type =
+      parser.find_typedef_type("SynthParam");
+  expect_true(synthesized_type != nullptr,
+              "synthesized typedef registration should store the TextId binding");
+  expect_true(synthesized_type->base == c4c::TB_TYPEDEF,
+              "synthesized typedef registration should store a typedef type");
+  expect_eq(synthesized_type->tag ? synthesized_type->tag : "", "SynthParam",
+            "synthesized typedef registration should store the TextId spelling");
+  expect_true(!parser.has_typedef_name("corrupted"),
+              "synthesized typedef registration should not store the fallback spelling");
 
   parser.unregister_typedef_binding(synth_text_id, "still_corrupted");
   expect_true(!parser.is_typedef_name(synth_text_id, "SynthParam"),
