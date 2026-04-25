@@ -399,7 +399,14 @@ class Lowerer {
   std::optional<HirRecordOwnerKey> make_struct_def_node_owner_key(
       const Node* sd) const;
   void register_struct_def_node_owner(const Node* sd);
-  void register_template_struct_instance_owner(
+  void register_struct_method_owner_lookup(
+      const HirRecordOwnerKey& owner_key,
+      const Node* method,
+      bool is_const_method,
+      const std::string& rendered_key,
+      const std::string& mangled,
+      const TypeSpec& return_type);
+  std::optional<HirRecordOwnerKey> register_template_struct_instance_owner(
       const HirStructDef& def,
       const Node* primary_tpl,
       const Node* struct_node,
@@ -444,6 +451,7 @@ class Lowerer {
 
   void register_instantiated_template_struct_methods(
       const std::string& mangled,
+      const std::optional<HirRecordOwnerKey>& owner_key,
       const Node* tpl_def,
       const TypeBindings& method_tpl_bindings,
       const NttpBindings& method_nttp_bindings);
@@ -988,10 +996,16 @@ class Lowerer {
       struct_static_member_const_values_;
   // Struct method map: "struct_tag::method_name" → mangled function name.
   std::unordered_map<std::string, std::string> struct_methods_;
+  std::unordered_map<HirStructMethodLookupKey, std::string, HirStructMethodLookupKeyHash>
+      struct_methods_by_owner_;
   // Struct method map: "struct_tag::method_name" → link-visible symbol id.
   std::unordered_map<std::string, LinkNameId> struct_method_link_name_ids_;
+  std::unordered_map<HirStructMethodLookupKey, LinkNameId, HirStructMethodLookupKeyHash>
+      struct_method_link_name_ids_by_owner_;
   // Struct method return types: "struct_tag::method_name" → return TypeSpec.
   std::unordered_map<std::string, TypeSpec> struct_method_ret_types_;
+  std::unordered_map<HirStructMethodLookupKey, TypeSpec, HirStructMethodLookupKeyHash>
+      struct_method_ret_types_by_owner_;
   // Top-level function definitions keyed by unqualified name for early
   // template-deduction return-type probes before ordinary functions are
   // lowered into the module.

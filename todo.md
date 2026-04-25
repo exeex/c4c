@@ -1,24 +1,24 @@
 Status: Active
 Source Idea Path: ideas/open/102_hir_struct_method_member_identity_dual_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Structured Mirrors for Struct Definitions
+Current Step ID: 4
+Current Step Title: Add Structured Mirrors for Method Lookup
 
 # Current Packet
 
 ## Just Finished
 
-Completed the Step 3 dual-read/parity probe slice for template struct primary and specialization lookup without changing existing lookup authority.
+Started Step 4 by adding write-only structured owner-key mirrors for struct method registration while leaving existing rendered string maps and all method lookup readers authoritative.
 
-Added lowerer-local parity probes in `find_template_struct_primary` and `find_template_struct_specializations` that compare the rendered-name / `ct_state_` result with the structured owner-key mirrors and record check/mismatch counters. Existing consumers still receive the rendered or `ct_state_` answer, and no HIR dump, codegen spelling, test, or expectation behavior was redirected.
+Added `HirStructMethodLookupKey`, keyed by `HirRecordOwnerKey`, method `TextId`, and constness, plus lowerer-private mirrors for `struct_methods_`, `struct_method_link_name_ids_`, and `struct_method_ret_types_`. Ordinary struct method registration and instantiated template struct method registration now dual-write these mirrors when owner and method metadata are complete.
 
 ## Suggested Next
 
-Step 3 is ready to move to Step 4 unless the supervisor wants these private parity counters surfaced through a formal HIR inspection artifact first.
+Continue Step 4 by adding structured dual-read/parity helpers for method lookup that compare structured mirrors against the existing rendered string maps without changing the return behavior of `find_struct_method_mangled`, `find_struct_method_link_name_id`, or `find_struct_method_return_type`.
 
 ## Watchouts
 
-The probes intentionally skip primary lookups with no rendered result because there is no owner-key metadata to compare from a bare name miss. Specialization parity treats absent/empty rendered and structured vectors as matching, and otherwise compares vector size/order/pointer identity. Template-struct specialization mirrors remain keyed by primary declaration owner identity, not by a full specialization identity.
+This slice does not route any reader through the structured mirrors and does not touch member or static-member lookup maps. Ref-overloaded methods still share the existing rendered key authority; the new mirror tracks the same owner/method/constness identity currently represented by `struct_tag::method[_const]`, not a fuller overload signature.
 
 ## Proof
 

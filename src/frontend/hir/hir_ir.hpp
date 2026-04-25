@@ -985,6 +985,31 @@ struct HirRecordOwnerKeyHash {
   }
 };
 
+struct HirStructMethodLookupKey {
+  HirRecordOwnerKey owner_key;
+  TextId method_text_id = kInvalidText;
+  bool is_const_method = false;
+
+  [[nodiscard]] bool operator==(const HirStructMethodLookupKey& other) const {
+    return owner_key == other.owner_key &&
+           method_text_id == other.method_text_id &&
+           is_const_method == other.is_const_method;
+  }
+
+  [[nodiscard]] bool operator!=(const HirStructMethodLookupKey& other) const {
+    return !(*this == other);
+  }
+};
+
+struct HirStructMethodLookupKeyHash {
+  [[nodiscard]] size_t operator()(const HirStructMethodLookupKey& key) const noexcept {
+    const size_t owner_hash = HirRecordOwnerKeyHash{}(key.owner_key);
+    return static_cast<size_t>(hash_id_words(
+        kIdHashSeed, static_cast<uint64_t>(owner_hash), key.method_text_id,
+        static_cast<uint32_t>(key.is_const_method)));
+  }
+};
+
 [[nodiscard]] inline HirRecordOwnerKey make_hir_record_owner_key(
     const NamespaceQualifier& ns_qual, TextId declaration_text_id) {
   HirRecordOwnerKey key;
@@ -1029,6 +1054,12 @@ struct HirRecordOwnerKeyHash {
            !key.template_identity.specialization_key.empty();
   }
   return true;
+}
+
+[[nodiscard]] inline bool hir_struct_method_lookup_key_has_complete_metadata(
+    const HirStructMethodLookupKey& key) {
+  return hir_record_owner_key_has_complete_metadata(key.owner_key) &&
+         key.method_text_id != kInvalidText;
 }
 
 // ── Template function definition metadata (populated by hir build) ───────────

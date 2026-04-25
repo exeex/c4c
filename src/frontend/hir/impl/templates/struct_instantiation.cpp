@@ -68,6 +68,7 @@ void Lowerer::append_instantiated_template_struct_bases(
 
 void Lowerer::register_instantiated_template_struct_methods(
     const std::string& mangled,
+    const std::optional<HirRecordOwnerKey>& owner_key,
     const Node* tpl_def,
     const TypeBindings& method_tpl_bindings,
     const NttpBindings& method_nttp_bindings) {
@@ -81,6 +82,10 @@ void Lowerer::register_instantiated_template_struct_methods(
     struct_methods_[mkey] = mmangled;
     struct_method_link_name_ids_[mkey] = module_->link_names.intern(mmangled);
     struct_method_ret_types_[mkey] = method->type;
+    if (owner_key) {
+      register_struct_method_owner_lookup(
+          *owner_key, method, method->is_const_method, mkey, mmangled, method->type);
+    }
     lower_struct_method(mmangled, mangled, method,
                         &method_tpl_bindings, &method_nttp_bindings);
   }
@@ -152,13 +157,13 @@ void Lowerer::append_instantiated_template_struct_fields(
   }
 }
 
-void Lowerer::register_template_struct_instance_owner(
+std::optional<HirRecordOwnerKey> Lowerer::register_template_struct_instance_owner(
     const HirStructDef& def,
     const Node* primary_tpl,
     const Node* struct_node,
     const TemplateStructInstanceKey& instance_key,
     bool append_order) {
-  if (!module_ || !primary_tpl || instance_key.spec_key.empty()) return;
+  if (!module_ || !primary_tpl || instance_key.spec_key.empty()) return std::nullopt;
   TextTable* texts = module_->link_name_texts.get();
   const TextId primary_text_id = make_unqualified_text_id(primary_tpl, texts);
   HirRecordOwnerTemplateIdentity identity;
@@ -166,9 +171,10 @@ void Lowerer::register_template_struct_instance_owner(
   identity.specialization_key = instance_key.spec_key.canonical;
   HirRecordOwnerKey key =
       make_hir_template_record_owner_key(def.ns_qual, primary_text_id, std::move(identity));
-  if (!hir_record_owner_key_has_complete_metadata(key)) return;
+  if (!hir_record_owner_key_has_complete_metadata(key)) return std::nullopt;
   module_->index_struct_def_owner(key, def.tag, append_order);
   struct_def_nodes_by_owner_[key] = struct_node ? struct_node : primary_tpl;
+  return key;
 }
 
 void Lowerer::instantiate_template_struct_body(
@@ -203,12 +209,13 @@ void Lowerer::instantiate_template_struct_body(
       def, mangled, tpl_def, selected_type_bindings, selected_nttp_bindings_map);
 
   compute_struct_layout(module_, def);
-  register_template_struct_instance_owner(def, primary_tpl, tpl_def, instance_key, true);
+  std::optional<HirRecordOwnerKey> owner_key =
+      register_template_struct_instance_owner(def, primary_tpl, tpl_def, instance_key, true);
   module_->struct_def_order.push_back(mangled);
   module_->struct_defs[mangled] = std::move(def);
   struct_def_nodes_[mangled] = tpl_def;
   register_instantiated_template_struct_methods(
-      mangled, tpl_def, method_tpl_bindings, method_nttp_bindings);
+      mangled, owner_key, tpl_def, method_tpl_bindings, method_nttp_bindings);
 }
 
 }  // namespace c4c::hir

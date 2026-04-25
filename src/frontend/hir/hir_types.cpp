@@ -438,6 +438,28 @@ std::optional<TypeSpec> Lowerer::find_struct_method_return_type(
   return std::nullopt;
 }
 
+void Lowerer::register_struct_method_owner_lookup(
+    const HirRecordOwnerKey& owner_key,
+    const Node* method,
+    bool is_const_method,
+    const std::string& rendered_key,
+    const std::string& mangled,
+    const TypeSpec& return_type) {
+  if (!module_ || !method || !method->name || !method->name[0] ||
+      rendered_key.empty() || mangled.empty()) {
+    return;
+  }
+  HirStructMethodLookupKey key;
+  key.owner_key = owner_key;
+  key.method_text_id = make_unqualified_text_id(method, module_->link_name_texts.get());
+  key.is_const_method = is_const_method;
+  if (!hir_struct_method_lookup_key_has_complete_metadata(key)) return;
+
+  struct_methods_by_owner_[key] = mangled;
+  struct_method_link_name_ids_by_owner_[key] = module_->link_names.intern(mangled);
+  struct_method_ret_types_by_owner_[key] = return_type;
+}
+
 std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
     const FunctionCtx* ctx, const Node* callee) {
   if (!callee) return std::nullopt;
@@ -1494,6 +1516,9 @@ void Lowerer::lower_struct_def(const Node* sd) {
 
   const bool append_struct_def_order = !module_->struct_defs.count(tag);
   module_->index_struct_def_owner(def, append_struct_def_order);
+  const HirRecordOwnerKey struct_owner_key = make_hir_record_owner_key(def);
+  const bool has_struct_owner_key =
+      hir_record_owner_key_has_complete_metadata(struct_owner_key);
   if (append_struct_def_order)
     module_->struct_def_order.push_back(tag);
   module_->struct_defs[tag] = std::move(def);
@@ -1532,6 +1557,10 @@ void Lowerer::lower_struct_def(const Node* sd) {
         struct_methods_[key] = mangled;
         struct_method_link_name_ids_[key] = module_->link_names.intern(mangled);
         struct_method_ret_types_[key] = method->type;
+        if (has_struct_owner_key) {
+          register_struct_method_owner_lookup(
+              struct_owner_key, method, false, key, mangled, method->type);
+        }
       }
       pending_methods_.push_back({mangled, std::string(tag), method,
                                   method_tpl_bindings, method_nttp_bindings});
@@ -1584,6 +1613,10 @@ void Lowerer::lower_struct_def(const Node* sd) {
     struct_methods_[key] = mangled;
     struct_method_link_name_ids_[key] = module_->link_names.intern(mangled);
     struct_method_ret_types_[key] = method->type;
+    if (has_struct_owner_key) {
+      register_struct_method_owner_lookup(
+          struct_owner_key, method, method->is_const_method, key, mangled, method->type);
+    }
     pending_methods_.push_back({mangled, std::string(tag), method,
                                 method_tpl_bindings, method_nttp_bindings});
   }
