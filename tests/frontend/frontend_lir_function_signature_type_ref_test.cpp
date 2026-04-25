@@ -67,6 +67,29 @@ const c4c::codegen::lir::LirFunction& require_function(
   return *it;
 }
 
+c4c::codegen::lir::LirFunction& require_mutable_function(
+    c4c::codegen::lir::LirModule& module,
+    std::string_view name,
+    bool is_declaration) {
+  auto it = std::find_if(module.functions.begin(), module.functions.end(),
+                         [&](const c4c::codegen::lir::LirFunction& fn) {
+                           return fn.name == name &&
+                                  fn.is_declaration == is_declaration;
+                         });
+  expect_true(it != module.functions.end(),
+              "fixture function should lower into LIR: " + std::string(name));
+  return *it;
+}
+
+void expect_verify_rejects(const c4c::codegen::lir::LirModule& module,
+                           const std::string& msg) {
+  try {
+    c4c::codegen::lir::verify_module(module);
+    fail(msg);
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
+}
+
 void expect_struct_type_ref(
     const c4c::codegen::lir::LirModule& module,
     const c4c::codegen::lir::LirTypeRef& type_ref,
@@ -168,6 +191,77 @@ int defined_big(struct Big input) {
   expect_true(llvm_ir.find("define i32 @defined_big(ptr byval(%struct.Big) align 8 %p.input)") !=
                   std::string::npos,
               "printer should keep using byval definition signature_text");
+
+  const c4c::StructNameId pair_id = lir_module.struct_names.find("%struct.Pair");
+  const c4c::StructNameId big_id = lir_module.struct_names.find("%struct.Big");
+  expect_true(pair_id != c4c::kInvalidStructName,
+              "fixture should declare Pair for structured verifier checks");
+  expect_true(big_id != c4c::kInvalidStructName,
+              "fixture should declare Big for mismatch verifier checks");
+
+  c4c::codegen::lir::LirModule stale_return_text = lir_module;
+  require_mutable_function(stale_return_text, "declared_pair", true)
+      .signature_return_type_ref->str() = "%struct.StaleMirrorText";
+  c4c::codegen::lir::verify_module(stale_return_text);
+
+  c4c::codegen::lir::LirModule stale_param_text = lir_module;
+  require_mutable_function(stale_param_text, "defined_pair", false)
+      .signature_param_type_refs[0]
+      .str() = "%struct.StaleMirrorText";
+  c4c::codegen::lir::verify_module(stale_param_text);
+
+  c4c::codegen::lir::LirModule missing_return_name = lir_module;
+  require_mutable_function(missing_return_name, "declared_pair", true)
+      .signature_return_type_ref = c4c::codegen::lir::LirTypeRef("%struct.Pair");
+  expect_verify_rejects(
+      missing_return_name,
+      "verifier should reject a known struct signature return without StructNameId");
+
+  c4c::codegen::lir::LirModule missing_param_name = lir_module;
+  require_mutable_function(missing_param_name, "defined_pair", false)
+      .signature_param_type_refs[0] =
+      c4c::codegen::lir::LirTypeRef("%struct.Pair");
+  expect_verify_rejects(
+      missing_param_name,
+      "verifier should reject a known struct signature parameter without StructNameId");
+
+  c4c::codegen::lir::LirModule mismatched_return_name = lir_module;
+  auto& mismatched_return_fn =
+      require_mutable_function(mismatched_return_name, "declared_pair", true);
+  mismatched_return_fn.signature_return_type_ref =
+      mismatched_return_fn.signature_return_type_ref->with_struct_name_id(big_id);
+  expect_verify_rejects(
+      mismatched_return_name,
+      "verifier should reject a signature return with mismatched StructNameId");
+
+  c4c::codegen::lir::LirModule mismatched_param_name = lir_module;
+  auto& mismatched_param_fn =
+      require_mutable_function(mismatched_param_name, "defined_pair", false);
+  mismatched_param_fn.signature_param_type_refs[0] =
+      mismatched_param_fn.signature_param_type_refs[0].with_struct_name_id(big_id);
+  expect_verify_rejects(
+      mismatched_param_name,
+      "verifier should reject a signature parameter with mismatched StructNameId");
+
+  c4c::codegen::lir::LirModule param_text_fallback = lir_module;
+  auto& fallback_param_fn =
+      require_mutable_function(param_text_fallback, "defined_pair", false);
+  fallback_param_fn.signature_text =
+      "define %struct.Pair @defined_pair(%struct.NotDeclared %p.input) {";
+  fallback_param_fn.signature_param_type_refs[0] =
+      c4c::codegen::lir::LirTypeRef::struct_type("%struct.StaleMirrorText",
+                                                 pair_id);
+  expect_verify_rejects(
+      param_text_fallback,
+      "verifier should reject signature parameter mirror text mismatch "
+      "without declared struct boundary");
+
+  c4c::codegen::lir::LirModule byval_text_fallback = lir_module;
+  require_mutable_function(byval_text_fallback, "declared_big", true)
+      .signature_param_type_refs[0] = c4c::codegen::lir::LirTypeRef("i8");
+  expect_verify_rejects(
+      byval_text_fallback,
+      "verifier should reject a byval signature parameter mirror text mismatch");
 
   c4c::codegen::lir::LirModule aggregate_param_module;
   c4c::codegen::lir::LirFunction aggregate_param_decl;
