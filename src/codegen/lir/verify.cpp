@@ -138,28 +138,79 @@ void verify_known_struct_type_ref_mirror(const LirModule& mod,
   }
 }
 
+void verify_declared_struct_type_ref_mirror(const LirModule& mod,
+                                            const LirTypeRef& mirror,
+                                            std::string_view field) {
+  if (mirror.kind() != LirTypeKind::Struct) {
+    fail_verify(field, "StructNameId mirror must be a struct type");
+  }
+  const std::string_view rendered_name =
+      mod.struct_names.spelling(mirror.struct_name_id());
+  if (rendered_name.empty()) {
+    fail_verify(field, "StructNameId mirror must resolve to a struct name");
+  }
+  if (!mod.find_struct_decl(mirror.struct_name_id())) {
+    fail_verify(field, "StructNameId mirror must resolve to a declared struct");
+  }
+}
+
+void verify_call_return_type_ref_mirror(const LirModule& mod,
+                                        const LirTypeRef& mirror) {
+  const std::string& shadow =
+      require_type_ref(mirror, "LirCallOp.return_type", true);
+  const StructNameId formatted_struct_name_id =
+      find_declared_struct_name_id(mod, shadow);
+
+  if (mirror.has_struct_name_id()) {
+    verify_declared_struct_type_ref_mirror(mod, mirror, "LirCallOp.return_type");
+    if (formatted_struct_name_id != kInvalidStructName) {
+      if (mirror.struct_name_id() != formatted_struct_name_id) {
+        fail_verify("LirCallOp.return_type",
+                    "return mirror StructNameId does not match call text");
+      }
+    }
+    return;
+  } else if (formatted_struct_name_id != kInvalidStructName) {
+    fail_verify("LirCallOp.return_type",
+                "known struct return type must carry matching StructNameId");
+  }
+
+  if (const auto mismatch =
+          type_ref_struct_name_mismatch_detail(mod.struct_names, mirror);
+      mismatch.has_value()) {
+    fail_verify("LirCallOp.return_type", *mismatch);
+  }
+}
+
 void verify_call_arg_type_ref_mirror(const LirModule& mod,
                                      const LirTypeRef& mirror,
                                      std::string_view formatted_type,
                                      size_t index) {
   const std::string& shadow =
-      require_module_type_ref(mod, mirror, "LirCallOp.arg_type_refs");
+      require_type_ref(mirror, "LirCallOp.arg_type_refs");
   const StructNameId formatted_struct_name_id =
       find_declared_struct_name_id(mod, formatted_type);
 
-  if (mirror.has_struct_name_id() &&
-      formatted_struct_name_id != kInvalidStructName &&
-      mirror.struct_name_id() != formatted_struct_name_id) {
-    std::ostringstream detail;
-    detail << "argument " << index
-           << " mirror StructNameId does not match call text";
-    fail_verify("LirCallOp.arg_type_refs", detail.str());
-  }
-
-  if (!mirror.has_struct_name_id() &&
-      formatted_struct_name_id != kInvalidStructName) {
+  if (mirror.has_struct_name_id()) {
+    verify_declared_struct_type_ref_mirror(mod, mirror, "LirCallOp.arg_type_refs");
+    if (formatted_struct_name_id != kInvalidStructName) {
+      if (mirror.struct_name_id() != formatted_struct_name_id) {
+        std::ostringstream detail;
+        detail << "argument " << index
+               << " mirror StructNameId does not match call text";
+        fail_verify("LirCallOp.arg_type_refs", detail.str());
+      }
+      return;
+    }
+  } else if (formatted_struct_name_id != kInvalidStructName) {
     fail_verify("LirCallOp.arg_type_refs",
                 "known struct argument type must carry matching StructNameId");
+  }
+
+  if (const auto mismatch =
+          type_ref_struct_name_mismatch_detail(mod.struct_names, mirror);
+      mismatch.has_value()) {
+    fail_verify("LirCallOp.arg_type_refs", *mismatch);
   }
 
   if (shadow != formatted_type) {
@@ -284,9 +335,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
   if (const auto* op = std::get_if<LirCallOp>(&inst)) {
     require_operand_kind(op->result, "LirCallOp.result",
                          {LirOperandKind::SsaValue}, true);
-    require_module_type_ref(mod, op->return_type, "LirCallOp.return_type", true);
-    verify_known_struct_type_ref_mirror(
-        mod, op->return_type, "LirCallOp.return_type", "return");
+    verify_call_return_type_ref_mirror(mod, op->return_type);
     verify_pointer_operand(op->callee, "LirCallOp.callee");
     if (!op->arg_type_refs.empty()) {
       const auto parsed = parse_lir_typed_call_or_infer_params(*op);

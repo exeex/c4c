@@ -97,6 +97,10 @@ struct Pair {
   int right;
 };
 
+struct Slot {
+  int value;
+};
+
 struct Pair make_pair(struct Pair input) {
   return input;
 }
@@ -135,6 +139,61 @@ int call_variadic(struct Pair tail) {
   expect_true(llvm_ir.find("call %struct.Pair (%struct.Pair) @make_pair(%struct.Pair ") !=
                   std::string::npos,
               "printer should keep using formatted call-site text");
+
+  const c4c::StructNameId pair_id = direct_call.return_type.struct_name_id();
+  const c4c::StructNameId slot_id = lir_module.struct_names.find("%struct.Slot");
+  expect_true(slot_id != c4c::kInvalidStructName,
+              "fixture should declare a second struct for mismatch checks");
+
+  c4c::codegen::lir::LirModule stale_return_text = lir_module;
+  c4c::codegen::lir::LirCallOp& stale_return_call =
+      require_call_to(require_function(stale_return_text, "call_pair"), "@make_pair");
+  stale_return_call.return_type.str() = "%struct.StaleMirrorText";
+  c4c::codegen::lir::verify_module(stale_return_text);
+
+  c4c::codegen::lir::LirModule stale_arg_text = lir_module;
+  c4c::codegen::lir::LirCallOp& stale_arg_call =
+      require_call_to(require_function(stale_arg_text, "call_pair"), "@make_pair");
+  stale_arg_call.arg_type_refs[0].str() = "%struct.StaleMirrorText";
+  c4c::codegen::lir::verify_module(stale_arg_text);
+
+  c4c::codegen::lir::LirModule mismatched_return_name = lir_module;
+  c4c::codegen::lir::LirCallOp& mismatched_return_call =
+      require_call_to(require_function(mismatched_return_name, "call_pair"), "@make_pair");
+  mismatched_return_call.return_type =
+      mismatched_return_call.return_type.with_struct_name_id(slot_id);
+  try {
+    c4c::codegen::lir::verify_module(mismatched_return_name);
+    fail("verifier should reject a call return with mismatched StructNameId");
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
+
+  c4c::codegen::lir::LirModule mismatched_arg_name = lir_module;
+  c4c::codegen::lir::LirCallOp& mismatched_arg_call =
+      require_call_to(require_function(mismatched_arg_name, "call_pair"), "@make_pair");
+  mismatched_arg_call.arg_type_refs[0] =
+      mismatched_arg_call.arg_type_refs[0].with_struct_name_id(slot_id);
+  try {
+    c4c::codegen::lir::verify_module(mismatched_arg_name);
+    fail("verifier should reject a call argument with mismatched StructNameId");
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
+
+  c4c::codegen::lir::LirModule arg_text_fallback = lir_module;
+  c4c::codegen::lir::LirCallOp& fallback_arg_call =
+      require_call_to(require_function(arg_text_fallback, "call_pair"), "@make_pair");
+  fallback_arg_call.args_str.replace(
+      fallback_arg_call.args_str.find("%struct.Pair"),
+      std::string("%struct.Pair").size(),
+      "%struct.NotDeclared");
+  fallback_arg_call.arg_type_refs[0] =
+      c4c::codegen::lir::LirTypeRef::struct_type("%struct.StaleMirrorText",
+                                                 pair_id);
+  try {
+    c4c::codegen::lir::verify_module(arg_text_fallback);
+    fail("verifier should reject call argument mirror text mismatch without declared struct boundary");
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
 
   c4c::codegen::lir::LirFunction& call_variadic =
       require_function(lir_module, "call_variadic");
