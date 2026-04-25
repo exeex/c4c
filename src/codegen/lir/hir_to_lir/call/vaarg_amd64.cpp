@@ -49,7 +49,7 @@ std::string StmtEmitter::emit_amd64_va_arg_from_overflow(
   emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), next_ptr, access.overflow_ptr_ptr});
 
   const std::string tmp_addr = fresh_tmp(ctx);
-  const int align = object_align_bytes(mod_, res_ts);
+  const int align = object_align_bytes(mod_, module_, res_ts);
   ctx.alloca_insts.push_back(lir::LirAllocaOp{tmp_addr, res_ty, "", align});
   module_->need_memcpy = true;
   emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, stack_ptr, std::to_string(size_bytes), false});

@@ -1,34 +1,37 @@
 Status: Active
 Source Idea Path: ideas/open/109_hir_to_lir_struct_layout_lookup_by_struct_name_id.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Prefer Structured Lookup For Constant Initializers
+Current Step ID: Step 6
+Current Step Title: Prefer Structured Lookup For Aggregate Call Handling
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 5 constant-initializer aggregate lookup migration.
-Struct and nested union byte-encoding initializer paths now call
-`lookup_structured_layout` through a `ConstInitEmitter` helper when resolving
-known struct/union `TypeSpec`s, while keeping the legacy `HirStructDef`
-authoritative for field order, default values, and rendered initializer text.
+Completed `plan.md` Step 6 aggregate call-handling lookup migration for the
+variadic aggregate call and `va_arg` layout paths.
+Variadic aggregate payload-size checks now route named struct/union `TypeSpec`s
+through `lookup_structured_layout`, while continuing to use the legacy
+`HirStructDef` size result for ABI decisions. Byval and amd64 `va_arg`
+alignment queries now use the `LirModule`-aware `object_align_bytes` overload,
+which attempts structured lookup when the `StructNameId` is known but still
+uses the legacy layout for the emitted call text and ABI alignment.
 
 ## Suggested Next
 
-Supervisor can review remaining constant-initializer aggregate callers, if any,
-or move Step 5 toward acceptance review.
+Supervisor can review whether Step 6 has any remaining aggregate call-layout
+families to migrate, or move the step toward acceptance review.
 
 ## Watchouts
 
-The migrated initializer helper intentionally returns `layout.legacy_decl`, so
-structured lookup is attempted when the `StructNameId` is known but initializer
-semantics still follow `TypeSpec::tag` / `mod.struct_defs`. This packet did not
-change emitted LLVM text or test expectations.
+The migrated call and `va_arg` paths intentionally consume
+`layout.legacy_decl` or existing amd64 ABI classifier results after structured
+lookup is attempted. This packet did not change emitted LLVM text or test
+expectations.
 
 ## Proof
 
 Delegated proof passed and wrote `test_after.log`:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|verify_tests_verify_empty_initializer|positive_sema_ok_expr_access_misc_runtime_c|llvm_gcc_c_torture_src_(struct_ini_[0-9]_c|strct_.*_c|zero_struct_[12]_c))'; } > test_after.log 2>&1`.
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|positive_sema_ok_call_variadic_aggregate_runtime_c|abi_abi_variadic_.*|llvm_gcc_c_torture_src_(strct_stdarg_1_c|strct_varg_1_c|struct_ret_[12]_c|va_arg_.*_c))'; } > test_after.log 2>&1`.
 
-The selected subset passed: 18/18 tests.
+The selected subset passed: 37/37 tests.

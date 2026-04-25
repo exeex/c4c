@@ -142,11 +142,14 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const
   if (!has_concrete_type(res_ts)) res_ts = resolve_expr_type(ctx, e);
   const std::string res_ty = llvm_ty(res_ts);
   if (res_ty == "void") return "";
-  if ((res_ts.base == TB_STRUCT || res_ts.base == TB_UNION) && res_ts.ptr_level == 0 &&
-      res_ts.array_rank == 0 && res_ts.tag && res_ts.tag[0]) {
-    const auto it = mod_.struct_defs.find(res_ts.tag);
-    if (it != mod_.struct_defs.end()) {
-      const HirStructDef& sd = it->second;
+  const bool is_named_aggregate =
+      (res_ts.base == TB_STRUCT || res_ts.base == TB_UNION) && res_ts.ptr_level == 0 &&
+      res_ts.array_rank == 0 && res_ts.tag && res_ts.tag[0];
+  StructuredLayoutLookup aggregate_layout;
+  if (is_named_aggregate) {
+    aggregate_layout = lookup_structured_layout(mod_, module_, res_ts);
+    if (aggregate_layout.legacy_decl) {
+      const HirStructDef& sd = *aggregate_layout.legacy_decl;
       int payload_sz = 0;
       if (sd.is_union) {
         for (const auto& f : sd.fields) {
@@ -258,11 +261,9 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const
     emit_lir_op(ctx, lir::LirLoadOp{out, res_ty, tmp_addr});
     return out;
   }
-  if ((res_ts.base == TB_STRUCT || res_ts.base == TB_UNION) && res_ts.ptr_level == 0 &&
-      res_ts.array_rank == 0 && res_ts.tag && res_ts.tag[0]) {
-    const auto it = mod_.struct_defs.find(res_ts.tag);
-    if (it != mod_.struct_defs.end()) {
-      const int payload_sz = it->second.size_bytes;
+  if (is_named_aggregate) {
+    if (aggregate_layout.legacy_decl) {
+      const int payload_sz = aggregate_layout.legacy_decl->size_bytes;
       if (payload_sz == 0) return "zeroinitializer";
       if (payload_sz > 0) {
         if (payload_sz > 16) {

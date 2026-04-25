@@ -164,8 +164,8 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
     out_arg_ts = arg_ts;
   }
   if (is_variadic_aggregate) {
-    const auto sit = mod_.struct_defs.find(arg_ts.tag);
-    const int payload_sz = sit == mod_.struct_defs.end() ? 0 : sit->second.size_bytes;
+    const StructuredLayoutLookup layout = lookup_structured_layout(mod_, module_, arg_ts);
+    const int payload_sz = layout.legacy_decl ? layout.legacy_decl->size_bytes : 0;
     if (payload_sz == 0) return {{}, true};
 
     std::string obj_ptr;
@@ -235,7 +235,7 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
       emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(out_arg_ts), arg, tmp_addr});
       obj_ptr = tmp_addr;
     }
-    const int align = std::max(8, object_align_bytes(mod_, out_arg_ts));
+    const int align = std::max(8, object_align_bytes(mod_, module_, out_arg_ts));
     PreparedCallArg out{{{"ptr byval(" + llvm_ty(out_arg_ts) + ") align " + std::to_string(align),
                           obj_ptr}},
                         false};
@@ -266,7 +266,7 @@ PreparedCallArg StmtEmitter::prepare_amd64_variadic_aggregate_arg(
     force_memory = true;
   }
   if (force_memory) {
-    const int align = std::max(8, object_align_bytes(mod_, arg_ts));
+    const int align = std::max(8, object_align_bytes(mod_, module_, arg_ts));
     out.args.push_back({"ptr byval(" + llvm_ty(arg_ts) + ") align " + std::to_string(align),
                         obj_ptr});
     return out;

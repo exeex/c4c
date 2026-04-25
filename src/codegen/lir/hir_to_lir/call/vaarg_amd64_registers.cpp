@@ -11,7 +11,7 @@ std::string StmtEmitter::emit_amd64_va_arg_from_registers(
     const llvm_cc::Amd64VarargInfo& layout, const Amd64VaListPtrs& access,
     const std::string& gp_offset, const std::string& fp_offset) {
   const int size_bytes = layout.size_bytes;
-  const int align = object_align_bytes(mod_, res_ts);
+  const int align = object_align_bytes(mod_, module_, res_ts);
 
   std::string gp_offset_i64;
   if (layout.gp_chunks > 0) {
