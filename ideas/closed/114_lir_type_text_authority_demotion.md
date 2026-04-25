@@ -1,8 +1,9 @@
 # LIR Type Text Authority Demotion
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
+Closed: 2026-04-25
 
 Parent Ideas:
 - [112_lir_backend_legacy_type_surface_readiness_audit.md](/workspaces/c4c/ideas/closed/112_lir_backend_legacy_type_surface_readiness_audit.md)
@@ -54,3 +55,26 @@ Use idea 112 as the source of truth. Candidate fields include:
 - Structured type refs or `StructNameId` are primary for the cleaned paths.
 - Legacy text remains where it is printer-only, bridge-required, or proof-only.
 - Focused plus broader validation passes without expectation downgrades.
+
+## Closure Notes
+
+Closed after the accepted verifier demotion packets completed the selected
+safe verifier surfaces:
+
+- `LirCallOp.return_type`
+- `LirCallOp.arg_type_refs`
+- `LirGlobal.llvm_type_ref`
+- `LirExternDecl.return_type`
+- `LirFunction.signature_return_type_ref`
+- `LirFunction.signature_param_type_refs`
+
+The cleaned verifier paths use structured identity first, while legacy rendered
+type text remains printer-only, bridge-required, fallback, or proof-only where
+needed. Raw `LirTypeRef` text equality/output semantics remain
+`type-ref-authority-blocked`, and backend/MIR legacy consumers remain outside
+this idea's scope.
+
+Close-scope validation used matching full-suite canonical logs at HEAD:
+`test_before.log` and `test_after.log` both reported `100% tests passed, 0
+tests failed out of 2980`. The regression guard passed with
+`--allow-non-decreasing-passed`.
