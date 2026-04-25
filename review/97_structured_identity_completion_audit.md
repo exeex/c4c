@@ -1,8 +1,8 @@
 # Idea 97 Structured Identity Completion Audit
 
-Status: Step 1 inventory in progress
+Status: Step 2 parser completion audit complete
 Source Idea: `ideas/open/97_structured_identity_completion_audit_and_hir_plan.md`
-Plan Step: Step 1 - Audit setup and inventory
+Plan Step: Step 2 - Parser completion audit
 
 ## Scope Guard
 
@@ -168,7 +168,41 @@ No build or test command was run; Step 1 proof is source inventory only.
 
 ## Parser Findings By Classification
 
-Step 1 inventory only. Step 2 should classify the parser surfaces above as `bridge-required`, `diagnostic-only`, `legacy-proof`, `parser-leftover`, or `blocked-by-downstream`.
+### bridge-required
+
+- Rendered-name bridge output remains required where parser APIs must return compatibility spellings for existing string consumers. Evidence: `src/frontend/parser/impl/core.cpp:230` `render_structured_name`, `src/frontend/parser/impl/core.cpp:239` `render_value_binding_name`, and `src/frontend/parser/impl/core.cpp:249` `render_lookup_name_in_context` render `QualifiedNameKey` back to text before falling through to `compatibility_namespace_name_in_context`; `src/shared/qualified_name_table.hpp:120` `render_qualified_name` is the shared renderer. These are bridges, not semantic lookup owners.
+- Using-declaration import still materializes bridge strings while preserving structured identity. Evidence: `src/frontend/parser/impl/declarations.cpp:1638` builds `imported_value_key`, `src/frontend/parser/impl/declarations.cpp:1642` renders it with `render_qualified_name`, and `src/frontend/parser/impl/declarations.cpp:1688` registers the compatibility binding when the imported value has a type.
+- Template primary/specialization registration still mirrors rendered names for legacy consumers. Evidence: `src/frontend/parser/impl/types/template.cpp:288` stores `template_struct_defs_by_key`, while `src/frontend/parser/impl/types/template.cpp:294` and `src/frontend/parser/impl/types/template.cpp:299` also store `template_struct_defs` by fallback and bridge names; specialization mirrors appear at `src/frontend/parser/impl/types/template.cpp:317` and `src/frontend/parser/impl/types/template.cpp:324`.
+
+### diagnostic-only
+
+- Parser mismatch counters are audit/proof telemetry rather than lookup dependencies. Evidence: `src/frontend/parser/impl/parser_state.hpp:165` `template_struct_instantiation_key_mismatch_count` and `src/frontend/parser/impl/parser_state.hpp:171` `nttp_default_expr_cache_mismatch_count`; increments are limited to comparison paths at `src/frontend/parser/impl/types/template.cpp:56`, `src/frontend/parser/impl/types/template.cpp:1158`, `src/frontend/parser/impl/types/template.cpp:1180`, and `src/frontend/parser/impl/types/base.cpp:103`.
+- `VisibleNameResult::compatibility_spelling` output is diagnostic/bridge text once `VisibleNameResult::key` is present. Evidence: value resolution fills key plus compatibility spelling in `src/frontend/parser/impl/core.cpp:2870` through `src/frontend/parser/impl/core.cpp:2897`, and using aliases do the same in `src/frontend/parser/impl/core.cpp:2834` through `src/frontend/parser/impl/core.cpp:2844`.
+
+### legacy-proof
+
+- Value binding lookup is structured-first for namespace/global paths and TextId-native for locals, with legacy string/symbol mirrors retained for comparison and compatibility. Evidence: `src/frontend/parser/impl/parser_state.hpp:74` `ParserBindingState::value_bindings`, `src/frontend/parser/impl/core.cpp:1213` `find_structured_var_type`, `src/frontend/parser/impl/core.cpp:1220` `find_visible_var_type`, and `src/frontend/parser/impl/core.cpp:1278` `register_structured_var_type_binding`. Local values use `LocalNameTable` through `src/frontend/parser/impl/core.cpp:791` `bind_local_value` and `src/frontend/parser/impl/core.cpp:807` `find_local_visible_var_type`.
+- The remaining value string lookup APIs are compatibility fallback once structured spelling recovery fails or the caller only has text. Evidence: `src/frontend/parser/impl/core.cpp:1152` `has_var_type`, `src/frontend/parser/impl/core.cpp:1166` `find_var_type(TextId, fallback)`, `src/frontend/parser/impl/core.cpp:1189` `find_var_type(std::string)`, and `src/frontend/parser/impl/core.cpp:262` `cache_legacy_var_type_binding`.
+- Using value aliases now carry structured target identity plus a compatibility name. Evidence: `src/frontend/parser/impl/parser_state.hpp:228` `UsingValueAlias` stores `target_key` and `compatibility_name`; `src/frontend/parser/impl/declarations.cpp:1693` stores `{imported_alias_key, imported_value_name}`; `src/frontend/parser/impl/core.cpp:2815` `lookup_using_value_alias` resolves the `target_key` first and only falls back to the compatibility name when needed.
+- NTTP default cache keys are structured-first when the template name has a `TextId`, with legacy cache entries used for fallback and mismatch proof. Evidence: `src/frontend/parser/impl/parser_state.hpp:92` `NttpDefaultExprKey`, `src/frontend/parser/impl/parser_state.hpp:166` `nttp_default_expr_tokens_by_key`, `src/frontend/parser/impl/types/template.cpp:1131` through `src/frontend/parser/impl/types/template.cpp:1166` requiring structured tokens when `template_text_id` is valid, and `src/frontend/parser/impl/types/template.cpp:1200` `cache_nttp_default_expr_tokens` populating both structured and legacy caches.
+- Template instantiation dedup keys are structured-first for parser-owned dedup, with rendered keys mirrored to keep old emit paths synchronized. Evidence: `src/frontend/parser/impl/parser_state.hpp:112` `TemplateInstantiationKey`, `src/frontend/parser/impl/parser_state.hpp:162` `instantiated_template_struct_keys_by_key`, `src/frontend/parser/impl/types/template.cpp:41` `sync_template_instantiation_dedup_keys`, `src/frontend/parser/impl/types/template.cpp:66` `mark_template_instantiation_dedup_keys`, and the direct-emit variants in `src/frontend/parser/impl/types/base.cpp:89` and `src/frontend/parser/impl/types/base.cpp:114`.
+
+### parser-leftover
+
+- Public parser-support helper overloads still expose string-keyed maps and should be reviewed as parser cleanup candidates once downstream tag identity work is scoped. Evidence: `src/frontend/parser/parser_support.hpp:19` `eval_const_int(... std::unordered_map<std::string, long long>*)`, `src/frontend/parser/parser_support.hpp:23` `resolve_typedef_chain(... std::unordered_map<std::string, TypeSpec>&)`, and `src/frontend/parser/parser_support.hpp:25` `types_compatible_p(... std::unordered_map<std::string, TypeSpec>&)`.
+- The string-keyed const-int helper overload remains a real string lookup path for `NK_VAR` by `n->name`. Evidence: `src/frontend/parser/impl/support.cpp:712` `eval_const_int` string overload and `src/frontend/parser/impl/support.cpp:720` through `src/frontend/parser/impl/support.cpp:727` map lookup by `n->name`. The TextId overload at `src/frontend/parser/impl/support.cpp:631` and `src/frontend/parser/impl/support.cpp:639` is the structured replacement surface, so this is parser cleanup rather than downstream blocking.
+
+### blocked-by-downstream
+
+- Parser struct/tag maps and `TypeSpec::tag` outputs are rendered-name bridges required by HIR/codegen-era type identity. Evidence: `src/frontend/parser/impl/parser_state.hpp:84` `struct_tag_def_map`, `src/frontend/parser/impl/types/struct.cpp:2287` storing both `source_tag` and canonical `sd->name`, and `src/frontend/parser/impl/types/template.cpp:376`, `src/frontend/parser/impl/types/template.cpp:393`, and `src/frontend/parser/impl/types/base.cpp:3213` registering instantiated template structs by mangled tag.
+- ABI/layout helper paths still need rendered struct tags until HIR/type identity owns a non-string struct key. Evidence: `src/frontend/parser/impl/support.cpp:517` `struct_align`, `src/frontend/parser/impl/support.cpp:536` `struct_sizeof`, and `src/frontend/parser/impl/support.cpp:565` `compute_offsetof` all take `const char* tag` plus `std::unordered_map<std::string, Node*>`.
+- Template instantiation output must still produce rendered/mangled tags for `TypeSpec::tag`. Evidence: `src/frontend/parser/impl/types/template.cpp:361` `build_template_struct_mangled_name`, `src/frontend/parser/impl/types/template.cpp:385` assigning `out_resolved->tag`, `src/frontend/parser/impl/types/base.cpp:2581` through `src/frontend/parser/impl/types/base.cpp:2584` setting pending template origin/debug refs and `ts.tag`, and `src/frontend/parser/impl/types/base.cpp:3216` assigning instantiated `ts.tag`.
+
+### Step 2 Handoff
+
+- No parser value-binding or using-value-alias surface found after idea 95 requires a new parser semantic lookup route; they are structured-first with legacy proof/bridge fallback.
+- Meaningful parser leftovers are limited to public helper overloads that still accept string maps for const-int and typedef-chain/type-compatibility support.
+- Rendered struct/tag/template names are blocked by downstream HIR/type/codegen identity and should be kept separate from parser/sema completion work.
 
 ## Sema Findings By Classification
 
