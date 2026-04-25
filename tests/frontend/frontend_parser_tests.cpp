@@ -1453,6 +1453,112 @@ void test_parser_global_using_value_import_keeps_global_target_resolution() {
             "global using-import lookup should keep the global target spelling instead of introducing a leading scope bridge");
 }
 
+void test_parser_namespace_value_lookup_demotes_legacy_rendered_name_bridges() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec legacy_ts{};
+  legacy_ts.array_size = -1;
+  legacy_ts.inner_rank = -1;
+  legacy_ts.base = c4c::TB_SHORT;
+
+  const c4c::TextId ns_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text, "ns");
+  const c4c::TextId value_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "LegacyOnlyValue");
+  const c4c::TextId qualified_value_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText,
+                                      "ns::LegacyOnlyValue");
+  parser.binding_state_.non_atom_var_types[qualified_value_text] = legacy_ts;
+
+  std::string resolved;
+  expect_true(!parser.lookup_value_in_context(ns_context, value_text,
+                                              "LegacyOnlyValue", &resolved),
+              "namespace value lookup should not promote legacy-only rendered names when a valid TextId lookup misses structured storage");
+  resolved.clear();
+  expect_true(parser.lookup_value_in_context(ns_context, c4c::kInvalidText,
+                                             "LegacyOnlyValue", &resolved) &&
+                  resolved == "ns::LegacyOnlyValue",
+              "namespace value lookup should preserve TextId-less rendered-name compatibility");
+
+  c4c::Parser::QualifiedNameRef qn;
+  qn.qualifier_segments.push_back("ns");
+  qn.qualifier_text_ids.push_back(ns_text);
+  qn.base_name = "LegacyOnlyValue";
+  qn.base_text_id = value_text;
+  expect_true(!parser.resolve_qualified_value(qn),
+              "qualified value resolution should not promote legacy-only rendered names for valid TextIds");
+  qn.base_text_id = c4c::kInvalidText;
+  expect_eq(parser.resolve_qualified_value_name(qn), "ns::LegacyOnlyValue",
+            "qualified value resolution should preserve explicit TextId-less compatibility");
+
+  parser.namespace_state_.using_namespace_contexts[0].push_back(ns_context);
+  resolved.clear();
+  expect_true(!parser.lookup_value_in_context(0, value_text,
+                                              "LegacyOnlyValue", &resolved),
+              "namespace-import value lookup should not promote imported legacy-only rendered names for valid TextIds");
+  resolved.clear();
+  expect_true(parser.lookup_value_in_context(0, c4c::kInvalidText,
+                                             "LegacyOnlyValue", &resolved) &&
+                  resolved == "ns::LegacyOnlyValue",
+              "namespace-import value lookup should preserve TextId-less imported compatibility");
+}
+
+void test_parser_using_value_alias_keeps_compatibility_spelling_without_gate() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec rendered_ts{};
+  rendered_ts.array_size = -1;
+  rendered_ts.inner_rank = -1;
+  rendered_ts.base = c4c::TB_SHORT;
+  const c4c::Parser::SymbolId rendered_symbol =
+      parser.parser_symbol_tables().intern_identifier("RenderedTarget");
+  parser.parser_symbol_tables().var_types[rendered_symbol] = rendered_ts;
+
+  const c4c::TextId alias_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
+  parser.register_using_value_alias_for_testing(
+      0, alias_text, parser.intern_semantic_name_key("RenderedTarget"),
+      "corrupted");
+
+  const c4c::TypeSpec* rendered_alias =
+      parser.find_visible_var_type("Alias");
+  expect_true(rendered_alias != nullptr &&
+                  rendered_alias->base == c4c::TB_SHORT,
+              "using value aliases should keep string-facing rendered-target compatibility without a lookup gate");
+  expect_eq(parser.resolve_visible_value_name("Alias"), "RenderedTarget",
+            "using value aliases should still report the structured target spelling");
+
+  c4c::TypeSpec explicit_ts{};
+  explicit_ts.array_size = -1;
+  explicit_ts.inner_rank = -1;
+  explicit_ts.base = c4c::TB_DOUBLE;
+  const c4c::Parser::SymbolId explicit_symbol =
+      parser.parser_symbol_tables().intern_identifier("ExplicitBridge");
+  parser.parser_symbol_tables().var_types[explicit_symbol] = explicit_ts;
+
+  const c4c::TextId compat_alias_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "CompatAlias");
+  parser.register_using_value_alias_for_testing(
+      0, compat_alias_text, c4c::QualifiedNameKey{}, "ExplicitBridge");
+
+  std::string resolved;
+  expect_true(parser.lookup_using_value_alias(0, compat_alias_text,
+                                             "CompatAlias", &resolved) &&
+                  resolved == "ExplicitBridge",
+              "using value aliases should preserve explicit compatibility-name resolution");
+  const c4c::TypeSpec* compat_alias =
+      parser.find_visible_var_type("CompatAlias");
+  expect_true(compat_alias != nullptr && compat_alias->base == c4c::TB_DOUBLE,
+              "using value aliases should keep explicit compatibility-name value lookup");
+}
+
 void test_parser_using_value_alias_prefers_structured_target_type() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -3121,6 +3227,8 @@ int main() {
   test_parser_using_value_import_keeps_structured_target_key();
   test_parser_using_value_import_prefers_structured_type_over_corrupt_rendered_name();
   test_parser_global_using_value_import_keeps_global_target_resolution();
+  test_parser_namespace_value_lookup_demotes_legacy_rendered_name_bridges();
+  test_parser_using_value_alias_keeps_compatibility_spelling_without_gate();
   test_parser_using_value_alias_prefers_structured_target_type();
   test_parser_using_value_alias_respects_local_shadowing();
   test_parser_visible_value_alias_resolves_scope_local_target_type();

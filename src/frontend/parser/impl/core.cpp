@@ -2834,7 +2834,6 @@ bool Parser::lookup_using_value_alias(int context_id, TextId name_text_id,
     if (alias.target_key.base_text_id != kInvalidText) {
         if (has_known_fn_name(alias.target_key)) return true;
         if (find_structured_var_type(alias.target_key)) return true;
-        if (!spelling.empty() && has_var_type(spelling)) return true;
     }
     return !spelling.empty();
 }
@@ -2886,18 +2885,6 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
         return true;
     }
 
-    const std::string structured_candidate =
-        render_value_binding_name(*this, candidate_key);
-    if (!structured_candidate.empty() && has_var_type(structured_candidate)) {
-        resolved->found = true;
-        resolved->kind = VisibleNameKind::Value;
-        resolved->key = candidate_key;
-        resolved->base_text_id = candidate_key.base_text_id;
-        resolved->context_id = context_id;
-        resolved->source = VisibleNameSource::Namespace;
-        resolved->compatibility_spelling = structured_candidate;
-        return true;
-    }
     const std::string fallback_name(name);
     if (context_id == 0) {
         const QualifiedNameKey global_key =
@@ -2964,7 +2951,7 @@ bool Parser::lookup_value_in_context(int context_id, TextId name_text_id,
         resolved->compatibility_spelling = candidate;
         return true;
     }
-    if (has_var_type(candidate)) {
+    if (name_text_id == kInvalidText && has_var_type(candidate)) {
         resolved->found = true;
         resolved->kind = VisibleNameKind::Value;
         resolved->key = candidate_key;
