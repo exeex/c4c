@@ -406,6 +406,8 @@ class Parser {
   bool has_known_fn_name(const QualifiedNameKey& key) const;
   void register_known_fn_name(const std::string& name);
   void register_known_fn_name(const QualifiedNameKey& key);
+  void register_known_fn_name_in_context(int context_id, TextId name_text_id,
+                                         std::string_view fallback_name);
   bool has_structured_concept_name(const QualifiedNameKey& key) const;
   void register_concept_name_in_context(int context_id, TextId name_text_id,
                                         std::string_view fallback_name);

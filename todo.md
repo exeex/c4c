@@ -8,36 +8,35 @@ Current Step Title: Prefer ID-First Parser Helpers
 
 ## Just Finished
 
-Step 6 - Prefer ID-First Parser Helpers started with a focused parser-owned
-helper migration. `register_typedef_name`, `register_typedef_binding`, and
-`register_var_type_binding` now expose `TextId`/spelling overloads, while the
-existing string overloads remain compatibility bridges that delegate to the
-ID-first forms.
+Step 6 - Prefer ID-First Parser Helpers continued by migrating a narrow
+known-function registration family. `register_known_fn_name_in_context` now
+registers from declaration context plus `TextId`/fallback spelling, and the
+existing string/`QualifiedNameKey` overloads remain compatibility bridges.
 
-Parser declaration call sites that already receive declarator `TextId`s now use
-the ID-first typedef registration path. Simple unqualified global variable
-registration now uses the ID-first value registration path when the registered
-name is the declarator spelling; qualified/bridged names stay on the legacy
-string bridge.
+Using-import known-function aliases and simple unqualified parsed function
+declarations now use the context-plus-`TextId` helper where those carriers are
+already available. Qualified operator/constructor names and qualified
+declarator bridge names intentionally stay on rendered-string registration.
 
-Focused parser coverage now proves the ID-first typedef and value helpers prefer
-the `TextId` carrier over a mismatched fallback spelling and still populate the
-structured value table.
+Focused parser coverage now proves known-function ID-first registration prefers
+the `TextId` carrier over a mismatched fallback spelling while preserving string
+lookup for the rendered namespace-qualified name.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 6 by migrating another narrow group of
-parser-owned helper call sites where a `QualifiedNameKey` or context plus
-`TextId` is already available, especially using-import or known-function paths
-that can preserve their current compatibility bridge behavior.
+Next coherent packet: continue Step 6 by migrating another parser-owned helper
+family where call sites already carry a `QualifiedNameKey` or context plus
+`TextId`, without changing rendered-only bridge behavior.
 
 ## Watchouts
 
 - Qualified or bridge-rendered variable registrations were intentionally left
   on string compatibility overloads unless the declarator spelling exactly
   matched the registered name.
-- The string overloads still intern/populate through the same compatibility
-  tables; this packet did not delete or demote any bridge API.
+- Qualified operator/constructor known-function registrations and qualified
+  declarator bridge names were intentionally left on the string overload.
+- The string and `QualifiedNameKey` known-function overloads remain available;
+  this packet did not delete or demote any bridge API.
 
 ## Proof
 

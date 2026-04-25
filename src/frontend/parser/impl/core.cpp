@@ -1232,6 +1232,17 @@ void Parser::register_known_fn_name(const std::string& name) {
         *this, 0, parser_text_id_for_token(kInvalidText, name), name));
 }
 
+void Parser::register_known_fn_name_in_context(int context_id,
+                                               TextId name_text_id,
+                                               std::string_view fallback_name) {
+    if (fallback_name.find("::") != std::string_view::npos) {
+        register_known_fn_name(std::string(fallback_name));
+        return;
+    }
+    register_known_fn_name(qualified_key_in_context(
+        *this, context_id, name_text_id, fallback_name, true));
+}
+
 bool Parser::has_structured_concept_name(const QualifiedNameKey& key) const {
     return key.base_text_id != kInvalidText &&
            binding_state_.concept_qualified_names.count(key) > 0;

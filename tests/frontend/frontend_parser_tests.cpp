@@ -192,10 +192,18 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
       parser.parser_text_id_for_token(c4c::kInvalidText, "IdFirstType");
   const c4c::TextId value_id =
       parser.parser_text_id_for_token(c4c::kInvalidText, "idFirstValue");
+  const c4c::TextId ns_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "idFirstNs");
+  const c4c::TextId fn_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "idFirstFn");
+  const int ns_context =
+      parser.ensure_named_namespace_context(0, ns_id, "wrong_ns_fallback");
 
   parser.register_typedef_binding(typedef_id, "wrong_type_fallback",
                                   typedef_ts, true);
   parser.register_var_type_binding(value_id, "wrong_value_fallback", var_ts);
+  parser.register_known_fn_name_in_context(ns_context, fn_id,
+                                           "wrong_fn_fallback");
 
   expect_true(parser.has_typedef_type("IdFirstType"),
               "ID-first typedef registration should use the TextId spelling");
@@ -214,6 +222,11 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
                   parser.find_structured_var_type(value_key)->base ==
                       c4c::TB_LONG,
               "structured value storage should agree with the ID-first registration");
+
+  expect_true(parser.has_known_fn_name("idFirstNs::idFirstFn"),
+              "ID-first known-function registration should use the TextId spelling");
+  expect_true(!parser.has_known_fn_name("idFirstNs::wrong_fn_fallback"),
+              "ID-first known-function registration should not prefer fallback spelling");
 }
 
 void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {

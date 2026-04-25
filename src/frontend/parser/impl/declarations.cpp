@@ -1676,8 +1676,8 @@ Node* parse_top_level(Parser& parser) {
         {
             if (imported_var) parser.register_var_type_binding(imported_key, *imported_var);
             if (parser.has_known_fn_name(imported_value_key)) {
-                parser.register_known_fn_name(parser.known_fn_name_key_in_context(
-                    using_context_id, target_name.base_text_id, imported_name));
+                parser.register_known_fn_name_in_context(
+                    using_context_id, target_name.base_text_id, imported_name);
             }
             parser.namespace_state_.using_value_aliases[using_context_id]
                                                [target_name.base_text_id] = {
@@ -3274,6 +3274,16 @@ top_level_base_ready:
 
     const char* scoped_decl_name =
         parser.qualify_name_arena(decl_name_text_id, decl_name);
+    auto register_decl_known_fn_name = [&]() {
+        if (decl_name && std::string_view(decl_name).find("::") ==
+                             std::string_view::npos) {
+            parser.register_known_fn_name_in_context(
+                parser.current_namespace_context_id(), decl_name_text_id,
+                decl_name);
+            return;
+        }
+        parser.register_known_fn_name(scoped_decl_name);
+    };
 
     // Handle function-returning-fptr: int (* f1(a, b))(c, d) { body }
     // Params were already parsed into fptr_fn_params; now look for { body }.
@@ -3309,7 +3319,7 @@ top_level_base_ready:
             fn->ret_fn_ptr_params   = decl_fn_ptr_params;
             fn->n_ret_fn_ptr_params = decl_n_fn_ptr_params;
             fn->ret_fn_ptr_variadic = decl_fn_ptr_variadic;
-            parser.register_known_fn_name(scoped_decl_name);
+            register_decl_known_fn_name();
             restore_owner_scope();
             return fn;
         }
@@ -3338,7 +3348,7 @@ top_level_base_ready:
         fn->ret_fn_ptr_params   = decl_fn_ptr_params;
         fn->n_ret_fn_ptr_params = decl_n_fn_ptr_params;
         fn->ret_fn_ptr_variadic = decl_fn_ptr_variadic;
-        parser.register_known_fn_name(scoped_decl_name);
+        register_decl_known_fn_name();
         restore_owner_scope();
         return fn;
     }
@@ -3521,7 +3531,7 @@ top_level_base_ready:
             }
             propagate_ret_fn_ptr(fn);
             attach_spec_args(fn);
-            parser.register_known_fn_name(scoped_decl_name);
+            register_decl_known_fn_name();
             restore_owner_scope();
             return fn;
         }
@@ -3552,7 +3562,7 @@ top_level_base_ready:
         }
         propagate_ret_fn_ptr(fn);
         attach_spec_args(fn);
-        parser.register_known_fn_name(scoped_decl_name);
+        register_decl_known_fn_name();
         restore_owner_scope();
         return fn;
     }
