@@ -5,8 +5,8 @@ Created: 2026-04-25
 Last Updated: 2026-04-25
 
 Parent Ideas:
-- [112_lir_backend_legacy_type_surface_readiness_audit.md](/workspaces/c4c/ideas/open/112_lir_backend_legacy_type_surface_readiness_audit.md)
-- [113_backend_struct_decl_layout_table_dual_path.md](/workspaces/c4c/ideas/open/113_backend_struct_decl_layout_table_dual_path.md)
+- [112_lir_backend_legacy_type_surface_readiness_audit.md](/workspaces/c4c/ideas/closed/112_lir_backend_legacy_type_surface_readiness_audit.md)
+- [113_backend_struct_decl_layout_table_dual_path.md](/workspaces/c4c/ideas/closed/113_backend_struct_decl_layout_table_dual_path.md)
 
 ## Goal
 
