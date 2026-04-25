@@ -146,9 +146,12 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const
       (res_ts.base == TB_STRUCT || res_ts.base == TB_UNION) && res_ts.ptr_level == 0 &&
       res_ts.array_rank == 0 && res_ts.tag && res_ts.tag[0];
   StructuredLayoutLookup aggregate_layout;
+  std::optional<int> aggregate_payload_sz;
   if (is_named_aggregate) {
     aggregate_layout = lookup_structured_layout(mod_, module_, res_ts, "va_arg-aggregate");
-    if (aggregate_layout.legacy_decl) {
+    aggregate_payload_sz =
+        structured_layout_size_bytes(mod_, module_, aggregate_layout);
+    if (!aggregate_payload_sz && aggregate_layout.legacy_decl) {
       const HirStructDef& sd = *aggregate_layout.legacy_decl;
       int payload_sz = 0;
       if (sd.is_union) {
@@ -158,7 +161,10 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const
       } else {
         payload_sz = sd.size_bytes;
       }
-      if (payload_sz == 0) return "zeroinitializer";
+      aggregate_payload_sz = payload_sz;
+    }
+    if (aggregate_payload_sz && *aggregate_payload_sz == 0) {
+      return "zeroinitializer";
     }
   }
   if (llvm_va_list_is_pointer_object(mod_.target_profile)) {
@@ -262,8 +268,8 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const
     return out;
   }
   if (is_named_aggregate) {
-    if (aggregate_layout.legacy_decl) {
-      const int payload_sz = aggregate_layout.legacy_decl->size_bytes;
+    if (aggregate_payload_sz) {
+      const int payload_sz = *aggregate_payload_sz;
       if (payload_sz == 0) return "zeroinitializer";
       if (payload_sz > 0) {
         if (payload_sz > 16) {

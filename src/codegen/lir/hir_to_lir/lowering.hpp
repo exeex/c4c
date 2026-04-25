@@ -296,6 +296,9 @@ StructuredLayoutLookup lookup_structured_layout(const Module& mod,
 std::optional<int> structured_layout_align_bytes(const Module& mod,
                                                  const LirModule* lir_module,
                                                  const StructuredLayoutLookup& layout);
+std::optional<int> structured_layout_size_bytes(const Module& mod,
+                                                const LirModule* lir_module,
+                                                const StructuredLayoutLookup& layout);
 
 struct Aarch64HomogeneousFpAggregateInfo {
   std::string elem_ty;

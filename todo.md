@@ -8,26 +8,29 @@ Current Step Title: Add Structured-First Layout Access Helpers
 
 ## Just Finished
 
-Step 2 helper target completed: added
-`stmt_emitter_detail::structured_layout_align_bytes` as a reusable
-structured-first alignment accessor. It derives aggregate alignment from
-`LirStructDecl` field type refs only when structured coverage exists, legacy
-field parity was checked and matched, the aggregate is not a union, and the
-derived alignment matches the legacy alignment. Otherwise it returns
-`std::nullopt` so callers keep legacy/default fallback behavior.
+Step 2 / Step 4 structured payload-size target completed: added
+`stmt_emitter_detail::structured_layout_size_bytes` as a reusable
+structured-first aggregate size accessor. It derives size from `LirStructDecl`
+field type refs only when structured coverage exists, legacy field parity was
+checked and matched, and the derived size agrees with legacy
+`HirStructDef::size_bytes`; otherwise it returns `std::nullopt` so callers keep
+legacy fallback behavior.
 
-Converted active `legacy_decl` authority sites:
-- `src/codegen/lir/hir_to_lir/core.cpp` `stmt-object-align`
-  `object_align_bytes`: now prefers the structured helper and falls back to
-  `layout.legacy_decl->align_bytes` only when the helper declines coverage.
-- `src/codegen/lir/hir_to_lir/hir_to_lir.cpp` `module-object-align`
-  `object_align_bytes`: same structured-first helper plus legacy fallback.
+Converted active aggregate payload-size sites:
+- `src/codegen/lir/hir_to_lir/call/args.cpp` `variadic-aggregate-arg`: now
+  prefers `structured_layout_size_bytes` and falls back to
+  `layout.legacy_decl->size_bytes` only when the helper declines coverage.
+- `src/codegen/lir/hir_to_lir/call/vaarg.cpp` `va_arg-aggregate`: now computes
+  one aggregate payload size via the structured helper first and reuses it for
+  zero-sized aggregate handling and AArch64 aggregate payload copies, falling
+  back to the prior legacy union/non-union payload logic when structured size
+  is unavailable.
 
 ## Suggested Next
 
-Next coherent packet should decide whether to extend the same guarded helper
-pattern to aggregate payload sizing or move to one of the Step 3 field lookup
-paths that already has structured identity available.
+Next coherent packet should move to Step 3 field lookup paths that already have
+structured identity available, while preserving legacy fallback for incomplete
+structured coverage.
 
 ## Watchouts
 
@@ -38,12 +41,11 @@ paths that already has structured identity available.
 - `structured_layout_align_bytes` intentionally rejects unions because the
   current structured union mirror is `[N x i8]` and does not encode union
   member alignment.
-- Alignment derivation remains conservative for unknown raw LLVM type text,
-  missing nested `LirStructDecl`s, parity absence, parity mismatch, or derived
-  alignment mismatch; those cases continue to use legacy fallback.
-- Deferred active size/align authority: variadic aggregate payload sizing and
-  `va_arg` aggregate payload sizing still need structured size metadata or a
-  similarly guarded structured-size derivation before demotion.
+- Size derivation remains conservative for unknown raw LLVM type text, missing
+  nested `LirStructDecl`s, parity absence, parity mismatch, or derived-size
+  mismatch; those cases continue to use legacy fallback.
+- `structured_layout_size_bytes` allows zero as a valid structured result so
+  zero-sized aggregate skip/zeroinitializer behavior remains explicit.
 
 ## Proof
 

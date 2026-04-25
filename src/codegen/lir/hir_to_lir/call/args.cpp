@@ -166,7 +166,11 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
   if (is_variadic_aggregate) {
     const StructuredLayoutLookup layout =
         lookup_structured_layout(mod_, module_, arg_ts, "variadic-aggregate-arg");
-    const int payload_sz = layout.legacy_decl ? layout.legacy_decl->size_bytes : 0;
+    const std::optional<int> structured_payload_sz =
+        structured_layout_size_bytes(mod_, module_, layout);
+    const int payload_sz =
+        structured_payload_sz ? *structured_payload_sz
+                              : (layout.legacy_decl ? layout.legacy_decl->size_bytes : 0);
     if (payload_sz == 0) return {{}, true};
 
     std::string obj_ptr;

@@ -139,6 +139,30 @@ static std::optional<int> structured_decl_align_bytes(const Module& mod,
   return align;
 }
 
+static std::optional<int> structured_decl_size_bytes(const Module& mod,
+                                                     const LirModule* lir_module,
+                                                     const LirStructDecl& decl,
+                                                     int depth) {
+  if (depth > 32 || decl.is_opaque) return std::nullopt;
+  int offset = 0;
+  for (const auto& field : decl.fields) {
+    const std::optional<int> field_align =
+        structured_type_align_bytes(mod, lir_module, field.type, depth + 1);
+    const std::optional<int> field_size =
+        structured_type_size_bytes(mod, lir_module, field.type, depth + 1);
+    if (!field_align || !field_size) return std::nullopt;
+    if (!decl.is_packed) {
+      offset = align_to_bytes(offset, *field_align);
+    }
+    offset += *field_size;
+  }
+  if (decl.is_packed) return offset;
+  const std::optional<int> decl_align =
+      structured_decl_align_bytes(mod, lir_module, decl, depth + 1);
+  if (!decl_align) return std::nullopt;
+  return align_to_bytes(offset, *decl_align);
+}
+
 static std::optional<int> structured_type_size_bytes(const Module& mod,
                                                      const LirModule* lir_module,
                                                      const LirTypeRef& type,
@@ -177,20 +201,7 @@ static std::optional<int> structured_type_size_bytes(const Module& mod,
     case LirTypeKind::Struct: {
       const auto decl = find_structured_field_decl(lir_module, type);
       if (!decl) return std::nullopt;
-      int offset = 0;
-      for (const auto& field : (*decl)->fields) {
-        const std::optional<int> field_align =
-            structured_type_align_bytes(mod, lir_module, field.type, depth + 1);
-        const std::optional<int> field_size =
-            structured_type_size_bytes(mod, lir_module, field.type, depth + 1);
-        if (!field_align || !field_size) return std::nullopt;
-        offset = align_to_bytes(offset, *field_align);
-        offset += *field_size;
-      }
-      const std::optional<int> decl_align =
-          structured_decl_align_bytes(mod, lir_module, **decl, depth + 1);
-      if (!decl_align) return std::nullopt;
-      return align_to_bytes(offset, *decl_align);
+      return structured_decl_size_bytes(mod, lir_module, **decl, depth + 1);
     }
     default:
       return std::nullopt;
@@ -249,6 +260,21 @@ std::optional<int> structured_layout_align_bytes(const Module& mod,
   const int legacy_align = std::max(1, layout.legacy_decl->align_bytes);
   if (*align != legacy_align) return std::nullopt;
   return *align;
+}
+
+std::optional<int> structured_layout_size_bytes(const Module& mod,
+                                                const LirModule* lir_module,
+                                                const StructuredLayoutLookup& layout) {
+  if (!layout.structured_decl || !layout.legacy_decl ||
+      !layout.structured_parity_checked || !layout.structured_parity_matches) {
+    return std::nullopt;
+  }
+  const std::optional<int> size =
+      structured_decl_size_bytes(mod, lir_module, *layout.structured_decl, 0);
+  if (!size || *size < 0) return std::nullopt;
+  const int legacy_size = std::max(0, layout.legacy_decl->size_bytes);
+  if (*size != legacy_size) return std::nullopt;
+  return *size;
 }
 
 static void record_structured_layout_observation(
