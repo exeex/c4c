@@ -1,35 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/09_bir-call-signature-and-abi-family-extraction.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Move function signature and parameter helpers
+Current Step ID: Step 4
+Current Step Title: Prove call-family behavior did not change
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 moved the accepted function signature and parameter helper cluster from
-`calling.cpp` into `call_abi.cpp`: `is_void_param_sentinel`,
-`lower_param_type`, `parse_function_signature_params`,
-`lower_return_info_from_type`, `infer_function_return_info`,
-`lower_signature_return_info`, and `lower_function_params`. Main typed-call
-parsing, extern/decl lowering, call instruction lowering, runtime intrinsic
-lowering, and failure-note behavior remain in `calling.cpp`.
+Step 4 proved the behavior-preserving call-family coverage after the
+signature/ABI helper extraction. The supervisor-selected build plus focused
+call-family CTest subset passed 71/71 tests, covering BIR notes, stack call
+contract, x86_64 semantic BIR routes, and byval runtime helper cases.
 
 ## Suggested Next
 
-Execute Step 4 by proving call-family behavior did not change with the
-supervisor-selected call/ABI route coverage.
+The active runbook is ready for supervisor lifecycle close/review handling.
 
 ## Watchouts
 
-- This was a behavior-preserving extraction; do not rewrite expectations.
-- No new headers were added; declarations remain in `lowering.hpp`.
-- Step 4 should validate direct/indirect calls, byval/sret, extern/decl
-  functions, and runtime intrinsic routes rather than moving more behavior.
+- No implementation files, expectations, `plan.md`, or source idea files were
+  touched in this validation-only packet.
+- Treat runbook exhaustion separately from source-idea completion; lifecycle
+  close/review remains a supervisor/plan-owner decision.
 
 ## Proof
 
 Passed:
-`cmake --build build --target c4c_codegen && ctest --test-dir build -R "backend_lir_to_bir_notes" --output-on-failure`.
+`cmake --build build --target c4c_codegen && ctest --test-dir build -R "backend_lir_to_bir_notes|backend_prepare_frame_stack_call_contract|backend_codegen_route_x86_64_.*observe_semantic_bir|backend_runtime_byval_helper_.*" --output-on-failure`.
+Result: 71/71 tests passed.
 Proof log: `test_after.log`.
