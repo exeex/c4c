@@ -904,13 +904,52 @@ class Validator {
     }
   }
 
+  static std::optional<SemaStructuredNameKey> enum_variant_global_key(
+      const Node* n, int index) {
+    if (!n || n->kind != NK_ENUM_DEF || index < 0 || index >= n->n_enum_variants ||
+        !n->enum_name_text_ids || n->namespace_context_id < 0) {
+      return std::nullopt;
+    }
+    const TextId text_id = n->enum_name_text_ids[index];
+    if (text_id == kInvalidText) return std::nullopt;
+    SemaStructuredNameKey key;
+    key.namespace_context_id = n->namespace_context_id;
+    key.base_text_id = text_id;
+    return key;
+  }
+
+  static std::optional<SemaStructuredNameKey> enum_variant_local_key(
+      const Node* n, int index) {
+    if (!n || n->kind != NK_ENUM_DEF || index < 0 || index >= n->n_enum_variants ||
+        !n->enum_name_text_ids) {
+      return std::nullopt;
+    }
+    const TextId text_id = n->enum_name_text_ids[index];
+    if (text_id == kInvalidText) return std::nullopt;
+    SemaStructuredNameKey key;
+    key.base_text_id = text_id;
+    return key;
+  }
+
   void bind_enum_constants_global(const Node* n) {
     if (!n || n->kind != NK_ENUM_DEF || n->n_enum_variants <= 0 || !n->enum_names) return;
     TypeSpec its = make_int_ts();
     for (int i = 0; i < n->n_enum_variants; ++i) {
       if (!n->enum_names[i] || !n->enum_names[i][0]) continue;
-      enum_consts_[n->enum_names[i]] = its;
-      if (n->enum_vals) enum_const_vals_global_[n->enum_names[i]] = n->enum_vals[i];
+      auto [it, inserted] = enum_consts_.insert_or_assign(n->enum_names[i], its);
+      (void)inserted;
+      if (auto key = enum_variant_global_key(n, i); key.has_value() && key->valid()) {
+        structured_enum_consts_[*key] = &it->second;
+      }
+      if (n->enum_vals) {
+        enum_const_vals_global_[n->enum_names[i]] = n->enum_vals[i];
+        if (n->enum_name_text_ids && n->enum_name_text_ids[i] != kInvalidText) {
+          enum_const_vals_global_by_text_[n->enum_name_text_ids[i]] = n->enum_vals[i];
+        }
+        if (auto key = enum_variant_global_key(n, i); key.has_value() && key->valid()) {
+          enum_const_vals_global_by_key_[to_consteval_key(*key)] = n->enum_vals[i];
+        }
+      }
     }
   }
 
@@ -919,10 +958,21 @@ class Validator {
     TypeSpec its = make_int_ts();
     for (int i = 0; i < n->n_enum_variants; ++i) {
       if (!n->enum_names[i] || !n->enum_names[i][0]) continue;
-      bind_local(n->enum_names[i], its, true, n->line);
+      const auto key = enum_variant_local_key(n, i);
+      bind_local(n->enum_names[i], its, true, n->line, key);
       if (n->enum_vals) {
         if (enum_const_vals_scopes_.empty()) enum_const_vals_scopes_.emplace_back();
         enum_const_vals_scopes_.back()[n->enum_names[i]] = n->enum_vals[i];
+        if (n->enum_name_text_ids && n->enum_name_text_ids[i] != kInvalidText) {
+          if (enum_const_vals_scopes_by_text_.empty())
+            enum_const_vals_scopes_by_text_.emplace_back();
+          enum_const_vals_scopes_by_text_.back()[n->enum_name_text_ids[i]] = n->enum_vals[i];
+        }
+        if (key.has_value() && key->valid()) {
+          if (enum_const_vals_scopes_by_key_.empty())
+            enum_const_vals_scopes_by_key_.emplace_back();
+          enum_const_vals_scopes_by_key_.back()[to_consteval_key(*key)] = n->enum_vals[i];
+        }
       }
     }
   }
