@@ -70,3 +70,67 @@ behavior.
   enum/const-int maps, struct owner/member/method helpers, and direct rendered
   method-map probes
 
+## Step 2 - String-Keyed HIR Maps And Fallback Classification
+
+Scope for this step: classify the remaining HIR string-keyed storage, rendered
+fallbacks, and structured mirrors from Step 1 without changing implementation
+behavior.
+
+### Classification Summary
+
+| Map / Fallback Family | Primary Classification | Justification | Follow-Up Boundary |
+|---|---|---|---|
+| `Module::fn_structured_index`, `global_structured_index`, `find_*_by_decl_ref_structured` | `safe-to-demote` target | These are keyed by `ModuleDeclLookupKey` and can resolve from `DeclRef` metadata when `name_text_id` and namespace `TextId`s are complete. They are the intended replacement authority for HIR-internal decl lookup. | Idea 104 can prefer these only at call sites that already carry complete `DeclRef` metadata. |
+| `Module::classify_*_decl_lookup`, `resolve_*_decl`, and `decl_lookup_*` parity records | `legacy-proof-only` | These surfaces compare structured and rendered lookup, record authority/mismatches, and intentionally return legacy on mismatch to preserve existing behavior during proof. | Keep until parity proof says legacy authority can be removed; do not treat mismatch-preserving behavior as cleanup-ready code. |
+| `Module::fn_index` and `global_index` backing `find_*_by_name_legacy` | `bridge-required` | The maps still serve callers that start from `Node::name`, synthesized mangled names, or downstream `DeclRef::name` fallback rather than a full structured key. | Split HIR-internal callers from HIR-to-LIR and AST-name callers before demoting. |
+| `CompileTimeState::template_fn_defs_` / `consteval_fn_defs_` rendered maps | `bridge-required` | Structured overloads exist, but pending consteval and several template-call routes still carry function names as strings. | Add owner/declaration-key lookup at the call boundaries before deleting name lookups. |
+| `CompileTimeState::template_struct_defs_` and `template_struct_specializations_` | `needs-more-parity-proof` | Structured key maps exist and lowerer parity counters compare them, but `find_template_struct_def(std::string)` and specialization lookup by primary name still feed active template-struct resolution. | Prove owner-key lookup covers primary and specialization routes before demotion. |
+| `InstantiationRegistry::seed_work_` / `instances_` keyed by function name | `needs-more-parity-proof` | The registry has structured seed/instance dedup sets and owner-based specialization maps, but realized instance lookup still enters by rendered template function name and then checks `SpecializationKey`. | Introduce or prove an owner-key instance lookup for callers with `primary_def`. |
+| Lowerer `template_struct_defs_`, `template_struct_specializations_`, and owner mirrors | `legacy-proof-only` today; `needs-more-parity-proof` for deletion | `find_template_struct_primary` returns rendered-map results and records parity against `template_struct_defs_by_owner_`; specialization lookup consults compile-time structured lookup but can still fall back to rendered primary names. | Keep parity reporting; do not delete rendered storage until lookup authority flips and broad template-struct cases are proved. |
+| Lowerer `enum_consts_` / `const_int_bindings_` and `CompileTimeState` equivalents | `bridge-required` | `CompileTimeValueBindingKey` mirrors are copied into consteval environments, but legacy name maps still feed `static_eval_int`, block-scoped save/restore, and evaluator compatibility inputs. | Convert evaluator/env APIs to structured bindings before demotion. |
+| `Module::struct_def_owner_index` and `find_struct_def_by_owner_structured` | `safe-to-demote` target | Owner-key lookup is structured and records owner/rendered parity mismatches. It is suitable as the replacement surface where callers have `HirRecordOwnerKey`. | Idea 104 should use it for owner-aware HIR paths, not for raw `TypeSpec::tag` consumers. |
+| `Module::struct_defs` rendered tag map | `bridge-required` | It remains the broad semantic storage for `TypeSpec::tag`, base traversal, layout, field lookup, initialization normalization, and HIR-to-LIR struct layout selection. | Requires a tag-to-owner bridge or structured owner handoff before rendered tag lookup can be demoted. |
+| Lowerer struct method rendered maps: `struct_methods_`, `struct_method_link_name_ids_`, `struct_method_ret_types_` | `bridge-required` | Helper APIs record parity against owner-key mirrors, but return rendered lookup results and recurse through `module_->struct_defs` base tags. Direct range-for/object/operator probes bypass some helpers. | First route direct probes through structured-aware helpers, then flip helpers to structured authority after parity proof. |
+| Lowerer struct method owner mirrors and parity counters | `legacy-proof-only` | `struct_methods_by_owner_`, `struct_method_link_name_ids_by_owner_`, and `struct_method_ret_types_by_owner_` are currently comparison mirrors for rendered-map results. | Keep as proof infrastructure until lookup authority is flipped. |
+| Lowerer static-member rendered maps: `struct_static_member_decls_`, `struct_static_member_const_values_` | `bridge-required` | Helpers record owner-key parity but still search rendered owning tags, then recurse over rendered base tags; const-value lookup also includes instantiated trait/static-member evaluation. | Separate member identity lookup from trait/static evaluation before demotion. |
+| Lowerer static-member owner mirrors and parity counters | `legacy-proof-only` | `struct_static_member_*_by_owner_` maps currently validate rendered results rather than drive lookup. | Retain until owner-key lookup becomes authoritative and base traversal is owner-aware. |
+| `struct_member_symbol_ids_by_owner_` mirror versus `module_->member_symbols.find(tag + "::" + member)` | `needs-more-parity-proof` | A structured mirror exists, but `find_struct_member_symbol_id` still constructs rendered member symbols and recurses through rendered base tags. | Prove owner-key member-symbol lookup and inherited lookup semantics before demotion. |
+| HIR-to-LIR `find_local_target_function` fallback to `find_function_by_name_legacy` | `bridge-required` | `LinkNameId` is preferred, but fallback names are still used for call targets when link identity is missing. | Idea 105 should carry structured/link identity across the HIR-to-LIR seam. |
+| HIR-to-LIR `select_global_object(std::string)` and `DeclRef::name` fallback | `bridge-required` | `GlobalId` and `LinkNameId` overloads exist, but both `StmtEmitter` and `ConstInitEmitter` fall back to rendered names and also choose a best global variant by name. | Downstream bridge work must preserve best-object selection semantics while replacing name-only identity. |
+| HIR-to-LIR direct `mod.struct_defs.find(TypeSpec::tag)` consumers | `bridge-required` | Struct layout, varargs, const-init, expression, and type lowering still consume rendered tags from HIR payloads. | Keep out of HIR-only demotion; this is downstream bridge scope. |
+
+### Safe Demotion Candidates
+
+- Structured module decl lookup by `ModuleDeclLookupKey` is safe as the target
+  for HIR-internal call sites that already carry complete `DeclRef` metadata.
+- Structured record owner lookup by `HirRecordOwnerKey` is safe as the target
+  for owner-aware HIR paths.
+- Link-name and concrete-ID lookup (`FunctionId`, `GlobalId`, `LinkNameId`) is
+  already structured enough and should stay as preferred authority where
+  available.
+
+### Not Yet Demotion-Ready
+
+- Rendered maps that still receive `Node::name`, `TypeSpec::tag`, synthesized
+  mangled names, or downstream `DeclRef::name` are `bridge-required`.
+- Mirrors that only count or record parity are `legacy-proof-only`; deleting
+  the rendered side before flipping authority would remove the proof surface.
+- Template instance and struct-member symbol lookup need more parity proof
+  because structured mirrors exist but lookup still depends on rendered owner
+  or primary names.
+
+### Additional Lightweight Checks Run For Step 2
+
+- `rg` over `src/frontend/hir` and `src/codegen/lir/hir_to_lir` for rendered
+  HIR maps, `_by_owner_`, `_by_key_`, `find_*_legacy`, `select_global_object`,
+  `find_local_target_function`, and direct `struct_defs.find` consumers.
+- Read-only inspection of `src/frontend/hir/hir_ir.hpp`,
+  `src/frontend/hir/compile_time_engine.hpp`,
+  `src/frontend/hir/impl/lowerer.hpp`, `src/frontend/hir/hir_types.cpp`,
+  `src/frontend/hir/impl/templates/templates.cpp`,
+  `src/codegen/lir/hir_to_lir/core.cpp`, and
+  `src/codegen/lir/hir_to_lir/const_init_emitter.cpp`.
+- `c4c-clang-tool-ccdb function-callers` was attempted for targeted helper
+  symbols; the direct caller command reported no same-TU callers for those
+  method-qualified/cross-TU paths, so classification used AST availability
+  checks plus focused source scans.
