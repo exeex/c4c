@@ -1,6 +1,6 @@
 # Shared StructNameId Table For LIR Type Identity
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
 
@@ -174,3 +174,33 @@ been lowered into field layout before or during HIR-to-LIR.
 - Existing LLVM output remains unchanged.
 - `TypeSpec::tag` is no longer the only route available for LIR struct type
   declaration identity.
+
+## Closure
+
+Closed: 2026-04-25
+
+Completion summary:
+- Added the shared `StructNameId` / `StructNameTable` facility.
+- Attached a shared struct-name table to `LirModule`.
+- Added the shadow-only `LirStructDecl` / `LirStructField` mirror beside
+  legacy rendered `type_decls`.
+- HIR-to-LIR now dual-writes structured struct declarations while preserving
+  the legacy rendered declaration path.
+- Added structured shadow rendering and verifier parity checks against legacy
+  `type_decls`.
+- Kept `print_llvm()` emission authority on legacy `type_decls`; no legacy
+  demotion happened in this idea.
+
+Validation:
+- Step 5 focused proof passed:
+  `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(positive_split_llvm_|frontend_hir_lookup_tests$)') > test_after.log 2>&1`
+- Step 6 acceptance validation passed:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure`
+  with `2976/2976` tests passing in `test_after.log`.
+- Close-time regression guard accepted the available canonical logs with no new
+  failing tests.
+
+Follow-up:
+- Later ideas may consider switching structured declarations from shadow-only
+  parity proof to printer authority, but that was intentionally out of scope
+  for this first dual-track slice.
