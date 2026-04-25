@@ -1,7 +1,7 @@
 # LIR Backend Legacy Type Surface Readiness Audit
 
-Status: Step 4 proof gaps and validation recommendations recorded
-Plan Step: Step 4 - Record Proof Gaps And Validation Recommendations
+Status: Step 5 final sanity pass complete
+Plan Step: Step 5 - Write And Sanity Check The Review Artifact
 Scope: report-only; no implementation edits
 
 ## Step 1 Inventory
@@ -297,3 +297,33 @@ Needed broader parity before demotion:
   read those text forms.
 - MIR/aarch64 legacy reads should not be migrated on this route; leave them as
   planned-rebuild residue.
+
+## Step 5 Sanity Check
+
+This artifact satisfies the source idea's required output:
+
+- Remaining legacy API/text field table: covered by the Step 1 inventory.
+- Blocker owner for each blocked surface: covered by the Step 2 ownership map.
+- Recommended scope for ideas 113, 114, and 115: covered by the Step 3
+  follow-up scope map.
+- Proof gaps and validation recommendations: covered by the Step 4 proof and
+  validation table.
+- Explicit must-not-remove paths: covered by the `Must Not Remove Yet` section.
+- MIR guidance: `src/backend/mir/` is not a migration target for this route.
+  Compile failures there should become compile-target exclusion tasks, not MIR
+  type-surface migration work.
+
+Acceptance status:
+
+- Remaining LIR/backend legacy type surfaces are classified precisely across
+  `backend-blocked`, `planned-rebuild`, `layout-authority-blocked`,
+  `type-ref-authority-blocked`, `printer-only`, `bridge-required`,
+  `legacy-proof-only`, and `needs-more-parity-proof`.
+- BIR/backend blockers are separated from planned MIR rebuild residue,
+  HIR-to-LIR layout authority blockers, and raw type-ref authority blockers.
+- No Step 1 surface is currently `safe-to-demote`; idea 114 should begin from
+  proof-only or proof-gap-aware candidates and retain text authority where
+  blockers remain.
+- No implementation cleanup was performed by this report-only audit.
+- Follow-up ideas 113, 114, and 115 can start from this ownership map without
+  re-deriving MIR treatment or backend/layout/type-ref blocker boundaries.

@@ -1,26 +1,24 @@
 Status: Active
 Source Idea Path: ideas/open/112_lir_backend_legacy_type_surface_readiness_audit.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Record Proof Gaps And Validation Recommendations
+Current Step ID: 5
+Current Step Title: Write And Sanity Check The Review Artifact
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 report refinement completed for the active audit. The review artifact
-now records proof gaps, validation recommendations, current sufficient
-evidence, and needed broader parity for aggregate, HFA, sret, variadic,
-global-init, memory-addressing, GEP, initializer, `va_arg`, byval/byref,
-verifier, and printer proof areas.
+Step 5 final sanity pass completed for the active report-only audit. The
+review artifact now explicitly records Step 5 status, acceptance coverage,
+must-not-remove paths, follow-up scope for ideas 113/114/115, proof gaps,
+validation recommendations, and MIR guidance that `src/backend/mir/` is not a
+migration target and compile failures there should become compile-target
+exclusion tasks.
 
 ## Suggested Next
 
-Delegate the final report-only packet for Step 5. The packet should perform
-the final sanity pass over
-`review/112_lir_backend_legacy_type_surface_readiness_audit.md`, checking that
-the inventory, blocker ownership, follow-up scope, proof gaps, validation
-recommendations, and must-not-remove list agree with each other.
+Supervisor should decide whether to send the completed report-only audit to
+plan-owner for lifecycle closure or follow-up activation.
 
 ## Watchouts
 
@@ -35,7 +33,8 @@ recommendations, and must-not-remove list agree with each other.
   migration as required cleanup or as a blocker for BIR/LIR follow-up work.
 - Validation recommendations are intentionally bucket-level because this packet
   was not asked to inspect or edit test sources.
-- Step 5 remains and should perform the final report sanity check.
+- The report marks Step 5 complete, but lifecycle closure remains a supervisor
+  or plan-owner decision.
 
 ## Proof
 
