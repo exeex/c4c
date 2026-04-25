@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/108_lir_struct_name_id_for_globals_functions_and_externs.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Dual-Write Call Return And Argument Type Mirrors
+Current Step ID: 6
+Current Step Title: Validate Parity And Broader Stability
 
 # Current Packet
 
