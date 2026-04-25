@@ -8,22 +8,20 @@ Current Step Title: Materialization and parity proof
 
 ## Just Finished
 
-Step 4 lifecycle review completed after `d4d5d2c1` and `476e787c`: the declaration-aware template struct specialization lookup route is committed, and the remaining `CompileTimeState` lookup call sites are either string-only compatibility paths or call-expression-node paths without a declaration identity to hand to the structured overloads. Step 4 is complete under the current runbook contract.
+Step 5 materialization and parity proof completed as a proof-only packet. Existing focused coverage already exercises structured lookup parity (`frontend_hir_lookup_tests`), deferred template/consteval behavior, materialization stats/boundaries, and late-layout consteval static assertions with structured mirrors enabled, so no new test was added and no expectations were weakened.
 
 ## Suggested Next
 
-Next coherent packet: begin Step 5 by proving materialization and consteval behavior remain stable with the structured mirrors enabled. Inspect `materialize_hir_template_defs`, deferred compile-time engine lookup paths, and focused HIR template/consteval tests for coverage of structured mirror and legacy fallback behavior without weakening expectations.
+Next coherent packet: move to Step 6 broader validation and handoff. Summarize the implemented structured mirrors, preserved legacy-only fallback paths, and the Step 5 proof result so the supervisor can decide whether to request review, close, or replan.
 
 ## Watchouts
 
-Do not route string-only or call-expression-only lookups through fake structured keys. If Step 5 exposes a real metadata handoff for those paths, treat that as new implementation scope; otherwise preserve legacy fallback behavior and prove parity.
+The remaining string-only and call-expression-node lookup paths still should not be routed through fake structured keys. Step 5 did not expose a materialization or deferred consteval parity gap; any future metadata handoff for those paths is new implementation scope.
 
 ## Proof
 
-No new proof was run for this lifecycle-only Step 4 review. The latest Step 4 implementation proof remains in `test_after.log`.
-
 ```bash
-(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_lookup_tests|cpp_positive_sema_template_constexpr_member_runtime_cpp|cpp_positive_sema_if_constexpr_template_chain_cpp)$') > test_after.log 2>&1
+(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_lookup_tests|cpp_hir_deferred_template_instantiation|cpp_hir_deferred_consteval_chain|cpp_hir_deferred_consteval_multi|cpp_hir_deferred_consteval_incomplete_type|cpp_hir_materialization_stats|cpp_hir_materialization_boundary|cpp_c4_static_assert_if_constexpr_branch_unlocks_later|cpp_c4_static_assert_multistage_shape_chain)$') > test_after.log 2>&1
 ```
 
-Result: build completed and all 3 selected tests passed.
+Result: build completed and all 9 selected tests passed. Proof log: `test_after.log`.
