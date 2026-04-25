@@ -36,6 +36,8 @@ maps, downgrade expectations, or add testcase-shaped exceptions.
   a stable `TextId` is available.
 - Parser typedef-chain and type-compatibility helper overloads only where the
   caller already has structured identity.
+- Parser/AST enum definition metadata needed to carry per-enumerator `TextId`
+  identity from enum parsing into sema.
 - Sema enum variant text/key mirrors for global and local bindings.
 - Sema template NTTP placeholder and validation binding mirrors.
 - Sema template type-parameter validation mirrors.
@@ -62,6 +64,8 @@ maps, downgrade expectations, or add testcase-shaped exceptions.
   when stable identity is already present.
 - Keep string helper overloads as explicit compatibility bridges while
   downstream callers still provide only rendered names.
+- Carry parser-owned `TextId` metadata through AST fields when sema mirrors need
+  definition-time identity that cannot be recovered from rendered strings.
 - Dual-write sema mirrors beside existing rendered maps where AST/parser
   metadata supplies stable identity.
 - Dual-read and compare structured and legacy results before changing behavior.
@@ -143,7 +147,39 @@ Completion check:
 - Focused parser proof covers structured and legacy fallback behavior without
   expectation downgrades.
 
-### Step 3: Populate Sema Enum Variant Mirrors
+### Step 3A: Add AST/Parser Enumerator TextId Metadata
+
+Goal: make definition-time enumerator identity available to sema without
+deriving it from rendered strings.
+
+Primary targets:
+- `src/frontend/parser/ast.hpp`
+- `src/frontend/parser/impl/types/struct.cpp`
+- Parser enum tests selected by the supervisor
+
+Actions:
+- Add a parallel per-enumerator `TextId` metadata field to `NK_ENUM_DEF` while
+  preserving existing rendered `enum_names`, `enum_vals`, and
+  `enum_has_explicit` bridge fields.
+- Store the `vname_text_id` already computed during enum parsing into the new
+  metadata array for each enumerator.
+- Keep duplicate detection and enum-initializer evaluation based on the
+  existing parser `TextId` path; do not re-derive stable identity from rendered
+  strings after the parser has consumed the token.
+- Ensure enum references, empty enum definitions, and variants without a valid
+  token `TextId` leave the metadata absent or `kInvalidText` in a way sema can
+  safely skip.
+- Do not change HIR enum collection, consteval registration, codegen naming, or
+  diagnostic rendering.
+
+Completion check:
+- `NK_ENUM_DEF` exposes stable per-enumerator `TextId` metadata beside the
+  existing rendered name/value arrays.
+- Focused parser/build proof passes without changing enum rendering or HIR
+  bridge behavior.
+- `todo.md` points the next packet at Step 3B.
+
+### Step 3B: Populate Sema Enum Variant Mirrors
 
 Goal: populate enum variant text/key mirrors for global and local sema bindings
 where stable AST identity exists.
@@ -155,8 +191,13 @@ Primary targets:
 Actions:
 - Identify enum variant binding registration paths for global, local,
   namespace, and record-adjacent contexts.
+- Read the per-enumerator `TextId` metadata added by Step 3A; skip structured
+  mirror writes when an enumerator lacks a valid stable ID.
 - Dual-write text/key mirrors beside existing rendered enum maps when the AST
-  exposes stable identity.
+  exposes stable identity, including `structured_enum_consts_`,
+  `enum_const_vals_global_by_text_`, `enum_const_vals_global_by_key_`,
+  `enum_const_vals_scopes_by_text_`, and
+  `enum_const_vals_scopes_by_key_` where the required key metadata exists.
 - Dual-read or compare lookup results where both structured and rendered
   bindings are available.
 - Preserve rendered maps for diagnostics, consteval, HIR, and compatibility
