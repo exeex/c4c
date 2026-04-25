@@ -35,6 +35,7 @@ enum class HirPipelineStage {
 
 #include "ast.hpp"
 #include "source_profile.hpp"
+#include "../../shared/id_hash.hpp"
 #include "../../shared/text_id_table.hpp"
 #include "../../target_profile.hpp"
 
@@ -146,6 +147,54 @@ struct NamespaceQualifier {
 
   bool empty() const { return segments.empty() && !is_global_qualified; }
 };
+
+enum class ModuleDeclKind : uint8_t {
+  Function,
+  Global,
+};
+
+struct ModuleDeclLookupKey {
+  ModuleDeclKind kind = ModuleDeclKind::Function;
+  int namespace_context_id = -1;
+  bool is_global_qualified = false;
+  std::vector<TextId> qualifier_segment_text_ids;
+  TextId declaration_text_id = kInvalidText;
+
+  [[nodiscard]] bool operator==(const ModuleDeclLookupKey& other) const {
+    return kind == other.kind &&
+           namespace_context_id == other.namespace_context_id &&
+           is_global_qualified == other.is_global_qualified &&
+           qualifier_segment_text_ids == other.qualifier_segment_text_ids &&
+           declaration_text_id == other.declaration_text_id;
+  }
+
+  [[nodiscard]] bool operator!=(const ModuleDeclLookupKey& other) const {
+    return !(*this == other);
+  }
+};
+
+struct ModuleDeclLookupKeyHash {
+  [[nodiscard]] size_t operator()(const ModuleDeclLookupKey& key) const noexcept {
+    const size_t qualifier_hash = hash_text_id_sequence(
+        key.qualifier_segment_text_ids.data(), key.qualifier_segment_text_ids.size());
+    return static_cast<size_t>(hash_id_words(
+        kIdHashSeed, static_cast<uint32_t>(key.kind),
+        static_cast<uint32_t>(key.namespace_context_id),
+        static_cast<uint32_t>(key.is_global_qualified), key.declaration_text_id,
+        static_cast<uint64_t>(qualifier_hash)));
+  }
+};
+
+[[nodiscard]] inline ModuleDeclLookupKey make_module_decl_lookup_key(
+    ModuleDeclKind kind, const NamespaceQualifier& ns_qual, TextId declaration_text_id) {
+  ModuleDeclLookupKey key;
+  key.kind = kind;
+  key.namespace_context_id = ns_qual.context_id;
+  key.is_global_qualified = ns_qual.is_global_qualified;
+  key.qualifier_segment_text_ids = ns_qual.segment_text_ids;
+  key.declaration_text_id = declaration_text_id;
+  return key;
+}
 
 /// Non-type template parameter value bindings (forward decl for TemplateCallInfo).
 using NttpBindings = std::unordered_map<std::string, long long>;

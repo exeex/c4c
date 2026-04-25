@@ -8,23 +8,27 @@ Current Step Title: Add HIR module declaration lookup key
 
 ## Just Finished
 
-Lifecycle activation created the active runbook for Step 1. No implementation
-packet has run yet.
+Step 1: Add HIR module declaration lookup key. Added a HIR-owned structured
+module declaration lookup key for functions/globals with declaration kind,
+namespace context id, global-qualified state, qualifier segment TextIds,
+unqualified declaration TextId, deterministic equality, deterministic hashing,
+and a builder from `NamespaceQualifier`. Existing lookup behavior is unchanged.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: add the HIR module declaration lookup key and
-hashing/equality helpers without changing lookup behavior.
+Execute Step 2 from `plan.md`: add declaration-side `name_text_id` metadata to
+HIR functions and globals while preserving rendered names unchanged.
 
 ## Watchouts
 
 - Preserve rendered-name maps and link-name behavior.
+- Treat `ModuleDeclLookupKey` as a passive key until the next packet explicitly
+  wires a mirror map; Step 1 did not populate or query it.
 - Do not broaden into struct/type, member/method, parser, or sema rewrites.
 - Do not downgrade expectations or add testcase-shaped shortcuts.
 
 ## Proof
 
-No implementation proof yet. First code-changing packet should at minimum run:
+Passed. Proof output is captured in `test_after.log`.
 
-- `cmake --build --preset default`
-- `ctest --test-dir build -R "frontend_hir_tests|cpp_hir_template_global_specialization|cpp_hir_if_constexpr_branch_unlocks_later|cpp_hir_multistage_shape_chain" --output-on-failure`
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_hir_tests|cpp_hir_template_global_specialization|cpp_hir_if_constexpr_branch_unlocks_later|cpp_hir_multistage_shape_chain)$"`
