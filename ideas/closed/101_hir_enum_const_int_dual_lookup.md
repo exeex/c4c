@@ -1,6 +1,6 @@
 # HIR Enum Const-Int Dual Lookup
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
 
@@ -78,3 +78,23 @@ The structured key should use source identity when available, such as:
   paths.
 - Focused HIR tests pass without expectation downgrades or testcase-shaped
   shortcuts.
+
+## Closure Summary
+
+Closed: 2026-04-25
+
+Implemented structured `CompileTimeValueBindingKey` mirrors for global enum
+constants and global const-int bindings, dual-write registration overloads,
+lowerer and compile-time-engine handoff into `ConstEvalEnv`, and structured map
+debug stats while preserving legacy rendered-name maps as compatibility,
+diagnostic, and selected semantic-result paths.
+
+Intentional fallback remains for string-only APIs, owner/member-scoped
+constants without durable owner identity, and constant-expression or NTTP paths
+that only carry rendered names. No new metadata blocker was found during the
+close runbook; durable owner/member identity is outside this idea's scope.
+
+Close-gate proof used matching canonical logs:
+`test_before.log` and `test_after.log` both report 1106/1106 selected tests
+passing for `^(frontend_hir_tests|frontend_hir_lookup_tests|cpp_)`, and the
+regression guard passed with non-decreasing pass-count comparison.
