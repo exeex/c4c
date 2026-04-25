@@ -1,14 +1,14 @@
 Status: Active
 Source Idea Path: ideas/open/106_shared_struct_name_table_for_lir_type_identity.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Dual-Write During HIR-To-LIR Type Declaration Generation
+Current Step ID: 5
+Current Step Title: Add Parity / Shadow Rendering
 
 # Current Packet
 
-Implement Step 4 by dual-writing structured LIR struct declarations from the
-existing HIR-to-LIR type declaration generation while keeping legacy rendered
-`type_decls` as the printer authority.
+Implement Step 5 by adding parity/shadow rendering for structured
+`LirStructDecl` mirrors while keeping legacy rendered `type_decls` as the
+printer authority.
 
 ## Just Finished
 
@@ -22,9 +22,10 @@ such as `%struct.Name`, not the raw HIR tag.
 
 ## Suggested Next
 
-Implement the next packet that proves or consumes the structured declaration
-mirror without changing printer authority until the planned printer migration
-step.
+Add a printer-adjacent helper that renders `LirStructDecl` back to legacy LLVM
+type declaration text, compare the shadow-rendered output against the matching
+legacy `type_decls` line, and surface mismatches through a focused verifier or
+local comparison path without changing emitted LLVM.
 
 ## Watchouts
 
