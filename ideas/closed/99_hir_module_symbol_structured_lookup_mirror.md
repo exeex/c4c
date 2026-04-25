@@ -1,8 +1,9 @@
 # HIR Module Symbol Structured Lookup Mirror
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
+Closed: 2026-04-25
 
 Parent Ideas:
 - [97_structured_identity_completion_audit_and_hir_plan.md](/workspaces/c4c/ideas/closed/97_structured_identity_completion_audit_and_hir_plan.md)
@@ -143,3 +144,23 @@ layout, or codegen type output changes unexpectedly.
   environment cleanup remain outside the first slice.
 - Focused HIR proof passes without expectation downgrades or testcase-shaped
   shortcuts.
+
+## Closure Notes
+
+Closed after Step 9 audit in `review/99_step9_legacy_fallback_readiness.md`.
+The first HIR module function/global structured lookup mirror is complete:
+declaration-side name metadata exists, structured mirrors are dual-written,
+structured lookup is used when complete source identity metadata is available,
+and concrete declaration IDs, `LinkNameId`, rendered-name fallback, diagnostics,
+codegen names, and ABI/link-visible names remain preserved.
+
+Legacy rendered fallback demotion is intentionally parked. The Step 9 audit
+classified the remaining legacy-rendered hits as compatibility cases for
+missing declaration metadata or incomplete qualifier metadata, not as safe
+metadata propagation gaps available to remediate from existing AST/HIR metadata.
+Supervisor approval for Step 10 fallback demotion was not granted, and no
+fallback precedence changes were made.
+
+Close-time regression guard used the existing focused HIR before/after logs:
+`test_before.log` and `test_after.log` both passed 73/73 tests, and
+`check_monotonic_regression.py --allow-non-decreasing-passed` reported PASS.
