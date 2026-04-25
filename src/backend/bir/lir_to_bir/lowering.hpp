@@ -143,6 +143,10 @@ AggregateTypeLayout lookup_backend_aggregate_type_layout(
 std::optional<IntegerArrayType> parse_integer_array_type(std::string_view text);
 std::optional<GlobalAddress> parse_global_address_initializer(std::string_view text,
                                                               const TypeDeclMap& type_decls);
+std::optional<GlobalAddress> parse_global_address_initializer(
+    std::string_view text,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts);
 std::optional<bir::Value> lower_global_initializer(std::string_view text,
                                                    bir::TypeKind type);
 std::optional<std::vector<bir::Value>> lower_integer_array_initializer(
@@ -155,10 +159,21 @@ std::optional<std::vector<bir::Value>> lower_aggregate_initializer(
     std::string_view type_text,
     const TypeDeclMap& type_decls,
     std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets);
+std::optional<std::vector<bir::Value>> lower_aggregate_initializer(
+    std::string_view init_text,
+    std::string_view type_text,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts,
+    std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets);
 
 std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlobal& global,
                                                 const TypeDeclMap& type_decls,
                                                 GlobalInfo* info);
+std::optional<bir::Global> lower_minimal_global(
+    const c4c::codegen::lir::LirGlobal& global,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts,
+    GlobalInfo* info);
 std::optional<bir::Global> lower_string_constant_global(
     const c4c::codegen::lir::LirStringConst& string_constant,
     GlobalInfo* info);

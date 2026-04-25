@@ -800,7 +800,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   for (const auto& global : context.lir_module.globals) {
     const auto resolved_global = global_with_resolved_name(context.lir_module, global);
     GlobalInfo info;
-    auto lowered_global = lower_minimal_global(resolved_global, type_decls, &info);
+    auto lowered_global = lower_minimal_global(resolved_global, type_decls, structured_layouts, &info);
     if (!lowered_global.has_value()) {
       context.note(
           "module",

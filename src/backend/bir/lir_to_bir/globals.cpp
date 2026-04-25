@@ -53,7 +53,9 @@ std::optional<IntegerArrayType> parse_integer_array_type(std::string_view text) 
 namespace {
 
 std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGlobal& global,
-                                               const TypeDeclMap& type_decls) {
+                                               const TypeDeclMap& type_decls,
+                                               const BackendStructuredLayoutTable*
+                                                   structured_layouts) {
   const auto lowered_type = lower_scalar_global_type(global.llvm_type);
   if (!lowered_type.has_value()) {
     return std::nullopt;
@@ -73,7 +75,9 @@ std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGloba
         lowered.initializer = *initializer;
       } else {
         const auto initializer_address =
-            parse_global_address_initializer(trimmed_init, type_decls);
+            structured_layouts != nullptr
+                ? parse_global_address_initializer(trimmed_init, type_decls, *structured_layouts)
+                : parse_global_address_initializer(trimmed_init, type_decls);
         if (!initializer_address.has_value()) {
           return std::nullopt;
         }
@@ -89,6 +93,15 @@ std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGloba
     }
   }
   return lowered;
+}
+
+AggregateTypeLayout lookup_global_layout(
+    std::string_view type_text,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
+  return structured_layouts != nullptr
+             ? lookup_backend_aggregate_type_layout(type_text, type_decls, *structured_layouts)
+             : compute_aggregate_type_layout(type_text, type_decls);
 }
 
 }  // namespace
@@ -236,10 +249,33 @@ bool resolve_pointer_initializer_offsets(GlobalTypes& global_types,
   return true;
 }
 
+std::optional<bir::Global> lower_minimal_global_impl(
+    const c4c::codegen::lir::LirGlobal& global,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts,
+    GlobalInfo* info);
+
 std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlobal& global,
                                                 const TypeDeclMap& type_decls,
                                                 GlobalInfo* info) {
-  if (auto lowered = lower_scalar_global(global, type_decls); lowered.has_value()) {
+  return lower_minimal_global_impl(global, type_decls, nullptr, info);
+}
+
+std::optional<bir::Global> lower_minimal_global(
+    const c4c::codegen::lir::LirGlobal& global,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts,
+    GlobalInfo* info) {
+  return lower_minimal_global_impl(global, type_decls, &structured_layouts, info);
+}
+
+std::optional<bir::Global> lower_minimal_global_impl(
+    const c4c::codegen::lir::LirGlobal& global,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts,
+    GlobalInfo* info) {
+  if (auto lowered = lower_scalar_global(global, type_decls, structured_layouts);
+      lowered.has_value()) {
     info->value_type = lowered->type;
     info->element_size_bytes = type_size_bytes(lowered->type);
     info->element_count = 1;
@@ -247,9 +283,11 @@ std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlob
     info->supports_direct_value = true;
     info->supports_linear_addressing = true;
     if (lowered->initializer_symbol_name.has_value()) {
-      const auto initializer_address = parse_global_address_initializer(
-          strip_typed_initializer_prefix(global.init_text, global.llvm_type),
-          type_decls);
+      const auto trimmed_init = strip_typed_initializer_prefix(global.init_text, global.llvm_type);
+      const auto initializer_address =
+          structured_layouts != nullptr
+              ? parse_global_address_initializer(trimmed_init, type_decls, *structured_layouts)
+              : parse_global_address_initializer(trimmed_init, type_decls);
       if (!initializer_address.has_value()) {
         return std::nullopt;
       }
@@ -303,7 +341,7 @@ std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlob
     return lowered;
   }
 
-  const auto layout = compute_aggregate_type_layout(global.llvm_type, type_decls);
+  const auto layout = lookup_global_layout(global.llvm_type, type_decls, structured_layouts);
   if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
        layout.kind != AggregateTypeLayout::Kind::Array) ||
       layout.size_bytes == 0) {
@@ -321,7 +359,11 @@ std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlob
   if (!global.is_extern_decl) {
     std::unordered_map<std::size_t, GlobalAddress> pointer_offsets;
     const auto initializer_elements =
-        lower_aggregate_initializer(global.init_text, global.llvm_type, type_decls, &pointer_offsets);
+        structured_layouts != nullptr
+            ? lower_aggregate_initializer(
+                  global.init_text, global.llvm_type, type_decls, *structured_layouts, &pointer_offsets)
+            : lower_aggregate_initializer(
+                  global.init_text, global.llvm_type, type_decls, &pointer_offsets);
     if (!initializer_elements.has_value()) {
       return std::nullopt;
     }

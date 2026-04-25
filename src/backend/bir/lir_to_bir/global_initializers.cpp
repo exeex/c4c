@@ -17,8 +17,19 @@ std::optional<std::string> parse_global_symbol_initializer(std::string_view text
   return std::string(trimmed.substr(1));
 }
 
+AggregateTypeLayout lookup_global_initializer_layout(
+    std::string_view type_text,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
+  return structured_layouts != nullptr
+             ? lookup_backend_aggregate_type_layout(type_text, type_decls, *structured_layouts)
+             : compute_aggregate_type_layout(type_text, type_decls);
+}
+
 std::optional<GlobalAddress> parse_global_gep_initializer(std::string_view text,
-                                                          const TypeDeclMap& type_decls) {
+                                                          const TypeDeclMap& type_decls,
+                                                          const BackendStructuredLayoutTable*
+                                                              structured_layouts) {
   constexpr std::string_view kPrefix = "getelementptr inbounds (";
 
   const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
@@ -72,7 +83,8 @@ std::optional<GlobalAddress> parse_global_gep_initializer(std::string_view text,
       return std::nullopt;
     }
 
-    const auto layout = compute_aggregate_type_layout(current_type, type_decls);
+    const auto layout =
+        lookup_global_initializer_layout(current_type, type_decls, structured_layouts);
     if (layout.kind == AggregateTypeLayout::Kind::Invalid || layout.size_bytes == 0) {
       return std::nullopt;
     }
@@ -103,7 +115,8 @@ std::optional<GlobalAddress> parse_global_gep_initializer(std::string_view text,
     switch (layout.kind) {
       case AggregateTypeLayout::Kind::Array: {
         const auto element_layout =
-            compute_aggregate_type_layout(layout.element_type_text, type_decls);
+            lookup_global_initializer_layout(
+                layout.element_type_text, type_decls, structured_layouts);
         if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
             static_cast<std::size_t>(*index_value) >= layout.array_count) {
           return std::nullopt;
@@ -139,7 +152,8 @@ std::optional<GlobalAddress> parse_global_gep_initializer(std::string_view text,
     remainder = remainder.substr(comma + 1);
   }
 
-  const auto leaf_layout = compute_aggregate_type_layout(current_type, type_decls);
+  const auto leaf_layout =
+      lookup_global_initializer_layout(current_type, type_decls, structured_layouts);
   if (leaf_layout.kind == AggregateTypeLayout::Kind::Scalar) {
     return GlobalAddress{
         .global_name = std::move(global_name),
@@ -153,8 +167,10 @@ std::optional<GlobalAddress> parse_global_gep_initializer(std::string_view text,
 
 }  // namespace
 
-std::optional<GlobalAddress> parse_global_address_initializer(std::string_view text,
-                                                              const TypeDeclMap& type_decls) {
+std::optional<GlobalAddress> parse_global_address_initializer_impl(
+    std::string_view text,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
   if (const auto symbol_name = parse_global_symbol_initializer(text); symbol_name.has_value()) {
     return GlobalAddress{
         .global_name = *symbol_name,
@@ -162,7 +178,19 @@ std::optional<GlobalAddress> parse_global_address_initializer(std::string_view t
         .byte_offset = 0,
     };
   }
-  return parse_global_gep_initializer(text, type_decls);
+  return parse_global_gep_initializer(text, type_decls, structured_layouts);
+}
+
+std::optional<GlobalAddress> parse_global_address_initializer(std::string_view text,
+                                                              const TypeDeclMap& type_decls) {
+  return parse_global_address_initializer_impl(text, type_decls, nullptr);
+}
+
+std::optional<GlobalAddress> parse_global_address_initializer(
+    std::string_view text,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts) {
+  return parse_global_address_initializer_impl(text, type_decls, &structured_layouts);
 }
 
 namespace {
@@ -519,10 +547,11 @@ namespace {
 bool append_zero_aggregate_initializer(
     std::string_view type_text,
     const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts,
     std::vector<bir::Value>* out,
     std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets,
     std::size_t byte_offset) {
-  const auto layout = compute_aggregate_type_layout(type_text, type_decls);
+  const auto layout = lookup_global_initializer_layout(type_text, type_decls, structured_layouts);
   switch (layout.kind) {
     case AggregateTypeLayout::Kind::Scalar: {
       if (layout.scalar_type == bir::TypeKind::F128) {
@@ -544,10 +573,12 @@ bool append_zero_aggregate_initializer(
     case AggregateTypeLayout::Kind::Array:
       for (std::size_t index = 0; index < layout.array_count; ++index) {
         const auto element_layout =
-            compute_aggregate_type_layout(layout.element_type_text, type_decls);
+            lookup_global_initializer_layout(
+                layout.element_type_text, type_decls, structured_layouts);
         if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
             !append_zero_aggregate_initializer(layout.element_type_text,
                                               type_decls,
+                                              structured_layouts,
                                               out,
                                               pointer_offsets,
                                               byte_offset + index * element_layout.size_bytes)) {
@@ -559,6 +590,7 @@ bool append_zero_aggregate_initializer(
       for (const auto& field : layout.fields) {
         if (!append_zero_aggregate_initializer(field.type_text,
                                               type_decls,
+                                              structured_layouts,
                                               out,
                                               pointer_offsets,
                                               byte_offset + field.byte_offset)) {
@@ -575,10 +607,11 @@ bool lower_aggregate_initializer_recursive(
     std::string_view init_text,
     std::string_view type_text,
     const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts,
     std::vector<bir::Value>* out,
     std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets,
     std::size_t byte_offset) {
-  const auto layout = compute_aggregate_type_layout(type_text, type_decls);
+  const auto layout = lookup_global_initializer_layout(type_text, type_decls, structured_layouts);
   if (layout.kind == AggregateTypeLayout::Kind::Invalid) {
     return false;
   }
@@ -591,7 +624,7 @@ bool lower_aggregate_initializer_recursive(
 
   if (trimmed_init == "zeroinitializer") {
     return append_zero_aggregate_initializer(
-        type_text, type_decls, out, pointer_offsets, byte_offset);
+        type_text, type_decls, structured_layouts, out, pointer_offsets, byte_offset);
   }
 
   if (layout.kind == AggregateTypeLayout::Kind::Scalar) {
@@ -599,8 +632,11 @@ bool lower_aggregate_initializer_recursive(
       return append_x86_fp80_initializer_bytes(trimmed_init, out);
     }
     if (layout.scalar_type == bir::TypeKind::Ptr) {
-      if (const auto address = parse_global_address_initializer(trimmed_init, type_decls);
-          address.has_value()) {
+      const auto address = structured_layouts != nullptr
+                               ? parse_global_address_initializer(
+                                     trimmed_init, type_decls, *structured_layouts)
+                               : parse_global_address_initializer(trimmed_init, type_decls);
+      if (address.has_value()) {
         pointer_offsets->emplace(byte_offset, *address);
         out->push_back(bir::Value::named(bir::TypeKind::Ptr, "@" + address->global_name));
         return true;
@@ -626,7 +662,8 @@ bool lower_aggregate_initializer_recursive(
     if (trimmed_init.front() != '[' || trimmed_init.back() != ']') {
       return false;
     }
-    const auto element_layout = compute_aggregate_type_layout(layout.element_type_text, type_decls);
+    const auto element_layout =
+        lookup_global_initializer_layout(layout.element_type_text, type_decls, structured_layouts);
     if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
         element_layout.size_bytes == 0) {
       return false;
@@ -640,6 +677,7 @@ bool lower_aggregate_initializer_recursive(
       if (!lower_aggregate_initializer_recursive(items[index],
                                                  layout.element_type_text,
                                                  type_decls,
+                                                 structured_layouts,
                                                  out,
                                                  pointer_offsets,
                                                  byte_offset + index * element_layout.size_bytes)) {
@@ -649,6 +687,7 @@ bool lower_aggregate_initializer_recursive(
     for (std::size_t index = items.size(); index < layout.array_count; ++index) {
       if (!append_zero_aggregate_initializer(layout.element_type_text,
                                              type_decls,
+                                             structured_layouts,
                                              out,
                                              pointer_offsets,
                                              byte_offset + index * element_layout.size_bytes)) {
@@ -670,6 +709,7 @@ bool lower_aggregate_initializer_recursive(
     if (!lower_aggregate_initializer_recursive(items[index],
                                                layout.fields[index].type_text,
                                                type_decls,
+                                               structured_layouts,
                                                out,
                                                pointer_offsets,
                                                byte_offset + layout.fields[index].byte_offset)) {
@@ -679,6 +719,7 @@ bool lower_aggregate_initializer_recursive(
   for (std::size_t index = items.size(); index < layout.fields.size(); ++index) {
     if (!append_zero_aggregate_initializer(layout.fields[index].type_text,
                                            type_decls,
+                                           structured_layouts,
                                            out,
                                            pointer_offsets,
                                            byte_offset + layout.fields[index].byte_offset)) {
@@ -697,7 +738,21 @@ std::optional<std::vector<bir::Value>> lower_aggregate_initializer(
     std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets) {
   std::vector<bir::Value> lowered;
   if (!lower_aggregate_initializer_recursive(
-          init_text, type_text, type_decls, &lowered, pointer_offsets, 0)) {
+          init_text, type_text, type_decls, nullptr, &lowered, pointer_offsets, 0)) {
+    return std::nullopt;
+  }
+  return lowered;
+}
+
+std::optional<std::vector<bir::Value>> lower_aggregate_initializer(
+    std::string_view init_text,
+    std::string_view type_text,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts,
+    std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets) {
+  std::vector<bir::Value> lowered;
+  if (!lower_aggregate_initializer_recursive(
+          init_text, type_text, type_decls, &structured_layouts, &lowered, pointer_offsets, 0)) {
     return std::nullopt;
   }
   return lowered;
