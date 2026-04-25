@@ -102,3 +102,11 @@ call lowering into a free function that takes `BirFunctionLowerer& self`.
 - Do not move memcpy/memset implementation back into call lowering.
 - Do not change memory load/store/GEP behavior.
 - Do not introduce `MemoryLoweringState` or a call-lowering state owner.
+
+## Closure Note
+
+Closed after the active runbook reached Step 5 readiness. The coordinator call
+branch now dispatches through `lower_call_inst(...)`, call lowering remains a
+`BirFunctionLowerer` member implemented in `calling.cpp`, memory intrinsic
+specialization remains in `memory/intrinsics.cpp`, no new `.hpp` files were
+added, and backend regression guard passed with no new failures.
