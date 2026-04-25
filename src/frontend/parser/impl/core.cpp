@@ -1170,7 +1170,9 @@ const TypeSpec* Parser::find_visible_var_type(TextId name_text_id,
         }
     }
     if (const TypeSpec* type = find_var_type(name_text_id, name)) return type;
-    if (const TypeSpec* type = find_var_type(std::string(name))) return type;
+    if (name_text_id == kInvalidText) {
+        if (const TypeSpec* type = find_var_type(std::string(name))) return type;
+    }
     const VisibleNameResult resolved_result =
         resolve_visible_value(name_text_id, name);
     if (!resolved_result) return nullptr;

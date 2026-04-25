@@ -259,6 +259,16 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
       parser.find_visible_var_type(lookup_value_id, "valueLookupBridge");
   expect_true(visible_var != nullptr && visible_var->base == c4c::TB_LONG,
               "visible value lookup should prefer the TextId-backed global binding before fallback spelling");
+  const c4c::TextId missing_value_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "MissingTextIdValue");
+  expect_true(parser.find_visible_var_type(missing_value_id,
+                                           "valueLookupBridge") == nullptr,
+              "visible value lookup should not promote fallback spelling when a valid TextId lookup misses");
+  const c4c::TypeSpec* string_visible_var =
+      parser.find_visible_var_type("valueLookupBridge");
+  expect_true(string_visible_var != nullptr &&
+                  string_visible_var->base == c4c::TB_FLOAT,
+              "string visible value lookup should preserve TextId-less compatibility");
 
   const c4c::QualifiedNameKey value_key =
       parser.intern_semantic_name_key("idFirstValue");
