@@ -270,3 +270,166 @@ change implementation behavior.
   `src/codegen/lir/hir_to_lir/lvalue.cpp`,
   `src/codegen/shared/fn_lowering_ctx.hpp`, and
   `src/codegen/shared/llvm_helpers.hpp`.
+
+## Step 5 - Follow-Up Recommendations And Proof Gaps
+
+Scope for this step: convert the Step 1-4 audit into cleanup and bridge
+recommendations. This step did not change implementation behavior.
+
+### Recommended Idea 104 HIR Cleanup Scope
+
+Idea 104 should stay inside HIR lowering and HIR module ownership boundaries.
+It can demote rendered lookup only where the caller already carries complete
+structured identity and where parity instrumentation has proved no behavioral
+mismatch.
+
+Safe idea 104 candidates:
+
+- Prefer `find_function_by_decl_ref_structured` and
+  `find_global_by_decl_ref_structured` for HIR-internal `DeclRef` resolution
+  paths that have `name_text_id`, namespace `TextId`s, or concrete
+  `FunctionId` / `GlobalId` / `LinkNameId` available.
+- Convert owner-aware record lookup paths to
+  `find_struct_def_by_owner_structured` where a `HirRecordOwnerKey` is already
+  known, without changing raw `TypeSpec::tag` consumers.
+- Route direct HIR method/member probes through the existing parity-recording
+  helper APIs before flipping those helpers to structured authority.
+- Keep parity dump/classifier surfaces until a focused proof pass shows no
+  mismatches across qualified refs, template records, inherited members, and
+  overload-sensitive call paths.
+- Leave rendered spelling in diagnostics, dumps, HIR printers, and mangling
+  text helpers unless that spelling is also used as semantic lookup authority.
+
+Idea 104 should not delete `fn_index`, `global_index`, `struct_defs`, template
+name registries, enum/const-int name maps, method/member rendered maps, or
+`TypeSpec::tag` storage as a first cleanup packet. Those are still compatibility
+bridges or output spelling surfaces.
+
+### Recommended Idea 105 HIR-To-LIR Bridge Scope
+
+Idea 105 should own all cross-boundary identity handoffs from HIR into LIR and
+shared codegen. Its first packets should replace name-only semantic selection
+with typed IDs or structured keys while preserving ABI-visible spelling.
+
+Bridge scope for idea 105:
+
+- Make `DeclRef::link_name_id`, `FunctionId` / `GlobalId`, or a module
+  declaration key the normal authority for HIR-to-LIR function/global
+  references; then remove valid-call reliance on
+  `find_function_by_name_legacy` and `select_global_object(name)` fallbacks.
+- Replace global best-object and dedup selection by rendered
+  `GlobalVar::name` with a typed global key that preserves current tentative
+  definition and initialized-array selection rules.
+- Move function dedup, reachability, and extern filtering toward `LinkNameId`
+  or function IDs, with rendered spelling retained only as fallback output text.
+- Carry `HirRecordOwnerKey`, a record/layout ID, or an equivalent typed key
+  beside `TypeSpec` so layout, ABI classification, base traversal, vaarg
+  lowering, and field access no longer need `mod.struct_defs.find(ts.tag)`.
+- Use `field_text_id`, `MemberSymbolId`, or an owner-qualified field key for
+  const-init designators and member field access; retain `HirStructField::name`
+  for source spelling and diagnostics.
+- Extend shared lowering context or helper inputs only where codegen needs
+  cross-boundary identity; do not make HIR-only cleanup invent downstream
+  bridge policy.
+
+### Proof Gaps Before Demotion
+
+The audit did not find enough proof to demote these families immediately:
+
+- `resolve_*_decl` and `classify_*_decl_lookup`: need a parity run showing
+  structured `DeclRef` lookup agrees with legacy fallback for qualified,
+  namespaced, overloaded, template-instantiated, and extern-visible references.
+- Template function, consteval, template-struct, and instance registries: need
+  owner-key lookup coverage for pending consteval records, specialization
+  lookup, realized instance lookup, and primary-definition lookup without
+  falling back to rendered primary names.
+- Struct method, static-member, and member-symbol lookup: need inherited-base,
+  const/non-const method, range-for, operator, object member, and trait/static
+  member parity proof after direct rendered-map probes are routed through
+  structured-aware helpers.
+- Enum and const-int value bindings: need evaluator/env API proof that
+  `CompileTimeValueBindingKey` maps fully cover block save/restore,
+  `static_eval_int`, enum constant lookup, and consteval evaluation.
+- HIR-to-LIR function/global references: need a coverage proof that valid
+  direct calls, const initializer references, extern declarations, and global
+  references carry `LinkNameId` or typed IDs before rendered fallback removal.
+- Struct layout and field lowering: need a record/layout-ID proof for
+  `sizeof_ts`, object alignment, ABI aggregate classification, base traversal,
+  const-init layout, member lvalue lowering, vaarg lowering, and LLVM type
+  declaration emission.
+- ABI and printer spelling: need golden-output proof that final link names,
+  LLVM `%struct.*` names, metadata comments, dumps, and diagnostics retain
+  stable text after identity migration.
+
+Focused validation subsets before any demotion should include:
+
+- HIR dump/parity tests for qualified function/global refs, namespace refs,
+  template calls, consteval calls, template struct specialization, enum
+  constants, static members, inherited members, range-for methods, and operator
+  overloads.
+- HIR-to-LIR and LIR golden tests for direct calls, function pointers, extern
+  filtering, global tentative/initialized selection, const initializer
+  function/global references, struct layout, inherited field access, designator
+  initialization, vaargs, and ABI aggregate classification on the supported
+  targets.
+- Printer/diagnostic golden tests for unchanged HIR dumps, compile-time
+  diagnostics, emitted link names, and LLVM struct type spelling.
+- A broad regression guard after a cleanup packet flips authority, because many
+  remaining strings are shared by HIR, compile-time evaluation, and codegen.
+
+### Final Classification Summary
+
+Safe demotion candidates:
+
+- HIR-internal `ModuleDeclLookupKey` lookup from complete `DeclRef` metadata.
+- Concrete `FunctionId`, `GlobalId`, and `LinkNameId` lookup surfaces.
+- Owner-aware HIR record lookup by `HirRecordOwnerKey` where the owner key is
+  already available.
+- Parity-recording helper paths after direct rendered-map probes are routed
+  through them and focused parity proof is green.
+
+Bridge-required paths:
+
+- `find_*_by_name_legacy` callers that start from `Node::name`, synthesized
+  mangled names, downstream `DeclRef::name`, or incomplete metadata.
+- Template, consteval, instantiation, enum, const-int, struct method,
+  static-member, and member-symbol maps where rendered names still drive active
+  semantic lookup.
+- `Module::struct_defs` and `TypeSpec::tag` semantic consumers inside HIR
+  lowering and shared HIR/codegen helpers.
+
+Diagnostic-only paths:
+
+- `CompileTimeDiagnostic`, compile-time error descriptions, range-for/call
+  lowering messages, local-slot messages, and HIR-to-LIR runtime/lowering error
+  text. Keep these strings readable and do not treat them as lookup blockers
+  unless adjacent code also uses the same string for semantic selection.
+
+Printer-only paths:
+
+- HIR printer type spelling, struct/module dump presentation, template and
+  pending-consteval dump text, and parity/debug dumps. These may keep rendered
+  names as observation text while lookup authority changes elsewhere.
+
+ABI/link-spelling paths:
+
+- `emitted_link_name`, LIR printer link-name resolution, extern/global/function
+  output names, LLVM `%struct.*` names, and mangling/type fingerprint helpers.
+  Preserve exact spelling while moving lookup identity to typed IDs or
+  structured keys.
+
+HIR-to-LIR blocked paths:
+
+- `find_local_target_function` rendered fallback, const-init function/global
+  fallback, `select_global_object(name)`, rendered function/global dedup,
+  extern filtering through `fn_index`, `mod.struct_defs.find(TypeSpec::tag)`,
+  base traversal by rendered tags, field slot/designator lookup by field text,
+  and shared layout/ABI helpers that only receive `TypeSpec` text today.
+
+### Lightweight Checks Run For Step 5
+
+- Re-read the Step 1-4 review artifact and focused source-idea / plan output
+  requirements.
+- `rg` over `plan.md`, the source idea, and this artifact for demotion,
+  bridge, proof-gap, idea 104, and idea 105 requirements.
+- No build or test command was required for this audit-only packet.

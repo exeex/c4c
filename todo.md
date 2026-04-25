@@ -1,51 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/103_hir_post_dual_path_legacy_readiness_audit.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Inventory HIR-To-LIR String Identity Seams
+Current Step ID: 5
+Current Step Title: Write Follow-Up Recommendations And Proof Gaps
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 from `plan.md`: extended
-`review/103_hir_post_dual_path_legacy_readiness_audit.md` with a HIR-to-LIR
-string identity seam inventory covering `src/codegen/lir/hir_to_lir/`,
-`src/codegen/shared/fn_lowering_ctx.hpp`, `src/codegen/shared/llvm_helpers.hpp`,
-and the requested HIR payload fields. The inventory separates output spelling
-from downstream semantic handoffs that block HIR-only legacy lookup deletion.
+Step 5 from `plan.md`: finalized
+`review/103_hir_post_dual_path_legacy_readiness_audit.md` with follow-up
+recommendations for safe idea 104 HIR cleanup scope, separate idea 105
+HIR-to-LIR bridge scope, proof gaps before demotion, focused validation subsets,
+and final classification summaries for safe demotion, bridge-required,
+diagnostic-only, printer-only, ABI/link-spelling, and HIR-to-LIR blocked paths.
 
 ## Suggested Next
 
-Execute Step 5 from `plan.md`: Write Follow-Up Recommendations And Proof Gaps.
-Focus the handoff on converting the audit into idea 105 bridge work. The
-highest-risk bridge packet should cover HIR-to-LIR callable/global fallbacks:
-`DeclRef::link_name_id` coverage, `find_function_by_name_legacy` fallback
-removal readiness, and `select_global_object(name)` replacement strategy.
+Supervisor lifecycle review: decide whether the audit artifact satisfies idea
+103 and route to the plan owner for close/deactivate/replacement-plan decision.
 
 ## Watchouts
 
-- This active plan is audit-only; do not edit implementation files.
-- Do not demote, delete, or rewrite expectations as part of the audit.
-- `Function::name`, `GlobalVar::name`, `DeclRef::name`, `TypeSpec::tag`,
-  `HirStructDef::tag`, and `HirStructField::name` all have legitimate spelling
-  uses, but some HIR-to-LIR consumers still use them as semantic identity.
-- `LinkNameId` is already the preferred cross-boundary callable/global link
-  authority where present; deletion blockers are the invalid-ID fallback paths.
-- `TypeSpec::tag` and `HirStructField::name` remain major non-function blockers
-  because layout, ABI classification, field traversal, and const-init selection
-  still consume rendered text as identity.
+- The artifact intentionally recommends no implementation or expectation edits
+  for idea 103; route any cleanup into idea 104 or idea 105.
+- Idea 104 scope should stay HIR-internal and proof-driven; idea 105 owns
+  HIR-to-LIR identity handoffs and ABI/layout bridge work.
+- Safe demotion candidates are narrow: complete `DeclRef` structured lookup,
+  concrete IDs/link IDs, owner-aware HIR record lookup, and parity helper flips
+  only after focused proof is green.
+- Rendered spelling remains valid for diagnostics, printers, dumps, emitted
+  link names, LLVM struct type spelling, and mangling/type fingerprints.
 
 ## Proof
 
 Audit-only packet; no build or test command required by the supervisor.
-Lightweight read-only checks were run: verified `c4c-clang-tool`,
-`c4c-clang-tool-ccdb`, and `build/compile_commands.json`; ran
-`c4c-clang-tool-ccdb function-signatures` on
-`src/codegen/lir/hir_to_lir/hir_to_lir.cpp`,
-`src/codegen/lir/hir_to_lir/const_init_emitter.cpp`, and
-`src/codegen/lir/hir_to_lir/call/target.cpp`; ran focused `rg` scans over
-`src/codegen/lir/hir_to_lir`, `src/codegen/shared`, and
-`src/frontend/hir/hir_ir.hpp`; and inspected the relevant HIR-to-LIR/shared
-files read-only. No `test_after.log` was produced because the delegated proof
-explicitly did not require a build or test command.
+Lightweight checks run for Step 5: re-read the Step 1-4 artifact and focused
+source-idea / plan output requirements; ran `rg` over `plan.md`, the source
+idea, and the review artifact for demotion, bridge, proof-gap, idea 104, and
+idea 105 requirements; ran `git diff --check`. No `test_after.log` was produced
+because the delegated proof explicitly did not require a build or test command.
