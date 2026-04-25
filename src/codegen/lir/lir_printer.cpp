@@ -527,7 +527,9 @@ std::string print_llvm(const LirModule& mod) {
   if (!mod.data_layout.empty() || !target_triple.empty()) out << "\n";
 
   // Type declarations (struct/union definitions).
-  for (const auto& td : mod.type_decls) out << td << "\n";
+  for (const auto& decl : mod.struct_decls) {
+    out << render_struct_decl_llvm(mod, decl) << "\n";
+  }
 
   // String pool constants.
   for (const auto& sc : mod.string_pool) {
@@ -551,7 +553,7 @@ std::string print_llvm(const LirModule& mod) {
     out << "\n";
   }
 
-  if (!mod.type_decls.empty() || !mod.string_pool.empty() || !mod.globals.empty())
+  if (!mod.struct_decls.empty() || !mod.string_pool.empty() || !mod.globals.empty())
     out << "\n";
 
   // Intrinsic declarations.
