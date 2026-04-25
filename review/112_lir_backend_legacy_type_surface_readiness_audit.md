@@ -1,7 +1,7 @@
 # LIR Backend Legacy Type Surface Readiness Audit
 
-Status: Step 2 blocker ownership classified
-Plan Step: Step 2 - Classify Blocker Ownership
+Status: Step 3 follow-up scope mapped
+Plan Step: Step 3 - Map Follow-Up Scope For Ideas 113, 114, And 115
 Scope: report-only; no implementation edits
 
 ## Step 1 Inventory
@@ -123,6 +123,108 @@ Scope: report-only; no implementation edits
   `LirGlobal::llvm_type`, `LirFunction::signature_text`, and
   `LirExternDecl::return_type_str`. These need structured authority plus a
   final rendering or backend bridge before the legacy text can be demoted.
+
+## Step 3 Follow-Up Scope Map
+
+### Idea 113: Backend StructDecl Layout Table Dual Path
+
+Idea 113 should own the active BIR/backend layout blockers that still consume
+`module.type_decls` or parse aggregate type text as backend layout authority:
+
+| Finding | Why it belongs to idea 113 | Required fallback/parity rule |
+|---|---|---|
+| `LirModule::type_decls` | It is still the source used to build BIR aggregate layout maps. | Do not remove it; keep legacy parsing as the fallback and parity source. |
+| BIR type-decl map builder | It converts `module.type_decls` into backend `TypeDeclMap` authority. | Add structured table input from `module.struct_decls` only where legacy parity can be checked. |
+| BIR aggregate layout parser | It parses `%struct` declaration bodies for size, alignment, and fields. | Preserve text parser behavior and record structured-vs-legacy mismatches. |
+| BIR globals and initializers | Global lowering, aggregate initializer lowering, and pointer offsets still consume backend layout facts. | Prefer structured backend layout only after matching legacy output for touched paths. |
+| BIR call ABI paths | sret/byval/HFA-ish call and return lowering still parse signatures and aggregate type text. | Keep signature/type-text fallback where ABI lowering is not yet structured-safe. |
+| BIR memory layout consumers | GEP, slots, memcpy/memset, provenance, and byte-addressing still use text-backed layout. | Convert consumers behind a structured layout table with legacy fallback. |
+
+Idea 113 should not own these Step 1 findings:
+
+- `StructuredLayoutLookup::legacy_decl` consumers: these are HIR-to-LIR layout
+  authority issues and belong to idea 115 after backend dual-path support
+  exists.
+- Raw `LirTypeRef` identity/output, raw string-only `LirTypeRef`
+  construction, call return type text, and call argument text/mirrors: these
+  are type-ref authority blockers or text-authority cleanup candidates for idea
+  114 only after proof exists.
+- `LirGlobal::llvm_type`, `LirFunction::signature_text`, and
+  `LirExternDecl::return_type_str`: these are final emitted/printer/backend
+  bridge surfaces, not the initial backend layout table conversion itself.
+- `legacy-proof-only` verifier/proof surfaces: these remain compatibility
+  proof until backend authority and layout authority blockers have structured
+  alternatives.
+- MIR/aarch64 legacy text consumers: MIR is planned-rebuild residue, not an
+  idea 113 migration target or blocker.
+
+### Idea 114: LIR Type Text Authority Demotion
+
+Current evidence does not classify any Step 1 surface as fully
+`safe-to-demote`. Idea 114 should therefore start with proof-only or
+proof-gap-aware candidates and must not remove text that remains backend,
+layout, bridge, or type-ref authority.
+
+Suitable idea 114 candidates:
+
+| Finding | Current class | Follow-up shape |
+|---|---|---|
+| `LirModule::struct_decls` | `legacy-proof-only` | Keep as structured declaration authority; only demote related legacy proof once `type_decls` no longer acts as backend authority. |
+| struct declaration shadow proof | `legacy-proof-only` | Candidate for proof simplification after idea 113 proves backend layout no longer depends on declaration text authority. |
+| `LirStructuredLayoutObservation` | `legacy-proof-only` | Candidate for removing or narrowing dual-path observation only after idea 115 converts the corresponding HIR-to-LIR consumers. |
+| indexed GEP aggregate type ref mirror | `needs-more-parity-proof` | Proof-gap-aware candidate: strengthen parity coverage before any demotion. |
+| `LirGlobal::llvm_type_ref` | `needs-more-parity-proof` | Proof-gap-aware candidate: prove mirror completeness against `llvm_type`; keep emitted text. |
+| function signature mirrors | `needs-more-parity-proof` | Proof-gap-aware candidate: prove return/parameter mirrors cover signature text before structured-first authority. |
+| `LirExternDecl::return_type` | `needs-more-parity-proof` | Proof-gap-aware candidate: prove structured return type coverage while keeping `return_type_str` for output/backend fallback. |
+
+Idea 114 must leave these out of scope until their blockers are cleared:
+
+- `backend-blocked`: `LirModule::type_decls` and BIR layout consumers remain
+  idea 113 work.
+- `layout-authority-blocked`: `StructuredLayoutLookup::legacy_decl` consumers
+  remain idea 115 work.
+- `type-ref-authority-blocked`: call return type text, call argument text and
+  mirrors, raw `LirTypeRef` identity/output, and raw string-only construction
+  are not demotion candidates until structured type identity replaces text
+  authority for the touched operation families.
+- `bridge-required`: field-chain structured name mirror,
+  `LirGlobal::llvm_type`, `LirFunction::signature_text`, and
+  `LirExternDecl::return_type_str` need structured authority plus final
+  rendering/backend bridges before demotion.
+- MIR/aarch64 legacy text consumers are not cleanup targets or blockers for
+  idea 114.
+
+### Idea 115: HIR-To-LIR Layout LegacyDecl Demotion
+
+Idea 115 should own the HIR-to-LIR layout consumers that currently read
+`StructuredLayoutLookup::legacy_decl` for size, alignment, field, or aggregate
+payload facts. These are not backend parser blockers; they should move to
+structured layout facts only where `StructNameId` is available and parity is
+stable.
+
+| Finding | HIR-to-LIR consumer scope | Required fallback |
+|---|---|---|
+| `StructuredLayoutLookup::legacy_decl` | Shared lookup bridge that still exposes legacy `HirStructDef*` layout facts. | Keep `legacy_decl` until all selected consumers can use structured layout facts first. |
+| object alignment via legacy layout | Aggregate object alignment in HIR-to-LIR lowering. | Use structured alignment when available; fall back to `legacy_decl->align_bytes`. |
+| const-init aggregate lookup | Aggregate initializer and field lookup. | Keep legacy lookup for incomplete structured coverage and mismatch proof. |
+| variadic aggregate argument sizing | Variadic aggregate payload sizing in call argument lowering. | Use structured size only with ABI parity proof; keep legacy size fallback. |
+| `va_arg` aggregate sizing | `va_arg` payload sizing and zero-aggregate handling. | Preserve legacy size/field fallback until structured handling covers zero and nested aggregate cases. |
+| field-chain structured name mirror | Field-chain and nested struct traversal bridge. | Keep the legacy field traversal bridge until structured field-chain lookup is authoritative. |
+| indexed GEP aggregate type ref mirror | Lvalue/GEP aggregate element type mirror. | Treat as proof-gap-aware: keep raw text fallback until parity proves structured element refs are complete. |
+
+Idea 115 should not own BIR `TypeDeclMap` migration, raw `LirTypeRef`
+identity demotion, or final emitted text fields such as
+`LirGlobal::llvm_type`, `LirFunction::signature_text`, and
+`LirExternDecl::return_type_str`; those remain idea 113 or 114 concerns as
+classified above.
+
+### MIR Boundary For Follow-Ups
+
+MIR/aarch64 legacy text consumers are classification-only `planned-rebuild`
+residue. MIR is not a current migration target for ideas 113, 114, or 115 and
+must not be treated as a blocker for these follow-ups. If MIR files block
+compilation while LIR/BIR work proceeds, the follow-up should be compile-target
+exclusion, not MIR type-surface migration.
 
 ## Must Not Remove Yet
 
