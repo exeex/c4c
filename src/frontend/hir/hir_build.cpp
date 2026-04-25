@@ -489,6 +489,7 @@ void Lowerer::lower_non_method_functions_and_globals(
         Function ce_fn{};
         ce_fn.id = next_fn_id();
         ce_fn.name = item->name ? item->name : "<anon_consteval>";
+        ce_fn.name_text_id = make_unqualified_text_id(item, m.link_name_texts.get());
         ce_fn.link_name_id = m.link_names.intern(ce_fn.name);
         ce_fn.execution_domain = item->execution_domain;
         ce_fn.ns_qual = make_ns_qual(item, m.link_name_texts.get());

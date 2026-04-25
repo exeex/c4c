@@ -1097,6 +1097,8 @@ GlobalId Lowerer::lower_static_local_global(FunctionCtx& ctx, const Node* n) {
   GlobalVar g{};
   g.id = next_global_id();
   g.name = "__static_local_" + sanitize_symbol(ctx.fn->name) + "_" + std::to_string(g.id.value);
+  g.name_text_id = make_unqualified_text_id(
+      n, module_ ? module_->link_name_texts.get() : nullptr);
   g.type = qtype_from(n->type, ValueCategory::LValue);
   g.fn_ptr_sig = fn_ptr_sig_from_decl_node(n);
   g.linkage = {true, false, false};
@@ -1584,6 +1586,8 @@ void Lowerer::lower_global(const Node* gv,
   GlobalVar g{};
   g.id = next_global_id();
   g.name = name_override ? *name_override : (gv->name ? gv->name : "<anon_global>");
+  g.name_text_id = make_unqualified_text_id(
+      gv, module_ ? module_->link_name_texts.get() : nullptr);
   g.link_name_id = module_->link_names.intern(g.name);
   g.ns_qual = make_ns_qual(gv, module_ ? module_->link_name_texts.get() : nullptr);
   {
