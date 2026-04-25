@@ -1,39 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/110_lir_struct_type_printer_authority_readiness_audit.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Prove Parity With Focused Coverage
+Current Step ID: Step 4
+Current Step Title: Write The Readiness Report
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Prove Parity With Focused Coverage completed as a proof-only packet
-for idea 110. The supervisor-selected focused proof built successfully and ran
-25 matching tests with `100% tests passed, 0 tests failed out of 25`.
+Step 4 - Write The Readiness Report completed as a report-only packet for idea
+110. Wrote `review/110_lir_struct_type_printer_authority_readiness_audit.md`
+with audited surface classifications, concrete blockers, proof notes from Step
+3, and the route recommendation.
 
-Focused coverage supports the Step 2 classification: frontend LIR mirror tests
-still pass for function signatures, globals, extern declarations, and calls;
-the selected ABI, variadic aggregate, alignment, struct initializer, struct
-return, packed/stdarg/varg struct, and zero-struct runtime/torture cases also
-pass. This keeps `LirModule::struct_decls` plus
-`render_struct_decl_llvm()` as the only near-term `printer-authority-ready`
-surface from the audit, while the signature/global/extern/call text surfaces
-remain `printer-only` or `bridge-required`, and broader type-ref/layout lookup
-surfaces remain blocked as classified in Step 2.
+The report classifies `LirModule::struct_decls` plus
+`render_struct_decl_llvm()` as ready for a narrow struct-declaration printer
+authority switch, with `type_decls` retained as legacy proof/backcompat input.
+Global/function/extern/call type text remains `printer-only` or
+`legacy-proof-only`, broad `LirTypeRef` authority remains
+`blocked-by-type-ref`, and HIR-to-LIR layout authority remains
+`blocked-by-layout-lookup`.
 
-No expectations, tests, implementation files, `plan.md`, source ideas, or
-review artifacts were changed.
+No legacy removal was performed. No expectations, tests, implementation files,
+`plan.md`, or source ideas were changed.
 
 ## Suggested Next
 
-Supervisor can decide whether idea 110 is ready for lifecycle review/closure or
-needs a follow-up plan-owner pass to turn the audit result into the next
-implementation initiative.
+Supervisor can route idea 110 to lifecycle review/closure and create a
+follow-up implementation idea for the narrow struct-declaration printer switch
+from `type_decls` to `struct_decls`, while leaving broader type-ref/layout
+authority work for separate dual-path coverage.
 
 ## Watchouts
 
-- This was proof-only. It did not change printer authority, bridge backend/MIR
+- This was report-only. It did not change printer authority, bridge backend/MIR
   consumers, or demote any legacy text fields.
 - Existing review artifacts `review/108_step2_global_type_ref_review.md` and
   `review/109_struct_layout_lookup_route_review.md` remain untracked and were
@@ -41,14 +41,18 @@ implementation initiative.
 
 ## Proof
 
-Ran exactly:
+No new build or CTest command was run for this report-only packet, per the
+delegated proof contract.
+
+The report cites the Step 3 proof already recorded in this file:
 
 ```sh
 { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|positive_sema_ok_call_variadic_aggregate_runtime_c|abi_abi_variadic_.*|llvm_gcc_c_torture_src_(align_[123]_c|struct_ini_[0-9]_c|struct_ret_[12]_c|strct_.*_c|zero_struct_[12]_c))'; } > test_after.log 2>&1
 ```
 
-Result: passed. `cmake --build --preset default` reported `ninja: no work to
-do`; `ctest` ran 25 tests and reported `100% tests passed, 0 tests failed out
-of 25`.
+Recorded Step 3 result: passed. `cmake --build --preset default` reported
+`ninja: no work to do`; `ctest` ran 25 tests and reported `100% tests passed,
+0 tests failed out of 25`.
 
-Proof log: `test_after.log`.
+Proof log for Step 3 was recorded as `test_after.log`; no new proof log was
+created for Step 4.
