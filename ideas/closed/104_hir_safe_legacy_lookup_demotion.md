@@ -1,8 +1,9 @@
 # HIR Safe Legacy Lookup Demotion
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
+Closed: 2026-04-25
 
 Parent Ideas:
 - [103_hir_post_dual_path_legacy_readiness_audit.md](/workspaces/c4c/ideas/closed/103_hir_post_dual_path_legacy_readiness_audit.md)
@@ -73,3 +74,27 @@ include:
   shortcuts.
 - The final diff does not mix downstream LIR/codegen bridge redesign with
   HIR-internal cleanup.
+
+## Closure Notes
+
+Closed after the Step 6 final-validation packet. The selected safe HIR-internal
+demotions are complete for the review-backed scope: complete-`DeclRef` HIR
+lookup paths prefer structured lookup, direct method/member probes touched by
+the runbook route through parity-recording helpers, and owner-aware HIR record
+checks use `find_struct_def_by_owner_structured` when valid owner metadata is
+available.
+
+No remaining idea 104 work is blocked inside the HIR-only scope. Retained
+legacy paths are deliberately left intact where they are bridge-required,
+legacy-proof-only, or still needed for parity observation.
+
+Downstream bridge cleanup remains owned by idea 105, including HIR-to-LIR
+string identity, `TypeSpec::tag` codegen/layout consumers, extern filtering,
+global best-object selection, rendered `Module::struct_defs`
+layout/base/member paths, rendered method/static-member maps, ABI/link spelling,
+and fallback-name handoff.
+
+Close validation used the canonical full-suite logs:
+`test_before.log` 2976/2976 and `test_after.log` 2976/2976. Regression guard
+passed with `--allow-non-decreasing-passed`, appropriate for this lifecycle-only
+close after the already-committed validation slice.
