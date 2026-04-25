@@ -182,7 +182,9 @@ bool BirFunctionLowerer::append_local_aggregate_scalar_slots(std::string_view ty
                                                              std::size_t byte_offset,
                                                              std::size_t align_bytes,
                                                              LocalAggregateSlots* aggregate_slots) {
-  const auto layout = compute_aggregate_type_layout(type_text, type_decls_);
+  const auto layout = lookup_backend_aggregate_type_layout(type_text,
+                                                           type_decls_,
+                                                           structured_layouts_);
   if (layout.kind == AggregateTypeLayout::Kind::Invalid ||
       layout.size_bytes == 0 || layout.align_bytes == 0) {
     return false;
@@ -205,7 +207,9 @@ bool BirFunctionLowerer::append_local_aggregate_scalar_slots(std::string_view ty
     }
     case AggregateTypeLayout::Kind::Array: {
       const auto element_layout =
-          compute_aggregate_type_layout(layout.element_type_text, type_decls_);
+          lookup_backend_aggregate_type_layout(layout.element_type_text,
+                                               type_decls_,
+                                               structured_layouts_);
       if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
           element_layout.size_bytes == 0) {
         return false;
@@ -240,7 +244,9 @@ bool BirFunctionLowerer::append_local_aggregate_scalar_slots(std::string_view ty
 bool BirFunctionLowerer::declare_local_aggregate_slots(std::string_view type_text,
                                                        std::string_view slot_name,
                                                        std::size_t align_bytes) {
-  const auto aggregate_layout = compute_aggregate_type_layout(type_text, type_decls_);
+  const auto aggregate_layout = lookup_backend_aggregate_type_layout(type_text,
+                                                                     type_decls_,
+                                                                     structured_layouts_);
   if (aggregate_layout.kind != AggregateTypeLayout::Kind::Struct &&
       aggregate_layout.kind != AggregateTypeLayout::Kind::Array) {
     return false;
