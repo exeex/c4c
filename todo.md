@@ -1,16 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/105_hir_to_lir_text_id_bridge_inventory_and_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Classify Payload, Printer, Diagnostic, Label, And Field Strings
+Current Step ID: 6
+Current Step Title: Final Validation And Follow-Up Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 4 classification for payload, printer, diagnostic,
-label, field, designator, string-pool, and inline-asm string seams without
-changing code.
+Lifecycle review after `plan.md` Steps 1-4 found that Step 5 is already
+satisfied by the committed function/global dedup cleanup in
+`src/codegen/lir/hir_to_lir/hir_to_lir.cpp`:
+`dedup_globals` and `dedup_functions` now prefer valid `LinkNameId`, then valid
+`name_text_id`, then raw rendered `name` only when both stable ids are invalid.
+The cleanup keeps ABI/link spelling and rendered-name fallback behavior intact.
+
+Step 5 proof was recorded in commit `dfb16fb6`:
+`cmake --build build --target c4cll && ctest --test-dir build -R '^(frontend_hir_tests|positive_sema_ok_call_target_resolution_runtime_c|positive_sema_inline_call_discovery_c|cpp_positive_sema_namespace_global_var_runtime_cpp|cpp_positive_sema_namespace_function_call_runtime_cpp|cpp_positive_sema_anon_namespace_fn_lookup_cpp|cpp_llvm_spec_key_metadata|cpp_llvm_forward_pick_specialization_metadata)$' --output-on-failure`.
+
+Result there was green: `c4cll` rebuilt successfully and all 7 selected tests
+passed.
+
+Current lifecycle decision: keep the runbook active at Step 6 for final
+validation and follow-up boundary recording. Do not close in this packet because
+close requires the plan-owner close gate and the available root logs do not
+include a current `test_after.log`; this delegated packet also forbids touching
+root-level logs.
+
+Steps 1-4 classification summary remains:
 
 - Field/member lookup strings are mixed identity and fallback text. Runtime
   member access prefers `MemberExpr::member_symbol_id` through
@@ -63,10 +80,9 @@ changing code.
 
 ## Suggested Next
 
-Proceed to `plan.md` Step 5 with one low-risk identity cleanup, preferably a
-handoff that already has structured authority (`LinkNameId`, `TextId`, or
-`MemberSymbolId`) and a narrow LIR/codegen proof command selected by the
-supervisor.
+Proceed with `plan.md` Step 6. Supervisor should decide the final validation
+scope and either provide/refresh matching close-gate logs or delegate closure
+after the regression guard can run under the root-log constraints.
 
 ## Watchouts
 
@@ -84,8 +100,14 @@ supervisor.
   references during dead-internal elimination. Any Step 5 cleanup that changes
   rendered operand storage must also preserve this reference discovery path or
   replace it with structured reference collection.
+- Remaining follow-up boundaries are not part of this cleanup slice:
+  dead-internal structured reference collection, initializer designator owner
+  authority, user-label/block owner identity, structured inline-asm argument
+  operands, typed GEP/aggregate operand text, and a structured LIR type-decl /
+  signature printer model.
 
 ## Proof
 
-No tests run. This was a classification-only lifecycle/task-state update per
-the delegated proof rule, and `test_after.log` was not created or modified.
+No tests run by this lifecycle packet. Step 5 focused proof is documented above
+from committed state. Closure was not accepted because the close-time regression
+guard was not run and root-level log files were intentionally left untouched.
