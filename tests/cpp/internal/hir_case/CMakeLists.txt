@@ -325,6 +325,16 @@ set_tests_properties(cpp_hir_template_global_specialization PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_module_decl_lookup_structured_mirror
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/module_decl_lookup_structured_mirror_hir.cpp"
+)
+set_tests_properties(cpp_hir_module_decl_lookup_structured_mirror PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "global api::value: int ns=api\\(ctx=[0-9]+\\) = 7.*fn api::bump\\(x: int\\) -> int ns=api\\(ctx=[0-9]+\\).*return \\(x#P0 \\+ api::value#G[0-9]+\\).*decl local: int = api::value#G[0-9]+ ns=api\\(ctx=[0-9]+\\).*return api::bump ns=api\\(ctx=[0-9]+\\)\\(local#L[0-9]+\\)"
+  FAIL_REGULAR_EXPRESSION "module decl lookup parity mismatches"
+)
+
+add_test(
   NAME cpp_hir_template_deferred_nttp_sizeof_pack_expr
   COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_deferred_nttp_sizeof_pack_expr_hir.cpp"
 )
