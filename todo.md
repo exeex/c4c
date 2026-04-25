@@ -1,25 +1,27 @@
 Status: Active
 Source Idea Path: ideas/open/97_structured_identity_completion_audit_and_hir_plan.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Follow-on idea drafting
+Current Step ID: 6
+Current Step Title: Final audit consistency check
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 follow-on idea drafting materialized the idea 97 audit conclusions.
+Step 6 final audit consistency check completed for idea 97.
 
-Drafting result:
-- Idea 98 exists at `ideas/open/98_parser_sema_post_cleanup_structured_identity_leftovers.md` because the audit found meaningful parser/sema leftovers.
-- Idea 98 is limited to parser helper overload leftovers plus sema enum variant mirrors, template NTTP/type-parameter validation mirrors, consteval NTTP binding mirrors, and type-binding text mirror cleanup.
-- Idea 99 exists at `ideas/open/99_hir_module_symbol_structured_lookup_mirror.md`.
-- Idea 99 starts HIR migration with the module function/global structured lookup mirror and preserves rendered names, mangled/template names, diagnostics, `LinkNameId`, and codegen/link output.
-- `review/97_structured_identity_completion_audit.md` now names the concrete idea files and scopes instead of Step 5 placeholders.
+Audit result:
+- `review/97_structured_identity_completion_audit.md` records final acceptance status against idea 97.
+- Parser findings remain separated into bridge-required, diagnostic-only, legacy-proof, parser-leftover, and blocked-by-downstream classifications.
+- Sema findings remain separated into bridge-required, diagnostic-only, legacy-proof, sema-leftover, and blocked-by-HIR classifications.
+- Bridge/downstream-blocked strings are not folded into parser/sema leftover scope.
+- Idea 98 exists at `ideas/open/98_parser_sema_post_cleanup_structured_identity_leftovers.md` and is parser/sema-only.
+- Idea 99 exists at `ideas/open/99_hir_module_symbol_structured_lookup_mirror.md` and is HIR module function/global mirror-only for the first slice.
+- HIR cleanup remains separate from parser/sema completion work.
 
 ## Suggested Next
 
-Run Step 6 final audit consistency check. Re-read the review artifact against idea 97 acceptance criteria, confirm the idea 98 and idea 99 scopes remain separated, confirm no implementation/test files were modified, and prepare the supervisor lifecycle closure decision without closing idea 97 yet.
+Suggested supervisor lifecycle decision: route to the plan owner for idea 97 closure/deactivation review, leaving idea 98 and idea 99 open as separate follow-on source ideas.
 
 ## Watchouts
 
@@ -32,4 +34,18 @@ Run Step 6 final audit consistency check. Re-read the review artifact against id
 
 ## Proof
 
-No build or test run. Step 5 was lifecycle/planning-only drafting from the completed parser, sema, and HIR audit classifications. No `test_after.log` was produced for this audit-only packet.
+No build or test run. Step 6 was source/document consistency audit only.
+
+Proof commands:
+- `git status --short`
+- `sed -n '1,240p' plan.md`
+- `sed -n '1,260p' todo.md`
+- `sed -n '1,260p' ideas/open/97_structured_identity_completion_audit_and_hir_plan.md`
+- `sed -n '1,260p' ideas/open/98_parser_sema_post_cleanup_structured_identity_leftovers.md`
+- `sed -n '1,280p' ideas/open/99_hir_module_symbol_structured_lookup_mirror.md`
+- `sed -n '1,320p' review/97_structured_identity_completion_audit.md`
+- `sed -n '260,620p' review/97_structured_identity_completion_audit.md`
+- `find ideas/open -maxdepth 1 -type f | sort`
+- `find review -maxdepth 1 -type f | sort`
+
+No `test_after.log` was produced or required for this audit-only packet.

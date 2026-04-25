@@ -1,8 +1,8 @@
 # Idea 97 Structured Identity Completion Audit
 
-Status: Step 5 follow-on idea drafting complete
+Status: Step 6 final consistency check complete
 Source Idea: `ideas/open/97_structured_identity_completion_audit_and_hir_plan.md`
-Plan Step: Step 5 - Follow-on idea drafting
+Plan Step: Step 6 - Final audit consistency check
 
 ## Scope Guard
 
@@ -351,3 +351,34 @@ Reasoning:
 - Idea 98 scope is parser/sema-only post-cleanup work: parser helper overload leftovers, sema enum variant mirror population, sema template NTTP/type-parameter validation mirrors, consteval NTTP binding mirrors, and type-binding text mirror cleanup. It explicitly excludes HIR module maps, `TypeSpec::tag`, struct layout, member/method owner identity, compile-time engine registries, codegen names, diagnostics, and link-name output.
 - Idea 99 has been drafted as `ideas/open/99_hir_module_symbol_structured_lookup_mirror.md`.
 - Idea 99 scope is the HIR module function/global structured lookup mirror as the first behavior-preserving HIR slice. It should add declaration-side name text IDs, dual-write structured module mirrors beside rendered `fn_index` / `global_index`, preserve concrete IDs and `LinkNameId` precedence, keep rendered names for diagnostics/codegen/link output, and avoid struct/type, member/method, template registry, enum/const-int, and consteval environment cleanup in the first slice.
+
+## Final Consistency Check
+
+Acceptance status for idea 97:
+
+- The review artifact classifies parser, sema, and HIR lookup identity state after ideas 95 and 96.
+- Parser findings are grouped as `bridge-required`, `diagnostic-only`, `legacy-proof`, `parser-leftover`, and `blocked-by-downstream`.
+- Sema findings are grouped as `bridge-required`, `diagnostic-only`, `legacy-proof`, `sema-leftover`, and `blocked-by-hir`.
+- Parser/sema leftovers are explicitly separated from bridge-required, diagnostic-only, legacy-proof, and downstream/HIR-blocked strings.
+- Idea 98 is required and exists at `ideas/open/98_parser_sema_post_cleanup_structured_identity_leftovers.md`.
+- Idea 98 targets only parser/sema leftovers and keeps HIR/type/codegen rendered-name bridges out of scope.
+- Idea 99 exists at `ideas/open/99_hir_module_symbol_structured_lookup_mirror.md`.
+- Idea 99 defines the HIR dual-lookup starting strategy as a module function/global structured lookup mirror and preserves rendered names, mangled/template names, diagnostics, `LinkNameId`, and codegen/link output.
+- HIR cleanup remains separate from parser/sema completion work: HIR module mirrors start in idea 99, while parser helper overloads and sema enum/template/consteval mirror leftovers remain in idea 98.
+
+Step 6 proof commands:
+
+- `git status --short`
+- `sed -n '1,240p' plan.md`
+- `sed -n '1,260p' todo.md`
+- `sed -n '1,260p' ideas/open/97_structured_identity_completion_audit_and_hir_plan.md`
+- `sed -n '1,260p' ideas/open/98_parser_sema_post_cleanup_structured_identity_leftovers.md`
+- `sed -n '1,280p' ideas/open/99_hir_module_symbol_structured_lookup_mirror.md`
+- `sed -n '1,320p' review/97_structured_identity_completion_audit.md`
+- `sed -n '260,620p' review/97_structured_identity_completion_audit.md`
+- `find ideas/open -maxdepth 1 -type f | sort`
+- `find review -maxdepth 1 -type f | sort`
+
+No build, test, or `test_after.log` was needed for Step 6 because this packet was a source/document consistency audit only.
+
+Suggested supervisor lifecycle decision: route to the plan owner for idea 97 closure/deactivation review, leaving idea 98 and idea 99 open as separate follow-on source ideas.
