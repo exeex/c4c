@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/101_hir_enum_const_int_dual_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define structured value-binding keys and dual-write registrations
+Current Step ID: 4
+Current Step Title: Dual-read semantic lookup paths
 
 # Current Packet
 
@@ -20,7 +20,7 @@ Completed work:
 
 ## Suggested Next
 
-Next packet should wire structured mirror data into a narrow, legacy-preserving lookup handoff only where a complete source key is available. Keep `sync_global_const_bindings` string-only unless a real metadata bridge is added first.
+Next packet should implement Step 4 by adding structured-capable lookup helpers or overloads, then routing semantic value lookup through the structured mirror only at call sites that already have complete source identity. Preserve legacy rendered-name lookup as fallback, keep string-only call sites unchanged until metadata handoff exists, and observe structured/legacy mismatches without changing the selected semantic result. Keep `sync_global_const_bindings` string-only unless a real metadata bridge is added first.
 
 ## Watchouts
 
