@@ -2088,12 +2088,10 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
     case NK_DEREF: {
       TypeSpec ts = infer_generic_ctrl_type(ctx, n->left);
       if (ts.ptr_level == 0 && ts.base == TB_STRUCT && ts.tag) {
-        std::string base_key = std::string(ts.tag) + "::operator_deref";
-        auto rit = struct_method_ret_types_.find(base_key);
-        if (rit == struct_method_ret_types_.end()) {
-          rit = struct_method_ret_types_.find(base_key + "_const");
+        if (auto ret =
+                find_struct_method_return_type(ts.tag, "operator_deref", false)) {
+          return *ret;
         }
-        if (rit != struct_method_ret_types_.end()) return rit->second;
       }
       if (ts.ptr_level > 0) ts.ptr_level -= 1;
       else if (ts.array_rank > 0) ts.array_rank -= 1;
