@@ -133,6 +133,20 @@ TypeBindingStructuredKey type_binding_key_for_param(const Node* func_def, int pa
   return key;
 }
 
+TextId template_param_text_id_for_param(const Node* func_def, int param_index) {
+  if (!func_def || param_index < 0 || param_index >= func_def->n_template_params ||
+      !func_def->template_param_name_text_ids) {
+    return kInvalidText;
+  }
+  return func_def->template_param_name_text_ids[param_index];
+}
+
+ConstEvalStructuredNameKey nttp_binding_key_for_param(const Node* func_def, int param_index) {
+  ConstEvalStructuredNameKey key;
+  key.base_text_id = template_param_text_id_for_param(func_def, param_index);
+  return key;
+}
+
 void record_type_binding_mirrors(
     const std::string& param_name,
     const TypeSpec& arg_ts,
@@ -148,6 +162,20 @@ void record_type_binding_mirrors(
     if (out_type_binding_keys_by_name) {
       (*out_type_binding_keys_by_name)[param_name] = structured_key;
     }
+  }
+}
+
+void record_nttp_binding_mirrors(
+    long long value,
+    const ConstEvalStructuredNameKey& structured_key,
+    ConstTextMap* out_nttp_bindings_by_text,
+    ConstStructuredMap* out_nttp_bindings_by_key) {
+  if (!structured_key.valid()) return;
+  if (out_nttp_bindings_by_text) {
+    (*out_nttp_bindings_by_text)[structured_key.base_text_id] = value;
+  }
+  if (out_nttp_bindings_by_key) {
+    (*out_nttp_bindings_by_key)[structured_key] = value;
   }
 }
 
@@ -414,13 +442,17 @@ ConstEvalEnv bind_consteval_call_env(
     TypeBindingTextMap* out_type_bindings_by_text,
     TypeBindingStructuredMap* out_type_bindings_by_key,
     TypeBindingNameTextMap* out_type_binding_text_ids_by_name,
-    TypeBindingNameStructuredMap* out_type_binding_keys_by_name) {
+    TypeBindingNameStructuredMap* out_type_binding_keys_by_name,
+    ConstTextMap* out_nttp_bindings_by_text,
+    ConstStructuredMap* out_nttp_bindings_by_key) {
   if (out_type_bindings) out_type_bindings->clear();
   if (out_nttp_bindings) out_nttp_bindings->clear();
   if (out_type_bindings_by_text) out_type_bindings_by_text->clear();
   if (out_type_bindings_by_key) out_type_bindings_by_key->clear();
   if (out_type_binding_text_ids_by_name) out_type_binding_text_ids_by_name->clear();
   if (out_type_binding_keys_by_name) out_type_binding_keys_by_name->clear();
+  if (out_nttp_bindings_by_text) out_nttp_bindings_by_text->clear();
+  if (out_nttp_bindings_by_key) out_nttp_bindings_by_key->clear();
 
   ConstEvalEnv env = outer_env;
   if (!callee_expr || !func_def || func_def->n_template_params <= 0 ||
@@ -444,11 +476,17 @@ ConstEvalEnv bind_consteval_call_env(
         auto it = outer_env.nttp_bindings->find(callee_expr->template_arg_nttp_names[i]);
         if (it != outer_env.nttp_bindings->end()) {
           (*out_nttp_bindings)[param_name] = it->second;
+          record_nttp_binding_mirrors(
+              it->second, nttp_binding_key_for_param(func_def, i),
+              out_nttp_bindings_by_text, out_nttp_bindings_by_key);
           continue;
         }
       }
       if (callee_expr->template_arg_values) {
         (*out_nttp_bindings)[param_name] = callee_expr->template_arg_values[i];
+        record_nttp_binding_mirrors(
+            callee_expr->template_arg_values[i], nttp_binding_key_for_param(func_def, i),
+            out_nttp_bindings_by_text, out_nttp_bindings_by_key);
       }
       continue;
     }
@@ -475,6 +513,9 @@ ConstEvalEnv bind_consteval_call_env(
       if (is_nttp) {
         if (!out_nttp_bindings) continue;
         (*out_nttp_bindings)[param_name] = func_def->template_param_default_values[i];
+        record_nttp_binding_mirrors(
+            func_def->template_param_default_values[i], nttp_binding_key_for_param(func_def, i),
+            out_nttp_bindings_by_text, out_nttp_bindings_by_key);
       } else {
         if (!out_type_bindings) continue;
         TypeSpec arg_ts = func_def->template_param_default_types[i];
@@ -503,7 +544,15 @@ ConstEvalEnv bind_consteval_call_env(
       env.type_binding_keys_by_name = out_type_binding_keys_by_name;
     }
   }
-  if (out_nttp_bindings && !out_nttp_bindings->empty()) env.nttp_bindings = out_nttp_bindings;
+  if (out_nttp_bindings && !out_nttp_bindings->empty()) {
+    env.nttp_bindings = out_nttp_bindings;
+    if (out_nttp_bindings_by_text && !out_nttp_bindings_by_text->empty()) {
+      env.nttp_bindings_by_text = out_nttp_bindings_by_text;
+    }
+    if (out_nttp_bindings_by_key && !out_nttp_bindings_by_key->empty()) {
+      env.nttp_bindings_by_key = out_nttp_bindings_by_key;
+    }
+  }
   return env;
 }
 
@@ -800,10 +849,13 @@ ConstEvalResult interp_expr(const Node* n, InterpreterBindings& locals,
       TypeBindingNameTextMap tpl_binding_text_ids_by_name;
       TypeBindingNameStructuredMap tpl_binding_keys_by_name;
       std::unordered_map<std::string, long long> nttp_bindings;
+      ConstTextMap nttp_bindings_by_text;
+      ConstStructuredMap nttp_bindings_by_key;
       ConstEvalEnv call_env = bind_consteval_call_env(
           n->left, callee_def, outer_env, &tpl_bindings, &nttp_bindings,
           &tpl_bindings_by_text, &tpl_bindings_by_key,
-          &tpl_binding_text_ids_by_name, &tpl_binding_keys_by_name);
+          &tpl_binding_text_ids_by_name, &tpl_binding_keys_by_name,
+          &nttp_bindings_by_text, &nttp_bindings_by_key);
       return evaluate_consteval_call(callee_def, args, call_env, consteval_fns, depth + 1,
                                      consteval_fns_by_text, consteval_fns_by_key);
     }

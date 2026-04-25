@@ -331,7 +331,9 @@ ConstEvalEnv bind_consteval_call_env(
     TypeBindingTextMap* out_type_bindings_by_text = nullptr,
     TypeBindingStructuredMap* out_type_bindings_by_key = nullptr,
     TypeBindingNameTextMap* out_type_binding_text_ids_by_name = nullptr,
-    TypeBindingNameStructuredMap* out_type_binding_keys_by_name = nullptr);
+    TypeBindingNameStructuredMap* out_type_binding_keys_by_name = nullptr,
+    ConstTextMap* out_nttp_bindings_by_text = nullptr,
+    ConstStructuredMap* out_nttp_bindings_by_key = nullptr);
 
 // ── String literal helpers ───────────────────────────────────────────────────
 

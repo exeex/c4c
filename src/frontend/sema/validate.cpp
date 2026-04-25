@@ -1552,10 +1552,13 @@ class Validator {
           hir::TypeBindingNameTextMap tpl_binding_text_ids_by_name;
           hir::TypeBindingNameStructuredMap tpl_binding_keys_by_name;
           std::unordered_map<std::string, long long> nttp_bindings;
+          hir::ConstTextMap nttp_bindings_by_text;
+          hir::ConstStructuredMap nttp_bindings_by_key;
           ConstEvalEnv call_env = hir::bind_consteval_call_env(
               n->left->left, consteval_fn, env, &tpl_bindings, &nttp_bindings,
               &tpl_bindings_by_text, &tpl_bindings_by_key,
-              &tpl_binding_text_ids_by_name, &tpl_binding_keys_by_name);
+              &tpl_binding_text_ids_by_name, &tpl_binding_keys_by_name,
+              &nttp_bindings_by_text, &nttp_bindings_by_key);
           auto r = hir::evaluate_consteval_call(
               consteval_fn, args, call_env, consteval_funcs_, 0,
               &consteval_funcs_by_text_, &consteval_funcs_by_key_);
