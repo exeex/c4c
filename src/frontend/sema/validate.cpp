@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <functional>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -19,6 +20,54 @@ namespace c4c::sema {
 using hir::ConstEvalEnv;
 using hir::ConstMap;
 using hir::evaluate_constant_expr;
+
+bool SemaStructuredNameKey::operator==(const SemaStructuredNameKey& other) const {
+  return namespace_context_id == other.namespace_context_id &&
+         is_global_qualified == other.is_global_qualified &&
+         qualifier_text_ids == other.qualifier_text_ids &&
+         base_text_id == other.base_text_id;
+}
+
+std::size_t SemaStructuredNameKeyHash::operator()(const SemaStructuredNameKey& key) const {
+  std::size_t h = std::hash<int>{}(key.namespace_context_id);
+  h ^= std::hash<bool>{}(key.is_global_qualified) + 0x9e3779b9u + (h << 6) + (h >> 2);
+  h ^= std::hash<TextId>{}(key.base_text_id) + 0x9e3779b9u + (h << 6) + (h >> 2);
+  for (TextId segment : key.qualifier_text_ids) {
+    h ^= std::hash<TextId>{}(segment) + 0x9e3779b9u + (h << 6) + (h >> 2);
+  }
+  return h;
+}
+
+std::optional<SemaStructuredNameKey> sema_local_name_key(const Node* node) {
+  if (!node || node->unqualified_text_id == kInvalidText) return std::nullopt;
+  SemaStructuredNameKey key;
+  key.base_text_id = node->unqualified_text_id;
+  return key;
+}
+
+std::optional<SemaStructuredNameKey> sema_structured_name_key(const Node* node) {
+  if (!node || node->unqualified_text_id == kInvalidText) return std::nullopt;
+  if (node->n_qualifier_segments < 0) return std::nullopt;
+  if (node->n_qualifier_segments > 0 && !node->qualifier_text_ids) return std::nullopt;
+
+  SemaStructuredNameKey key;
+  key.namespace_context_id = node->namespace_context_id;
+  key.is_global_qualified = node->is_global_qualified;
+  key.base_text_id = node->unqualified_text_id;
+  key.qualifier_text_ids.reserve(static_cast<std::size_t>(node->n_qualifier_segments));
+  for (int i = 0; i < node->n_qualifier_segments; ++i) {
+    const TextId segment = node->qualifier_text_ids[i];
+    if (segment == kInvalidText) return std::nullopt;
+    key.qualifier_text_ids.push_back(segment);
+  }
+  return key;
+}
+
+SemaDualLookupMatch compare_sema_lookup_presence(bool legacy_found, bool structured_found) {
+  if (!legacy_found && !structured_found) return SemaDualLookupMatch::BothMissing;
+  if (legacy_found && structured_found) return SemaDualLookupMatch::Match;
+  return legacy_found ? SemaDualLookupMatch::LegacyOnly : SemaDualLookupMatch::StructuredOnly;
+}
 
 namespace {
 
