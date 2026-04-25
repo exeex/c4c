@@ -21,6 +21,7 @@
 //   5. This first skeleton is intentionally narrow — only enough to represent
 //      what hir_emitter.cpp already lowers.
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <initializer_list>
@@ -539,6 +540,19 @@ struct LirGlobal {
   bool is_extern_decl = false;  // extern: no init, type only
 };
 
+// ── Structured struct declaration mirror ────────────────────────────────────
+
+struct LirStructField {
+  LirTypeRef type;
+};
+
+struct LirStructDecl {
+  StructNameId name_id = kInvalidStructName;
+  std::vector<LirStructField> fields;
+  bool is_packed = false;
+  bool is_opaque = false;
+};
+
 // ── Specialization metadata entry ────────────────────────────────────────────
 
 struct LirSpecEntry {
@@ -623,6 +637,40 @@ struct LirModule {
   // For now, these are stored as pre-formatted text lines (LLVM syntax).
   // Stage 1+ will replace with structured type defs.
   std::vector<std::string> type_decls;
+
+  // Structured mirror for struct declarations. This is intentionally inert
+  // until HIR lowering starts populating it and the printer is taught to use it.
+  std::vector<LirStructDecl> struct_decls;
+  std::unordered_map<StructNameId, std::size_t> struct_decl_index;
+
+  LirStructDecl* find_struct_decl(StructNameId name_id) {
+    const auto it = struct_decl_index.find(name_id);
+    if (it == struct_decl_index.end()) return nullptr;
+    return &struct_decls[it->second];
+  }
+
+  const LirStructDecl* find_struct_decl(StructNameId name_id) const {
+    const auto it = struct_decl_index.find(name_id);
+    if (it == struct_decl_index.end()) return nullptr;
+    return &struct_decls[it->second];
+  }
+
+  LirStructDecl& record_struct_decl(LirStructDecl decl) {
+    const StructNameId name_id = decl.name_id;
+    if (name_id != kInvalidStructName) {
+      LirStructDecl* existing = find_struct_decl(name_id);
+      if (existing) {
+        *existing = std::move(decl);
+        return *existing;
+      }
+    }
+    const std::size_t index = struct_decls.size();
+    struct_decls.push_back(std::move(decl));
+    if (name_id != kInvalidStructName) {
+      struct_decl_index.emplace(name_id, index);
+    }
+    return struct_decls.back();
+  }
 
   // Intrinsic requirement flags — set directly by lowering (emit_stmt).
   bool need_va_start = false;
