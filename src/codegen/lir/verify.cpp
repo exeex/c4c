@@ -52,6 +52,9 @@ std::optional<std::string> type_ref_mismatch_detail(const LirTypeRef& type) {
   const auto classified_kind = type.empty() ? LirTypeKind::RawText
                                             : LirTypeRef(type.str()).kind();
   if (type.kind() != classified_kind) {
+    if (type.has_struct_name_id() && type.kind() == LirTypeKind::Struct) {
+      return std::nullopt;
+    }
     std::ostringstream detail;
     detail << "typed kind disagrees with text '" << type.str() << "'";
     return detail.str();
@@ -74,6 +77,40 @@ std::optional<std::string> type_ref_mismatch_detail(const LirTypeRef& type) {
   }
 
   return std::nullopt;
+}
+
+std::optional<std::string> type_ref_struct_name_mismatch_detail(
+    const StructNameTable& struct_names,
+    const LirTypeRef& type) {
+  if (!type.has_struct_name_id()) return std::nullopt;
+
+  const std::string_view rendered_name =
+      struct_names.spelling(type.struct_name_id());
+  if (rendered_name.empty()) {
+    return "StructNameId mirror must resolve to a struct name";
+  }
+
+  if (rendered_name != type.str()) {
+    std::ostringstream detail;
+    detail << "StructNameId mirror '" << rendered_name
+           << "' disagrees with text '" << type.str() << "'";
+    return detail.str();
+  }
+
+  return std::nullopt;
+}
+
+const std::string& require_module_type_ref(const LirModule& mod,
+                                           const LirTypeRef& type,
+                                           std::string_view field,
+                                           bool allow_void = false) {
+  const std::string& rendered = require_type_ref(type, field, allow_void);
+  if (const auto mismatch =
+          type_ref_struct_name_mismatch_detail(mod.struct_names, type);
+      mismatch.has_value()) {
+    fail_verify(field, *mismatch);
+  }
+  return rendered;
 }
 
 void verify_result_operand(const LirOperand& operand, std::string_view field) {
@@ -100,7 +137,7 @@ void verify_optional_count_operand(const LirOperand& operand,
                        true);
 }
 
-void verify_inst(const LirInst& inst) {
+void verify_inst(const LirModule& mod, const LirInst& inst) {
   if (const auto* op = std::get_if<LirMemcpyOp>(&inst)) {
     verify_pointer_operand(op->dst, "LirMemcpyOp.dst");
     verify_pointer_operand(op->src, "LirMemcpyOp.src");
@@ -137,7 +174,7 @@ void verify_inst(const LirInst& inst) {
   if (const auto* op = std::get_if<LirAbsOp>(&inst)) {
     verify_result_operand(op->result, "LirAbsOp.result");
     verify_value_operand(op->arg, "LirAbsOp.arg");
-    require_type_ref(op->int_type, "LirAbsOp.int_type");
+    require_module_type_ref(mod, op->int_type, "LirAbsOp.int_type");
     return;
   }
   if (const auto* op = std::get_if<LirIndirectBrOp>(&inst)) {
@@ -149,47 +186,47 @@ void verify_inst(const LirInst& inst) {
   }
   if (const auto* op = std::get_if<LirExtractValueOp>(&inst)) {
     verify_result_operand(op->result, "LirExtractValueOp.result");
-    require_type_ref(op->agg_type, "LirExtractValueOp.agg_type");
+    require_module_type_ref(mod, op->agg_type, "LirExtractValueOp.agg_type");
     verify_value_operand(op->agg, "LirExtractValueOp.agg");
     return;
   }
   if (const auto* op = std::get_if<LirInsertValueOp>(&inst)) {
     verify_result_operand(op->result, "LirInsertValueOp.result");
-    require_type_ref(op->agg_type, "LirInsertValueOp.agg_type");
+    require_module_type_ref(mod, op->agg_type, "LirInsertValueOp.agg_type");
     verify_value_operand(op->agg, "LirInsertValueOp.agg");
-    require_type_ref(op->elem_type, "LirInsertValueOp.elem_type");
+    require_module_type_ref(mod, op->elem_type, "LirInsertValueOp.elem_type");
     verify_value_operand(op->elem, "LirInsertValueOp.elem");
     return;
   }
   if (const auto* op = std::get_if<LirLoadOp>(&inst)) {
     verify_result_operand(op->result, "LirLoadOp.result");
-    require_type_ref(op->type_str, "LirLoadOp.type_str", true);
+    require_module_type_ref(mod, op->type_str, "LirLoadOp.type_str", true);
     verify_pointer_operand(op->ptr, "LirLoadOp.ptr");
     return;
   }
   if (const auto* op = std::get_if<LirStoreOp>(&inst)) {
-    require_type_ref(op->type_str, "LirStoreOp.type_str", true);
+    require_module_type_ref(mod, op->type_str, "LirStoreOp.type_str", true);
     verify_value_operand(op->val, "LirStoreOp.val");
     verify_pointer_operand(op->ptr, "LirStoreOp.ptr");
     return;
   }
   if (const auto* op = std::get_if<LirCastOp>(&inst)) {
     verify_result_operand(op->result, "LirCastOp.result");
-    require_type_ref(op->from_type, "LirCastOp.from_type");
+    require_module_type_ref(mod, op->from_type, "LirCastOp.from_type");
     verify_value_operand(op->operand, "LirCastOp.operand");
-    require_type_ref(op->to_type, "LirCastOp.to_type");
+    require_module_type_ref(mod, op->to_type, "LirCastOp.to_type");
     return;
   }
   if (const auto* op = std::get_if<LirGepOp>(&inst)) {
     verify_result_operand(op->result, "LirGepOp.result");
-    require_type_ref(op->element_type, "LirGepOp.element_type");
+    require_module_type_ref(mod, op->element_type, "LirGepOp.element_type");
     verify_pointer_operand(op->ptr, "LirGepOp.ptr");
     return;
   }
   if (const auto* op = std::get_if<LirCallOp>(&inst)) {
     require_operand_kind(op->result, "LirCallOp.result",
                          {LirOperandKind::SsaValue}, true);
-    require_type_ref(op->return_type, "LirCallOp.return_type", true);
+    require_module_type_ref(mod, op->return_type, "LirCallOp.return_type", true);
     verify_pointer_operand(op->callee, "LirCallOp.callee");
     if (op->result.empty() && op->return_type != "void") {
       fail_verify("LirCallOp.result",
@@ -204,7 +241,7 @@ void verify_inst(const LirInst& inst) {
   if (const auto* op = std::get_if<LirBinOp>(&inst)) {
     verify_result_operand(op->result, "LirBinOp.result");
     (void)render_binary_opcode(op->opcode, "LirBinOp.opcode");
-    require_type_ref(op->type_str, "LirBinOp.type_str", true);
+    require_module_type_ref(mod, op->type_str, "LirBinOp.type_str", true);
     verify_value_operand(op->lhs, "LirBinOp.lhs");
     if (op->rhs.empty()) {
       if (op->opcode.typed() != LirBinaryOpcode::FNeg) {
@@ -219,14 +256,14 @@ void verify_inst(const LirInst& inst) {
   if (const auto* op = std::get_if<LirCmpOp>(&inst)) {
     verify_result_operand(op->result, "LirCmpOp.result");
     (void)render_cmp_predicate(op->predicate, "LirCmpOp.predicate");
-    require_type_ref(op->type_str, "LirCmpOp.type_str");
+    require_module_type_ref(mod, op->type_str, "LirCmpOp.type_str");
     verify_value_operand(op->lhs, "LirCmpOp.lhs");
     verify_value_operand(op->rhs, "LirCmpOp.rhs");
     return;
   }
   if (const auto* op = std::get_if<LirPhiOp>(&inst)) {
     verify_result_operand(op->result, "LirPhiOp.result");
-    require_type_ref(op->type_str, "LirPhiOp.type_str");
+    require_module_type_ref(mod, op->type_str, "LirPhiOp.type_str");
     if (op->incoming.empty()) {
       fail_verify("LirPhiOp.incoming", "must not be empty");
     }
@@ -234,7 +271,7 @@ void verify_inst(const LirInst& inst) {
   }
   if (const auto* op = std::get_if<LirSelectOp>(&inst)) {
     verify_result_operand(op->result, "LirSelectOp.result");
-    require_type_ref(op->type_str, "LirSelectOp.type_str");
+    require_module_type_ref(mod, op->type_str, "LirSelectOp.type_str");
     verify_value_operand(op->cond, "LirSelectOp.cond");
     verify_value_operand(op->true_val, "LirSelectOp.true_val");
     verify_value_operand(op->false_val, "LirSelectOp.false_val");
@@ -242,46 +279,46 @@ void verify_inst(const LirInst& inst) {
   }
   if (const auto* op = std::get_if<LirInsertElementOp>(&inst)) {
     verify_result_operand(op->result, "LirInsertElementOp.result");
-    require_type_ref(op->vec_type, "LirInsertElementOp.vec_type");
+    require_module_type_ref(mod, op->vec_type, "LirInsertElementOp.vec_type");
     verify_value_operand(op->vec, "LirInsertElementOp.vec");
-    require_type_ref(op->elem_type, "LirInsertElementOp.elem_type");
+    require_module_type_ref(mod, op->elem_type, "LirInsertElementOp.elem_type");
     verify_value_operand(op->elem, "LirInsertElementOp.elem");
     verify_value_operand(op->index, "LirInsertElementOp.index");
     return;
   }
   if (const auto* op = std::get_if<LirExtractElementOp>(&inst)) {
     verify_result_operand(op->result, "LirExtractElementOp.result");
-    require_type_ref(op->vec_type, "LirExtractElementOp.vec_type");
+    require_module_type_ref(mod, op->vec_type, "LirExtractElementOp.vec_type");
     verify_value_operand(op->vec, "LirExtractElementOp.vec");
-    require_type_ref(op->index_type, "LirExtractElementOp.index_type");
+    require_module_type_ref(mod, op->index_type, "LirExtractElementOp.index_type");
     verify_value_operand(op->index, "LirExtractElementOp.index");
     return;
   }
   if (const auto* op = std::get_if<LirShuffleVectorOp>(&inst)) {
     verify_result_operand(op->result, "LirShuffleVectorOp.result");
-    require_type_ref(op->vec_type, "LirShuffleVectorOp.vec_type");
+    require_module_type_ref(mod, op->vec_type, "LirShuffleVectorOp.vec_type");
     verify_value_operand(op->vec1, "LirShuffleVectorOp.vec1");
     verify_value_operand(op->vec2, "LirShuffleVectorOp.vec2");
-    require_type_ref(op->mask_type, "LirShuffleVectorOp.mask_type");
+    require_module_type_ref(mod, op->mask_type, "LirShuffleVectorOp.mask_type");
     verify_value_operand(op->mask, "LirShuffleVectorOp.mask");
     return;
   }
   if (const auto* op = std::get_if<LirVaArgOp>(&inst)) {
     verify_result_operand(op->result, "LirVaArgOp.result");
     verify_pointer_operand(op->ap_ptr, "LirVaArgOp.ap_ptr");
-    require_type_ref(op->type_str, "LirVaArgOp.type_str");
+    require_module_type_ref(mod, op->type_str, "LirVaArgOp.type_str");
     return;
   }
   if (const auto* op = std::get_if<LirAllocaOp>(&inst)) {
     verify_result_operand(op->result, "LirAllocaOp.result");
-    require_type_ref(op->type_str, "LirAllocaOp.type_str");
+    require_module_type_ref(mod, op->type_str, "LirAllocaOp.type_str");
     verify_optional_count_operand(op->count, "LirAllocaOp.count");
     return;
   }
   if (const auto* op = std::get_if<LirInlineAsmOp>(&inst)) {
     require_operand_kind(op->result, "LirInlineAsmOp.result",
                          {LirOperandKind::SsaValue}, true);
-    require_type_ref(op->ret_type, "LirInlineAsmOp.ret_type", true);
+    require_module_type_ref(mod, op->ret_type, "LirInlineAsmOp.ret_type", true);
     if (op->result.empty() && op->ret_type != "void") {
       fail_verify("LirInlineAsmOp.result",
                   "must hold an SSA result for non-void inline asm");
@@ -351,6 +388,10 @@ void verify_struct_decl_shadows(const LirModule& mod) {
                   "missing legacy type_decls line for '" + std::string(name) + "'");
     }
 
+    for (const auto& field : decl.fields) {
+      require_module_type_ref(mod, field.type, "LirStructDecl.fields.type");
+    }
+
     const std::string shadow = render_struct_decl_llvm(mod, decl);
     if (shadow != legacy_it->second) {
       std::ostringstream detail;
@@ -358,6 +399,14 @@ void verify_struct_decl_shadows(const LirModule& mod) {
              << "' does not match legacy type_decls line; shadow '" << shadow
              << "', legacy '" << legacy_it->second << "'";
       fail_verify("LirStructDecl.shadow", detail.str());
+    }
+  }
+}
+
+void verify_extern_decl_shadows(const LirModule& mod) {
+  for (const auto& decl : mod.extern_decls) {
+    if (!decl.return_type.empty()) {
+      require_module_type_ref(mod, decl.return_type, "LirExternDecl.return_type", true);
     }
   }
 }
@@ -416,10 +465,11 @@ std::string_view render_cmp_predicate(const LirCmpPredicateRef& predicate,
 
 void verify_module(const LirModule& mod) {
   verify_struct_decl_shadows(mod);
+  verify_extern_decl_shadows(mod);
   for (const auto& function : mod.functions) {
-    for (const auto& inst : function.alloca_insts) verify_inst(inst);
+    for (const auto& inst : function.alloca_insts) verify_inst(mod, inst);
     for (const auto& block : function.blocks) {
-      for (const auto& inst : block.insts) verify_inst(inst);
+      for (const auto& inst : block.insts) verify_inst(mod, inst);
       verify_terminator(block.terminator);
     }
   }

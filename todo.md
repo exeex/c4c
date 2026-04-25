@@ -6,44 +6,41 @@ Current Step Title: Add TypeRef Parity Verification
 
 # Current Packet
 
-Execute Step 4 from `plan.md`: thread `StructNameId` through HIR-to-LIR
-`LirTypeRef` creation only where structured identity is already available and
-the legacy rendered spelling can be preserved.
+Execute Step 5 from `plan.md`: add verifier parity checks for `LirTypeRef`
+instances carrying `StructNameId` mirrors while keeping rendered text as printer
+authority.
 
 ## Just Finished
 
-Step 4 from `plan.md` is complete for the first HIR-to-LIR `LirTypeRef`
-creation paths with reliable struct identity.
+Step 5 from `plan.md` is complete for verifier-side `LirTypeRef` parity.
 
-`build_type_decls()` now attaches `StructNameId` mirrors to direct
-struct/union field refs and base-subobject refs in structured declaration
-mirrors while preserving the exact `llvm_field_ty()` and `llvm_ty()` rendered
-text. Padding, byte-array union storage, anonymous/invalid tags, pointer fields,
-and array-shaped field refs continue through legacy string-only
-`LirTypeRef` construction.
+`verify_module()` now validates mirrored type refs through module context:
+instruction type refs, structured declaration field refs, and extern declaration
+return refs continue to pass the existing type-ref checks, then any attached
+`StructNameId` is resolved through `mod.struct_names` and compared against the
+rendered type text. Missing table entries and spelling mismatches report through
+existing verifier diagnostics on the owning field.
 
-Member-access GEP element types now wrap resolved `FieldStep` struct/union tags
-with the Step 3 factories when `module_` is available. AMD64 and AArch64
-non-pointer `va_list` GEP element types now attach the `%struct.__va_list_tag_`
-mirror through a local accessor. All paths keep the same rendered LLVM type
-strings and retain fallback string-only behavior when no `LirModule` is
-available.
+The follow-up verifier fix for quoted or otherwise legacy-misclassified struct
+spellings is in place: `StructNameId`-backed `Struct` refs may pass the
+kind/text check before module parity validates the mirror, while string-only
+`LirTypeRef` values retain the previous text-only validation behavior.
 
 ## Suggested Next
 
-Have the supervisor decide whether Step 4 needs a follow-up packet for
-additional typed lowering surfaces outside the owned files, or move to the next
-plan step if these representative HIR-to-LIR mirrors are sufficient.
+Have the supervisor choose the next plan step or request a reviewer pass if
+Step 5 should be independently checked before more parity surfaces are added.
 
 ## Watchouts
 
 - Keep rendered `LirTypeRef` strings as printer authority.
-- Preserve existing `llvm_ty`, `llvm_alloca_ty`, `TypeSpec::tag`, and rendered
-  type string paths.
+- Parity is intentionally enforced only when a `LirTypeRef` carries a
+  `StructNameId`; missing mirrors on still-string-only surfaces are not treated
+  as verifier failures in this packet.
 - Do not expand into globals/functions/extern signature surfaces from idea
   108.
 - Do not move layout lookup to `StructNameId`; that belongs to idea 109.
-- Deferred Step 4 surfaces: array-shaped struct fields such as
+- Deferred parity surfaces: array-shaped struct fields such as
   `[N x %struct.X]`, pointer fields rendered as `ptr`, globals/functions/extern
   signature text, and other non-owned GEP sites that only have rendered type
   text in this packet.
@@ -53,8 +50,7 @@ plan step if these representative HIR-to-LIR mirrors are sufficient.
 
 ## Proof
 
-`cmake --build --preset default > test_after.log 2>&1` passed.
-Additional supervisor regression guard passed with matching before/after
-`ctest --test-dir build -j --output-on-failure -R
-'^(positive_sema_|abi_|positive_split_llvm_)'` logs and
-`--allow-non-decreasing-passed`: 38 passed before, 38 passed after, 0 failed.
+`cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^verify_tests_' > test_after.log` passed.
+
+`test_after.log` records 5/5 `verify_tests_` tests passing.
