@@ -275,12 +275,30 @@ static void lower_globals(const std::vector<size_t>& global_indices,
 
 // ── Type declarations ────────────────────────────────────────────────────────
 
-std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
+std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
+                                          LirModule* lir_module) {
   using namespace c4c::codegen::llvm_helpers;
   std::vector<std::string> decls;
 
   if (!llvm_va_list_is_pointer_object(mod.target_profile)) {
     decls.push_back(llvm_va_list_struct_decl(mod.target_profile));
+    if (lir_module) {
+      LirStructDecl decl;
+      decl.name_id = lir_module->struct_names.intern("%struct.__va_list_tag_");
+      if (llvm_target_is_amd64_sysv(mod.target_profile)) {
+        decl.fields.push_back({LirTypeRef("i32")});
+        decl.fields.push_back({LirTypeRef("i32")});
+        decl.fields.push_back({LirTypeRef("ptr")});
+        decl.fields.push_back({LirTypeRef("ptr")});
+      } else {
+        decl.fields.push_back({LirTypeRef("ptr")});
+        decl.fields.push_back({LirTypeRef("ptr")});
+        decl.fields.push_back({LirTypeRef("ptr")});
+        decl.fields.push_back({LirTypeRef("i32")});
+        decl.fields.push_back({LirTypeRef("i32")});
+      }
+      lir_module->record_struct_decl(std::move(decl));
+    }
   }
 
   for (const auto& tag : mod.struct_def_order) {
@@ -288,6 +306,12 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
     if (it == mod.struct_defs.end()) continue;
     const auto& sd = it->second;
     const std::string sty = llvm_struct_type_str(tag);
+    LirStructDecl structured_decl;
+    structured_decl.name_id =
+        lir_module ? lir_module->struct_names.intern(sty) : kInvalidStructName;
+    auto record_structured_decl = [&]() {
+      if (lir_module) lir_module->record_struct_decl(std::move(structured_decl));
+    };
 
     if (sd.fields.empty() && sd.base_tags.empty()) {
       if (sd.size_bytes == 0) {
@@ -295,12 +319,18 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
       } else {
         decls.push_back(sty + " = type { [" +
                          std::to_string(sd.size_bytes) + " x i8] }");
+        structured_decl.fields.push_back(
+            {LirTypeRef("[" + std::to_string(sd.size_bytes) + " x i8]")});
       }
+      record_structured_decl();
       continue;
     }
     if (sd.is_union) {
       decls.push_back(sty + " = type { [" +
                        std::to_string(sd.size_bytes) + " x i8] }");
+      structured_decl.fields.push_back(
+          {LirTypeRef("[" + std::to_string(sd.size_bytes) + " x i8]")});
+      record_structured_decl();
     } else {
       std::ostringstream line;
       line << sty << " = type { ";
@@ -315,7 +345,10 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
         if (base_offset > cur_offset) {
           if (!first) line << ", ";
           first = false;
-          line << "[" << (base_offset - cur_offset) << " x i8]";
+          const std::string pad_ty =
+              "[" + std::to_string(base_offset - cur_offset) + " x i8]";
+          line << pad_ty;
+          structured_decl.fields.push_back({LirTypeRef(pad_ty)});
           cur_offset = base_offset;
         }
         if (!first) line << ", ";
@@ -323,7 +356,9 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
         TypeSpec base_ts{};
         base_ts.base = TB_STRUCT;
         base_ts.tag = base.tag.c_str();
-        line << llvm_ty(base_ts);
+        const std::string base_ty = llvm_ty(base_ts);
+        line << base_ty;
+        structured_decl.fields.push_back({LirTypeRef(base_ty)});
         cur_offset = base_offset + std::max(0, base.size_bytes);
       }
       int last_idx = -1;
@@ -333,20 +368,29 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
         if (f.offset_bytes > cur_offset) {
           if (!first) line << ", ";
           first = false;
-          line << "[" << (f.offset_bytes - cur_offset) << " x i8]";
+          const std::string pad_ty =
+              "[" + std::to_string(f.offset_bytes - cur_offset) + " x i8]";
+          line << pad_ty;
+          structured_decl.fields.push_back({LirTypeRef(pad_ty)});
           cur_offset = f.offset_bytes;
         }
         if (!first) line << ", ";
         first = false;
-        line << llvm_field_ty(f);
+        const std::string field_ty = llvm_field_ty(f);
+        line << field_ty;
+        structured_decl.fields.push_back({LirTypeRef(field_ty)});
         cur_offset = f.offset_bytes + std::max(0, f.size_bytes);
       }
       if (sd.size_bytes > cur_offset) {
         if (!first) line << ", ";
-        line << "[" << (sd.size_bytes - cur_offset) << " x i8]";
+        const std::string pad_ty =
+            "[" + std::to_string(sd.size_bytes - cur_offset) + " x i8]";
+        line << pad_ty;
+        structured_decl.fields.push_back({LirTypeRef(pad_ty)});
       }
       line << " }";
       decls.push_back(line.str());
+      record_structured_decl();
     }
   }
   return decls;
@@ -924,7 +968,7 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
   module.link_name_texts = hir_mod.link_name_texts;
   module.link_names = hir_mod.link_names;
   module.struct_names.attach_text_table(module.link_name_texts.get());
-  module.type_decls = build_type_decls(hir_mod);
+  module.type_decls = build_type_decls(hir_mod, &module);
   module.prefer_semantic_va_ops = options.preserve_semantic_va_ops;
 
   auto global_indices = dedup_globals(hir_mod);

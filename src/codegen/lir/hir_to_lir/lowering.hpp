@@ -108,8 +108,10 @@ std::vector<size_t> dedup_globals(const Module& mod);
 std::vector<size_t> dedup_functions(const Module& mod);
 
 /// Build LLVM struct/union type declaration strings from the HIR module's
-/// struct definitions.
-std::vector<std::string> build_type_decls(const Module& mod);
+/// struct definitions. When a LIR module is supplied, also records the same
+/// layout into the structured declaration mirror.
+std::vector<std::string> build_type_decls(const Module& mod,
+                                          LirModule* lir_module = nullptr);
 
 /// Build the LLVM IR signature text for a function (define/declare line).
 /// Ownership of signature construction belongs to hir_to_lir, not StmtEmitter.
