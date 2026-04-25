@@ -2796,6 +2796,53 @@ void test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases() 
               "test fixture should balance the local visible typedef scope");
 }
 
+void test_parser_template_lookup_demotes_legacy_rendered_name_bridges() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId trait_text = texts.intern("Trait");
+  c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  primary->name = arena.strdup("Trait");
+  primary->unqualified_name = arena.strdup("Trait");
+  primary->unqualified_text_id = trait_text;
+  primary->namespace_context_id = parser.current_namespace_context_id();
+  primary->n_template_params = 1;
+
+  parser.template_state_.template_struct_defs["Trait"] = primary;
+  expect_true(parser.find_template_struct_primary(
+                  parser.current_namespace_context_id(), trait_text,
+                  "Trait") == nullptr,
+              "template primary lookup should not promote legacy-only rendered names when a valid TextId lookup misses structured storage");
+  expect_true(parser.find_template_struct_primary(
+                  parser.current_namespace_context_id(), c4c::kInvalidText,
+                  "Trait") == primary,
+              "TextId-less template primary lookup should preserve rendered-name compatibility");
+
+  c4c::Node* specialization = parser.make_node(c4c::NK_STRUCT_DEF, 2);
+  specialization->name = arena.strdup("Trait_T_int");
+  specialization->unqualified_name = arena.strdup("Trait");
+  specialization->unqualified_text_id = trait_text;
+  specialization->namespace_context_id = parser.current_namespace_context_id();
+  parser.template_state_.template_struct_specializations["Trait"].push_back(
+      specialization);
+  expect_true(parser.find_template_struct_specializations(primary) == nullptr,
+              "template specialization lookup should not promote primary legacy rendered-name maps when the primary carries a valid TextId");
+  expect_true(parser.find_template_struct_specializations(
+                  parser.current_namespace_context_id(), trait_text, "Trait",
+                  nullptr) == nullptr,
+              "template specialization lookup should not promote legacy-only rendered names when a valid TextId lookup misses structured storage");
+  const std::vector<c4c::Node*>* legacy_specializations =
+      parser.find_template_struct_specializations(
+          parser.current_namespace_context_id(), c4c::kInvalidText, "Trait",
+          nullptr);
+  expect_true(legacy_specializations != nullptr &&
+                  legacy_specializations->size() == 1 &&
+                  (*legacy_specializations)[0] == specialization,
+              "TextId-less template specialization lookup should preserve rendered-name compatibility");
+}
+
 void test_parser_nttp_default_cache_dual_reads_legacy_mismatch() {
   c4c::Lexer lexer("template<int N = M + 1>\nstruct ParsedTrait {};\n",
                    c4c::LexProfile::CppSubset);
@@ -2849,9 +2896,9 @@ void test_parser_nttp_default_cache_dual_reads_legacy_mismatch() {
   };
   long long value = 0;
   expect_true(parser.eval_deferred_nttp_default("Trait", 0, {}, {}, &value),
-              "dual NTTP default cache lookup should preserve the legacy result");
-  expect_eq_int(value, 3,
-                "mismatched NTTP default cache entries should not silently let structured data override legacy behavior");
+              "dual NTTP default cache lookup should use the structured result");
+  expect_eq_int(value, 2,
+                "mismatched NTTP default cache entries should not let rendered mirrors override structured data");
   expect_eq_int(
       static_cast<int>(
           parser.template_state_.nttp_default_expr_cache_mismatch_count),
@@ -2859,10 +2906,17 @@ void test_parser_nttp_default_cache_dual_reads_legacy_mismatch() {
       "mismatched structured/rendered NTTP default cache entries should be detected");
 
   parser.template_state_.nttp_default_expr_tokens_by_key.erase(cache_key);
-  expect_true(parser.eval_deferred_nttp_default("Trait", 0, {}, {}, &value),
-              "legacy NTTP default cache mirror should remain a fallback");
-  expect_eq_int(value, 3,
-                "legacy NTTP default cache fallback should preserve behavior");
+  expect_true(!parser.eval_deferred_nttp_default("Trait", 0, {}, {}, &value),
+              "valid-TextId NTTP default cache lookup should not promote a legacy-only rendered mirror");
+
+  parser.template_state_.nttp_default_expr_tokens["LegacyTrait:0"] = {
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "5"),
+  };
+  expect_true(parser.eval_deferred_nttp_default("LegacyTrait", 0, {}, {},
+                                                &value),
+              "TextId-less NTTP default cache lookup should preserve rendered-name compatibility");
+  expect_eq_int(value, 5,
+                "TextId-less NTTP default cache fallback should preserve behavior");
 }
 
 void test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse() {
@@ -3263,6 +3317,7 @@ int main() {
   test_parser_template_type_arg_prefers_local_visible_typedef_text_id();
   test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias();
   test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases();
+  test_parser_template_lookup_demotes_legacy_rendered_name_bridges();
   test_parser_nttp_default_cache_dual_reads_legacy_mismatch();
   test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse();
   test_parser_template_instantiation_dedup_keys_mirror_direct_emission();
