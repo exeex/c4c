@@ -270,6 +270,23 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
   expect_true(fallback_typedef != nullptr &&
                   fallback_typedef->base == c4c::TB_DOUBLE,
               "direct qualified-key typedef lookup should preserve invalid-key fallback compatibility");
+  std::string resolved_type_name;
+  expect_true(parser.lookup_type_in_context(0, lookup_typedef_id,
+                                            "typedefLookupBridge",
+                                            &resolved_type_name) &&
+                  resolved_type_name == "IdFirstLookupType",
+              "namespace-visible typedef lookup should report the TextId spelling over a mismatched fallback");
+  resolved_type_name.clear();
+  expect_true(!parser.lookup_type_in_context(0, missing_typedef_id,
+                                             "typedefLookupBridge",
+                                             &resolved_type_name),
+              "namespace-visible typedef lookup should not promote fallback spelling when a valid TextId lookup misses");
+  resolved_type_name.clear();
+  expect_true(parser.lookup_type_in_context(0, c4c::kInvalidText,
+                                            "typedefLookupBridge",
+                                            &resolved_type_name) &&
+                  resolved_type_name == "typedefLookupBridge",
+              "namespace-visible typedef lookup should preserve TextId-less compatibility fallback");
   const c4c::TypeSpec* id_var =
       parser.find_var_type(lookup_value_id, "valueLookupBridge");
   expect_true(id_var != nullptr && id_var->base == c4c::TB_LONG,
@@ -300,11 +317,63 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
       parser.find_var_type(invalid_key, "valueLookupBridge");
   expect_true(fallback_var != nullptr && fallback_var->base == c4c::TB_FLOAT,
               "direct qualified-key value lookup should preserve invalid-key fallback compatibility");
+  std::string resolved_value_name;
+  expect_true(parser.lookup_value_in_context(0, lookup_value_id,
+                                             "valueLookupBridge",
+                                             &resolved_value_name) &&
+                  resolved_value_name == "idFirstLookupValue",
+              "namespace-visible value lookup should report the TextId spelling over a mismatched fallback");
+  resolved_value_name.clear();
+  expect_true(!parser.lookup_value_in_context(0, missing_value_id,
+                                              "valueLookupBridge",
+                                              &resolved_value_name),
+              "namespace-visible value lookup should not promote fallback spelling when a valid TextId lookup misses");
+  resolved_value_name.clear();
+  expect_true(parser.lookup_value_in_context(0, c4c::kInvalidText,
+                                             "valueLookupBridge",
+                                             &resolved_value_name) &&
+                  resolved_value_name == "valueLookupBridge",
+              "namespace-visible value lookup should preserve TextId-less compatibility fallback");
   const c4c::TypeSpec* string_visible_var =
       parser.find_visible_var_type("valueLookupBridge");
   expect_true(string_visible_var != nullptr &&
                   string_visible_var->base == c4c::TB_FLOAT,
               "string visible value lookup should preserve TextId-less compatibility");
+
+  parser.register_typedef_binding("idFirstNs::namespaceTypeBridge",
+                                  fallback_typedef_ts, true);
+  parser.register_var_type_binding("idFirstNs::namespaceValueBridge",
+                                   fallback_var_ts);
+  const c4c::TextId missing_namespace_type_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText,
+                                      "MissingNamespaceType");
+  const c4c::TextId missing_namespace_value_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText,
+                                      "MissingNamespaceValue");
+  resolved_type_name.clear();
+  expect_true(!parser.lookup_type_in_context(ns_context,
+                                             missing_namespace_type_id,
+                                             "namespaceTypeBridge",
+                                             &resolved_type_name),
+              "namespace-scoped typedef lookup should not promote fallback spelling when a valid TextId lookup misses");
+  resolved_type_name.clear();
+  expect_true(parser.lookup_type_in_context(ns_context, c4c::kInvalidText,
+                                            "namespaceTypeBridge",
+                                            &resolved_type_name) &&
+                  resolved_type_name == "idFirstNs::namespaceTypeBridge",
+              "namespace-scoped typedef lookup should preserve TextId-less compatibility fallback");
+  resolved_value_name.clear();
+  expect_true(!parser.lookup_value_in_context(ns_context,
+                                              missing_namespace_value_id,
+                                              "namespaceValueBridge",
+                                              &resolved_value_name),
+              "namespace-scoped value lookup should not promote fallback spelling when a valid TextId lookup misses");
+  resolved_value_name.clear();
+  expect_true(parser.lookup_value_in_context(ns_context, c4c::kInvalidText,
+                                             "namespaceValueBridge",
+                                             &resolved_value_name) &&
+                  resolved_value_name == "idFirstNs::namespaceValueBridge",
+              "namespace-scoped value lookup should preserve TextId-less compatibility fallback");
 
   const c4c::QualifiedNameKey value_key =
       parser.intern_semantic_name_key("idFirstValue");
