@@ -882,14 +882,32 @@ struct CompileTimeState {
     return template_fn_defs_.count(name) > 0;
   }
 
+  /// Check whether a template function definition is known by declaration identity.
+  bool has_template_def(const Node* declaration,
+                        const std::string& rendered_name = {}) const {
+    return find_template_def(declaration, rendered_name) != nullptr;
+  }
+
   /// Check whether a template struct definition is known.
   bool has_template_struct_def(const std::string& name) const {
     return template_struct_defs_.count(name) > 0;
   }
 
+  /// Check whether a template struct definition is known by declaration identity.
+  bool has_template_struct_def(const Node* declaration,
+                               const std::string& rendered_name = {}) const {
+    return find_template_struct_def(declaration, rendered_name) != nullptr;
+  }
+
   /// Check whether a consteval function definition is known.
   bool has_consteval_def(const std::string& name) const {
     return consteval_fn_defs_.count(name) > 0;
+  }
+
+  /// Check whether a consteval function definition is known by declaration identity.
+  bool has_consteval_def(const Node* declaration,
+                         const std::string& rendered_name = {}) const {
+    return find_consteval_def(declaration, rendered_name) != nullptr;
   }
 
   /// Check whether a registered template definition is marked consteval.
@@ -900,16 +918,43 @@ struct CompileTimeState {
     return it->second && it->second->is_consteval;
   }
 
+  /// Check whether a registered template definition is marked consteval by
+  /// declaration identity.  A rendered name is a legacy fallback only.
+  bool is_consteval_template(const Node* declaration,
+                             const std::string& rendered_name = {}) const {
+    const Node* def = find_template_def(declaration, rendered_name);
+    return def && def->is_consteval;
+  }
+
   /// Look up a template function definition by name (nullptr if unknown).
   const Node* find_template_def(const std::string& name) const {
     auto it = template_fn_defs_.find(name);
     return it != template_fn_defs_.end() ? it->second : nullptr;
   }
 
+  /// Look up a template function definition by declaration identity, falling
+  /// back to the rendered name only when one is supplied.
+  const Node* find_template_def(const Node* declaration,
+                                const std::string& rendered_name = {}) const {
+    return find_structured_node_entry(
+        CompileTimeRegistryKeyKind::TemplateFunction, declaration,
+        rendered_name, template_fn_defs_by_key_, template_fn_defs_);
+  }
+
   /// Look up a template struct definition by name (nullptr if unknown).
   const Node* find_template_struct_def(const std::string& name) const {
     auto it = template_struct_defs_.find(name);
     return it != template_struct_defs_.end() ? it->second : nullptr;
+  }
+
+  /// Look up a template struct definition by declaration identity, falling
+  /// back to the rendered name only when one is supplied.
+  const Node* find_template_struct_def(
+      const Node* declaration,
+      const std::string& rendered_name = {}) const {
+    return find_structured_node_entry(
+        CompileTimeRegistryKeyKind::PrimaryTemplateStruct, declaration,
+        rendered_name, template_struct_defs_by_key_, template_struct_defs_);
   }
 
   /// Look up registered template struct specializations (nullptr if unknown).
@@ -926,10 +971,31 @@ struct CompileTimeState {
     return find_template_struct_specializations(primary_def->name);
   }
 
+  /// Look up registered template struct specializations by primary declaration
+  /// identity, falling back to the rendered primary name only when supplied.
+  const std::vector<const Node*>* find_template_struct_specializations(
+      const Node* primary_def,
+      const std::string& rendered_name) const {
+    return find_structured_vector_entry(
+        CompileTimeRegistryKeyKind::TemplateStructSpecializationOwner,
+        primary_def, rendered_name,
+        template_struct_specializations_by_owner_key_,
+        template_struct_specializations_);
+  }
+
   /// Look up a consteval function definition by name (nullptr if unknown).
   const Node* find_consteval_def(const std::string& name) const {
     auto it = consteval_fn_defs_.find(name);
     return it != consteval_fn_defs_.end() ? it->second : nullptr;
+  }
+
+  /// Look up a consteval function definition by declaration identity, falling
+  /// back to the rendered name only when one is supplied.
+  const Node* find_consteval_def(const Node* declaration,
+                                 const std::string& rendered_name = {}) const {
+    return find_structured_node_entry(
+        CompileTimeRegistryKeyKind::ConstevalFunction, declaration,
+        rendered_name, consteval_fn_defs_by_key_, consteval_fn_defs_);
   }
 
   /// Const reference to the internal consteval function definition map.
@@ -1111,6 +1177,44 @@ struct CompileTimeState {
   }
 
  private:
+  static const Node* find_structured_node_entry(
+      CompileTimeRegistryKeyKind registry_kind,
+      const Node* declaration,
+      const std::string& rendered_name,
+      const std::unordered_map<CompileTimeRegistryKey, const Node*,
+                               CompileTimeRegistryKeyHash>& structured_map,
+      const std::unordered_map<std::string, const Node*>& rendered_map) {
+    if (auto key = make_compile_time_registry_key(registry_kind, declaration)) {
+      auto structured_it = structured_map.find(*key);
+      if (structured_it != structured_map.end()) return structured_it->second;
+    }
+    if (!rendered_name.empty()) {
+      auto rendered_it = rendered_map.find(rendered_name);
+      if (rendered_it != rendered_map.end()) return rendered_it->second;
+    }
+    return nullptr;
+  }
+
+  static const std::vector<const Node*>* find_structured_vector_entry(
+      CompileTimeRegistryKeyKind registry_kind,
+      const Node* declaration,
+      const std::string& rendered_name,
+      const std::unordered_map<CompileTimeRegistryKey,
+                               std::vector<const Node*>,
+                               CompileTimeRegistryKeyHash>& structured_map,
+      const std::unordered_map<std::string,
+                               std::vector<const Node*>>& rendered_map) {
+    if (auto key = make_compile_time_registry_key(registry_kind, declaration)) {
+      auto structured_it = structured_map.find(*key);
+      if (structured_it != structured_map.end()) return &structured_it->second;
+    }
+    if (!rendered_name.empty()) {
+      auto rendered_it = rendered_map.find(rendered_name);
+      if (rendered_it != rendered_map.end()) return &rendered_it->second;
+    }
+    return nullptr;
+  }
+
   // Template function definitions indexed by name (AST node pointers).
   std::unordered_map<std::string, const Node*> template_fn_defs_;
   // Best-effort structured mirrors indexed by declaration identity.

@@ -8,19 +8,19 @@ Current Step Title: Dual-read lookup paths
 
 ## Just Finished
 
-Step 2 first implementation packet completed in `src/frontend/hir/compile_time_engine.hpp`: added HIR-owned `CompileTimeRegistryKeyKind`, `CompileTimeRegistryKey`, and `CompileTimeRegistryKeyHash`, plus `make_compile_time_registry_key` construction from AST declarations.
+Step 4 implementation packet completed in `src/frontend/hir/compile_time_engine.hpp`: added structured-capable `const Node*` lookup/query overloads for template function definitions, primary template struct definitions, template struct specialization owners, and consteval function definitions.
 
-The structured key records registry kind, AST declaration kind, namespace context id, global qualification, qualifier segment `TextId`s, and unqualified declaration `TextId`. The declaration pointer is included only as a best-effort fallback when text identity is incomplete, currently when the unqualified `TextId` is invalid or any present qualifier segment lacks a valid `TextId`.
+The exact helper surface is `has_template_def(const Node*, const std::string& = {})`, `find_template_def(const Node*, const std::string& = {})`, `has_template_struct_def(const Node*, const std::string& = {})`, `find_template_struct_def(const Node*, const std::string& = {})`, `find_template_struct_specializations(const Node*, const std::string&)`, `has_consteval_def(const Node*, const std::string& = {})`, `find_consteval_def(const Node*, const std::string& = {})`, and `is_consteval_template(const Node*, const std::string& = {})`.
 
-`CompileTimeState` now keeps structured mirror maps beside the existing rendered-name maps for template function definitions, primary template struct definitions, template struct specialization owners, and consteval function definitions. Existing string registrations, lookups, iteration, metadata materialization, and diagnostics remain unchanged; the structured maps are dual-written only from registration paths with declaration-node identity, and the string maps remain authoritative compatibility storage.
+The fallback policy is structured-first when `make_compile_time_registry_key(...)` can construct a key from declaration identity, then rendered-name lookup only when the caller supplies a non-empty rendered name. Existing string-only APIs and the existing `find_template_struct_specializations(const Node*)` behavior remain unchanged.
 
 ## Suggested Next
 
-Next coherent packet: add structured lookup/query helpers that can be used after a legacy rendered-name lookup has recovered a declaration pointer, keeping rendered-name lookup as fallback until call metadata carries complete structured identity.
+Next coherent packet: route a narrow call-site or metadata path to these opt-in declaration-aware helpers where a recovered declaration pointer and rendered fallback are already available.
 
 ## Watchouts
 
-The structured mirrors are not authoritative yet. Do not route semantic lookup to them until later packets provide complete lookup metadata and a rendered fallback. The string-only `register_template_struct_specialization(primary_name, node)` path intentionally updates only the rendered-name map because it does not receive the primary owner declaration needed for an owner structured key.
+The structured mirrors are still best-effort mirrors. New call-site routing should pass a rendered fallback when available and should not remove or weaken the string registry paths. The string-only `register_template_struct_specialization(primary_name, node)` path still updates only the rendered-name map because it does not receive the primary owner declaration needed for an owner structured key.
 
 ## Proof
 
