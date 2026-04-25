@@ -3,6 +3,7 @@
 #include <cassert>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 #include "ast.hpp"  // TypeBase, TypeSpec
 
@@ -23,6 +24,14 @@ static std::string ns_qual_str(const NamespaceQualifier& q) {
   }
   if (q.context_id >= 0) s += "(ctx=" + std::to_string(q.context_id) + ")";
   return s;
+}
+
+static std::string_view module_decl_kind_str(ModuleDeclKind kind) {
+  switch (kind) {
+    case ModuleDeclKind::Function: return "function";
+    case ModuleDeclKind::Global: return "global";
+  }
+  return "?";
 }
 
 // ── TypeSpec -> readable string ───────────────────────────────────────────────
@@ -151,6 +160,16 @@ class Printer {
         << " blocks=" << s.blocks
         << " stmts=" << s.statements
         << " exprs=" << s.expressions << "\n";
+
+    if (!m_.decl_lookup_parity_mismatches.empty()) {
+      out << "\n--- module decl lookup parity mismatches ---\n";
+      for (const auto& mismatch : m_.decl_lookup_parity_mismatches) {
+        out << "  " << module_decl_kind_str(mismatch.kind)
+            << " " << mismatch.name
+            << " structured#" << mismatch.structured_id
+            << " legacy#" << mismatch.legacy_id << "\n";
+      }
+    }
 
     if (!m_.struct_def_order.empty()) {
       out << "\n--- structs ---\n";

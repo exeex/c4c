@@ -319,6 +319,13 @@ struct FunctionId {
   [[nodiscard]] static constexpr FunctionId invalid() { return FunctionId{kInvalid}; }
 };
 
+struct ModuleDeclLookupParityMismatch {
+  ModuleDeclKind kind = ModuleDeclKind::Function;
+  SymbolName name;
+  uint32_t structured_id = std::numeric_limits<uint32_t>::max();
+  uint32_t legacy_id = std::numeric_limits<uint32_t>::max();
+};
+
 struct IntLiteral {
   long long value = 0;
   bool is_unsigned = false;
@@ -1014,6 +1021,7 @@ struct Module {
       fn_structured_index;
   std::unordered_map<ModuleDeclLookupKey, GlobalId, ModuleDeclLookupKeyHash>
       global_structured_index;
+  mutable std::vector<ModuleDeclLookupParityMismatch> decl_lookup_parity_mismatches;
 
   // Struct/union definitions (populated by build_hir)
   std::unordered_map<SymbolName, HirStructDef> struct_defs;
@@ -1192,11 +1200,22 @@ struct Module {
     return it == fn_structured_index.end() ? nullptr : find_function(it->second);
   }
 
+  void record_function_decl_lookup_parity_mismatch(
+      const DeclRef& ref, const Function& structured, const Function& legacy) const {
+    record_decl_lookup_parity_mismatch(
+        ModuleDeclKind::Function, ref.name, structured.id.value, legacy.id.value);
+  }
+
   const Function* resolve_function_decl(const DeclRef& ref) const {
     if (ref.local || ref.param_index || ref.global) return nullptr;
     if (const Function* fn = find_function(ref.link_name_id)) return fn;
-    if (const Function* fn = find_function_by_decl_ref_structured(ref)) return fn;
-    return find_function_by_name_legacy(ref.name);
+    const Function* structured = find_function_by_decl_ref_structured(ref);
+    const Function* legacy = find_function_by_name_legacy(ref.name);
+    if (structured && legacy && structured->id.value != legacy->id.value) {
+      record_function_decl_lookup_parity_mismatch(ref, *structured, *legacy);
+      return legacy;
+    }
+    return structured ? structured : legacy;
   }
 
   GlobalVar* find_global(GlobalId id) {
@@ -1249,14 +1268,37 @@ struct Module {
     return it == global_structured_index.end() ? nullptr : find_global(it->second);
   }
 
+  void record_global_decl_lookup_parity_mismatch(
+      const DeclRef& ref, const GlobalVar& structured, const GlobalVar& legacy) const {
+    record_decl_lookup_parity_mismatch(
+        ModuleDeclKind::Global, ref.name, structured.id.value, legacy.id.value);
+  }
+
   const GlobalVar* resolve_global_decl(const DeclRef& ref) const {
     if (ref.local || ref.param_index) return nullptr;
     if (ref.global) {
       if (const GlobalVar* gv = find_global(*ref.global)) return gv;
     }
     if (const GlobalVar* gv = find_global(ref.link_name_id)) return gv;
-    if (const GlobalVar* gv = find_global_by_decl_ref_structured(ref)) return gv;
-    return find_global_by_name_legacy(ref.name);
+    const GlobalVar* structured = find_global_by_decl_ref_structured(ref);
+    const GlobalVar* legacy = find_global_by_name_legacy(ref.name);
+    if (structured && legacy && structured->id.value != legacy->id.value) {
+      record_global_decl_lookup_parity_mismatch(ref, *structured, *legacy);
+      return legacy;
+    }
+    return structured ? structured : legacy;
+  }
+
+  void record_decl_lookup_parity_mismatch(
+      ModuleDeclKind kind, SymbolName name, uint32_t structured_id, uint32_t legacy_id) const {
+    for (const auto& mismatch : decl_lookup_parity_mismatches) {
+      if (mismatch.kind == kind && mismatch.name == name &&
+          mismatch.structured_id == structured_id && mismatch.legacy_id == legacy_id) {
+        return;
+      }
+    }
+    decl_lookup_parity_mismatches.push_back(
+        ModuleDeclLookupParityMismatch{kind, std::move(name), structured_id, legacy_id});
   }
 
   Expr* find_expr(ExprId id) {

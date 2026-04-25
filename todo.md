@@ -1,25 +1,22 @@
 Status: Active
 Source Idea Path: ideas/open/99_hir_module_symbol_structured_lookup_mirror.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Add structured DeclRef lookup helpers
+Current Step ID: 6
+Current Step Title: Add parity checks during migration
 
 # Current Packet
 
 ## Just Finished
 
-Step 5: Add structured `DeclRef` lookup helpers. Added module helpers to form
-structured function/global lookup keys from `DeclRef::name_text_id` and
-namespace qualifier metadata when the text-id metadata is complete. Updated
-`resolve_function_decl` and `resolve_global_decl` to preserve local/param and
-direct global handling, keep `LinkNameId` lookup before structured lookup, and
-fall back to the legacy rendered-name maps after structured lookup misses.
+Step 6: Add parity checks during migration. Added structured-vs-rendered
+function/global lookup parity checks in the module declaration resolution paths.
+Mismatches are recorded in HIR state, printed by the focused HIR dump surface,
+and resolve to the legacy rendered declaration during the proof window.
 
 ## Suggested Next
 
-Execute Step 6 from `plan.md`: run parity checks around structured
-function/global lookup behavior without removing rendered maps or link-name
-paths.
+Execute Step 7 from `plan.md`: strengthen focused HIR proof only if the
+supervisor wants additional coverage beyond the green `hir` label proof.
 
 ## Watchouts
 
@@ -30,6 +27,8 @@ paths.
 - Structured lookup currently requires complete text-id metadata for all
   qualifier segments; refs with incomplete metadata intentionally fall back to
   legacy rendered-name lookup.
+- Parity mismatch visibility is HIR-dump scoped and only emits when a resolver
+  call has observed a structured/rendered disagreement.
 - Do not broaden into struct/type, member/method, parser, or unrelated sema
   rewrites.
 - Do not downgrade expectations or add testcase-shaped shortcuts.
