@@ -39,6 +39,8 @@ maps, downgrade expectations, or add testcase-shaped exceptions.
 - Parser/AST enum definition metadata needed to carry per-enumerator `TextId`
   identity from enum parsing into sema.
 - Sema enum variant text/key mirrors for global and local bindings.
+- Parser/AST template parameter metadata needed to carry per-parameter
+  `TextId` identity from template parsing into sema.
 - Sema template NTTP placeholder and validation binding mirrors.
 - Sema template type-parameter validation mirrors.
 - Consteval call NTTP binding text/key maps.
@@ -66,6 +68,10 @@ maps, downgrade expectations, or add testcase-shaped exceptions.
   downstream callers still provide only rendered names.
 - Carry parser-owned `TextId` metadata through AST fields when sema mirrors need
   definition-time identity that cannot be recovered from rendered strings.
+- For template parameters, treat the AST parameter array as the identity source:
+  mirror work may use `TextId` only after `Node` carries metadata parallel to
+  `template_param_names`; otherwise it must skip structured writes and keep the
+  rendered-name path as the compatibility bridge.
 - Dual-write sema mirrors beside existing rendered maps where AST/parser
   metadata supplies stable identity.
 - Dual-read and compare structured and legacy results before changing behavior.
@@ -208,10 +214,47 @@ Completion check:
 - Focused proof covers enum constants in the relevant scopes and shows no
   behavior drift.
 
-### Step 4: Mirror Template NTTP Validation Bindings
+### Step 4A: Add AST/Parser Template Parameter TextId Metadata
+
+Goal: make definition-time template parameter identity available to sema
+without deriving it from rendered parameter names.
+
+Primary targets:
+- `src/frontend/parser/ast.hpp`
+- `src/frontend/parser/impl/declarations.cpp`
+- Parser template tests selected by the supervisor
+
+Actions:
+- Add a parallel per-parameter `TextId` metadata field to `Node` beside
+  `template_param_names`, preserving the existing rendered names, NTTP flags,
+  pack flags, defaults, template arguments, and bridge behavior.
+- Capture the parser token `TextId` for each template parameter when the
+  template parameter list is parsed; store `kInvalidText` for synthetic,
+  copied, instantiated, or otherwise unsupported parameter metadata that cannot
+  claim stable definition-time identity.
+- Populate the metadata for every declaration/reference path that currently
+  receives `template_param_names`, keeping array length and index alignment
+  exactly parallel to `n_template_params`.
+- Do not change template rendered names, mangling, canonical symbol output,
+  HIR-facing type tags, diagnostics, consteval evaluation, codegen, or
+  link-visible names.
+- Leave sema mirror writes for Step 4B; this step only creates parser/AST
+  identity metadata and preserves current behavior.
+
+Completion check:
+- `Node` exposes stable per-template-parameter `TextId` metadata beside
+  `template_param_names` where the parser has a real parameter token.
+- Existing parser/template behavior is unchanged when metadata is invalid or
+  absent.
+- Focused parser/build proof passes without changing template rendering or HIR
+  bridge behavior.
+- `todo.md` points the next packet at Step 4B.
+
+### Step 4B: Mirror Template NTTP Validation Bindings
 
 Goal: add structured or `TextId` mirrors for sema-owned template NTTP
-placeholders and validation bindings where parameter identity is available.
+placeholders and validation bindings using the parser/AST parameter identity
+metadata from Step 4A.
 
 Primary targets:
 - `src/frontend/sema/validate.cpp`
@@ -222,8 +265,11 @@ Primary targets:
 Actions:
 - Locate validation local scopes and NTTP placeholder registrations that remain
   name-map only.
-- Dual-write NTTP placeholder mirrors keyed by stable parameter identity when
-  metadata is available.
+- Read the per-parameter `TextId` metadata added by Step 4A; skip structured
+  mirror writes when a parameter lacks a valid stable ID.
+- Dual-write NTTP placeholder mirrors keyed by stable parameter identity where
+  metadata is available, preserving existing local rendered-name bindings for
+  compatibility.
 - Add dual-read lookup or mismatch proof without changing behavior for callers
   that still provide only rendered names.
 - Keep fallback behavior for template metadata that lacks stable text IDs.
@@ -236,7 +282,8 @@ Completion check:
 ### Step 5: Mirror Template Type-Parameter Validation
 
 Goal: replace name-set-only sema checks with structured or `TextId` mirrors
-where template type-parameter identity is available.
+using the parser/AST parameter identity metadata from Step 4A where template
+type-parameter identity is available.
 
 Primary targets:
 - `src/frontend/sema/validate.cpp`
@@ -247,8 +294,11 @@ Primary targets:
 Actions:
 - Inventory name-set based type-parameter tracking in validation and cast/type
   checks.
+- Read the per-parameter `TextId` metadata added by Step 4A; skip structured
+  mirror writes or checks when a type parameter lacks a valid stable ID.
 - Add structured or `TextId` mirrors for sema-owned checks where stable
-  parameter identity exists.
+  parameter identity exists, preserving rendered type-parameter names as the
+  compatibility bridge.
 - Compare structured and rendered decisions where both inputs are available.
 - Preserve HIR-facing type tags and rendered type names.
 
@@ -261,7 +311,8 @@ Completion check:
 ### Step 6: Populate Consteval NTTP Binding Mirrors
 
 Goal: populate consteval call NTTP binding text/key maps and dual-read lookup
-where call metadata supports it.
+where call metadata and the parser/AST parameter identity metadata from Step 4A
+support it.
 
 Primary targets:
 - `src/frontend/sema/consteval.cpp`
@@ -272,6 +323,9 @@ Primary targets:
 Actions:
 - Identify consteval call NTTP binding creation for explicit and default NTTP
   values.
+- Read stable template parameter `TextId` metadata when binding values back to
+  definition parameters; skip text/key map writes when either template or
+  parameter identity is unavailable.
 - Populate text/key maps beside the existing legacy name map when metadata is
   available.
 - Add dual-read lookup or mismatch proof against the legacy name map.
