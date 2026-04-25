@@ -206,6 +206,102 @@ inline std::optional<CompileTimeRegistryKey> make_compile_time_registry_key(
   return key;
 }
 
+// ── Structured compile-time value-binding identity types ────────────────────
+
+enum class CompileTimeValueBindingKeyKind : uint8_t {
+  GlobalEnumConstant,
+  GlobalConstInt,
+};
+
+struct CompileTimeValueBindingKey {
+  CompileTimeValueBindingKeyKind binding_kind =
+      CompileTimeValueBindingKeyKind::GlobalEnumConstant;
+  NodeKind declaration_kind = NK_VAR;
+  int namespace_context_id = -1;
+  bool is_global_qualified = false;
+  std::vector<TextId> qualifier_segment_text_ids;
+  TextId unqualified_text_id = kInvalidText;
+
+  [[nodiscard]] bool valid() const {
+    return namespace_context_id >= 0 && unqualified_text_id != kInvalidText;
+  }
+
+  [[nodiscard]] bool operator==(
+      const CompileTimeValueBindingKey& other) const {
+    return binding_kind == other.binding_kind &&
+           declaration_kind == other.declaration_kind &&
+           namespace_context_id == other.namespace_context_id &&
+           is_global_qualified == other.is_global_qualified &&
+           qualifier_segment_text_ids == other.qualifier_segment_text_ids &&
+           unqualified_text_id == other.unqualified_text_id;
+  }
+};
+
+struct CompileTimeValueBindingKeyHash {
+  [[nodiscard]] std::size_t operator()(
+      const CompileTimeValueBindingKey& key) const noexcept {
+    std::size_t h = std::hash<int>{}(static_cast<int>(key.binding_kind));
+    auto mix = [&](std::size_t part) {
+      h ^= part + 0x9e3779b9u + (h << 6) + (h >> 2);
+    };
+    mix(std::hash<int>{}(static_cast<int>(key.declaration_kind)));
+    mix(std::hash<int>{}(key.namespace_context_id));
+    mix(std::hash<bool>{}(key.is_global_qualified));
+    mix(std::hash<TextId>{}(key.unqualified_text_id));
+    for (TextId segment : key.qualifier_segment_text_ids) {
+      mix(std::hash<TextId>{}(segment));
+    }
+    return h;
+  }
+};
+
+inline std::optional<CompileTimeValueBindingKey>
+make_global_const_int_value_binding_key(const Node* declaration) {
+  if (!declaration || declaration->namespace_context_id < 0 ||
+      declaration->unqualified_text_id == kInvalidText) {
+    return std::nullopt;
+  }
+
+  CompileTimeValueBindingKey key;
+  key.binding_kind = CompileTimeValueBindingKeyKind::GlobalConstInt;
+  key.declaration_kind = declaration->kind;
+  key.namespace_context_id = declaration->namespace_context_id;
+  key.is_global_qualified = declaration->is_global_qualified;
+  key.unqualified_text_id = declaration->unqualified_text_id;
+
+  const int qualifier_count = std::max(0, declaration->n_qualifier_segments);
+  key.qualifier_segment_text_ids.reserve(
+      static_cast<std::size_t>(qualifier_count));
+  for (int i = 0; i < qualifier_count; ++i) {
+    if (!declaration->qualifier_text_ids ||
+        declaration->qualifier_text_ids[i] == kInvalidText) {
+      return std::nullopt;
+    }
+    key.qualifier_segment_text_ids.push_back(declaration->qualifier_text_ids[i]);
+  }
+  return key;
+}
+
+inline std::optional<CompileTimeValueBindingKey>
+make_global_enum_const_value_binding_key(const Node* enum_def,
+                                         int variant_index) {
+  if (!enum_def || enum_def->kind != NK_ENUM_DEF ||
+      enum_def->namespace_context_id < 0 || variant_index < 0 ||
+      variant_index >= enum_def->n_enum_variants ||
+      !enum_def->enum_name_text_ids) {
+    return std::nullopt;
+  }
+  const TextId text_id = enum_def->enum_name_text_ids[variant_index];
+  if (text_id == kInvalidText) return std::nullopt;
+
+  CompileTimeValueBindingKey key;
+  key.binding_kind = CompileTimeValueBindingKeyKind::GlobalEnumConstant;
+  key.declaration_kind = enum_def->kind;
+  key.namespace_context_id = enum_def->namespace_context_id;
+  key.unqualified_text_id = text_id;
+  return key;
+}
+
 enum class PendingTemplateTypeKind {
   DeclarationType,
   OwnerStruct,
@@ -1009,9 +1105,23 @@ struct CompileTimeState {
     return enum_consts_;
   }
 
+  /// Structured mirror of registered enum constants.
+  const std::unordered_map<CompileTimeValueBindingKey, long long,
+                           CompileTimeValueBindingKeyHash>&
+  enum_consts_by_key() const {
+    return enum_consts_by_key_;
+  }
+
   /// Const reference to registered global const-int bindings used during consteval.
   const std::unordered_map<std::string, long long>& const_int_bindings() const {
     return const_int_bindings_;
+  }
+
+  /// Structured mirror of registered global const-int bindings.
+  const std::unordered_map<CompileTimeValueBindingKey, long long,
+                           CompileTimeValueBindingKeyHash>&
+  const_int_bindings_by_key() const {
+    return const_int_bindings_by_key_;
   }
 
   const std::vector<const Node*>& static_assert_nodes() const {
@@ -1100,9 +1210,31 @@ struct CompileTimeState {
     enum_consts_[name] = value;
   }
 
+  /// Register an enum constant value with a structured global mirror.
+  void register_enum_const(const CompileTimeValueBindingKey& key,
+                           const std::string& rendered_name,
+                           long long value) {
+    register_enum_const(rendered_name, value);
+    if (key.valid() &&
+        key.binding_kind == CompileTimeValueBindingKeyKind::GlobalEnumConstant) {
+      enum_consts_by_key_[key] = value;
+    }
+  }
+
   /// Register a global const-integer binding.
   void register_const_int_binding(const std::string& name, long long value) {
     const_int_bindings_[name] = value;
+  }
+
+  /// Register a global const-integer binding with a structured global mirror.
+  void register_const_int_binding(const CompileTimeValueBindingKey& key,
+                                  const std::string& rendered_name,
+                                  long long value) {
+    register_const_int_binding(rendered_name, value);
+    if (key.valid() &&
+        key.binding_kind == CompileTimeValueBindingKeyKind::GlobalConstInt) {
+      const_int_bindings_by_key_[key] = value;
+    }
   }
 
   bool record_pending_template_type(PendingTemplateTypeKind kind,
@@ -1170,6 +1302,8 @@ struct CompileTimeState {
                  template_struct_specializations_by_owner_key_.size());
     std::fprintf(out, "[CompileTimeState] enum_consts=%zu const_int_bindings=%zu\n",
                  enum_consts_.size(), const_int_bindings_.size());
+    std::fprintf(out, "[CompileTimeState] structured_enum_consts=%zu structured_const_int_bindings=%zu\n",
+                 enum_consts_by_key_.size(), const_int_bindings_by_key_.size());
     std::fprintf(out, "[CompileTimeState] pending_template_types=%zu\n",
                  pending_template_types_.size());
     std::fprintf(out, "[CompileTimeState] registry parity:\n");
@@ -1238,8 +1372,14 @@ struct CompileTimeState {
       consteval_fn_defs_by_key_;
   // Enum constant values (name → value).
   std::unordered_map<std::string, long long> enum_consts_;
+  std::unordered_map<CompileTimeValueBindingKey, long long,
+                     CompileTimeValueBindingKeyHash>
+      enum_consts_by_key_;
   // Global const-integer bindings (name → value).
   std::unordered_map<std::string, long long> const_int_bindings_;
+  std::unordered_map<CompileTimeValueBindingKey, long long,
+                     CompileTimeValueBindingKeyHash>
+      const_int_bindings_by_key_;
   std::vector<const Node*> static_assert_nodes_;
   // Pending type-driven template work discovered during AST-to-HIR lowering.
   std::vector<PendingTemplateTypeWorkItem> pending_template_types_;

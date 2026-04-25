@@ -97,14 +97,21 @@ void Lowerer::collect_weak_symbol_names(const std::vector<const Node*>& items) {
   }
 }
 
-void Lowerer::collect_enum_def(const Node* ed) {
+void Lowerer::collect_enum_def(const Node* ed, bool register_structured_globals) {
   if (!ed || ed->kind != NK_ENUM_DEF || ed->n_enum_variants <= 0) return;
   if (!ed->enum_names || !ed->enum_vals) return;
   for (int i = 0; i < ed->n_enum_variants; ++i) {
     const char* name = ed->enum_names[i];
     if (!name || !name[0]) continue;
     enum_consts_[name] = ed->enum_vals[i];
-    ct_state_->register_enum_const(name, ed->enum_vals[i]);
+    const auto key = register_structured_globals
+                         ? make_global_enum_const_value_binding_key(ed, i)
+                         : std::nullopt;
+    if (key) {
+      ct_state_->register_enum_const(*key, name, ed->enum_vals[i]);
+    } else {
+      ct_state_->register_enum_const(name, ed->enum_vals[i]);
+    }
   }
 }
 
@@ -133,7 +140,7 @@ void Lowerer::collect_initial_type_definitions(const std::vector<const Node*>& i
         if (primary_tpl) register_template_struct_specialization(primary_tpl, item);
       }
     }
-    if (item->kind == NK_ENUM_DEF) collect_enum_def(item);
+    if (item->kind == NK_ENUM_DEF) collect_enum_def(item, true);
   }
 }
 

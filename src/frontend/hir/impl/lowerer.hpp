@@ -210,7 +210,7 @@ class Lowerer {
 
   void collect_weak_symbol_names(const std::vector<const Node*>& items);
 
-  void collect_enum_def(const Node* ed);
+  void collect_enum_def(const Node* ed, bool register_structured_globals = false);
 
   void collect_initial_type_definitions(const std::vector<const Node*>& items);
 

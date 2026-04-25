@@ -1628,10 +1628,18 @@ void Lowerer::lower_global(const Node* gv,
       const Expr& e = module_->expr_pool[scalar->expr.value];
       if (const auto* lit = std::get_if<IntLiteral>(&e.payload)) {
         const_int_bindings_[g.name] = lit->value;
-        ct_state_->register_const_int_binding(g.name, lit->value);
+        if (auto key = make_global_const_int_value_binding_key(gv)) {
+          ct_state_->register_const_int_binding(*key, g.name, lit->value);
+        } else {
+          ct_state_->register_const_int_binding(g.name, lit->value);
+        }
       } else if (const auto* ch = std::get_if<CharLiteral>(&e.payload)) {
         const_int_bindings_[g.name] = ch->value;
-        ct_state_->register_const_int_binding(g.name, ch->value);
+        if (auto key = make_global_const_int_value_binding_key(gv)) {
+          ct_state_->register_const_int_binding(*key, g.name, ch->value);
+        } else {
+          ct_state_->register_const_int_binding(g.name, ch->value);
+        }
       }
     }
   }
