@@ -8,24 +8,38 @@ Current Step Title: Audit helper boundaries and wire the new file
 
 ## Just Finished
 
-Activation created the canonical runbook and execution-state skeleton for
-Step 1.
+Step 1 completed the helper-boundary audit and initial wiring. The ABI helper
+candidate boundary in `calling.cpp` is the top-of-file cluster made up of
+`use_float_return_registers`, `use_float_arg_registers`,
+`lower_function_return_abi`, `lower_call_arg_abi`, and the two
+`lir_to_bir_detail::compute_*_abi` wrappers. Its current dependencies are
+`lowering.hpp`, `c4c::TargetProfile`/`TargetArch`, `bir::TypeKind`,
+`bir::AbiValueClass`, `bir::CallResultAbiInfo`, `bir::CallArgAbiInfo`, and
+`lir_to_bir_detail::type_size_bytes`. Created
+`src/backend/bir/lir_to_bir/call_abi.cpp` with only the normal include and
+namespace skeleton, and wired it into `backend_lir_to_bir_notes_test`.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: audit the candidate helper boundaries in
-`calling.cpp`, create `src/backend/bir/lir_to_bir/call_abi.cpp`, wire the
-hard-coded backend notes test source list, and prove the initial build target.
+Execute the next Step 1/Step 2 packet by moving the audited ABI helper cluster
+from `calling.cpp` into `call_abi.cpp` without changing declarations or call
+lowering behavior.
 
 ## Watchouts
 
 - This is a behavior-preserving extraction; do not rewrite expectations.
 - Do not add new headers.
 - Keep `lower_call_inst` and `lower_runtime_intrinsic_inst` in `calling.cpp`.
-- `src/codegen/CMakeLists.txt` uses recursive source discovery, but
-  `tests/backend/CMakeLists.txt` currently lists `lir_to_bir` implementation
-  sources explicitly for `backend_lir_to_bir_notes_test`.
+- `calling.cpp` also has unrelated helpers such as link-name resolution,
+  function reporting names, `parse_byval_pointee_type`, parameter/signature
+  parsing, call lowering, runtime intrinsic lowering, and stack/spill handling;
+  those are outside the audited ABI-helper extraction boundary.
+- `src/codegen/CMakeLists.txt` uses recursive source discovery; the delegated
+  proof log showed the build reconfigured after detecting the new
+  `call_abi.cpp` file.
 
 ## Proof
 
-Not run during lifecycle activation; no implementation files were changed.
+Passed:
+`cmake --build build --target c4c_codegen && ctest --test-dir build -R "backend_lir_to_bir_notes" --output-on-failure`.
+Proof log: `test_after.log`.

@@ -176,6 +176,7 @@ add_executable(backend_lir_to_bir_notes_test
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/aggregate.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/analysis.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/call_abi.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/calling.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/cfg.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/context.cpp"
