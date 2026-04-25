@@ -425,6 +425,18 @@ class Lowerer {
       const std::string& rendered_key,
       const std::string& mangled,
       const TypeSpec& return_type);
+  void register_struct_static_member_owner_lookup(
+      const HirRecordOwnerKey& owner_key,
+      const Node* member,
+      const std::optional<long long>& const_value = std::nullopt);
+  void register_struct_member_symbol_owner_lookup(
+      const HirRecordOwnerKey& owner_key,
+      TextId member_text_id,
+      MemberSymbolId member_symbol_id);
+  std::optional<HirRecordOwnerKey> make_template_struct_instance_owner_key(
+      const HirStructDef& def,
+      const Node* primary_tpl,
+      const TemplateStructInstanceKey& instance_key) const;
   std::optional<HirRecordOwnerKey> register_template_struct_instance_owner(
       const HirStructDef& def,
       const Node* primary_tpl,
@@ -477,12 +489,14 @@ class Lowerer {
 
   void record_instantiated_template_struct_field_metadata(
       const std::string& mangled,
+      const std::optional<HirRecordOwnerKey>& owner_key,
       const Node* orig_f,
       const NttpBindings& selected_nttp_bindings_map);
 
   std::optional<HirStructField> instantiate_template_struct_field(
       const Node* orig_f,
       const std::string& owner_tag,
+      const std::optional<HirRecordOwnerKey>& owner_key,
       const TypeBindings& selected_type_bindings,
       const NttpBindings& selected_nttp_bindings_map,
       const Node* tpl_def,
@@ -491,6 +505,7 @@ class Lowerer {
   void append_instantiated_template_struct_fields(
       HirStructDef& def,
       const std::string& mangled,
+      const std::optional<HirRecordOwnerKey>& owner_key,
       const Node* tpl_def,
       const TypeBindings& selected_type_bindings,
       const NttpBindings& selected_nttp_bindings_map);
@@ -1013,6 +1028,12 @@ class Lowerer {
   std::unordered_map<std::string, std::unordered_map<std::string, const Node*>> struct_static_member_decls_;
   std::unordered_map<std::string, std::unordered_map<std::string, long long>>
       struct_static_member_const_values_;
+  std::unordered_map<HirStructMemberLookupKey, const Node*, HirStructMemberLookupKeyHash>
+      struct_static_member_decls_by_owner_;
+  std::unordered_map<HirStructMemberLookupKey, long long, HirStructMemberLookupKeyHash>
+      struct_static_member_const_values_by_owner_;
+  std::unordered_map<HirStructMemberLookupKey, MemberSymbolId, HirStructMemberLookupKeyHash>
+      struct_member_symbol_ids_by_owner_;
   // Struct method map: "struct_tag::method_name" → mangled function name.
   std::unordered_map<std::string, std::string> struct_methods_;
   std::unordered_map<HirStructMethodLookupKey, std::string, HirStructMethodLookupKeyHash>

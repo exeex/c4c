@@ -1,26 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/102_hir_struct_method_member_identity_dual_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add Structured Mirrors for Method Lookup
+Current Step ID: 5
+Current Step Title: Add Structured Mirrors for Member and Static-Member Lookup
 
 # Current Packet
 
 ## Just Finished
 
-Completed the Step 4 parity-only dual-read slice for struct method lookup helpers.
+Completed the first Step 5 write-only mirror slice for member and static-member lookup metadata.
 
-`find_struct_method_mangled`, `find_struct_method_link_name_id`, and `find_struct_method_return_type` still return the rendered-map/local-or-base-recursive result exactly as before. On each rendered local hit, they now derive the structured owner/method/const key when metadata is available, compare the matching structured mirror, and record lowerer-local parity check/mismatch counters for the mangled name, link-name id, and return-type mirrors.
+Added `HirStructMemberLookupKey` as `HirRecordOwnerKey + member TextId` and lowerer-owned structured mirror maps for member symbol IDs, static member declarations, and static const values. Ordinary struct lowering and instantiated template struct field/static-member registration now dual-write those mirrors when owner/member metadata is complete. Existing rendered maps, rendered member-symbol interning, and all member/static lookup readers remain authoritative and unchanged.
 
 ## Suggested Next
 
-Continue Step 4 only if the supervisor wants the remaining method/base/template validation tightened further, such as surfacing the new parity counters in an existing diagnostic path or adding a focused follow-up for any uncovered const-fallback or template-instance method lookup route. Do not convert method readers to structured authority yet.
+Continue Step 5 with dual-read/base parity checks for `find_struct_static_member_decl`, `find_struct_static_member_const_value`, and `find_struct_member_symbol_id`, keeping rendered lookup results authoritative while comparing structured local hits where owner/member metadata is available.
 
 ## Watchouts
 
-The parity bridge resolves rendered tags back through `module_->struct_def_owner_index`, so template-instantiation method mirrors can be compared with their template owner key instead of inventing a declaration key from the mangled tag. Base-class recursion is unchanged; parity is recorded by the recursive local hit that actually finds the rendered method.
+The existing rendered `struct_static_member_decls_` map records every named field node before static filtering; this slice mirrors that same write surface to avoid changing current behavior. Template field mirrors use the template-instantiation owner key before the struct definition is inserted, then the existing owner registration path still indexes the same key later.
 
-This slice does not touch member or static-member lookup maps, rendered method map writes, test expectations, or codegen behavior. Ref-overloaded methods still share the existing rendered key authority; the mirror tracks the same owner/method/constness identity currently represented by `struct_tag::method[_const]`, not a fuller overload signature.
+This slice does not add parity counters, convert any reader to structured authority, touch method lookup maps, change base-class recursion, or alter codegen output behavior.
 
 ## Proof
 

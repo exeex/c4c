@@ -590,6 +590,35 @@ void Lowerer::register_struct_method_owner_lookup(
   struct_method_ret_types_by_owner_[key] = return_type;
 }
 
+void Lowerer::register_struct_static_member_owner_lookup(
+    const HirRecordOwnerKey& owner_key,
+    const Node* member,
+    const std::optional<long long>& const_value) {
+  if (!module_ || !member || !member->name || !member->name[0]) return;
+  HirStructMemberLookupKey key;
+  key.owner_key = owner_key;
+  key.member_text_id = make_unqualified_text_id(member, module_->link_name_texts.get());
+  if (!hir_struct_member_lookup_key_has_complete_metadata(key)) return;
+
+  struct_static_member_decls_by_owner_[key] = member;
+  if (const_value) {
+    struct_static_member_const_values_by_owner_[key] = *const_value;
+  }
+}
+
+void Lowerer::register_struct_member_symbol_owner_lookup(
+    const HirRecordOwnerKey& owner_key,
+    TextId member_text_id,
+    MemberSymbolId member_symbol_id) {
+  if (member_symbol_id == kInvalidMemberSymbol) return;
+  HirStructMemberLookupKey key;
+  key.owner_key = owner_key;
+  key.member_text_id = member_text_id;
+  if (!hir_struct_member_lookup_key_has_complete_metadata(key)) return;
+
+  struct_member_symbol_ids_by_owner_[key] = member_symbol_id;
+}
+
 std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
     const FunctionCtx* ctx, const Node* callee) {
   if (!callee) return std::nullopt;
@@ -1415,6 +1444,9 @@ void Lowerer::lower_struct_def(const Node* sd) {
   def.is_union = sd->is_union;
   def.pack_align = sd->pack_align;
   def.struct_align = sd->struct_align;
+  const HirRecordOwnerKey struct_owner_key = make_hir_record_owner_key(def);
+  const bool has_struct_owner_key =
+      hir_record_owner_key_has_complete_metadata(struct_owner_key);
   for (int bi = 0; bi < sd->n_bases; ++bi) {
     TypeSpec base = sd->base_types[bi];
     if (base.tpl_struct_origin) {
@@ -1478,13 +1510,22 @@ void Lowerer::lower_struct_def(const Node* sd) {
     // paths, but they are not data members and must not participate in
     // layout. They are collected separately after the layout pass.
     if (f->kind == NK_FUNCTION) continue;
-    if (f->name && f->name[0])
-      struct_static_member_decls_[tag][f->name] = f;
+    std::optional<long long> static_const_value;
     if (f->is_static && f->is_constexpr && f->name && f->name[0] && f->init) {
-      struct_static_member_const_values_[tag][f->name] =
+      static_const_value =
           struct_nttp_bindings.empty()
               ? static_eval_int(f->init, enum_consts_)
               : eval_const_int_with_nttp_bindings(f->init, struct_nttp_bindings);
+    }
+    if (f->name && f->name[0]) {
+      struct_static_member_decls_[tag][f->name] = f;
+      if (has_struct_owner_key) {
+        register_struct_static_member_owner_lookup(
+            struct_owner_key, f, static_const_value);
+      }
+    }
+    if (static_const_value) {
+      struct_static_member_const_values_[tag][f->name] = *static_const_value;
     }
     if (f->is_static)
       continue;
@@ -1522,6 +1563,10 @@ void Lowerer::lower_struct_def(const Node* sd) {
         f->name, module_ ? module_->link_name_texts.get() : nullptr);
     hf.member_symbol_id = module_->member_symbols.intern(
         std::string(tag) + "::" + f->name);
+    if (has_struct_owner_key) {
+      register_struct_member_symbol_owner_lookup(
+          struct_owner_key, hf.field_text_id, hf.member_symbol_id);
+    }
     TypeSpec ft = f->type;
 
     if (is_bitfield && !sd->is_union) {
@@ -1646,9 +1691,6 @@ void Lowerer::lower_struct_def(const Node* sd) {
 
   const bool append_struct_def_order = !module_->struct_defs.count(tag);
   module_->index_struct_def_owner(def, append_struct_def_order);
-  const HirRecordOwnerKey struct_owner_key = make_hir_record_owner_key(def);
-  const bool has_struct_owner_key =
-      hir_record_owner_key_has_complete_metadata(struct_owner_key);
   if (append_struct_def_order)
     module_->struct_def_order.push_back(tag);
   module_->struct_defs[tag] = std::move(def);

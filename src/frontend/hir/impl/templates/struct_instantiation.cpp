@@ -93,19 +93,29 @@ void Lowerer::register_instantiated_template_struct_methods(
 
 void Lowerer::record_instantiated_template_struct_field_metadata(
     const std::string& mangled,
+    const std::optional<HirRecordOwnerKey>& owner_key,
     const Node* orig_f,
     const NttpBindings& selected_nttp_bindings_map) {
   if (!orig_f || !orig_f->name) return;
-  struct_static_member_decls_[mangled][orig_f->name] = orig_f;
+  std::optional<long long> static_const_value;
   if (orig_f->is_static && orig_f->is_constexpr && orig_f->init) {
-    struct_static_member_const_values_[mangled][orig_f->name] =
+    static_const_value =
         eval_const_int_with_nttp_bindings(orig_f->init, selected_nttp_bindings_map);
+  }
+  struct_static_member_decls_[mangled][orig_f->name] = orig_f;
+  if (static_const_value) {
+    struct_static_member_const_values_[mangled][orig_f->name] = *static_const_value;
+  }
+  if (owner_key) {
+    register_struct_static_member_owner_lookup(
+        *owner_key, orig_f, static_const_value);
   }
 }
 
 std::optional<HirStructField> Lowerer::instantiate_template_struct_field(
     const Node* orig_f,
     const std::string& owner_tag,
+    const std::optional<HirRecordOwnerKey>& owner_key,
     const TypeBindings& selected_type_bindings,
     const NttpBindings& selected_nttp_bindings_map,
     const Node* tpl_def,
@@ -122,6 +132,10 @@ std::optional<HirStructField> Lowerer::instantiate_template_struct_field(
       hf.name, module_ ? module_->link_name_texts.get() : nullptr);
   hf.member_symbol_id =
       module_->member_symbols.intern(owner_tag + "::" + orig_f->name);
+  if (owner_key) {
+    register_struct_member_symbol_owner_lookup(
+        *owner_key, hf.field_text_id, hf.member_symbol_id);
+  }
   if (ft.array_rank > 0) {
     hf.is_flexible_array = (ft.array_size < 0);
     hf.array_first_dim = (ft.array_size >= 0) ? ft.array_size : 0;
@@ -139,6 +153,7 @@ std::optional<HirStructField> Lowerer::instantiate_template_struct_field(
 void Lowerer::append_instantiated_template_struct_fields(
     HirStructDef& def,
     const std::string& mangled,
+    const std::optional<HirRecordOwnerKey>& owner_key,
     const Node* tpl_def,
     const TypeBindings& selected_type_bindings,
     const NttpBindings& selected_nttp_bindings_map) {
@@ -147,9 +162,9 @@ void Lowerer::append_instantiated_template_struct_fields(
   for (int fi = 0; fi < num_fields; ++fi) {
     const Node* orig_f = tpl_def->fields[fi];
     record_instantiated_template_struct_field_metadata(
-        mangled, orig_f, selected_nttp_bindings_map);
+        mangled, owner_key, orig_f, selected_nttp_bindings_map);
     std::optional<HirStructField> hf = instantiate_template_struct_field(
-        orig_f, mangled, selected_type_bindings, selected_nttp_bindings_map,
+        orig_f, mangled, owner_key, selected_type_bindings, selected_nttp_bindings_map,
         tpl_def, llvm_idx);
     if (!hf) continue;
     def.fields.push_back(std::move(*hf));
@@ -157,12 +172,10 @@ void Lowerer::append_instantiated_template_struct_fields(
   }
 }
 
-std::optional<HirRecordOwnerKey> Lowerer::register_template_struct_instance_owner(
+std::optional<HirRecordOwnerKey> Lowerer::make_template_struct_instance_owner_key(
     const HirStructDef& def,
     const Node* primary_tpl,
-    const Node* struct_node,
-    const TemplateStructInstanceKey& instance_key,
-    bool append_order) {
+    const TemplateStructInstanceKey& instance_key) const {
   if (!module_ || !primary_tpl || instance_key.spec_key.empty()) return std::nullopt;
   TextTable* texts = module_->link_name_texts.get();
   const TextId primary_text_id = make_unqualified_text_id(primary_tpl, texts);
@@ -172,8 +185,19 @@ std::optional<HirRecordOwnerKey> Lowerer::register_template_struct_instance_owne
   HirRecordOwnerKey key =
       make_hir_template_record_owner_key(def.ns_qual, primary_text_id, std::move(identity));
   if (!hir_record_owner_key_has_complete_metadata(key)) return std::nullopt;
-  module_->index_struct_def_owner(key, def.tag, append_order);
-  struct_def_nodes_by_owner_[key] = struct_node ? struct_node : primary_tpl;
+  return key;
+}
+
+std::optional<HirRecordOwnerKey> Lowerer::register_template_struct_instance_owner(
+    const HirStructDef& def,
+    const Node* primary_tpl,
+    const Node* struct_node,
+    const TemplateStructInstanceKey& instance_key,
+    bool append_order) {
+  const auto key = make_template_struct_instance_owner_key(def, primary_tpl, instance_key);
+  if (!key) return std::nullopt;
+  module_->index_struct_def_owner(*key, def.tag, append_order);
+  struct_def_nodes_by_owner_[*key] = struct_node ? struct_node : primary_tpl;
   return key;
 }
 
@@ -205,11 +229,14 @@ void Lowerer::instantiate_template_struct_body(
   NttpBindings method_nttp_bindings = selected_nttp_bindings_map;
   append_instantiated_template_struct_bases(
       def, tpl_def, method_tpl_bindings, method_nttp_bindings);
+  std::optional<HirRecordOwnerKey> owner_key =
+      make_template_struct_instance_owner_key(def, primary_tpl, instance_key);
   append_instantiated_template_struct_fields(
-      def, mangled, tpl_def, selected_type_bindings, selected_nttp_bindings_map);
+      def, mangled, owner_key, tpl_def, selected_type_bindings,
+      selected_nttp_bindings_map);
 
   compute_struct_layout(module_, def);
-  std::optional<HirRecordOwnerKey> owner_key =
+  owner_key =
       register_template_struct_instance_owner(def, primary_tpl, tpl_def, instance_key, true);
   module_->struct_def_order.push_back(mangled);
   module_->struct_defs[mangled] = std::move(def);
