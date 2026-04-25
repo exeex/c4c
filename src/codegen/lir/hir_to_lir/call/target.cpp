@@ -14,6 +14,18 @@ std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
   return resolved.empty() ? std::string(fallback) : std::string(resolved);
 }
 
+LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_module,
+                             const TypeSpec& type) {
+  if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
+      type.array_rank > 0 || !type.tag || !type.tag[0] || !lir_module) {
+    return LirTypeRef(rendered_text);
+  }
+  if (rendered_text != llvm_ty(type)) return LirTypeRef(rendered_text);
+  const StructNameId name_id = lir_module->struct_names.intern(rendered_text);
+  return type.base == TB_UNION ? LirTypeRef::union_type(rendered_text, name_id)
+                               : LirTypeRef::struct_type(rendered_text, name_id);
+}
+
 }  // namespace
 
 const Function* StmtEmitter::find_local_target_function(
@@ -94,12 +106,12 @@ CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr&
 void StmtEmitter::emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
                                  const std::vector<OwnedLirTypedCallArg>& args) {
   emit_lir_op(ctx,
-              make_lir_call_op("",
-                               "void",
-                               call_target.callee_val,
-                               call_target.callee_type_suffix,
-                               args,
-                               call_target.callee_link_name_id));
+              make_lir_call_op_with_return_type_ref("",
+                                                    LirTypeRef("void"),
+                                                    call_target.callee_val,
+                                                    call_target.callee_type_suffix,
+                                                    args,
+                                                    call_target.callee_link_name_id));
 }
 
 std::string StmtEmitter::emit_call_with_result(
@@ -108,12 +120,13 @@ std::string StmtEmitter::emit_call_with_result(
   const std::string tmp = fresh_tmp(ctx);
   emit_lir_op(
       ctx,
-      make_lir_call_op(tmp,
-                       call_target.ret_ty,
-                       call_target.callee_val,
-                       call_target.callee_type_suffix,
-                       args,
-                       call_target.callee_link_name_id));
+      make_lir_call_op_with_return_type_ref(
+          tmp,
+          lir_call_type_ref(call_target.ret_ty, module_, call_target.ret_spec),
+          call_target.callee_val,
+          call_target.callee_type_suffix,
+          args,
+          call_target.callee_link_name_id));
   return tmp;
 }
 

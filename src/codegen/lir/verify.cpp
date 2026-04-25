@@ -1,4 +1,5 @@
 #include "ir.hpp"
+#include "call_args_ops.hpp"
 
 #include <sstream>
 #include <unordered_map>
@@ -227,7 +228,45 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     require_operand_kind(op->result, "LirCallOp.result",
                          {LirOperandKind::SsaValue}, true);
     require_module_type_ref(mod, op->return_type, "LirCallOp.return_type", true);
+    const StructNameId known_return_name_id = mod.struct_names.find(op->return_type.str());
+    if (known_return_name_id != kInvalidStructName &&
+        mod.find_struct_decl(known_return_name_id) &&
+        op->return_type.struct_name_id() != known_return_name_id) {
+      fail_verify("LirCallOp.return_type",
+                  "known struct return type must carry matching StructNameId");
+    }
     verify_pointer_operand(op->callee, "LirCallOp.callee");
+    if (!op->arg_type_refs.empty()) {
+      const auto parsed = parse_lir_typed_call_or_infer_params(*op);
+      if (!parsed.has_value()) {
+        fail_verify("LirCallOp.arg_type_refs",
+                    "cannot validate argument mirrors against malformed call arguments");
+      }
+      if (op->arg_type_refs.size() != parsed->args.size()) {
+        std::ostringstream detail;
+        detail << "has " << op->arg_type_refs.size()
+               << " argument mirrors but call text has " << parsed->args.size()
+               << " arguments";
+        fail_verify("LirCallOp.arg_type_refs", detail.str());
+      }
+      for (size_t index = 0; index < op->arg_type_refs.size(); ++index) {
+        const std::string& shadow = require_module_type_ref(
+            mod, op->arg_type_refs[index], "LirCallOp.arg_type_refs");
+        if (shadow != parsed->args[index].type) {
+          std::ostringstream detail;
+          detail << "argument " << index << " mirror does not match call text; shadow '"
+                 << shadow << "', call argument type '" << parsed->args[index].type << "'";
+          fail_verify("LirCallOp.arg_type_refs", detail.str());
+        }
+        const StructNameId known_arg_name_id = mod.struct_names.find(shadow);
+        if (known_arg_name_id != kInvalidStructName &&
+            mod.find_struct_decl(known_arg_name_id) &&
+            op->arg_type_refs[index].struct_name_id() != known_arg_name_id) {
+          fail_verify("LirCallOp.arg_type_refs",
+                      "known struct argument type must carry matching StructNameId");
+        }
+      }
+    }
     if (op->result.empty() && op->return_type != "void") {
       fail_verify("LirCallOp.result",
                   "must hold an SSA result for non-void calls");

@@ -282,6 +282,7 @@ struct LirCallOp {
   LinkNameId direct_callee_link_name_id = kInvalidLinkName;
   std::string callee_type_suffix;  // optional fn ptr type suffix (empty for direct calls)
   std::string args_str;            // pre-formatted argument string (e.g. "i32 %t1, i32 %t2")
+  std::vector<LirTypeRef> arg_type_refs;  // Mirrors argument type fragments when available
 };
 
 // Typed binary arithmetic/bitwise/unary operation.

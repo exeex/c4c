@@ -10,19 +10,52 @@
 
 namespace c4c::codegen::lir {
 
+inline std::vector<LirTypeRef> lir_call_arg_type_refs(
+    const std::vector<OwnedLirTypedCallArg>& args) {
+  const bool has_explicit_mirror =
+      std::any_of(args.begin(), args.end(), [](const OwnedLirTypedCallArg& arg) {
+        return !arg.type_ref.empty();
+      });
+  if (!has_explicit_mirror) return {};
+
+  std::vector<LirTypeRef> refs;
+  refs.reserve(args.size());
+  for (const auto& arg : args) {
+    refs.push_back(arg.type_ref.empty() ? LirTypeRef(arg.type) : arg.type_ref);
+  }
+  return refs;
+}
+
+inline LirCallOp make_lir_call_op_with_return_type_ref(
+    std::string result,
+    LirTypeRef return_type,
+    std::string callee,
+    std::string_view callee_type_suffix,
+    const std::vector<OwnedLirTypedCallArg>& args,
+    LinkNameId direct_callee_link_name_id = kInvalidLinkName) {
+  const auto formatted = format_lir_call_fields(callee_type_suffix, args);
+  return LirCallOp{std::string(trim_lir_arg_text(result)),
+                   std::move(return_type),
+                   std::string(trim_lir_arg_text(callee)),
+                   direct_callee_link_name_id,
+                   formatted.callee_type_suffix,
+                   formatted.args_str,
+                   lir_call_arg_type_refs(args)};
+}
+
 inline LirCallOp make_lir_call_op(std::string result,
                                   std::string return_type,
                                   std::string callee,
                                   std::string_view callee_type_suffix,
                                   const std::vector<OwnedLirTypedCallArg>& args,
                                   LinkNameId direct_callee_link_name_id = kInvalidLinkName) {
-  const auto formatted = format_lir_call_fields(callee_type_suffix, args);
-  return LirCallOp{std::string(trim_lir_arg_text(result)),
-                   std::string(trim_lir_arg_text(return_type)),
-                   std::string(trim_lir_arg_text(callee)),
-                   direct_callee_link_name_id,
-                   formatted.callee_type_suffix,
-                   formatted.args_str};
+  return make_lir_call_op_with_return_type_ref(
+      std::move(result),
+      LirTypeRef(std::string(trim_lir_arg_text(return_type))),
+      std::move(callee),
+      callee_type_suffix,
+      args,
+      direct_callee_link_name_id);
 }
 
 inline std::optional<ParsedLirTypedCallView> parse_lir_typed_call(

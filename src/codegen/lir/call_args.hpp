@@ -7,6 +7,7 @@
 // in the full LIR IR index.
 
 #include "operands.hpp"
+#include "types.hpp"
 
 #include <array>
 #include <algorithm>
@@ -38,6 +39,7 @@ struct LirTypedCallArgView {
 struct OwnedLirTypedCallArg {
   std::string type;
   std::string operand;
+  LirTypeRef type_ref;
 };
 
 struct FormattedLirTypedCall {
@@ -313,7 +315,8 @@ inline std::vector<OwnedLirTypedCallArg> own_lir_typed_call_args(
   std::vector<OwnedLirTypedCallArg> owned_args;
   owned_args.reserve(parsed.args.size());
   for (const auto& arg : parsed.args) {
-    owned_args.push_back({std::string(arg.type), std::string(arg.operand)});
+    owned_args.push_back(
+        {std::string(arg.type), std::string(arg.operand), LirTypeRef(std::string(arg.type))});
   }
   return owned_args;
 }

@@ -1,7 +1,8 @@
 set(frontend_test_targets frontend_lexer_tests frontend_parser_tests frontend_hir_lookup_tests
                           frontend_lir_global_type_ref_test
                           frontend_lir_function_signature_type_ref_test
-                          frontend_lir_extern_decl_type_ref_test)
+                          frontend_lir_extern_decl_type_ref_test
+                          frontend_lir_call_type_ref_test)
 if(ENABLE_C4C_BACKEND)
   list(APPEND frontend_test_targets frontend_hir_tests)
 endif()
@@ -15,6 +16,7 @@ endforeach()
 target_link_libraries(frontend_lir_global_type_ref_test PRIVATE c4c_codegen)
 target_link_libraries(frontend_lir_function_signature_type_ref_test PRIVATE c4c_codegen)
 target_link_libraries(frontend_lir_extern_decl_type_ref_test PRIVATE c4c_codegen)
+target_link_libraries(frontend_lir_call_type_ref_test PRIVATE c4c_codegen)
 
 if(ENABLE_C4C_BACKEND)
   target_link_libraries(frontend_hir_tests PRIVATE c4c_codegen c4c_backend)
@@ -30,9 +32,11 @@ add_test(NAME frontend_lir_function_signature_type_ref
          COMMAND frontend_lir_function_signature_type_ref_test)
 add_test(NAME frontend_lir_extern_decl_type_ref
          COMMAND frontend_lir_extern_decl_type_ref_test)
+add_test(NAME frontend_lir_call_type_ref COMMAND frontend_lir_call_type_ref_test)
 set_tests_properties(frontend_lexer_tests  PROPERTIES LABELS "internal;lex")
 set_tests_properties(frontend_parser_tests PROPERTIES LABELS "internal;parse")
 set_tests_properties(frontend_hir_lookup_tests PROPERTIES LABELS "internal;hir")
 set_tests_properties(frontend_lir_global_type_ref PROPERTIES LABELS "internal;hir;lir")
 set_tests_properties(frontend_lir_function_signature_type_ref PROPERTIES LABELS "internal;hir;lir")
 set_tests_properties(frontend_lir_extern_decl_type_ref PROPERTIES LABELS "internal;hir;lir")
+set_tests_properties(frontend_lir_call_type_ref PROPERTIES LABELS "internal;hir;lir")
