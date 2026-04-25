@@ -1,8 +1,9 @@
 # LIR Struct Declaration Printer Authority Switch
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
+Closed: 2026-04-25
 
 Parent Ideas:
 - [110_lir_struct_type_printer_authority_readiness_audit.md](/workspaces/c4c/ideas/closed/110_lir_struct_type_printer_authority_readiness_audit.md)
@@ -51,3 +52,14 @@ backend layout authority changes in the same slice.
   tests and aggregate ABI/layout/runtime tests.
 - Any additional test changes prove the semantic authority switch rather than
   matching a single named testcase.
+
+## Closure Notes
+
+Closed after the active runbook switched LLVM struct declaration emission to
+`struct_decls`, preserved legacy `type_decls` parity/backcompat proof, proved
+verifier mismatch rejection, and passed focused plus full-suite validation.
+
+Close-time regression guard:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: PASS, 2980/2980 before and 2980/2980 after.
