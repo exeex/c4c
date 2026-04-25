@@ -74,49 +74,76 @@ int object_align_bytes(const c4c::hir::Module& mod, const TypeSpec& ts) {
 }
 
 std::vector<size_t> dedup_globals(const c4c::hir::Module& mod) {
-  std::unordered_map<std::string, size_t> best; // name -> index
+  std::unordered_map<LinkNameId, size_t> best_by_link_name;
+  std::unordered_map<std::string, size_t> best_by_name; // fallback when no LinkNameId exists
   for (size_t i = 0; i < mod.globals.size(); ++i) {
     const auto& gv = mod.globals[i];
-    auto it = best.find(gv.name);
-    if (it == best.end()) {
-      best[gv.name] = i;
-    } else {
-      const bool cur_has_init = !std::holds_alternative<std::monostate>(mod.globals[it->second].init);
+    auto update_best = [&](size_t& best_index) {
+      const bool cur_has_init =
+          !std::holds_alternative<std::monostate>(mod.globals[best_index].init);
       const bool new_has_init = !std::holds_alternative<std::monostate>(gv.init);
-      if (new_has_init || !cur_has_init) it->second = i;
+      if (new_has_init || !cur_has_init) best_index = i;
+    };
+
+    if (gv.link_name_id != kInvalidLinkName) {
+      auto [it, inserted] = best_by_link_name.emplace(gv.link_name_id, i);
+      if (!inserted) update_best(it->second);
+      continue;
     }
+
+    auto [it, inserted] = best_by_name.emplace(gv.name, i);
+    if (!inserted) update_best(it->second);
   }
   // Collect in original order
   std::vector<size_t> result;
-  result.reserve(best.size());
+  result.reserve(best_by_link_name.size() + best_by_name.size());
   for (size_t i = 0; i < mod.globals.size(); ++i) {
-    auto it = best.find(mod.globals[i].name);
-    if (it != best.end() && it->second == i) result.push_back(i);
+    const auto& gv = mod.globals[i];
+    if (gv.link_name_id != kInvalidLinkName) {
+      auto it = best_by_link_name.find(gv.link_name_id);
+      if (it != best_by_link_name.end() && it->second == i) result.push_back(i);
+      continue;
+    }
+    auto it = best_by_name.find(gv.name);
+    if (it != best_by_name.end() && it->second == i) result.push_back(i);
   }
   return result;
 }
 
 std::vector<size_t> dedup_functions(const c4c::hir::Module& mod) {
-  std::unordered_map<std::string, size_t> best; // name -> index
+  std::unordered_map<LinkNameId, size_t> best_by_link_name;
+  std::unordered_map<std::string, size_t> best_by_name; // fallback when no LinkNameId exists
   for (size_t i = 0; i < mod.functions.size(); ++i) {
     const auto& fn = mod.functions[i];
     if (!fn.materialized) continue;
-    auto it = best.find(fn.name);
-    if (it == best.end()) {
-      best[fn.name] = i;
-    } else {
-      const bool cur_is_def = !mod.functions[it->second].blocks.empty();
+    auto update_best = [&](size_t& best_index) {
+      const bool cur_is_def = !mod.functions[best_index].blocks.empty();
       const bool new_is_def = !fn.blocks.empty();
-      if (new_is_def && !cur_is_def) it->second = i;
+      if (new_is_def && !cur_is_def) best_index = i;
+    };
+
+    if (fn.link_name_id != kInvalidLinkName) {
+      auto [it, inserted] = best_by_link_name.emplace(fn.link_name_id, i);
+      if (!inserted) update_best(it->second);
+      continue;
     }
+
+    auto [it, inserted] = best_by_name.emplace(fn.name, i);
+    if (!inserted) update_best(it->second);
   }
   // Collect in original order
   std::vector<size_t> result;
-  result.reserve(best.size());
+  result.reserve(best_by_link_name.size() + best_by_name.size());
   for (size_t i = 0; i < mod.functions.size(); ++i) {
-    if (!mod.functions[i].materialized) continue;
-    auto it = best.find(mod.functions[i].name);
-    if (it != best.end() && it->second == i) result.push_back(i);
+    const auto& fn = mod.functions[i];
+    if (!fn.materialized) continue;
+    if (fn.link_name_id != kInvalidLinkName) {
+      auto it = best_by_link_name.find(fn.link_name_id);
+      if (it != best_by_link_name.end() && it->second == i) result.push_back(i);
+      continue;
+    }
+    auto it = best_by_name.find(fn.name);
+    if (it != best_by_name.end() && it->second == i) result.push_back(i);
   }
   return result;
 }
