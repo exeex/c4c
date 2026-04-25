@@ -1,5 +1,14 @@
 # BIR Global Initializer Family Extraction
 
+## Closure
+
+Closed after extracting the global initializer parsing/lowering family into
+`src/backend/bir/lir_to_bir/global_initializers.cpp`, preserving
+`globals.cpp` ownership of global entry behavior and global address metadata.
+Close proof used `c4c_codegen` plus the backend CTest subset
+`ctest --test-dir build -j --output-on-failure -R '^backend_'`, with
+regression guard passing at 97 passed, 0 failed before and after.
+
 ## Intent
 
 Reduce `src/backend/bir/lir_to_bir/globals.cpp` pressure by extracting global
