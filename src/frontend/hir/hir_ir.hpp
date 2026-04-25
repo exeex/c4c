@@ -10,6 +10,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -879,6 +880,135 @@ struct HirStructDef {
   std::vector<SymbolName> base_tags;
   std::vector<TextId> base_tag_text_ids;
 };
+
+/// HIR record-owner keys identify the semantic owner of a struct/union without
+/// using the rendered tag spelling that codegen and dumps still consume.
+enum class HirRecordOwnerKeyKind : uint8_t {
+  Declaration,
+  TemplateInstantiation,
+};
+
+/// Bridge payload for template records while template identity still enters HIR
+/// through declaration metadata plus a serialized specialization key.
+struct HirRecordOwnerTemplateIdentity {
+  TextId primary_declaration_text_id = kInvalidText;
+  std::string specialization_key;
+
+  [[nodiscard]] bool operator==(const HirRecordOwnerTemplateIdentity& other) const {
+    return primary_declaration_text_id == other.primary_declaration_text_id &&
+           specialization_key == other.specialization_key;
+  }
+
+  [[nodiscard]] bool operator!=(const HirRecordOwnerTemplateIdentity& other) const {
+    return !(*this == other);
+  }
+
+  [[nodiscard]] bool empty() const {
+    return primary_declaration_text_id == kInvalidText && specialization_key.empty();
+  }
+};
+
+/// Structured semantic owner key for HIR record maps.
+///
+/// `rendered_tag` is deliberately absent: existing rendered-name maps remain the
+/// output-spelling bridge until later dual-write steps can prove parity.
+struct HirRecordOwnerKey {
+  HirRecordOwnerKeyKind kind = HirRecordOwnerKeyKind::Declaration;
+  int namespace_context_id = -1;
+  bool is_global_qualified = false;
+  std::vector<TextId> qualifier_segment_text_ids;
+  TextId declaration_text_id = kInvalidText;
+  HirRecordOwnerTemplateIdentity template_identity;
+
+  [[nodiscard]] bool operator==(const HirRecordOwnerKey& other) const {
+    return kind == other.kind &&
+           namespace_context_id == other.namespace_context_id &&
+           is_global_qualified == other.is_global_qualified &&
+           qualifier_segment_text_ids == other.qualifier_segment_text_ids &&
+           declaration_text_id == other.declaration_text_id &&
+           template_identity == other.template_identity;
+  }
+
+  [[nodiscard]] bool operator!=(const HirRecordOwnerKey& other) const {
+    return !(*this == other);
+  }
+
+  [[nodiscard]] bool has_declaration_identity() const {
+    return declaration_text_id != kInvalidText;
+  }
+
+  [[nodiscard]] std::string debug_label(std::string_view rendered_fallback = {}) const {
+    std::string out = "record-owner(";
+    out += kind == HirRecordOwnerKeyKind::TemplateInstantiation ? "template" : "decl";
+    out += " ctx=" + std::to_string(namespace_context_id);
+    out += is_global_qualified ? " global" : " relative";
+    out += " qual=[";
+    for (size_t i = 0; i < qualifier_segment_text_ids.size(); ++i) {
+      if (i != 0) out += ",";
+      out += std::to_string(qualifier_segment_text_ids[i]);
+    }
+    out += "] decl=" + std::to_string(declaration_text_id);
+    if (kind == HirRecordOwnerKeyKind::TemplateInstantiation) {
+      out += " primary=" + std::to_string(template_identity.primary_declaration_text_id);
+      out += " spec=";
+      out += template_identity.specialization_key.empty()
+          ? std::string("<none>")
+          : template_identity.specialization_key;
+    }
+    if (!rendered_fallback.empty()) {
+      out += " rendered=";
+      out.append(rendered_fallback.data(), rendered_fallback.size());
+    }
+    out += ")";
+    return out;
+  }
+};
+
+struct HirRecordOwnerKeyHash {
+  [[nodiscard]] size_t operator()(const HirRecordOwnerKey& key) const noexcept {
+    const size_t qualifier_hash = hash_text_id_sequence(
+        key.qualifier_segment_text_ids.data(), key.qualifier_segment_text_ids.size());
+    const size_t specialization_hash =
+        std::hash<std::string>{}(key.template_identity.specialization_key);
+    return static_cast<size_t>(hash_id_words(
+        kIdHashSeed, static_cast<uint32_t>(key.kind),
+        static_cast<uint32_t>(key.namespace_context_id),
+        static_cast<uint32_t>(key.is_global_qualified), key.declaration_text_id,
+        key.template_identity.primary_declaration_text_id,
+        static_cast<uint64_t>(qualifier_hash), static_cast<uint64_t>(specialization_hash)));
+  }
+};
+
+[[nodiscard]] inline HirRecordOwnerKey make_hir_record_owner_key(
+    const NamespaceQualifier& ns_qual, TextId declaration_text_id) {
+  HirRecordOwnerKey key;
+  key.kind = HirRecordOwnerKeyKind::Declaration;
+  key.namespace_context_id = ns_qual.context_id;
+  key.is_global_qualified = ns_qual.is_global_qualified;
+  key.qualifier_segment_text_ids = ns_qual.segment_text_ids;
+  key.declaration_text_id = declaration_text_id;
+  return key;
+}
+
+[[nodiscard]] inline HirRecordOwnerKey make_hir_record_owner_key(const HirStructDef& def) {
+  return make_hir_record_owner_key(def.ns_qual, def.tag_text_id);
+}
+
+[[nodiscard]] inline HirRecordOwnerKey make_hir_template_record_owner_key(
+    const NamespaceQualifier& ns_qual,
+    TextId declaration_text_id,
+    HirRecordOwnerTemplateIdentity template_identity) {
+  HirRecordOwnerKey key = make_hir_record_owner_key(ns_qual, declaration_text_id);
+  key.kind = HirRecordOwnerKeyKind::TemplateInstantiation;
+  key.template_identity = std::move(template_identity);
+  return key;
+}
+
+[[nodiscard]] inline HirRecordOwnerKey make_hir_template_record_owner_key(
+    const HirStructDef& def, HirRecordOwnerTemplateIdentity template_identity) {
+  return make_hir_template_record_owner_key(
+      def.ns_qual, def.tag_text_id, std::move(template_identity));
+}
 
 // ── Template function definition metadata (populated by hir build) ───────────
 
