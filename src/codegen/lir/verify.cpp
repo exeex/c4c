@@ -550,16 +550,24 @@ std::vector<std::string_view> signature_param_texts(std::string_view line) {
 
   std::vector<std::string_view> params;
   std::string_view text = line.substr(params_begin + 1, params_end - params_begin - 1);
-  depth = 0;
+  int paren_depth = 0;
+  int brace_depth = 0;
+  int bracket_depth = 0;
   size_t start = 0;
   for (size_t index = 0; index <= text.size(); ++index) {
-    if (index == text.size() || (text[index] == ',' && depth == 0)) {
+    if (index == text.size() ||
+        (text[index] == ',' && paren_depth == 0 && brace_depth == 0 &&
+         bracket_depth == 0)) {
       params.push_back(trim_signature_token(text.substr(start, index - start)));
       start = index + 1;
       continue;
     }
-    if (text[index] == '(') ++depth;
-    if (text[index] == ')') --depth;
+    if (text[index] == '(') ++paren_depth;
+    if (text[index] == ')') --paren_depth;
+    if (text[index] == '{') ++brace_depth;
+    if (text[index] == '}') --brace_depth;
+    if (text[index] == '[') ++bracket_depth;
+    if (text[index] == ']') --bracket_depth;
   }
   return params;
 }

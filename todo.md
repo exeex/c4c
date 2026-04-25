@@ -8,44 +8,39 @@ Current Step Title: Validate Parity And Broader Stability
 
 ## Just Finished
 
-Completed `plan.md` Step 6 validation regression fix for the Step 5 call
-argument mirror path. `LirCallOp::arg_type_refs` is now emitted only when the
-formatted call site can be parsed for argument mirror validation; structured
-direct-call `%struct.Pair` arguments still keep their `StructNameId`, while
-variadic/ABI-expanded aggregate calls whose fixed-only signature cannot parse
-against emitted arguments remain raw with no argument mirrors. Added focused
-frontend/LIR coverage for that suppression boundary.
+Completed `plan.md` Step 6 / Step 3 verifier regression fix for function
+signature parameter mirrors. `verify_function_signature_type_ref_shadows()` now
+keeps commas inside aggregate literal braces and brackets nested while still
+respecting existing parenthesized fragments, so parameters such as
+`{ double, double }` shadow the emitted signature text as one parameter instead
+of being split at the inner comma. Added focused frontend/LIR verifier coverage
+for aggregate literal parameter text paired with an existing `byval(...)`
+parameter.
 
 ## Suggested Next
 
-Next bounded packet: supervisor review/commit of the Step 6 regression fix, or
-the next Step 6 parity pass if broader validation policy requires it.
+Next bounded packet: supervisor review/commit of this Step 6 verifier parsing
+slice, or broader Step 6 parity validation if policy requires another pass.
 
 ## Watchouts
 
 `lir_global_type_ref()` intentionally rejects flexible-array literal globals
 because their literal aggregate text does not match the canonical named struct
 type. Do not relax that guard without a separate semantic design. Function
-signature parameter mirrors intentionally shadow the emitted signature fragment.
-For variadic and ABI-expanded aggregate call arguments, the current
-`LirTypeRef` field shape cannot represent both the emitted byval/packed
-fragment and underlying aggregate identity without violating text parity, so
-calls whose formatted argument list cannot be parsed against the call signature
-now keep `arg_type_refs` empty. Extern declaration mirrors only attach
-structured identity when `return_type_str` resolves to an existing
-`LirStructDecl`; raw non-struct and unknown return text remains unstructured.
+signature parameter mirrors intentionally shadow the emitted signature fragment,
+including raw aggregate LLVM text like `{ double, double }`; this packet only
+changed verifier parsing and did not alter lowering or printer authority logic.
+Extern declaration mirrors only attach structured identity when
+`return_type_str` resolves to an existing `LirStructDecl`; raw non-struct and
+unknown return text remains unstructured.
 
 ## Proof
 
 Ran the supervisor-selected proof exactly:
 
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|positive_split_llvm_|abi_|positive_sema_ok_call_variadic_aggregate_runtime_c)$'; } > test_after.log 2>&1`
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_.*|positive_split_llvm_.*|abi_.*|positive_sema_ok_call_variadic_aggregate_runtime_c|llvm_gcc_c_torture_src_(complex_1|complex_2|complex_5|complex_6|complex_7|20010605_2|20070614_1|pr38969|pr42248)_c)$'; } > test_after.log 2>&1`
 
-Result: passed. `test_after.log` contains a successful build and the delegated
-regex-selected `positive_sema_ok_call_variadic_aggregate_runtime_c` passing.
-Because the literal delegated regex only selects that one test in this checkout,
-also ran a supplemental corrected focused subset:
-`ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_.*|positive_split_llvm_.*|abi_.*|positive_sema_ok_call_variadic_aggregate_runtime_c)$'`.
-Result: passed 9/9, covering the four `frontend_lir_*` tests,
-`positive_split_llvm_pragma_exec`, the three `abi_*` tests, and
-`positive_sema_ok_call_variadic_aggregate_runtime_c`.
+Result: passed 18/18. `test_after.log` contains a successful build and all
+selected `frontend_lir_*`, `positive_split_llvm_*`, `abi_*`,
+`positive_sema_ok_call_variadic_aggregate_runtime_c`, and the 9 named
+`llvm_gcc_c_torture` regression cases passing.

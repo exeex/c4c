@@ -12,6 +12,7 @@
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -167,6 +168,19 @@ int defined_big(struct Big input) {
   expect_true(llvm_ir.find("define i32 @defined_big(ptr byval(%struct.Big) align 8 %p.input)") !=
                   std::string::npos,
               "printer should keep using byval definition signature_text");
+
+  c4c::codegen::lir::LirModule aggregate_param_module;
+  c4c::codegen::lir::LirFunction aggregate_param_decl;
+  aggregate_param_decl.name = "takes_complex";
+  aggregate_param_decl.is_declaration = true;
+  aggregate_param_decl.signature_text =
+      "declare void @takes_complex({ double, double }, ptr byval(%struct.Big) align 8)";
+  aggregate_param_decl.signature_param_type_refs.push_back(
+      c4c::codegen::lir::LirTypeRef("{ double, double }"));
+  aggregate_param_decl.signature_param_type_refs.push_back(
+      c4c::codegen::lir::LirTypeRef("ptr"));
+  aggregate_param_module.functions.push_back(std::move(aggregate_param_decl));
+  c4c::codegen::lir::verify_module(aggregate_param_module);
 
   std::cout << "PASS: frontend_lir_function_signature_type_ref\n";
   return 0;
