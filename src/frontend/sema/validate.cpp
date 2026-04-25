@@ -93,6 +93,22 @@ static std::optional<SemaStructuredNameKey> sema_template_param_local_name_key(
   return key;
 }
 
+static bool sema_template_param_is_type_param(const Node* node, int param_index) {
+  if (!node || param_index < 0 || param_index >= node->n_template_params ||
+      !node->template_param_names || !node->template_param_names[param_index]) {
+    return false;
+  }
+  return !(node->template_param_is_nttp && node->template_param_is_nttp[param_index]);
+}
+
+static TextId sema_template_param_name_text_id(const Node* node, int param_index) {
+  if (!node || param_index < 0 || param_index >= node->n_template_params ||
+      !node->template_param_name_text_ids) {
+    return kInvalidText;
+  }
+  return node->template_param_name_text_ids[param_index];
+}
+
 SemaDualLookupMatch compare_sema_lookup_presence(bool legacy_found, bool structured_found) {
   if (!legacy_found && !structured_found) return SemaDualLookupMatch::BothMissing;
   if (legacy_found && structured_found) return SemaDualLookupMatch::Match;
@@ -559,6 +575,8 @@ class Validator {
                      SemaStructuredNameKeyHash>
       struct_base_keys_by_key_;
   std::unordered_set<std::string> template_type_params_;
+  std::unordered_set<TextId> template_type_param_text_ids_;
+  std::unordered_map<std::string, TextId> template_type_param_text_id_by_name_;
   std::string current_method_struct_tag_;
   std::optional<SemaStructuredNameKey> current_method_struct_key_;
   std::vector<std::unordered_map<std::string, ScopedSym>> scopes_;
@@ -1280,15 +1298,70 @@ class Validator {
     }
   }
 
+  void record_template_type_param(const char* name, TextId text_id) {
+    if (!name || !name[0]) return;
+    template_type_params_.insert(name);
+    if (text_id == kInvalidText) return;
+    template_type_param_text_ids_.insert(text_id);
+    auto [it, inserted] = template_type_param_text_id_by_name_.emplace(name, text_id);
+    if (!inserted && it->second != text_id) {
+      it->second = kInvalidText;
+    }
+  }
+
+  bool template_type_param_mirror_matches_name(const char* name) const {
+    if (!name || !name[0]) return false;
+    auto it = template_type_param_text_id_by_name_.find(name);
+    if (it == template_type_param_text_id_by_name_.end() || it->second == kInvalidText) {
+      return false;
+    }
+    return template_type_param_text_ids_.count(it->second) > 0;
+  }
+
+  bool is_known_template_type_param_name(const char* name) const {
+    if (!name || !name[0]) return false;
+    const bool legacy = template_type_params_.count(name) > 0;
+    const bool structured = template_type_param_mirror_matches_name(name);
+    if (structured || template_type_param_text_id_by_name_.count(name) > 0) {
+      (void)compare_sema_lookup_presence(legacy, structured);
+      if (structured) return true;
+    }
+    return legacy;
+  }
+
+  bool is_current_template_type_param_name(const char* name) const {
+    if (!current_fn_node_ || !name || !name[0]) return false;
+    bool legacy = false;
+    bool structured = false;
+    bool saw_structured_input = false;
+    for (int i = 0; i < current_fn_node_->n_template_params; ++i) {
+      if (!sema_template_param_is_type_param(current_fn_node_, i)) continue;
+      const char* param_name = current_fn_node_->template_param_names[i];
+      const bool name_matches = std::strcmp(param_name, name) == 0;
+      legacy = legacy || name_matches;
+
+      const TextId text_id = sema_template_param_name_text_id(current_fn_node_, i);
+      if (text_id == kInvalidText) continue;
+      saw_structured_input = true;
+      if (name_matches && template_type_param_text_ids_.count(text_id) > 0) {
+        structured = true;
+      }
+    }
+    if (saw_structured_input) {
+      (void)compare_sema_lookup_presence(legacy, structured);
+      if (structured) return true;
+    }
+    return legacy;
+  }
+
   void record_template_type_params_recursive(const Node* n) {
     if (!n) return;
     if (n->n_template_params > 0 &&
         n->template_param_names) {
       for (int i = 0; i < n->n_template_params; ++i) {
-        if (n->template_param_names[i] &&
-            (!n->template_param_is_nttp ||
-             !n->template_param_is_nttp[i])) {
-          template_type_params_.insert(n->template_param_names[i]);
+        if (sema_template_param_is_type_param(n, i)) {
+          record_template_type_param(n->template_param_names[i],
+                                     sema_template_param_name_text_id(n, i));
         }
       }
     }
@@ -2316,17 +2389,7 @@ class Validator {
           const bool is_owner_qualified_cast_typedef =
               can_defer_owner_qualified_cast_typedef(n->type);
           // Suppress for template type parameters — they're resolved at instantiation.
-          bool is_tpl_type_param = false;
-          if (current_fn_node_ && n->type.tag) {
-            for (int i = 0; i < current_fn_node_->n_template_params; ++i) {
-              if (current_fn_node_->template_param_names[i] &&
-                  !(current_fn_node_->template_param_is_nttp && current_fn_node_->template_param_is_nttp[i]) &&
-                  std::strcmp(current_fn_node_->template_param_names[i], n->type.tag) == 0) {
-                is_tpl_type_param = true;
-                break;
-              }
-            }
-          }
+          bool is_tpl_type_param = is_current_template_type_param_name(n->type.tag);
           // Dependent member typedefs in cast targets can currently preserve the
           // owner template parameter name even when the surrounding owner type
           // is otherwise concrete. Accept these decorated placeholder names so
@@ -2334,7 +2397,7 @@ class Validator {
           // frontend without masking ordinary unknown bare type names.
           if (!is_tpl_type_param &&
               n->type.tag &&
-              template_type_params_.count(n->type.tag) > 0 &&
+              is_known_template_type_param_name(n->type.tag) &&
               (n->type.ptr_level > 0 || n->type.is_fn_ptr ||
                n->type.is_lvalue_ref || n->type.is_rvalue_ref)) {
             is_tpl_type_param = true;
