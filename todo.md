@@ -8,28 +8,28 @@ Current Step Title: Prefer Structured Lookup For Size And Alignment Helpers
 
 ## Just Finished
 
-Completed `plan.md` Step 3 caller-migration packet. Threaded the active
-`LirModule*` into `build_fn_signature` so both declaration and definition
-byval aggregate alignment text now reaches the shared structured layout helper
-through `object_align_bytes(mod, lir_module, ...)`. Also migrated global
-variable alignment lowering to the module-aware overload. The legacy
-no-module overload remains available and still delegates with a null module,
-so existing fallback behavior remains unchanged.
+Completed `plan.md` Step 3 alloca-hoisting caller-migration packet. Threaded
+the active `LirModule*` from function-definition lowering into `init_fn_ctx`
+and `hoist_allocas`, so modified-parameter spill slots and non-VLA local
+stack allocas now reach the shared structured layout helper through
+`object_align_bytes(mod, lir_module, ...)`. The legacy no-module defaults
+remain available and still delegate with a null module, so fallback behavior
+remains unchanged.
 
 ## Suggested Next
 
-Next packet can evaluate whether alloca hoisting should receive a
-`LirModule*` through `init_fn_ctx` / `hoist_allocas`, covering modified
-parameter slots and local variable stack alignment without changing fallback
-semantics.
+Supervisor can review Step 3 completion state and decide whether the remaining
+legacy dynamic VLA statement-time alignment query belongs in this plan or a
+separate follow-up packet.
 
 ## Watchouts
 
-The remaining legacy-only live alignment calls in `hir_to_lir.cpp` are inside
-alloca hoisting. `build_fn_signature` keeps a default null `LirModule*` in the
-header to preserve old call-site behavior for any future or external local
-uses. `LirStructDecl` still does not carry size or alignment, so alignment
-remains legacy-authoritative while structured lookup coverage is expanded.
+`hoist_allocas` and `init_fn_ctx` keep default null `LirModule*` arguments in
+the header to preserve old call-site behavior for any future or external local
+uses. `StmtEmitter::emit_local_decl` still uses the legacy no-module overload
+for dynamic VLA allocas; that path is not part of the hoisted alloca family.
+`LirStructDecl` still does not carry size or alignment, so alignment remains
+legacy-authoritative while structured lookup coverage is expanded.
 
 ## Proof
 

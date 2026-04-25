@@ -132,10 +132,12 @@ std::unordered_set<uint32_t> find_modified_params(const Module& mod, const Funct
 bool fn_has_vla_locals(const Function& fn);
 
 /// Hoist alloca instructions for all locals and spilled parameters.
-void hoist_allocas(FnCtx& ctx, const Module& mod, const Function& fn);
+void hoist_allocas(FnCtx& ctx, const Module& mod, const Function& fn,
+                   const LirModule* lir_module = nullptr);
 
 /// Initialize a FnCtx for the given function.
-FnCtx init_fn_ctx(const Module& mod, const Function& fn);
+FnCtx init_fn_ctx(const Module& mod, const Function& fn,
+                  const LirModule* lir_module = nullptr);
 
 /// Map a HIR BlockId to its LLVM IR label string.
 std::string block_lbl(BlockId id);

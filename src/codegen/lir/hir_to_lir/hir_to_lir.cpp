@@ -773,7 +773,8 @@ bool fn_has_vla_locals(const c4c::hir::Function& fn) {
 }
 
 void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
-                   const c4c::hir::Function& fn) {
+                   const c4c::hir::Function& fn,
+                   const LirModule* lir_module) {
   using namespace c4c::codegen::llvm_helpers;
 
   const std::unordered_set<uint32_t> modified_params = find_modified_params(mod, fn);
@@ -787,7 +788,7 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
     const std::string slot = "%lv.param." + sanitize_llvm_ident(param.name);
     const std::string pname = "%p." + sanitize_llvm_ident(param.name);
     ctx.param_slots[static_cast<uint32_t>(i) + 0x80000000u] = slot;
-    const int param_align = object_align_bytes(mod, param.type.spec);
+    const int param_align = object_align_bytes(mod, lir_module, param.type.spec);
     ctx.alloca_insts.push_back(LirAllocaOp{slot, llvm_alloca_ty(param.type.spec), "", param_align});
     ctx.alloca_insts.push_back(LirStoreOp{llvm_ty(param.type.spec), pname, slot});
   }
@@ -813,7 +814,7 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
         ptr_ts.ptr_level = 1;
         ctx.alloca_insts.push_back(LirAllocaOp{slot, llvm_alloca_ty(ptr_ts), "", 0});
       } else {
-        const int stack_align = object_align_bytes(mod, d->type.spec);
+        const int stack_align = object_align_bytes(mod, lir_module, d->type.spec);
         ctx.alloca_insts.push_back(LirAllocaOp{slot, llvm_alloca_ty(d->type.spec), "", stack_align});
       }
     }
@@ -821,7 +822,8 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
 }
 
 c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
-                                  const c4c::hir::Function& fn) {
+                                const c4c::hir::Function& fn,
+                                const LirModule* lir_module) {
   using namespace c4c::codegen::llvm_helpers;
 
   c4c::codegen::FnCtx ctx;
@@ -857,7 +859,7 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
   ctx.current_block_idx = 0;
 
   // Hoist allocas.
-  hoist_allocas(ctx, mod, fn);
+  hoist_allocas(ctx, mod, fn, lir_module);
 
   // VLA stack save — must happen after alloca hoisting but before statements.
   if (fn_has_vla_locals(fn)) {
@@ -1112,7 +1114,7 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
       // Definition — hir_to_lir owns FnCtx setup, alloca hoisting, VLA
       // stack save, spec entry collection, and LirFunction construction.
       // StmtEmitter owns statement / expression emission only.
-      auto ctx = init_fn_ctx(hir_mod, fn);
+      auto ctx = init_fn_ctx(hir_mod, fn, &module);
       if (ctx.vla_stack_save_ptr) any_vla = true;
       auto block_order = build_block_order(fn);
 
