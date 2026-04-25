@@ -435,7 +435,7 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_relative_global_gep_add
     return std::nullopt;
   }
 
-  auto current_type = c4c::codegen::lir::trim_lir_arg_text(type_text);
+  std::string current_type(c4c::codegen::lir::trim_lir_arg_text(type_text));
   std::size_t byte_offset = base_address.byte_offset;
   for (std::size_t index_pos = 0; index_pos < gep.indices.size(); ++index_pos) {
     const auto parsed_index = parse_typed_operand(gep.indices[index_pos]);
@@ -465,24 +465,16 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_relative_global_gep_add
       continue;
     }
 
-    switch (layout.kind) {
-      case AggregateTypeLayout::Kind::Array: {
-        const auto element_layout =
-            compute_aggregate_type_layout(layout.element_type_text, type_decls);
-        if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
-            static_cast<std::size_t>(*index_value) >= layout.array_count) {
-          return std::nullopt;
-        }
-        byte_offset += static_cast<std::size_t>(*index_value) * element_layout.size_bytes;
-        current_type = layout.element_type_text;
-        break;
-      }
-      case AggregateTypeLayout::Kind::Struct:
-        if (static_cast<std::size_t>(*index_value) >= layout.fields.size()) {
-          return std::nullopt;
-        }
-        byte_offset += layout.fields[static_cast<std::size_t>(*index_value)].byte_offset;
-        current_type = layout.fields[static_cast<std::size_t>(*index_value)].type_text;
+    const auto projection = resolve_aggregate_child_index_projection(
+        current_type, static_cast<std::size_t>(*index_value), type_decls);
+    if (!projection.has_value()) {
+      return std::nullopt;
+    }
+    switch (projection->kind) {
+      case AggregateByteOffsetProjection::Kind::ArrayElement:
+      case AggregateByteOffsetProjection::Kind::StructField:
+        byte_offset += projection->child_absolute_byte_offset;
+        current_type = projection->child_type_text;
         break;
       default:
         return std::nullopt;
