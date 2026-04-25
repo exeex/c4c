@@ -141,7 +141,11 @@ int object_align_bytes(const c4c::hir::Module& mod, const LirModule* lir_module,
     const stmt_emitter_detail::StructuredLayoutLookup layout =
         stmt_emitter_detail::lookup_structured_layout(mod, lir_module, ts,
                                                       "module-object-align");
-    align = layout.legacy_decl ? std::max(1, layout.legacy_decl->align_bytes) : 8;
+    const std::optional<int> structured_align =
+        stmt_emitter_detail::structured_layout_align_bytes(mod, lir_module, layout);
+    align = structured_align ? *structured_align
+                             : (layout.legacy_decl ? std::max(1, layout.legacy_decl->align_bytes)
+                                                   : 8);
   } else if (ts.base == TB_VA_LIST && ts.ptr_level == 0 && ts.array_rank == 0) {
     align = llvm_va_list_alignment(mod.target_profile);
   } else {

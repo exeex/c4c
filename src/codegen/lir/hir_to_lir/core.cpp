@@ -79,6 +79,178 @@ static std::vector<std::string> structured_layout_field_types(
   return fields;
 }
 
+static std::optional<int> structured_type_size_bytes(const Module& mod,
+                                                     const LirModule* lir_module,
+                                                     const LirTypeRef& type,
+                                                     int depth);
+
+static std::optional<int> structured_type_align_bytes(const Module& mod,
+                                                      const LirModule* lir_module,
+                                                      const LirTypeRef& type,
+                                                      int depth);
+
+static std::optional<std::pair<int, std::string_view>> parse_llvm_sequence_type(
+    std::string_view text, char open_ch, char close_ch) {
+  if (text.size() < 5 || text.front() != open_ch || text.back() != close_ch) {
+    return std::nullopt;
+  }
+  std::size_t index = 1;
+  int count = 0;
+  if (index >= text.size() || !std::isdigit(static_cast<unsigned char>(text[index]))) {
+    return std::nullopt;
+  }
+  while (index < text.size() && std::isdigit(static_cast<unsigned char>(text[index]))) {
+    count = (count * 10) + static_cast<int>(text[index] - '0');
+    ++index;
+  }
+  constexpr std::string_view sep = " x ";
+  if (index + sep.size() >= text.size() ||
+      text.substr(index, sep.size()) != sep) {
+    return std::nullopt;
+  }
+  index += sep.size();
+  return std::make_pair(count, text.substr(index, text.size() - index - 1));
+}
+
+static std::optional<const LirStructDecl*> find_structured_field_decl(
+    const LirModule* lir_module, const LirTypeRef& type) {
+  if (!lir_module) return std::nullopt;
+  StructNameId name_id = type.struct_name_id();
+  if (name_id == kInvalidStructName) name_id = lir_module->struct_names.find(type.str());
+  if (name_id == kInvalidStructName) return std::nullopt;
+  const LirStructDecl* decl = lir_module->find_struct_decl(name_id);
+  if (!decl) return std::nullopt;
+  return decl;
+}
+
+static std::optional<int> structured_decl_align_bytes(const Module& mod,
+                                                      const LirModule* lir_module,
+                                                      const LirStructDecl& decl,
+                                                      int depth) {
+  if (depth > 32 || decl.is_opaque) return std::nullopt;
+  if (decl.is_packed) return 1;
+  int align = 1;
+  for (const auto& field : decl.fields) {
+    std::optional<int> field_align =
+        structured_type_align_bytes(mod, lir_module, field.type, depth + 1);
+    if (!field_align) return std::nullopt;
+    align = std::max(align, *field_align);
+  }
+  return align;
+}
+
+static std::optional<int> structured_type_size_bytes(const Module& mod,
+                                                     const LirModule* lir_module,
+                                                     const LirTypeRef& type,
+                                                     int depth) {
+  if (depth > 32) return std::nullopt;
+  switch (type.kind()) {
+    case LirTypeKind::Integer:
+      if (!type.integer_bit_width()) return std::nullopt;
+      return std::max(1, static_cast<int>((*type.integer_bit_width() + 7) / 8));
+    case LirTypeKind::Floating:
+      if (type == "half") return 2;
+      if (type == "float") return 4;
+      if (type == "double") return 8;
+      if (type == "fp128" || type == "x86_fp80") return 16;
+      return std::nullopt;
+    case LirTypeKind::Pointer:
+      return 8;
+    case LirTypeKind::Array: {
+      const auto parsed = parse_llvm_sequence_type(type.str(), '[', ']');
+      if (!parsed) return std::nullopt;
+      LirTypeRef elem_type(std::string(parsed->second));
+      const std::optional<int> elem_size =
+          structured_type_size_bytes(mod, lir_module, elem_type, depth + 1);
+      if (!elem_size) return std::nullopt;
+      return parsed->first * *elem_size;
+    }
+    case LirTypeKind::Vector: {
+      const auto parsed = parse_llvm_sequence_type(type.str(), '<', '>');
+      if (!parsed) return std::nullopt;
+      LirTypeRef elem_type(std::string(parsed->second));
+      const std::optional<int> elem_size =
+          structured_type_size_bytes(mod, lir_module, elem_type, depth + 1);
+      if (!elem_size) return std::nullopt;
+      return parsed->first * *elem_size;
+    }
+    case LirTypeKind::Struct: {
+      const auto decl = find_structured_field_decl(lir_module, type);
+      if (!decl) return std::nullopt;
+      int offset = 0;
+      for (const auto& field : (*decl)->fields) {
+        const std::optional<int> field_align =
+            structured_type_align_bytes(mod, lir_module, field.type, depth + 1);
+        const std::optional<int> field_size =
+            structured_type_size_bytes(mod, lir_module, field.type, depth + 1);
+        if (!field_align || !field_size) return std::nullopt;
+        offset = align_to_bytes(offset, *field_align);
+        offset += *field_size;
+      }
+      const std::optional<int> decl_align =
+          structured_decl_align_bytes(mod, lir_module, **decl, depth + 1);
+      if (!decl_align) return std::nullopt;
+      return align_to_bytes(offset, *decl_align);
+    }
+    default:
+      return std::nullopt;
+  }
+}
+
+static std::optional<int> structured_type_align_bytes(const Module& mod,
+                                                      const LirModule* lir_module,
+                                                      const LirTypeRef& type,
+                                                      int depth) {
+  if (depth > 32) return std::nullopt;
+  switch (type.kind()) {
+    case LirTypeKind::Integer:
+      if (!type.integer_bit_width()) return std::nullopt;
+      return std::min(16, std::max(1, static_cast<int>((*type.integer_bit_width() + 7) / 8)));
+    case LirTypeKind::Floating:
+      if (type == "half") return 2;
+      if (type == "float") return 4;
+      if (type == "double") return 8;
+      if (type == "fp128" || type == "x86_fp80") return 16;
+      return std::nullopt;
+    case LirTypeKind::Pointer:
+      return 8;
+    case LirTypeKind::Array: {
+      const auto parsed = parse_llvm_sequence_type(type.str(), '[', ']');
+      if (!parsed) return std::nullopt;
+      return structured_type_align_bytes(mod, lir_module, LirTypeRef(std::string(parsed->second)),
+                                         depth + 1);
+    }
+    case LirTypeKind::Vector: {
+      const std::optional<int> size = structured_type_size_bytes(mod, lir_module, type, depth + 1);
+      if (!size) return std::nullopt;
+      return std::min(16, std::max(1, *size));
+    }
+    case LirTypeKind::Struct: {
+      const auto decl = find_structured_field_decl(lir_module, type);
+      if (!decl) return std::nullopt;
+      return structured_decl_align_bytes(mod, lir_module, **decl, depth + 1);
+    }
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<int> structured_layout_align_bytes(const Module& mod,
+                                                 const LirModule* lir_module,
+                                                 const StructuredLayoutLookup& layout) {
+  if (!layout.structured_decl || !layout.legacy_decl ||
+      !layout.structured_parity_checked || !layout.structured_parity_matches ||
+      layout.legacy_decl->is_union) {
+    return std::nullopt;
+  }
+  const std::optional<int> align =
+      structured_decl_align_bytes(mod, lir_module, *layout.structured_decl, 0);
+  if (!align || *align <= 0) return std::nullopt;
+  const int legacy_align = std::max(1, layout.legacy_decl->align_bytes);
+  if (*align != legacy_align) return std::nullopt;
+  return *align;
+}
+
 static void record_structured_layout_observation(
     const Module& mod, const LirModule& lir_module, const TypeSpec& ts, const char* site,
     const StructuredLayoutLookup& lookup) {
@@ -465,7 +637,11 @@ int object_align_bytes(const Module& mod, const LirModule* lir_module,
   } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
     const StructuredLayoutLookup layout =
         lookup_structured_layout(mod, lir_module, ts, "stmt-object-align");
-    align = layout.legacy_decl ? std::max(1, layout.legacy_decl->align_bytes) : 8;
+    const std::optional<int> structured_align =
+        structured_layout_align_bytes(mod, lir_module, layout);
+    align = structured_align ? *structured_align
+                             : (layout.legacy_decl ? std::max(1, layout.legacy_decl->align_bytes)
+                                                   : 8);
   } else if (ts.base == TB_VA_LIST && ts.ptr_level == 0 && ts.array_rank == 0) {
     align = llvm_va_list_alignment(mod.target_profile);
   } else {

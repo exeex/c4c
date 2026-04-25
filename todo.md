@@ -8,20 +8,26 @@ Current Step Title: Add Structured-First Layout Access Helpers
 
 ## Just Finished
 
-Step 2 first target completed: demoted
-`ConstInitEmitter::lookup_const_init_struct_def` so
-`lookup_structured_layout(..., "const-init-aggregate")` is retained only for
-structured-layout observation/parity reporting. The const initializer no
-longer selects the aggregate declaration through `layout.legacy_decl`; it now
-continues directly to the existing `mod_.struct_defs` lookup and fallback
-behavior.
+Step 2 helper target completed: added
+`stmt_emitter_detail::structured_layout_align_bytes` as a reusable
+structured-first alignment accessor. It derives aggregate alignment from
+`LirStructDecl` field type refs only when structured coverage exists, legacy
+field parity was checked and matched, the aggregate is not a union, and the
+derived alignment matches the legacy alignment. Otherwise it returns
+`std::nullopt` so callers keep legacy/default fallback behavior.
+
+Converted active `legacy_decl` authority sites:
+- `src/codegen/lir/hir_to_lir/core.cpp` `stmt-object-align`
+  `object_align_bytes`: now prefers the structured helper and falls back to
+  `layout.legacy_decl->align_bytes` only when the helper declines coverage.
+- `src/codegen/lir/hir_to_lir/hir_to_lir.cpp` `module-object-align`
+  `object_align_bytes`: same structured-first helper plus legacy fallback.
 
 ## Suggested Next
 
-Next coherent packet should address one remaining active semantic
-`legacy_decl` authority site after the supervisor selects the route. The
-size/alignment users still need a structured metadata or parity-gated helper
-decision before demotion.
+Next coherent packet should decide whether to extend the same guarded helper
+pattern to aggregate payload sizing or move to one of the Step 3 field lookup
+paths that already has structured identity available.
 
 ## Watchouts
 
@@ -29,16 +35,17 @@ decision before demotion.
   `StructuredLayoutLookup::legacy_decl`.
 - Do not edit `src/backend/mir/` as part of this route.
 - Do not weaken tests or add testcase-shaped shortcuts.
-- Const-init demotion is intentionally behavior-preserving because the removed
-  `layout.legacy_decl` branch and the retained fallback both resolve through
-  `mod_.struct_defs` for valid aggregate tags.
-- Size/alignment demotions remain deferred: `LirStructDecl` currently carries
-  field type refs but not explicit size/align metadata, so `object_align_bytes`,
-  variadic aggregate payload sizing, and `va_arg` aggregate payload sizing need
-  a parity-gated helper/data decision before their `legacy_decl` reads can be
-  safely demoted.
+- `structured_layout_align_bytes` intentionally rejects unions because the
+  current structured union mirror is `[N x i8]` and does not encode union
+  member alignment.
+- Alignment derivation remains conservative for unknown raw LLVM type text,
+  missing nested `LirStructDecl`s, parity absence, parity mismatch, or derived
+  alignment mismatch; those cases continue to use legacy fallback.
+- Deferred active size/align authority: variadic aggregate payload sizing and
+  `va_arg` aggregate payload sizing still need structured size metadata or a
+  similarly guarded structured-size derivation before demotion.
 
 ## Proof
 
 Passed delegated proof, with output preserved in `test_after.log`:
-`(cmake --build build --target c4cll && ctest --test-dir build -R 'frontend_lir_global_type_ref|cpp_hir_record_field_array_layout|cpp_hir_record_packed_aligned_layout|cpp_positive_sema_inherited_base_aggregate_init_runtime_cpp' --output-on-failure) > test_after.log 2>&1`
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|cpp_hir_record_field_array_layout|cpp_hir_record_packed_aligned_layout|cpp_positive_sema_inherited_base_aggregate_init_runtime_cpp|abi_)') > test_after.log 2>&1`
