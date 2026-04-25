@@ -1,8 +1,8 @@
 # Idea 97 Structured Identity Completion Audit
 
-Status: Step 3 sema completion audit complete
+Status: Step 4 HIR inventory and first-slice analysis complete
 Source Idea: `ideas/open/97_structured_identity_completion_audit_and_hir_plan.md`
-Plan Step: Step 3 - Sema completion audit
+Plan Step: Step 4 - HIR inventory and first-slice analysis
 
 ## Scope Guard
 
@@ -252,12 +252,95 @@ No build or test command was run; Step 1 proof is source inventory only.
 
 ## HIR Inventory By Subsystem
 
-Step 1 inventory only. Step 4 should classify each HIR subsystem by upstream structured-key availability, mirror feasibility, rendered-name/codegen requirements, proof coverage, and parser/sema metadata dependencies.
+### Module Function And Global Identity
+
+- Current surface: `Module::fn_index` and `Module::global_index` are rendered `SymbolName` maps, while `Function` and `GlobalVar` carry rendered `name`, `LinkNameId`, and `NamespaceQualifier`. Evidence: `src/frontend/hir/hir_ir.hpp:681` through `src/frontend/hir/hir_ir.hpp:687`, `src/frontend/hir/hir_ir.hpp:744` through `src/frontend/hir/hir_ir.hpp:750`, and `src/frontend/hir/hir_ir.hpp:949` through `src/frontend/hir/hir_ir.hpp:968`.
+- Lookup behavior already has an ID/legacy boundary: `resolve_function_decl` uses `DeclRef::link_name_id` before `find_function_by_name_legacy`, and `resolve_global_decl` uses `DeclRef::global`, then `link_name_id`, then legacy name lookup. Evidence: `src/frontend/hir/hir_ir.hpp:1042` through `src/frontend/hir/hir_ir.hpp:1091` and `src/frontend/hir/hir_ir.hpp:1120` through `src/frontend/hir/hir_ir.hpp:1136`.
+- Upstream structured-key availability: strong enough for a first mirror. AST nodes expose unqualified text IDs, qualifier segments, qualifier text IDs, and namespace context IDs at `src/frontend/parser/ast.hpp:292` through `src/frontend/parser/ast.hpp:295`; HIR imports qualifier structure through `make_ns_qual` at `src/frontend/hir/hir_lowering_core.cpp:30` through `src/frontend/hir/hir_lowering_core.cpp:43`, and imports unqualified name text through `make_unqualified_text_id` at `src/frontend/hir/hir_lowering_core.cpp:51` through `src/frontend/hir/hir_lowering_core.cpp:59`. `DeclRef` already stores `name_text_id`, `link_name_id`, IDs, and `ns_qual` at `src/frontend/hir/hir_ir.hpp:297` through `src/frontend/hir/hir_ir.hpp:305`.
+- Mirror feasibility: good. A HIR-only `SymbolLookupKey` can be built from declaration kind, `NamespaceQualifier::context_id`, qualifier segment text IDs, global-qualified bit, and unqualified `TextId`. The only missing declaration-side field is `Function::name_text_id` / `GlobalVar::name_text_id`; those can be populated from the existing AST metadata during `lower_function`, consteval lowering, bodyless callable registration, and `lower_global`. Evidence for registration sites: `src/frontend/hir/hir_functions.cpp:129` through `src/frontend/hir/hir_functions.cpp:138`, `src/frontend/hir/hir_functions.cpp:90` through `src/frontend/hir/hir_functions.cpp:104`, `src/frontend/hir/hir_build.cpp:488` through `src/frontend/hir/hir_build.cpp:509`, and `src/frontend/hir/hir_types.cpp:1535` through `src/frontend/hir/hir_types.cpp:1635`.
+- Rendered-name/codegen requirements: rendered `name` and `LinkNameId` must remain authoritative for emission and ABI/link spelling. Evidence: HIR interns link names during lowering at `src/frontend/hir/hir_functions.cpp:135` through `src/frontend/hir/hir_functions.cpp:138` and `src/frontend/hir/hir_types.cpp:1587`; LIR resolves emitted names through `LinkNameId` with fallback spelling at `src/codegen/lir/hir_to_lir/hir_to_lir.cpp:27` through `src/codegen/lir/hir_to_lir/hir_to_lir.cpp:31`; LIR extern declarations already dedup by `LinkNameId` before raw name at `src/codegen/lir/ir.hpp:569` through `src/codegen/lir/ir.hpp:610`.
+- Proof coverage: focused proof should include `frontend_hir_tests` plus HIR dump cases that exercise namespace globals, function/template calls, template global instantiation, consteval-only functions, and link-name fallback. Candidate CTest selectors: `frontend_hir_tests`, `cpp_hir_template_global_specialization`, `cpp_hir_if_constexpr_branch_unlocks_later`, and a namespace runtime/HIR case if the slice adds one.
+- Parser/sema metadata dependency: no parser/sema rewrite is required for a first mirror. The AST metadata is already present; the HIR slice only needs to preserve it on declarations and compare structured lookup against existing string lookup.
+
+### Struct, Type Tag, And Layout Identity
+
+- Current surface: `Module::struct_defs` and `struct_def_order` are keyed by rendered tags, and `TypeSpec::tag` drives layout, type compatibility, and codegen lookup. Evidence: `src/frontend/hir/hir_ir.hpp:963` through `src/frontend/hir/hir_ir.hpp:965`; `src/frontend/hir/hir_lowering_core.cpp:329` through `src/frontend/hir/hir_lowering_core.cpp:370`; `src/frontend/hir/hir_lowering_core.cpp:467` through `src/frontend/hir/hir_lowering_core.cpp:477`; and `src/codegen/lir/hir_to_lir/hir_to_lir.cpp:54` through `src/codegen/lir/hir_to_lir/hir_to_lir.cpp:56`.
+- Upstream structured-key availability: partial. `HirStructDef` already records `tag_text_id`, `NamespaceQualifier`, and `base_tag_text_ids`, and fields have `field_text_id` plus `MemberSymbolId`. Evidence: `src/frontend/hir/hir_ir.hpp:777` through `src/frontend/hir/hir_ir.hpp:809`; population appears at `src/frontend/hir/hir_types.cpp:1206`, `src/frontend/hir/hir_types.cpp:1243` through `src/frontend/hir/hir_types.cpp:1244`, and `src/frontend/hir/hir_types.cpp:1312` through `src/frontend/hir/hir_types.cpp:1317`.
+- Mirror feasibility: moderate, but not the first slice. HIR could add a struct-key mirror for `struct_defs`, but most type consumers still receive only `TypeSpec::tag`; a mirror would need a bridging recovery path from tag to key before it could be used broadly.
+- Rendered-name/codegen requirements: high. LLVM type declarations are still built from rendered tags and base tags at `src/codegen/lir/hir_to_lir/hir_to_lir.cpp:227` through `src/codegen/lir/hir_to_lir/hir_to_lir.cpp:276`; helper formatting uses `TypeSpec::tag` for LLVM struct names at `src/codegen/shared/llvm_helpers.hpp:444` through `src/codegen/shared/llvm_helpers.hpp:445`.
+- Proof coverage: HIR layout and codegen cases already cover this area, including packed/aligned layout, field-array layout, builtin layout queries, inheritance, and member access. This needs a later slice with before/after HIR dump and emitted LLVM checks because a bad tag mirror could perturb layout or type declarations.
+- Parser/sema metadata dependency: struct metadata exists in HIR but sema still classifies struct completeness/member lookup as blocked by HIR because record identity is handed around as `TypeSpec::tag`. This should remain outside the first slice.
+
+### Member, Static Member, And Method Identity
+
+- Current surface: static members are stored as `{tag -> member}` string maps; methods use `"struct_tag::method_name"` keys and const suffixes; member-symbol lookup constructs `tag + "::" + member`. Evidence: declarations in `src/frontend/hir/impl/lowerer.hpp:959` through `src/frontend/hir/impl/lowerer.hpp:968`, static member lookup in `src/frontend/hir/hir_types.cpp:926` through `src/frontend/hir/hir_types.cpp:960`, member symbol lookup in `src/frontend/hir/hir_types.cpp:963` through `src/frontend/hir/hir_types.cpp:977`, and method registration in `src/frontend/hir/hir_types.cpp:1460` through `src/frontend/hir/hir_types.cpp:1531`.
+- Upstream structured-key availability: member-level identity is strong (`field_text_id`, `MemberSymbolId`), but owner identity is still rendered tag based. `MemberExpr` carries `field_text_id`, `resolved_owner_tag`, and `member_symbol_id` at `src/frontend/hir/hir_ir.hpp:409` through `src/frontend/hir/hir_ir.hpp:415`; HIR populates member refs at `src/frontend/hir/impl/expr/scalar_control.cpp:210` through `src/frontend/hir/impl/expr/scalar_control.cpp:218`.
+- Mirror feasibility: good for field/member lookup after owner-tag migration begins; weak as a first slice because the owner key would still be derived from `TypeSpec::tag`. Codegen already prefers `MemberSymbolId` for field resolution and falls back to field text, so this surface is partially mirrored downstream. Evidence: `src/codegen/lir/hir_to_lir/lvalue.cpp:601` through `src/codegen/lir/hir_to_lir/lvalue.cpp:618` and `src/codegen/lir/hir_to_lir/lowering.hpp:381` through `src/codegen/lir/hir_to_lir/lowering.hpp:393`.
+- Rendered-name/codegen requirements: method mangled names and struct tags remain emission/link bridges. Range-for and operator lowering still route through method maps and legacy function lookup, for example `src/frontend/hir/impl/stmt/range_for.cpp:19` through `src/frontend/hir/impl/stmt/range_for.cpp:53` and `src/frontend/hir/impl/expr/call.cpp:72` through `src/frontend/hir/impl/expr/call.cpp:116`.
+- Proof coverage: HIR dump tests cover inherited methods, member calls, operator/member helpers, range-for helpers, and template struct body instantiation. This is a good second or third HIR slice after module symbol mirrors are proven.
+- Parser/sema metadata dependency: no parser/sema rewrite is needed for member names, but owner identity is blocked on HIR struct/type keying.
+
+### Function-Local Symbol And Template Binding Identity
+
+- Current surface: `FunctionCtx` local maps remain string-keyed for locals, function pointer signatures, params, static globals, labels, const bindings, template bindings, NTTP bindings, packs, and method owner tag. Evidence: `src/frontend/hir/impl/lowerer.hpp:263` through `src/frontend/hir/impl/lowerer.hpp:293`.
+- Upstream structured-key availability: mixed. AST names and HIR `DeclRef` have `TextId`, and `LocalId` is already the durable local identity after resolution, but `LocalDecl` currently lacks a `name_text_id`. Params do have `name_text_id` at `src/frontend/hir/hir_ir.hpp:214` through `src/frontend/hir/hir_ir.hpp:219`.
+- Mirror feasibility: moderate. Local and param mirrors can be keyed by `TextId` and compared against string maps, but the slice would touch many expression/statement lowering paths and is less isolated than module function/global mirrors.
+- Rendered-name/codegen requirements: local names, label names, and generated temporary names remain dump/debug and codegen spellings. They should be preserved even if lookup gains a text-id mirror.
+- Proof coverage: `frontend_hir_tests` and helper HIR dump tests for statement declarations, scalar control, call/member helpers, range-for, and template function pack signatures are relevant.
+- Parser/sema metadata dependency: likely none for locals/params; template parameter name text IDs are weaker because AST template parameter names are still mostly `const char**` arrays, so type/NTTP binding mirrors should follow parser/sema template metadata cleanup rather than lead HIR migration.
+
+### Template And Compile-Time Registries
+
+- Current surface: HIR has both semantic instance keys and rendered-name registries. `InstantiationRegistry` uses `FunctionTemplateInstanceKey` / `TemplateStructInstanceKey` for dedup when a primary definition is available, while `seed_work_`, `instances_`, `template_fn_defs_`, `template_struct_defs_`, `template_struct_specializations_`, and `consteval_fn_defs_` remain string-keyed by template/function name. Evidence: `src/frontend/hir/compile_time_engine.hpp:383` through `src/frontend/hir/compile_time_engine.hpp:526`, `src/frontend/hir/compile_time_engine.hpp:733` through `src/frontend/hir/compile_time_engine.hpp:843`, and private maps at `src/frontend/hir/compile_time_engine.hpp:1012` through `src/frontend/hir/compile_time_engine.hpp:1024`.
+- Upstream structured-key availability: good for realized template instances because primary `Node*` plus `SpecializationKey` is already in use. Weak for definition registries where `register_template_def`, `register_template_struct_def`, and `register_consteval_def` still accept rendered names. Evidence: `src/frontend/hir/compile_time_engine.hpp:743` through `src/frontend/hir/compile_time_engine.hpp:776`.
+- Mirror feasibility: good but not first. The registry already has parity checks (`verify_parity`) and structured dedup sets, so the next useful cleanup would mirror definition lookup by declaration key or primary-node identity while preserving string lookup. It is broader than module symbol mirrors because deferred instantiation, consteval, static assertions, and template metadata all depend on it.
+- Rendered-name/codegen requirements: template instantiations still need rendered/mangled names for module lookup and emission. Evidence: `record_seed` returns a mangled name at `src/frontend/hir/compile_time_engine.hpp:486` through `src/frontend/hir/compile_time_engine.hpp:525`; template metadata interns mangled link names at `src/frontend/hir/hir_build.cpp:392` through `src/frontend/hir/hir_build.cpp:397`; deferred instantiation probes `module.template_defs` and `target_name` at `src/frontend/hir/impl/compile_time/engine.cpp:171` through `src/frontend/hir/impl/compile_time/engine.cpp:235`.
+- Proof coverage: HIR template/consteval cases are strong: deferred NTTP expression cases, template struct body instantiation, template global specialization, inherited member typedef, multistage shape chain, and if-constexpr branch unlocks. Registry parity output is source-level evidence but should be paired with focused CTest.
+- Parser/sema metadata dependency: no parser/sema rewrite is required for semantic instance keys; definition-name mirrors would benefit from the same declaration structured key used by module function/global lookup.
+
+### Enum, Const-Int, And Consteval Runtime Environments
+
+- Current surface: HIR lowerer and compile-time state keep enum constants and const-int bindings in string maps, and consteval environments consume those maps. Evidence: `src/frontend/hir/impl/lowerer.hpp:937` through `src/frontend/hir/impl/lowerer.hpp:943`, `src/frontend/hir/compile_time_engine.hpp:936` through `src/frontend/hir/compile_time_engine.hpp:944`, and `src/frontend/hir/impl/compile_time/engine.cpp:103` through `src/frontend/hir/impl/compile_time/engine.cpp:122`.
+- Upstream structured-key availability: mixed. Sema Step 3 found enum variants as a sema leftover and `static_eval_int` as blocked-by-HIR. HIR callers still look up `enum_consts_` and NTTP names by `n->name`, for example `src/frontend/hir/impl/expr/scalar_control.cpp:129` through `src/frontend/hir/impl/expr/scalar_control.cpp:146`.
+- Mirror feasibility: moderate after sema enum/NTTP mirror cleanup, but risky as a first HIR slice because constant lookup participates in template/consteval reduction and can silently alter compile-time folding.
+- Rendered-name/codegen requirements: rendered constant names are not ABI output, but diagnostics and compatibility APIs still use them.
+- Proof coverage: consteval and HIR deferred-template tests would catch many regressions; however source evidence shows this should be scoped after idea 98 sema leftovers or alongside a narrowly defined HIR constant environment mirror.
+- Parser/sema metadata dependency: yes for enum variant structured keys and NTTP parameter text/key population. Do not include this in idea 99's first HIR slice.
+
+### Downstream Link And Codegen Handoff
+
+- Current surface: link-visible function/global identity is already carried by `LinkNameId` from HIR into LIR. Evidence: `Function::link_name_id`, `GlobalVar::link_name_id`, and `DeclRef::link_name_id` in `src/frontend/hir/hir_ir.hpp:681` through `src/frontend/hir/hir_ir.hpp:686`, `src/frontend/hir/hir_ir.hpp:744` through `src/frontend/hir/hir_ir.hpp:749`, and `src/frontend/hir/hir_ir.hpp:297` through `src/frontend/hir/hir_ir.hpp:305`; LIR carries link IDs at `src/codegen/lir/ir.hpp:486` through `src/codegen/lir/ir.hpp:497` and `src/codegen/lir/ir.hpp:524` through `src/codegen/lir/ir.hpp:528`.
+- Upstream structured-key availability: existing `LinkNameId` is a stable rendered-link identity, not a full source semantic key. It is a bridge that should coexist with HIR source-name keys.
+- Mirror feasibility: already partly realized downstream. The first HIR source-key slice should not replace `LinkNameId`; it should use source-key lookup for semantic declaration resolution and keep link IDs for ABI/codegen.
+- Rendered-name/codegen requirements: mandatory. LIR and LLVM helpers still render names and struct type strings; `str_pool_map`/string literal byte dedup remains unrelated to declaration identity.
+- Proof coverage: emitted LLVM and runtime tests are relevant only after behavior changes. The first mirror slice can use HIR dumps and existing CTest without changing emitted names.
+- Parser/sema metadata dependency: none.
+
+### Recommended First HIR Slice
+
+Start idea 99 with a module-level function/global structured lookup mirror, not struct/type tags or template/consteval constants.
+
+Proposed first slice:
+
+- Add a small HIR declaration lookup key for functions/globals based on source-name metadata already available in HIR lowering: declaration kind, namespace context/global-qualified bit, qualifier segment text IDs, and unqualified `TextId`.
+- Add `name_text_id` to HIR `Function` and `GlobalVar`, populate it where functions/globals are lowered or registered, and dual-write `Module` mirrors next to `fn_index` and `global_index`.
+- Add structured lookup helpers for `DeclRef` that try existing concrete IDs first (`GlobalId`, `LinkNameId`), then the new source-key mirror when `DeclRef::name_text_id` / `ns_qual` are present, then legacy `fn_index` / `global_index`.
+- Compare structured and legacy results in proof mode or internal helpers, but return the existing behavior during the slice. Preserve `Function::name`, `GlobalVar::name`, `LinkNameId`, mangled template names, and all codegen rendered output.
+- Validate with `frontend_hir_tests` plus focused HIR CTest selectors for function/global lookup, namespace lookup, template global specialization, and consteval template call materialization. If codegen output is touched unexpectedly, escalate to LIR/codegen subsets.
+
+Reasoning:
+
+- It is HIR-owned and behavior-preserving.
+- It uses existing parser metadata without reopening parser/sema work.
+- It exercises the same dual-write / dual-read discipline used by ideas 95 and 96.
+- It avoids the high-risk `TypeSpec::tag`, `struct_defs`, member-method, enum, const-int, and compile-time registry surfaces until one small HIR mirror is proven.
 
 ## Proof Gaps And Validation Candidates
 
 - No proof gap was discovered that required a build during Step 1.
 - No Step 3 sema leftover claim required runtime proof; source evidence was sufficient for classification.
+- No Step 4 HIR claim required runtime proof; source evidence was sufficient for subsystem classification.
+- First HIR implementation slice validation should start with `ctest --test-dir build -R "frontend_hir_tests|cpp_hir_template_global_specialization|cpp_hir_if_constexpr_branch_unlocks_later|cpp_hir_multistage_shape_chain" --output-on-failure`, then broaden only if the slice touches emitted codegen or struct/type layout.
 - Parser classification proof candidates: parse-only namespace/using/template cases covering structured lookup and legacy mismatch counters.
 - Sema classification proof candidates: focused frontend/sema cases for scoped locals, overloads, consteval, enum/const-int bindings, and member/static-member lookup.
 - HIR first-slice proof candidates: HIR dump/summary CTest cases touching module function/global/struct lookup, template instantiation, consteval, member lookup, and LIR/codegen link-name preservation.
@@ -265,4 +348,4 @@ Step 1 inventory only. Step 4 should classify each HIR subsystem by upstream str
 ## Follow-On Recommendation Placeholders
 
 - Idea 98 decision: pending Step 5, with Step 3 identifying sema leftovers in enum variant mirrors, template NTTP/type-parameter validation placeholders, consteval NTTP binding mirrors, and type-binding text mirror population.
-- Idea 99 scope: pending Step 4 first-slice analysis.
+- Idea 99 scope: pending Step 5 drafting, with Step 4 recommending a HIR module function/global structured lookup mirror as the first behavior-preserving slice.
