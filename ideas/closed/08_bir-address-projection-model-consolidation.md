@@ -82,6 +82,20 @@ changing lowering semantics.
 - `c4c_codegen` builds.
 - Relevant GEP/provenance/memory tests pass with no expectation rewrites.
 
+## Closure Note
+
+Closed after the active runbook completed all five steps. The implementation
+strengthened shared helper facts, reused the shared projection helpers across
+local and global GEP paths, normalized projection offset naming, and preserved
+caller-owned policy at the call sites. Step 3 review found the route aligned
+with no testcase-overfit or expectation rewrite.
+
+Final proof recorded in `todo.md` before closure:
+
+- accepted full-suite baseline for commit `f294c3a4`: 3071 passed, 0 failed
+- backend regression guard for the final slice passed with 97 before, 97 after,
+  and 0 new failures
+
 ## Non-Goals
 
 - Do not redesign BIR memory semantics.
