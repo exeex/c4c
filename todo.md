@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/10_bir-global-initializer-family-extraction.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Implementation File and Build Wiring
+Current Step ID: Step 3
+Current Step Title: Move Initializer Parsing Helpers
 
 # Current Packet
 
