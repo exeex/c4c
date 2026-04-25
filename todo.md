@@ -1,46 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/113_backend_struct_decl_layout_table_dual_path.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Convert Initializer And Aggregate Load/Store Consumers
+Current Step ID: 6
+Current Step Title: Broader Parity And Regression Checkpoint
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 - Convert Initializer And Aggregate Load/Store Consumers converted the
-global GEP address and dynamic global array addressing helpers to prefer the
-backend structured layout table when invoked from member lowering paths, while
-preserving the legacy no-table overloads.
+Step 6 - Broader Parity And Regression Checkpoint ran the broader validation
+checkpoint after the Step 3-5 structured-first backend consumer conversions.
+The full default build, full `ctest`, and backend target rebuild all passed.
 
 Changed files:
 
-- `src/backend/bir/lir_to_bir/lowering.hpp`
-- `src/backend/bir/lir_to_bir/memory/addressing.cpp`
 - `todo.md`
 - `test_after.log`
 
-Converted consumers:
+Structured-first coverage confirmed for the Step 3-5 converted consumers:
 
-- `resolve_global_gep_address()` now has a structured-aware overload and a
-  nullable-table implementation that uses structured lookup for child
-  projection and leaf layout.
-- `resolve_relative_global_gep_address()` now has the same structured-aware
-  path for global-pointer member GEPs and dynamic global aggregate projections.
-- `resolve_global_dynamic_pointer_array_access()` now uses structured layout
-  for aggregate traversal and pointer-array element layout when called from
-  member lowering.
-- `resolve_global_dynamic_aggregate_array_access()` now uses structured layout
-  for base aggregate classification and repeated-aggregate extent lookup.
-- `lower_memory_gep_inst()` now passes `structured_layouts_` at the global
-  member-lowering call sites for direct globals, relative global pointers, and
-  dynamic global aggregate leaf projection.
+- Step 3 converted the direct member layout query helpers to prefer the backend
+  structured layout table before legacy layout facts.
+- Step 4 converted value/member lowering paths so structured layout facts flow
+  through aggregate store/load and member-address consumers.
+- Step 5 converted global GEP address and dynamic global array addressing
+  helpers to prefer structured layout when called from member lowering paths,
+  while preserving the legacy no-table overloads.
 
-Remaining fallback-only paths: legacy public overloads for
+Remaining intentional fallback-only backend paths: legacy public overloads for
 `resolve_global_gep_address()`, `resolve_relative_global_gep_address()`,
 `resolve_global_dynamic_pointer_array_access()`, and
-`resolve_global_dynamic_aggregate_array_access()` still route through the
-null-table layout path for callers without module structured layout state.
+`resolve_global_dynamic_aggregate_array_access()` still route through null-table
+wrappers for callers without module structured layout state. Core parity and
+legacy layout functions also remain fallback-only by design where they serve as
+the compatibility path under structured lookup miss or absent table state.
 
 ABI classification files, global initializer files, globals/module files,
 unrelated MIR files, test expectations, `plan.md`, and the source idea were not
@@ -48,21 +41,22 @@ changed.
 
 ## Suggested Next
 
-Next coherent packet: send Step 5 to review, or delegate the next plan step the
-supervisor selects after confirming this completes the structured-aware global
-addressing helper conversion.
+Next coherent packet: supervisor review/closeout for the Step 3-6 structured
+layout checkpoint, or delegate the next plan step if more structured layout
+coverage remains in the active runbook.
 
 ## Watchouts
 
-The new overloads are intentionally plumbing-only: emitted behavior should stay
-unchanged because structured lookup still falls back unless the backend table
-has usable checked facts for the named aggregate type.
+The broad checkpoint is green, but remaining fallback-only paths are intentional
+compatibility paths rather than converted consumers. Future conversion work
+should distinguish public legacy overloads/null-table wrappers from consumer
+sites that can actually receive `structured_layouts_`.
 
 ## Proof
 
-Delegated proof passed and wrote `test_after.log`:
+Delegated Step 6 proof passed and wrote `test_after.log`:
 
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|positive_split_llvm_|abi_)' && cmake --build build-backend --target c4c_backend -j) > test_after.log 2>&1`
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure && cmake --build build-backend --target c4c_backend -j) > test_after.log 2>&1`
 
-Result: default build completed, selected ctest subset passed 8/8, and the
-backend `c4c_backend` target rebuilt successfully.
+Result: default build completed, full ctest passed 2980/2980, and the backend
+`c4c_backend` target rebuilt successfully.
