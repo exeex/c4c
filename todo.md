@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/111_lir_struct_decl_printer_authority_switch.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Switch Struct Declaration Printing To struct_decls
+Current Step ID: none
+Current Step Title: none
 
 # Current Packet
 
