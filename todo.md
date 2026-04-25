@@ -8,51 +8,44 @@ Current Step Title: Convert Aggregate Size And Addressing Consumers
 
 ## Just Finished
 
-Step 3 - Convert Aggregate Size And Addressing Consumers completed the local
-GEP aggregate layout/projection conversion by threading structured layout access
-from `lower_memory_gep_inst()` into the local GEP helper surface.
+Step 3 - Convert Aggregate Size And Addressing Consumers converted the memory
+intrinsic aggregate repeated-extent paths by threading optional structured
+layout access into the immediate local `memset`/`memcpy` helper surface.
 
 Changed files:
 
 - `src/backend/bir/lir_to_bir/lowering.hpp`
-- `src/backend/bir/lir_to_bir/memory/addressing.cpp`
-- `src/backend/bir/lir_to_bir/memory/local_gep.cpp`
-- `src/backend/bir/lir_to_bir/memory/memory_helpers.hpp`
+- `src/backend/bir/lir_to_bir/memory/intrinsics.cpp`
 - `todo.md`
 - `test_after.log`
 
-Converted consumers: local GEP helper overloads now accept an optional
-`BackendStructuredLayoutTable*`, and `addressing.cpp` passes
-`&structured_layouts_` from local aggregate GEP lowering, dynamic local
-aggregate projection, local slot pointer GEP, relative aggregate GEP target
-resolution, and related local pointer-slot base paths. Legacy helper signatures
-remain available as wrappers that pass `nullptr`.
+Converted consumers: `try_lower_immediate_local_memset()` and
+`try_lower_immediate_local_memcpy()` now have structured-aware overloads that
+accept an optional `BackendStructuredLayoutTable*`, with legacy wrappers that
+delegate through `nullptr`. Member callers in `lower_memory_memset_inst()`,
+`lower_memory_memcpy_inst()`, and direct `memset`/`memcpy` runtime intrinsic
+call lowering now pass `&structured_layouts_`.
 
-Local GEP aggregate size/projection calls now route through
-`lookup_backend_aggregate_type_layout`, structured
-`resolve_aggregate_child_index_projection`, structured repeated-extent lookup,
-and structured `can_reinterpret_byte_storage_as_type` when a structured table is
-passed. Legacy-only callers continue to use `compute_aggregate_type_layout` and
-the existing legacy projection signatures.
+The aggregate pointer-to-local-array recovery inside both helpers now calls the
+structured `find_repeated_aggregate_extent_at_offset()` overload when a
+structured table is available, and keeps the legacy extent lookup for wrapper
+callers without structured layout access.
 
-Remaining fallback-only paths: raw-byte slice scalar leaf discovery still uses
-`resolve_scalar_layout_facts_at_byte_offset`, `collect_local_scalar_array_slots`
-still uses the legacy local-slots helper, memory intrinsic consumers, static
-global-address helper wrappers, ABI and call lowering, globals, initializers,
-and unrelated load/store-heavy lowering still use the legacy layout path unless
-a caller explicitly opts into a structured overload.
+Remaining fallback-only paths: the intrinsic aggregate whole-object size/leaf
+view helpers still use `lower_byval_aggregate_layout`; raw-byte slice scalar
+leaf discovery still uses `resolve_scalar_layout_facts_at_byte_offset`;
+`collect_local_scalar_array_slots` still uses the legacy local-slots helper;
+static global-address helper wrappers, ABI and call lowering, globals,
+initializers, and unrelated load/store-heavy lowering still use the legacy
+layout path unless a caller explicitly opts into a structured overload.
 
 ## Suggested Next
 
-Next coherent conversion packet: convert the next specifically owned
-fallback-only memory consumer, likely memory intrinsic aggregate extent paths or
-the remaining local scalar array collection path, by adding a structured
-overload and preserving legacy wrappers.
+Next coherent conversion packet: convert the remaining local scalar array
+collection or intrinsic aggregate size/leaf-view fallback-only path by adding a
+structured-aware overload while preserving legacy wrappers.
 
 ## Watchouts
-
-`clang-format` is not installed in the container, so formatting was kept to the
-existing local style by manual cleanup.
 
 `ENABLE_C4C_BACKEND` remains off in the current `default` build tree, so the
 first delegated build may report no work for backend objects. The delegated
@@ -68,5 +61,5 @@ Delegated proof passed and wrote `test_after.log`:
 `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|positive_split_llvm_|abi_)' && cmake --build build-backend --target c4c_backend -j) > test_after.log 2>&1`
 
 Result: default build completed with no work, selected ctest subset passed 8/8,
-and `build-backend` completed the `c4c_backend` target with no work after the
-earlier compile check rebuilt the touched objects.
+and `build-backend` rebuilt the backend objects needed by `c4c_backend`
+successfully.

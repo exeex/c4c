@@ -776,12 +776,37 @@ class BirFunctionLowerer {
       const LocalPointerArrayBaseMap& local_pointer_array_bases,
       const LocalAggregateSlotMap& local_aggregate_slots,
       std::vector<bir::Inst>* lowered_insts);
+  static bool try_lower_immediate_local_memset(
+      std::string_view dst_operand,
+      std::uint8_t fill_byte,
+      std::size_t fill_size_bytes,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
+      const LocalSlotTypes& local_slot_types,
+      const LocalPointerSlots& local_pointer_slots,
+      const LocalArraySlotMap& local_array_slots,
+      const LocalPointerArrayBaseMap& local_pointer_array_bases,
+      const LocalAggregateSlotMap& local_aggregate_slots,
+      std::vector<bir::Inst>* lowered_insts);
   static bool try_lower_immediate_local_memcpy(
       std::string_view dst_operand,
       std::string_view src_operand,
       std::size_t requested_size,
       const bir::Function& lowered_function,
       const TypeDeclMap& type_decls,
+      const LocalSlotTypes& local_slot_types,
+      const LocalPointerSlots& local_pointer_slots,
+      const LocalArraySlotMap& local_array_slots,
+      const LocalPointerArrayBaseMap& local_pointer_array_bases,
+      const LocalAggregateSlotMap& local_aggregate_slots,
+      std::vector<bir::Inst>* lowered_insts);
+  static bool try_lower_immediate_local_memcpy(
+      std::string_view dst_operand,
+      std::string_view src_operand,
+      std::size_t requested_size,
+      const bir::Function& lowered_function,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
       const LocalSlotTypes& local_slot_types,
       const LocalPointerSlots& local_pointer_slots,
       const LocalArraySlotMap& local_array_slots,

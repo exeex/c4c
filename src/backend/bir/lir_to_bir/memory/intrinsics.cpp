@@ -12,6 +12,7 @@ namespace c4c::backend {
 using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::parse_i64;
 using lir_to_bir_detail::type_size_bytes;
+using BackendStructuredLayoutTable = lir_to_bir_detail::BackendStructuredLayoutTable;
 
 namespace {
 
@@ -51,6 +52,31 @@ bool BirFunctionLowerer::try_lower_immediate_local_memset(
     std::uint8_t fill_byte,
     std::size_t fill_size_bytes,
     const TypeDeclMap& type_decls,
+    const LocalSlotTypes& local_slot_types,
+    const LocalPointerSlots& local_pointer_slots,
+    const LocalArraySlotMap& local_array_slots,
+    const LocalPointerArrayBaseMap& local_pointer_array_bases,
+    const LocalAggregateSlotMap& local_aggregate_slots,
+    std::vector<bir::Inst>* lowered_insts) {
+  return try_lower_immediate_local_memset(dst_operand,
+                                          fill_byte,
+                                          fill_size_bytes,
+                                          type_decls,
+                                          nullptr,
+                                          local_slot_types,
+                                          local_pointer_slots,
+                                          local_array_slots,
+                                          local_pointer_array_bases,
+                                          local_aggregate_slots,
+                                          lowered_insts);
+}
+
+bool BirFunctionLowerer::try_lower_immediate_local_memset(
+    std::string_view dst_operand,
+    std::uint8_t fill_byte,
+    std::size_t fill_size_bytes,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts,
     const LocalSlotTypes& local_slot_types,
     const LocalPointerSlots& local_pointer_slots,
     const LocalArraySlotMap& local_array_slots,
@@ -120,11 +146,19 @@ bool BirFunctionLowerer::try_lower_immediate_local_memset(
       return std::nullopt;
     }
 
-    const auto extent = find_repeated_aggregate_extent_at_offset(
-        base_aggregate_it->second.storage_type_text,
-        static_cast<std::size_t>(*base_offset),
-        render_type(slot_type_it->second),
-        type_decls);
+    const auto extent =
+        structured_layouts != nullptr
+            ? find_repeated_aggregate_extent_at_offset(
+                  base_aggregate_it->second.storage_type_text,
+                  static_cast<std::size_t>(*base_offset),
+                  render_type(slot_type_it->second),
+                  type_decls,
+                  *structured_layouts)
+            : find_repeated_aggregate_extent_at_offset(
+                  base_aggregate_it->second.storage_type_text,
+                  static_cast<std::size_t>(*base_offset),
+                  render_type(slot_type_it->second),
+                  type_decls);
     if (!extent.has_value()) {
       return std::nullopt;
     }
@@ -280,6 +314,33 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
     const LocalPointerArrayBaseMap& local_pointer_array_bases,
     const LocalAggregateSlotMap& local_aggregate_slots,
     std::vector<bir::Inst>* lowered_insts) {
+  return try_lower_immediate_local_memcpy(dst_operand,
+                                          src_operand,
+                                          requested_size,
+                                          lowered_function,
+                                          type_decls,
+                                          nullptr,
+                                          local_slot_types,
+                                          local_pointer_slots,
+                                          local_array_slots,
+                                          local_pointer_array_bases,
+                                          local_aggregate_slots,
+                                          lowered_insts);
+}
+
+bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
+    std::string_view dst_operand,
+    std::string_view src_operand,
+    std::size_t requested_size,
+    const bir::Function& lowered_function,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts,
+    const LocalSlotTypes& local_slot_types,
+    const LocalPointerSlots& local_pointer_slots,
+    const LocalArraySlotMap& local_array_slots,
+    const LocalPointerArrayBaseMap& local_pointer_array_bases,
+    const LocalAggregateSlotMap& local_aggregate_slots,
+    std::vector<bir::Inst>* lowered_insts) {
   const auto build_memcpy_leaf_view_from_aggregate =
       [&](const LocalAggregateSlots& aggregate_slots) -> std::optional<LocalMemcpyLeafView> {
     const auto aggregate_layout =
@@ -380,11 +441,19 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
       return std::nullopt;
     }
 
-    const auto extent = find_repeated_aggregate_extent_at_offset(
-        base_aggregate_it->second.storage_type_text,
-        static_cast<std::size_t>(*base_offset),
-        render_type(slot_type_it->second),
-        type_decls);
+    const auto extent =
+        structured_layouts != nullptr
+            ? find_repeated_aggregate_extent_at_offset(
+                  base_aggregate_it->second.storage_type_text,
+                  static_cast<std::size_t>(*base_offset),
+                  render_type(slot_type_it->second),
+                  type_decls,
+                  *structured_layouts)
+            : find_repeated_aggregate_extent_at_offset(
+                  base_aggregate_it->second.storage_type_text,
+                  static_cast<std::size_t>(*base_offset),
+                  render_type(slot_type_it->second),
+                  type_decls);
     if (!extent.has_value()) {
       return std::nullopt;
     }
@@ -766,6 +835,7 @@ bool BirFunctionLowerer::lower_memory_memcpy_inst(
                                           static_cast<std::size_t>(copy_size->immediate),
                                           lowered_function_,
                                           type_decls_,
+                                          &structured_layouts_,
                                           local_slot_types_,
                                           local_pointer_slots_,
                                           local_array_slots_,
@@ -793,6 +863,7 @@ bool BirFunctionLowerer::lower_memory_memset_inst(
                                           static_cast<std::uint8_t>(fill_value->immediate & 0xff),
                                           static_cast<std::size_t>(fill_size->immediate),
                                           type_decls_,
+                                          &structured_layouts_,
                                           local_slot_types_,
                                           local_pointer_slots_,
                                           local_array_slots_,
@@ -835,6 +906,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_direct_memory_intrinsic_call(
                                           static_cast<std::size_t>(copy_size->immediate),
                                           lowered_function_,
                                           type_decls_,
+                                          &structured_layouts_,
                                           local_slot_types_,
                                           local_pointer_slots_,
                                           local_array_slots_,
@@ -893,6 +965,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_direct_memory_intrinsic_call(
                                           static_cast<std::uint8_t>(fill_value->immediate & 0xff),
                                           static_cast<std::size_t>(fill_size->immediate),
                                           type_decls_,
+                                          &structured_layouts_,
                                           local_slot_types_,
                                           local_pointer_slots_,
                                           local_array_slots_,
