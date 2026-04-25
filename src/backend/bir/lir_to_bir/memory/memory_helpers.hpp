@@ -20,6 +20,8 @@ struct ScalarLayoutLeafFacts {
 
 struct ScalarLayoutByteOffsetFacts {
   std::size_t object_size_bytes = 0;
+  std::size_t target_byte_offset = 0;
+  std::size_t remaining_object_bytes = 0;
   std::optional<ScalarLayoutLeafFacts> leaf;
 };
 
@@ -34,7 +36,10 @@ struct AggregateByteOffsetProjection {
   BirFunctionLowerer::AggregateTypeLayout child_layout;
   std::string child_type_text;
   std::size_t child_index = 0;
-  std::size_t child_byte_offset = 0;
+  std::size_t byte_offset_within_child = 0;
+  std::size_t target_byte_offset = 0;
+  std::size_t child_start_byte_offset = 0;
+  std::size_t child_stride_bytes = 0;
 };
 
 std::optional<ScalarLayoutByteOffsetFacts> resolve_scalar_layout_facts_at_byte_offset(
@@ -45,6 +50,11 @@ std::optional<ScalarLayoutByteOffsetFacts> resolve_scalar_layout_facts_at_byte_o
 std::optional<AggregateByteOffsetProjection> resolve_aggregate_byte_offset_projection(
     std::string_view type_text,
     std::size_t target_offset,
+    const BirFunctionLowerer::TypeDeclMap& type_decls);
+
+std::optional<AggregateByteOffsetProjection> resolve_aggregate_child_index_projection(
+    std::string_view type_text,
+    std::size_t child_index,
     const BirFunctionLowerer::TypeDeclMap& type_decls);
 
 bool can_reinterpret_byte_storage_as_type(
