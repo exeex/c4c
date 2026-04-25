@@ -8,19 +8,17 @@ Current Step Title: Dual-read lookup paths
 
 ## Just Finished
 
-Step 4 implementation packet completed in `src/frontend/hir/compile_time_engine.hpp`: added structured-capable `const Node*` lookup/query overloads for template function definitions, primary template struct definitions, template struct specialization owners, and consteval function definitions.
+Step 4 implementation packet completed in `src/frontend/hir/compile_time_engine.hpp`: routed the existing `find_template_struct_specializations(const Node* primary_def)` overload through the structured owner lookup.
 
-The exact helper surface is `has_template_def(const Node*, const std::string& = {})`, `find_template_def(const Node*, const std::string& = {})`, `has_template_struct_def(const Node*, const std::string& = {})`, `find_template_struct_def(const Node*, const std::string& = {})`, `find_template_struct_specializations(const Node*, const std::string&)`, `has_consteval_def(const Node*, const std::string& = {})`, `find_consteval_def(const Node*, const std::string& = {})`, and `is_consteval_template(const Node*, const std::string& = {})`.
-
-The fallback policy is structured-first when `make_compile_time_registry_key(...)` can construct a key from declaration identity, then rendered-name lookup only when the caller supplies a non-empty rendered name. Existing string-only APIs and the existing `find_template_struct_specializations(const Node*)` behavior remain unchanged.
+The overload still preserves the existing null and `primary_def->name` guard, and now calls `find_template_struct_specializations(primary_def, primary_def->name)` so the structured key is tried first with the rendered primary name as the legacy fallback.
 
 ## Suggested Next
 
-Next coherent packet: route a narrow call-site or metadata path to these opt-in declaration-aware helpers where a recovered declaration pointer and rendered fallback are already available.
+Next coherent packet: route one additional declaration-aware lookup path to an existing structured helper where the declaration pointer and rendered fallback are already in hand.
 
 ## Watchouts
 
-The structured mirrors are still best-effort mirrors. New call-site routing should pass a rendered fallback when available and should not remove or weaken the string registry paths. The string-only `register_template_struct_specialization(primary_name, node)` path still updates only the rendered-name map because it does not receive the primary owner declaration needed for an owner structured key.
+This packet intentionally changed only the `const Node*` template struct specialization lookup overload. The string-only lookup and registration paths remain available as rendered-name fallbacks, and no emitted names, diagnostics, or tests were changed.
 
 ## Proof
 

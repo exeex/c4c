@@ -968,7 +968,7 @@ struct CompileTimeState {
   const std::vector<const Node*>* find_template_struct_specializations(
       const Node* primary_def) const {
     if (!primary_def || !primary_def->name) return nullptr;
-    return find_template_struct_specializations(primary_def->name);
+    return find_template_struct_specializations(primary_def, primary_def->name);
   }
 
   /// Look up registered template struct specializations by primary declaration
