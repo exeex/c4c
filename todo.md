@@ -8,32 +8,28 @@ Current Step Title: Dual-read semantic lookup paths
 
 ## Just Finished
 
-Step 2/3 implemented structured value-binding key/API scaffolding and dual-write registration mirrors for HIR global enum constants and global const-int bindings.
+Step 4 implemented the first compile-time-engine dual-read handoff for consteval environments built from `CompileTimeState`.
 
 Completed work:
-- Added `CompileTimeValueBindingKeyKind`, `CompileTimeValueBindingKey`, hash support, and key helpers in `compile_time_engine.hpp` for global enum constants and global const-int declarations.
-- Added structured mirror storage/accessors beside `CompileTimeState::enum_consts_` and `const_int_bindings_`.
-- Preserved legacy `register_enum_const(name, value)` and `register_const_int_binding(name, value)` APIs unchanged, and added overloads that always write the rendered-name map before recording the structured mirror.
-- Updated `Lowerer::collect_enum_def` so only the top-level/global collection pass dual-writes enum constants when `NK_ENUM_DEF` has `namespace_context_id` plus `enum_name_text_ids[i]`; local/block enum lowering remains string-only.
-- Updated `Lowerer::lower_global` to dual-write literal const-int and char const-int bindings when the declaration has complete source identity; incomplete metadata remains string-only.
-- Left `sync_global_const_bindings` and all lookup behavior unchanged.
+- Added a local `engine.cpp` adapter that converts `CompileTimeState::enum_consts_by_key()` and `CompileTimeState::const_int_bindings_by_key()` from `CompileTimeValueBindingKey` to consteval `ConstEvalStructuredNameKey` maps.
+- Routed the three `engine.cpp` `ConstEvalEnv` construction paths that read `CompileTimeState` through that adapter: pending consteval evaluation, direct consteval call expression evaluation, and static-assert expression evaluation.
+- Kept legacy `enum_consts()` and `const_int_bindings()` installed as the primary maps; existing `ConstEvalEnv::lookup` still selects the legacy result and only compares structured lookup advisory data.
+- Left string-only and missing-metadata paths fallback-only by not inventing text maps or metadata outside the existing structured mirrors.
 
 ## Suggested Next
 
-Next packet should implement Step 4 by adding structured-capable lookup helpers or overloads, then routing semantic value lookup through the structured mirror only at call sites that already have complete source identity. Preserve legacy rendered-name lookup as fallback, keep string-only call sites unchanged until metadata handoff exists, and observe structured/legacy mismatches without changing the selected semantic result. Keep `sync_global_const_bindings` string-only unless a real metadata bridge is added first.
+Next packet should decide whether any remaining HIR-side consteval env construction paths can receive complete source identity without crossing into `hir_build.cpp`, `hir_types.cpp`, or consteval evaluator behavior. If not, hand Step 4 back to the supervisor for review/acceptance rather than widening the slice.
 
 ## Watchouts
 
-The new structured maps are mirrors only; no lookup behavior changed. `collect_enum_def` is shared by top-level collection and block-local statement lowering, so only explicit top-level callers should pass the structured-global registration flag. `Lowerer::lower_global` recomputes the structured key separately for int and char literal branches, which is intentionally small-scoped but can be consolidated later if that branch grows.
-
-Do not remove legacy string maps, change constant-folding semantics, downgrade expectations, migrate idea 100 template/consteval definition registries, or expand into idea 102 struct/method/member/static-member identity work.
+The adapter rebuilds short-lived structured maps next to each `ConstEvalEnv` so pointer lifetimes remain local to the evaluation call. `sync_global_const_bindings` remains string-only because it does not carry declaration metadata. Do not change `ConstEvalEnv::lookup` result selection, consteval evaluator behavior, tests, or unrelated HIR lowering files for this packet.
 
 ## Proof
 
 Ran the supervisor-selected proof and preserved output in `test_after.log`:
 
 ```sh
-(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_template_deferred_nttp_expr|cpp_hir_template_deferred_nttp_arith_expr|cpp_hir_template_deferred_nttp_static_member_expr|cpp_hir_template_value_arg_static_member_trait|cpp_hir_stmt_switch_helper)$') > test_after.log 2>&1
+(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_hir_deferred_consteval_chain|cpp_hir_deferred_consteval_multi|cpp_hir_deferred_consteval_incomplete_type|cpp_hir_template_value_arg_static_member_trait|cpp_hir_stmt_switch_helper)$') > test_after.log 2>&1
 ```
 
-Result after follow-up local-enum guard: build succeeded; 5/5 selected tests passed.
+Result: build succeeded; 5/5 selected tests passed.

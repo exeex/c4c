@@ -40,6 +40,49 @@ void sync_global_const_bindings(Module& module, CompileTimeState* ct_state) {
   }
 }
 
+struct EngineConstEvalStructuredMaps {
+  ConstStructuredMap enum_consts_by_key;
+  ConstStructuredMap named_consts_by_key;
+};
+
+std::optional<ConstEvalStructuredNameKey> to_consteval_name_key(
+    const CompileTimeValueBindingKey& key) {
+  if (!key.valid()) return std::nullopt;
+  ConstEvalStructuredNameKey out;
+  out.namespace_context_id = key.namespace_context_id;
+  out.is_global_qualified = key.is_global_qualified;
+  out.qualifier_text_ids = key.qualifier_segment_text_ids;
+  out.base_text_id = key.unqualified_text_id;
+  return out;
+}
+
+template <typename SourceMap>
+void copy_consteval_structured_bindings(const SourceMap& source,
+                                        ConstStructuredMap& out) {
+  out.clear();
+  out.reserve(source.size());
+  for (const auto& [key, value] : source) {
+    auto consteval_key = to_consteval_name_key(key);
+    if (!consteval_key.has_value() || !consteval_key->valid()) continue;
+    out[*consteval_key] = value;
+  }
+}
+
+ConstEvalEnv make_engine_consteval_env(
+    const CompileTimeState& ct_state,
+    EngineConstEvalStructuredMaps& structured_maps) {
+  copy_consteval_structured_bindings(ct_state.enum_consts_by_key(),
+                                     structured_maps.enum_consts_by_key);
+  copy_consteval_structured_bindings(ct_state.const_int_bindings_by_key(),
+                                     structured_maps.named_consts_by_key);
+
+  ConstEvalEnv env{&ct_state.enum_consts(), &ct_state.const_int_bindings(),
+                   nullptr};
+  env.enum_consts_by_key = &structured_maps.enum_consts_by_key;
+  env.named_consts_by_key = &structured_maps.named_consts_by_key;
+  return env;
+}
+
 struct PendingTemplateTypeStep {
   CompileTimeState* ct_state = nullptr;
   DeferredInstantiateTypeFn instantiate_type_fn;
@@ -112,7 +155,8 @@ ConstEvalResult evaluate_pending_consteval(
   std::vector<ConstValue> args;
   args.reserve(pce.const_args.size());
   for (long long v : pce.const_args) args.push_back(ConstValue::make_int(v));
-  ConstEvalEnv env{&ct_state.enum_consts(), &ct_state.const_int_bindings(), nullptr};
+  EngineConstEvalStructuredMaps structured_maps;
+  ConstEvalEnv env = make_engine_consteval_env(ct_state, structured_maps);
   TypeBindings tpl_bindings = pce.tpl_bindings;
   env.type_bindings = &tpl_bindings;
   NttpBindings nttp_copy = pce.nttp_bindings;
@@ -368,7 +412,8 @@ bool try_evaluate_consteval_call_expr(
   const Node* ce_fn_def = ct_state.find_consteval_def(expr->left->name);
   if (!ce_fn_def) return false;
 
-  ConstEvalEnv env{&ct_state.enum_consts(), &ct_state.const_int_bindings(), nullptr};
+  EngineConstEvalStructuredMaps structured_maps;
+  ConstEvalEnv env = make_engine_consteval_env(ct_state, structured_maps);
   env.struct_defs = &module.struct_defs;
   TypeBindings tpl_bindings;
   NttpBindings nttp_bindings;
@@ -394,7 +439,8 @@ bool try_evaluate_static_assert_expr(
     const CompileTimeState& ct_state,
     long long* out_value) {
   if (!expr) return false;
-  ConstEvalEnv env{&ct_state.enum_consts(), &ct_state.const_int_bindings(), nullptr};
+  EngineConstEvalStructuredMaps structured_maps;
+  ConstEvalEnv env = make_engine_consteval_env(ct_state, structured_maps);
   env.struct_defs = &module.struct_defs;
 
   if (auto r = evaluate_constant_expr(expr, env); r.ok()) {
