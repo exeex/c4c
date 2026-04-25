@@ -95,6 +95,11 @@ struct AggregateTypeLayout {
   std::vector<AggregateField> fields;
 };
 
+struct IntegerArrayType {
+  std::vector<std::size_t> extents;
+  bir::TypeKind element_type = bir::TypeKind::Void;
+};
+
 TypeDeclMap build_type_decl_map(const std::vector<std::string>& type_decls);
 std::optional<std::int64_t> parse_i64(std::string_view text);
 std::optional<bir::TypeKind> lower_integer_type(std::string_view text);
@@ -112,6 +117,21 @@ std::optional<std::int64_t> resolve_index_operand(
     const ValueMap& value_aliases);
 AggregateTypeLayout compute_aggregate_type_layout(std::string_view text,
                                                   const TypeDeclMap& type_decls);
+std::optional<IntegerArrayType> parse_integer_array_type(std::string_view text);
+std::optional<GlobalAddress> parse_global_address_initializer(std::string_view text,
+                                                              const TypeDeclMap& type_decls);
+std::optional<bir::Value> lower_global_initializer(std::string_view text,
+                                                   bir::TypeKind type);
+std::optional<std::vector<bir::Value>> lower_integer_array_initializer(
+    std::string_view init_text,
+    std::string_view type_text);
+std::string_view strip_typed_initializer_prefix(std::string_view init_text,
+                                                std::string_view expected_type_text);
+std::optional<std::vector<bir::Value>> lower_aggregate_initializer(
+    std::string_view init_text,
+    std::string_view type_text,
+    const TypeDeclMap& type_decls,
+    std::unordered_map<std::size_t, GlobalAddress>* pointer_offsets);
 
 std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlobal& global,
                                                 const TypeDeclMap& type_decls,

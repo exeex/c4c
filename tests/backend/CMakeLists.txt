@@ -180,6 +180,7 @@ add_executable(backend_lir_to_bir_notes_test
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/calling.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/cfg.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/context.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/global_initializers.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/globals.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/memory/addressing.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/memory/coordinator.cpp"

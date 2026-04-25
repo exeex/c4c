@@ -21,10 +21,7 @@ std::optional<bir::TypeKind> lower_scalar_global_type(std::string_view text) {
   return std::nullopt;
 }
 
-struct IntegerArrayType {
-  std::vector<std::size_t> extents;
-  bir::TypeKind element_type = bir::TypeKind::Void;
-};
+}  // namespace
 
 std::optional<IntegerArrayType> parse_integer_array_type(std::string_view text) {
   IntegerArrayType lowered;
@@ -56,6 +53,8 @@ std::optional<IntegerArrayType> parse_integer_array_type(std::string_view text) 
     remainder = remainder.substr(x_pos + 3, remainder.size() - x_pos - 4);
   }
 }
+
+namespace {
 
 std::optional<std::string_view> peel_integer_array_layer(std::string_view text) {
   if (text.size() < 6 || text.front() != '[' || text.back() != ']') {
@@ -298,6 +297,8 @@ std::optional<GlobalAddress> parse_global_gep_initializer(std::string_view text,
   return std::nullopt;
 }
 
+}  // namespace
+
 std::optional<GlobalAddress> parse_global_address_initializer(std::string_view text,
                                                               const TypeDeclMap& type_decls) {
   if (const auto symbol_name = parse_global_symbol_initializer(text); symbol_name.has_value()) {
@@ -406,6 +407,8 @@ std::optional<bir::Value> lower_global_initializer(std::string_view text,
       return std::nullopt;
   }
 }
+
+namespace {
 
 std::optional<bir::Value> lower_zero_initializer_value(bir::TypeKind type) {
   switch (type) {
@@ -526,6 +529,8 @@ bool lower_integer_array_initializer_recursive(std::string_view init_text,
   return true;
 }
 
+}  // namespace
+
 std::optional<std::vector<bir::Value>> lower_integer_array_initializer(std::string_view init_text,
                                                                        std::string_view type_text) {
   if (const auto lowered_bytes = lower_llvm_byte_string_initializer(init_text, type_text);
@@ -551,6 +556,8 @@ std::string_view strip_typed_initializer_prefix(std::string_view init_text,
   }
   return c4c::codegen::lir::trim_lir_arg_text(trimmed_init.substr(trimmed_type.size() + 1));
 }
+
+namespace {
 
 bool append_zero_aggregate_initializer(
     std::string_view type_text,
@@ -724,6 +731,8 @@ bool lower_aggregate_initializer_recursive(
   return true;
 }
 
+}  // namespace
+
 std::optional<std::vector<bir::Value>> lower_aggregate_initializer(
     std::string_view init_text,
     std::string_view type_text,
@@ -736,6 +745,8 @@ std::optional<std::vector<bir::Value>> lower_aggregate_initializer(
   }
   return lowered;
 }
+
+namespace {
 
 std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGlobal& global,
                                                const TypeDeclMap& type_decls) {
