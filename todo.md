@@ -3,7 +3,6 @@ Source Idea Path: ideas/open/102_hir_struct_method_member_identity_dual_lookup.m
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Audit record-owner string identity surfaces
-你該做test baseline review了
 
 # Current Packet
 
