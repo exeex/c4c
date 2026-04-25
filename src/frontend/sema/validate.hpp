@@ -46,6 +46,7 @@ enum class SemaDualLookupMatch {
 
 std::optional<SemaStructuredNameKey> sema_local_name_key(const Node* node);
 std::optional<SemaStructuredNameKey> sema_structured_name_key(const Node* node);
+std::optional<SemaStructuredNameKey> sema_symbol_name_key(const Node* node);
 SemaDualLookupMatch compare_sema_lookup_presence(bool legacy_found, bool structured_found);
 
 template <typename T>

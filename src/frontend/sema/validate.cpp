@@ -63,6 +63,17 @@ std::optional<SemaStructuredNameKey> sema_structured_name_key(const Node* node) 
   return key;
 }
 
+std::optional<SemaStructuredNameKey> sema_symbol_name_key(const Node* node) {
+  if (!node || node->namespace_context_id < 0 ||
+      node->unqualified_text_id == kInvalidText) {
+    return std::nullopt;
+  }
+  SemaStructuredNameKey key;
+  key.namespace_context_id = node->namespace_context_id;
+  key.base_text_id = node->unqualified_text_id;
+  return key;
+}
+
 SemaDualLookupMatch compare_sema_lookup_presence(bool legacy_found, bool structured_found) {
   if (!legacy_found && !structured_found) return SemaDualLookupMatch::BothMissing;
   if (legacy_found && structured_found) return SemaDualLookupMatch::Match;
@@ -467,15 +478,25 @@ class Validator {
 
   std::vector<Diagnostic> diags_;
   std::unordered_map<std::string, TypeSpec> globals_;
+  std::unordered_map<SemaStructuredNameKey, const TypeSpec*, SemaStructuredNameKeyHash>
+      structured_globals_;
   std::unordered_map<std::string, TypeSpec> enum_consts_;
   ConstMap enum_const_vals_global_;   // integer values of global enum constants
   std::vector<ConstMap> enum_const_vals_scopes_;  // block/function-scoped enum constants
   std::vector<ConstMap> local_const_vals_scopes_;  // block-scoped const/constexpr local values
   std::unordered_map<std::string, FunctionSig> funcs_;
+  std::unordered_map<SemaStructuredNameKey, const FunctionSig*, SemaStructuredNameKeyHash>
+      structured_funcs_;
   std::unordered_map<std::string, const Node*> consteval_funcs_;
   // Ref-overloaded function signatures: name → multiple overloads differing in ref-qualifier.
   std::unordered_map<std::string, std::vector<FunctionSig>> ref_overload_sigs_;
   std::unordered_map<std::string, std::vector<FunctionSig>> cpp_overload_sigs_;
+  std::unordered_map<SemaStructuredNameKey, const std::vector<FunctionSig>*,
+                     SemaStructuredNameKeyHash>
+      structured_ref_overload_sigs_;
+  std::unordered_map<SemaStructuredNameKey, const std::vector<FunctionSig>*,
+                     SemaStructuredNameKeyHash>
+      structured_cpp_overload_sigs_;
   std::unordered_set<std::string> complete_structs_;
   std::unordered_set<std::string> complete_unions_;
   std::unordered_map<const Node*, const Node*> method_owner_records_;
@@ -547,6 +568,94 @@ class Validator {
       return;
     }
     ovset.push_back(std::move(sig));
+  }
+
+  void bind_global(const Node* n) {
+    if (!n || !n->name || !n->name[0]) return;
+    auto [it, inserted] = globals_.insert_or_assign(n->name, n->type);
+    (void)inserted;
+    if (auto key = sema_symbol_name_key(n); key.has_value() && key->valid()) {
+      structured_globals_[*key] = &it->second;
+    }
+  }
+
+  void mirror_function_decl(const Node* n) {
+    if (!n || !n->name || !n->name[0]) return;
+    auto key = sema_symbol_name_key(n);
+    if (!key.has_value() || !key->valid()) return;
+
+    auto fn = funcs_.find(n->name);
+    if (fn != funcs_.end()) structured_funcs_[*key] = &fn->second;
+
+    auto ref_ov = ref_overload_sigs_.find(n->name);
+    if (ref_ov != ref_overload_sigs_.end()) {
+      structured_ref_overload_sigs_[*key] = &ref_ov->second;
+    }
+
+    auto cpp_ov = cpp_overload_sigs_.find(n->name);
+    if (cpp_ov != cpp_overload_sigs_.end()) {
+      structured_cpp_overload_sigs_[*key] = &cpp_ov->second;
+    }
+  }
+
+  const TypeSpec* lookup_global_by_key(const SemaStructuredNameKey& key) const {
+    auto it = structured_globals_.find(key);
+    return it != structured_globals_.end() ? it->second : nullptr;
+  }
+
+  const FunctionSig* lookup_function_by_key(const SemaStructuredNameKey& key) const {
+    auto it = structured_funcs_.find(key);
+    return it != structured_funcs_.end() ? it->second : nullptr;
+  }
+
+  const std::vector<FunctionSig>* lookup_ref_overloads_by_key(
+      const SemaStructuredNameKey& key) const {
+    auto it = structured_ref_overload_sigs_.find(key);
+    return it != structured_ref_overload_sigs_.end() ? it->second : nullptr;
+  }
+
+  const std::vector<FunctionSig>* lookup_cpp_overloads_by_key(
+      const SemaStructuredNameKey& key) const {
+    auto it = structured_cpp_overload_sigs_.find(key);
+    return it != structured_cpp_overload_sigs_.end() ? it->second : nullptr;
+  }
+
+  const FunctionSig* lookup_function_by_name(const std::string& name,
+                                             const Node* reference = nullptr) const {
+    auto it = funcs_.find(name);
+    const FunctionSig* legacy = it != funcs_.end() ? &it->second : nullptr;
+    if (reference) {
+      if (auto key = sema_symbol_name_key(reference); key.has_value()) {
+        (void)compare_sema_lookup_ptrs(legacy, lookup_function_by_key(*key));
+      }
+    }
+    return legacy;
+  }
+
+  const std::vector<FunctionSig>* lookup_ref_overloads_by_name(
+      const std::string& name, const Node* reference = nullptr) const {
+    auto it = ref_overload_sigs_.find(name);
+    const std::vector<FunctionSig>* legacy =
+        it != ref_overload_sigs_.end() ? &it->second : nullptr;
+    if (reference) {
+      if (auto key = sema_symbol_name_key(reference); key.has_value()) {
+        (void)compare_sema_lookup_ptrs(legacy, lookup_ref_overloads_by_key(*key));
+      }
+    }
+    return legacy;
+  }
+
+  const std::vector<FunctionSig>* lookup_cpp_overloads_by_name(
+      const std::string& name, const Node* reference = nullptr) const {
+    auto it = cpp_overload_sigs_.find(name);
+    const std::vector<FunctionSig>* legacy =
+        it != cpp_overload_sigs_.end() ? &it->second : nullptr;
+    if (reference) {
+      if (auto key = sema_symbol_name_key(reference); key.has_value()) {
+        (void)compare_sema_lookup_ptrs(legacy, lookup_cpp_overloads_by_key(*key));
+      }
+    }
+    return legacy;
   }
 
   ValidateResult finish() {
@@ -626,18 +735,24 @@ class Validator {
   std::optional<ScopedSym> lookup_symbol(const std::string& name,
                                          const Node* reference = nullptr) const {
     const ScopedSym* local = lookup_local_symbol_by_name(name);
-    if (reference) {
-      if (auto key = sema_local_name_key(reference); key.has_value()) {
-        const ScopedSym* structured = lookup_local_symbol_by_key(*key);
-        (void)compare_sema_lookup_ptrs(local, structured);
-      }
+    const auto local_key = reference ? sema_local_name_key(reference) : std::nullopt;
+    if (local_key.has_value()) {
+      const ScopedSym* structured = lookup_local_symbol_by_key(*local_key);
+      (void)compare_sema_lookup_ptrs(local, structured);
     }
     if (local) return *local;
+
+    const auto structured_key = reference ? sema_symbol_name_key(reference) : std::nullopt;
     auto g = globals_.find(name);
-    if (g != globals_.end()) return ScopedSym{g->second, true};
-    auto fn = funcs_.find(name);
-    if (fn != funcs_.end()) {
-      TypeSpec fts = fn->second.ret;
+    const TypeSpec* legacy_global = g != globals_.end() ? &g->second : nullptr;
+    if (structured_key.has_value()) {
+      (void)compare_sema_lookup_ptrs(legacy_global, lookup_global_by_key(*structured_key));
+    }
+    if (legacy_global) return ScopedSym{*legacy_global, true};
+
+    const FunctionSig* fn = lookup_function_by_name(name, reference);
+    if (fn) {
+      TypeSpec fts = fn->ret;
       fts.ptr_level += 1;
       return ScopedSym{fts, true};
     }
@@ -895,7 +1010,7 @@ class Validator {
       return;
     }
     if (n->kind == NK_GLOBAL_VAR) {
-      if (n->name && n->name[0]) globals_[n->name] = n->type;
+      bind_global(n);
       if (!is_complete_object_type(n->type)) {
         emit(n, "object has incomplete struct/union type");
       }
@@ -957,6 +1072,7 @@ class Validator {
           funcs_[n->name] = std::move(sig);
         }
       }
+      mirror_function_decl(n);
     } else if (n->kind == NK_STRUCT_DEF) {
       note_struct_def(n);
       for (int i = 0; i < n->n_children; ++i) {
@@ -1564,8 +1680,8 @@ class Validator {
                               out.type.ptr_level == 0 &&
                               out.type.array_rank == 0;
         // Mark function names so that &func doesn't add a spurious ptr_level.
-        out.is_fn_name = funcs_.find(n->name) != funcs_.end() ||
-                         cpp_overload_sigs_.find(n->name) != cpp_overload_sigs_.end();
+        out.is_fn_name = lookup_function_by_name(n->name, n) != nullptr ||
+                         lookup_cpp_overloads_by_name(n->name, n) != nullptr;
         return out;
       }
       case NK_ADDR: {
@@ -1714,9 +1830,10 @@ class Validator {
         }
         if (n->left && n->left->kind == NK_VAR && n->left->name && n->left->name[0]) {
           // Check for ref-overloaded functions first.
-          auto ovit = ref_overload_sigs_.find(n->left->name);
-          if (ovit != ref_overload_sigs_.end() && !ovit->second.empty()) {
-            const auto& overloads = ovit->second;
+          const std::vector<FunctionSig>* ref_overloads =
+              lookup_ref_overloads_by_name(n->left->name, n->left);
+          if (ref_overloads && !ref_overloads->empty()) {
+            const auto& overloads = *ref_overloads;
             const int argc = n->n_children;
             // Infer arg value categories.
             std::vector<ExprInfo> arg_infos;
@@ -1757,10 +1874,11 @@ class Validator {
               emit(n, "no viable overload for function call");
           }
           return out;
-        }
-          auto cpp_ovit = cpp_overload_sigs_.find(n->left->name);
-          if (cpp_ovit != cpp_overload_sigs_.end() && !cpp_ovit->second.empty()) {
-            const auto& overloads = cpp_ovit->second;
+          }
+          const std::vector<FunctionSig>* cpp_overloads =
+              lookup_cpp_overloads_by_name(n->left->name, n->left);
+          if (cpp_overloads && !cpp_overloads->empty()) {
+            const auto& overloads = *cpp_overloads;
             const int argc = n->n_children;
             const FunctionSig* best = nullptr;
             for (const auto& sig : overloads) {
@@ -1787,9 +1905,9 @@ class Validator {
             }
             return out;
           }
-          auto it = funcs_.find(n->left->name);
-          if (it != funcs_.end()) {
-            const FunctionSig& sig = it->second;
+          const FunctionSig* fn = lookup_function_by_name(n->left->name, n->left);
+          if (fn) {
+            const FunctionSig& sig = *fn;
             const int argc = n->n_children;
             const int required = static_cast<int>(sig.params.size());
             const int min_required = sig.has_param_pack ? required - 1 : required;
