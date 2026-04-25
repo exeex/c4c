@@ -705,8 +705,9 @@ Node* parse_local_decl(Parser& parser) {
             if (!parser.is_cpp_mode() && !is_internal_typedef_name(tdname) &&
                 parser.has_conflicting_user_typedef_binding(tdname, ts_copy))
                 throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdname);
-            parser.register_typedef_binding(tdname, ts_copy,
-                                     !is_internal_typedef_name(tdname));
+            parser.register_typedef_binding(
+                tdname_text_id, tdname, ts_copy,
+                !is_internal_typedef_name(tdname));
             // Phase C: store fn_ptr param info for typedef'd function pointers.
             if (ts_copy.is_fn_ptr && (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic)) {
                 const TextId typedef_name_id =
@@ -735,8 +736,9 @@ Node* parse_local_decl(Parser& parser) {
                 if (!parser.is_cpp_mode() && !is_internal_typedef_name(tdn2) &&
                     parser.has_conflicting_user_typedef_binding(tdn2, ts2))
                     throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdn2);
-                parser.register_typedef_binding(tdn2, ts2,
-                                         !is_internal_typedef_name(tdn2));
+                parser.register_typedef_binding(
+                    tdn2_text_id, tdn2, ts2,
+                    !is_internal_typedef_name(tdn2));
                 if (ts2.is_fn_ptr && (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic)) {
                     const TextId typedef_name_id =
                         tdn2_text_id != kInvalidText
@@ -2793,8 +2795,9 @@ top_level_base_ready:
             if (!parser.is_cpp_mode() && !is_internal_typedef_name(tdname) &&
                 parser.has_conflicting_user_typedef_binding(tdname, ts_copy))
                 throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdname);
-            parser.register_typedef_binding(tdname, ts_copy,
-                                     !is_internal_typedef_name(tdname));
+            parser.register_typedef_binding(
+                tdname_text_id, tdname, ts_copy,
+                !is_internal_typedef_name(tdname));
             if (scoped_tdname != tdname) {
                 parser.register_typedef_binding(scoped_tdname, ts_copy, false);
             }
@@ -2826,8 +2829,9 @@ top_level_base_ready:
                 if (!parser.is_cpp_mode() && !is_internal_typedef_name(tdn2) &&
                     parser.has_conflicting_user_typedef_binding(tdn2, ts2))
                     throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdn2);
-                parser.register_typedef_binding(tdn2, ts2,
-                                         !is_internal_typedef_name(tdn2));
+                parser.register_typedef_binding(
+                    tdn2_text_id, tdn2, ts2,
+                    !is_internal_typedef_name(tdn2));
                 if (scoped_tdn2 != tdn2) {
                     parser.register_typedef_binding(scoped_tdn2, ts2, false);
                 }
@@ -3596,7 +3600,12 @@ top_level_base_ready:
                 gv->fn_ptr_variadic = info->variadic;
             }
         }
-        if (gname) parser.register_var_type_binding(gname, gts);
+        if (source_name && gname && std::strcmp(gname, source_name) == 0) {
+            parser.register_var_type_binding(source_name_text_id, source_name,
+                                             gts);
+        } else if (gname) {
+            parser.register_var_type_binding(gname, gts);
+        }
         if (gname && ginit &&
             (gv->type.is_const || gv->is_constexpr) &&
             !gv->type.is_lvalue_ref && !gv->type.is_rvalue_ref &&

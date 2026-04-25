@@ -172,6 +172,50 @@ void test_parser_string_wrappers_use_symbol_id_keyed_name_tables() {
               "structured value storage should recover the stored TypeSpec");
 }
 
+void test_parser_id_first_binding_helpers_prefer_text_ids() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files);
+
+  c4c::TypeSpec typedef_ts{};
+  typedef_ts.array_size = -1;
+  typedef_ts.inner_rank = -1;
+  typedef_ts.base = c4c::TB_INT;
+
+  c4c::TypeSpec var_ts{};
+  var_ts.array_size = -1;
+  var_ts.inner_rank = -1;
+  var_ts.base = c4c::TB_LONG;
+
+  const c4c::TextId typedef_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "IdFirstType");
+  const c4c::TextId value_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "idFirstValue");
+
+  parser.register_typedef_binding(typedef_id, "wrong_type_fallback",
+                                  typedef_ts, true);
+  parser.register_var_type_binding(value_id, "wrong_value_fallback", var_ts);
+
+  expect_true(parser.has_typedef_type("IdFirstType"),
+              "ID-first typedef registration should use the TextId spelling");
+  expect_true(!parser.has_typedef_type("wrong_type_fallback"),
+              "ID-first typedef registration should not prefer fallback spelling");
+  expect_true(parser.has_var_type("idFirstValue"),
+              "ID-first value registration should use the TextId spelling");
+  expect_true(!parser.has_var_type("wrong_value_fallback"),
+              "ID-first value registration should not prefer fallback spelling");
+
+  const c4c::QualifiedNameKey value_key =
+      parser.intern_semantic_name_key("idFirstValue");
+  expect_true(parser.has_structured_var_type(value_key),
+              "ID-first value registration should populate structured value storage");
+  expect_true(parser.find_structured_var_type(value_key) != nullptr &&
+                  parser.find_structured_var_type(value_key)->base ==
+                      c4c::TB_LONG,
+              "structured value storage should agree with the ID-first registration");
+}
+
 void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -2747,6 +2791,7 @@ int main() {
   test_parser_reuses_symbol_ids_for_repeated_identifier_text_ids();
   test_parser_missing_text_id_is_rejected();
   test_parser_string_wrappers_use_symbol_id_keyed_name_tables();
+  test_parser_id_first_binding_helpers_prefer_text_ids();
   test_parser_heavy_snapshot_restores_symbol_id_keyed_tables();
   test_parser_keeps_qualified_bindings_string_keyed();
   test_parser_structured_value_registration_keeps_legacy_lookup();

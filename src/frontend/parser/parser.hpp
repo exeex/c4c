@@ -361,7 +361,11 @@ class Parser {
   bool is_user_typedef_name(const std::string& name) const;
   bool has_conflicting_user_typedef_binding(const std::string& name,
                                             const TypeSpec& type) const;
+  void register_typedef_name(TextId name_text_id, std::string_view name,
+                             bool is_user_typedef);
   void register_typedef_name(const std::string& name, bool is_user_typedef);
+  void register_typedef_binding(TextId name_text_id, std::string_view name,
+                                const TypeSpec& type, bool is_user_typedef);
   void register_typedef_binding(const std::string& name, const TypeSpec& type,
                                 bool is_user_typedef);
   void unregister_typedef_binding(TextId name_text_id,
@@ -390,6 +394,8 @@ class Parser {
   const TypeSpec* find_visible_var_type(TextId name_text_id,
                                         std::string_view name) const;
   const TypeSpec* find_visible_var_type(const std::string& name) const;
+  void register_var_type_binding(TextId name_text_id, std::string_view name,
+                                 const TypeSpec& type);
   void register_var_type_binding(const std::string& name, const TypeSpec& type);
   void register_structured_var_type_binding(const QualifiedNameKey& key,
                                             const TypeSpec& type);

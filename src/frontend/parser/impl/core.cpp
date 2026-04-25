@@ -882,44 +882,67 @@ bool Parser::has_conflicting_user_typedef_binding(const std::string& name,
            !are_types_compatible(*existing_typedef, type);
 }
 
-void Parser::register_typedef_name(const std::string& name,
+void Parser::register_typedef_name(TextId name_text_id, std::string_view name,
                                    bool is_user_typedef) {
-    if (!uses_symbol_identity(name)) {
-        const TextId id = parser_text_id_for_token(kInvalidText, name);
+    const std::string_view resolved_name = parser_text(name_text_id, name);
+    if (!uses_symbol_identity(resolved_name)) {
+        const TextId id = name_text_id != kInvalidText
+                              ? name_text_id
+                              : parser_text_id_for_token(kInvalidText,
+                                                         resolved_name);
         if (id == kInvalidText) return;
         binding_state_.non_atom_typedefs.insert(id);
         if (is_user_typedef) binding_state_.non_atom_user_typedefs.insert(id);
         return;
     }
     const SymbolId id =
-        shared_lookup_state_.parser_name_tables.intern_identifier(name);
+        shared_lookup_state_.parser_name_tables.intern_identifier(resolved_name);
     if (id == kInvalidSymbol) return;
     shared_lookup_state_.parser_name_tables.typedefs.insert(id);
     if (is_user_typedef) shared_lookup_state_.parser_name_tables.user_typedefs.insert(id);
 }
 
-void Parser::register_typedef_binding(const std::string& name,
+void Parser::register_typedef_name(const std::string& name,
+                                   bool is_user_typedef) {
+    register_typedef_name(parser_text_id_for_token(kInvalidText, name), name,
+                          is_user_typedef);
+}
+
+void Parser::register_typedef_binding(TextId name_text_id,
+                                      std::string_view name,
                                       const TypeSpec& type,
                                       bool is_user_typedef) {
-    const TextId local_name_id = parser_text_id_for_token(kInvalidText, name);
-    if (should_track_local_binding(*this, local_name_id, name)) {
-        bind_local_typedef(local_name_id, type, is_user_typedef);
+    const std::string_view resolved_name = parser_text(name_text_id, name);
+    const TextId binding_name_id =
+        name_text_id != kInvalidText
+            ? name_text_id
+            : parser_text_id_for_token(kInvalidText, resolved_name);
+    if (should_track_local_binding(*this, binding_name_id, resolved_name)) {
+        bind_local_typedef(binding_name_id, type, is_user_typedef);
         return;
     }
-    if (!uses_symbol_identity(name)) {
-        const TextId id = parser_text_id_for_token(kInvalidText, name);
-        if (id == kInvalidText) return;
-        binding_state_.non_atom_typedefs.insert(id);
-        if (is_user_typedef) binding_state_.non_atom_user_typedefs.insert(id);
-        binding_state_.non_atom_typedef_types[id] = type;
+    if (!uses_symbol_identity(resolved_name)) {
+        if (binding_name_id == kInvalidText) return;
+        binding_state_.non_atom_typedefs.insert(binding_name_id);
+        if (is_user_typedef) {
+            binding_state_.non_atom_user_typedefs.insert(binding_name_id);
+        }
+        binding_state_.non_atom_typedef_types[binding_name_id] = type;
         return;
     }
     const SymbolId id =
-        shared_lookup_state_.parser_name_tables.intern_identifier(name);
+        shared_lookup_state_.parser_name_tables.intern_identifier(resolved_name);
     if (id == kInvalidSymbol) return;
     shared_lookup_state_.parser_name_tables.typedefs.insert(id);
     if (is_user_typedef) shared_lookup_state_.parser_name_tables.user_typedefs.insert(id);
     shared_lookup_state_.parser_name_tables.typedef_types[id] = type;
+}
+
+void Parser::register_typedef_binding(const std::string& name,
+                                      const TypeSpec& type,
+                                      bool is_user_typedef) {
+    register_typedef_binding(parser_text_id_for_token(kInvalidText, name), name,
+                             type, is_user_typedef);
 }
 
 void Parser::unregister_typedef_binding(TextId name_text_id,
@@ -1101,19 +1124,30 @@ const TypeSpec* Parser::find_visible_var_type(const std::string& name) const {
     return find_visible_var_type(find_parser_text_id(name), name);
 }
 
-void Parser::register_var_type_binding(const std::string& name,
+void Parser::register_var_type_binding(TextId name_text_id,
+                                       std::string_view name,
                                        const TypeSpec& type) {
-    const TextId local_name_id = parser_text_id_for_token(kInvalidText, name);
-    if (should_track_local_binding(*this, local_name_id, name)) {
+    const std::string_view resolved_name = parser_text(name_text_id, name);
+    const TextId local_name_id =
+        name_text_id != kInvalidText
+            ? name_text_id
+            : parser_text_id_for_token(kInvalidText, resolved_name);
+    if (should_track_local_binding(*this, local_name_id, resolved_name)) {
         bind_local_value(local_name_id, type);
         return;
     }
     const QualifiedNameKey key = intern_known_fn_name_key_from_spelling(
-        *this, 0, local_name_id, name);
+        *this, 0, local_name_id, resolved_name);
     if (key.base_text_id != kInvalidText) {
         binding_state_.value_bindings[key] = type;
     }
-    cache_legacy_var_type_binding(*this, name, type);
+    cache_legacy_var_type_binding(*this, resolved_name, type);
+}
+
+void Parser::register_var_type_binding(const std::string& name,
+                                       const TypeSpec& type) {
+    register_var_type_binding(parser_text_id_for_token(kInvalidText, name), name,
+                              type);
 }
 
 void Parser::register_structured_var_type_binding(const QualifiedNameKey& key,
