@@ -122,23 +122,24 @@ TypeSpec resolve_type(const TypeSpec& ts, const ConstEvalEnv& env) {
   return legacy ? *legacy : ts;
 }
 
-TypeBindingStructuredKey type_binding_key_for_param(const Node* func_def, int param_index) {
-  TypeBindingStructuredKey key;
-  if (!func_def || param_index < 0 || func_def->unqualified_text_id == kInvalidText) {
-    return key;
-  }
-  key.namespace_context_id = func_def->namespace_context_id;
-  key.template_text_id = func_def->unqualified_text_id;
-  key.param_index = param_index;
-  return key;
-}
-
 TextId template_param_text_id_for_param(const Node* func_def, int param_index) {
   if (!func_def || param_index < 0 || param_index >= func_def->n_template_params ||
       !func_def->template_param_name_text_ids) {
     return kInvalidText;
   }
   return func_def->template_param_name_text_ids[param_index];
+}
+
+TypeBindingStructuredKey type_binding_key_for_param(const Node* func_def, int param_index) {
+  TypeBindingStructuredKey key;
+  if (!func_def || param_index < 0) {
+    return key;
+  }
+  key.namespace_context_id = func_def->namespace_context_id;
+  key.template_text_id = func_def->unqualified_text_id;
+  key.param_index = param_index;
+  key.param_text_id = template_param_text_id_for_param(func_def, param_index);
+  return key;
 }
 
 ConstEvalStructuredNameKey nttp_binding_key_for_param(const Node* func_def, int param_index) {
@@ -155,8 +156,14 @@ void record_type_binding_mirrors(
     TypeBindingStructuredMap* out_type_bindings_by_key,
     TypeBindingNameTextMap* out_type_binding_text_ids_by_name,
     TypeBindingNameStructuredMap* out_type_binding_keys_by_name) {
-  (void)out_type_bindings_by_text;
-  (void)out_type_binding_text_ids_by_name;
+  if (structured_key.param_text_id != kInvalidText) {
+    if (out_type_bindings_by_text) {
+      (*out_type_bindings_by_text)[structured_key.param_text_id] = arg_ts;
+    }
+    if (out_type_binding_text_ids_by_name) {
+      (*out_type_binding_text_ids_by_name)[param_name] = structured_key.param_text_id;
+    }
+  }
   if (structured_key.valid()) {
     if (out_type_bindings_by_key) (*out_type_bindings_by_key)[structured_key] = arg_ts;
     if (out_type_binding_keys_by_name) {
