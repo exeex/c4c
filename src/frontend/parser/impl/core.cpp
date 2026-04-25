@@ -687,7 +687,8 @@ const TypeSpec* Parser::find_typedef_type(
             return legacy;
         }
     }
-    if (!fallback_name.empty() && fallback_name != rendered) {
+    if (key.base_text_id == kInvalidText && !fallback_name.empty() &&
+        fallback_name != rendered) {
         return find_typedef_type(fallback_name);
     }
     return nullptr;
@@ -1145,7 +1146,8 @@ const TypeSpec* Parser::find_var_type(
             return legacy;
         }
     }
-    if (!fallback_name.empty() && fallback_name != rendered) {
+    if (key.base_text_id == kInvalidText && !fallback_name.empty() &&
+        fallback_name != rendered) {
         return find_var_type(std::string(fallback_name));
     }
     return nullptr;

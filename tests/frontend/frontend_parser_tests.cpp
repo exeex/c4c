@@ -251,6 +251,25 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
   expect_true(parser.find_visible_typedef_type(missing_typedef_id,
                                                "typedefLookupBridge") == nullptr,
               "visible typedef lookup should not promote fallback spelling when a valid TextId lookup misses");
+  const c4c::QualifiedNameKey direct_typedef_key =
+      parser.struct_typedef_key_in_context(0, lookup_typedef_id,
+                                           "typedefLookupBridge");
+  const c4c::TypeSpec* direct_typedef =
+      parser.find_typedef_type(direct_typedef_key, "typedefLookupBridge");
+  expect_true(direct_typedef != nullptr && direct_typedef->base == c4c::TB_INT,
+              "direct qualified-key typedef lookup should prefer the TextId spelling over a mismatched fallback");
+  const c4c::QualifiedNameKey stale_typedef_key =
+      parser.struct_typedef_key_in_context(0, missing_typedef_id,
+                                           "typedefLookupBridge");
+  expect_true(parser.find_typedef_type(stale_typedef_key,
+                                       "typedefLookupBridge") == nullptr,
+              "direct qualified-key typedef lookup should not promote fallback spelling when a valid TextId lookup misses");
+  const c4c::QualifiedNameKey invalid_key{};
+  const c4c::TypeSpec* fallback_typedef =
+      parser.find_typedef_type(invalid_key, "typedefLookupBridge");
+  expect_true(fallback_typedef != nullptr &&
+                  fallback_typedef->base == c4c::TB_DOUBLE,
+              "direct qualified-key typedef lookup should preserve invalid-key fallback compatibility");
   const c4c::TypeSpec* id_var =
       parser.find_var_type(lookup_value_id, "valueLookupBridge");
   expect_true(id_var != nullptr && id_var->base == c4c::TB_LONG,
@@ -264,6 +283,23 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
   expect_true(parser.find_visible_var_type(missing_value_id,
                                            "valueLookupBridge") == nullptr,
               "visible value lookup should not promote fallback spelling when a valid TextId lookup misses");
+  const c4c::QualifiedNameKey direct_value_key =
+      parser.known_fn_name_key_in_context(0, lookup_value_id,
+                                          "valueLookupBridge");
+  const c4c::TypeSpec* direct_var =
+      parser.find_var_type(direct_value_key, "valueLookupBridge");
+  expect_true(direct_var != nullptr && direct_var->base == c4c::TB_LONG,
+              "direct qualified-key value lookup should prefer the TextId spelling over a mismatched fallback");
+  const c4c::QualifiedNameKey stale_value_key =
+      parser.known_fn_name_key_in_context(0, missing_value_id,
+                                          "valueLookupBridge");
+  expect_true(parser.find_var_type(stale_value_key, "valueLookupBridge") ==
+                  nullptr,
+              "direct qualified-key value lookup should not promote fallback spelling when a valid TextId lookup misses");
+  const c4c::TypeSpec* fallback_var =
+      parser.find_var_type(invalid_key, "valueLookupBridge");
+  expect_true(fallback_var != nullptr && fallback_var->base == c4c::TB_FLOAT,
+              "direct qualified-key value lookup should preserve invalid-key fallback compatibility");
   const c4c::TypeSpec* string_visible_var =
       parser.find_visible_var_type("valueLookupBridge");
   expect_true(string_visible_var != nullptr &&

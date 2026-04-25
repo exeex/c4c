@@ -8,39 +8,39 @@ Current Step Title: Demote Parser-Owned Legacy String Paths
 
 ## Just Finished
 
-Step 8 - Demote Parser-Owned Legacy String Paths continued with the sibling
-demotion in `Parser::find_visible_var_type(TextId, string_view)`: after the
-TextId/local and TextId value lookup paths miss, the raw spelling retry now
-runs only when the caller has no valid TextId. This demotes the parser-owned
-visible value spelling fallback from a primary lookup key to a
-compatibility-only path for TextId-less callers.
+Step 8 - Demote Parser-Owned Legacy String Paths continued by demoting the
+direct qualified-key typedef/value bridges in
+`Parser::find_typedef_type(QualifiedNameKey, string_view)` and
+`Parser::find_var_type(QualifiedNameKey, string_view)`: after structured and
+structured-rendered legacy lookup miss, the raw fallback spelling is now used
+only when the key carries no valid `TextId`.
 
-The demotion is safe because existing Step 2-7 parser coverage already proves
-ID-first value registration and visible value lookup prefer the TextId spelling
-over mismatched fallback spelling. This packet added a focused stale TextId
-case proving a valid but unbound TextId no longer promotes the fallback
-spelling `"valueLookupBridge"` into a visible value hit, while preserving the
-public string visible value overload for compatibility.
+Focused parser coverage now proves valid direct qualified-key typedef/value
+lookups prefer the TextId spelling over a mismatched fallback, valid but
+unbound TextIds no longer promote `"typedefLookupBridge"` or
+`"valueLookupBridge"` into a direct bridge hit, and invalid-key callers still
+retain the compatibility fallback. No remaining valid-structured-identity raw
+spelling promotion was found in the direct qualified-key typedef/value bridge
+overloads.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 8 by auditing direct qualified-key
-typedef/value fallback lookup bridges for any remaining valid-TextId raw
-spelling promotion, but only with matching structured/TextId proof and without
-weakening public string overload compatibility.
+Next coherent packet: continue Step 8 by auditing the remaining parser string
+bridges called out below, starting with the namespace visible
+`lookup_type_in_context`/`lookup_value_in_context` fallback paths only if a
+focused structured/TextId proof can distinguish compatibility fallback from
+valid-identity raw spelling promotion.
 
 ## Watchouts
 
-- Public string overloads remain preserved: `find_visible_typedef_type(string)`
-  and `find_visible_var_type(string)` still enter with the parser text id for
-  that spelling when available, and spelling-only callers with no TextId still
-  use the compatibility path.
-- Remaining parser string bridges include direct qualified-key typedef/value
-  fallback lookup, structured value legacy mirrors, template
-  primary/specialization rendered-name maps, NTTP default cache mirrors,
-  template instantiation de-dup mirrors, known-function string lookup, and
-  using-alias compatibility spellings. Do not demote any of these without
-  matching structured/TextId proof.
+- Public string overloads remain preserved, and direct qualified-key callers
+  with an invalid key still use the raw fallback compatibility path.
+- Remaining parser string bridges include namespace visible type/value fallback
+  lookup, structured value legacy mirrors, template primary/specialization
+  rendered-name maps, NTTP default cache mirrors, template instantiation de-dup
+  mirrors, known-function string lookup, and using-alias compatibility
+  spellings. Do not demote any of these without matching structured/TextId
+  proof.
 
 ## Proof
 
