@@ -127,6 +127,85 @@ struct FunctionTemplateInstanceKeyHash {
   }
 };
 
+// ── Compile-time definition registry identity ───────────────────────────────
+
+enum class CompileTimeRegistryKeyKind : uint8_t {
+  TemplateFunction,
+  PrimaryTemplateStruct,
+  TemplateStructSpecializationOwner,
+  ConstevalFunction,
+};
+
+struct CompileTimeRegistryKey {
+  CompileTimeRegistryKeyKind registry_kind =
+      CompileTimeRegistryKeyKind::TemplateFunction;
+  NodeKind declaration_kind = NK_FUNCTION;
+  int namespace_context_id = -1;
+  bool is_global_qualified = false;
+  std::vector<TextId> qualifier_segment_text_ids;
+  TextId unqualified_text_id = kInvalidText;
+  const Node* declaration_fallback = nullptr;
+
+  [[nodiscard]] bool operator==(const CompileTimeRegistryKey& other) const {
+    return registry_kind == other.registry_kind &&
+           declaration_kind == other.declaration_kind &&
+           namespace_context_id == other.namespace_context_id &&
+           is_global_qualified == other.is_global_qualified &&
+           qualifier_segment_text_ids == other.qualifier_segment_text_ids &&
+           unqualified_text_id == other.unqualified_text_id &&
+           declaration_fallback == other.declaration_fallback;
+  }
+};
+
+struct CompileTimeRegistryKeyHash {
+  [[nodiscard]] std::size_t operator()(
+      const CompileTimeRegistryKey& key) const noexcept {
+    std::size_t h = std::hash<int>{}(static_cast<int>(key.registry_kind));
+    auto mix = [&](std::size_t part) {
+      h ^= part + 0x9e3779b9u + (h << 6) + (h >> 2);
+    };
+    mix(std::hash<int>{}(static_cast<int>(key.declaration_kind)));
+    mix(std::hash<int>{}(key.namespace_context_id));
+    mix(std::hash<bool>{}(key.is_global_qualified));
+    mix(std::hash<TextId>{}(key.unqualified_text_id));
+    for (TextId segment : key.qualifier_segment_text_ids) {
+      mix(std::hash<TextId>{}(segment));
+    }
+    mix(std::hash<const Node*>{}(key.declaration_fallback));
+    return h;
+  }
+};
+
+inline std::optional<CompileTimeRegistryKey> make_compile_time_registry_key(
+    CompileTimeRegistryKeyKind registry_kind, const Node* declaration) {
+  if (!declaration) return std::nullopt;
+
+  CompileTimeRegistryKey key;
+  key.registry_kind = registry_kind;
+  key.declaration_kind = declaration->kind;
+  key.namespace_context_id = declaration->namespace_context_id;
+  key.is_global_qualified = declaration->is_global_qualified;
+  key.unqualified_text_id = declaration->unqualified_text_id;
+
+  bool complete_text_identity = key.unqualified_text_id != kInvalidText;
+  const int qualifier_count = std::max(0, declaration->n_qualifier_segments);
+  key.qualifier_segment_text_ids.reserve(
+      static_cast<std::size_t>(qualifier_count));
+  for (int i = 0; i < qualifier_count; ++i) {
+    TextId segment_text_id = kInvalidText;
+    if (declaration->qualifier_text_ids) {
+      segment_text_id = declaration->qualifier_text_ids[i];
+    }
+    if (segment_text_id == kInvalidText) complete_text_identity = false;
+    key.qualifier_segment_text_ids.push_back(segment_text_id);
+  }
+
+  if (!complete_text_identity) {
+    key.declaration_fallback = declaration;
+  }
+  return key;
+}
+
 enum class PendingTemplateTypeKind {
   DeclarationType,
   OwnerStruct,
@@ -743,12 +822,20 @@ struct CompileTimeState {
   /// Register a template function definition (AST node pointer).
   void register_template_def(const std::string& name, const Node* node) {
     template_fn_defs_[name] = node;
+    if (auto key = make_compile_time_registry_key(
+            CompileTimeRegistryKeyKind::TemplateFunction, node)) {
+      template_fn_defs_by_key_[*key] = node;
+    }
   }
 
   /// Register a template struct primary definition (AST node pointer).
   void register_template_struct_def(const std::string& name, const Node* node) {
     if (!is_primary_template_struct_def(node)) return;
     template_struct_defs_[name] = node;
+    if (auto key = make_compile_time_registry_key(
+            CompileTimeRegistryKeyKind::PrimaryTemplateStruct, node)) {
+      template_struct_defs_by_key_[*key] = node;
+    }
   }
 
   /// Register a template struct specialization under its primary template name.
@@ -762,6 +849,11 @@ struct CompileTimeState {
                                               const Node* node) {
     if (!primary_def || !primary_def->name) return;
     register_template_struct_specialization(primary_def->name, node);
+    if (auto key = make_compile_time_registry_key(
+            CompileTimeRegistryKeyKind::TemplateStructSpecializationOwner,
+            primary_def)) {
+      template_struct_specializations_by_owner_key_[*key].push_back(node);
+    }
   }
 
   /// Register a template function specialization under its primary definition.
@@ -773,6 +865,10 @@ struct CompileTimeState {
   /// Register a consteval function definition (AST node pointer).
   void register_consteval_def(const std::string& name, const Node* node) {
     consteval_fn_defs_[name] = node;
+    if (auto key = make_compile_time_registry_key(
+            CompileTimeRegistryKeyKind::ConstevalFunction, node)) {
+      consteval_fn_defs_by_key_[*key] = node;
+    }
   }
 
   /// Register a non-template-owned static_assert for engine-time resolution.
@@ -1001,6 +1097,11 @@ struct CompileTimeState {
                  template_fn_defs_.size(), consteval_fn_defs_.size());
     std::fprintf(out, "[CompileTimeState] template_struct_defs=%zu template_struct_specializations=%zu\n",
                  template_struct_defs_.size(), template_struct_specializations_.size());
+    std::fprintf(out, "[CompileTimeState] structured_template_defs=%zu structured_consteval_defs=%zu\n",
+                 template_fn_defs_by_key_.size(), consteval_fn_defs_by_key_.size());
+    std::fprintf(out, "[CompileTimeState] structured_template_struct_defs=%zu structured_template_struct_specialization_owners=%zu\n",
+                 template_struct_defs_by_key_.size(),
+                 template_struct_specializations_by_owner_key_.size());
     std::fprintf(out, "[CompileTimeState] enum_consts=%zu const_int_bindings=%zu\n",
                  enum_consts_.size(), const_int_bindings_.size());
     std::fprintf(out, "[CompileTimeState] pending_template_types=%zu\n",
@@ -1012,12 +1113,25 @@ struct CompileTimeState {
  private:
   // Template function definitions indexed by name (AST node pointers).
   std::unordered_map<std::string, const Node*> template_fn_defs_;
+  // Best-effort structured mirrors indexed by declaration identity.
+  std::unordered_map<CompileTimeRegistryKey, const Node*,
+                     CompileTimeRegistryKeyHash>
+      template_fn_defs_by_key_;
   // Template struct primary definitions indexed by name (AST node pointers).
   std::unordered_map<std::string, const Node*> template_struct_defs_;
+  std::unordered_map<CompileTimeRegistryKey, const Node*,
+                     CompileTimeRegistryKeyHash>
+      template_struct_defs_by_key_;
   // Template struct specializations indexed by primary name.
   std::unordered_map<std::string, std::vector<const Node*>> template_struct_specializations_;
+  std::unordered_map<CompileTimeRegistryKey, std::vector<const Node*>,
+                     CompileTimeRegistryKeyHash>
+      template_struct_specializations_by_owner_key_;
   // Consteval function definitions indexed by name (AST node pointers).
   std::unordered_map<std::string, const Node*> consteval_fn_defs_;
+  std::unordered_map<CompileTimeRegistryKey, const Node*,
+                     CompileTimeRegistryKeyHash>
+      consteval_fn_defs_by_key_;
   // Enum constant values (name → value).
   std::unordered_map<std::string, long long> enum_consts_;
   // Global const-integer bindings (name → value).
