@@ -959,8 +959,12 @@ class Lowerer {
   std::unordered_map<HirRecordOwnerKey, const Node*, HirRecordOwnerKeyHash>
       struct_def_nodes_by_owner_;
   std::unordered_map<std::string, const Node*> template_struct_defs_;
+  std::unordered_map<HirRecordOwnerKey, const Node*, HirRecordOwnerKeyHash>
+      template_struct_defs_by_owner_;
   // Template struct specializations indexed by primary template name.
   std::unordered_map<std::string, std::vector<const Node*>> template_struct_specializations_;
+  std::unordered_map<HirRecordOwnerKey, std::vector<const Node*>, HirRecordOwnerKeyHash>
+      template_struct_specializations_by_owner_;
   std::unordered_map<std::string, const Node*> template_global_defs_;
   std::unordered_map<std::string, std::vector<const Node*>> template_global_specializations_;
   std::unordered_map<TemplateStructInstanceKey, GlobalId, TemplateStructInstanceKeyHash>

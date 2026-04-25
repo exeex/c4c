@@ -462,6 +462,9 @@ void Lowerer::register_template_struct_primary(
     const Node* node) {
   if (!is_primary_template_struct_def(node)) return;
   template_struct_defs_[name] = node;
+  if (auto key = make_struct_def_node_owner_key(node)) {
+    template_struct_defs_by_owner_[*key] = node;
+  }
   ct_state_->register_template_struct_def(name, node);
 }
 
@@ -470,6 +473,9 @@ void Lowerer::register_template_struct_specialization(
     const Node* node) {
   if (!primary_tpl || !primary_tpl->name || !node) return;
   template_struct_specializations_[primary_tpl->name].push_back(node);
+  if (auto key = make_struct_def_node_owner_key(primary_tpl)) {
+    template_struct_specializations_by_owner_[*key].push_back(node);
+  }
   ct_state_->register_template_struct_specialization(primary_tpl, node);
 }
 
