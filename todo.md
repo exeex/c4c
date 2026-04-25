@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/107_lir_struct_name_id_type_ref_mirror.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Thread StructNameId Through HIR-To-LIR TypeRef Creation
+Current Step ID: 5
+Current Step Title: Add TypeRef Parity Verification
 
 # Current Packet
 
