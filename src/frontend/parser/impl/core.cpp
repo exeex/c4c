@@ -658,6 +658,23 @@ const TypeSpec* Parser::find_typedef_type(std::string_view name) const {
         shared_lookup_state_.parser_name_tables.find_identifier(name));
 }
 
+const TypeSpec* Parser::find_typedef_type(
+    const QualifiedNameKey& key, std::string_view fallback_name) const {
+    if (const TypeSpec* structured = find_structured_typedef_type(key)) {
+        return structured;
+    }
+    const std::string rendered = render_structured_name(*this, key);
+    if (!rendered.empty()) {
+        if (const TypeSpec* legacy = find_typedef_type(rendered)) {
+            return legacy;
+        }
+    }
+    if (!fallback_name.empty() && fallback_name != rendered) {
+        return find_typedef_type(fallback_name);
+    }
+    return nullptr;
+}
+
 bool Parser::has_structured_typedef_type(const QualifiedNameKey& key) const {
     return find_structured_typedef_type(key) != nullptr;
 }
@@ -1082,6 +1099,23 @@ const TypeSpec* Parser::find_var_type(const std::string& name) const {
     const auto it = shared_lookup_state_.parser_name_tables.var_types.find(id);
     if (it == shared_lookup_state_.parser_name_tables.var_types.end()) return nullptr;
     return &it->second;
+}
+
+const TypeSpec* Parser::find_var_type(
+    const QualifiedNameKey& key, std::string_view fallback_name) const {
+    if (const TypeSpec* structured = find_structured_var_type(key)) {
+        return structured;
+    }
+    const std::string rendered = render_value_binding_name(*this, key);
+    if (!rendered.empty()) {
+        if (const TypeSpec* legacy = find_var_type(rendered)) {
+            return legacy;
+        }
+    }
+    if (!fallback_name.empty() && fallback_name != rendered) {
+        return find_var_type(std::string(fallback_name));
+    }
+    return nullptr;
 }
 
 bool Parser::has_structured_var_type(const QualifiedNameKey& key) const {

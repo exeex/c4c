@@ -1184,6 +1184,41 @@ void test_parser_using_value_import_keeps_structured_target_key() {
             "using-import lookup should prefer the structured target key over the compatibility bridge");
 }
 
+void test_parser_using_value_import_prefers_structured_type_over_corrupt_rendered_name() {
+  c4c::Lexer lexer("using ns::Target;\n", c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  c4c::TypeSpec bridge_ts{};
+  bridge_ts.array_size = -1;
+  bridge_ts.inner_rank = -1;
+  bridge_ts.base = c4c::TB_DOUBLE;
+
+  parser.register_structured_var_type_binding(
+      parser.intern_semantic_name_key("ns::Target"), target_ts);
+  parser.register_var_type_binding("corrupted", bridge_ts);
+
+  (void)parse_top_level(parser);
+
+  const c4c::TextId alias_text = parser.find_parser_text_id("Target");
+  expect_true(alias_text != c4c::kInvalidText,
+              "using-import fixture should intern the alias text");
+  expect_true(parser.replace_using_value_alias_compatibility_name_for_testing(
+                  0, alias_text, "corrupted"),
+              "using-import fixture should record a value-alias entry");
+
+  const c4c::TypeSpec* visible_alias = parser.find_visible_var_type("Target");
+  expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
+              "using value imports should prefer the structured target type before rendered fallback names");
+}
+
 void test_parser_global_using_value_import_keeps_global_target_resolution() {
   c4c::Lexer lexer("using ::Target;\n", c4c::LexProfile::CppSubset);
   const std::vector<c4c::Token> tokens = lexer.scan_all();
@@ -1296,6 +1331,40 @@ void test_parser_visible_value_alias_resolves_scope_local_target_type() {
 
   expect_true(parser.pop_local_binding_scope(),
               "test fixture should balance the local visible value scope");
+}
+
+void test_parser_using_type_import_prefers_structured_type_over_corrupt_rendered_name() {
+  c4c::Lexer lexer("using ns::Alias;\n", c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table(),
+                     c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  c4c::TypeSpec bridge_ts{};
+  bridge_ts.array_size = -1;
+  bridge_ts.inner_rank = -1;
+  bridge_ts.base = c4c::TB_DOUBLE;
+
+  const c4c::TextId ns_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
+  const int ns_context = parser.ensure_named_namespace_context(0, ns_text, "ns");
+  const c4c::TextId alias_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "Alias");
+  parser.register_structured_typedef_binding_in_context(
+      ns_context, alias_text, "corrupted", target_ts);
+  parser.register_typedef_binding("corrupted", bridge_ts, true);
+
+  (void)parse_top_level(parser);
+
+  const c4c::TypeSpec* visible_alias =
+      parser.find_visible_typedef_type("Alias");
+  expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
+              "using type imports should prefer the structured target type before rendered fallback names");
 }
 
 void test_parser_register_local_bindings_keep_flat_tables_empty() {
@@ -2831,10 +2900,12 @@ int main() {
   test_parser_visible_type_alias_keeps_qualified_target_resolution();
   test_parser_resolve_typedef_type_chain_uses_local_visible_scope_lookup();
   test_parser_using_value_import_keeps_structured_target_key();
+  test_parser_using_value_import_prefers_structured_type_over_corrupt_rendered_name();
   test_parser_global_using_value_import_keeps_global_target_resolution();
   test_parser_using_value_alias_prefers_structured_target_type();
   test_parser_using_value_alias_respects_local_shadowing();
   test_parser_visible_value_alias_resolves_scope_local_target_type();
+  test_parser_using_type_import_prefers_structured_type_over_corrupt_rendered_name();
   test_parser_register_local_bindings_keep_flat_tables_empty();
   test_parser_if_condition_decl_uses_local_visible_typedef_scope();
   test_parser_if_condition_decl_scope_does_not_leak_bindings();

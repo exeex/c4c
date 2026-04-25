@@ -8,35 +8,37 @@ Current Step Title: Prefer ID-First Parser Helpers
 
 ## Just Finished
 
-Step 6 - Prefer ID-First Parser Helpers continued by migrating a narrow
-known-function registration family. `register_known_fn_name_in_context` now
-registers from declaration context plus `TextId`/fallback spelling, and the
-existing string/`QualifiedNameKey` overloads remain compatibility bridges.
+Step 6 - Prefer ID-First Parser Helpers continued by migrating the `using`
+import value/type lookup path to structured helpers where the target
+`QualifiedNameKey` or resolved `VisibleNameResult` key is already available.
+New `find_typedef_type(QualifiedNameKey, fallback)` and
+`find_var_type(QualifiedNameKey, fallback)` helpers probe structured storage
+first, then rendered compatibility spelling, then the explicit fallback.
 
-Using-import known-function aliases and simple unqualified parsed function
-declarations now use the context-plus-`TextId` helper where those carriers are
-already available. Qualified operator/constructor names and qualified
-declarator bridge names intentionally stay on rendered-string registration.
+`using` type imports now use the resolved type key plus visible spelling before
+legacy string fallback. `using` value imports now use the directly computed
+target key first, then the resolved value key for namespace/context lookups and
+known-function aliases, while preserving bridge registration names and
+compatibility alias spellings.
 
-Focused parser coverage now proves known-function ID-first registration prefers
-the `TextId` carrier over a mismatched fallback spelling while preserving string
-lookup for the rendered namespace-qualified name.
+Focused parser coverage now proves `using ns::Target;` value imports and
+`using ns::Alias;` type imports prefer structured target storage over corrupted
+rendered fallback names.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 6 by migrating another parser-owned helper
-family where call sites already carry a `QualifiedNameKey` or context plus
-`TextId`, without changing rendered-only bridge behavior.
+Next coherent packet: continue Step 6 by auditing remaining parser-owned
+string fallback probes that already have a `QualifiedNameKey` or
+context-plus-`TextId` carrier, especially outside the `using` import block.
 
 ## Watchouts
 
-- Qualified or bridge-rendered variable registrations were intentionally left
-  on string compatibility overloads unless the declarator spelling exactly
-  matched the registered name.
+- Bridge registrations for imported typedef/value aliases still use
+  `bridge_name_in_context` so legacy string consumers remain populated.
+- The new key-plus-fallback helpers intentionally preserve rendered and explicit
+  string fallback lookup after structured lookup misses.
 - Qualified operator/constructor known-function registrations and qualified
-  declarator bridge names were intentionally left on the string overload.
-- The string and `QualifiedNameKey` known-function overloads remain available;
-  this packet did not delete or demote any bridge API.
+  declarator bridge names remain on their existing rendered-string paths.
 
 ## Proof
 

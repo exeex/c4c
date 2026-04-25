@@ -1616,13 +1616,10 @@ Node* parse_top_level(Parser& parser) {
         const Parser::VisibleNameResult imported_type =
             parser.resolve_qualified_type(target_name);
         if (imported_type) {
-            const TypeSpec* imported_typedef =
-                parser.find_structured_typedef_type(imported_type.key);
             const std::string imported_type_name =
                 parser.visible_name_spelling(imported_type);
-            if (!imported_typedef && !imported_type_name.empty()) {
-                imported_typedef = parser.find_typedef_type(imported_type_name);
-            }
+            const TypeSpec* imported_typedef =
+                parser.find_typedef_type(imported_type.key, imported_type_name);
             if (imported_typedef) {
                 const std::string imported_key = parser.bridge_name_in_context(
                     using_context_id, target_name.base_text_id, imported_name);
@@ -1648,19 +1645,31 @@ Node* parse_top_level(Parser& parser) {
                 *parser.shared_lookup_state_.token_texts);
         }
         const TypeSpec* imported_var =
-            parser.find_structured_var_type(imported_value_key);
-        if (!imported_value_name.empty()) {
-            if (const TypeSpec* legacy_var =
-                    parser.find_var_type(imported_value_name)) {
-                if (!imported_var) imported_var = legacy_var;
-            }
-        }
-        if (!imported_var) {
+            parser.find_var_type(imported_value_key, imported_value_name);
+        QualifiedNameKey imported_alias_key = imported_value_key;
+        bool imported_known_fn = parser.has_known_fn_name(imported_value_key);
+        if (!imported_var || !imported_known_fn) {
             const Parser::VisibleNameResult imported_value =
                 parser.resolve_qualified_value(target_name);
-            imported_value_name = parser.visible_name_spelling(imported_value);
+            const std::string resolved_value_name =
+                parser.visible_name_spelling(imported_value);
             if (imported_value) {
-                imported_var = parser.find_structured_var_type(imported_value.key);
+                if (!imported_var) {
+                    const TypeSpec* resolved_var =
+                        parser.find_var_type(imported_value.key, resolved_value_name);
+                    if (resolved_var) {
+                        imported_var = resolved_var;
+                        imported_alias_key = imported_value.key;
+                    }
+                }
+                if (!imported_known_fn &&
+                    parser.has_known_fn_name(imported_value.key)) {
+                    imported_known_fn = true;
+                    imported_alias_key = imported_value.key;
+                }
+                if (!resolved_value_name.empty()) {
+                    imported_value_name = resolved_value_name;
+                }
             }
             if (imported_value_name.empty()) {
                 imported_value_name = parser.qualified_name_text(target_name);
@@ -1671,17 +1680,19 @@ Node* parse_top_level(Parser& parser) {
                     imported_value_name.erase(0, 2);
                 }
             }
-            if (!imported_var) imported_var = parser.find_var_type(imported_value_name);
+            if (!imported_var && !imported_value_name.empty()) {
+                imported_var = parser.find_var_type(imported_value_name);
+            }
         }
         {
             if (imported_var) parser.register_var_type_binding(imported_key, *imported_var);
-            if (parser.has_known_fn_name(imported_value_key)) {
+            if (imported_known_fn) {
                 parser.register_known_fn_name_in_context(
                     using_context_id, target_name.base_text_id, imported_name);
             }
             parser.namespace_state_.using_value_aliases[using_context_id]
                                                [target_name.base_text_id] = {
-                imported_value_key, imported_value_name};
+                imported_alias_key, imported_value_name};
         }
         recover_top_level_decl_terminator_or_boundary(parser, ln);
         return nullptr;
