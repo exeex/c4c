@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/107_lir_struct_name_id_type_ref_mirror.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Optional StructNameId Metadata To LirTypeRef
+Current Step ID: 3
+Current Step Title: Add Struct-Aware TypeRef Factories
 
 # Current Packet
 
