@@ -486,10 +486,10 @@ long long alignof_type_spec(const TypeSpec& ts) {
 
 bool eval_const_int(Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* struct_map,
-    const std::unordered_map<TextId, long long>* named_consts);
+    const std::unordered_map<TextId, long long>* structured_named_consts);
 bool eval_const_int(Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* struct_map,
-    const std::unordered_map<std::string, long long>* named_consts);
+    const std::unordered_map<std::string, long long>* compatibility_named_consts);
 
 // Forward declaration
 static long long struct_align(const char* tag,
@@ -614,33 +614,36 @@ static bool compute_offsetof(const char* tag, const char* field_name,
     return false;
 }
 
-template <typename NamedConstTable>
-static bool lookup_unqualified_const_int_binding(
-    const Node* n, const NamedConstTable* named_consts, long long* out) {
-    if (!n || !named_consts || !out) return false;
+static bool lookup_unqualified_text_id_const_int_binding(
+    const Node* n,
+    const std::unordered_map<TextId, long long>* structured_named_consts,
+    long long* out) {
+    if (!n || !structured_named_consts || !out) return false;
     if (n->is_global_qualified || n->n_qualifier_segments != 0 ||
         n->unqualified_text_id == kInvalidText) {
         return false;
     }
-    const auto it = named_consts->find(n->unqualified_text_id);
-    if (it == named_consts->end()) return false;
+    const auto it = structured_named_consts->find(n->unqualified_text_id);
+    if (it == structured_named_consts->end()) return false;
     *out = it->second;
     return true;
 }
 
+// Primary parser-owned const-int surface: named constants are keyed by TextId.
 bool eval_const_int(Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* struct_map,
-    const std::unordered_map<TextId, long long>* named_consts) {
+    const std::unordered_map<TextId, long long>* structured_named_consts) {
     if (!n) return false;
     if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) {
         *out = n->ival;
         return true;
     }
     if (n->kind == NK_VAR && n->name) {
-        return lookup_unqualified_const_int_binding(n, named_consts, out);
+        return lookup_unqualified_text_id_const_int_binding(
+            n, structured_named_consts, out);
     }
     if (n->kind == NK_CAST && n->left) {
-        return eval_const_int(n->left, out, struct_map, named_consts);
+        return eval_const_int(n->left, out, struct_map, structured_named_consts);
     }
     if (n->kind == NK_OFFSETOF) {
         if (n->type.base == TB_STRUCT || n->type.base == TB_UNION) {
@@ -672,7 +675,8 @@ bool eval_const_int(Node* n, long long* out,
     }
     if (n->kind == NK_UNARY && n->op && n->left) {
         long long v;
-        if (!eval_const_int(n->left, &v, struct_map, named_consts)) return false;
+        if (!eval_const_int(n->left, &v, struct_map,
+                            structured_named_consts)) return false;
         if (strcmp(n->op, "-") == 0) { *out = -v; return true; }
         if (strcmp(n->op, "+") == 0) { *out = v; return true; }
         if (strcmp(n->op, "~") == 0) { *out = ~v; return true; }
@@ -680,8 +684,10 @@ bool eval_const_int(Node* n, long long* out,
     }
     if (n->kind == NK_BINOP && n->op) {
         long long l, r;
-        if (!eval_const_int(n->left, &l, struct_map, named_consts)) return false;
-        if (!eval_const_int(n->right, &r, struct_map, named_consts)) return false;
+        if (!eval_const_int(n->left, &l, struct_map,
+                            structured_named_consts)) return false;
+        if (!eval_const_int(n->right, &r, struct_map,
+                            structured_named_consts)) return false;
         if (strcmp(n->op, "+")  == 0) { *out = l + r; return true; }
         if (strcmp(n->op, "-")  == 0) { *out = l - r; return true; }
         if (strcmp(n->op, "*")  == 0) { *out = l * r; return true; }
@@ -703,24 +709,28 @@ bool eval_const_int(Node* n, long long* out,
     }
     if (n->kind == NK_TERNARY && n->cond && n->then_ && n->else_) {
         long long c;
-        if (!eval_const_int(n->cond, &c, struct_map, named_consts)) return false;
-        return eval_const_int(c ? n->then_ : n->else_, out, struct_map, named_consts);
+        if (!eval_const_int(n->cond, &c, struct_map,
+                            structured_named_consts)) return false;
+        return eval_const_int(c ? n->then_ : n->else_, out, struct_map,
+                              structured_named_consts);
     }
     return false;
 }
 
+// Compatibility bridge for callers that only have rendered names. Keep this
+// path behavior-identical until those non-parser surfaces gain structured IDs.
 bool eval_const_int(Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* struct_map,
-    const std::unordered_map<std::string, long long>* named_consts) {
+    const std::unordered_map<std::string, long long>* compatibility_named_consts) {
     if (!n) return false;
     if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) {
         *out = n->ival;
         return true;
     }
     if (n->kind == NK_VAR && n->name) {
-        if (named_consts) {
-            auto it = named_consts->find(n->name);
-            if (it != named_consts->end()) {
+        if (compatibility_named_consts) {
+            auto it = compatibility_named_consts->find(n->name);
+            if (it != compatibility_named_consts->end()) {
                 *out = it->second;
                 return true;
             }
@@ -728,7 +738,8 @@ bool eval_const_int(Node* n, long long* out,
         return false;
     }
     if (n->kind == NK_CAST && n->left) {
-        return eval_const_int(n->left, out, struct_map, named_consts);
+        return eval_const_int(n->left, out, struct_map,
+                              compatibility_named_consts);
     }
     if (n->kind == NK_OFFSETOF) {
         if (n->type.base == TB_STRUCT || n->type.base == TB_UNION) {
@@ -763,7 +774,8 @@ bool eval_const_int(Node* n, long long* out,
     }
     if (n->kind == NK_UNARY && n->op && n->left) {
         long long v;
-        if (!eval_const_int(n->left, &v, struct_map, named_consts)) return false;
+        if (!eval_const_int(n->left, &v, struct_map,
+                            compatibility_named_consts)) return false;
         if (strcmp(n->op, "-") == 0) { *out = -v; return true; }
         if (strcmp(n->op, "+") == 0) { *out = v; return true; }
         if (strcmp(n->op, "~") == 0) { *out = ~v; return true; }
@@ -771,8 +783,10 @@ bool eval_const_int(Node* n, long long* out,
     }
     if (n->kind == NK_BINOP && n->op) {
         long long l, r;
-        if (!eval_const_int(n->left, &l, struct_map, named_consts)) return false;
-        if (!eval_const_int(n->right, &r, struct_map, named_consts)) return false;
+        if (!eval_const_int(n->left, &l, struct_map,
+                            compatibility_named_consts)) return false;
+        if (!eval_const_int(n->right, &r, struct_map,
+                            compatibility_named_consts)) return false;
         if (strcmp(n->op, "+")  == 0) { *out = l + r; return true; }
         if (strcmp(n->op, "-")  == 0) { *out = l - r; return true; }
         if (strcmp(n->op, "*")  == 0) { *out = l * r; return true; }
@@ -794,8 +808,10 @@ bool eval_const_int(Node* n, long long* out,
     }
     if (n->kind == NK_TERNARY && n->cond && n->then_ && n->else_) {
         long long c;
-        if (!eval_const_int(n->cond, &c, struct_map, named_consts)) return false;
-        return eval_const_int(c ? n->then_ : n->else_, out, struct_map, named_consts);
+        if (!eval_const_int(n->cond, &c, struct_map,
+                            compatibility_named_consts)) return false;
+        return eval_const_int(c ? n->then_ : n->else_, out, struct_map,
+                              compatibility_named_consts);
     }
     return false;
 }
