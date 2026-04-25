@@ -426,6 +426,140 @@ void verify_global_type_ref_shadows(const LirModule& mod) {
   }
 }
 
+std::string_view function_signature_line(const LirFunction& fn) {
+  std::string_view signature = fn.signature_text;
+  while (!signature.empty()) {
+    const size_t line_end = signature.find('\n');
+    const std::string_view line =
+        line_end == std::string_view::npos ? signature : signature.substr(0, line_end);
+    if (line.rfind("define ", 0) == 0 || line.rfind("declare ", 0) == 0) {
+      return line;
+    }
+    if (line_end == std::string_view::npos) break;
+    signature.remove_prefix(line_end + 1);
+  }
+  return {};
+}
+
+std::string_view trim_signature_token(std::string_view value) {
+  while (!value.empty() && value.front() == ' ') value.remove_prefix(1);
+  while (!value.empty() && value.back() == ' ') value.remove_suffix(1);
+  return value;
+}
+
+bool consume_signature_token(std::string_view& value, std::string_view token) {
+  if (value.rfind(token, 0) != 0) return false;
+  if (value.size() > token.size() && value[token.size()] != ' ') return false;
+  value.remove_prefix(token.size());
+  value = trim_signature_token(value);
+  return true;
+}
+
+std::string_view signature_return_type_text(std::string_view line) {
+  const size_t params_begin = line.find('(');
+  if (params_begin == std::string_view::npos) return {};
+  std::string_view prefix = trim_signature_token(line.substr(0, params_begin));
+
+  if (consume_signature_token(prefix, "define")) {
+    consume_signature_token(prefix, "internal");
+    consume_signature_token(prefix, "weak");
+  } else if (consume_signature_token(prefix, "declare")) {
+    consume_signature_token(prefix, "extern_weak");
+  } else {
+    return {};
+  }
+  consume_signature_token(prefix, "hidden");
+  consume_signature_token(prefix, "protected");
+
+  const size_t symbol_pos = prefix.rfind(" @");
+  if (symbol_pos == std::string_view::npos) return {};
+  return trim_signature_token(prefix.substr(0, symbol_pos));
+}
+
+std::vector<std::string_view> signature_param_texts(std::string_view line) {
+  const size_t params_begin = line.find('(');
+  if (params_begin == std::string_view::npos) return {};
+
+  int depth = 0;
+  size_t params_end = std::string_view::npos;
+  for (size_t index = params_begin; index < line.size(); ++index) {
+    if (line[index] == '(') {
+      ++depth;
+    } else if (line[index] == ')') {
+      --depth;
+      if (depth == 0) {
+        params_end = index;
+        break;
+      }
+    }
+  }
+  if (params_end == std::string_view::npos || params_end <= params_begin + 1) return {};
+
+  std::vector<std::string_view> params;
+  std::string_view text = line.substr(params_begin + 1, params_end - params_begin - 1);
+  depth = 0;
+  size_t start = 0;
+  for (size_t index = 0; index <= text.size(); ++index) {
+    if (index == text.size() || (text[index] == ',' && depth == 0)) {
+      params.push_back(trim_signature_token(text.substr(start, index - start)));
+      start = index + 1;
+      continue;
+    }
+    if (text[index] == '(') ++depth;
+    if (text[index] == ')') --depth;
+  }
+  return params;
+}
+
+void verify_function_signature_type_ref_shadows(const LirModule& mod) {
+  for (const auto& fn : mod.functions) {
+    const std::string_view line = function_signature_line(fn);
+    if (line.empty()) {
+      fail_verify("LirFunction.signature_text", "missing define/declare signature line");
+    }
+
+    if (fn.signature_return_type_ref.has_value()) {
+      const std::string& shadow = require_module_type_ref(
+          mod, *fn.signature_return_type_ref, "LirFunction.signature_return_type_ref", true);
+      if (signature_return_type_text(line) != shadow) {
+        std::ostringstream detail;
+        detail << "return type mirror for function '" << fn.name
+               << "' does not match signature_text; shadow '" << shadow
+               << "', signature return '" << signature_return_type_text(line) << "'";
+        fail_verify("LirFunction.signature_return_type_ref", detail.str());
+      }
+    }
+
+    const auto params = signature_param_texts(line);
+    if (!fn.signature_param_type_refs.empty() &&
+        fn.signature_param_type_refs.size() > params.size()) {
+      std::ostringstream detail;
+      detail << "function '" << fn.name << "' has "
+             << fn.signature_param_type_refs.size()
+             << " parameter mirrors but only " << params.size()
+             << " signature parameters";
+      fail_verify("LirFunction.signature_param_type_refs", detail.str());
+    }
+
+    for (size_t index = 0; index < fn.signature_param_type_refs.size(); ++index) {
+      const std::string& shadow = require_module_type_ref(
+          mod, fn.signature_param_type_refs[index], "LirFunction.signature_param_type_refs");
+      const std::string_view param = params[index];
+      const bool exact_match = param == shadow;
+      const bool named_match =
+          param.size() > shadow.size() && param.substr(0, shadow.size()) == shadow &&
+          param[shadow.size()] == ' ';
+      if (!exact_match && !named_match) {
+        std::ostringstream detail;
+        detail << "parameter " << index << " mirror for function '" << fn.name
+               << "' does not match signature_text; shadow '" << shadow
+               << "', signature parameter '" << param << "'";
+        fail_verify("LirFunction.signature_param_type_refs", detail.str());
+      }
+    }
+  }
+}
+
 }  // namespace
 
 const std::string& require_operand_kind(
@@ -482,6 +616,7 @@ void verify_module(const LirModule& mod) {
   verify_struct_decl_shadows(mod);
   verify_extern_decl_shadows(mod);
   verify_global_type_ref_shadows(mod);
+  verify_function_signature_type_ref_shadows(mod);
   for (const auto& function : mod.functions) {
     for (const auto& inst : function.alloca_insts) verify_inst(mod, inst);
     for (const auto& block : function.blocks) {

@@ -16,6 +16,8 @@ namespace c4c::codegen::lir {
 
 namespace llvm_cc = c4c::codegen::llvm_backend;
 
+int object_align_bytes(const c4c::hir::Module& mod, const TypeSpec& ts);
+
 namespace {
 
 int align_to_bytes(int value, int align) {
@@ -62,6 +64,52 @@ std::optional<LirTypeRef> lir_global_type_ref(const std::string& rendered_text,
   const std::string canonical_text = llvm_alloca_ty(type);
   if (canonical_text != rendered_text) return std::nullopt;
   return lir_aggregate_type_ref(canonical_text, lir_module, type.tag, type.base == TB_UNION);
+}
+
+LirTypeRef lir_signature_type_ref(const std::string& rendered_text,
+                                  LirModule* lir_module,
+                                  const TypeSpec& type) {
+  using namespace c4c::codegen::llvm_helpers;
+  if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
+      type.array_rank > 0 || !type.tag || !type.tag[0]) {
+    return LirTypeRef(rendered_text);
+  }
+  if (rendered_text != llvm_ty(type)) return LirTypeRef(rendered_text);
+  return lir_aggregate_type_ref(rendered_text, lir_module, type.tag, type.base == TB_UNION);
+}
+
+std::string rendered_signature_param_type(const c4c::hir::Module& mod,
+                                          const TypeSpec& param_ts) {
+  using namespace c4c::codegen::llvm_helpers;
+  if (llvm_target_is_amd64_sysv(mod.target_profile) &&
+      llvm_cc::amd64_fixed_aggregate_passed_byval(param_ts, mod)) {
+    return "ptr byval(" + llvm_ty(param_ts) + ") align " +
+           std::to_string(std::max(8, object_align_bytes(mod, param_ts)));
+  }
+  return llvm_ty(param_ts);
+}
+
+void populate_signature_type_refs(const c4c::hir::Module& mod,
+                                  const c4c::hir::Function& fn,
+                                  LirModule* lir_module,
+                                  LirFunction& lir_fn) {
+  using namespace c4c::codegen::llvm_helpers;
+  lir_fn.signature_return_type_ref =
+      lir_signature_type_ref(llvm_ret_ty(fn.return_type.spec), lir_module,
+                             fn.return_type.spec);
+
+  const bool void_param_list =
+      fn.params.size() == 1 &&
+      fn.params[0].type.spec.base == TB_VOID &&
+      fn.params[0].type.spec.ptr_level == 0 &&
+      fn.params[0].type.spec.array_rank == 0;
+  if (void_param_list) return;
+
+  for (const auto& param : fn.params) {
+    const TypeSpec& param_ts = param.type.spec;
+    lir_fn.signature_param_type_refs.push_back(lir_signature_type_ref(
+        rendered_signature_param_type(mod, param_ts), lir_module, param_ts));
+  }
 }
 
 }  // namespace
@@ -1041,6 +1089,7 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
             {"%p." + sanitize_llvm_ident(param.name), param.type.spec});
       }
       lir_fn.signature_text = sig;
+      populate_signature_type_refs(hir_mod, fn, &module, lir_fn);
       module.functions.push_back(std::move(lir_fn));
     } else {
       // Definition — hir_to_lir owns FnCtx setup, alloca hoisting, VLA
@@ -1080,6 +1129,7 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
       lir_fn.is_declaration = false;
       lir_fn.return_type = fn.return_type.spec;
       lir_fn.signature_text = sig;
+      populate_signature_type_refs(hir_mod, fn, &module, lir_fn);
       lir_fn.alloca_insts = std::move(ctx.alloca_insts);
       lir_fn.blocks = std::move(ctx.lir_blocks);
 

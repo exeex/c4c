@@ -502,6 +502,8 @@ struct LirFunction {
   bool is_declaration = false;  // true for declarations (no body)
   TypeSpec return_type{};
   std::vector<std::pair<std::string, TypeSpec>> params;  // name, type
+  std::optional<LirTypeRef> signature_return_type_ref;
+  std::vector<LirTypeRef> signature_param_type_refs;
   std::vector<LirBlock> blocks;
   std::vector<LirStackObject> stack_objects;
   LirBlockId entry{};
