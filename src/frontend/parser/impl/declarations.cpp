@@ -1645,14 +1645,21 @@ Node* parse_top_level(Parser& parser) {
                 imported_value_key, parser.shared_lookup_state_.parser_name_paths,
                 *parser.shared_lookup_state_.token_texts);
         }
-        const TypeSpec* imported_var = nullptr;
+        const TypeSpec* imported_var =
+            parser.find_structured_var_type(imported_value_key);
         if (!imported_value_name.empty()) {
-            imported_var = parser.find_var_type(imported_value_name);
+            if (const TypeSpec* legacy_var =
+                    parser.find_var_type(imported_value_name)) {
+                if (!imported_var) imported_var = legacy_var;
+            }
         }
         if (!imported_var) {
             const Parser::VisibleNameResult imported_value =
                 parser.resolve_qualified_value(target_name);
             imported_value_name = parser.visible_name_spelling(imported_value);
+            if (imported_value) {
+                imported_var = parser.find_structured_var_type(imported_value.key);
+            }
             if (imported_value_name.empty()) {
                 imported_value_name = parser.qualified_name_text(target_name);
             }
@@ -1662,7 +1669,7 @@ Node* parse_top_level(Parser& parser) {
                     imported_value_name.erase(0, 2);
                 }
             }
-            imported_var = parser.find_var_type(imported_value_name);
+            if (!imported_var) imported_var = parser.find_var_type(imported_value_name);
         }
         {
             if (imported_var) parser.register_var_type_binding(imported_key, *imported_var);

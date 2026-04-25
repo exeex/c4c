@@ -1,46 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/95_parser_dual_lookup_structured_identity_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Structured Value Binding Storage
+Current Step ID: 3
+Current Step Title: Retarget Using Value Imports And Aliases
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Add Structured Value Binding Storage completed. Added
-`ParserBindingState::value_bindings` keyed by `QualifiedNameKey`, structured
-`has_structured_var_type` / `find_structured_var_type` helpers, and structured
-registration helpers. `register_var_type_binding` now dual-writes structured
-value storage for non-local bindings while preserving the existing rendered
-string tables. Structured registration also backfills the rendered-string legacy
-path where the key can render. Fixed the Step 2 acceptance blocker by including
-`value_bindings` in the heavy tentative `ParserSnapshot` save/restore path.
+Step 3 - Retarget Using Value Imports And Aliases completed. Retargeted
+`UsingValueAlias::target_key`, visible value alias lookup, direct namespace
+value lookup, and `using` value import construction to prefer
+`QualifiedNameKey` / structured value-binding lookup before falling back to
+rendered compatibility names.
 
 Focused parser tests now cover:
-- existing string-facing value lookup still recovering the stored `TypeSpec`
-- string registration also populating structured value storage
-- qualified value registration agreeing between structured and legacy lookup
-- direct structured value registration keeping legacy string lookup populated
-- heavy snapshot rollback removing structured value bindings added after a
-  snapshot, including the direct structured registration path
+- using value imports still rendering the structured target when compatibility
+  bridge spelling is corrupted
+- using value aliases preferring the structured target type over a misleading
+  compatibility bridge binding
+- local value bindings shadowing using value aliases before structured alias
+  resolution
 
 ## Suggested Next
 
-Next coherent packet: Step 3 - Retarget Using Value Imports And Aliases. Prefer
-structured value binding lookup through `UsingValueAlias::target_key` and using
-import resolution while keeping rendered compatibility names as bridge/output
-data.
+Next coherent packet: Step 4 - Add Structured NTTP Default Cache Keys. Add a
+structured cache identity for parser-owned NTTP default-expression tokens while
+keeping the rendered string cache as a compatibility mirror.
 
 ## Watchouts
 
-- This packet intentionally did not retarget `using` import behavior or general
-  visible value lookup to the structured map; snapshot rollback is now ready for
-  production reads to start depending on `value_bindings` in a later packet.
 - Keep `find_var_type(const std::string&)`, `has_var_type(const std::string&)`,
   and `register_var_type_binding` behavior-compatible until downstream users are
   migrated deliberately.
 - Preserve downstream rendered-name bridge behavior and compatibility spellings.
+- The using-value paths now prefer structured value storage, but rendered
+  compatibility names remain populated and used as fallback/output data.
 
 ## Proof
 

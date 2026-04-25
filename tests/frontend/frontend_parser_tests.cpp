@@ -1152,6 +1152,69 @@ void test_parser_global_using_value_import_keeps_global_target_resolution() {
             "global using-import lookup should keep the global target spelling instead of introducing a leading scope bridge");
 }
 
+void test_parser_using_value_alias_prefers_structured_target_type() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  c4c::TypeSpec bridge_ts{};
+  bridge_ts.array_size = -1;
+  bridge_ts.inner_rank = -1;
+  bridge_ts.base = c4c::TB_DOUBLE;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  const c4c::QualifiedNameKey target_key =
+      parser.intern_semantic_name_key("ns::Target");
+  parser.register_structured_var_type_binding(target_key, target_ts);
+  parser.register_var_type_binding("Bridge", bridge_ts);
+  parser.register_using_value_alias_for_testing(0, alias_text, target_key,
+                                                "Bridge");
+
+  const c4c::TypeSpec* visible_alias = parser.find_visible_var_type("Alias");
+  expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_INT,
+              "using value aliases should prefer the structured target key over the compatibility bridge type");
+  expect_eq(parser.resolve_visible_value_name("Alias"), "ns::Target",
+            "using value aliases should keep rendered output derived from the structured target key");
+}
+
+void test_parser_using_value_alias_respects_local_shadowing() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec target_ts{};
+  target_ts.array_size = -1;
+  target_ts.inner_rank = -1;
+  target_ts.base = c4c::TB_INT;
+
+  c4c::TypeSpec local_ts{};
+  local_ts.array_size = -1;
+  local_ts.inner_rank = -1;
+  local_ts.base = c4c::TB_DOUBLE;
+
+  const c4c::TextId alias_text = texts.intern("Alias");
+  const c4c::QualifiedNameKey target_key =
+      parser.intern_semantic_name_key("ns::Target");
+  parser.register_structured_var_type_binding(target_key, target_ts);
+  parser.register_using_value_alias_for_testing(0, alias_text, target_key,
+                                                "corrupted");
+
+  parser.push_local_binding_scope();
+  parser.bind_local_value(alias_text, local_ts);
+  const c4c::TypeSpec* visible_alias = parser.find_visible_var_type("Alias");
+  expect_true(visible_alias != nullptr && visible_alias->base == c4c::TB_DOUBLE,
+              "local value bindings should shadow using value aliases before structured alias resolution");
+  expect_true(parser.pop_local_binding_scope(),
+              "test fixture should balance the local visible value scope");
+}
+
 void test_parser_visible_value_alias_resolves_scope_local_target_type() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -2451,6 +2514,8 @@ int main() {
   test_parser_resolve_typedef_type_chain_uses_local_visible_scope_lookup();
   test_parser_using_value_import_keeps_structured_target_key();
   test_parser_global_using_value_import_keeps_global_target_resolution();
+  test_parser_using_value_alias_prefers_structured_target_type();
+  test_parser_using_value_alias_respects_local_shadowing();
   test_parser_visible_value_alias_resolves_scope_local_target_type();
   test_parser_register_local_bindings_keep_flat_tables_empty();
   test_parser_if_condition_decl_uses_local_visible_typedef_scope();
