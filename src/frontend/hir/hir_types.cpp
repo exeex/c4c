@@ -354,6 +354,112 @@ std::optional<InitListItem> Lowerer::make_init_item(const GlobalInit& init) {
   return item;
 }
 
+std::optional<HirStructMethodLookupKey> Lowerer::make_struct_method_lookup_key(
+    const std::string& tag,
+    const std::string& method,
+    bool is_const_method) const {
+  if (!module_ || !module_->link_name_texts || tag.empty() || method.empty()) {
+    return std::nullopt;
+  }
+  TextTable* texts = module_->link_name_texts.get();
+  const TextId method_text_id = texts->find(method);
+  if (method_text_id == kInvalidText) return std::nullopt;
+  for (const auto& [owner_key, rendered_tag] : module_->struct_def_owner_index) {
+    if (rendered_tag != tag) continue;
+    HirStructMethodLookupKey key;
+    key.owner_key = owner_key;
+    key.method_text_id = method_text_id;
+    key.is_const_method = is_const_method;
+    if (hir_struct_method_lookup_key_has_complete_metadata(key)) return key;
+  }
+  return std::nullopt;
+}
+
+void Lowerer::record_struct_method_mangled_lookup_parity(
+    const std::string& tag,
+    const std::string& method,
+    bool is_const_method,
+    const std::string& rendered_mangled) const {
+  const auto key = make_struct_method_lookup_key(tag, method, is_const_method);
+  if (!key) return;
+  ++struct_method_mangled_lookup_parity_checks_;
+  const auto it = struct_methods_by_owner_.find(*key);
+  if (it == struct_methods_by_owner_.end() || it->second != rendered_mangled) {
+    ++struct_method_mangled_lookup_parity_mismatches_;
+  }
+}
+
+void Lowerer::record_struct_method_link_name_lookup_parity(
+    const std::string& tag,
+    const std::string& method,
+    bool is_const_method,
+    LinkNameId rendered_link_name_id) const {
+  const auto key = make_struct_method_lookup_key(tag, method, is_const_method);
+  if (!key) return;
+  ++struct_method_link_name_lookup_parity_checks_;
+  const auto it = struct_method_link_name_ids_by_owner_.find(*key);
+  if (it == struct_method_link_name_ids_by_owner_.end() ||
+      it->second != rendered_link_name_id) {
+    ++struct_method_link_name_lookup_parity_mismatches_;
+  }
+}
+
+namespace {
+
+bool same_type_spec_for_struct_method_lookup_parity(
+    const TypeSpec& a,
+    const TypeSpec& b) {
+  if (a.base != b.base || a.enum_underlying_base != b.enum_underlying_base ||
+      a.ptr_level != b.ptr_level || a.is_lvalue_ref != b.is_lvalue_ref ||
+      a.is_rvalue_ref != b.is_rvalue_ref || a.align_bytes != b.align_bytes ||
+      a.array_size != b.array_size || a.array_rank != b.array_rank ||
+      a.is_ptr_to_array != b.is_ptr_to_array || a.inner_rank != b.inner_rank ||
+      a.is_vector != b.is_vector || a.vector_lanes != b.vector_lanes ||
+      a.vector_bytes != b.vector_bytes || a.array_size_expr != b.array_size_expr ||
+      a.is_const != b.is_const || a.is_volatile != b.is_volatile ||
+      a.is_fn_ptr != b.is_fn_ptr || a.is_packed != b.is_packed ||
+      a.is_noinline != b.is_noinline || a.is_always_inline != b.is_always_inline ||
+      a.tpl_struct_origin != b.tpl_struct_origin ||
+      a.tpl_struct_args.data != b.tpl_struct_args.data ||
+      a.tpl_struct_args.size != b.tpl_struct_args.size ||
+      a.deferred_member_type_name != b.deferred_member_type_name ||
+      a.n_qualifier_segments != b.n_qualifier_segments ||
+      a.is_global_qualified != b.is_global_qualified) {
+    return false;
+  }
+  const std::string a_tag = a.tag ? a.tag : "";
+  const std::string b_tag = b.tag ? b.tag : "";
+  if (a_tag != b_tag) return false;
+  for (int i = 0; i < a.array_rank && i < 8; ++i) {
+    if (a.array_dims[i] != b.array_dims[i]) return false;
+  }
+  for (int i = 0; i < a.n_qualifier_segments; ++i) {
+    const std::string a_segment =
+        a.qualifier_segments && a.qualifier_segments[i] ? a.qualifier_segments[i] : "";
+    const std::string b_segment =
+        b.qualifier_segments && b.qualifier_segments[i] ? b.qualifier_segments[i] : "";
+    if (a_segment != b_segment) return false;
+  }
+  return true;
+}
+
+}  // namespace
+
+void Lowerer::record_struct_method_return_type_lookup_parity(
+    const std::string& tag,
+    const std::string& method,
+    bool is_const_method,
+    const TypeSpec& rendered_return_type) const {
+  const auto key = make_struct_method_lookup_key(tag, method, is_const_method);
+  if (!key) return;
+  ++struct_method_return_type_lookup_parity_checks_;
+  const auto it = struct_method_ret_types_by_owner_.find(*key);
+  if (it == struct_method_ret_types_by_owner_.end() ||
+      !same_type_spec_for_struct_method_lookup_parity(it->second, rendered_return_type)) {
+    ++struct_method_return_type_lookup_parity_mismatches_;
+  }
+}
+
 std::optional<std::string> Lowerer::find_struct_method_mangled(
     const std::string& tag,
     const std::string& method,
@@ -363,10 +469,18 @@ std::optional<std::string> Lowerer::find_struct_method_mangled(
   auto try_local = [&]() -> std::optional<std::string> {
     auto it = is_const_obj ? struct_methods_.find(const_key)
                            : struct_methods_.find(base_key);
-    if (it != struct_methods_.end()) return it->second;
+    if (it != struct_methods_.end()) {
+      record_struct_method_mangled_lookup_parity(
+          tag, method, is_const_obj, it->second);
+      return it->second;
+    }
     it = is_const_obj ? struct_methods_.find(base_key)
                       : struct_methods_.find(const_key);
-    if (it != struct_methods_.end()) return it->second;
+    if (it != struct_methods_.end()) {
+      record_struct_method_mangled_lookup_parity(
+          tag, method, !is_const_obj, it->second);
+      return it->second;
+    }
     return std::nullopt;
   };
   if (auto local = try_local()) return local;
@@ -391,10 +505,18 @@ std::optional<LinkNameId> Lowerer::find_struct_method_link_name_id(
   auto try_local = [&]() -> std::optional<LinkNameId> {
     auto it = is_const_obj ? struct_method_link_name_ids_.find(const_key)
                            : struct_method_link_name_ids_.find(base_key);
-    if (it != struct_method_link_name_ids_.end()) return it->second;
+    if (it != struct_method_link_name_ids_.end()) {
+      record_struct_method_link_name_lookup_parity(
+          tag, method, is_const_obj, it->second);
+      return it->second;
+    }
     it = is_const_obj ? struct_method_link_name_ids_.find(base_key)
                       : struct_method_link_name_ids_.find(const_key);
-    if (it != struct_method_link_name_ids_.end()) return it->second;
+    if (it != struct_method_link_name_ids_.end()) {
+      record_struct_method_link_name_lookup_parity(
+          tag, method, !is_const_obj, it->second);
+      return it->second;
+    }
     return std::nullopt;
   };
   if (auto local = try_local()) return local;
@@ -419,10 +541,18 @@ std::optional<TypeSpec> Lowerer::find_struct_method_return_type(
   auto try_local = [&]() -> std::optional<TypeSpec> {
     auto it = is_const_obj ? struct_method_ret_types_.find(const_key)
                            : struct_method_ret_types_.find(base_key);
-    if (it != struct_method_ret_types_.end()) return it->second;
+    if (it != struct_method_ret_types_.end()) {
+      record_struct_method_return_type_lookup_parity(
+          tag, method, is_const_obj, it->second);
+      return it->second;
+    }
     it = is_const_obj ? struct_method_ret_types_.find(base_key)
                       : struct_method_ret_types_.find(const_key);
-    if (it != struct_method_ret_types_.end()) return it->second;
+    if (it != struct_method_ret_types_.end()) {
+      record_struct_method_return_type_lookup_parity(
+          tag, method, !is_const_obj, it->second);
+      return it->second;
+    }
     return std::nullopt;
   };
   if (auto local = try_local()) return local;

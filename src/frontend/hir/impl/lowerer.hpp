@@ -381,6 +381,25 @@ class Lowerer {
       const std::string& tag,
       const std::string& method,
       bool is_const_obj) const;
+  std::optional<HirStructMethodLookupKey> make_struct_method_lookup_key(
+      const std::string& tag,
+      const std::string& method,
+      bool is_const_method) const;
+  void record_struct_method_mangled_lookup_parity(
+      const std::string& tag,
+      const std::string& method,
+      bool is_const_method,
+      const std::string& rendered_mangled) const;
+  void record_struct_method_link_name_lookup_parity(
+      const std::string& tag,
+      const std::string& method,
+      bool is_const_method,
+      LinkNameId rendered_link_name_id) const;
+  void record_struct_method_return_type_lookup_parity(
+      const std::string& tag,
+      const std::string& method,
+      bool is_const_method,
+      const TypeSpec& rendered_return_type) const;
 
   ExprId append_expr(const Node* src,
                      ExprPayload payload,
@@ -998,14 +1017,20 @@ class Lowerer {
   std::unordered_map<std::string, std::string> struct_methods_;
   std::unordered_map<HirStructMethodLookupKey, std::string, HirStructMethodLookupKeyHash>
       struct_methods_by_owner_;
+  mutable size_t struct_method_mangled_lookup_parity_checks_ = 0;
+  mutable size_t struct_method_mangled_lookup_parity_mismatches_ = 0;
   // Struct method map: "struct_tag::method_name" → link-visible symbol id.
   std::unordered_map<std::string, LinkNameId> struct_method_link_name_ids_;
   std::unordered_map<HirStructMethodLookupKey, LinkNameId, HirStructMethodLookupKeyHash>
       struct_method_link_name_ids_by_owner_;
+  mutable size_t struct_method_link_name_lookup_parity_checks_ = 0;
+  mutable size_t struct_method_link_name_lookup_parity_mismatches_ = 0;
   // Struct method return types: "struct_tag::method_name" → return TypeSpec.
   std::unordered_map<std::string, TypeSpec> struct_method_ret_types_;
   std::unordered_map<HirStructMethodLookupKey, TypeSpec, HirStructMethodLookupKeyHash>
       struct_method_ret_types_by_owner_;
+  mutable size_t struct_method_return_type_lookup_parity_checks_ = 0;
+  mutable size_t struct_method_return_type_lookup_parity_mismatches_ = 0;
   // Top-level function definitions keyed by unqualified name for early
   // template-deduction return-type probes before ordinary functions are
   // lowered into the module.
