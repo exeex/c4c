@@ -486,4 +486,21 @@ AggregateTypeLayout compute_aggregate_type_layout(std::string_view text,
   return layout;
 }
 
+AggregateTypeLayout lookup_backend_aggregate_type_layout(
+    std::string_view text,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts) {
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
+  if (!trimmed.empty() && trimmed.front() == '%') {
+    const auto structured_it = structured_layouts.find(std::string(trimmed));
+    if (structured_it != structured_layouts.end() &&
+        structured_it->second.parity_checked &&
+        structured_it->second.parity_matches) {
+      return structured_it->second.structured_layout;
+    }
+  }
+
+  return compute_aggregate_type_layout(trimmed, type_decls);
+}
+
 }  // namespace c4c::backend::lir_to_bir_detail

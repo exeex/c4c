@@ -136,6 +136,10 @@ std::optional<std::int64_t> resolve_index_operand(
     const ValueMap& value_aliases);
 AggregateTypeLayout compute_aggregate_type_layout(std::string_view text,
                                                   const TypeDeclMap& type_decls);
+AggregateTypeLayout lookup_backend_aggregate_type_layout(
+    std::string_view text,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts);
 std::optional<IntegerArrayType> parse_integer_array_type(std::string_view text);
 std::optional<GlobalAddress> parse_global_address_initializer(std::string_view text,
                                                               const TypeDeclMap& type_decls);
@@ -195,7 +199,8 @@ class BirFunctionLowerer {
                      const c4c::codegen::lir::LirFunction& function,
                      const lir_to_bir_detail::GlobalTypes& global_types,
                      const lir_to_bir_detail::FunctionSymbolSet& function_symbols,
-                     const lir_to_bir_detail::TypeDeclMap& type_decls);
+                     const lir_to_bir_detail::TypeDeclMap& type_decls,
+                     const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts);
 
   std::optional<bir::Function> lower();
 
@@ -971,6 +976,7 @@ class BirFunctionLowerer {
   const GlobalTypes& global_types_;
   const FunctionSymbolSet& function_symbols_;
   const TypeDeclMap& type_decls_;
+  const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts_;
 
   bir::Function lowered_function_;
   std::optional<LoweredReturnInfo> return_info_;

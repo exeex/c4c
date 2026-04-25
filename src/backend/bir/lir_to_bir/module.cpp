@@ -152,12 +152,15 @@ BirFunctionLowerer::BirFunctionLowerer(BirLoweringContext& context,
                                        const c4c::codegen::lir::LirFunction& function,
                                        const GlobalTypes& global_types,
                                        const FunctionSymbolSet& function_symbols,
-                                       const TypeDeclMap& type_decls)
+                                       const TypeDeclMap& type_decls,
+                                       const lir_to_bir_detail::BackendStructuredLayoutTable&
+                                           structured_layouts)
     : context_(context),
       function_(function),
       global_types_(global_types),
       function_symbols_(function_symbols),
-      type_decls_(type_decls) {}
+      type_decls_(type_decls),
+      structured_layouts_(structured_layouts) {}
 
 bool BirFunctionLowerer::canonicalize_compare_return_alias(
     const c4c::codegen::lir::LirOperand& ret_value,
@@ -928,7 +931,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     }
 
     BirFunctionLowerer function_lowerer(
-        context, resolved_function, global_types, function_symbols, type_decls);
+        context, resolved_function, global_types, function_symbols, type_decls, structured_layouts);
     auto lowered_function = function_lowerer.lower();
     if (!lowered_function.has_value()) {
       std::string message = "semantic lir_to_bir failed outside the ";

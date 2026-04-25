@@ -5,6 +5,7 @@
 namespace c4c::backend {
 
 using lir_to_bir_detail::compute_aggregate_type_layout;
+using lir_to_bir_detail::lookup_backend_aggregate_type_layout;
 using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::type_size_bytes;
 
@@ -109,13 +110,18 @@ std::optional<BirFunctionLowerer::AggregateTypeLayout> BirFunctionLowerer::lower
 
 std::vector<std::pair<std::size_t, std::string>> BirFunctionLowerer::collect_sorted_leaf_slots(
     const LocalAggregateSlots& aggregate_slots) const {
-  const auto layout = lower_byval_aggregate_layout(aggregate_slots.type_text, type_decls_);
-  if (!layout.has_value()) {
+  const auto layout =
+      lookup_backend_aggregate_type_layout(aggregate_slots.type_text,
+                                           type_decls_,
+                                           structured_layouts_);
+  if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
+       layout.kind != AggregateTypeLayout::Kind::Array) ||
+      layout.size_bytes == 0 || layout.align_bytes == 0) {
     return {};
   }
 
   const auto begin_offset = aggregate_slots.base_byte_offset;
-  const auto end_offset = begin_offset + layout->size_bytes;
+  const auto end_offset = begin_offset + layout.size_bytes;
   std::vector<std::pair<std::size_t, std::string>> leaves;
   leaves.reserve(aggregate_slots.leaf_slots.size());
   for (const auto& [byte_offset, slot_name] : aggregate_slots.leaf_slots) {
