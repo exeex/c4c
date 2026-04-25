@@ -441,6 +441,11 @@ const Node* Lowerer::find_template_struct_primary(const std::string& name) const
 const std::vector<const Node*>* Lowerer::find_template_struct_specializations(
     const Node* primary_tpl) const {
   if (!primary_tpl || !primary_tpl->name) return nullptr;
+  if (const auto* specializations =
+          ct_state_->find_template_struct_specializations(primary_tpl,
+                                                          primary_tpl->name)) {
+    return specializations;
+  }
   auto it = template_struct_specializations_.find(primary_tpl->name);
   return it != template_struct_specializations_.end() ? &it->second : nullptr;
 }

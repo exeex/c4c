@@ -8,17 +8,15 @@ Current Step Title: Dual-read lookup paths
 
 ## Just Finished
 
-Step 4 implementation packet completed in `src/frontend/hir/compile_time_engine.hpp`: routed the existing `find_template_struct_specializations(const Node* primary_def)` overload through the structured owner lookup.
-
-The overload still preserves the existing null and `primary_def->name` guard, and now calls `find_template_struct_specializations(primary_def, primary_def->name)` so the structured key is tried first with the rendered primary name as the legacy fallback.
+Step 4 implementation packet completed in `src/frontend/hir/impl/templates/templates.cpp`: routed `Lowerer::find_template_struct_specializations(const Node* primary_tpl)` through `ct_state_->find_template_struct_specializations(primary_tpl, primary_tpl->name)` before consulting the lowering-owned rendered-name fallback map.
 
 ## Suggested Next
 
-Next coherent packet: route one additional declaration-aware lookup path to an existing structured helper where the declaration pointer and rendered fallback are already in hand.
+Next coherent packet: review the remaining Step 4 declaration-aware lookup wrappers and route the next one with an existing structured helper plus its rendered-name fallback.
 
 ## Watchouts
 
-This packet intentionally changed only the `const Node*` template struct specialization lookup overload. The string-only lookup and registration paths remain available as rendered-name fallbacks, and no emitted names, diagnostics, or tests were changed.
+This packet intentionally changed only the Lowerer wrapper. The local `template_struct_specializations_` fallback remains in place and is consulted only when the structured `CompileTimeState` lookup has no hit.
 
 ## Proof
 
