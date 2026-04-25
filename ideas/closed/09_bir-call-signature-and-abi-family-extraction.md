@@ -108,3 +108,15 @@ src/backend/bir/lir_to_bir/call_abi.cpp
 - Do not introduce a call-lowering state owner.
 - Do not convert member call lowering into free functions over
   `BirFunctionLowerer& self`.
+
+## Closure
+
+Closed after the implementation split landed through `4e8a051f`.
+`src/backend/bir/lir_to_bir/call_abi.cpp` owns the signature and ABI helper
+family, `calling.cpp` still owns main call and runtime intrinsic behavior, no
+new headers were added, and `lowering.hpp` remains the private declaration
+index.
+
+Close proof used the canonical broad call-family logs:
+`test_before.log` and `test_after.log` both covered 71 tests with 71 passed,
+and `c4c-regression-guard` reported no regressions.
