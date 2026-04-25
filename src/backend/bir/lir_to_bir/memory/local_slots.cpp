@@ -1219,6 +1219,7 @@ bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
                                          slot,
                                          local_slot_address_slots,
                                          type_decls,
+                                         structured_layouts_,
                                          local_slot_pointer_values,
                                          local_aggregate_slots,
                                          local_pointer_array_bases);
@@ -1260,6 +1261,44 @@ void BirFunctionLowerer::record_loaded_local_pointer_slot_state(
     std::string_view slot_name,
     const LocalSlotAddressSlots& local_slot_address_slots,
     const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts,
+    LocalSlotPointerValues* local_slot_pointer_values,
+    LocalAggregateSlotMap* local_aggregate_slots,
+    LocalPointerArrayBaseMap* local_pointer_array_bases) {
+  record_loaded_local_pointer_slot_state(result_name,
+                                         slot_name,
+                                         local_slot_address_slots,
+                                         type_decls,
+                                         &structured_layouts,
+                                         local_slot_pointer_values,
+                                         local_aggregate_slots,
+                                         local_pointer_array_bases);
+}
+
+void BirFunctionLowerer::record_loaded_local_pointer_slot_state(
+    std::string_view result_name,
+    std::string_view slot_name,
+    const LocalSlotAddressSlots& local_slot_address_slots,
+    const TypeDeclMap& type_decls,
+    LocalSlotPointerValues* local_slot_pointer_values,
+    LocalAggregateSlotMap* local_aggregate_slots,
+    LocalPointerArrayBaseMap* local_pointer_array_bases) {
+  record_loaded_local_pointer_slot_state(result_name,
+                                         slot_name,
+                                         local_slot_address_slots,
+                                         type_decls,
+                                         nullptr,
+                                         local_slot_pointer_values,
+                                         local_aggregate_slots,
+                                         local_pointer_array_bases);
+}
+
+void BirFunctionLowerer::record_loaded_local_pointer_slot_state(
+    std::string_view result_name,
+    std::string_view slot_name,
+    const LocalSlotAddressSlots& local_slot_address_slots,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts,
     LocalSlotPointerValues* local_slot_pointer_values,
     LocalAggregateSlotMap* local_aggregate_slots,
     LocalPointerArrayBaseMap* local_pointer_array_bases) {
@@ -1270,13 +1309,13 @@ void BirFunctionLowerer::record_loaded_local_pointer_slot_state(
 
   const auto result = std::string(result_name);
   (*local_slot_pointer_values)[result] = local_slot_it->second;
-  const auto loaded_layout =
-      compute_aggregate_type_layout(local_slot_it->second.type_text, type_decls);
+  const auto loaded_layout = lookup_scalar_byte_offset_layout(
+      local_slot_it->second.type_text, type_decls, structured_layouts);
   if (loaded_layout.kind == AggregateTypeLayout::Kind::Array &&
       !local_slot_it->second.array_element_slots.empty() &&
       local_slot_it->second.byte_offset >= 0) {
-    const auto element_layout =
-        compute_aggregate_type_layout(loaded_layout.element_type_text, type_decls);
+    const auto element_layout = lookup_scalar_byte_offset_layout(
+        loaded_layout.element_type_text, type_decls, structured_layouts);
     if (element_layout.kind == AggregateTypeLayout::Kind::Scalar &&
         element_layout.size_bytes != 0) {
       LocalAggregateSlots aggregate_view{

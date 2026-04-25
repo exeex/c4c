@@ -933,6 +933,24 @@ class BirFunctionLowerer {
       std::string_view slot_name,
       const LocalSlotAddressSlots& local_slot_address_slots,
       const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts,
+      LocalSlotPointerValues* local_slot_pointer_values,
+      LocalAggregateSlotMap* local_aggregate_slots,
+      LocalPointerArrayBaseMap* local_pointer_array_bases);
+  static void record_loaded_local_pointer_slot_state(
+      std::string_view result_name,
+      std::string_view slot_name,
+      const LocalSlotAddressSlots& local_slot_address_slots,
+      const TypeDeclMap& type_decls,
+      LocalSlotPointerValues* local_slot_pointer_values,
+      LocalAggregateSlotMap* local_aggregate_slots,
+      LocalPointerArrayBaseMap* local_pointer_array_bases);
+  static void record_loaded_local_pointer_slot_state(
+      std::string_view result_name,
+      std::string_view slot_name,
+      const LocalSlotAddressSlots& local_slot_address_slots,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
       LocalSlotPointerValues* local_slot_pointer_values,
       LocalAggregateSlotMap* local_aggregate_slots,
       LocalPointerArrayBaseMap* local_pointer_array_bases);
