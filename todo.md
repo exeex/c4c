@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/08_bir-address-projection-model-consolidation.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Reuse Shared Projection Helpers
+Current Step ID: Step 4
+Current Step Title: Normalize Projection Naming
 
 Code Review Reminder Handled: review/address-projection-step3-review.md found Step 3 helper reuse aligned and recommended continuing Step 3.
 Test Baseline Reminder Handled: accepted full-suite test_baseline.log for commit c97d5e69 after 3071 passed, 0 failed.
@@ -11,9 +11,9 @@ Test Baseline Reminder Handled: accepted full-suite test_baseline.log for commit
 
 ## Just Finished
 
-Step 3 continued shared projection-helper reuse in `local_gep.cpp`.
+Step 3 is complete for the active runbook surface.
 
-Consolidated traversal:
+Completed helper-reuse coverage:
 
 - The constant-index array/struct child traversal before a local dynamic
   pointer-array index in `resolve_local_aggregate_dynamic_pointer_array_access`
@@ -25,12 +25,22 @@ Consolidated traversal:
   and local slot publication policy remain local to the caller path.
 - The dynamic tail walk keeps its existing layout validity guards before using
   the helper for child offset and next-type projection.
+- The dynamic aggregate array projection surface named by the Step 3 review is
+  already covered by the shared extent/projection helpers: global and local
+  dynamic aggregate array access both use
+  `find_repeated_aggregate_extent_at_offset`, and dynamic local aggregate GEP
+  projection reuses `resolve_local_aggregate_gep_slot`, whose constant child
+  traversal now consumes `resolve_aggregate_child_index_projection`.
+- No remaining Step 3 packet is needed before naming normalization. The
+  remaining dynamic aggregate array behavior is extent-based and should stay at
+  the caller sites unless a later runbook explicitly changes that policy.
 
 ## Suggested Next
 
-Continue Step 3 by applying the shared projection helper to another bounded
-constant-index aggregate traversal, or ask the reviewer to check whether the
-remaining helper-reuse opportunities are still within this runbook step.
+Begin Step 4 by normalizing projection naming only within the active
+consolidation surface touched by Steps 2 and 3. Focus on shared terms for byte
+offset, child type/index, element stride, repeated extent, and scalar leaf
+facts while avoiding cosmetic churn outside the updated helper/call-site code.
 
 ## Watchouts
 
@@ -44,8 +54,9 @@ remaining helper-reuse opportunities are still within this runbook step.
 - Be careful with first-index policy: local aggregate GEP, absolute global GEP,
   relative global GEP, dynamic aggregate GEP, and runtime pointer provenance use
   similar layout math but different acceptance rules.
-- Dynamic aggregate GEP paths still open-code related traversal and remain
-  candidates for separate bounded packets.
+- Treat dynamic aggregate array access as extent-based unless future execution
+  finds a genuine duplicated projection walk that is not already routed through
+  `find_repeated_aggregate_extent_at_offset` or `resolve_local_aggregate_gep_slot`.
 
 ## Proof
 
