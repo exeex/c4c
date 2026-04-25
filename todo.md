@@ -8,24 +8,20 @@ Current Step Title: Move Initializer Parsing Helpers
 
 ## Just Finished
 
-Completed Step 2 by adding
-`src/backend/bir/lir_to_bir/global_initializers.cpp`, registering it in the
-explicit `backend_lir_to_bir_notes_test` lir-to-bir source list, and adding the
-private `lowering.hpp` declarations needed by the planned initializer moves.
-`src/codegen/CMakeLists.txt` already uses the recursive codegen source glob, so
-the new implementation file is picked up there without explicit listing.
-
-Compile-only declaration adjustment made in `globals.cpp`:
-`IntegerArrayType` now lives in `lowering.hpp`, and the functions declared for
-the split have external linkage instead of anonymous-namespace linkage while
-their helper functions remain private.
+Completed Step 3 by mechanically moving the global initializer parser helpers
+from `src/backend/bir/lir_to_bir/globals.cpp` into
+`src/backend/bir/lir_to_bir/global_initializers.cpp`.
+`parse_global_address_initializer` is now implemented in
+`global_initializers.cpp`, with `parse_global_symbol_initializer` and
+`parse_global_gep_initializer` remaining private to that translation unit.
+`globals.cpp` continues to compile against the moved parser entry through
+`lowering.hpp`.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: mechanically move the initializer parser and
-lowerer implementation family from `globals.cpp` into
-`global_initializers.cpp`, preserving behavior and keeping shared declarations
-limited to `lowering.hpp`.
+Execute Step 4 from `plan.md`: mechanically move the initializer lowering
+helpers from `globals.cpp` into `global_initializers.cpp`, preserving behavior
+and keeping global entry behavior in `globals.cpp`.
 
 ## Watchouts
 
@@ -38,16 +34,16 @@ limited to `lowering.hpp`.
 - `lower_scalar_global` and `lower_minimal_global` already call the declared
   initializer functions through `lowering.hpp`; avoid adding duplicate wrappers
   in `globals.cpp`.
-- `globals.cpp` currently owns `<array>`, `<charconv>`, and `<cstring>` because
-  initializer helpers need them; after the move, `global_initializers.cpp`
-  should include what it uses and `globals.cpp` should keep only includes still
-  required by the stay set.
+- `globals.cpp` still owns `<array>`, `<charconv>`, and `<cstring>` because
+  the Step 4 lowerer helpers remain there.
+- `parse_integer_array_type` remains in `globals.cpp` for now and is declared
+  through `lowering.hpp`; move it only if the Step 4 lowerer extraction needs
+  to take ownership of the integer-array parsing/lowering family together.
 
 ## Proof
 
-Proof commands run successfully:
+Proof command run successfully:
 
-- `cmake --build --preset default --target c4c_codegen`
-- `cmake --build --preset default --target backend_lir_to_bir_notes_test`
+- `cmake --build --preset default --target c4c_codegen && cmake --build --preset default --target backend_lir_to_bir_notes_test`
 
 Proof log path: `test_after.log`.
