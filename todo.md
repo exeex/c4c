@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/100_hir_compile_time_template_consteval_dual_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define structured registry keys
+Current Step ID: 4
+Current Step Title: Dual-read lookup paths
 
 # Current Packet
 
