@@ -75,4 +75,11 @@ bool can_reinterpret_byte_storage_as_type(
     std::string_view target_type_text,
     const BirFunctionLowerer::TypeDeclMap& type_decls);
 
+bool can_reinterpret_byte_storage_as_type(
+    std::string_view storage_type_text,
+    std::size_t target_byte_offset,
+    std::string_view target_type_text,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts);
+
 }  // namespace c4c::backend

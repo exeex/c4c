@@ -496,17 +496,36 @@ class BirFunctionLowerer {
       std::size_t target_offset,
       std::string_view repeated_type_text,
       const TypeDeclMap& type_decls);
+  static std::optional<AggregateArrayExtent> find_repeated_aggregate_extent_at_offset(
+      std::string_view type_text,
+      std::size_t target_offset,
+      std::string_view repeated_type_text,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts);
   static std::optional<AggregateArrayExtent> find_nested_repeated_aggregate_extent_at_offset(
       std::string_view type_text,
       std::size_t target_offset,
       std::string_view repeated_type_text,
       const TypeDeclMap& type_decls);
+  static std::optional<AggregateArrayExtent> find_nested_repeated_aggregate_extent_at_offset(
+      std::string_view type_text,
+      std::size_t target_offset,
+      std::string_view repeated_type_text,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts);
   static std::optional<LocalAggregateGepTarget> resolve_relative_gep_target(
       std::string_view type_text,
       std::int64_t base_byte_offset,
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls);
+  static std::optional<LocalAggregateGepTarget> resolve_relative_gep_target(
+      std::string_view type_text,
+      std::int64_t base_byte_offset,
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts);
   static std::optional<std::size_t> find_pointer_array_length_at_offset(
       std::string_view type_text,
       std::size_t target_offset,
@@ -579,7 +598,28 @@ class BirFunctionLowerer {
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls,
       const LocalAggregateSlots& aggregate_slots);
+  static std::optional<std::string> resolve_local_aggregate_gep_slot(
+      std::string_view base_type_text,
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
+      const LocalAggregateSlots& aggregate_slots);
   static std::optional<std::vector<std::string>> resolve_local_aggregate_pointer_array_slots(
+      std::string_view base_type_text,
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const LocalAggregateSlots& aggregate_slots);
+  static std::optional<std::vector<std::string>> resolve_local_aggregate_pointer_array_slots(
+      std::string_view base_type_text,
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
+      const LocalAggregateSlots& aggregate_slots);
+  static std::optional<DynamicLocalPointerArrayAccess>
+  resolve_local_aggregate_dynamic_pointer_array_access(
       std::string_view base_type_text,
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
@@ -591,6 +631,7 @@ class BirFunctionLowerer {
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
       const LocalAggregateSlots& aggregate_slots);
   static std::optional<LocalAggregateGepTarget> resolve_local_aggregate_gep_target(
       std::string_view base_type_text,
@@ -598,11 +639,27 @@ class BirFunctionLowerer {
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls,
       const LocalAggregateSlots& aggregate_slots);
-  static std::optional<DynamicLocalAggregateArrayAccess> resolve_local_dynamic_aggregate_array_access(
+  static std::optional<LocalAggregateGepTarget> resolve_local_aggregate_gep_target(
       std::string_view base_type_text,
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
+      const LocalAggregateSlots& aggregate_slots);
+  static std::optional<DynamicLocalAggregateArrayAccess>
+  resolve_local_dynamic_aggregate_array_access(
+      std::string_view base_type_text,
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const LocalAggregateSlots& aggregate_slots);
+  static std::optional<DynamicLocalAggregateArrayAccess>
+  resolve_local_dynamic_aggregate_array_access(
+      std::string_view base_type_text,
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
       const LocalAggregateSlots& aggregate_slots);
   static std::optional<DynamicLocalAggregateArrayAccess>
   build_dynamic_local_aggregate_array_access(
@@ -611,11 +668,26 @@ class BirFunctionLowerer {
       const LocalAggregateSlots& aggregate_slots,
       const bir::Value& index,
       const TypeDeclMap& type_decls);
+  static std::optional<DynamicLocalAggregateArrayAccess>
+  build_dynamic_local_aggregate_array_access(
+      bir::TypeKind element_type,
+      std::size_t byte_offset,
+      const LocalAggregateSlots& aggregate_slots,
+      const bir::Value& index,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts);
   static std::optional<DynamicLocalPointerArrayAccess>
   resolve_dynamic_local_aggregate_gep_projection(
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls,
+      const DynamicLocalAggregateArrayAccess& access);
+  static std::optional<DynamicLocalPointerArrayAccess>
+  resolve_dynamic_local_aggregate_gep_projection(
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
       const DynamicLocalAggregateArrayAccess& access);
   static std::optional<bool> try_lower_dynamic_local_aggregate_gep_projection(
       const c4c::codegen::lir::LirGepOp& gep,
@@ -623,10 +695,24 @@ class BirFunctionLowerer {
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls,
       DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays);
+  static std::optional<bool> try_lower_dynamic_local_aggregate_gep_projection(
+      const c4c::codegen::lir::LirGepOp& gep,
+      const DynamicLocalAggregateArrayMap& dynamic_local_aggregate_arrays,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
+      DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays);
   static std::optional<bool> try_lower_local_slot_pointer_gep(
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls,
+      const LocalSlotTypes& local_slot_types,
+      LocalSlotPointerValues* local_slot_pointer_values);
+  static std::optional<bool> try_lower_local_slot_pointer_gep(
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
       const LocalSlotTypes& local_slot_types,
       LocalSlotPointerValues* local_slot_pointer_values);
   static std::optional<bool> try_lower_local_array_slot_gep(
@@ -645,10 +731,33 @@ class BirFunctionLowerer {
       DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
       DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
       LocalSlotPointerValues* local_slot_pointer_values);
+  static std::optional<bool> try_lower_local_pointer_array_base_gep(
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
+      const LocalSlotTypes& local_slot_types,
+      LocalPointerSlots* local_pointer_slots,
+      LocalPointerArrayBaseMap* local_pointer_array_bases,
+      DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
+      DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
+      LocalSlotPointerValues* local_slot_pointer_values);
   static std::optional<bool> try_lower_local_pointer_slot_base_gep(
       const c4c::codegen::lir::LirGepOp& gep,
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls,
+      const LocalSlotTypes& local_slot_types,
+      const LocalArraySlotMap& local_array_slots,
+      const LocalAggregateSlotMap& local_aggregate_slots,
+      LocalPointerSlots* local_pointer_slots,
+      LocalPointerArrayBaseMap* local_pointer_array_bases,
+      DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
+      DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays);
+  static std::optional<bool> try_lower_local_pointer_slot_base_gep(
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
       const LocalSlotTypes& local_slot_types,
       const LocalArraySlotMap& local_array_slots,
       const LocalAggregateSlotMap& local_aggregate_slots,
