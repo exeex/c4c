@@ -1,27 +1,24 @@
 Status: Active
 Source Idea Path: ideas/open/111_lir_struct_decl_printer_authority_switch.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Run Focused LLVM Parity Coverage
+Current Step ID: Step 5
+Current Step Title: Broader Validation Checkpoint
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 - Run Focused LLVM Parity Coverage is complete.
+Step 5 - Broader Validation Checkpoint is complete.
 
-The supervisor-selected focused LLVM parity coverage after the struct
-declaration printer authority switch passed. The command rebuilt `c4cll` and
-the four frontend LIR type-reference targets, then ran the delegated LLVM,
-variadic ABI, split-LLVM, template, record-layout, and builtin-layout CTest
-subset.
+The supervisor-selected broader validation checkpoint for the struct
+declaration printer authority switch passed. The command rebuilt the configured
+build tree and ran the full CTest suite.
 
 ## Suggested Next
 
-Delegate Step 5 as a broader validation checkpoint. Suggested packet: run the
-supervisor-selected broader repo-native validation, preserve the canonical log
-state requested by the supervisor, and record whether the authority switch is
-ready for lifecycle review or closure.
+The active idea appears ready for supervisor lifecycle closure review. Suggested
+packet: have the plan owner decide whether to close, deactivate, or split the
+active lifecycle state.
 
 ## Watchouts
 
@@ -30,35 +27,20 @@ ready for lifecycle review or closure.
 - Do not broaden the switch to global, function, extern, call, backend, BIR,
   MIR, or layout lookup authority.
 - Do not rewrite expectations or downgrade tests as proof.
-- Focused parity coverage is green, but Step 5 should still decide whether a
-  broader validation checkpoint is needed before lifecycle review or closure.
+- Broader validation is green, so there are no current validation blockers for
+  lifecycle closure review.
 
 ## Proof
 
-Supervisor-selected proof passed, and the full output is preserved in
+Supervisor-selected broader validation passed, and the full output is preserved in
 `test_after.log`.
 
 Command:
-`{ cmake --build build --target c4cll frontend_lir_global_type_ref_test frontend_lir_function_signature_type_ref_test frontend_lir_extern_decl_type_ref_test frontend_lir_call_type_ref_test && ctest --test-dir build -R '^(frontend_lir_(global_type_ref|function_signature_type_ref|extern_decl_type_ref|call_type_ref)|positive_sema_ok_call_variadic_aggregate_runtime_c|abi_abi_variadic_(forward_wrapper_c|struct_result_c|va_copy_accumulate_c)|positive_split_llvm_pragma_exec|cpp_hir_template_(struct_body_instantiation|struct_arg_materialization|function_pack_signature_binding)|cpp_hir_record_(packed_aligned_layout|field_array_layout)|cpp_hir_builtin_layout_query_(sizeof_type|alignof_type|alignof_expr))$' --output-on-failure; } > test_after.log 2>&1`
+`{ cmake --build build && ctest --test-dir build -j --output-on-failure; } > test_after.log 2>&1`
 
 Result:
-- Build completed for `c4cll` and all four delegated frontend LIR test
-  targets; Ninja reported no work to do.
-- CTest passed 17/17:
-  `frontend_lir_global_type_ref`,
-  `frontend_lir_function_signature_type_ref`,
-  `frontend_lir_extern_decl_type_ref`,
-  `frontend_lir_call_type_ref`,
-  `positive_sema_ok_call_variadic_aggregate_runtime_c`,
-  `abi_abi_variadic_forward_wrapper_c`,
-  `abi_abi_variadic_struct_result_c`,
-  `abi_abi_variadic_va_copy_accumulate_c`,
-  `positive_split_llvm_pragma_exec`,
-  `cpp_hir_template_struct_body_instantiation`,
-  `cpp_hir_template_struct_arg_materialization`,
-  `cpp_hir_template_function_pack_signature_binding`,
-  `cpp_hir_record_packed_aligned_layout`,
-  `cpp_hir_record_field_array_layout`,
-  `cpp_hir_builtin_layout_query_sizeof_type`,
-  `cpp_hir_builtin_layout_query_alignof_type`, and
-  `cpp_hir_builtin_layout_query_alignof_expr`.
+- Build completed successfully.
+- CTest passed 2980/2980.
+- The full suite result was `100% tests passed, 0 tests failed out of 2980`.
+- Based on this validation checkpoint, the active idea appears ready for
+  lifecycle closure review.
