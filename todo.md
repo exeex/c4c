@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/108_lir_struct_name_id_for_globals_functions_and_externs.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Dual-Write Global Type Mirrors
+Current Step ID: 3
+Current Step Title: Dual-Write Function Signature Mirrors
 
 # Current Packet
 
