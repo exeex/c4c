@@ -12,25 +12,24 @@ Test Baseline Reminder Handled: no test_baseline.new.log exists for this todo-on
 
 ## Just Finished
 
-Step 3 started shared projection-helper reuse by adding
-`resolve_aggregate_child_index_projection`, a pure helper for one constant
-array-element or struct-field child traversal step.
+Step 3 continued shared projection-helper reuse in `local_gep.cpp`.
 
 Consolidated traversal:
 
 - The duplicate non-first-index aggregate child traversal in
-  `resolve_global_gep_address` and `resolve_relative_gep_target` now consumes
-  the helper's `child_absolute_byte_offset` and `child_type_text` instead of
-  open-coding array/struct layout selection in both callers.
-- First-index policy remains in the call sites.
-- Scalar policy remains in `resolve_relative_gep_target`.
+  `resolve_local_aggregate_gep_slot` and `resolve_local_aggregate_gep_target`
+  now consumes `resolve_aggregate_child_index_projection` and uses the helper's
+  `child_absolute_byte_offset` and `child_type_text`.
+- Raw `i8` byte-slice handling remains in the local raw-slice helper.
+- First-index reinterpret and repeated-extent policy remain in the local call
+  sites.
 - Publication and state-map policy were not moved.
 
 ## Suggested Next
 
-Continue Step 3 with the next bounded caller-consolidation packet, likely the
-matching non-first-index aggregate traversal in another GEP path, while keeping
-that caller's first-index and scalar policy local.
+Continue Step 3 with another bounded local or dynamic aggregate traversal that
+still open-codes array/struct child selection, while keeping dynamic-index and
+publication policy local to the caller.
 
 ## Watchouts
 
@@ -44,10 +43,10 @@ that caller's first-index and scalar policy local.
 - Be careful with first-index policy: local aggregate GEP, absolute global GEP,
   relative global GEP, dynamic aggregate GEP, and runtime pointer provenance use
   similar layout math but different acceptance rules.
-- `resolve_relative_global_gep_address` and dynamic aggregate GEP paths still
-  open-code similar traversal and were intentionally left outside this bounded
-  packet.
-- `local_gep.cpp` was not touched.
+- `resolve_local_aggregate_pointer_array_slots`,
+  `resolve_local_aggregate_dynamic_pointer_array_access`, and dynamic aggregate
+  GEP paths still open-code related traversal and were intentionally left
+  outside this bounded packet.
 
 ## Proof
 

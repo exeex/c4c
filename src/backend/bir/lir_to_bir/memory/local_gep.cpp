@@ -100,7 +100,7 @@ std::optional<std::string> BirFunctionLowerer::resolve_local_aggregate_gep_slot(
     return slot_it->second;
   }
 
-  std::string_view current_type = c4c::codegen::lir::trim_lir_arg_text(base_type_text);
+  std::string current_type(c4c::codegen::lir::trim_lir_arg_text(base_type_text));
   const auto gep_element_type = c4c::codegen::lir::trim_lir_arg_text(gep.element_type.str());
   std::size_t byte_offset = aggregate_slots.base_byte_offset;
   bool saw_base_index = false;
@@ -142,25 +142,16 @@ std::optional<std::string> BirFunctionLowerer::resolve_local_aggregate_gep_slot(
       }
     }
 
-    switch (layout.kind) {
-      case AggregateTypeLayout::Kind::Array: {
-        const auto element_layout =
-            compute_aggregate_type_layout(layout.element_type_text, type_decls);
-        if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
-            static_cast<std::size_t>(*index_value) >= layout.array_count) {
-          return std::nullopt;
-        }
-        byte_offset += static_cast<std::size_t>(*index_value) * element_layout.size_bytes;
-        current_type = c4c::codegen::lir::trim_lir_arg_text(layout.element_type_text);
-        break;
-      }
-      case AggregateTypeLayout::Kind::Struct:
-        if (static_cast<std::size_t>(*index_value) >= layout.fields.size()) {
-          return std::nullopt;
-        }
-        byte_offset += layout.fields[static_cast<std::size_t>(*index_value)].byte_offset;
-        current_type = c4c::codegen::lir::trim_lir_arg_text(
-            layout.fields[static_cast<std::size_t>(*index_value)].type_text);
+    const auto projection = resolve_aggregate_child_index_projection(
+        current_type, static_cast<std::size_t>(*index_value), type_decls);
+    if (!projection.has_value()) {
+      return std::nullopt;
+    }
+    switch (projection->kind) {
+      case AggregateByteOffsetProjection::Kind::ArrayElement:
+      case AggregateByteOffsetProjection::Kind::StructField:
+        byte_offset += projection->child_absolute_byte_offset;
+        current_type = projection->child_type_text;
         break;
       default:
         return std::nullopt;
@@ -450,7 +441,7 @@ std::optional<LocalAggregateGepTarget> BirFunctionLowerer::resolve_local_aggrega
     };
   }
 
-  std::string_view current_type = c4c::codegen::lir::trim_lir_arg_text(base_type_text);
+  std::string current_type(c4c::codegen::lir::trim_lir_arg_text(base_type_text));
   const auto gep_element_type = c4c::codegen::lir::trim_lir_arg_text(gep.element_type.str());
   std::size_t byte_offset = aggregate_slots.base_byte_offset;
   bool saw_base_index = false;
@@ -496,25 +487,16 @@ std::optional<LocalAggregateGepTarget> BirFunctionLowerer::resolve_local_aggrega
       }
     }
 
-    switch (layout.kind) {
-      case AggregateTypeLayout::Kind::Array: {
-        const auto element_layout =
-            compute_aggregate_type_layout(layout.element_type_text, type_decls);
-        if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
-            static_cast<std::size_t>(*index_value) >= layout.array_count) {
-          return std::nullopt;
-        }
-        byte_offset += static_cast<std::size_t>(*index_value) * element_layout.size_bytes;
-        current_type = c4c::codegen::lir::trim_lir_arg_text(layout.element_type_text);
-        break;
-      }
-      case AggregateTypeLayout::Kind::Struct:
-        if (static_cast<std::size_t>(*index_value) >= layout.fields.size()) {
-          return std::nullopt;
-        }
-        byte_offset += layout.fields[static_cast<std::size_t>(*index_value)].byte_offset;
-        current_type = c4c::codegen::lir::trim_lir_arg_text(
-            layout.fields[static_cast<std::size_t>(*index_value)].type_text);
+    const auto projection = resolve_aggregate_child_index_projection(
+        current_type, static_cast<std::size_t>(*index_value), type_decls);
+    if (!projection.has_value()) {
+      return std::nullopt;
+    }
+    switch (projection->kind) {
+      case AggregateByteOffsetProjection::Kind::ArrayElement:
+      case AggregateByteOffsetProjection::Kind::StructField:
+        byte_offset += projection->child_absolute_byte_offset;
+        current_type = projection->child_type_text;
         break;
       default:
         return std::nullopt;
