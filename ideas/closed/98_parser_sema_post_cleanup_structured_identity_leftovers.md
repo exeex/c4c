@@ -1,6 +1,6 @@
 # Parser/Sema Post-Cleanup Structured Identity Leftovers
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
 
@@ -151,3 +151,11 @@ Focused proof candidates:
   as dead scaffolding.
 - HIR/type/codegen rendered-name bridges remain behaviorally unchanged.
 - Focused parser/sema proof passes with no expectation downgrades.
+
+## Closure Notes
+
+Closed after Step 8 route review and broader parser/sema/template/consteval
+proof. The final fallback audit accepted no broad demotions; remaining rendered
+fallbacks are classified as compatibility bridges, proof-required fallbacks, or
+downstream-blocked / unsupported-metadata paths. HIR module-symbol migration
+remains open in idea 99.
