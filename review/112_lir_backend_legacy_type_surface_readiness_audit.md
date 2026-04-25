@@ -1,7 +1,7 @@
 # LIR Backend Legacy Type Surface Readiness Audit
 
-Status: Step 1 inventory complete
-Plan Step: Step 1 - Inventory Remaining Legacy Type Surfaces
+Status: Step 2 blocker ownership classified
+Plan Step: Step 2 - Classify Blocker Ownership
 Scope: report-only; no implementation edits
 
 ## Step 1 Inventory
@@ -53,6 +53,76 @@ Scope: report-only; no implementation edits
 - MIR/aarch64 findings are classification-only. `src/backend/mir/` is not a
   current migration target; if those files block compilation, the follow-up
   should be compile-target exclusion rather than MIR type-surface migration.
+
+## Step 2 Blocker Ownership Map
+
+| Surface | Step 2 classification | Blocker owner | Ownership note |
+|---|---|---|---|
+| `LirModule::type_decls` | `backend-blocked` | Active BIR/backend | Still feeds `TypeDeclMap`; cannot be demoted until BIR aggregate layout has a structured source. |
+| `LirModule::struct_decls` | `legacy-proof-only` | LIR verifier/proof | Structured declarations are the printer source, but this surface remains tied to legacy parity proof until `type_decls` is no longer required. |
+| struct declaration shadow proof | `legacy-proof-only` | LIR verifier/proof | Verifies structured declarations against legacy declaration text; proof-only after printer authority moved to `struct_decls`. |
+| struct declaration printer authority | `printer-only` | LIR printer | This is final declaration rendering, not a backend blocker; preserve until the printer has a non-legacy declaration rendering path. |
+| `LirStructuredLayoutObservation` | `legacy-proof-only` | HIR-to-LIR verifier/proof | Records dual-path layout evidence only; it should disappear with parity proof, not as an active backend dependency. |
+| `StructuredLayoutLookup::legacy_decl` | `layout-authority-blocked` | HIR-to-LIR layout | Still provides authoritative size, alignment, and field fallback facts for selected lowering paths. |
+| object alignment via legacy layout | `layout-authority-blocked` | HIR-to-LIR layout | `object_align_bytes` still falls back to `legacy_decl->align_bytes`; needs structured layout authority first. |
+| const-init aggregate lookup | `layout-authority-blocked` | HIR-to-LIR layout | Aggregate initializer lowering still prefers legacy layout lookup; bridge must be replaced by structured layout facts. |
+| variadic aggregate argument sizing | `layout-authority-blocked` | HIR-to-LIR call lowering | Variadic aggregate payload sizing reads `legacy_decl->size_bytes`; cannot be removed without ABI parity. |
+| `va_arg` aggregate sizing | `layout-authority-blocked` | HIR-to-LIR `va_arg` lowering | `va_arg` payload and zero-aggregate handling still read legacy size and fields. |
+| field-chain structured name mirror | `bridge-required` | HIR-to-LIR field lookup | Bridges legacy field traversal to structured type refs; demotion needs a structured field-chain source. |
+| indexed GEP aggregate type ref mirror | `needs-more-parity-proof` | HIR-to-LIR lvalue proof gap | Structured mirror exists with raw-text fallback; needs indexed-GEP parity proof before demotion. |
+| `LirGlobal::llvm_type` | `bridge-required` | LIR printer and BIR globals | Final global type text is still consumed by the printer and backend; needs a structured-to-text bridge before demotion. |
+| `LirGlobal::llvm_type_ref` | `needs-more-parity-proof` | LIR verifier/proof gap | Mirror is optional proof, not authority; needs coverage showing mirror completeness against `llvm_type`. |
+| `LirFunction::signature_text` | `bridge-required` | LIR printer and BIR ABI | Final function signature text remains printer output and backend ABI fallback. |
+| function signature mirrors | `needs-more-parity-proof` | LIR verifier/proof gap | Return/parameter mirrors are shadow proof against formatted signatures; completeness is not proven enough for authority. |
+| `LirExternDecl::return_type_str` | `bridge-required` | LIR printer and BIR decl lowering | Extern return text is still final output and backend input; structured return type needs a bridge. |
+| `LirExternDecl::return_type` | `needs-more-parity-proof` | LIR verifier/proof gap | Structured mirror is proof-only until all extern return text paths are covered. |
+| call return type text | `type-ref-authority-blocked` | Raw LIR type-ref/BIR call lowering | BIR reads `LirCallOp::return_type.str()` as active lowering authority. |
+| call argument text and mirrors | `type-ref-authority-blocked` | Raw LIR type-ref/BIR call lowering | Typed-call text remains parsed by verifier/backend; mirrors do not yet replace argument text authority. |
+| raw `LirTypeRef` identity/output | `type-ref-authority-blocked` | LIR type-ref authority | `str()`, text equality, and stream output remain canonical identity for most operation types. |
+| raw string-only `LirTypeRef` construction | `type-ref-authority-blocked` | LIR producer/type-ref authority | Instruction fields can still be constructed from raw LLVM spelling without semantic ids. |
+| BIR type-decl map builder | `backend-blocked` | Active BIR/backend | Converts `module.type_decls` into backend layout authority. |
+| BIR aggregate layout parser | `backend-blocked` | Active BIR/backend | Resolves `%struct` text and parses declaration bodies for size/align/field facts. |
+| BIR globals and initializers | `backend-blocked` | Active BIR/backend | Global lowering, aggregate initialization, and pointer offsets still consume type text and `TypeDeclMap`. |
+| BIR call ABI paths | `backend-blocked` | Active BIR/backend | sret/byval/HFA-ish call and return lowering still parse signatures and aggregate type text. |
+| BIR memory layout consumers | `backend-blocked` | Active BIR/backend | GEP, slots, memcpy/memset, provenance, and byte-addressing still use text-backed aggregate layout. |
+| MIR/aarch64 legacy text consumers | `planned-rebuild` | Planned MIR rebuild residue | Classification-only; this route should not migrate MIR internals. Compile failures should become compile-target exclusion work. |
+
+### Active Backend Blockers
+
+- `backend-blocked`: `LirModule::type_decls`, the BIR type-decl map builder,
+  the BIR aggregate layout parser, BIR globals/initializers, BIR call ABI
+  paths, and BIR memory layout consumers. These are active BIR/backend
+  authority and must be separated from legacy proof shadows.
+- `layout-authority-blocked`: `StructuredLayoutLookup::legacy_decl` and its
+  object alignment, const-init, variadic aggregate, and `va_arg` consumers.
+  These are HIR-to-LIR layout authority blockers, not backend parser blockers.
+- `type-ref-authority-blocked`: call return type text, call argument text, raw
+  `LirTypeRef` identity/output, and raw string-only construction. These block
+  type authority demotion even when aggregate declarations have structured
+  mirrors.
+
+### Non-Backend Residue
+
+- `planned-rebuild`: MIR/aarch64 legacy text consumers only. They are excluded
+  from current BIR/LIR cleanup and should not block backend structured layout
+  work.
+- `printer-only`: struct declaration printer authority. This is final output,
+  not active backend layout authority.
+- `legacy-proof-only`: `LirModule::struct_decls`, struct declaration shadow
+  proof, and `LirStructuredLayoutObservation`. These remain as compatibility
+  checks until the active authority surfaces are gone.
+
+### Proof Gaps
+
+- No Step 1 surface is classified `safe-to-demote` on current evidence.
+- `needs-more-parity-proof`: indexed GEP aggregate type ref mirror,
+  `LirGlobal::llvm_type_ref`, function signature mirrors, and
+  `LirExternDecl::return_type`. These are intentionally recorded as proof gaps
+  rather than demotion candidates.
+- `bridge-required`: field-chain structured name mirror,
+  `LirGlobal::llvm_type`, `LirFunction::signature_text`, and
+  `LirExternDecl::return_type_str`. These need structured authority plus a
+  final rendering or backend bridge before the legacy text can be demoted.
 
 ## Must Not Remove Yet
 
