@@ -8,26 +8,23 @@ Current Step Title: Prefer Structured Lookup For Field Chains And GEP Lowering
 
 ## Just Finished
 
-Completed `plan.md` Step 4 field-chain/member-GEP caller migration. Field-chain
-resolution now calls the shared structured layout helper for each legacy
-struct/union tag, records a `StructNameId` on `FieldStep` when the helper finds
-the corresponding `LirStructDecl`, and member-GEP emission prefers that
-structured identity while preserving the legacy tag-string fallback and
-legacy-authoritative field lookup.
+Completed `plan.md` Step 4 indexed-GEP element type migration. Indexed GEP
+element selection now returns a `LirTypeRef`, preserves the exact legacy
+`llvm_ty`/`llvm_alloca_ty` rendered text, and attaches `StructNameId` identity
+for known struct/union element types found through `lookup_structured_layout`;
+pointer compound assignment now uses the same helper path.
 
 ## Suggested Next
 
-Supervisor can review whether the next Step 4 packet should migrate indexed
-GEP element type selection or another remaining tag-rendered aggregate caller
-to prefer structured lookup.
+Supervisor can review remaining tag-rendered aggregate callers, if any, or move
+Step 4 toward acceptance review.
 
 ## Watchouts
 
-`LirStructDecl` still does not carry field names or offsets, so field-chain
-member selection and LLVM slot computation remain legacy-authoritative through
-`TypeSpec::tag` and `mod.struct_defs`. Structured identity is used only when
-`lookup_structured_layout` finds the matching `StructNameId -> LirStructDecl`;
-otherwise member-GEP emission still interns or renders the legacy tag string.
+Structured identity is attached only when `lookup_structured_layout` finds the
+matching `StructNameId -> LirStructDecl`; otherwise indexed GEPs keep the plain
+rendered text fallback. This packet intentionally did not change emitted LLVM
+text or test expectations.
 
 ## Proof
 

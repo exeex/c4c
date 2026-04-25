@@ -470,7 +470,7 @@ class StmtEmitter {
                                                 BinaryOp op, const char* instr,
                                                 const std::string& rhs,
                                                 const TypeSpec& rhs_ts);
-  std::string indexed_gep_elem_ty(const TypeSpec& base_ts);
+  LirTypeRef indexed_gep_elem_ty(const TypeSpec& base_ts);
   std::string emit_indexed_gep(FnCtx& ctx, const std::string& base_ptr,
                                const TypeSpec& base_ts, const std::string& idx);
   std::string emit_rval_from_access_expr(FnCtx& ctx, const Expr& e,

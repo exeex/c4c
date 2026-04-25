@@ -475,19 +475,10 @@ std::string StmtEmitter::emit_compound_assign_value(FnCtx& ctx, const Assignable
       emit_lir_op(ctx, lir::LirBinOp{neg, "sub", "i64", "0", delta});
       delta = neg;
     }
-    TypeSpec elem_ts = lhs_ts;
-    if (elem_ts.ptr_level > 0) {
-      elem_ts.ptr_level -= 1;
-    } else {
-      elem_ts.base = TB_CHAR;
-    }
-    const std::string gep_ety3 =
-        (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
-            ? "i8"
-            : llvm_ty(elem_ts);
     const std::string result = fresh_tmp(ctx);
     emit_lir_op(ctx,
-                lir::LirGepOp{result, gep_ety3, loaded.value, false, {"i64 " + delta}});
+                lir::LirGepOp{result, indexed_gep_elem_ty(lhs_ts), loaded.value, false,
+                              {"i64 " + delta}});
     return emit_store_assignable_value(ctx, lhs, result, lhs_ts, false);
   }
 
@@ -655,15 +646,26 @@ std::string StmtEmitter::emit_member_base_ptr(FnCtx& ctx, const MemberExpr& m, T
   }
 }
 
-std::string StmtEmitter::indexed_gep_elem_ty(const TypeSpec& base_ts) {
+LirTypeRef StmtEmitter::indexed_gep_elem_ty(const TypeSpec& base_ts) {
   const TypeSpec elem_ts = resolve_indexed_gep_pointee_type(base_ts);
   if (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0) {
-    return "i8";
+    return LirTypeRef("i8");
   }
+  std::string rendered_text;
   if (elem_ts.array_rank > 0 && elem_ts.ptr_level == 0) {
-    return llvm_alloca_ty(elem_ts);
+    rendered_text = llvm_alloca_ty(elem_ts);
+  } else {
+    rendered_text = llvm_ty(elem_ts);
   }
-  return llvm_ty(elem_ts);
+  if ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) && elem_ts.ptr_level == 0 &&
+      elem_ts.array_rank == 0) {
+    const StructuredLayoutLookup layout = lookup_structured_layout(mod_, module_, elem_ts);
+    if (layout.structured_decl) {
+      return lir_aggregate_gep_type_ref(rendered_text, module_, layout.structured_name_id,
+                                        elem_ts.base == TB_UNION);
+    }
+  }
+  return LirTypeRef(rendered_text);
 }
 
 std::string StmtEmitter::emit_indexed_gep(FnCtx& ctx, const std::string& base_ptr,
