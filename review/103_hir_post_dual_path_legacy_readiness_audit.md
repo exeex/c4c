@@ -189,3 +189,84 @@ lookup authority. This step did not change implementation behavior.
   `src/codegen/lir/lir_printer.cpp`.
 - No `c4c-clang-tool` query was needed for this packet because the owned work
   classified textual surfaces from concrete print/diagnostic/render call sites.
+
+## Step 4 - HIR-To-LIR String Identity Seams
+
+Scope for this step: inventory HIR-to-LIR and shared codegen seams that still
+consume rendered HIR names or tags, then classify which uses are output spelling
+and which block HIR-only deletion of legacy rendered lookup. This step did not
+change implementation behavior.
+
+### HIR Payload Field Handoff Inventory
+
+| HIR Payload / Field | Current Downstream Use | Classification | Idea 105 Handoff Target |
+|---|---|---|---|
+| `Function::name` | Used as fallback for emitted symbol spelling in `build_fn_signature`, LIR function names, function dedup/elision reachability, template spec comments, and the fallback branch of extern filtering. | Mixed: `ABI/link-spelling` where it is a fallback spelling; `semantic identity handoff` where dedup/reachability still keys by rendered name. | Keep spelling for final output, but route function identity through `FunctionId` or `LinkNameId`; dedup/reachability should prefer `LinkNameId` with a defined fallback policy. |
+| `Function::link_name_id` | Preferred by `emitted_link_name`, `find_local_target_function`, call ops, extern declarations, signatures, and LIR function records. | `safe-to-keep structured/link lookup` | Continue carrying `LinkNameId`; use it as the cross-boundary authority before rendered fallback. |
+| `Function::name_text_id` | Indexed in HIR structured lookup, but not consumed by HIR-to-LIR. | `bridge-missing` | If a HIR-to-LIR call site needs declaration identity rather than ABI link identity, pass a `ModuleDeclLookupKey` or `TextId`-backed declaration key instead of `name`. |
+| `GlobalVar::name` | Used for global dedup, best-definition selection in `select_global_object`, LIR global names, fallback emitted spelling, and fallback global lookup from `DeclRef::name`. | Mixed: `ABI/link-spelling` for output fallback; `semantic identity handoff` for dedup/best-object selection. | Preserve spelling for output, but move best-object and dedup selection to `GlobalId`, `LinkNameId`, or a global declaration owner key with explicit tentative-definition semantics. |
+| `GlobalVar::link_name_id` | Preferred by `emitted_link_name`, `mod_.find_global(LinkNameId)`, LIR global records, and extern/global references. | `safe-to-keep structured/link lookup` | Continue carrying `LinkNameId`; make name-based selection a compatibility fallback only. |
+| `GlobalVar::name_text_id` | Indexed in HIR structured lookup, but not used directly by HIR-to-LIR. | `bridge-missing` | Use a `ModuleDeclLookupKey` or owner key where declaration identity, not emitted link spelling, is required. |
+| `DeclRef::name` | Fallback function target lookup, fallback global selection, unresolved extern call recording, builtin-known-call probing, local-slot diagnostics, special `__func__` checks, and final unresolved global symbol fallback. | Mixed: `spelling/diagnostic` for local messages and special names; `semantic identity handoff` for function/global lookup and extern recording. | Carry `LinkNameId`, `FunctionId`/`GlobalId`, or a structured declaration key through `DeclRef`; reserve `name` for spelling and diagnostics. |
+| `DeclRef::link_name_id` | Preferred by `find_local_target_function`, const-init global/function resolution, call target info, and LIR call/link metadata. | `safe-to-keep structured/link lookup` | Make this the normal HIR-to-LIR callee/link authority; remove rendered fallback after missing IDs are proved fixed. |
+| `TypeSpec::tag` | Feeds LLVM struct type spelling, `mod.struct_defs.find(tag)`, object size/alignment, ABI aggregate classification, vaarg lowering, const-init layout, field access recursion, and diagnostics. | Mixed: `ABI/layout spelling` and `semantic identity handoff`; this is the largest blocker to HIR-only string deletion. | Carry `HirRecordOwnerKey` or a typed record/layout ID beside `TypeSpec`, with rendered tag retained only for LLVM type spelling and dumps. |
+| `HirStructDef::tag` | Source for `struct_def_order` emission, `%struct.*` type names, base type spelling, owner-index bridge, and layout records. | Mixed: `ABI/layout spelling` and owner-to-rendered bridge | Keep rendered tag as output spelling; add typed record IDs or owner keys for layout lookup and base traversal. |
+| `HirStructField::name` | Field slot lookup in const init, member access fallback, function-pointer field signature lookup, and designator matching. | `semantic identity handoff` where matching fields; `spelling` only for diagnostics/output | Prefer `field_text_id` or `MemberSymbolId` for field identity; keep `name` only as source/designator spelling after structured field lookup covers all paths. |
+
+### HIR-To-LIR And Shared Codegen Seam Classification
+
+| Seam | Evidence | Classification | Why It Blocks HIR-Only Legacy Deletion |
+|---|---|---|---|
+| Function call target resolution | `StmtEmitter::find_local_target_function` in `src/codegen/lir/hir_to_lir/call/target.cpp:19`-`24` prefers `LinkNameId`, then calls `find_function_by_name_legacy`; call return-type inference and function-pointer inference repeatedly pass `DeclRef::name` as fallback in `expr/coordinator.cpp`. | `bridge-required` | HIR can demote internal rendered lookup only after HIR-to-LIR no longer needs a rendered callee fallback for valid direct calls. |
+| Const-init function/global references | `ConstInitEmitter::emit_const_scalar_expr` resolves globals and functions by `LinkNameId` when present, otherwise `select_global_object(name)` / `find_function_by_name_legacy(name)` at `src/codegen/lir/hir_to_lir/const_init_emitter.cpp:540`-`564`. | `bridge-required` | Static initializer references still accept rendered `DeclRef::name` as identity; idea 105 needs `DeclRef` IDs or structured keys to cross this seam. |
+| Global best-object selection | `select_global_object(std::string)` in both `ConstInitEmitter` and `StmtEmitter` scans `mod_.globals` by `GlobalVar::name`, then chooses the best array/init variant; `GlobalId` overloads still call back through `gv->name`. | `semantic identity handoff` | This is not just spelling: it chooses which global object is emitted or referenced. Replacing it requires a typed global owner/key plus the current tentative-definition choice rules. |
+| Function/global module dedup | `dedup_globals` and `dedup_functions` in `hir_to_lir.cpp` key by `gv.name` / `fn.name`. | `semantic identity handoff` | HIR-only deletion of rendered indexes would still leave codegen choosing emission representatives by rendered names. |
+| Extern declaration filtering | `finalize_module` filters by `LinkNameId` first, then falls back to `hir_mod.fn_index.count(fallback_name)` when link ID is invalid. | `bridge-required` | The fallback still depends on HIR's rendered function index at the link boundary; idea 105 should make extern records carry `LinkNameId` or a structured declaration key consistently. |
+| Emitted symbol spelling | `emitted_link_name` helpers in HIR-to-LIR prefer `LinkNameId` spelling and fall back to raw names; signatures, globals, LIR calls, and blockaddresses use the result. | `ABI/link-spelling` | This should remain as output text. It blocks deletion only when fallback spelling doubles as lookup identity. |
+| LLVM struct type spelling | `llvm_ty`, `llvm_alloca_ty`, `llvm_field_ty`, `llvm_struct_type_str`, and `build_type_decls` build `%struct.*` names from `TypeSpec::tag` / `HirStructDef::tag`. | `ABI/layout spelling` | Rendered tag spelling must remain stable for emitted IR, but it should not be the layout lookup key once record IDs/owner keys exist. |
+| Struct layout and ABI lookup | `object_align_bytes`, shared `sizeof_ts`, AArch64 HFA classification, AMD64 aggregate classification via shared helpers, and vaarg lowering use `mod.struct_defs.find(ts.tag)`. | `semantic identity handoff` | Layout/ABI decisions still depend on rendered tags from `TypeSpec`, so deleting HIR rendered record lookup without a typed record/layout handoff would break codegen. |
+| Base traversal and field slots | `build_type_decls`, `llvm_struct_base_slot`, `llvm_struct_field_slot`, and field-chain helpers recurse through `HirStructDef::base_tags` and `TypeSpec::tag`. | `semantic identity handoff` | Inherited field layout and base padding are semantic codegen facts; they need owner keys or typed record IDs, not rendered base tag strings. |
+| Member field access | `resolve_member_field_access` starts from `MemberExpr::resolved_owner_tag` or `TypeSpec::tag`, then tries `MemberSymbolId` and falls back to `MemberExpr::field`; `types.cpp` still recurses by rendered tag. | `bridge-required` | `MemberSymbolId` is promising, but owner identity is still rendered tag text. Idea 105 needs owner-key/record-ID field access so `HirStructField::name` is not the semantic fallback. |
+| Const initializer field designators | `init_list_field_designator_text`, `find_struct_field_index`, and related helpers compare designator text to `HirStructField::name`, with `field_designator_text_id` available on the payload. | `bridge-required` | Field designators are source spelling, but selecting the field is semantic. Use `field_text_id` or `MemberSymbolId` before treating field names as removable. |
+| Shared lowering context | `src/codegen/shared/fn_lowering_ctx.hpp` stores local/param/global IDs and `TypeSpec`, but no `LinkNameId`, `TextId`, record owner key, or field owner key maps. | `bridge-missing` | `FnCtx` preserves local identity, but downstream helpers that need function/global/record identity still fall back to HIR payload strings. |
+| Shared LLVM helpers | `src/codegen/shared/llvm_helpers.hpp` mostly emits type spelling and size/layout from `TypeSpec`; `sizeof_ts` directly probes `mod.struct_defs.find(ts.tag)`. | Mixed: `output spelling` plus `semantic identity handoff` | Pure render helpers can keep tags; size/layout helpers need a typed record lookup path to stop consuming rendered tags as authority. |
+
+### Deletion Readiness Boundary
+
+- HIR-only legacy lookup deletion is blocked by downstream handoffs that still
+  call `find_function_by_name_legacy`, `select_global_object(name)`, `fn_index`,
+  or `mod.struct_defs.find(TypeSpec::tag)` for semantic decisions.
+- Rendered spelling should remain for ABI/link names, LLVM `%struct.*` names,
+  local/debug names, diagnostics, and printer output. Those strings are not
+  deletion blockers when a structured ID already supplies identity.
+- Idea 105 should focus on carrying `LinkNameId` for callable/global link
+  identity, `FunctionId`/`GlobalId` or module declaration keys for declaration
+  identity, and `HirRecordOwnerKey` or typed record/layout IDs for struct layout
+  and field traversal.
+- `HirStructField::name` and `TypeSpec::tag` are the two highest-risk
+  non-function seams: both are still semantic selectors in HIR-to-LIR, even
+  though they also serve legitimate output-spelling roles.
+
+### Lightweight Checks Run For Step 4
+
+- `command -v c4c-clang-tool`, `command -v c4c-clang-tool-ccdb`, and
+  `test -f build/compile_commands.json`.
+- `c4c-clang-tool-ccdb function-signatures` on
+  `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`,
+  `src/codegen/lir/hir_to_lir/const_init_emitter.cpp`, and
+  `src/codegen/lir/hir_to_lir/call/target.cpp`.
+- Focused `rg` scans over `src/codegen/lir/hir_to_lir`,
+  `src/codegen/shared`, and `src/frontend/hir/hir_ir.hpp` for
+  `find_*_legacy`, `select_global_object`, `fn_index`, `global_index`,
+  `struct_defs.find`, `TypeSpec::tag`, `link_name_id`, `name_text_id`,
+  field/member IDs, and rendered `.name` / `.tag` consumers.
+- Read-only inspection of `src/frontend/hir/hir_ir.hpp`,
+  `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`,
+  `src/codegen/lir/hir_to_lir/core.cpp`,
+  `src/codegen/lir/hir_to_lir/types.cpp`,
+  `src/codegen/lir/hir_to_lir/call/target.cpp`,
+  `src/codegen/lir/hir_to_lir/const_init_emitter.cpp`,
+  `src/codegen/lir/hir_to_lir/expr/coordinator.cpp`,
+  `src/codegen/lir/hir_to_lir/lvalue.cpp`,
+  `src/codegen/shared/fn_lowering_ctx.hpp`, and
+  `src/codegen/shared/llvm_helpers.hpp`.
