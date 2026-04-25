@@ -1,14 +1,18 @@
 # LIR Struct Type Printer Authority Readiness Audit
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
+Closed: 2026-04-25
 
 Parent Ideas:
 - [106_shared_struct_name_table_for_lir_type_identity.md](/workspaces/c4c/ideas/closed/106_shared_struct_name_table_for_lir_type_identity.md)
 - [107_lir_struct_name_id_type_ref_mirror.md](/workspaces/c4c/ideas/open/107_lir_struct_name_id_type_ref_mirror.md)
 - [108_lir_struct_name_id_for_globals_functions_and_externs.md](/workspaces/c4c/ideas/open/108_lir_struct_name_id_for_globals_functions_and_externs.md)
 - [109_hir_to_lir_struct_layout_lookup_by_struct_name_id.md](/workspaces/c4c/ideas/open/109_hir_to_lir_struct_layout_lookup_by_struct_name_id.md)
+
+Follow-up Ideas:
+- [111_lir_struct_decl_printer_authority_switch.md](/workspaces/c4c/ideas/open/111_lir_struct_decl_printer_authority_switch.md)
 
 ## Goal
 
@@ -68,3 +72,15 @@ coverage is needed first.
 - Printer authority switch candidates are separated from bridge-required text.
 - Remaining blockers are tied to concrete files and tests.
 - No legacy removal is performed by this audit.
+
+## Closure Summary
+
+The audit completed in `review/110_lir_struct_type_printer_authority_readiness_audit.md`.
+It found `LirModule::struct_decls` plus `render_struct_decl_llvm()` ready for a
+narrow struct-declaration printer authority switch, with `type_decls` retained
+as verifier/backcompat proof. It left broader global/function/extern/call type
+text, raw `LirTypeRef` authority, HIR-to-LIR layout authority, and backend
+layout consumers outside the narrow switch.
+
+The recommended narrow follow-up implementation route is recorded as
+`ideas/open/111_lir_struct_decl_printer_authority_switch.md`.
