@@ -12,20 +12,20 @@ printer authority.
 
 ## Just Finished
 
-Step 4: Dual-Write During HIR-To-LIR Type Declaration Generation is complete.
-`build_type_decls()` still appends the same legacy rendered LLVM type
-declaration text, and now also records matching `LirStructDecl` mirrors for
-ordinary structs, unions, empty structs, padded layouts, base subobject layouts,
-and the emitted non-pointer `va_list` struct declaration. Structured
-declaration identities are interned from the emitted LLVM struct type spelling
-such as `%struct.Name`, not the raw HIR tag.
+Step 5: Add Parity / Shadow Rendering is complete. Added
+`render_struct_decl_llvm()` as a printer-adjacent helper that renders a
+`LirStructDecl` mirror to the same LLVM type declaration text as legacy
+`type_decls`, including empty, normal, packed, and opaque structured forms.
+`verify_module()` now shadow-compares each structured declaration against the
+matching legacy `type_decls` line by struct name and reports missing or
+mismatched shadows through `LirVerifyError`. `print_llvm()` still emits only
+`mod.type_decls`.
 
 ## Suggested Next
 
-Add a printer-adjacent helper that renders `LirStructDecl` back to legacy LLVM
-type declaration text, compare the shadow-rendered output against the matching
-legacy `type_decls` line, and surface mismatches through a focused verifier or
-local comparison path without changing emitted LLVM.
+Run Step 6 focused validation for the dual-track mirror, using the supervisor's
+chosen broader subset to prove behavior-preserving output across representative
+struct/codegen coverage.
 
 ## Watchouts
 
@@ -39,10 +39,13 @@ local comparison path without changing emitted LLVM.
 - `StructNameId` values intentionally use LLVM struct type names (`sty` /
   `%struct.__va_list_tag_`) so identity matches declaration and storage type
   spelling.
-- `module.struct_decls` remains intentionally inert; `lir_printer.cpp` still
-  prints only legacy `type_decls`.
+- `module.struct_decls` remains shadow-only; `lir_printer.cpp` still prints
+  only legacy `type_decls`.
+- `verify_module()` now depends on the printer-adjacent shadow helper, so any
+  future structured declaration form must stay text-equivalent to the legacy
+  declaration line before emission authority changes.
 
 ## Proof
 
-Passed: `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^positive_split_llvm_') > test_after.log 2>&1`.
+Passed: `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(positive_split_llvm_|frontend_hir_lookup_tests$)') > test_after.log 2>&1`.
 Proof log: `test_after.log`.

@@ -1,6 +1,7 @@
 #include "ir.hpp"
 
 #include <sstream>
+#include <unordered_map>
 
 namespace c4c::codegen::lir {
 
@@ -322,6 +323,45 @@ void verify_terminator(const LirTerminator& terminator) {
   }
 }
 
+std::string_view legacy_type_decl_name(std::string_view decl) {
+  constexpr std::string_view marker = " = type ";
+  const std::size_t marker_pos = decl.find(marker);
+  if (marker_pos == std::string_view::npos) return {};
+  return decl.substr(0, marker_pos);
+}
+
+void verify_struct_decl_shadows(const LirModule& mod) {
+  std::unordered_map<std::string_view, std::string_view> legacy_by_name;
+  for (const auto& decl : mod.type_decls) {
+    const std::string_view decl_view(decl);
+    const std::string_view name = legacy_type_decl_name(decl_view);
+    if (name.empty()) continue;
+    legacy_by_name.emplace(name, decl_view);
+  }
+
+  for (const auto& decl : mod.struct_decls) {
+    const std::string_view name = mod.struct_names.spelling(decl.name_id);
+    if (name.empty()) {
+      fail_verify("LirStructDecl.name_id", "must resolve to a struct name");
+    }
+
+    const auto legacy_it = legacy_by_name.find(name);
+    if (legacy_it == legacy_by_name.end()) {
+      fail_verify("LirStructDecl.shadow",
+                  "missing legacy type_decls line for '" + std::string(name) + "'");
+    }
+
+    const std::string shadow = render_struct_decl_llvm(mod, decl);
+    if (shadow != legacy_it->second) {
+      std::ostringstream detail;
+      detail << "structured declaration for '" << name
+             << "' does not match legacy type_decls line; shadow '" << shadow
+             << "', legacy '" << legacy_it->second << "'";
+      fail_verify("LirStructDecl.shadow", detail.str());
+    }
+  }
+}
+
 }  // namespace
 
 const std::string& require_operand_kind(
@@ -375,6 +415,7 @@ std::string_view render_cmp_predicate(const LirCmpPredicateRef& predicate,
 }
 
 void verify_module(const LirModule& mod) {
+  verify_struct_decl_shadows(mod);
   for (const auto& function : mod.functions) {
     for (const auto& inst : function.alloca_insts) verify_inst(inst);
     for (const auto& block : function.blocks) {

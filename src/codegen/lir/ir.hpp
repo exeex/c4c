@@ -755,6 +755,9 @@ std::string_view render_binary_opcode(const LirBinaryOpcodeRef& opcode,
 std::string_view render_cmp_predicate(const LirCmpPredicateRef& predicate,
                                       std::string_view field);
 
+std::string render_struct_decl_llvm(const LirModule& mod,
+                                    const LirStructDecl& decl);
+
 void verify_module(const LirModule& mod);
 
 std::string print_llvm(const LirModule& mod);

@@ -485,6 +485,36 @@ std::string render_fn(const LirFunction& f, std::string_view resolved_name,
 
 }  // namespace
 
+std::string render_struct_decl_llvm(const LirModule& mod,
+                                    const LirStructDecl& decl) {
+  const std::string_view name = mod.struct_names.spelling(decl.name_id);
+  if (name.empty()) {
+    throw LirVerifyError(LirVerifyErrorKind::Malformed,
+                         "LirStructDecl.name_id: must resolve to a struct name");
+  }
+
+  std::ostringstream out;
+  out << name << " = type ";
+  if (decl.is_opaque) {
+    out << "opaque";
+    return out.str();
+  }
+
+  const char* open = decl.is_packed ? "<{" : "{";
+  const char* close = decl.is_packed ? "}>" : "}";
+  out << open;
+  if (!decl.fields.empty()) {
+    out << " ";
+    for (std::size_t i = 0; i < decl.fields.size(); ++i) {
+      if (i) out << ", ";
+      out << require_type_ref(decl.fields[i].type, "LirStructDecl.fields.type");
+    }
+    out << " ";
+  }
+  out << close;
+  return out.str();
+}
+
 std::string print_llvm(const LirModule& mod) {
   verify_module(mod);
   c4c::codegen::llvm_helpers::set_active_target_profile(mod.target_profile);
