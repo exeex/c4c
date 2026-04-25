@@ -6,32 +6,36 @@ Current Step Title: Add Struct-Aware TypeRef Factories
 
 # Current Packet
 
-Execute Step 2 from `plan.md`: add behavior-preserving optional
-`StructNameId` metadata to `LirTypeRef` without changing rendered type-string
-authority.
+Execute Step 3 from `plan.md`: add narrow struct-aware `LirTypeRef`
+construction helpers that dual-write existing rendered type text plus
+`StructNameId`, without changing lowering call sites yet.
 
 ## Just Finished
 
-Step 2 from `plan.md` is complete.
+Step 3 from `plan.md` is complete.
 
-`LirTypeRef` now carries a default-invalid `StructNameId` mirror in
-`src/codegen/lir/types.hpp`, exposed through `struct_name_id()`,
-`has_struct_name_id()`, `set_struct_name_id()`, and
-`with_struct_name_id()`.
+`LirTypeRef` now has explicit `struct_type(rendered_text, StructNameId)` and
+`union_type(rendered_text, StructNameId)` factories in
+`src/codegen/lir/types.hpp`. Both preserve the exact caller-provided rendered
+LLVM type string, classify the ref as `LirTypeKind::Struct`, and attach the
+known `StructNameId` mirror through the existing accessor path.
 
-Existing constructors, `integer_bit_width()` behavior, string conversion,
-comparison, and stream rendering remain string-authoritative and compatible
-with current call sites. Direct compile fallout found and fixed: positional
-constructor overloads using `StructNameId` conflicted with the existing unsigned
-integer-width constructor because `StructNameId` is a `uint32_t`; the final API
-uses explicit accessors instead of ambiguous constructor slots.
+Existing fallback constructors and string-authoritative behavior remain
+unchanged. No HIR-to-LIR lowering, verifier, printer, or test call sites were
+changed in this packet.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: add narrow struct-aware construction helpers at
-the lowering boundary so known struct type strings can attach the mirrored
-`StructNameId` without moving printer/verifier authority away from rendered
-type text.
+Execute Step 4 from `plan.md`: thread `StructNameId` through HIR-to-LIR
+`LirTypeRef` creation only where structured identity is already available and
+the legacy rendered spelling can be preserved.
+
+Intended Step 4 call-site targets are struct or union typed refs in
+`src/codegen/lir/hir_to_lir/hir_to_lir.cpp`, especially paths that already
+intern names through the module `StructNameTable` while producing
+`%struct.*`-style rendered type text. Keep string-only signature/global/extern
+surfaces out of this step unless needed to keep a touched `LirTypeRef`
+construction coherent.
 
 ## Watchouts
 
@@ -51,8 +55,9 @@ type text.
   `StructNameTable` or `StructNameId`; callers may have structured context, the
   helper itself does not.
 - Quoted LLVM struct names are currently classified as `LirTypeKind::Opaque`,
-  not `Struct`, because `classify()` only recognizes the unquoted `%struct.`
-  prefix.
+  not `Struct`, through fallback constructors because `classify()` only
+  recognizes the unquoted `%struct.` prefix. The new explicit factories classify
+  known struct and union refs as `Struct` without changing the rendered text.
 
 ## Proof
 

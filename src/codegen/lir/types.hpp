@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "../../shared/struct_name_table.hpp"
 
@@ -48,6 +49,18 @@ class LirTypeRef {
 
   [[nodiscard]] static LirTypeRef integer(unsigned bit_width) {
     return LirTypeRef("i" + std::to_string(bit_width), LirTypeKind::Integer, bit_width);
+  }
+
+  [[nodiscard]] static LirTypeRef struct_type(std::string rendered_text,
+                                              StructNameId struct_name_id) {
+    LirTypeRef type(std::move(rendered_text), LirTypeKind::Struct);
+    type.set_struct_name_id(struct_name_id);
+    return type;
+  }
+
+  [[nodiscard]] static LirTypeRef union_type(std::string rendered_text,
+                                             StructNameId struct_name_id) {
+    return struct_type(std::move(rendered_text), struct_name_id);
   }
 
   [[nodiscard]] const std::string& str() const { return text_; }
