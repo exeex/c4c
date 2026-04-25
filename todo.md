@@ -1,44 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/10_bir-global-initializer-family-extraction.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Move Initializer Lowering Helpers
+Current Step ID: Step 5
+Current Step Title: Prove No Behavior Change
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 by mechanically moving the global initializer lowering helper
-family from `src/backend/bir/lir_to_bir/globals.cpp` into
-`src/backend/bir/lir_to_bir/global_initializers.cpp`.
-`lower_global_initializer`, `lower_integer_array_initializer`,
-`lower_aggregate_initializer`, `strip_typed_initializer_prefix`, and the
-initializer-only byte-string, x86 fp80, zero-fill, recursive array, and
-recursive aggregate helpers are now implemented in `global_initializers.cpp`.
-`globals.cpp` keeps global entry/address behavior, including
-`lower_minimal_global`, `lower_string_constant_global`,
-`resolve_known_global_address`, and `parse_integer_array_type`.
+Completed Step 5 by proving the global initializer extraction with the
+supervisor-selected backend build and CTest subset. `c4c_codegen` builds and
+the `^backend_` CTest subset passes without expectation rewrites.
 
 ## Suggested Next
 
-Execute Step 5 from `plan.md`: prove no behavior change with the relevant
-global initializer coverage, escalating only if the supervisor chooses broader
-acceptance proof.
+Supervisor should decide whether to accept the completed runbook, request
+broader validation, or route lifecycle closure through the plan owner.
 
 ## Watchouts
 
-- Preserve behavior; this extraction is mechanical.
-- Do not add new headers.
-- Do not rewrite test expectations.
-- `parse_integer_array_type` remains in `globals.cpp` and is still declared
-  through `lowering.hpp` for the moved initializer code.
-- `global_initializers.cpp` now owns `<array>`, `<charconv>`, and `<cstring>`
-  for the moved byte/floating initializer parsing helpers.
+- No implementation files, source ideas, plan files, or test expectations were
+  touched in this validation packet.
+- This packet produced `test_after.log` only. Root-level noncanonical logs
+  present after the run: `test_baseline.log`, `test_before.log`.
 
 ## Proof
 
 Proof command run successfully:
 
-- `cmake --build --preset default --target c4c_codegen && cmake --build --preset default --target backend_lir_to_bir_notes_test`
+- `cmake --build --preset default --target c4c_codegen && ctest --test-dir build -j --output-on-failure -R '^backend_'`
 
 Proof log path: `test_after.log`.
+CTest summary: 100% tests passed, 0 tests failed out of 97 run. Twelve
+matching backend tests were reported disabled/not run by CTest.
