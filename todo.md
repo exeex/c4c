@@ -1,27 +1,27 @@
 Status: Active
 Source Idea Path: ideas/open/100_hir_compile_time_template_consteval_dual_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Materialization and parity proof
+Current Step ID: 6
+Current Step Title: Broader validation and handoff
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 materialization and parity proof completed as a proof-only packet. Existing focused coverage already exercises structured lookup parity (`frontend_hir_lookup_tests`), deferred template/consteval behavior, materialization stats/boundaries, and late-layout consteval static assertions with structured mirrors enabled, so no new test was added and no expectations were weakened.
+Step 5 materialization and parity proof completed as a proof-only packet and committed as `1eae7acc`. Existing focused coverage already exercises structured lookup parity (`frontend_hir_lookup_tests`), deferred template/consteval behavior, materialization stats/boundaries, and late-layout consteval static assertions with structured mirrors enabled, so no new test was added and no expectations were weakened.
 
 ## Suggested Next
 
-Next coherent packet: move to Step 6 broader validation and handoff. Summarize the implemented structured mirrors, preserved legacy-only fallback paths, and the Step 5 proof result so the supervisor can decide whether to request review, close, or replan.
+Step 6 packet: run the supervisor-selected broader validation checkpoint, then summarize implemented structured mirrors, preserved legacy-only fallback paths, fallback observations, deferred metadata blockers, and the Step 5 proof result. The supervisor can use that handoff to accept the slice, request review, close the active lifecycle state, or ask the plan owner to replan.
 
 ## Watchouts
 
-The remaining string-only and call-expression-node lookup paths still should not be routed through fake structured keys. Step 5 did not expose a materialization or deferred consteval parity gap; any future metadata handoff for those paths is new implementation scope.
+The remaining string-only and call-expression-node lookup paths still should not be routed through fake structured keys. Step 5 did not expose a materialization or deferred consteval parity gap; any future metadata handoff for those paths is new implementation scope. If broader validation finds distinct remaining registry work, record it through lifecycle rules instead of expanding this runbook ad hoc.
 
 ## Proof
 
 ```bash
-(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_lookup_tests|cpp_hir_deferred_template_instantiation|cpp_hir_deferred_consteval_chain|cpp_hir_deferred_consteval_multi|cpp_hir_deferred_consteval_incomplete_type|cpp_hir_materialization_stats|cpp_hir_materialization_boundary|cpp_c4_static_assert_if_constexpr_branch_unlocks_later|cpp_c4_static_assert_multistage_shape_chain)$') > test_after.log 2>&1
+<supervisor-selected broader validation command> > test_after.log 2>&1
 ```
 
-Result: build completed and all 9 selected tests passed. Proof log: `test_after.log`.
+Result: pending Step 6 supervisor-selected broader validation. Proof log target: `test_after.log`.
