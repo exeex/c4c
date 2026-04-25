@@ -197,6 +197,9 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
       parser.parser_text_id_for_token(c4c::kInvalidText, "idFirstNs");
   const c4c::TextId fn_id =
       parser.parser_text_id_for_token(c4c::kInvalidText, "idFirstFn");
+  const c4c::TextId qualified_fn_id =
+      parser.parser_text_id_for_token(c4c::kInvalidText,
+                                      "idFirstQualifiedFn");
   const int ns_context =
       parser.ensure_named_namespace_context(0, ns_id, "wrong_ns_fallback");
 
@@ -205,6 +208,8 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
   parser.register_var_type_binding(value_id, "wrong_value_fallback", var_ts);
   parser.register_known_fn_name_in_context(ns_context, fn_id,
                                            "wrong_fn_fallback");
+  parser.register_known_fn_name_in_context(ns_context, qualified_fn_id,
+                                           "wrongNs::wrong_qualified_fn_fallback");
 
   expect_true(parser.has_typedef_type("IdFirstType"),
               "ID-first typedef registration should use the TextId spelling");
@@ -419,6 +424,17 @@ void test_parser_id_first_binding_helpers_prefer_text_ids() {
               "ID-first known-function registration should use the TextId spelling");
   expect_true(!parser.has_known_fn_name("idFirstNs::wrong_fn_fallback"),
               "ID-first known-function registration should not prefer fallback spelling");
+  expect_true(parser.has_known_fn_name("idFirstNs::idFirstQualifiedFn"),
+              "ID-first qualified known-function registration should use the namespace context and TextId spelling");
+  expect_true(!parser.has_known_fn_name("wrongNs::wrong_qualified_fn_fallback"),
+              "ID-first qualified known-function registration should not promote rendered fallback spelling");
+  parser.register_known_fn_name("stringBridgeNs::stringBridgeFn");
+  expect_true(parser.has_known_fn_name("stringBridgeNs::stringBridgeFn"),
+              "public string known-function lookup should preserve rendered bridge compatibility");
+  parser.register_known_fn_name_in_context(
+      0, c4c::kInvalidText, "legacyKnownBridgeNs::legacyKnownBridgeFn");
+  expect_true(parser.has_known_fn_name("legacyKnownBridgeNs::legacyKnownBridgeFn"),
+              "TextId-less known-function registration should preserve rendered fallback compatibility");
 }
 
 void test_parser_heavy_snapshot_restores_symbol_id_keyed_tables() {

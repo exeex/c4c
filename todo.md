@@ -9,27 +9,27 @@ Current Step Title: Demote Parser-Owned Legacy String Paths
 ## Just Finished
 
 Step 8 - Demote Parser-Owned Legacy String Paths continued by auditing
-template instantiation de-dup mirrors in
-`src/frontend/parser/impl/types/template.cpp` and
-`src/frontend/parser/impl/types/base.cpp`.
+known-function string lookup bridges in
+`src/frontend/parser/impl/core.cpp`.
 
-Template instantiation de-dup sync now treats structured
-`TemplateInstantiationKey` state as authoritative when the key carries a valid
-TextId: legacy-only rendered keys still increment mismatch counters, but no
-longer promote/heal the structured de-dup set. Structured-present paths still
-repopulate the rendered mirror for compatibility.
+`register_known_fn_name_in_context` now prefers the namespace context plus
+valid base `TextId` when that structured identity is available, including the
+previously legacy-promoting qualified fallback branch. Rendered fallback is
+preserved only for TextId-less registration and the public string-facing
+`register_known_fn_name`/`has_known_fn_name` compatibility bridge.
 
-Direct template emission now preserves the rendered de-dup bridge only when no
-structured key is available; when a structured key is available, rendered-only
-state no longer suppresses concrete emission. Focused parser proof covers both
-the pre-mark sync path and the direct-emission fallback path.
+Focused parser coverage now proves that a qualified rendered fallback with a
+valid base TextId registers `idFirstNs::idFirstQualifiedFn` instead of the
+stale rendered fallback, while public string-facing lookup and TextId-less
+known-function registration remain compatible.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 8 by auditing parser-owned known-function
-string lookup bridges in `src/frontend/parser/impl/core.cpp` and focused parser
-tests; demote rendered fallback only where `QualifiedNameKey`/TextId lookup is
-available, and preserve public string-facing lookup compatibility explicitly.
+Completion handoff for this Step 8 packet: no parser-owned known-function
+string lookup bridge remains in `src/frontend/parser/impl/core.cpp` beyond the
+explicit public string-facing overloads and TextId-less rendered fallback
+compatibility. Supervisor should decide whether Step 8 has more parser-owned
+legacy string families to packetize or should move to lifecycle review.
 
 ## Watchouts
 
@@ -45,7 +45,9 @@ available, and preserve public string-facing lookup compatibility explicitly.
   `register_var_type_binding`, string-facing `find_var_type`, and
   `find_visible_var_type(kInvalidText, name)` remain compatibility bridges and
   should not be demoted without focused public-string and visible-lookup proof.
-- Remaining parser string bridges include known-function string lookup.
+- Known-function public string-facing overloads remain bridge-required by
+  design; this packet only demoted parser-owned context registration where
+  TextId/QualifiedNameKey identity is available.
 
 ## Proof
 

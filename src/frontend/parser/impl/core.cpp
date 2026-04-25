@@ -1356,6 +1356,18 @@ void Parser::register_known_fn_name(const std::string& name) {
 void Parser::register_known_fn_name_in_context(int context_id,
                                                TextId name_text_id,
                                                std::string_view fallback_name) {
+    const std::string_view text_name =
+        name_text_id != kInvalidText ? parser_text(name_text_id, {}) : "";
+    if (!text_name.empty() &&
+        text_name.find("::") == std::string_view::npos) {
+        const QualifiedNameKey key = qualified_key_in_context(
+            *this, context_id, name_text_id, text_name, true);
+        if (key.base_text_id != kInvalidText) {
+            register_known_fn_name(key);
+            return;
+        }
+    }
+
     if (fallback_name.find("::") != std::string_view::npos) {
         register_known_fn_name(std::string(fallback_name));
         return;
