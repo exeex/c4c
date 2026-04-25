@@ -10,7 +10,6 @@
 namespace c4c::backend {
 
 using lir_to_bir_detail::lower_integer_type;
-using lir_to_bir_detail::lookup_backend_aggregate_type_layout;
 using lir_to_bir_detail::parse_i64;
 using lir_to_bir_detail::type_size_bytes;
 using BackendStructuredLayoutTable = lir_to_bir_detail::BackendStructuredLayoutTable;
@@ -56,14 +55,7 @@ BirFunctionLowerer::lower_intrinsic_aggregate_layout(
   if (structured_layouts == nullptr) {
     return lower_byval_aggregate_layout(text, type_decls);
   }
-
-  const auto layout = lookup_backend_aggregate_type_layout(text, type_decls, *structured_layouts);
-  if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
-       layout.kind != AggregateTypeLayout::Kind::Array) ||
-      layout.size_bytes == 0 || layout.align_bytes == 0) {
-    return std::nullopt;
-  }
-  return layout;
+  return lower_byval_aggregate_layout(text, type_decls, structured_layouts);
 }
 
 bool BirFunctionLowerer::try_lower_immediate_local_memset(

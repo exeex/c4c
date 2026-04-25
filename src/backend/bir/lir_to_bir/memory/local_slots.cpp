@@ -330,7 +330,8 @@ bool BirFunctionLowerer::lower_memory_store_inst(
 
   const auto value_type = lower_scalar_or_function_pointer_type(store.type_str.str());
   if (!value_type.has_value()) {
-    const auto aggregate_layout = lower_byval_aggregate_layout(store.type_str.str(), type_decls_);
+    const auto aggregate_layout =
+        lower_byval_aggregate_layout(store.type_str.str(), type_decls_, &structured_layouts_);
     if (!aggregate_layout.has_value() ||
         store.ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
         store.val.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
@@ -517,7 +518,8 @@ bool BirFunctionLowerer::lower_memory_load_inst(
 
   const auto value_type = lower_scalar_or_function_pointer_type(load.type_str.str());
   if (!value_type.has_value()) {
-    const auto aggregate_layout = lower_byval_aggregate_layout(load.type_str.str(), type_decls_);
+    const auto aggregate_layout =
+        lower_byval_aggregate_layout(load.type_str.str(), type_decls_, &structured_layouts_);
     if (!aggregate_layout.has_value()) {
       return false;
     }

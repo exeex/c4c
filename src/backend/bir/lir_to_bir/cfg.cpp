@@ -135,7 +135,7 @@ std::optional<BirFunctionLowerer::PhiBlockPlanMap> BirFunctionLowerer::collect_p
         plan.kind = PhiLoweringPlan::Kind::ScalarValue;
         plan.type = *phi_type;
       } else if (const auto aggregate_layout =
-                     lower_byval_aggregate_layout(plan.type_text, type_decls_);
+                     lower_byval_aggregate_layout(plan.type_text, type_decls_, &structured_layouts_);
                  aggregate_layout.has_value()) {
         plan.kind = PhiLoweringPlan::Kind::AggregateValue;
         plan.aggregate_align_bytes = aggregate_layout->align_bytes;

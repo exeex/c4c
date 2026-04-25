@@ -9,55 +9,45 @@ Current Step Title: Convert ABI Classification Consumers
 ## Just Finished
 
 Step 4 - Convert ABI Classification Consumers converted byval aggregate layout
-classification for member aggregate params, returns, and call ABI paths to
-prefer the backend structured layout table when `structured_layouts_` is
-available, while preserving explicit legacy fallback behavior for static and
-fallback-only callers.
+classification for the remaining local aggregate load/store and CFG phi
+planning consumers to prefer the backend structured layout table when member
+state is available, while preserving explicit fallback behavior.
 
 Changed files:
 
-- `src/backend/bir/lir_to_bir/aggregate.cpp`
-- `src/backend/bir/lir_to_bir/call_abi.cpp`
-- `src/backend/bir/lir_to_bir/calling.cpp`
-- `src/backend/bir/lir_to_bir/lowering.hpp`
+- `src/backend/bir/lir_to_bir/cfg.cpp`
+- `src/backend/bir/lir_to_bir/memory/intrinsics.cpp`
+- `src/backend/bir/lir_to_bir/memory/local_slots.cpp`
 - `todo.md`
 - `test_after.log`
 
 Converted consumers:
 
-- `lower_byval_aggregate_layout()` now has a structured-table overload that
-  uses `lookup_backend_aggregate_type_layout()` and a legacy two-argument
-  overload that forwards through the same helper with a null table.
-- `collect_aggregate_params()` now classifies member aggregate params with
-  `structured_layouts_`.
-- Member return classification through `infer_function_return_info()` and
-  signature return parsing now passes structured layout state when available.
-- Member function parameter lowering now routes through a structured-aware
-  `lower_function_params()` wrapper; declaration/static fallback uses
-  `lower_function_params_fallback()`.
-- Direct, indirect, call-return, and variadic byval aggregate call
-  classification in `lower_call_inst()` / `lower_runtime_intrinsic_inst()` now
-  pass `structured_layouts_`.
+- `lower_memory_store_inst()` now classifies aggregate stores through
+  `lower_byval_aggregate_layout(..., &structured_layouts_)`.
+- `lower_memory_load_inst()` now classifies aggregate loads through
+  `lower_byval_aggregate_layout(..., &structured_layouts_)`.
+- `collect_phi_lowering_plans()` now classifies aggregate phi plans through
+  `lower_byval_aggregate_layout(..., &structured_layouts_)`.
+- `lower_intrinsic_aggregate_layout()` keeps the explicit null-table fallback
+  and delegates the structured-aware path to `lower_byval_aggregate_layout()`
+  instead of duplicating layout validation.
 
-Remaining fallback-only ABI consumers: extern declarations and declaration-only
-function lowering still pass null structured layout state explicitly, because
-they do not have a member lowerer layout table. The legacy two-argument
-`lower_byval_aggregate_layout()` remains for non-ABI fallback-only consumers
-outside this packet.
+Remaining fallback-only ABI consumers: extern declarations, declaration-only
+function lowering, and other static helper entry points that lack member
+`structured_layouts_` state still use the explicit null-table or legacy
+two-argument fallback path.
 
 Globals, initializer lowering, memory/addressing.cpp, unrelated MIR files, test
 expectations, `plan.md`, and the source idea were not changed.
 
 ## Suggested Next
 
-Next coherent packet: send Step 4 to review or delegate the next plan step the
-supervisor selects after checking whether the ABI conversion is sufficient.
+Next coherent packet: send Step 4 to review, or delegate the next plan step the
+supervisor selects after confirming this completes the structured-aware ABI
+consumer conversion.
 
 ## Watchouts
-
-`calling.cpp` needed a small ABI call-site update so member call return/arg
-classification could pass `structured_layouts_`; it was not listed in Owned
-Files but is part of the ABI consumer surface touched by this helper signature.
 
 Do not convert globals, initializer lowering, memory/addressing.cpp, unrelated
 MIR files, or test expectations unless the supervisor explicitly widens
