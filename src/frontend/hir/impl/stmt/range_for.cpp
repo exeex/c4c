@@ -16,23 +16,15 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
   }
 
   auto find_method = [&](const char* method_name) -> std::string {
-    std::string base_key = std::string(range_ts.tag) + "::" + method_name;
-    std::string const_key = base_key + "_const";
-    decltype(struct_methods_)::iterator mit;
-    if (range_ts.is_const) {
-      mit = struct_methods_.find(const_key);
-      if (mit == struct_methods_.end()) mit = struct_methods_.find(base_key);
-    } else {
-      mit = struct_methods_.find(base_key);
-      if (mit == struct_methods_.end()) mit = struct_methods_.find(const_key);
-    }
-    if (mit == struct_methods_.end()) {
+    auto method = find_struct_method_mangled(
+        range_ts.tag, method_name, range_ts.is_const);
+    if (!method) {
       throw std::runtime_error(
           std::string("error: range-for: no ") + method_name +
           "() method on struct " + range_ts.tag + " (line " +
           std::to_string(n->line) + ")");
     }
-    return mit->second;
+    return *method;
   };
 
   std::string begin_mangled = find_method("begin");
@@ -46,11 +38,9 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
     }
   }
   if (iter_ts.base == TB_VOID) {
-    auto rit = struct_method_ret_types_.find(std::string(range_ts.tag) + "::begin");
-    if (rit == struct_method_ret_types_.end()) {
-      rit = struct_method_ret_types_.find(std::string(range_ts.tag) + "::begin_const");
+    if (auto rit = find_struct_method_return_type(range_ts.tag, "begin", false)) {
+      iter_ts = *rit;
     }
-    if (rit != struct_method_ret_types_.end()) iter_ts = rit->second;
   }
   if (iter_ts.base == TB_VOID) {
     throw std::runtime_error(
@@ -105,18 +95,16 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
 
   ExprId cond_expr;
   {
-    std::string neq_base = std::string(iter_ts.tag) + "::operator_neq";
-    std::string neq_const = neq_base + "_const";
-    auto mit = struct_methods_.find(neq_base);
-    if (mit == struct_methods_.end()) mit = struct_methods_.find(neq_const);
-    if (mit == struct_methods_.end()) {
+    auto method = find_struct_method_mangled(
+        iter_ts.tag, "operator_neq", false);
+    if (!method) {
       throw std::runtime_error(
           std::string("error: range-for: iterator type ") + iter_ts.tag +
           " has no operator!= (line " + std::to_string(n->line) + ")");
     }
     CallExpr cc{};
     DeclRef dr{};
-    dr.name = mit->second;
+    dr.name = *method;
     dr.link_name_id = module_->link_names.find(dr.name);
     TypeSpec bool_ts{};
     bool_ts.base = TB_BOOL;
@@ -135,22 +123,20 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
 
   ExprId update_expr;
   {
-    std::string inc_base = std::string(iter_ts.tag) + "::operator_preinc";
-    std::string inc_const = inc_base + "_const";
-    auto mit = struct_methods_.find(inc_base);
-    if (mit == struct_methods_.end()) mit = struct_methods_.find(inc_const);
-    if (mit == struct_methods_.end()) {
+    auto method = find_struct_method_mangled(
+        iter_ts.tag, "operator_preinc", false);
+    if (!method) {
       throw std::runtime_error(
           std::string("error: range-for: iterator type ") + iter_ts.tag +
           " has no prefix operator++ (line " + std::to_string(n->line) + ")");
     }
     CallExpr cc{};
     DeclRef dr{};
-    dr.name = mit->second;
+    dr.name = *method;
     dr.link_name_id = module_->link_names.find(dr.name);
     TypeSpec inc_ret_ts = iter_ts;
     {
-      if (const Function* fn = module_->find_function_by_name_legacy(mit->second)) {
+      if (const Function* fn = module_->find_function_by_name_legacy(*method)) {
         inc_ret_ts = fn->return_type.spec;
       }
     }
@@ -186,32 +172,27 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
     TypeSpec deref_ret_ts{};
     deref_ret_ts.base = TB_INT;
     {
-      std::string deref_base = std::string(iter_ts.tag) + "::operator_deref";
-      std::string deref_const = deref_base + "_const";
-      auto mit = struct_methods_.find(deref_base);
-      if (mit == struct_methods_.end()) mit = struct_methods_.find(deref_const);
-      if (mit == struct_methods_.end()) {
+      auto method = find_struct_method_mangled(
+          iter_ts.tag, "operator_deref", false);
+      if (!method) {
         throw std::runtime_error(
             std::string("error: range-for: iterator type ") + iter_ts.tag +
             " has no operator* (line " + std::to_string(n->line) + ")");
       }
       CallExpr cc{};
       DeclRef dr{};
-      dr.name = mit->second;
+      dr.name = *method;
       dr.link_name_id = module_->link_names.find(dr.name);
       {
-        if (const Function* fn = module_->find_function_by_name_legacy(mit->second)) {
+        if (const Function* fn = module_->find_function_by_name_legacy(*method)) {
           deref_ret_ts = fn->return_type.spec;
         }
       }
       if (deref_ret_ts.base == TB_VOID || deref_ret_ts.base == TB_INT) {
-        auto rit = struct_method_ret_types_.find(
-            std::string(iter_ts.tag) + "::operator_deref");
-        if (rit == struct_method_ret_types_.end()) {
-          rit = struct_method_ret_types_.find(
-              std::string(iter_ts.tag) + "::operator_deref_const");
+        if (auto rit = find_struct_method_return_type(
+                iter_ts.tag, "operator_deref", false)) {
+          deref_ret_ts = *rit;
         }
-        if (rit != struct_method_ret_types_.end()) deref_ret_ts = rit->second;
       }
       TypeSpec callee_ts = deref_ret_ts;
       callee_ts.ptr_level++;
