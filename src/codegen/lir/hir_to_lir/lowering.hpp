@@ -117,7 +117,8 @@ std::vector<std::string> build_type_decls(const Module& mod,
 
 /// Build the LLVM IR signature text for a function (define/declare line).
 /// Ownership of signature construction belongs to hir_to_lir, not StmtEmitter.
-std::string build_fn_signature(const Module& mod, const Function& fn);
+std::string build_fn_signature(const Module& mod, const Function& fn,
+                               const LirModule* lir_module = nullptr);
 
 /// Compute the HIR block iteration order for a function: entry block first,
 /// then remaining blocks in their original order.

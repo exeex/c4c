@@ -274,7 +274,7 @@ static void lower_global(const c4c::hir::GlobalVar& gv,
   using namespace c4c::codegen::llvm_helpers;
 
   const TypeSpec& ts = gv.type.spec;
-  const int align = object_align_bytes(mod, ts);
+  const int align = object_align_bytes(mod, &module, ts);
 
   auto make_linkage_vis = [&](bool is_static, bool is_weak, bool is_extern,
                               Visibility vis) -> std::string {
@@ -495,7 +495,8 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
 // logic belongs to hir_to_lir; StmtEmitter consumes the pre-built text.
 
 std::string build_fn_signature(const c4c::hir::Module& mod,
-                               const c4c::hir::Function& fn) {
+                               const c4c::hir::Function& fn,
+                               const LirModule* lir_module) {
   using namespace c4c::codegen::llvm_helpers;
 
   std::ostringstream sig_out;
@@ -520,7 +521,7 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
       if (llvm_target_is_amd64_sysv(mod.target_profile) &&
           llvm_cc::amd64_fixed_aggregate_passed_byval(param_ts, mod)) {
         sig_out << "ptr byval(" << llvm_ty(param_ts) << ") align "
-                << std::max(8, object_align_bytes(mod, param_ts));
+                << std::max(8, object_align_bytes(mod, lir_module, param_ts));
       } else {
         sig_out << llvm_ty(param_ts);
       }
@@ -556,7 +557,7 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
     if (llvm_target_is_amd64_sysv(mod.target_profile) &&
         llvm_cc::amd64_fixed_aggregate_passed_byval(param_ts, mod)) {
       sig_out << "ptr byval(" << llvm_ty(param_ts) << ") align "
-              << std::max(8, object_align_bytes(mod, param_ts)) << " " << pname;
+              << std::max(8, object_align_bytes(mod, lir_module, param_ts)) << " " << pname;
     } else {
       sig_out << llvm_ty(param_ts) << " " << pname;
     }
@@ -1089,7 +1090,7 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
   lower_globals(global_indices, hir_mod, const_init, module);
   for (size_t idx : fn_indices) {
     const auto& fn = hir_mod.functions[idx];
-    std::string sig = build_fn_signature(hir_mod, fn);
+    std::string sig = build_fn_signature(hir_mod, fn, &module);
 
     if (fn.linkage.is_extern && fn.blocks.empty()) {
       // Declaration — no body to lower; hir_to_lir owns this directly.
