@@ -5,7 +5,7 @@ Created: 2026-04-25
 Last Updated: 2026-04-25
 
 Parent Ideas:
-- [103_hir_post_dual_path_legacy_readiness_audit.md](/workspaces/c4c/ideas/open/103_hir_post_dual_path_legacy_readiness_audit.md)
+- [103_hir_post_dual_path_legacy_readiness_audit.md](/workspaces/c4c/ideas/closed/103_hir_post_dual_path_legacy_readiness_audit.md)
 
 ## Goal
 
