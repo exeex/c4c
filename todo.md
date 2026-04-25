@@ -1,41 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/95_parser_dual_lookup_structured_identity_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Retarget Using Value Imports And Aliases
+Current Step ID: 4
+Current Step Title: Add Structured NTTP Default Cache Keys
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 - Retarget Using Value Imports And Aliases completed. Retargeted
-`UsingValueAlias::target_key`, visible value alias lookup, direct namespace
-value lookup, and `using` value import construction to prefer
-`QualifiedNameKey` / structured value-binding lookup before falling back to
-rendered compatibility names.
+Step 4 - Add Structured NTTP Default Cache Keys completed. Added
+`ParserTemplateState::NttpDefaultExprKey` keyed by `QualifiedNameKey` plus
+parameter index, routed parser-owned NTTP default token caching through a helper
+that populates both the structured map and rendered-name compatibility mirror,
+and corrected deferred NTTP default evaluation to dual-read structured and
+rendered cache entries when both exist.
 
-Focused parser tests now cover:
-- using value imports still rendering the structured target when compatibility
-  bridge spelling is corrupted
-- using value aliases preferring the structured target type over a misleading
-  compatibility bridge binding
-- local value bindings shadowing using value aliases before structured alias
-  resolution
+Focused parser tests now cover parsed deferred NTTP defaults populating both
+caches, mismatched structured/rendered entries being detected while preserving
+the rendered legacy result, and legacy rendered cache fallback remaining
+behavior-compatible when no structured entry is present.
 
 ## Suggested Next
 
-Next coherent packet: Step 4 - Add Structured NTTP Default Cache Keys. Add a
-structured cache identity for parser-owned NTTP default-expression tokens while
-keeping the rendered string cache as a compatibility mirror.
+Next coherent packet: supervisor review or the next plan step. This slice is
+ready for review with the focused parser proof passing.
 
 ## Watchouts
 
-- Keep `find_var_type(const std::string&)`, `has_var_type(const std::string&)`,
-  and `register_var_type_binding` behavior-compatible until downstream users are
-  migrated deliberately.
-- Preserve downstream rendered-name bridge behavior and compatibility spellings.
-- The using-value paths now prefer structured value storage, but rendered
-  compatibility names remain populated and used as fallback/output data.
+- `src/frontend/parser/impl/declarations.cpp` was touched narrowly to route the
+  existing NTTP default-token storage through the new mirror-populating helper;
+  no broader declaration parsing behavior was changed.
+- The rendered `template:param` cache remains populated and still preserves
+  legacy behavior when both cache families contain divergent entries.
+- Structured NTTP default lookup currently uses the evaluator's current
+  namespace-context key path; structured-only lookup remains available only when
+  no rendered cache entry exists.
 
 ## Proof
 

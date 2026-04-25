@@ -2021,9 +2021,23 @@ Node* parse_top_level(Parser& parser) {
             // Store deferred NTTP default tokens keyed by node name.
             if (n->name && !deferred_nttp_defaults.empty()) {
                 for (auto& [idx, toks] : deferred_nttp_defaults) {
-                    std::string key = std::string(n->name) + ":" + std::to_string(idx);
-                    parser.template_state_.nttp_default_expr_tokens[key] =
-                        std::move(toks);
+                    const char* key_name =
+                        (n->unqualified_name && n->unqualified_name[0])
+                            ? n->unqualified_name
+                            : n->name;
+                    const TextId key_text_id =
+                        n->unqualified_text_id != kInvalidText
+                            ? n->unqualified_text_id
+                            : parser.parser_text_id_for_token(kInvalidText,
+                                                              key_name);
+                    const int key_context_id =
+                        n->namespace_context_id >= 0
+                            ? n->namespace_context_id
+                            : parser.current_namespace_context_id();
+                    parser.cache_nttp_default_expr_tokens(
+                        parser.alias_template_key_in_context(
+                            key_context_id, key_text_id, key_name),
+                        n->name, idx, std::move(toks));
                 }
             }
         };

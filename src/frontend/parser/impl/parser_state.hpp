@@ -89,6 +89,26 @@ struct ParserDefinitionState {
 // - template_struct_* tables track primary templates and specializations.
 // - template_scope_stack is the push/pop surface for active template params.
 struct ParserTemplateState {
+  struct NttpDefaultExprKey {
+    QualifiedNameKey template_key;
+    int param_idx = -1;
+
+    [[nodiscard]] bool operator==(const NttpDefaultExprKey& other) const {
+      return template_key == other.template_key &&
+             param_idx == other.param_idx;
+    }
+  };
+
+  struct NttpDefaultExprKeyHash {
+    [[nodiscard]] size_t operator()(const NttpDefaultExprKey& key) const {
+      return static_cast<size_t>(hash_id_words(
+          kIdHashSeed, static_cast<uint32_t>(key.template_key.context_id),
+          key.template_key.qualifier_path_id, key.template_key.base_text_id,
+          static_cast<uint32_t>(key.template_key.is_global_qualified),
+          static_cast<uint32_t>(key.param_idx)));
+    }
+  };
+
   std::unordered_map<QualifiedNameKey, Node*, QualifiedNameKeyHash>
       template_struct_defs_by_key;
   std::unordered_map<QualifiedNameKey, std::vector<Node*>, QualifiedNameKeyHash>
@@ -97,8 +117,12 @@ struct ParserTemplateState {
   std::unordered_map<std::string, std::vector<Node*>>
       template_struct_specializations;
   std::set<std::string> instantiated_template_struct_keys;
+  std::unordered_map<NttpDefaultExprKey, std::vector<Token>,
+                     NttpDefaultExprKeyHash>
+      nttp_default_expr_tokens_by_key;
   std::unordered_map<std::string, std::vector<Token>>
       nttp_default_expr_tokens;
+  size_t nttp_default_expr_cache_mismatch_count = 0;
   std::unordered_map<QualifiedNameKey, ParserAliasTemplateInfo,
                      QualifiedNameKeyHash>
       alias_template_info;

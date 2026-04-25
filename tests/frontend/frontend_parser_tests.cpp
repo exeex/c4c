@@ -2345,6 +2345,75 @@ void test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases() 
               "test fixture should balance the local visible typedef scope");
 }
 
+void test_parser_nttp_default_cache_dual_reads_legacy_mismatch() {
+  c4c::Lexer lexer("template<int N = M + 1>\nstruct ParsedTrait {};\n",
+                   c4c::LexProfile::CppSubset);
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena parsed_arena;
+  c4c::Parser parsed_parser(tokens, parsed_arena, &lexer.text_table(),
+                            &lexer.file_table(),
+                            c4c::SourceProfile::CppSubset);
+  (void)parse_top_level(parsed_parser);
+  const c4c::QualifiedNameKey parsed_trait_key =
+      parsed_parser.alias_template_key_in_context(
+          parsed_parser.current_namespace_context_id(),
+          parsed_parser.find_parser_text_id("ParsedTrait"), "ParsedTrait");
+  const c4c::ParserTemplateState::NttpDefaultExprKey parsed_cache_key{
+      parsed_trait_key, 0};
+  expect_true(parsed_parser.template_state_.nttp_default_expr_tokens_by_key.find(
+                  parsed_cache_key) !=
+                  parsed_parser.template_state_.nttp_default_expr_tokens_by_key.end(),
+              "parsed NTTP defaults should populate the structured cache");
+  expect_true(parsed_parser.template_state_.nttp_default_expr_tokens.find(
+                  "ParsedTrait:0") !=
+                  parsed_parser.template_state_.nttp_default_expr_tokens.end(),
+              "parsed NTTP defaults should populate the rendered-name mirror");
+
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+
+  const c4c::TextId trait_text = texts.intern("Trait");
+  const c4c::QualifiedNameKey trait_key = parser.alias_template_key_in_context(
+      parser.current_namespace_context_id(), trait_text, "Trait");
+  std::vector<c4c::Token> structured_tokens = {
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "2"),
+  };
+  parser.cache_nttp_default_expr_tokens(trait_key, "Trait", 0,
+                                        structured_tokens);
+
+  const c4c::ParserTemplateState::NttpDefaultExprKey cache_key{trait_key, 0};
+  expect_true(parser.template_state_.nttp_default_expr_tokens_by_key.find(
+                  cache_key) !=
+                  parser.template_state_.nttp_default_expr_tokens_by_key.end(),
+              "NTTP default cache should populate the structured key");
+  expect_true(parser.template_state_.nttp_default_expr_tokens.find("Trait:0") !=
+                  parser.template_state_.nttp_default_expr_tokens.end(),
+              "NTTP default cache should keep the rendered-name mirror");
+
+  parser.template_state_.nttp_default_expr_tokens["Trait:0"] = {
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "3"),
+  };
+  long long value = 0;
+  expect_true(parser.eval_deferred_nttp_default("Trait", 0, {}, {}, &value),
+              "dual NTTP default cache lookup should preserve the legacy result");
+  expect_eq_int(value, 3,
+                "mismatched NTTP default cache entries should not silently let structured data override legacy behavior");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_.nttp_default_expr_cache_mismatch_count),
+      1,
+      "mismatched structured/rendered NTTP default cache entries should be detected");
+
+  parser.template_state_.nttp_default_expr_tokens_by_key.erase(cache_key);
+  expect_true(parser.eval_deferred_nttp_default("Trait", 0, {}, {}, &value),
+              "legacy NTTP default cache mirror should remain a fallback");
+  expect_eq_int(value, 3,
+                "legacy NTTP default cache fallback should preserve behavior");
+}
+
 void test_parser_alias_template_value_probes_use_token_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -2547,6 +2616,7 @@ int main() {
   test_parser_template_type_arg_prefers_local_visible_typedef_text_id();
   test_parser_deferred_nttp_builtin_trait_uses_visible_scope_local_alias();
   test_parser_deferred_nttp_member_lookup_uses_visible_scope_local_aliases();
+  test_parser_nttp_default_cache_dual_reads_legacy_mismatch();
   test_parser_alias_template_value_probes_use_token_spelling();
   test_parser_alias_template_info_prefers_structured_key_over_recovery();
   test_parser_typename_template_parameter_probe_uses_token_spelling();

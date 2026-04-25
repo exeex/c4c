@@ -1038,11 +1038,71 @@ bool Parser::eval_deferred_nttp_default(
     const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
     const std::vector<std::pair<std::string, long long>>& nttp_bindings,
     long long* out) {
-    std::string key = tpl_name + ":" + std::to_string(param_idx);
-    auto it = template_state_.nttp_default_expr_tokens.find(key);
-    if (it == template_state_.nttp_default_expr_tokens.end()) return false;
-    return eval_deferred_nttp_expr_tokens(tpl_name, it->second,
+    const std::string legacy_key = tpl_name + ":" + std::to_string(param_idx);
+    auto legacy_it = template_state_.nttp_default_expr_tokens.find(legacy_key);
+
+    const QualifiedNameKey structured_key = alias_template_key_in_context(
+        current_namespace_context_id(), find_parser_text_id(tpl_name),
+        tpl_name);
+    const std::vector<Token>* structured_tokens = nullptr;
+    if (structured_key.base_text_id != kInvalidText) {
+        const ParserTemplateState::NttpDefaultExprKey key{
+            structured_key, param_idx};
+        auto structured_it =
+            template_state_.nttp_default_expr_tokens_by_key.find(key);
+        if (structured_it !=
+            template_state_.nttp_default_expr_tokens_by_key.end()) {
+            structured_tokens = &structured_it->second;
+        }
+    }
+
+    if (legacy_it != template_state_.nttp_default_expr_tokens.end()) {
+        long long legacy_value = 0;
+        const bool legacy_ok = eval_deferred_nttp_expr_tokens(
+            tpl_name, legacy_it->second, type_bindings, nttp_bindings,
+            &legacy_value);
+
+        if (structured_tokens) {
+            long long structured_value = 0;
+            const bool structured_ok = eval_deferred_nttp_expr_tokens(
+                tpl_name, *structured_tokens, type_bindings, nttp_bindings,
+                &structured_value);
+            if (structured_ok != legacy_ok ||
+                (structured_ok && legacy_ok &&
+                 structured_value != legacy_value)) {
+                ++template_state_.nttp_default_expr_cache_mismatch_count;
+            }
+        }
+
+        if (!legacy_ok) return false;
+        *out = legacy_value;
+        return true;
+    }
+
+    if (!structured_tokens) {
+        return false;
+    }
+
+    return eval_deferred_nttp_expr_tokens(tpl_name, *structured_tokens,
                                           type_bindings, nttp_bindings, out);
+}
+
+void Parser::cache_nttp_default_expr_tokens(
+    const QualifiedNameKey& template_key,
+    std::string_view legacy_template_name,
+    int param_idx,
+    std::vector<Token> toks) {
+    if (template_key.base_text_id != kInvalidText && param_idx >= 0) {
+        template_state_.nttp_default_expr_tokens_by_key
+            [ParserTemplateState::NttpDefaultExprKey{template_key, param_idx}] =
+                toks;
+    }
+    if (!legacy_template_name.empty() && param_idx >= 0) {
+        std::string legacy_key(legacy_template_name);
+        legacy_key += ":";
+        legacy_key += std::to_string(param_idx);
+        template_state_.nttp_default_expr_tokens[legacy_key] = std::move(toks);
+    }
 }
 
 }  // namespace c4c
