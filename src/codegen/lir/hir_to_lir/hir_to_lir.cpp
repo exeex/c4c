@@ -16,6 +16,8 @@ namespace c4c::codegen::lir {
 
 namespace llvm_cc = c4c::codegen::llvm_backend;
 
+int object_align_bytes(const c4c::hir::Module& mod, const LirModule* lir_module,
+                       const TypeSpec& ts);
 int object_align_bytes(const c4c::hir::Module& mod, const TypeSpec& ts);
 
 namespace {
@@ -79,12 +81,13 @@ LirTypeRef lir_signature_type_ref(const std::string& rendered_text,
 }
 
 std::string rendered_signature_param_type(const c4c::hir::Module& mod,
+                                          LirModule* lir_module,
                                           const TypeSpec& param_ts) {
   using namespace c4c::codegen::llvm_helpers;
   if (llvm_target_is_amd64_sysv(mod.target_profile) &&
       llvm_cc::amd64_fixed_aggregate_passed_byval(param_ts, mod)) {
     return "ptr byval(" + llvm_ty(param_ts) + ") align " +
-           std::to_string(std::max(8, object_align_bytes(mod, param_ts)));
+           std::to_string(std::max(8, object_align_bytes(mod, lir_module, param_ts)));
   }
   return llvm_ty(param_ts);
 }
@@ -108,7 +111,7 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
   for (const auto& param : fn.params) {
     const TypeSpec& param_ts = param.type.spec;
     lir_fn.signature_param_type_refs.push_back(lir_signature_type_ref(
-        rendered_signature_param_type(mod, param_ts), lir_module, param_ts));
+        rendered_signature_param_type(mod, lir_module, param_ts), lir_module, param_ts));
   }
 }
 
@@ -116,7 +119,8 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
 
 // ── Module-level orchestration helpers ───────────────────────────────────────
 
-int object_align_bytes(const c4c::hir::Module& mod, const TypeSpec& ts) {
+int object_align_bytes(const c4c::hir::Module& mod, const LirModule* lir_module,
+                       const TypeSpec& ts) {
   if (ts.array_rank > 0) {
     TypeSpec elem = ts;
     elem.array_rank--;
@@ -124,7 +128,7 @@ int object_align_bytes(const c4c::hir::Module& mod, const TypeSpec& ts) {
       for (int i = 0; i < elem.array_rank; ++i) elem.array_dims[i] = elem.array_dims[i + 1];
     }
     elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
-    int align = object_align_bytes(mod, elem);
+    int align = object_align_bytes(mod, lir_module, elem);
     if (ts.align_bytes > align) align = ts.align_bytes;
     return align;
   }
@@ -134,8 +138,9 @@ int object_align_bytes(const c4c::hir::Module& mod, const TypeSpec& ts) {
   } else if (ts.ptr_level > 0 || ts.is_fn_ptr) {
     align = 8;
   } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
-    const auto it = mod.struct_defs.find(ts.tag);
-    align = (it != mod.struct_defs.end()) ? std::max(1, it->second.align_bytes) : 8;
+    const stmt_emitter_detail::StructuredLayoutLookup layout =
+        stmt_emitter_detail::lookup_structured_layout(mod, lir_module, ts);
+    align = layout.legacy_decl ? std::max(1, layout.legacy_decl->align_bytes) : 8;
   } else if (ts.base == TB_VA_LIST && ts.ptr_level == 0 && ts.array_rank == 0) {
     align = llvm_va_list_alignment(mod.target_profile);
   } else {
@@ -153,6 +158,10 @@ int object_align_bytes(const c4c::hir::Module& mod, const TypeSpec& ts) {
   }
   if (ts.align_bytes > align) align = ts.align_bytes;
   return align;
+}
+
+int object_align_bytes(const c4c::hir::Module& mod, const TypeSpec& ts) {
+  return object_align_bytes(mod, nullptr, ts);
 }
 
 std::vector<size_t> dedup_globals(const c4c::hir::Module& mod) {

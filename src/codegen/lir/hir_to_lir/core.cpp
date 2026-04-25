@@ -16,6 +16,88 @@ static int align_to_bytes(int value, int align) {
   return rem == 0 ? value : value + (align - rem);
 }
 
+static void append_legacy_layout_field_types(const Module& mod, const HirStructDef& sd,
+                                             std::vector<std::string>& out) {
+  if (sd.fields.empty() && sd.base_tags.empty()) {
+    if (sd.size_bytes > 0) out.push_back("[" + std::to_string(sd.size_bytes) + " x i8]");
+    return;
+  }
+
+  if (sd.is_union) {
+    out.push_back("[" + std::to_string(sd.size_bytes) + " x i8]");
+    return;
+  }
+
+  int cur_offset = 0;
+  for (const auto& base_tag : sd.base_tags) {
+    const auto bit = mod.struct_defs.find(base_tag);
+    if (bit == mod.struct_defs.end()) continue;
+    const auto& base = bit->second;
+    const int base_offset = align_to_bytes(cur_offset, std::max(1, base.align_bytes));
+    if (base_offset > cur_offset) {
+      out.push_back("[" + std::to_string(base_offset - cur_offset) + " x i8]");
+      cur_offset = base_offset;
+    }
+    out.push_back(llvm_struct_type_str(base_tag));
+    cur_offset = base_offset + std::max(0, base.size_bytes);
+  }
+
+  int last_idx = -1;
+  for (const auto& f : sd.fields) {
+    if (f.llvm_idx == last_idx) continue;
+    last_idx = f.llvm_idx;
+    if (f.offset_bytes > cur_offset) {
+      out.push_back("[" + std::to_string(f.offset_bytes - cur_offset) + " x i8]");
+      cur_offset = f.offset_bytes;
+    }
+    out.push_back(llvm_field_ty(f));
+    cur_offset = f.offset_bytes + std::max(0, f.size_bytes);
+  }
+
+  if (sd.size_bytes > cur_offset) {
+    out.push_back("[" + std::to_string(sd.size_bytes - cur_offset) + " x i8]");
+  }
+}
+
+static bool structured_fields_match_legacy_layout(const Module& mod,
+                                                  const HirStructDef& legacy,
+                                                  const LirStructDecl& structured) {
+  std::vector<std::string> legacy_fields;
+  append_legacy_layout_field_types(mod, legacy, legacy_fields);
+  if (legacy_fields.size() != structured.fields.size()) return false;
+  for (size_t i = 0; i < legacy_fields.size(); ++i) {
+    if (legacy_fields[i] != structured.fields[i].type.str()) return false;
+  }
+  return true;
+}
+
+StructuredLayoutLookup lookup_structured_layout(const Module& mod,
+                                                const LirModule* lir_module,
+                                                const TypeSpec& ts) {
+  StructuredLayoutLookup result;
+  if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || ts.ptr_level != 0 ||
+      ts.array_rank != 0 || !ts.tag || !ts.tag[0]) {
+    return result;
+  }
+
+  const auto legacy_it = mod.struct_defs.find(ts.tag);
+  if (legacy_it != mod.struct_defs.end()) result.legacy_decl = &legacy_it->second;
+
+  if (!lir_module) return result;
+  const std::string rendered_name = llvm_struct_type_str(ts.tag);
+  result.structured_name_id = lir_module->struct_names.find(rendered_name);
+  if (result.structured_name_id == kInvalidStructName) return result;
+
+  result.structured_lookup_attempted = true;
+  result.structured_decl = lir_module->find_struct_decl(result.structured_name_id);
+  if (!result.structured_decl || !result.legacy_decl) return result;
+
+  result.structured_parity_checked = true;
+  result.structured_parity_matches =
+      structured_fields_match_legacy_layout(mod, *result.legacy_decl, *result.structured_decl);
+  return result;
+}
+
 bool amd64_registers_available(const llvm_cc::Amd64VarargInfo& layout,
                                const Amd64CallArgState& state) {
   if (layout.gp_chunks > 0) {
@@ -325,7 +407,8 @@ int round_up_to(int value, int align) {
   return ((value + align - 1) / align) * align;
 }
 
-int object_align_bytes(const Module& mod, const TypeSpec& ts) {
+int object_align_bytes(const Module& mod, const LirModule* lir_module,
+                       const TypeSpec& ts) {
   if (ts.array_rank > 0) {
     TypeSpec elem = ts;
     elem.array_rank--;
@@ -333,7 +416,7 @@ int object_align_bytes(const Module& mod, const TypeSpec& ts) {
       for (int i = 0; i < elem.array_rank; ++i) elem.array_dims[i] = elem.array_dims[i + 1];
     }
     elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
-    int align = object_align_bytes(mod, elem);
+    int align = object_align_bytes(mod, lir_module, elem);
     if (ts.align_bytes > align) align = ts.align_bytes;
     return align;
   }
@@ -343,8 +426,8 @@ int object_align_bytes(const Module& mod, const TypeSpec& ts) {
   } else if (ts.ptr_level > 0 || ts.is_fn_ptr) {
     align = 8;
   } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
-    const auto it = mod.struct_defs.find(ts.tag);
-    align = (it != mod.struct_defs.end()) ? std::max(1, it->second.align_bytes) : 8;
+    const StructuredLayoutLookup layout = lookup_structured_layout(mod, lir_module, ts);
+    align = layout.legacy_decl ? std::max(1, layout.legacy_decl->align_bytes) : 8;
   } else if (ts.base == TB_VA_LIST && ts.ptr_level == 0 && ts.array_rank == 0) {
     align = llvm_va_list_alignment(mod.target_profile);
   } else {
@@ -372,6 +455,10 @@ int object_align_bytes(const Module& mod, const TypeSpec& ts) {
   }
   if (ts.align_bytes > align) align = ts.align_bytes;
   return align;
+}
+
+int object_align_bytes(const Module& mod, const TypeSpec& ts) {
+  return object_align_bytes(mod, nullptr, ts);
 }
 
 }  // namespace stmt_emitter_detail

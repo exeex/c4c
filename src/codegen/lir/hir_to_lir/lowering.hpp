@@ -3,6 +3,7 @@
 #include "../../shared/llvm_helpers.hpp"
 #include "../call_args.hpp"
 #include "../../shared/fn_lowering_ctx.hpp"
+#include "../../shared/struct_name_table.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -34,6 +35,7 @@ struct Amd64VarargInfo;
 namespace c4c::codegen::lir {
 
 struct LirModule;
+struct LirStructDecl;
 
 using namespace c4c;
 using namespace c4c::hir;
@@ -273,6 +275,19 @@ int llvm_struct_base_slot(const hir::Module& mod, const HirStructDef& sd,
                           size_t base_index);
 int llvm_struct_field_slot_by_name(const HirStructDef& sd, const std::string& field_name);
 
+struct StructuredLayoutLookup {
+  const HirStructDef* legacy_decl = nullptr;
+  const LirStructDecl* structured_decl = nullptr;
+  StructNameId structured_name_id = kInvalidStructName;
+  bool structured_lookup_attempted = false;
+  bool structured_parity_checked = false;
+  bool structured_parity_matches = false;
+};
+
+StructuredLayoutLookup lookup_structured_layout(const Module& mod,
+                                                const LirModule* lir_module,
+                                                const TypeSpec& ts);
+
 struct Aarch64HomogeneousFpAggregateInfo {
   std::string elem_ty;
   int elem_count = 0;
@@ -284,6 +299,8 @@ struct Aarch64HomogeneousFpAggregateInfo {
 std::optional<Aarch64HomogeneousFpAggregateInfo> classify_aarch64_hfa(
     const Module& mod, const TypeSpec& ts);
 int round_up_to(int value, int align);
+int object_align_bytes(const Module& mod, const LirModule* lir_module,
+                       const TypeSpec& ts);
 int object_align_bytes(const Module& mod, const TypeSpec& ts);
 
 }  // namespace stmt_emitter_detail
