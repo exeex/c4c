@@ -1,6 +1,6 @@
 # Parser Dual-Lookup Structured Identity Cleanup
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
 
@@ -236,3 +236,23 @@ Proof should include focused cases for:
 - Focused parser proof passes.
 - Any broader touched baseline has matching before/after regression logs with
   no unexpected drift.
+
+## Closure Summary
+
+Closed after the active runbook completed the parser-owned dual-lookup
+migration through Step 8. Parser-owned value binding lookup, `using` value
+aliases, NTTP default-expression caching, template instantiation
+de-duplication, ID-first parser helper use, and known-function registration now
+prefer structured `TextId` / `QualifiedNameKey` identity where that identity is
+available.
+
+Remaining rendered-string paths are explicit compatibility bridges for public
+string-facing APIs, TextId-less callers, downstream AST/HIR/sema/codegen
+surfaces, diagnostics, and mismatch proof. Those downstream rendered-identity
+surfaces are outside this parser-only idea and remain follow-on cleanup scope,
+not blockers for idea 95.
+
+Focused parser proof passed during the final Step 8 packet. Close validation
+used matching full-suite CTest logs: `test_before.log` and `test_after.log`
+both report 2974/2974 passing tests, and the regression guard passed in
+documented non-decreasing refactor mode with no new failures.
