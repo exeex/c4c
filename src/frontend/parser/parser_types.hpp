@@ -232,6 +232,7 @@ struct ParserTentativeTextRef {
 
 struct ParserAliasTemplateInfo {
   std::vector<const char*> param_names;
+  std::vector<TextId> param_name_text_ids;
   std::vector<bool> param_is_nttp;
   std::vector<bool> param_is_pack;
   std::vector<bool> param_has_default;

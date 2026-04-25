@@ -328,6 +328,7 @@ struct Node {
     int    n_params;
     // C++ subset template metadata carried on declarations / references.
     const char** template_param_names;
+    TextId*      template_param_name_text_ids; // parallel: parser-owned identity for template_param_names
     bool*        template_param_is_nttp;  // parallel: true if non-type template param
     bool*        template_param_is_pack;  // parallel: true if template parameter is a pack
     bool*        template_param_has_default; // parallel: true if param has a default

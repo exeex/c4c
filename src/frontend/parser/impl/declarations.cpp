@@ -1728,6 +1728,7 @@ Node* parse_top_level(Parser& parser) {
 
         Parser::TemplateDeclarationPreludeGuard template_prelude_guard(&parser);
         std::vector<const char*> template_params;
+        std::vector<TextId> template_param_name_text_ids;
         std::vector<bool> template_param_nttp;  // true if non-type template param
         std::vector<bool> template_param_is_pack;
         std::vector<bool> template_param_has_default;
@@ -1737,19 +1738,25 @@ Node* parse_top_level(Parser& parser) {
         // Deferred NTTP default expression tokens per parameter index.
         std::unordered_map<int, std::vector<Token>> deferred_nttp_defaults;
         auto push_type_template_param =
-            [&](const char* pname, bool is_pack = false,
+            [&](const char* pname, TextId pname_text_id = kInvalidText,
+                bool is_pack = false,
                 bool has_default = false, const TypeSpec* default_ts = nullptr) {
+                TextId ast_pname_text_id = pname_text_id;
                 if (!pname || !pname[0]) {
                     pname = make_anon_template_param_name(parser.arena_, false, template_params.size());
+                    ast_pname_text_id = kInvalidText;
                 }
                 if (pname && pname[0]) {
-                    const TextId pname_text_id =
-                        parser.parser_text_id_for_token(kInvalidText, pname);
-                    parser.register_synthesized_typedef_binding(pname_text_id, pname);
+                    const TextId binding_text_id =
+                        ast_pname_text_id != kInvalidText
+                            ? ast_pname_text_id
+                            : parser.parser_text_id_for_token(kInvalidText, pname);
+                    parser.register_synthesized_typedef_binding(binding_text_id, pname);
                     template_prelude_guard.injected_type_params.push_back(
-                        {pname_text_id, pname});
+                        {binding_text_id, pname});
                 }
                 template_params.push_back(pname);
+                template_param_name_text_ids.push_back(ast_pname_text_id);
                 template_param_nttp.push_back(false);
                 template_param_is_pack.push_back(is_pack);
                 if (has_default && default_ts) {
@@ -1774,11 +1781,16 @@ Node* parse_top_level(Parser& parser) {
             template_param_default_values.push_back(0);
             template_param_default_exprs.push_back(nullptr);
         };
-        auto push_nttp_param = [&](const char* pname, bool is_pack = false) {
+        auto push_nttp_param =
+            [&](const char* pname, TextId pname_text_id = kInvalidText,
+                bool is_pack = false) {
+            TextId ast_pname_text_id = pname_text_id;
             if (!pname || !pname[0]) {
                 pname = make_anon_template_param_name(parser.arena_, true, template_params.size());
+                ast_pname_text_id = kInvalidText;
             }
             template_params.push_back(pname);
+            template_param_name_text_ids.push_back(ast_pname_text_id);
             template_param_nttp.push_back(true);
             template_param_is_pack.push_back(is_pack);
             return pname;
@@ -1815,15 +1827,25 @@ Node* parse_top_level(Parser& parser) {
                     template_param_default_exprs.push_back(nullptr);
                 }
             };
+        struct ParsedTemplateParamName {
+            bool is_pack;
+            const char* name;
+            TextId name_text_id;
+        };
         auto parse_template_param_pack_and_name = [&]() {
             bool is_pack = false;
             if (parser.check(TokenKind::Ellipsis)) { parser.consume(); is_pack = true; }
             const char* pname = nullptr;
+            TextId pname_text_id = kInvalidText;
             if (parser.check(TokenKind::Identifier)) {
-                pname = parser.arena_.strdup(std::string(parser.token_spelling(parser.cur())));
+                const std::string spelling =
+                    std::string(parser.token_spelling(parser.cur()));
+                pname_text_id =
+                    parser.parser_text_id_for_token(parser.cur().text_id, spelling);
+                pname = parser.arena_.strdup(spelling);
                 parser.consume();
             }
-            return std::pair<bool, const char*>(is_pack, pname);
+            return ParsedTemplateParamName{is_pack, pname, pname_text_id};
         };
         auto try_consume_typedef_nttp_type_head = [&]() -> bool {
             if (parser.is_cpp_mode()) {
@@ -1868,11 +1890,13 @@ Node* parse_top_level(Parser& parser) {
                     throw std::runtime_error("expected template parameter name");
                 }
                 parser.consume();  // typename/class
-                auto [is_pack, pname] = parse_template_param_pack_and_name();
+                auto param_name = parse_template_param_pack_and_name();
                 if (parser.match(TokenKind::Assign)) {
                     skip_template_param_default_expr(parser, true);
                 }
-                push_type_template_param(pname, is_pack);
+                push_type_template_param(param_name.name,
+                                         param_name.name_text_id,
+                                         param_name.is_pack);
             } else if (parser.check(TokenKind::KwTypename) ||
                 parser.check(TokenKind::KwClass)) {
                 if (parser.classify_typename_template_parameter() ==
@@ -1880,8 +1904,10 @@ Node* parse_top_level(Parser& parser) {
                     TypeSpec param_ts = parser.parse_type_name();
                     (void)param_ts;
                     while (parser.check(TokenKind::Star) || is_qualifier(parser.cur().kind)) parser.consume();
-                    auto [is_pack, pname] = parse_template_param_pack_and_name();
-                    push_nttp_param(pname, is_pack);
+                    auto param_name = parse_template_param_pack_and_name();
+                    push_nttp_param(param_name.name,
+                                    param_name.name_text_id,
+                                    param_name.is_pack);
                     if (parser.match(TokenKind::Assign)) {
                         skip_template_param_default_expr(parser, false);
                     }
@@ -1890,20 +1916,26 @@ Node* parse_top_level(Parser& parser) {
                 }
                 // Type template parameter (possibly variadic: typename... Ts).
                 parser.consume();
-                auto [is_pack, pname] = parse_template_param_pack_and_name();
+                auto param_name = parse_template_param_pack_and_name();
                 // Check for default type argument: = type
                 if (parser.match(TokenKind::Assign)) {
                     TypeSpec def_ts = parser.parse_type_name();
-                    push_type_template_param(pname, is_pack, true, &def_ts);
+                    push_type_template_param(param_name.name,
+                                             param_name.name_text_id,
+                                             param_name.is_pack, true, &def_ts);
                 } else {
-                    push_type_template_param(pname, is_pack);
+                    push_type_template_param(param_name.name,
+                                             param_name.name_text_id,
+                                             param_name.is_pack);
                 }
             } else if (is_type_kw(parser.cur().kind)) {
                 // Non-type template parameter (NTTP): e.g. int N, unsigned N, bool... Bn.
                 // Consume the type specifier tokens, then the parameter name.
                 while (!parser.at_end() && is_type_kw(parser.cur().kind)) parser.consume();
-                auto [is_pack, pname] = parse_template_param_pack_and_name();
-                push_nttp_param(pname, is_pack);
+                auto param_name = parse_template_param_pack_and_name();
+                push_nttp_param(param_name.name,
+                                param_name.name_text_id,
+                                param_name.is_pack);
                 // Check for default NTTP value: = expr
                 if (parser.match(TokenKind::Assign)) {
                     long long sign = 1;
@@ -1936,8 +1968,10 @@ Node* parse_top_level(Parser& parser) {
                 // (e.g. size_t N, std::size_t N).
                 // Skip pointer stars or qualifiers.
                 while (parser.check(TokenKind::Star) || is_qualifier(parser.cur().kind)) parser.consume();
-                auto [is_pack, pname] = parse_template_param_pack_and_name();
-                push_nttp_param(pname, is_pack);
+                auto param_name = parse_template_param_pack_and_name();
+                push_nttp_param(param_name.name,
+                                param_name.name_text_id,
+                                param_name.is_pack);
                 // Check for default NTTP value: = expr
                 if (parser.match(TokenKind::Assign)) {
                     skip_template_param_default_expr(parser, false);
@@ -1954,12 +1988,16 @@ Node* parse_top_level(Parser& parser) {
                     // C++20 constrained type parameter:
                     //   template<Constraint T>
                     //   template<ns::Constraint T = int>
-                    auto [is_pack, pname] = parse_template_param_pack_and_name();
+                    auto param_name = parse_template_param_pack_and_name();
                     if (parser.match(TokenKind::Assign)) {
                         TypeSpec def_ts = parser.parse_type_name();
-                        push_type_template_param(pname, is_pack, true, &def_ts);
+                        push_type_template_param(param_name.name,
+                                                 param_name.name_text_id,
+                                                 param_name.is_pack, true, &def_ts);
                     } else {
-                        push_type_template_param(pname, is_pack);
+                        push_type_template_param(param_name.name,
+                                                 param_name.name_text_id,
+                                                 param_name.is_pack);
                     }
                     guard.commit();
                 } else {
@@ -1979,7 +2017,10 @@ Node* parse_top_level(Parser& parser) {
             std::vector<Parser::TemplateScopeParam> scope_params;
             for (size_t i = 0; i < template_params.size(); ++i) {
                 Parser::TemplateScopeParam p;
-                p.name_text_id = parser.parser_text_id_for_token(kInvalidText,
+                p.name_text_id =
+                    template_param_name_text_ids[i] != kInvalidText
+                        ? template_param_name_text_ids[i]
+                        : parser.parser_text_id_for_token(kInvalidText,
                                                           template_params[i]);
                 p.name = template_params[i];
                 p.is_nttp = template_param_nttp[i];
@@ -2001,6 +2042,8 @@ Node* parse_top_level(Parser& parser) {
                 ParserAliasTemplateInfo ati;
                 for (size_t i = 0; i < template_params.size(); ++i) {
                     ati.param_names.push_back(template_params[i]);
+                    ati.param_name_text_ids.push_back(
+                        template_param_name_text_ids[i]);
                     ati.param_is_nttp.push_back(template_param_nttp[i]);
                     ati.param_is_pack.push_back(template_param_is_pack[i]);
                     ati.param_has_default.push_back(template_param_has_default[i]);
@@ -2016,6 +2059,7 @@ Node* parse_top_level(Parser& parser) {
             if (!n || template_params.empty()) return;
             n->n_template_params = (int)template_params.size();
             n->template_param_names = parser.arena_.alloc_array<const char*>(n->n_template_params);
+            n->template_param_name_text_ids = parser.arena_.alloc_array<TextId>(n->n_template_params);
             n->template_param_is_nttp = parser.arena_.alloc_array<bool>(n->n_template_params);
             n->template_param_is_pack = parser.arena_.alloc_array<bool>(n->n_template_params);
             n->template_param_has_default = parser.arena_.alloc_array<bool>(n->n_template_params);
@@ -2024,6 +2068,7 @@ Node* parse_top_level(Parser& parser) {
             n->template_param_default_exprs = parser.arena_.alloc_array<const char*>(n->n_template_params);
             for (int i = 0; i < n->n_template_params; ++i) {
                 n->template_param_names[i] = template_params[i];
+                n->template_param_name_text_ids[i] = template_param_name_text_ids[i];
                 n->template_param_is_nttp[i] = template_param_nttp[i];
                 n->template_param_is_pack[i] = template_param_is_pack[i];
                 n->template_param_has_default[i] = template_param_has_default[i];

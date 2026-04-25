@@ -2993,6 +2993,8 @@ TypeSpec Parser::parse_base_type() {
                             int n = tpl_def->n_template_params;
                             inst->n_template_params = n;
                             inst->template_param_names = tpl_def->template_param_names;
+                            inst->template_param_name_text_ids =
+                                tpl_def->template_param_name_text_ids;
                             inst->template_param_is_nttp = tpl_def->template_param_is_nttp;
                             inst->n_template_args = n;
                             inst->template_arg_types = arena_.alloc_array<TypeSpec>(n);
