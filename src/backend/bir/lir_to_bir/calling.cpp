@@ -750,6 +750,415 @@ bool BirFunctionLowerer::lower_function_params(
   return true;
 }
 
+bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& call,
+                                         std::vector<bir::Inst>* lowered_insts) {
+  auto& value_aliases = value_aliases_;
+  auto& aggregate_value_aliases = aggregate_value_aliases_;
+  auto& local_pointer_slots = local_pointer_slots_;
+  auto& local_pointer_array_bases = local_pointer_array_bases_;
+  auto& local_aggregate_slots = local_aggregate_slots_;
+  auto& local_slot_types = local_slot_types_;
+  auto& local_slot_pointer_values = local_slot_pointer_values_;
+  auto& pointer_value_addresses = pointer_value_addresses_;
+  const auto& global_types = global_types_;
+  const auto& function_symbols = function_symbols_;
+  const auto& type_decls = type_decls_;
+
+  const auto resolve_runtime_pointer_address =
+      [&](std::string_view operand_name) -> std::optional<PointerAddress> {
+    const auto operand = std::string(operand_name);
+    if (const auto addressed_ptr_it = pointer_value_addresses.find(operand);
+        addressed_ptr_it != pointer_value_addresses.end()) {
+      return addressed_ptr_it->second;
+    }
+
+    if (const auto local_slot_ptr_it = local_slot_pointer_values.find(operand);
+        local_slot_ptr_it != local_slot_pointer_values.end()) {
+      if (local_slot_ptr_it->second.byte_offset < 0) {
+        return std::nullopt;
+      }
+
+      const std::string base_slot =
+          local_slot_ptr_it->second.array_element_slots.empty()
+              ? local_slot_ptr_it->second.slot_name
+              : local_slot_ptr_it->second.array_element_slots.front();
+      return PointerAddress{
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, base_slot),
+          .value_type = local_slot_ptr_it->second.value_type,
+          .byte_offset = static_cast<std::size_t>(local_slot_ptr_it->second.byte_offset),
+          .storage_type_text = local_slot_ptr_it->second.storage_type_text,
+          .type_text = local_slot_ptr_it->second.type_text,
+      };
+    }
+
+    const auto local_ptr_it = local_pointer_slots.find(operand);
+    if (local_ptr_it == local_pointer_slots.end()) {
+      return std::nullopt;
+    }
+
+    const auto slot_type_it = local_slot_types.find(local_ptr_it->second);
+    if (slot_type_it == local_slot_types.end()) {
+      return std::nullopt;
+    }
+
+    std::string base_slot = local_ptr_it->second;
+    std::size_t byte_offset = 0;
+    if (const auto array_base_it = local_pointer_array_bases.find(operand);
+        array_base_it != local_pointer_array_bases.end()) {
+      if (array_base_it->second.element_slots.empty()) {
+        return std::nullopt;
+      }
+      const auto slot_size = lir_to_bir_detail::type_size_bytes(slot_type_it->second);
+      if (slot_size == 0) {
+        return std::nullopt;
+      }
+      base_slot = array_base_it->second.element_slots.front();
+      byte_offset = array_base_it->second.base_index * slot_size;
+    }
+
+    const auto type_text = render_type(slot_type_it->second);
+    return PointerAddress{
+        .base_value = bir::Value::named(bir::TypeKind::Ptr, std::move(base_slot)),
+        .value_type = slot_type_it->second,
+        .byte_offset = byte_offset,
+        .storage_type_text = type_text,
+        .type_text = type_text,
+    };
+  };
+  constexpr std::string_view kDirectCallFamily = "direct-call semantic family";
+  constexpr std::string_view kIndirectCallFamily = "indirect-call semantic family";
+  constexpr std::string_view kCallReturnFamily = "call-return semantic family";
+  const auto fail_call_family = [&](std::string_view family) -> bool {
+    note_semantic_call_family_failure(family);
+    return false;
+  };
+
+  const auto return_info =
+      lower_return_info_from_type(call.return_type.str(), type_decls, context_.target_profile);
+  if (!return_info.has_value()) {
+    return fail_call_family(kCallReturnFamily);
+  }
+
+  std::vector<bir::Value> lowered_args;
+  std::vector<bir::TypeKind> lowered_arg_types;
+  std::vector<bir::CallArgAbiInfo> lowered_arg_abi;
+  std::optional<std::string> callee_name;
+  std::optional<bir::Value> callee_value;
+  std::optional<PointerAddress> returned_pointer_address;
+  bool is_indirect_call = false;
+  bool is_variadic_call = false;
+  std::optional<std::string> sret_slot_name;
+  const auto lower_public_pointer_call_arg_value =
+      [&](const c4c::codegen::lir::LirOperand& operand) -> std::optional<bir::Value> {
+    if (operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+      if (const auto resolved_address = resolve_runtime_pointer_address(operand.str());
+          resolved_address.has_value() && resolved_address->byte_offset == 0 &&
+          resolved_address->base_value.kind == bir::Value::Kind::Named &&
+          resolved_address->base_value.type == bir::TypeKind::Ptr) {
+        return resolved_address->base_value;
+      }
+    }
+    return lower_call_pointer_arg_value(
+        operand, value_aliases, local_aggregate_slots, global_types, function_symbols);
+  };
+  const auto lower_byval_call_arg_value =
+      [&](const c4c::codegen::lir::LirOperand& operand,
+          const AggregateTypeLayout& aggregate_layout) -> std::optional<bir::Value> {
+    if (operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+      const auto aggregate_alias_it = aggregate_value_aliases.find(operand.str());
+      if (aggregate_alias_it == aggregate_value_aliases.end() ||
+          local_aggregate_slots.find(aggregate_alias_it->second) ==
+              local_aggregate_slots.end()) {
+        return std::nullopt;
+      }
+      return bir::Value::named(bir::TypeKind::Ptr, aggregate_alias_it->second);
+    }
+
+    if (operand.kind() != c4c::codegen::lir::LirOperandKind::Global) {
+      return std::nullopt;
+    }
+
+    const std::string global_name = operand.str().substr(1);
+    const auto global_it = global_types.find(global_name);
+    if (global_it == global_types.end() || !global_it->second.supports_linear_addressing ||
+        global_it->second.storage_size_bytes < aggregate_layout.size_bytes) {
+      return std::nullopt;
+    }
+    return bir::Value::named(bir::TypeKind::Ptr, "@" + global_name);
+  };
+
+  const auto maybe_resolve_direct_calloc_pointer_address =
+      [&](std::string_view symbol_name,
+          const ParsedTypedCall& typed_call) -> std::optional<PointerAddress> {
+    if (symbol_name != "calloc" || return_info->returned_via_sret ||
+        return_info->type != bir::TypeKind::Ptr ||
+        call.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
+        typed_call.args.size() != 2 || typed_call.param_types.size() != 2) {
+      return std::nullopt;
+    }
+    const auto count_type =
+        lower_integer_type(c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[0]));
+    const auto size_type =
+        lower_integer_type(c4c::codegen::lir::trim_lir_arg_text(typed_call.param_types[1]));
+    if (!count_type.has_value() || !size_type.has_value()) {
+      return std::nullopt;
+    }
+    const auto count_value =
+        lower_value(c4c::codegen::lir::LirOperand(std::string(typed_call.args[0].operand)),
+                    *count_type,
+                    value_aliases);
+    const auto size_value =
+        lower_value(c4c::codegen::lir::LirOperand(std::string(typed_call.args[1].operand)),
+                    *size_type,
+                    value_aliases);
+    if (!count_value.has_value() || count_value->kind != bir::Value::Kind::Immediate ||
+        !size_value.has_value() || size_value->kind != bir::Value::Kind::Immediate ||
+        count_value->immediate <= 0 || size_value->immediate <= 0) {
+      return std::nullopt;
+    }
+    return PointerAddress{
+        .base_value = bir::Value::named(bir::TypeKind::Ptr, call.result.str()),
+        .dynamic_element_count = static_cast<std::size_t>(count_value->immediate),
+        .dynamic_element_stride_bytes = static_cast<std::size_t>(size_value->immediate),
+    };
+  };
+
+  if (return_info->returned_via_sret) {
+    if (call.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return fail_call_family(kCallReturnFamily);
+    }
+    sret_slot_name = call.result.str();
+    if (!declare_local_aggregate_slots(call.return_type.str(),
+                                       *sret_slot_name,
+                                       return_info->align_bytes)) {
+      return fail_call_family(kCallReturnFamily);
+    }
+    aggregate_value_aliases[*sret_slot_name] = *sret_slot_name;
+    lowered_arg_types.push_back(bir::TypeKind::Ptr);
+    lowered_args.push_back(bir::Value::named(bir::TypeKind::Ptr, *sret_slot_name));
+    lowered_arg_abi.push_back(bir::CallArgAbiInfo{
+        .type = bir::TypeKind::Ptr,
+        .size_bytes = return_info->size_bytes,
+        .align_bytes = return_info->align_bytes,
+        .primary_class = bir::AbiValueClass::Memory,
+        .sret_pointer = true,
+    });
+  }
+
+  std::string_view call_family = kCallReturnFamily;
+  if (const auto direct_callee = c4c::codegen::lir::parse_lir_direct_global_callee(call.callee);
+      direct_callee.has_value()) {
+    call_family = kDirectCallFamily;
+    const auto resolved_direct_callee_name =
+        [&](std::string_view fallback_name) -> std::string {
+      if (call.direct_callee_link_name_id != c4c::kInvalidLinkName) {
+        const std::string_view semantic_name =
+            context_.lir_module.link_names.spelling(call.direct_callee_link_name_id);
+        if (!semantic_name.empty()) {
+          return std::string(semantic_name);
+        }
+      }
+      return std::string(fallback_name);
+    };
+    if (const auto inferred_call = parse_typed_call(call); inferred_call.has_value()) {
+      const std::string semantic_direct_callee =
+          resolved_direct_callee_name(*direct_callee);
+      if (const auto lowered_memory_intrinsic = try_lower_direct_memory_intrinsic_call(
+              semantic_direct_callee, *inferred_call, call, *return_info, lowered_insts);
+          lowered_memory_intrinsic.has_value()) {
+        return *lowered_memory_intrinsic;
+      }
+      if (!returned_pointer_address.has_value()) {
+        returned_pointer_address =
+            maybe_resolve_direct_calloc_pointer_address(semantic_direct_callee, *inferred_call);
+      }
+    }
+
+    if (const auto parsed_call = parse_direct_global_typed_call(call);
+        parsed_call.has_value()) {
+      const std::string semantic_direct_callee =
+          resolved_direct_callee_name(parsed_call->symbol_name);
+      if (const auto lowered_memory_intrinsic = try_lower_direct_memory_intrinsic_call(
+              semantic_direct_callee, parsed_call->typed_call, call, *return_info, lowered_insts);
+          lowered_memory_intrinsic.has_value()) {
+        return *lowered_memory_intrinsic;
+      }
+      if (!returned_pointer_address.has_value()) {
+        returned_pointer_address = maybe_resolve_direct_calloc_pointer_address(
+            semantic_direct_callee, parsed_call->typed_call);
+      }
+      callee_name = std::move(semantic_direct_callee);
+      is_variadic_call = parsed_call->is_variadic;
+      lowered_args.reserve(parsed_call->typed_call.args.size());
+      lowered_arg_types.reserve(parsed_call->typed_call.param_types.size());
+      lowered_arg_abi.reserve(parsed_call->typed_call.param_types.size());
+      for (std::size_t index = 0; index < parsed_call->typed_call.args.size(); ++index) {
+        const auto trimmed_param_type =
+            c4c::codegen::lir::trim_lir_arg_text(parsed_call->typed_call.param_types[index]);
+        if (trimmed_param_type == "ptr") {
+          const auto arg = lower_public_pointer_call_arg_value(
+              c4c::codegen::lir::LirOperand(
+                  std::string(parsed_call->typed_call.args[index].operand)));
+          if (!arg.has_value()) {
+            return fail_call_family(call_family);
+          }
+          lowered_arg_types.push_back(bir::TypeKind::Ptr);
+          lowered_args.push_back(*arg);
+          lowered_arg_abi.push_back(
+              *lir_to_bir_detail::compute_call_arg_abi(context_.target_profile,
+                                                       bir::TypeKind::Ptr));
+          continue;
+        }
+        const auto arg_type =
+            lower_scalar_or_function_pointer_type(parsed_call->typed_call.param_types[index]);
+        if (!arg_type.has_value()) {
+          const auto aggregate_layout =
+              lower_byval_aggregate_layout(parsed_call->typed_call.param_types[index], type_decls);
+          if (!aggregate_layout.has_value()) {
+            return fail_call_family(call_family);
+          }
+          const auto arg = lower_byval_call_arg_value(
+              c4c::codegen::lir::LirOperand(
+                  std::string(parsed_call->typed_call.args[index].operand)),
+              *aggregate_layout);
+          if (!arg.has_value()) {
+            return fail_call_family(call_family);
+          }
+          lowered_arg_types.push_back(bir::TypeKind::Ptr);
+          lowered_args.push_back(*arg);
+          lowered_arg_abi.push_back(bir::CallArgAbiInfo{
+              .type = bir::TypeKind::Ptr,
+              .size_bytes = aggregate_layout->size_bytes,
+              .align_bytes = aggregate_layout->align_bytes,
+              .primary_class = bir::AbiValueClass::Memory,
+              .byval_copy = true,
+          });
+          continue;
+        }
+        const auto arg =
+            lower_value(c4c::codegen::lir::LirOperand(
+                            std::string(parsed_call->typed_call.args[index].operand)),
+                        *arg_type,
+                        value_aliases);
+        if (!arg.has_value()) {
+          return fail_call_family(call_family);
+        }
+        lowered_arg_types.push_back(*arg_type);
+        lowered_args.push_back(*arg);
+        lowered_arg_abi.push_back(
+            *lir_to_bir_detail::compute_call_arg_abi(context_.target_profile, *arg_type));
+      }
+    } else if (c4c::codegen::lir::trim_lir_arg_text(call.args_str).empty()) {
+      callee_name = resolved_direct_callee_name(*direct_callee);
+    } else {
+      return fail_call_family(call_family);
+    }
+  } else {
+    call_family = kIndirectCallFamily;
+    const auto parsed_call = parse_typed_call(call);
+    if (!parsed_call.has_value()) {
+      return fail_call_family(call_family);
+    }
+    is_variadic_call = parsed_call->is_variadic;
+    callee_value = lower_value(call.callee, bir::TypeKind::Ptr, value_aliases);
+    if (!callee_value.has_value()) {
+      return false;
+    }
+    lowered_args.reserve(parsed_call->args.size());
+    lowered_arg_types.reserve(parsed_call->param_types.size());
+    lowered_arg_abi.reserve(parsed_call->param_types.size());
+    for (std::size_t index = 0; index < parsed_call->args.size(); ++index) {
+      const auto trimmed_param_type =
+          c4c::codegen::lir::trim_lir_arg_text(parsed_call->param_types[index]);
+      if (trimmed_param_type == "ptr") {
+        const auto arg = lower_public_pointer_call_arg_value(
+          c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand)));
+        if (!arg.has_value()) {
+          return fail_call_family(call_family);
+        }
+        lowered_arg_types.push_back(bir::TypeKind::Ptr);
+        lowered_args.push_back(*arg);
+        lowered_arg_abi.push_back(
+            *lir_to_bir_detail::compute_call_arg_abi(context_.target_profile,
+                                                     bir::TypeKind::Ptr));
+        continue;
+      }
+      const auto arg_type =
+          lower_scalar_or_function_pointer_type(parsed_call->param_types[index]);
+      if (!arg_type.has_value()) {
+        const auto aggregate_layout =
+            lower_byval_aggregate_layout(parsed_call->param_types[index], type_decls);
+        if (!aggregate_layout.has_value()) {
+          return fail_call_family(call_family);
+        }
+        const auto arg = lower_byval_call_arg_value(
+            c4c::codegen::lir::LirOperand(std::string(parsed_call->args[index].operand)),
+            *aggregate_layout);
+        if (!arg.has_value()) {
+          return fail_call_family(call_family);
+        }
+        lowered_arg_types.push_back(bir::TypeKind::Ptr);
+        lowered_args.push_back(*arg);
+        lowered_arg_abi.push_back(bir::CallArgAbiInfo{
+            .type = bir::TypeKind::Ptr,
+            .size_bytes = aggregate_layout->size_bytes,
+            .align_bytes = aggregate_layout->align_bytes,
+            .primary_class = bir::AbiValueClass::Memory,
+            .byval_copy = true,
+        });
+        continue;
+      }
+      const auto arg =
+          lower_value(c4c::codegen::lir::LirOperand(
+                          std::string(parsed_call->args[index].operand)),
+                      *arg_type,
+                      value_aliases);
+      if (!arg.has_value()) {
+        return fail_call_family(call_family);
+      }
+      lowered_arg_types.push_back(*arg_type);
+      lowered_args.push_back(*arg);
+      lowered_arg_abi.push_back(
+          *lir_to_bir_detail::compute_call_arg_abi(context_.target_profile, *arg_type));
+    }
+    is_indirect_call = true;
+  }
+
+  bir::CallInst lowered_call;
+  if (!return_info->returned_via_sret && return_info->type != bir::TypeKind::Void) {
+    if (call.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return fail_call_family(call_family);
+    }
+    lowered_call.result = bir::Value::named(return_info->type, call.result.str());
+  } else if (call.result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+    if (!return_info->returned_via_sret) {
+      return fail_call_family(call_family);
+    }
+  }
+  if (is_indirect_call) {
+    lowered_call.callee_value = std::move(*callee_value);
+  } else {
+    lowered_call.callee = std::move(*callee_name);
+  }
+  lowered_call.args = std::move(lowered_args);
+  lowered_call.arg_types = std::move(lowered_arg_types);
+  lowered_call.arg_abi = std::move(lowered_arg_abi);
+  lowered_call.return_type_name =
+      return_info->returned_via_sret ? "void" : std::string(call.return_type.str());
+  lowered_call.return_type = return_info->type;
+  lowered_call.result_abi = return_info->abi;
+  lowered_call.is_indirect = is_indirect_call;
+  lowered_call.is_variadic = is_variadic_call;
+  if (sret_slot_name.has_value()) {
+    lowered_call.sret_storage_name = *sret_slot_name;
+  }
+  lowered_insts->push_back(std::move(lowered_call));
+  if (returned_pointer_address.has_value()) {
+    pointer_value_addresses[call.result.str()] = *returned_pointer_address;
+  }
+  return true;
+}
+
 bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     const c4c::codegen::lir::LirInst& inst,
     const ValueMap& value_aliases,
