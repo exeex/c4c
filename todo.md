@@ -1,15 +1,16 @@
 Status: Active
 Source Idea Path: ideas/open/104_hir_safe_legacy_lookup_demotion.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Use Owner-Aware Record Lookup Where Owner Keys Exist
+Current Step ID: 5
+Current Step Title: Preserve Or Retire Parity Proof Deliberately
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 4 for the owner-aware `Lowerer::lower_struct_def`
-record-existence checks in `src/frontend/hir/hir_types.cpp`.
+Completed and exhausted `plan.md` Step 4 after the owner-aware
+`Lowerer::lower_struct_def` record-existence checks in
+`src/frontend/hir/hir_types.cpp`.
 
 Audit classification quote from
 `review/103_hir_post_dual_path_legacy_readiness_audit.md`:
@@ -22,10 +23,18 @@ owner/rendered parity mismatches, suitable as replacement where callers have
 Changed files:
 `src/frontend/hir/hir_types.cpp`, `todo.md`.
 
+Lifecycle review:
+No further safe HIR-only `Module::find_struct_def_by_owner_structured` consumer
+is named for Step 4. Remaining owner-key hits are registration, parity/key
+construction, or broad rendered `TypeSpec::tag` / `Module::struct_defs`
+consumers that the review artifact classifies as bridge-required until a later
+tag-to-owner or layout bridge exists.
+
 ## Suggested Next
 
-Supervisor should review Step 4 completion and choose the next owner-key
-demotion packet or plan review.
+Proceed to `plan.md` Step 5. The next packet should classify retained fallback
+and parity instrumentation from the completed demotion work, separating removed
+authority, retained proof-only observation, and bridge-required rendered lookup.
 
 ## Watchouts
 
@@ -40,6 +49,8 @@ demotion packet or plan review.
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -L hir > test_after.log`
 passed 73/73.
+
+Full baseline candidate accepted by supervisor: 2976/2976.
 
 `git diff --check` also passed.
 
