@@ -375,6 +375,25 @@ std::optional<HirStructMethodLookupKey> Lowerer::make_struct_method_lookup_key(
   return std::nullopt;
 }
 
+std::optional<HirStructMemberLookupKey> Lowerer::make_struct_member_lookup_key(
+    const std::string& tag,
+    const std::string& member) const {
+  if (!module_ || !module_->link_name_texts || tag.empty() || member.empty()) {
+    return std::nullopt;
+  }
+  TextTable* texts = module_->link_name_texts.get();
+  const TextId member_text_id = texts->find(member);
+  if (member_text_id == kInvalidText) return std::nullopt;
+  for (const auto& [owner_key, rendered_tag] : module_->struct_def_owner_index) {
+    if (rendered_tag != tag) continue;
+    HirStructMemberLookupKey key;
+    key.owner_key = owner_key;
+    key.member_text_id = member_text_id;
+    if (hir_struct_member_lookup_key_has_complete_metadata(key)) return key;
+  }
+  return std::nullopt;
+}
+
 void Lowerer::record_struct_method_mangled_lookup_parity(
     const std::string& tag,
     const std::string& method,
@@ -457,6 +476,48 @@ void Lowerer::record_struct_method_return_type_lookup_parity(
   if (it == struct_method_ret_types_by_owner_.end() ||
       !same_type_spec_for_struct_method_lookup_parity(it->second, rendered_return_type)) {
     ++struct_method_return_type_lookup_parity_mismatches_;
+  }
+}
+
+void Lowerer::record_struct_static_member_decl_lookup_parity(
+    const std::string& tag,
+    const std::string& member,
+    const Node* rendered_decl) const {
+  const auto key = make_struct_member_lookup_key(tag, member);
+  if (!key) return;
+  ++struct_static_member_decl_lookup_parity_checks_;
+  const auto it = struct_static_member_decls_by_owner_.find(*key);
+  if (it == struct_static_member_decls_by_owner_.end() ||
+      it->second != rendered_decl) {
+    ++struct_static_member_decl_lookup_parity_mismatches_;
+  }
+}
+
+void Lowerer::record_struct_static_member_const_value_lookup_parity(
+    const std::string& tag,
+    const std::string& member,
+    long long rendered_value) const {
+  const auto key = make_struct_member_lookup_key(tag, member);
+  if (!key) return;
+  ++struct_static_member_const_value_lookup_parity_checks_;
+  const auto it = struct_static_member_const_values_by_owner_.find(*key);
+  if (it == struct_static_member_const_values_by_owner_.end() ||
+      it->second != rendered_value) {
+    ++struct_static_member_const_value_lookup_parity_mismatches_;
+  }
+}
+
+void Lowerer::record_struct_member_symbol_id_lookup_parity(
+    const std::string& tag,
+    const std::string& member,
+    MemberSymbolId rendered_member_symbol_id) const {
+  const auto key = make_struct_member_lookup_key(tag, member);
+  if (!key) return;
+  ++struct_member_symbol_id_lookup_parity_checks_;
+  const auto it = struct_member_symbol_ids_by_owner_.find(*key);
+  if (it == struct_member_symbol_ids_by_owner_.end() ||
+      it->second != rendered_member_symbol_id) {
+    ++struct_member_symbol_id_lookup_parity_mismatches_;
   }
 }
 
@@ -1156,7 +1217,10 @@ const Node* Lowerer::find_struct_static_member_decl(
   auto sit = struct_static_member_decls_.find(tag);
   if (sit != struct_static_member_decls_.end()) {
     auto mit = sit->second.find(member);
-    if (mit != sit->second.end()) return mit->second;
+    if (mit != sit->second.end()) {
+      record_struct_static_member_decl_lookup_parity(tag, member, mit->second);
+      return mit->second;
+    }
   }
   auto dit = module_->struct_defs.find(tag);
   if (dit != module_->struct_defs.end()) {
@@ -1173,7 +1237,11 @@ std::optional<long long> Lowerer::find_struct_static_member_const_value(
   auto sit = struct_static_member_const_values_.find(tag);
   if (sit != struct_static_member_const_values_.end()) {
     auto mit = sit->second.find(member);
-    if (mit != sit->second.end()) return mit->second;
+    if (mit != sit->second.end()) {
+      record_struct_static_member_const_value_lookup_parity(
+          tag, member, mit->second);
+      return mit->second;
+    }
   }
   if (auto trait_value = try_eval_instantiated_struct_static_member_const(tag, member)) {
     return trait_value;
@@ -1192,7 +1260,10 @@ MemberSymbolId Lowerer::find_struct_member_symbol_id(
     const std::string& tag, const std::string& member) const {
   const MemberSymbolId direct_id =
       module_->member_symbols.find(tag + "::" + member);
-  if (direct_id != kInvalidMemberSymbol) return direct_id;
+  if (direct_id != kInvalidMemberSymbol) {
+    record_struct_member_symbol_id_lookup_parity(tag, member, direct_id);
+    return direct_id;
+  }
   auto dit = module_->struct_defs.find(tag);
   if (dit != module_->struct_defs.end()) {
     for (const auto& base_tag : dit->second.base_tags) {

@@ -385,6 +385,9 @@ class Lowerer {
       const std::string& tag,
       const std::string& method,
       bool is_const_method) const;
+  std::optional<HirStructMemberLookupKey> make_struct_member_lookup_key(
+      const std::string& tag,
+      const std::string& member) const;
   void record_struct_method_mangled_lookup_parity(
       const std::string& tag,
       const std::string& method,
@@ -400,6 +403,18 @@ class Lowerer {
       const std::string& method,
       bool is_const_method,
       const TypeSpec& rendered_return_type) const;
+  void record_struct_static_member_decl_lookup_parity(
+      const std::string& tag,
+      const std::string& member,
+      const Node* rendered_decl) const;
+  void record_struct_static_member_const_value_lookup_parity(
+      const std::string& tag,
+      const std::string& member,
+      long long rendered_value) const;
+  void record_struct_member_symbol_id_lookup_parity(
+      const std::string& tag,
+      const std::string& member,
+      MemberSymbolId rendered_member_symbol_id) const;
 
   ExprId append_expr(const Node* src,
                      ExprPayload payload,
@@ -1030,10 +1045,16 @@ class Lowerer {
       struct_static_member_const_values_;
   std::unordered_map<HirStructMemberLookupKey, const Node*, HirStructMemberLookupKeyHash>
       struct_static_member_decls_by_owner_;
+  mutable size_t struct_static_member_decl_lookup_parity_checks_ = 0;
+  mutable size_t struct_static_member_decl_lookup_parity_mismatches_ = 0;
   std::unordered_map<HirStructMemberLookupKey, long long, HirStructMemberLookupKeyHash>
       struct_static_member_const_values_by_owner_;
+  mutable size_t struct_static_member_const_value_lookup_parity_checks_ = 0;
+  mutable size_t struct_static_member_const_value_lookup_parity_mismatches_ = 0;
   std::unordered_map<HirStructMemberLookupKey, MemberSymbolId, HirStructMemberLookupKeyHash>
       struct_member_symbol_ids_by_owner_;
+  mutable size_t struct_member_symbol_id_lookup_parity_checks_ = 0;
+  mutable size_t struct_member_symbol_id_lookup_parity_mismatches_ = 0;
   // Struct method map: "struct_tag::method_name" → mangled function name.
   std::unordered_map<std::string, std::string> struct_methods_;
   std::unordered_map<HirStructMethodLookupKey, std::string, HirStructMethodLookupKeyHash>
