@@ -1,26 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/100_hir_compile_time_template_consteval_dual_lookup.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Dual-read lookup paths
+Current Step ID: 5
+Current Step Title: Materialization and parity proof
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 implementation packet completed in `src/frontend/hir/impl/templates/templates.cpp`: routed `Lowerer::find_template_struct_specializations(const Node* primary_tpl)` through `ct_state_->find_template_struct_specializations(primary_tpl, primary_tpl->name)` before consulting the lowering-owned rendered-name fallback map.
+Step 4 lifecycle review completed after `d4d5d2c1` and `476e787c`: the declaration-aware template struct specialization lookup route is committed, and the remaining `CompileTimeState` lookup call sites are either string-only compatibility paths or call-expression-node paths without a declaration identity to hand to the structured overloads. Step 4 is complete under the current runbook contract.
 
 ## Suggested Next
 
-Next coherent packet: review the remaining Step 4 declaration-aware lookup wrappers and route the next one with an existing structured helper plus its rendered-name fallback.
+Next coherent packet: begin Step 5 by proving materialization and consteval behavior remain stable with the structured mirrors enabled. Inspect `materialize_hir_template_defs`, deferred compile-time engine lookup paths, and focused HIR template/consteval tests for coverage of structured mirror and legacy fallback behavior without weakening expectations.
 
 ## Watchouts
 
-This packet intentionally changed only the Lowerer wrapper. The local `template_struct_specializations_` fallback remains in place and is consulted only when the structured `CompileTimeState` lookup has no hit.
+Do not route string-only or call-expression-only lookups through fake structured keys. If Step 5 exposes a real metadata handoff for those paths, treat that as new implementation scope; otherwise preserve legacy fallback behavior and prove parity.
 
 ## Proof
 
-Proof succeeded and was written to `test_after.log`.
+No new proof was run for this lifecycle-only Step 4 review. The latest Step 4 implementation proof remains in `test_after.log`.
 
 ```bash
 (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_lookup_tests|cpp_positive_sema_template_constexpr_member_runtime_cpp|cpp_positive_sema_if_constexpr_template_chain_cpp)$') > test_after.log 2>&1
