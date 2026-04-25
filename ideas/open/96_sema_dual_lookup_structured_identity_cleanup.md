@@ -5,7 +5,7 @@ Created: 2026-04-25
 Last Updated: 2026-04-25
 
 Parent Ideas:
-- [95_parser_dual_lookup_structured_identity_cleanup.md](/workspaces/c4c/ideas/open/95_parser_dual_lookup_structured_identity_cleanup.md)
+- [95_parser_dual_lookup_structured_identity_cleanup.md](/workspaces/c4c/ideas/closed/95_parser_dual_lookup_structured_identity_cleanup.md)
 
 ## Goal
 
