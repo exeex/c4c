@@ -10,19 +10,20 @@ Current Step Title: Prefer LinkNameId And TextId For Symbol Identity Handoffs
 
 Completed `plan.md` Step 2 cleanup for the HIR-to-LIR function/global dedup
 seam in `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`. `dedup_globals` and
-`dedup_functions` now prefer `LinkNameId` maps when ids are valid and use raw
-rendered `name` maps only as the invalid-id fallback. Existing selection
-behavior is preserved: globals still prefer initialized definitions, functions
-still prefer definitions over declarations, and lowering still copies the
-original spelling/link id into emitted LIR fields without changing printed
-symbol spelling.
+`dedup_functions` now prefer valid `LinkNameId` maps, then valid
+`name_text_id` maps for invalid-LinkNameId entries, and use raw rendered `name`
+maps only when both stable ids are invalid. Existing selection behavior is
+preserved: globals still prefer initialized definitions, functions still prefer
+definitions over declarations, and lowering still copies the original
+spelling/link id into emitted LIR fields without changing printed symbol
+spelling.
 
 ## Suggested Next
 
 Continue Step 2 with the next low-risk identity handoff only if the supervisor
-selects one, such as a narrow `TextId` fallback cleanup that does not cross into
-printer output, type refs, const-init payload bytes, or dead-internal rendered
-operand scanning.
+selects one. The function/global dedup fallback now has the intended stable-id
+ordering; avoid crossing into printer output, type refs, const-init payload
+bytes, or dead-internal rendered operand scanning without a separate packet.
 
 ## Watchouts
 
