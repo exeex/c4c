@@ -8,19 +8,19 @@ Current Step Title: Record Proof Gaps And Validation Recommendations
 
 ## Just Finished
 
-Step 3 follow-up scope mapping completed for the active report-only audit. A
-route quality review then found lifecycle drift: `todo.md` had marked the
-runbook exhausted even though Step 4 and Step 5 remain in `plan.md`. This
-lifecycle repair keeps the existing runbook and advances the active pointer to
-Step 4.
+Step 4 report refinement completed for the active audit. The review artifact
+now records proof gaps, validation recommendations, current sufficient
+evidence, and needed broader parity for aggregate, HFA, sret, variadic,
+global-init, memory-addressing, GEP, initializer, `va_arg`, byval/byref,
+verifier, and printer proof areas.
 
 ## Suggested Next
 
-Delegate the next report-only packet for Step 4. The packet should add
-actionable proof gaps and validation recommendations to
-`review/112_lir_backend_legacy_type_surface_readiness_audit.md`, covering
-aggregate, HFA, sret, variadic, global-init, memory-addressing, GEP,
-initializer, `va_arg`, byval/byref, verifier, and printer proof areas.
+Delegate the final report-only packet for Step 5. The packet should perform
+the final sanity pass over
+`review/112_lir_backend_legacy_type_surface_readiness_audit.md`, checking that
+the inventory, blocker ownership, follow-up scope, proof gaps, validation
+recommendations, and must-not-remove list agree with each other.
 
 ## Watchouts
 
@@ -33,10 +33,13 @@ initializer, `va_arg`, byval/byref, verifier, and printer proof areas.
   incomplete structured coverage.
 - MIR/aarch64 legacy consumers are `planned-rebuild` only. Do not treat MIR
   migration as required cleanup or as a blocker for BIR/LIR follow-up work.
-- Step 5 remains after Step 4 and should perform the final report sanity check.
+- Validation recommendations are intentionally bucket-level because this packet
+  was not asked to inspect or edit test sources.
+- Step 5 remains and should perform the final report sanity check.
 
 ## Proof
 
-Lifecycle-only repair; no build required. Checked `plan.md` and
-`review/112_route_quality_after_step3.md`; Step 4 is the next valid active
-runbook step, and `plan.md` does not require a rewrite.
+Report-only packet; no build required. Sanity proof ran:
+`git diff --name-only` showed only `todo.md` and
+`review/112_lir_backend_legacy_type_surface_readiness_audit.md` changed, and
+`git diff --check` was clean.

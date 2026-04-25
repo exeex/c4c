@@ -1,7 +1,7 @@
 # LIR Backend Legacy Type Surface Readiness Audit
 
-Status: Step 3 follow-up scope mapped
-Plan Step: Step 3 - Map Follow-Up Scope For Ideas 113, 114, And 115
+Status: Step 4 proof gaps and validation recommendations recorded
+Plan Step: Step 4 - Record Proof Gaps And Validation Recommendations
 Scope: report-only; no implementation edits
 
 ## Step 1 Inventory
@@ -225,6 +225,65 @@ residue. MIR is not a current migration target for ideas 113, 114, or 115 and
 must not be treated as a blocker for these follow-ups. If MIR files block
 compilation while LIR/BIR work proceeds, the follow-up should be compile-target
 exclusion, not MIR type-surface migration.
+
+## Step 4 Proof Gaps And Validation Recommendations
+
+This audit already has sufficient evidence to classify every Step 1 surface by
+current ownership. It does not yet have enough evidence to demote any legacy
+text authority surface. The next work should therefore prove parity by feature
+bucket before removing or weakening fallback paths.
+
+| Proof area | Current evidence | Gap to close | Recommended validation checkpoint |
+|---|---|---|---|
+| Aggregate layout | Sufficient to show `type_decls`, `TypeDeclMap`, aggregate parser, globals, calls, and memory consumers are still active authority. | Need broader structured-vs-legacy parity before `type_decls` can become proof-only or be removed from backend layout inputs. | Run the aggregate-layout LIR-to-BIR/backend bucket after adding structured table input, including nested structs, packed/unpacked layouts, zero-sized aggregates, and arrays of structs. Keep a mismatch diagnostic path enabled. |
+| HFA call/return ABI | Sufficient to classify BIR call ABI paths as `backend-blocked`. | Need parity for homogeneous floating-point aggregate classification and lowering before structured layout can replace parsed text in ABI decisions. | Run the HFA-focused ABI tests plus adjacent aggregate call/return tests on every structured-layout conversion slice; compare LIR text, BIR layout decisions, and final backend output where available. |
+| sret lowering | Sufficient to show signature/call text is still active BIR ABI input. | Need structured return classification parity for direct aggregate returns, indirect sret returns, nested aggregate returns, and extern declarations. | Run the sret call/return subset together with function-signature mirror verifier checks; require no loss of legacy text fallback until all return-type mirrors are complete. |
+| Variadic aggregate arguments | Sufficient to show HIR-to-LIR variadic aggregate sizing reads `legacy_decl->size_bytes`. | Need ABI parity for variadic aggregate payload sizing, alignment, promotion boundary behavior, and fallback behavior when structured layout is absent. | Run variadic call tests with small, large, nested, packed, and zero-sized aggregate arguments after each size-source change. Treat a passing single variadic fixture as insufficient. |
+| Global initialization | Sufficient to show BIR globals and initializers still read `global.llvm_type`, type text, and `type_decls`. | Need parity for aggregate globals, nested aggregate initializers, string/array initializers, pointer-offset initializers, and zero initialization before using structured global type authority. | Run global lowering and global-initializer subsets together; include verifier checks for `LirGlobal::llvm_type_ref` completeness against `llvm_type`. |
+| Memory addressing | Sufficient to classify memory layout consumers as `backend-blocked`. | Need parity for byte addressing, provenance, local slots, memcpy/memset, loads/stores through aggregate-derived addresses, and layout-sensitive offsets. | Run memory/addressing, local slot, local GEP, and memory intrinsic tests as one checkpoint whenever `TypeDeclMap` or structured backend layout input changes. |
+| GEP and indexed aggregate refs | Sufficient to record indexed GEP aggregate type refs as `needs-more-parity-proof`. | Need proof that structured element refs cover nested field chains, arrays of aggregates, mixed pointer/index chains, and fallback cases where raw text remains the only spelling. | Run GEP/lvalue aggregate tests with verifier mirror checks enabled; require both structured element-ref success and preserved raw-text fallback before demotion. |
+| Initializer lowering | Sufficient to show const-init aggregate lookup still prefers `legacy_decl`. | Need structured field and layout authority for aggregate initializer emission, including nested fields, padding-sensitive layouts, and incomplete structured coverage. | Run const-init and initializer-emitter tests with structured-first lookup enabled only behind fallback; compare emitted LIR and backend behavior against legacy. |
+| `va_arg` aggregates | Sufficient to show `va_arg` payload sizing and zero aggregate handling still read legacy size and fields. | Need parity for aggregate `va_arg` layout, zero aggregate handling, nested aggregate payloads, and target ABI edge cases. | Run the `va_arg` aggregate subset separately from ordinary variadic-call tests; include zero-sized and nested aggregate cases as explicit blockers for removing legacy fallback. |
+| byval/byref parameters | Sufficient to classify BIR call ABI paths and raw call argument text as active authority. | Need structured parameter attribute and pointee layout parity for byval/byref call lowering, extern calls, and mixed scalar/aggregate parameter lists. | Run byval/byref ABI tests together with call argument mirror verifier checks after any call-argument type authority change. |
+| LIR verifier mirrors | Sufficient for shadow-proof classification: struct declarations, globals, signatures, extern returns, and call args have mirror checks or documented proof gaps. | Need completeness proof before any mirror can become authority. Optional mirrors must be made mandatory or explicitly guarded for every demotion candidate. | Run the LIR verifier suite after every structured mirror widening; add targeted negative tests for missing mirror, mismatch, and fallback paths before weakening text authority. |
+| LIR printer output | Sufficient to show struct declarations print from `struct_decls`, while globals, signatures, extern returns, and many operation types still print text forms. | Need final rendering parity and a structured-to-text bridge before demoting emitted text fields. | Run printer/golden LIR tests after every bridge change; compare struct declarations, global declarations, function signatures, extern declarations, call sites, and aggregate operation type spellings. |
+
+Validation should advance in three checkpoints:
+
+1. Backend parity checkpoint: aggregate layout, HFA, sret, byval/byref,
+   global-init, memory-addressing, and GEP buckets all run with legacy fallback
+   still present. This is the minimum acceptance bar for idea 113 slices.
+2. HIR-to-LIR layout checkpoint: initializer, variadic aggregate, `va_arg`,
+   object alignment, and field-chain/GEP mirror buckets run with structured
+   lookup first and legacy fallback preserved. This is the minimum acceptance
+   bar for idea 115 slices.
+3. Text authority checkpoint: verifier and printer buckets run together after
+   mirror coverage becomes mandatory for a candidate surface. This is the
+   minimum acceptance bar for any idea 114 demotion slice.
+
+Already sufficient evidence:
+
+- `backend-blocked`, `layout-authority-blocked`, `type-ref-authority-blocked`,
+  `bridge-required`, `legacy-proof-only`, `printer-only`, and
+  `planned-rebuild` classifications are supported by the current audit.
+- MIR/aarch64 consumers are out of scope for current validation except as
+  compile-target residue.
+- No current Step 1 surface is ready for direct removal or expectation
+  downgrade.
+
+Needed broader parity before demotion:
+
+- Structured backend layout must match legacy aggregate parser behavior across
+  globals, calls, memory addressing, and GEP before `type_decls` can stop being
+  backend authority.
+- Structured HIR-to-LIR layout must match `legacy_decl` for alignment,
+  initializer, variadic, `va_arg`, and field-chain cases before legacy layout
+  fallback can be narrowed.
+- Structured type mirrors must become complete for globals, signatures, extern
+  returns, call returns, and call arguments before raw text can stop being the
+  operational authority.
+- Printer output must remain byte-for-byte compatible for the public LIR text
+  contract while backend and verifier authority are migrated.
 
 ## Must Not Remove Yet
 
