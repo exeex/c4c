@@ -3,84 +3,67 @@
 Status: Complete
 Source Idea Path: ideas/open/96_sema_dual_lookup_structured_identity_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 7
-Current Step Title: Add Struct Completeness and Member Lookup Mirrors
+Current Step ID: Step 8
+Current Step Title: Demote Sema-Owned Legacy String Paths
 
 ## Just Finished
 
-Step 7 - Add Struct Completeness and Member Lookup Mirrors: added advisory
-structured record mirrors for complete struct/union sets, field-name lookup,
-static-member type lookup, and base-record traversal where sema can derive a
-stable record key from the struct definition's namespace context and
-`unqualified_text_id`.
+Step 8 - Demote Sema-Owned Legacy String Paths: inventoried retained sema
+string fallbacks and demoted the scoped-local symbol path that is sema-owned,
+structured-stable, and not a HIR/diagnostics/consteval/codegen bridge.
 
-Rendered `TypeSpec::tag`, `complete_structs_`/`complete_unions_`, rendered
-field/static-member maps, and rendered base-tag lists remain authoritative.
-The structured maps are dual-written from `note_struct_def` and dual-checked
-from struct completeness checks, qualified static-member lookup, and implicit
-method-body field lookup without changing HIR-facing behavior.
+Local `TextId` scope mirrors now reject qualified/global references, then
+`lookup_symbol` prefers the structured scoped binding when present. Local
+initialization marking can also update the structured binding when a rendered
+lookup misses. The rendered local scope map remains populated for same-scope
+redefinition diagnostics, predefined locals, `this`, template NTTP names, and
+nodes that lack usable `TextId` metadata.
+
+Retained fallback classification:
+
+- Sema-owned demoted: unqualified local symbol lookup and local initialization
+  marking now use the structured scoped mirror first when a valid local
+  `TextId` key exists.
+- Diagnostic/redefinition bridge: rendered local scope names remain required
+  for same-scope redefinition checks and user-facing names.
+- Bridge-required: rendered globals, functions, overload sets, and consteval
+  function registries remain populated for diagnostics, HIR handoff, consteval
+  call paths, and call sites without stable structured metadata.
+- Consteval bridge-required: string constant maps, interpreter locals, NTTP
+  bindings, and type bindings remain behavior sources because HIR compile-time
+  evaluation and `TypeSpec::tag` still consume rendered names.
+- HIR-blocked: `TypeSpec::tag`, complete struct/union sets, record member maps,
+  base-tag lists, and tag-to-record bridges remain rendered-authoritative until
+  record/type identity carries stable structured metadata across HIR-facing
+  boundaries.
+- Legacy-proof/advisory: structured enum, const-int, consteval, type-binding,
+  function/global, overload, and record mirrors remain dual-read proof paths
+  where the plan intentionally preserved rendered behavior.
+- Not lookup fallbacks: canonical symbol formatting, mangling/link names,
+  diagnostics, and string literal helpers are rendered surfaces, not removable
+  sema lookup fallbacks in this packet.
 
 ## Suggested Next
 
-Delegate Step 8 to inventory the retained string fallbacks and remove only
-sema-owned fallbacks that are proven structured-stable and not required as
+Handoff to the supervisor/plan-owner to decide whether Step 8 closes the active
+runbook or should spawn a separate HIR-facing identity cleanup idea. No further
+sema-owned string fallback was identified as both removable and independent of
 HIR, diagnostics, consteval, or codegen bridges.
 
 ## Watchouts
 
-- Do not require HIR data-model cleanup in this plan.
 - Do not remove `Node::name`, `TypeSpec::tag`, rendered diagnostics, mangled
-  names, or link-name surfaces.
-- Do not add testcase-shaped special cases or expectation downgrades.
-- Local structured mirrors intentionally remain advisory; the string-keyed scope
-  map is still authoritative for lookup, mutation, redefinition diagnostics, and
-  fallback behavior.
-- Global, function, and overload structured mirrors are also advisory; rendered
-  maps remain authoritative and the new dual-read paths discard comparison
-  results.
-- Const-int structured/text mirrors are advisory; rendered constant maps remain
-  authoritative for sema, consteval, and HIR-facing lookup behavior.
-- Consteval function registry mirrors are advisory; rendered-name
-  `consteval_funcs_` and HIR compile-time engine string maps remain
-  authoritative behavior sources.
-- Consteval interpreter parameter/local mirrors are advisory; string-keyed
-  locals remain authoritative for binding, assignment, and return evaluation.
-- `ConstEvalEnv` now has optional NTTP text/key mirror slots, but
-  `Node::template_param_names` and forwarded `template_arg_nttp_names` still do
-  not carry source `TextId` metadata, so current NTTP binding behavior remains
-  string-authoritative.
-- `NK_ENUM_DEF` still carries enum variant names and values but no per-variant
-  `TextId` metadata, so enum value/type rendered maps remain the only populated
-  behavior source for enum constants in this packet.
-- The symbol-level helper intentionally uses resolved namespace context plus
-  base `TextId`, not source qualifier segments, so unqualified and qualified
-  references can compare against the same declaration mirror.
-- String-only local bindings such as predefined function identifiers, `this`,
-  local enum constants, and template NTTP names still do not have per-binding
-  `Node` metadata for `sema_local_name_key`.
-- `TypeSpec::tag` and `TypeSpec::qualifier_segments` do not currently carry
-  base-name `TextId` metadata, so `TypeSpec::tag` string lookup remains the
-  authoritative type-binding behavior and mirror comparison bridges through
-  the rendered tag.
-- Type-binding `TextId` mirror slots are present but remain empty until
-  template parameter `TextId` metadata is available at the sema boundary.
-- Type-binding structured mirrors use the callee template declaration
-  namespace/context text identity plus the template parameter index; they are
-  advisory and do not affect HIR-facing type tags or diagnostics.
-- HIR compile-time-engine type bindings still use rendered strings and were
-  not converted in this packet.
-- `TypeSpec` still has rendered `tag` and string qualifier segments but no
-  base-name/qualifier `TextId` metadata, so struct completeness remains
-  string-authoritative and only compares against structured mirrors when the
-  rendered tag can be bridged to a recorded struct definition key.
-- Struct static-member mirrors intentionally follow the existing
-  `struct_static_member_types_` behavior, including its current field-type
-  contents; this packet did not tighten static-vs-instance member semantics.
-- Base-record structured traversal is populated only when the base tag already
-  maps to a stable recorded struct key; unresolved/pending template base
-  records remain on the rendered/HIR-facing path.
-- The rendered tag to structured record-key bridge now opts out on ambiguous
-  tag-to-key mappings, so mirrored checks run only for stable record identity.
+  names, link names, or HIR compile-time-engine string maps in this plan.
+- Global/function/overload structured mirrors remain advisory because rendered
+  maps still define bridge behavior and diagnostics.
+- Enum variant nodes still lack per-variant `TextId` metadata, so enum
+  constants remain rendered-authoritative for behavior.
+- Template parameter and NTTP source metadata is still incomplete at several
+  sema/HIR boundaries, so type binding and NTTP string maps are bridge-required.
+- Record completeness/member/static-member mirrors still depend on rendered
+  `TypeSpec::tag` bridges and ambiguity filtering.
+- The local structured demotion is limited to unqualified identifiers; qualified
+  or global-qualified references intentionally do not produce local keys.
 
 ## Proof
 

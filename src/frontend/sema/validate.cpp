@@ -45,6 +45,7 @@ std::size_t SemaStructuredNameKeyHash::operator()(const SemaStructuredNameKey& k
 
 std::optional<SemaStructuredNameKey> sema_local_name_key(const Node* node) {
   if (!node || node->unqualified_text_id == kInvalidText) return std::nullopt;
+  if (node->is_global_qualified || node->n_qualifier_segments > 0) return std::nullopt;
   SemaStructuredNameKey key;
   key.base_text_id = node->unqualified_text_id;
   return key;
@@ -548,7 +549,7 @@ class Validator {
   std::string current_method_struct_tag_;
   std::optional<SemaStructuredNameKey> current_method_struct_key_;
   std::vector<std::unordered_map<std::string, ScopedSym>> scopes_;
-  std::vector<std::unordered_map<SemaStructuredNameKey, const ScopedSym*, SemaStructuredNameKeyHash>>
+  std::vector<std::unordered_map<SemaStructuredNameKey, ScopedSym*, SemaStructuredNameKeyHash>>
       structured_scopes_;
   bool suppress_uninit_read_ = false;
 
@@ -825,6 +826,7 @@ class Validator {
     if (local_key.has_value()) {
       const ScopedSym* structured = lookup_local_symbol_by_key(*local_key);
       (void)compare_sema_lookup_ptrs(local, structured);
+      if (structured) return *structured;
     }
     if (local) return *local;
 
@@ -938,15 +940,24 @@ class Validator {
     for (std::size_t i = scopes_.size(); i > 0; --i) {
       auto& scope = scopes_[i - 1];
       auto f = scope.find(n->name);
+      ScopedSym* structured = nullptr;
       if (f != scope.end()) {
         if (key.has_value() && i <= structured_scopes_.size()) {
-          const ScopedSym* structured = nullptr;
           auto sf = structured_scopes_[i - 1].find(*key);
           if (sf != structured_scopes_[i - 1].end()) structured = sf->second;
           (void)compare_sema_lookup_ptrs(&f->second, structured);
         }
         f->second.initialized = true;
         return;
+      }
+      if (key.has_value() && i <= structured_scopes_.size()) {
+        auto sf = structured_scopes_[i - 1].find(*key);
+        if (sf != structured_scopes_[i - 1].end()) {
+          structured = sf->second;
+          (void)compare_sema_lookup_ptrs(static_cast<const ScopedSym*>(nullptr), structured);
+          structured->initialized = true;
+          return;
+        }
       }
     }
   }
