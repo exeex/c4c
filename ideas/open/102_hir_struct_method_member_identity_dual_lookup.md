@@ -5,7 +5,7 @@ Created: 2026-04-25
 Last Updated: 2026-04-25
 
 Parent Ideas:
-- [100_hir_compile_time_template_consteval_dual_lookup.md](/workspaces/c4c/ideas/open/100_hir_compile_time_template_consteval_dual_lookup.md)
+- [100_hir_compile_time_template_consteval_dual_lookup.md](/workspaces/c4c/ideas/closed/100_hir_compile_time_template_consteval_dual_lookup.md)
 - [101_hir_enum_const_int_dual_lookup.md](/workspaces/c4c/ideas/open/101_hir_enum_const_int_dual_lookup.md)
 
 ## Goal
