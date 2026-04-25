@@ -86,3 +86,14 @@ src/backend/bir/lir_to_bir/memory/intrinsics.cpp
 - Do not introduce `MemoryLoweringState`.
 - Do not move state ownership out of `BirFunctionLowerer`.
 - Do not add per-family headers.
+
+## Closure
+
+Closed after behavior-preserving extraction of the memcpy/memset runtime memory
+intrinsic family into `src/backend/bir/lir_to_bir/memory/intrinsics.cpp`.
+The accepted implementation keeps declarations in `lowering.hpp`, keeps the
+moved definitions as `BirFunctionLowerer` members, adds no headers, and does
+not rewrite expectations.
+
+Close proof accepted the full-suite baseline candidate with `3071` passed and
+`0` failed before and after.
