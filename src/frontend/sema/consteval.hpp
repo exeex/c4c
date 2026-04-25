@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -50,6 +51,38 @@ struct ConstEvalResult {
 // ── Constant-evaluation environment ──────────────────────────────────────────
 
 using ConstMap = std::unordered_map<std::string, long long>;
+using ConstTextMap = std::unordered_map<TextId, long long>;
+
+struct ConstEvalStructuredNameKey {
+  int namespace_context_id = -1;
+  bool is_global_qualified = false;
+  std::vector<TextId> qualifier_text_ids;
+  TextId base_text_id = kInvalidText;
+
+  bool valid() const { return base_text_id != kInvalidText; }
+  bool operator==(const ConstEvalStructuredNameKey& other) const {
+    return namespace_context_id == other.namespace_context_id &&
+           is_global_qualified == other.is_global_qualified &&
+           qualifier_text_ids == other.qualifier_text_ids &&
+           base_text_id == other.base_text_id;
+  }
+  bool operator!=(const ConstEvalStructuredNameKey& other) const { return !(*this == other); }
+};
+
+struct ConstEvalStructuredNameKeyHash {
+  std::size_t operator()(const ConstEvalStructuredNameKey& key) const {
+    std::size_t h = std::hash<int>{}(key.namespace_context_id);
+    h ^= std::hash<bool>{}(key.is_global_qualified) + 0x9e3779b9u + (h << 6) + (h >> 2);
+    h ^= std::hash<TextId>{}(key.base_text_id) + 0x9e3779b9u + (h << 6) + (h >> 2);
+    for (TextId segment : key.qualifier_text_ids) {
+      h ^= std::hash<TextId>{}(segment) + 0x9e3779b9u + (h << 6) + (h >> 2);
+    }
+    return h;
+  }
+};
+
+using ConstStructuredMap =
+    std::unordered_map<ConstEvalStructuredNameKey, long long, ConstEvalStructuredNameKeyHash>;
 
 // Map from template parameter name to concrete TypeSpec (for template-substituted evaluation).
 using TypeBindings = std::unordered_map<std::string, TypeSpec>;
@@ -60,10 +93,21 @@ struct ConstEvalEnv {
   const ConstMap* named_consts = nullptr;
   const ConstMap* local_consts = nullptr;
 
+  const ConstTextMap* enum_consts_by_text = nullptr;
+  const ConstTextMap* named_consts_by_text = nullptr;
+  const ConstTextMap* local_consts_by_text = nullptr;
+  const ConstStructuredMap* enum_consts_by_key = nullptr;
+  const ConstStructuredMap* named_consts_by_key = nullptr;
+  const ConstStructuredMap* local_consts_by_key = nullptr;
+
   // Scoped maps (used by validate.cpp where block scoping uses vector-of-maps).
   // Searched innermost (back) to outermost (front).
   const std::vector<ConstMap>* enum_scopes = nullptr;
   const std::vector<ConstMap>* local_const_scopes = nullptr;
+  const std::vector<ConstTextMap>* enum_scopes_by_text = nullptr;
+  const std::vector<ConstTextMap>* local_const_scopes_by_text = nullptr;
+  const std::vector<ConstStructuredMap>* enum_scopes_by_key = nullptr;
+  const std::vector<ConstStructuredMap>* local_const_scopes_by_key = nullptr;
 
   // Template type substitution map (template param name → concrete type).
   const TypeBindings* type_bindings = nullptr;
@@ -111,6 +155,103 @@ struct ConstEvalEnv {
       auto it = nttp_bindings->find(name);
       if (it != nttp_bindings->end()) return it->second;
     }
+    return std::nullopt;
+  }
+
+  std::optional<long long> lookup(const Node* n) const {
+    if (!n || !n->name || !n->name[0]) return std::nullopt;
+
+    const std::optional<long long> legacy = lookup(n->name);
+    const std::optional<long long> text = lookup_by_text(n);
+    const std::optional<long long> structured = lookup_by_key(n);
+    (void)compare_optional(legacy, text);
+    (void)compare_optional(legacy, structured);
+    return legacy;
+  }
+
+ private:
+  static bool compare_optional(std::optional<long long> legacy,
+                               std::optional<long long> structured) {
+    if (!structured.has_value()) return true;
+    return legacy.has_value() && *legacy == *structured;
+  }
+
+  static std::optional<ConstEvalStructuredNameKey> local_key(const Node* n) {
+    if (!n || n->unqualified_text_id == kInvalidText) return std::nullopt;
+    if (n->is_global_qualified || n->n_qualifier_segments > 0) return std::nullopt;
+    ConstEvalStructuredNameKey key;
+    key.base_text_id = n->unqualified_text_id;
+    return key;
+  }
+
+  static std::optional<ConstEvalStructuredNameKey> symbol_key(const Node* n) {
+    if (!n || n->namespace_context_id < 0 ||
+        n->unqualified_text_id == kInvalidText) {
+      return std::nullopt;
+    }
+    ConstEvalStructuredNameKey key;
+    key.namespace_context_id = n->namespace_context_id;
+    key.base_text_id = n->unqualified_text_id;
+    return key;
+  }
+
+  static std::optional<long long> lookup_text_map(const ConstTextMap* map,
+                                                  TextId text_id) {
+    if (!map || text_id == kInvalidText) return std::nullopt;
+    auto it = map->find(text_id);
+    if (it == map->end()) return std::nullopt;
+    return it->second;
+  }
+
+  static std::optional<long long> lookup_key_map(
+      const ConstStructuredMap* map,
+      const std::optional<ConstEvalStructuredNameKey>& key) {
+    if (!map || !key.has_value() || !key->valid()) return std::nullopt;
+    auto it = map->find(*key);
+    if (it == map->end()) return std::nullopt;
+    return it->second;
+  }
+
+  std::optional<long long> lookup_by_text(const Node* n) const {
+    if (n && (n->is_global_qualified || n->n_qualifier_segments > 0)) {
+      return std::nullopt;
+    }
+    const TextId text_id = n ? n->unqualified_text_id : kInvalidText;
+    if (text_id == kInvalidText) return std::nullopt;
+    if (enum_scopes_by_text) {
+      for (auto it = enum_scopes_by_text->rbegin(); it != enum_scopes_by_text->rend(); ++it) {
+        if (auto v = lookup_text_map(&*it, text_id)) return v;
+      }
+    }
+    if (auto v = lookup_text_map(enum_consts_by_text, text_id)) return v;
+    if (local_const_scopes_by_text) {
+      for (auto it = local_const_scopes_by_text->rbegin();
+           it != local_const_scopes_by_text->rend(); ++it) {
+        if (auto v = lookup_text_map(&*it, text_id)) return v;
+      }
+    }
+    if (auto v = lookup_text_map(local_consts_by_text, text_id)) return v;
+    if (auto v = lookup_text_map(named_consts_by_text, text_id)) return v;
+    return std::nullopt;
+  }
+
+  std::optional<long long> lookup_by_key(const Node* n) const {
+    const auto local = local_key(n);
+    const auto symbol = symbol_key(n);
+    if (enum_scopes_by_key) {
+      for (auto it = enum_scopes_by_key->rbegin(); it != enum_scopes_by_key->rend(); ++it) {
+        if (auto v = lookup_key_map(&*it, local)) return v;
+      }
+    }
+    if (auto v = lookup_key_map(enum_consts_by_key, symbol)) return v;
+    if (local_const_scopes_by_key) {
+      for (auto it = local_const_scopes_by_key->rbegin();
+           it != local_const_scopes_by_key->rend(); ++it) {
+        if (auto v = lookup_key_map(&*it, local)) return v;
+      }
+    }
+    if (auto v = lookup_key_map(local_consts_by_key, local)) return v;
+    if (auto v = lookup_key_map(named_consts_by_key, symbol)) return v;
     return std::nullopt;
   }
 };

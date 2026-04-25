@@ -3,26 +3,26 @@
 Status: Complete
 Source Idea Path: ideas/open/96_sema_dual_lookup_structured_identity_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Add Dual Global, Function, and Overload Maps
+Current Step ID: Step 4
+Current Step Title: Add Dual Enum and Const-Int Binding Maps
 
 ## Just Finished
 
-Step 3 - Add Dual Global, Function, and Overload Maps: added symbol-level
-structured sema keys using namespace context plus base `TextId` metadata, then
-dual-wrote mirrors for globals, function declarations, reference overload sets,
-and C++ overload sets.
+Step 4 - Add Dual Enum and Const-Int Binding Maps: added consteval-facing
+`TextId` and structured-key constant lookup mirrors beside the existing
+rendered-name maps, then changed constant evaluation to dual-read/compare those
+mirrors while still returning the rendered-name result as authoritative.
 
-Global/function lookup and overload resolution now dual-read/compare the
-structured mirrors where AST reference metadata is available, while still
-returning the rendered-name map result as the authoritative behavior path for
-diagnostics, HIR handoff, and legacy callers.
+Global and local const-int bindings now dual-write string, `TextId`, and
+structured mirrors where declaration metadata exists. Sema static assertions,
+local const folding, case-label evaluation, and consteval expression lookup all
+receive the mirror maps through `ConstEvalEnv`.
 
 ## Suggested Next
 
-Delegate Step 4 to add dual enum and const-int binding maps, including global
-and local constant bindings plus sema/consteval lookup paths, while preserving
-the rendered-name maps as the behavior source.
+Delegate Step 5 to add dual consteval function registry and interpreter binding
+maps, including structured lookup for consteval callees plus interpreter
+locals/parameter bindings where source `TextId` metadata is available.
 
 ## Watchouts
 
@@ -36,6 +36,11 @@ the rendered-name maps as the behavior source.
 - Global, function, and overload structured mirrors are also advisory; rendered
   maps remain authoritative and the new dual-read paths discard comparison
   results.
+- Const-int structured/text mirrors are advisory; rendered constant maps remain
+  authoritative for sema, consteval, and HIR-facing lookup behavior.
+- `NK_ENUM_DEF` still carries enum variant names and values but no per-variant
+  `TextId` metadata, so enum value/type rendered maps remain the only populated
+  behavior source for enum constants in this packet.
 - The symbol-level helper intentionally uses resolved namespace context plus
   base `TextId`, not source qualifier segments, so unqualified and qualified
   references can compare against the same declaration mirror.

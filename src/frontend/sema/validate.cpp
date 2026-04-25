@@ -18,7 +18,10 @@
 namespace c4c::sema {
 
 using hir::ConstEvalEnv;
+using hir::ConstEvalStructuredNameKey;
 using hir::ConstMap;
+using hir::ConstStructuredMap;
+using hir::ConstTextMap;
 using hir::evaluate_constant_expr;
 
 bool SemaStructuredNameKey::operator==(const SemaStructuredNameKey& other) const {
@@ -78,6 +81,15 @@ SemaDualLookupMatch compare_sema_lookup_presence(bool legacy_found, bool structu
   if (!legacy_found && !structured_found) return SemaDualLookupMatch::BothMissing;
   if (legacy_found && structured_found) return SemaDualLookupMatch::Match;
   return legacy_found ? SemaDualLookupMatch::LegacyOnly : SemaDualLookupMatch::StructuredOnly;
+}
+
+static ConstEvalStructuredNameKey to_consteval_key(const SemaStructuredNameKey& key) {
+  ConstEvalStructuredNameKey out;
+  out.namespace_context_id = key.namespace_context_id;
+  out.is_global_qualified = key.is_global_qualified;
+  out.qualifier_text_ids = key.qualifier_text_ids;
+  out.base_text_id = key.base_text_id;
+  return out;
 }
 
 namespace {
@@ -481,9 +493,20 @@ class Validator {
   std::unordered_map<SemaStructuredNameKey, const TypeSpec*, SemaStructuredNameKeyHash>
       structured_globals_;
   std::unordered_map<std::string, TypeSpec> enum_consts_;
+  std::unordered_map<SemaStructuredNameKey, const TypeSpec*, SemaStructuredNameKeyHash>
+      structured_enum_consts_;
   ConstMap enum_const_vals_global_;   // integer values of global enum constants
+  ConstTextMap enum_const_vals_global_by_text_;
+  ConstStructuredMap enum_const_vals_global_by_key_;
   std::vector<ConstMap> enum_const_vals_scopes_;  // block/function-scoped enum constants
+  std::vector<ConstTextMap> enum_const_vals_scopes_by_text_;
+  std::vector<ConstStructuredMap> enum_const_vals_scopes_by_key_;
+  ConstMap global_const_vals_;
+  ConstTextMap global_const_vals_by_text_;
+  ConstStructuredMap global_const_vals_by_key_;
   std::vector<ConstMap> local_const_vals_scopes_;  // block-scoped const/constexpr local values
+  std::vector<ConstTextMap> local_const_vals_scopes_by_text_;
+  std::vector<ConstStructuredMap> local_const_vals_scopes_by_key_;
   std::unordered_map<std::string, FunctionSig> funcs_;
   std::unordered_map<SemaStructuredNameKey, const FunctionSig*, SemaStructuredNameKeyHash>
       structured_funcs_;
@@ -669,14 +692,22 @@ class Validator {
     scopes_.emplace_back();
     structured_scopes_.emplace_back();
     enum_const_vals_scopes_.emplace_back();
+    enum_const_vals_scopes_by_text_.emplace_back();
+    enum_const_vals_scopes_by_key_.emplace_back();
     local_const_vals_scopes_.emplace_back();
+    local_const_vals_scopes_by_text_.emplace_back();
+    local_const_vals_scopes_by_key_.emplace_back();
   }
 
   void leave_scope() {
     if (!scopes_.empty()) scopes_.pop_back();
     if (!structured_scopes_.empty()) structured_scopes_.pop_back();
     if (!enum_const_vals_scopes_.empty()) enum_const_vals_scopes_.pop_back();
+    if (!enum_const_vals_scopes_by_text_.empty()) enum_const_vals_scopes_by_text_.pop_back();
+    if (!enum_const_vals_scopes_by_key_.empty()) enum_const_vals_scopes_by_key_.pop_back();
     if (!local_const_vals_scopes_.empty()) local_const_vals_scopes_.pop_back();
+    if (!local_const_vals_scopes_by_text_.empty()) local_const_vals_scopes_by_text_.pop_back();
+    if (!local_const_vals_scopes_by_key_.empty()) local_const_vals_scopes_by_key_.pop_back();
   }
 
   void bind_local(const std::string& name, const TypeSpec& ts, bool initialized, int line,
@@ -757,8 +788,63 @@ class Validator {
       return ScopedSym{fts, true};
     }
     auto ec = enum_consts_.find(name);
-    if (ec != enum_consts_.end()) return ScopedSym{ec->second, true};
+    const TypeSpec* legacy_enum = ec != enum_consts_.end() ? &ec->second : nullptr;
+    if (structured_key.has_value()) {
+      const TypeSpec* structured_enum = nullptr;
+      auto se = structured_enum_consts_.find(*structured_key);
+      if (se != structured_enum_consts_.end()) structured_enum = se->second;
+      (void)compare_sema_lookup_ptrs(legacy_enum, structured_enum);
+    }
+    if (legacy_enum) return ScopedSym{*legacy_enum, true};
     return std::nullopt;
+  }
+
+  void populate_const_eval_env(ConstEvalEnv& env) const {
+    env.enum_consts = &enum_const_vals_global_;
+    env.named_consts = &global_const_vals_;
+    env.enum_consts_by_text = &enum_const_vals_global_by_text_;
+    env.named_consts_by_text = &global_const_vals_by_text_;
+    env.enum_consts_by_key = &enum_const_vals_global_by_key_;
+    env.named_consts_by_key = &global_const_vals_by_key_;
+    env.enum_scopes = &enum_const_vals_scopes_;
+    env.local_const_scopes = &local_const_vals_scopes_;
+    env.enum_scopes_by_text = &enum_const_vals_scopes_by_text_;
+    env.local_const_scopes_by_text = &local_const_vals_scopes_by_text_;
+    env.enum_scopes_by_key = &enum_const_vals_scopes_by_key_;
+    env.local_const_scopes_by_key = &local_const_vals_scopes_by_key_;
+  }
+
+  static bool is_const_int_binding_type(const TypeSpec& ts) {
+    return is_switch_integer_type(ts) &&
+           ts.ptr_level == 0 &&
+           ts.array_rank == 0 &&
+           !ts.is_lvalue_ref &&
+           !ts.is_rvalue_ref;
+  }
+
+  void record_global_const_binding(const Node* n, long long value) {
+    if (!n || !n->name || !n->name[0]) return;
+    global_const_vals_[n->name] = value;
+    if (n->unqualified_text_id != kInvalidText) {
+      global_const_vals_by_text_[n->unqualified_text_id] = value;
+    }
+    if (auto key = sema_symbol_name_key(n); key.has_value() && key->valid()) {
+      global_const_vals_by_key_[to_consteval_key(*key)] = value;
+    }
+  }
+
+  void record_local_const_binding(const Node* n, long long value) {
+    if (!n || !n->name || !n->name[0]) return;
+    if (local_const_vals_scopes_.empty()) local_const_vals_scopes_.emplace_back();
+    local_const_vals_scopes_.back()[n->name] = value;
+    if (n->unqualified_text_id != kInvalidText) {
+      if (local_const_vals_scopes_by_text_.empty()) local_const_vals_scopes_by_text_.emplace_back();
+      local_const_vals_scopes_by_text_.back()[n->unqualified_text_id] = value;
+    }
+    if (auto key = sema_local_name_key(n); key.has_value() && key->valid()) {
+      if (local_const_vals_scopes_by_key_.empty()) local_const_vals_scopes_by_key_.emplace_back();
+      local_const_vals_scopes_by_key_.back()[to_consteval_key(*key)] = value;
+    }
   }
 
   void bind_enum_constants_global(const Node* n) {
@@ -1119,9 +1205,7 @@ class Validator {
     if (!n || n->kind != NK_STATIC_ASSERT || !n->left) return;
 
     ConstEvalEnv env;
-    env.enum_consts = &enum_const_vals_global_;
-    env.enum_scopes = &enum_const_vals_scopes_;
-    env.local_const_scopes = &local_const_vals_scopes_;
+    populate_const_eval_env(env);
 
     if (auto r = evaluate_constant_expr(n->left, env); r.ok()) {
       if (r.as_int() == 0) emit(n, "_Static_assert condition is false");
@@ -1183,6 +1267,15 @@ class Validator {
           is_invalid_pointer_float_implicit_conversion(
               referred_type(n->type), rhs.type, is_null_pointer_constant_expr(n->init))) {
         emit(n, "incompatible initializer type");
+      }
+      if (n->name && n->name[0] &&
+          (n->type.is_const || n->is_constexpr) &&
+          is_const_int_binding_type(n->type)) {
+        ConstEvalEnv env;
+        populate_const_eval_env(env);
+        if (auto r = evaluate_constant_expr(n->init, env); r.ok()) {
+          record_global_const_binding(n, r.as_int());
+        }
       }
     }
   }
@@ -1360,12 +1453,9 @@ class Validator {
             (effective_decl_type ? effective_decl_type->ptr_level : n->type.ptr_level) == 0 &&
             (effective_decl_type ? effective_decl_type->array_rank : n->type.array_rank) == 0) {
           ConstEvalEnv env;
-          env.enum_consts = &enum_const_vals_global_;
-          env.enum_scopes = &enum_const_vals_scopes_;
-          env.local_const_scopes = &local_const_vals_scopes_;
+          populate_const_eval_env(env);
           if (auto r = evaluate_constant_expr(n->init, env); r.ok()) {
-            if (local_const_vals_scopes_.empty()) local_const_vals_scopes_.emplace_back();
-            local_const_vals_scopes_.back()[n->name] = r.as_int();
+            record_local_const_binding(n, r.as_int());
           }
         }
         return;
@@ -1515,9 +1605,7 @@ class Validator {
             emit(n, "case label does not have an integer type");
           }
           ConstEvalEnv case_env;
-          case_env.enum_consts = &enum_const_vals_global_;
-          case_env.enum_scopes = &enum_const_vals_scopes_;
-          case_env.local_const_scopes = &local_const_vals_scopes_;
+          populate_const_eval_env(case_env);
           if (auto r = evaluate_constant_expr(n->left, case_env); !r.ok()) {
             emit(n, "case label does not reduce to an integer constant");
           } else {

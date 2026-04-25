@@ -187,7 +187,7 @@ ConstEvalResult eval_impl(const Node* n, const ConstEvalEnv& env) {
           // Treat them as constant true until full concept satisfaction exists.
           return ConstEvalResult::success(ConstValue::make_bool(true));
         }
-        auto v = env.lookup(n->name);
+        auto v = env.lookup(n);
         if (v) return ConstEvalResult::success(ConstValue::make_int(*v));
         return ConstEvalResult::failure(
             std::string("read of non-constant variable '") + n->name + "'");
