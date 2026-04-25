@@ -1,46 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/104_hir_safe_legacy_lookup_demotion.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Route Direct Method And Member Probes Through Helpers
+Current Step ID: 4
+Current Step Title: Use Owner-Aware Record Lookup Where Owner Keys Exist
 
 # Current Packet
 
 ## Just Finished
 
-Completed the accumulated `plan.md` Step 3 helper-routing packets for direct
-method and member probes in `range_for.cpp`, `operator.cpp`, `object.cpp`, and
-the `NK_DEREF` branch in `hir_types.cpp`.
+Completed `plan.md` Step 4 for the owner-aware `Lowerer::lower_struct_def`
+record-existence checks in `src/frontend/hir/hir_types.cpp`.
 
-The broader HIR checkpoint also passed after those slices:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -L hir > test_after.log`
-reported 73/73 passing.
+Audit classification quote from
+`review/103_hir_post_dual_path_legacy_readiness_audit.md`:
+`Module::struct_def_owner_index` and `find_struct_def_by_owner_structured` are
+`safe-to-demote` targets; owner-key lookup is structured and records
+owner/rendered parity mismatches, suitable as replacement where callers have
+`HirRecordOwnerKey`; `Module::struct_defs` rendered tag map remains
+`bridge-required` for broad `TypeSpec::tag`/codegen consumers.
+
+Changed files:
+`src/frontend/hir/hir_types.cpp`, `todo.md`.
 
 ## Suggested Next
 
-Supervisor should choose either Step 4 owner-aware record lookup work or plan
-review. Do not send another blind helper-routing packet for the remaining direct
-method-map hits without first narrowing an exact safe target.
+Supervisor should review Step 4 completion and choose the next owner-key
+demotion packet or plan review.
 
 ## Watchouts
 
-- Remaining `struct_methods_` and `struct_method_ret_types_` hits are not safe
-  Step 3 conversion targets by default.
-- The remaining hits cover helper internals, method registration,
-  ref-overload registration, and exact out-of-class method attach/skip checks in
-  `hir_build.cpp`.
-- Those registration and attach/skip paths require exact rendered keys, while
-  `find_struct_method_mangled` can fall back between const/non-const variants
-  and inherited bases.
+- The `lower_struct_def` changes only affect record-existence decisions:
+  forward-declaration skip and `struct_def_order` append eligibility.
+- Rendered `module_->struct_defs` fallback remains in place when owner metadata
+  is incomplete or structured owner lookup misses.
+- `TypeSpec::tag`, `HirStructDef::tag`, and codegen bridge behavior were not
+  changed.
 
 ## Proof
 
-Passed:
-`git diff --check`
-
-Previously recorded broader HIR checkpoint:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -L hir > test_after.log`
 passed 73/73.
 
-Proof log: metadata-only packet, no new `test_after.log` generated; broader
-checkpoint log path remains `test_after.log`.
+`git diff --check` also passed.
+
+Proof log: `test_after.log`.

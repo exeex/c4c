@@ -1498,11 +1498,6 @@ void Lowerer::lower_struct_def(const Node* sd) {
     return sd->n_fields > 0 ? sd->fields[i] : sd->children[i];
   };
 
-  // If already fully populated, skip (forward decl followed by full def is OK)
-  if (module_->struct_defs.count(tag) &&
-      !module_->struct_defs.at(tag).fields.empty() &&
-      num_fields == 0) return;
-
   HirStructDef def;
   def.tag = tag;
   def.tag_text_id = make_unqualified_text_id(
@@ -1512,12 +1507,30 @@ void Lowerer::lower_struct_def(const Node* sd) {
         def.tag, module_ ? module_->link_name_texts.get() : nullptr);
   }
   def.ns_qual = make_ns_qual(sd, module_ ? module_->link_name_texts.get() : nullptr);
-  def.is_union = sd->is_union;
-  def.pack_align = sd->pack_align;
-  def.struct_align = sd->struct_align;
   const HirRecordOwnerKey struct_owner_key = make_hir_record_owner_key(def);
   const bool has_struct_owner_key =
       hir_record_owner_key_has_complete_metadata(struct_owner_key);
+  auto find_existing_struct_def = [&]() -> const HirStructDef* {
+    if (has_struct_owner_key) {
+      if (const HirStructDef* structured =
+              module_->find_struct_def_by_owner_structured(struct_owner_key)) {
+        return structured;
+      }
+    }
+    const auto rendered = module_->struct_defs.find(tag);
+    return rendered == module_->struct_defs.end() ? nullptr : &rendered->second;
+  };
+
+  // If already fully populated, skip (forward decl followed by full def is OK)
+  const HirStructDef* existing_struct_def = find_existing_struct_def();
+  if (existing_struct_def && !existing_struct_def->fields.empty() &&
+      num_fields == 0) {
+    return;
+  }
+
+  def.is_union = sd->is_union;
+  def.pack_align = sd->pack_align;
+  def.struct_align = sd->struct_align;
   for (int bi = 0; bi < sd->n_bases; ++bi) {
     TypeSpec base = sd->base_types[bi];
     if (base.tpl_struct_origin) {
@@ -1760,7 +1773,7 @@ void Lowerer::lower_struct_def(const Node* sd) {
 
   compute_struct_layout(module_, def);
 
-  const bool append_struct_def_order = !module_->struct_defs.count(tag);
+  const bool append_struct_def_order = find_existing_struct_def() == nullptr;
   module_->index_struct_def_owner(def, append_struct_def_order);
   if (append_struct_def_order)
     module_->struct_def_order.push_back(tag);
