@@ -1,6 +1,6 @@
 # LIR StructNameId TypeRef Mirror
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
 
@@ -60,6 +60,30 @@ Audit and update:
 4. Add verifier parity checks for struct type refs where both rendered text and
    `StructNameId` are present.
 5. Keep printer output unchanged.
+
+## Completion Notes
+
+Closed after the active runbook completed Steps 1-6. `LirTypeRef` can now carry
+an optional `StructNameId` mirror beside rendered type text, struct-aware
+factory paths dual-write known struct/union type references, HIR-to-LIR threads
+known struct identity where owned by this idea, and the verifier checks
+shadow-render parity when a mirror is present. Rendered type strings remain the
+printer authority.
+
+Close validation used the full-suite command:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure > test_after.log
+```
+
+The close gate compared `test_before.log` and `test_after.log` with the
+regression guard using non-decreasing pass-count policy. Both logs recorded
+2976/2976 tests passing with no new failures.
+
+Remaining string-only surfaces are follow-up or dependent idea scope rather
+than blockers for this first TypeRef mirror slice: array-shaped struct fields,
+pointer fields rendered as `ptr`, globals/functions/extern signature text,
+non-owned GEP sites, and `make_lir_call_op()` return/argument type text.
 
 ## Acceptance Criteria
 
