@@ -535,6 +535,7 @@ struct LirGlobal {
   std::string linkage_vis;  // e.g. "internal ", "external ", "weak ", "extern_weak ", ""
   std::string qualifier;    // "constant " or "global "
   std::string llvm_type;    // Pre-computed LLVM type string
+  std::optional<LirTypeRef> llvm_type_ref;  // Structured mirror when type identity is exact
   std::string init_text;    // LLVM constant init text (empty for extern decls)
   int align_bytes = 0;      // 0 = no align suffix
   bool is_extern_decl = false;  // extern: no init, type only

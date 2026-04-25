@@ -52,6 +52,18 @@ LirTypeRef lir_field_type_ref(const HirStructField& field, LirModule* lir_module
   return lir_field_type_ref(llvm_field_ty(field), lir_module, field.elem_type);
 }
 
+std::optional<LirTypeRef> lir_global_type_ref(const std::string& rendered_text,
+                                              LirModule* lir_module,
+                                              const TypeSpec& type) {
+  if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
+      type.array_rank > 0 || !type.tag || !type.tag[0]) {
+    return std::nullopt;
+  }
+  const std::string canonical_text = llvm_alloca_ty(type);
+  if (canonical_text != rendered_text) return std::nullopt;
+  return lir_aggregate_type_ref(canonical_text, lir_module, type.tag, type.base == TB_UNION);
+}
+
 }  // namespace
 
 // ── Module-level orchestration helpers ───────────────────────────────────────
@@ -252,6 +264,7 @@ static void lower_global(const c4c::hir::GlobalVar& gv,
                                             false, gv.linkage.visibility);
           lg.qualifier = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
           lg.llvm_type = literal_ty;
+          lg.llvm_type_ref = lir_global_type_ref(lg.llvm_type, &module, ts);
           lg.init_text = literal_init;
           lg.align_bytes = align;
           lg.is_extern_decl = false;
@@ -269,6 +282,7 @@ static void lower_global(const c4c::hir::GlobalVar& gv,
   lg.is_internal = gv.linkage.is_static;
   lg.is_const = gv.is_const;
   lg.llvm_type = llvm_alloca_ty(ts);
+  lg.llvm_type_ref = lir_global_type_ref(lg.llvm_type, &module, ts);
   lg.align_bytes = align;
 
   if (gv.linkage.is_extern) {

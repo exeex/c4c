@@ -411,6 +411,21 @@ void verify_extern_decl_shadows(const LirModule& mod) {
   }
 }
 
+void verify_global_type_ref_shadows(const LirModule& mod) {
+  for (const auto& global : mod.globals) {
+    if (!global.llvm_type_ref.has_value()) continue;
+    const std::string& shadow =
+        require_module_type_ref(mod, *global.llvm_type_ref, "LirGlobal.llvm_type_ref");
+    if (shadow != global.llvm_type) {
+      std::ostringstream detail;
+      detail << "structured type mirror for global '" << global.name
+             << "' does not match llvm_type; shadow '" << shadow
+             << "', llvm_type '" << global.llvm_type << "'";
+      fail_verify("LirGlobal.llvm_type_ref", detail.str());
+    }
+  }
+}
+
 }  // namespace
 
 const std::string& require_operand_kind(
@@ -466,6 +481,7 @@ std::string_view render_cmp_predicate(const LirCmpPredicateRef& predicate,
 void verify_module(const LirModule& mod) {
   verify_struct_decl_shadows(mod);
   verify_extern_decl_shadows(mod);
+  verify_global_type_ref_shadows(mod);
   for (const auto& function : mod.functions) {
     for (const auto& inst : function.alloca_insts) verify_inst(mod, inst);
     for (const auto& block : function.blocks) {
