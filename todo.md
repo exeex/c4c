@@ -1,30 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/99_hir_module_symbol_structured_lookup_mirror.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Add HIR module declaration lookup key
+Current Step ID: 2
+Current Step Title: Add declaration-side name text metadata
 
 # Current Packet
 
 ## Just Finished
 
-Step 1: Add HIR module declaration lookup key. Added a HIR-owned structured
-module declaration lookup key for functions/globals with declaration kind,
-namespace context id, global-qualified state, qualifier segment TextIds,
-unqualified declaration TextId, deterministic equality, deterministic hashing,
-and a builder from `NamespaceQualifier`. Existing lookup behavior is unchanged.
+Step 2: Add declaration-side name text metadata. Added passive
+declaration-side `name_text_id` fields to HIR `Function` and `GlobalVar`,
+defaulting to `kInvalidText`. Existing rendered `name` fields, link-name ids,
+lookup maps, and lowering behavior are unchanged.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: add declaration-side `name_text_id` metadata to
-HIR functions and globals while preserving rendered names unchanged.
+Execute Step 3 from `plan.md`: populate the passive HIR declaration
+`name_text_id` metadata at semantic declaration-lowering sites without changing
+rendered names or lookup behavior.
 
 ## Watchouts
 
 - Preserve rendered-name maps and link-name behavior.
-- Treat `ModuleDeclLookupKey` as a passive key until the next packet explicitly
-  wires a mirror map; Step 1 did not populate or query it.
-- Do not broaden into struct/type, member/method, parser, or sema rewrites.
+- Step 2 intentionally did not populate the new fields; they remain invalid
+  unless a later packet explicitly assigns declaration text ids.
+- Treat `ModuleDeclLookupKey` and `name_text_id` as passive metadata until the
+  mirror-map wiring packet explicitly uses them.
+- Do not broaden into struct/type, member/method, parser, or unrelated sema
+  rewrites.
 - Do not downgrade expectations or add testcase-shaped shortcuts.
 
 ## Proof

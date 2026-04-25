@@ -730,6 +730,7 @@ struct SpecializationKeyHash {
 struct Function {
   FunctionId id{};
   SymbolName name;
+  TextId name_text_id = kInvalidText;
   LinkNameId link_name_id = kInvalidLinkName;
   ExecutionDomain execution_domain = ExecutionDomain::Host;
   NamespaceQualifier ns_qual;  // owning namespace context from AST
@@ -793,6 +794,7 @@ using GlobalInit = std::variant<std::monostate, InitScalar, InitList>;
 struct GlobalVar {
   GlobalId id{};
   SymbolName name;
+  TextId name_text_id = kInvalidText;
   LinkNameId link_name_id = kInvalidLinkName;
   ExecutionDomain execution_domain = ExecutionDomain::Host;
   NamespaceQualifier ns_qual;  // owning namespace context from AST
