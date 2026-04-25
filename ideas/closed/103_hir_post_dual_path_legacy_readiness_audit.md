@@ -1,6 +1,6 @@
 # HIR Post Dual-Path Legacy Readiness Audit
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
 
@@ -95,3 +95,14 @@ The report should include:
 - No implementation cleanup is performed as part of this audit.
 - Follow-up work can be split cleanly into HIR-internal cleanup and downstream
   bridge cleanup.
+
+## Closure
+
+Closed: 2026-04-25
+
+The audit runbook completed all five steps and produced
+`review/103_hir_post_dual_path_legacy_readiness_audit.md`. The artifact
+classifies remaining legacy HIR lookup, string-keyed maps, diagnostic/printer
+spelling, ABI/link spelling, HIR-to-LIR string identity seams, idea 104 cleanup
+scope, idea 105 bridge scope, and proof gaps. No implementation cleanup was
+performed as part of this idea.
