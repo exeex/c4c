@@ -8,19 +8,25 @@ Current Step Title: Declare Call Lowering Member
 
 ## Just Finished
 
-Lifecycle activation created `plan.md` and this executor-compatible `todo.md`
-for Step 1.
+Step 1 declared `lower_call_inst(const c4c::codegen::lir::LirCallOp& call,
+std::vector<bir::Inst>* lowered_insts)` exactly once as a
+`BirFunctionLowerer` member in `src/backend/bir/lir_to_bir/lowering.hpp`.
 
 ## Suggested Next
 
-Start with Step 1 in `plan.md`: declare `lower_call_inst(...)` as a
-`BirFunctionLowerer` member in `src/backend/bir/lir_to_bir/lowering.hpp`.
+Continue with Step 2 in `plan.md`: move only the existing `LirCallOp` lowering
+body from `memory/coordinator.cpp` into `BirFunctionLowerer::lower_call_inst`,
+preferably in `calling.cpp`.
 
 ## Watchouts
 
 Keep this as a behavior-preserving placement cleanup. Do not change call ABI,
-pointer provenance, memory intrinsic behavior, or test expectations.
+pointer provenance, memory intrinsic behavior, or test expectations. Keep
+`try_lower_direct_memory_intrinsic_call` integration intact when moving the
+body.
 
 ## Proof
 
-No code validation was run during lifecycle activation.
+Ran `cmake --build --preset default --target c4c_codegen && ctest --test-dir
+build -j --output-on-failure -R '^backend_'`; build succeeded and all enabled
+backend tests passed. Proof output is preserved in `test_after.log`.

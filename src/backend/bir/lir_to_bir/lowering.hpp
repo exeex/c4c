@@ -391,6 +391,8 @@ class BirFunctionLowerer {
   bool lower_runtime_intrinsic_inst(const c4c::codegen::lir::LirInst& inst,
                                     const ValueMap& value_aliases,
                                     std::vector<bir::Inst>* lowered_insts);
+  bool lower_call_inst(const c4c::codegen::lir::LirCallOp& call,
+                       std::vector<bir::Inst>* lowered_insts);
 
   // Aggregate lowering helpers.
   std::vector<std::pair<std::size_t, std::string>> collect_sorted_leaf_slots(
