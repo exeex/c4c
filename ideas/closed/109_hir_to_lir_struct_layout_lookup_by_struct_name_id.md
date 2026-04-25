@@ -1,8 +1,9 @@
 # HIR To LIR Struct Layout Lookup By StructNameId
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
+Closed: 2026-04-25
 
 Parent Ideas:
 - [106_shared_struct_name_table_for_lir_type_identity.md](/workspaces/c4c/ideas/closed/106_shared_struct_name_table_for_lir_type_identity.md)
@@ -52,3 +53,15 @@ Audit and update HIR-to-LIR paths around:
 - Parity/mismatch observation exists for structured-vs-legacy layout lookup.
 - Focused aggregate, field access, and initializer tests pass without output
   drift.
+
+## Closure Note
+
+Idea 109 is complete. The selected HIR-to-LIR struct layout lookup surfaces now
+attempt structured `StructNameId` / `LirStructDecl` lookup where identity is
+known, retain legacy rendered-tag layout as the behavior-preserving fallback,
+and surface structured-vs-legacy parity observations through verifier-backed
+`LirStructuredLayoutObservation` records.
+
+Close-time regression guard used full-suite canonical logs:
+`test_before.log` and `test_after.log` both passed 2980/2980 tests with no new
+failures.
