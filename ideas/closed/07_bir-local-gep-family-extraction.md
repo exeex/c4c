@@ -92,3 +92,10 @@ src/backend/bir/lir_to_bir/memory/local_gep.cpp
 - Do not introduce `MemoryLoweringState`.
 - Do not move state ownership out of `BirFunctionLowerer`.
 - Do not add per-family headers.
+
+## Closure
+
+Closed after commit `87267299` extracted the local GEP family into
+`src/backend/bir/lir_to_bir/memory/local_gep.cpp`, preserved
+`lowering.hpp` as the private member index, avoided new headers and expectation
+rewrites, and passed accepted review plus full-suite baseline proof.
