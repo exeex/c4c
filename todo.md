@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/08_bir-address-projection-model-consolidation.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Strengthen Helper Result Facts
+Current Step ID: Step 3
+Current Step Title: Reuse Shared Projection Helpers
 
 
 Code Review Reminder Handled: review/address-projection-inventory-review.md found Step 1 inventory aligned and recommended continuing into Step 2.
@@ -12,37 +12,25 @@ Test Baseline Reminder Handled: no test_baseline.new.log exists for this todo-on
 
 ## Just Finished
 
-Step 2 strengthened existing pure helper result facts without changing BIR
-behavior.
+Step 3 started shared projection-helper reuse by adding
+`resolve_aggregate_child_index_projection`, a pure helper for one constant
+array-element or struct-field child traversal step.
 
-Changed fields:
+Consolidated traversal:
 
-- `AggregateByteOffsetProjection` now carries `target_byte_offset`,
-  `child_absolute_byte_offset`, and `child_stride_bytes` in addition to the
-  existing child kind/index/type/layout facts.
-- `ScalarLayoutByteOffsetFacts` now carries `target_byte_offset` and
-  `remaining_object_bytes` in addition to object size and optional scalar leaf
-  facts.
-
-Consumers updated immediately:
-
-- `find_repeated_aggregate_extent_at_offset_impl` now uses
-  `child_stride_bytes` and `child_absolute_byte_offset` instead of recomputing
-  those facts from child layout or parent fields.
-- Follow-up correction: struct-field projections set `child_stride_bytes` from
-  the child layout size, preserving the previous repeated-struct-field extent
-  behavior while still exposing the fact through the helper result.
-- `find_pointer_array_length_at_offset` now uses the projection result's
-  `target_byte_offset` for the root-pointer-array check.
-- Provenance scalar subobject containment now uses
-  `remaining_object_bytes` from `resolve_scalar_layout_facts_at_byte_offset`
-  while preserving the stored-type and opaque-pointer shortcuts.
+- The duplicate non-first-index aggregate child traversal in
+  `resolve_global_gep_address` and `resolve_relative_gep_target` now consumes
+  the helper's `child_absolute_byte_offset` and `child_type_text` instead of
+  open-coding array/struct layout selection in both callers.
+- First-index policy remains in the call sites.
+- Scalar policy remains in `resolve_relative_gep_target`.
+- Publication and state-map policy were not moved.
 
 ## Suggested Next
 
-Proceed to Step 3 with a bounded caller-consolidation packet. Start by routing
-one duplicate aggregate traversal family through the existing helper vocabulary,
-preferably in `addressing.cpp` before widening to local GEP call sites.
+Continue Step 3 with the next bounded caller-consolidation packet, likely the
+matching non-first-index aggregate traversal in another GEP path, while keeping
+that caller's first-index and scalar policy local.
 
 ## Watchouts
 
@@ -56,9 +44,10 @@ preferably in `addressing.cpp` before widening to local GEP call sites.
 - Be careful with first-index policy: local aggregate GEP, absolute global GEP,
   relative global GEP, dynamic aggregate GEP, and runtime pointer provenance use
   similar layout math but different acceptance rules.
-- `local_gep.cpp` was intentionally not touched in this packet because it was
-  not in the owned file list; Step 3 should include it explicitly before moving
-  local aggregate GEP traversal to shared helper facts.
+- `resolve_relative_global_gep_address` and dynamic aggregate GEP paths still
+  open-code similar traversal and were intentionally left outside this bounded
+  packet.
+- `local_gep.cpp` was not touched.
 
 ## Proof
 

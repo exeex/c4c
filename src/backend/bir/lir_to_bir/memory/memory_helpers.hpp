@@ -52,6 +52,11 @@ std::optional<AggregateByteOffsetProjection> resolve_aggregate_byte_offset_proje
     std::size_t target_offset,
     const BirFunctionLowerer::TypeDeclMap& type_decls);
 
+std::optional<AggregateByteOffsetProjection> resolve_aggregate_child_index_projection(
+    std::string_view type_text,
+    std::size_t child_index,
+    const BirFunctionLowerer::TypeDeclMap& type_decls);
+
 bool can_reinterpret_byte_storage_as_type(
     std::string_view storage_type_text,
     std::size_t target_byte_offset,
