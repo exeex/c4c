@@ -1,8 +1,9 @@
 # LIR Backend Legacy Type Surface Readiness Audit
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
+Closed: 2026-04-25
 
 Parent Ideas:
 - [107_lir_struct_name_id_type_ref_mirror.md](/workspaces/c4c/ideas/closed/107_lir_struct_name_id_type_ref_mirror.md)
@@ -104,3 +105,13 @@ The report should include:
   paths.
 - No implementation cleanup occurs in this audit.
 - Follow-up ideas can start without re-deriving blocker ownership.
+
+## Closure
+
+Closed after Step 5 produced
+`review/112_lir_backend_legacy_type_surface_readiness_audit.md`. The report
+contains the remaining legacy API/text field inventory, blocker ownership map,
+follow-up scope for ideas 113, 114, and 115, proof gaps, validation
+recommendations, must-not-remove guidance, and explicit MIR planned-rebuild
+boundary. This was a report-only audit; no implementation cleanup was
+performed.
