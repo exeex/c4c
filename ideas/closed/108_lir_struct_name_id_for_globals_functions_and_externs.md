@@ -1,11 +1,12 @@
 # LIR StructNameId For Globals Functions And Externs
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
+Closed: 2026-04-25
 
 Parent Ideas:
-- [107_lir_struct_name_id_type_ref_mirror.md](/workspaces/c4c/ideas/open/107_lir_struct_name_id_type_ref_mirror.md)
+- [107_lir_struct_name_id_type_ref_mirror.md](/workspaces/c4c/ideas/closed/107_lir_struct_name_id_type_ref_mirror.md)
 
 ## Goal
 
@@ -55,3 +56,17 @@ Audit and update:
 - Existing printer output remains unchanged.
 - Parity checks cover struct-bearing signatures and global declarations.
 - Legacy text fields remain in place for compatibility.
+
+## Completion Notes
+
+Closed after active runbook Step 6 validation. The implementation dual-writes
+structured type refs for the targeted global, function signature, extern
+declaration, and call surfaces while preserving legacy rendered printer text.
+Focused mirror tests and verifier regression fixes were committed through
+HEAD.
+
+Close-time validation used the full-suite result in `test_after.log`, produced
+by `{ cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure; } > test_after.log 2>&1`: 2980/2980 tests passed. The
+regression guard against the full-suite `test_baseline.log` passed with before
+2976/0 and after 2980/0.
