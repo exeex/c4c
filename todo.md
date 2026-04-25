@@ -8,20 +8,20 @@ Current Step Title: Broader validation and handoff
 
 ## Just Finished
 
-Step 5 materialization and parity proof completed as a proof-only packet and committed as `1eae7acc`. Existing focused coverage already exercises structured lookup parity (`frontend_hir_lookup_tests`), deferred template/consteval behavior, materialization stats/boundaries, and late-layout consteval static assertions with structured mirrors enabled, so no new test was added and no expectations were weakened.
+Step 6 broader validation and handoff completed. The supervisor-selected broader validation passed after the structured mirror work for template functions, primary template structs, template struct specialization owners, and consteval functions. The implementation preserved legacy string fallback paths, and the Step 5/6 proof did not observe a fallback or parity gap.
 
 ## Suggested Next
 
-Step 6 packet: run the supervisor-selected broader validation checkpoint, then summarize implemented structured mirrors, preserved legacy-only fallback paths, fallback observations, deferred metadata blockers, and the Step 5 proof result. The supervisor can use that handoff to accept the slice, request review, close the active lifecycle state, or ask the plan owner to replan.
+Plan-owner closure or review decision. The supervisor can use the completed Step 6 handoff to decide whether to close the active lifecycle state, request reviewer scrutiny, or ask the plan owner to replan any remaining source-idea scope.
 
 ## Watchouts
 
-The remaining string-only and call-expression-node lookup paths still should not be routed through fake structured keys. Step 5 did not expose a materialization or deferred consteval parity gap; any future metadata handoff for those paths is new implementation scope. If broader validation finds distinct remaining registry work, record it through lifecycle rules instead of expanding this runbook ad hoc.
+Legacy string fallback paths remain intentionally preserved; do not route string-only or call-expression-node lookup paths through fake structured keys without new metadata handoff work. No fallback/parity gap was observed in the Step 5 focused proof or the Step 6 broader proof. Any distinct remaining registry work should be recorded through lifecycle rules instead of expanding this runbook ad hoc.
 
 ## Proof
 
 ```bash
-<supervisor-selected broader validation command> > test_after.log 2>&1
+(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_|cpp_hir_|cpp_c4_static_assert_|cpp_positive_sema_(consteval|deferred_consteval|if_constexpr_template_chain|template_))') > test_after.log 2>&1
 ```
 
-Result: pending Step 6 supervisor-selected broader validation. Proof log target: `test_after.log`.
+Result: passed. Regression guard passed against matching `test_before.log`: 174 passed before and 174 passed after, with no new failures. Proof log path: `test_after.log`.
