@@ -95,12 +95,31 @@ struct AggregateTypeLayout {
   std::vector<AggregateField> fields;
 };
 
+struct BackendStructuredLayoutEntry {
+  std::string type_name;
+  AggregateTypeLayout structured_layout;
+  AggregateTypeLayout legacy_layout;
+  bool legacy_found = false;
+  bool structured_found = false;
+  bool parity_checked = false;
+  bool parity_matches = false;
+};
+
+using BackendStructuredLayoutTable = std::unordered_map<std::string, BackendStructuredLayoutEntry>;
+
 struct IntegerArrayType {
   std::vector<std::size_t> extents;
   bir::TypeKind element_type = bir::TypeKind::Void;
 };
 
 TypeDeclMap build_type_decl_map(const std::vector<std::string>& type_decls);
+BackendStructuredLayoutTable build_backend_structured_layout_table(
+    const std::vector<c4c::codegen::lir::LirStructDecl>& struct_decls,
+    const c4c::StructNameTable& struct_names,
+    const TypeDeclMap& legacy_type_decls);
+void report_backend_structured_layout_parity_notes(
+    BirLoweringContext& context,
+    const BackendStructuredLayoutTable& structured_layouts);
 std::optional<std::int64_t> parse_i64(std::string_view text);
 std::optional<bir::TypeKind> lower_integer_type(std::string_view text);
 std::size_t type_size_bytes(bir::TypeKind type);

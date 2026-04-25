@@ -1,93 +1,72 @@
 Status: Active
 Source Idea Path: ideas/open/113_backend_struct_decl_layout_table_dual_path.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Backend Layout Authority
+Current Step ID: 2
+Current Step Title: Introduce Structured Backend Layout Table
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 - Inventory Backend Layout Authority completed the report-only
-inventory of backend aggregate layout consumers that still depend on
-`module.type_decls` through the BIR `TypeDeclMap`.
+Step 2 - Introduce Structured Backend Layout Table completed the BIR
+lookup-authority slice and tightened it with observable parity mismatch
+reporting.
 
-Backend-owned BIR inventory:
+Changed files:
 
-- Lookup-only: `src/backend/bir/lir_to_bir/module.cpp` builds
-  `TypeDeclMap` with `build_type_decl_map(context.lir_module.type_decls)`;
-  `src/backend/bir/lir_to_bir/types.cpp` parses rendered declarations in
-  `build_type_decl_map` and resolves named `%struct` bodies in
-  `resolve_type_decl_body`.
-- Size/alignment: `compute_aggregate_type_layout` in
-  `src/backend/bir/lir_to_bir/types.cpp` is the shared size/alignment source;
-  direct BIR consumers include `aggregate.cpp` local aggregate slot creation
-  and copies, `globals.cpp` aggregate global storage sizing,
-  `memory/local_slots.cpp` local aggregate slots and scalar-array views,
-  `memory/addressing.cpp` byte-offset projections and repeated extents, and
-  `memory/provenance.cpp` scalar subobject facts.
-- ABI classification: `aggregate.cpp::lower_byval_aggregate_layout`,
-  `call_abi.cpp::lower_return_info_from_type`,
-  `call_abi.cpp::lower_function_params`, `cfg.cpp` aggregate phi planning,
-  `calling.cpp` aggregate call/byval/variadic paths, and
-  `memory/intrinsics.cpp` memcpy/memset aggregate helpers use the legacy layout
-  facts for byval size/alignment, sret, aggregate returns, and variadic
-  aggregate handling. BIR currently does not have the MIR-only HFA/direct-GP
-  parser surface; HFA/direct-GP references found are MIR residue.
-- Initializer lowering: `global_initializers.cpp` uses
-  `compute_aggregate_type_layout`, `parse_global_address_initializer`, and
-  recursive aggregate initializer lowering; `globals.cpp::lower_minimal_global`
-  uses the same helpers for aggregate global byte storage and pointer
-  initializer offsets.
-- Memory addressing: `memory/addressing.cpp`, `memory/local_gep.cpp`,
-  `memory/provenance.cpp`, and `memory/intrinsics.cpp` use layout facts for
-  byte-offset projection, child-index projection, repeated aggregate extents,
-  byte-storage reinterpretation, scalar leaf facts, dynamic aggregate arrays,
-  and provenance-preserving pointer addressing.
-- Load/store: `memory/local_slots.cpp` lowers aggregate stores, aggregate
-  loads, tracked pointer slot loads/stores, dynamic local aggregate
-  load/store, scalar array collection, and local aggregate aliases using the
-  legacy layout facts; `aggregate.cpp` provides sorted leaf slots and
-  aggregate copy helpers used by those paths.
+- `src/backend/bir/lir_to_bir/lowering.hpp`
+- `src/backend/bir/lir_to_bir/types.cpp`
+- `src/backend/bir/lir_to_bir/module.cpp`
+- `todo.md`
 
-BIR/backend-owned paths are under `src/backend/bir/lir_to_bir/` and receive
-layout through the single `TypeDeclMap` built in `module.cpp`. MIR-only
-compile-target residue is isolated to `src/backend/mir/aarch64/codegen/emit.cpp`,
-including `gen_resolve_type_decl_body`, `gen_struct_layout`,
-`gen_type_layout`, `gen_try_parse_hfa_type`,
-`gen_is_direct_gp_aggregate_type`, `gen_type_is_sret_aggregate_type`, and
-`gen_emit_global_init`; per idea 113, those are exclusion candidates, not
-migration targets for this route.
+The new `BackendStructuredLayoutTable` is built from
+`context.lir_module.struct_decls` and `context.lir_module.struct_names` in
+`lower_module`, immediately next to the existing
+`build_type_decl_map(context.lir_module.type_decls)` flow. Entries carry the
+structured `AggregateTypeLayout`, the legacy `compute_aggregate_type_layout`
+result when a legacy declaration exists, and parity status.
+
+Checked structured-vs-legacy parity mismatches now report through the existing
+BIR lowering note mechanism with `context.note("module", ...)`, including the
+type name, legacy size/align/fields, and structured size/align/fields.
+Matching entries remain silent.
+
+Fallback/output behavior is unchanged: all ABI, globals, memory, load/store,
+and initializer consumers still receive the legacy `TypeDeclMap`, and no
+consumer has been converted to read the structured table yet.
 
 ## Suggested Next
 
-First concrete conversion packet: introduce the structured backend layout table
-at the BIR lookup authority boundary, adjacent to
-`build_type_decl_map(context.lir_module.type_decls)` and
-`compute_aggregate_type_layout`. Convert the lookup-only surface first by
-building structured layout facts from `context.lir_module.struct_decls`, then
-compare each structured entry against the existing legacy `TypeDeclMap` result.
-The fallback/parity surface is the current legacy path:
-`build_type_decl_map` plus `compute_aggregate_type_layout`; consumers should
-continue receiving legacy-equivalent `AggregateTypeLayout` facts until parity
-checks are wired for the touched path.
+Next coherent conversion packet: add a lookup helper that accepts a type name
+and the `BackendStructuredLayoutTable`, returns legacy-equivalent
+`AggregateTypeLayout` facts through the legacy fallback, and routes mismatch
+notes through the shared reporting path without changing consumer output. Start
+with a narrow lookup-only caller before touching ABI or memory lowering.
 
 ## Watchouts
-
-Do not migrate `src/backend/mir/`; if MIR `.cpp` files are the only compile
-blocker, treat them as compile-target exclusion candidates.
 
 Do not remove `module.type_decls`; structured layout must keep legacy fallback
 and parity observation.
 
-Do not start with ABI or memory lowering. Converting the lookup-only authority
-first gives every later consumer one fallback/parity surface instead of adding
-one-off checks in call ABI, globals, local slots, addressing, or intrinsics.
+`ENABLE_C4C_BACKEND` is off in the current `default` build tree, so the
+delegated proof build did not recompile backend objects. `build-backend/`
+exists and `cmake --build build-backend --target c4c_backend -j` rebuilt the
+touched backend objects successfully.
+
+Do not start with ABI or memory lowering. Keep the next packet at the shared
+lookup-helper boundary so later consumers share one fallback/parity surface.
 
 ## Proof
 
-Report-only packet; no build required and no `test_after.log` produced.
-Sanity proof commands:
+Delegated proof passed and wrote `test_after.log`:
 
-- `git diff --name-only`
-- `git diff --check`
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|positive_split_llvm_|abi_)') > test_after.log 2>&1`
+
+Result: build command completed, selected ctest subset passed 8/8.
+
+Backend-enabled proof also passed:
+
+`cmake --build build-backend --target c4c_backend -j`
+
+Result: rebuilt `c4c_backend`, including `types.cpp.o` and `module.cpp.o`,
+and linked `src/backend/c4c_backend.a`.

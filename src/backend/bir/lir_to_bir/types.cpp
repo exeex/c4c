@@ -9,6 +9,8 @@ std::optional<bir::TypeKind> lower_integer_type(std::string_view text);
 
 namespace {
 
+using c4c::codegen::lir::LirStructDecl;
+
 std::optional<std::pair<std::size_t, std::string_view>> parse_integer_array_layer(
     std::string_view text) {
   if (text.size() < 6 || text.front() != '[' || text.back() != ']') {
@@ -68,6 +70,151 @@ std::optional<bir::TypeKind> lower_scalar_storage_type(std::string_view text) {
   return std::nullopt;
 }
 
+bool aggregate_layouts_match(const AggregateTypeLayout& lhs,
+                             const AggregateTypeLayout& rhs) {
+  if (lhs.kind != rhs.kind || lhs.scalar_type != rhs.scalar_type ||
+      lhs.size_bytes != rhs.size_bytes || lhs.align_bytes != rhs.align_bytes ||
+      lhs.array_count != rhs.array_count ||
+      lhs.element_type_text != rhs.element_type_text ||
+      lhs.fields.size() != rhs.fields.size()) {
+    return false;
+  }
+  for (std::size_t index = 0; index < lhs.fields.size(); ++index) {
+    if (lhs.fields[index].byte_offset != rhs.fields[index].byte_offset ||
+        lhs.fields[index].type_text != rhs.fields[index].type_text) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::string layout_field_summary(const AggregateTypeLayout& layout) {
+  std::string summary = "[";
+  for (std::size_t index = 0; index < layout.fields.size(); ++index) {
+    if (index != 0) {
+      summary += ", ";
+    }
+    summary += layout.fields[index].type_text;
+    summary += "@";
+    summary += std::to_string(layout.fields[index].byte_offset);
+  }
+  summary += "]";
+  return summary;
+}
+
+AggregateTypeLayout compute_structured_layout_from_type(
+    std::string_view text,
+    const std::unordered_map<std::string, const LirStructDecl*>& structured_decls,
+    std::unordered_set<std::string>* active);
+
+AggregateTypeLayout compute_structured_decl_layout(
+    const LirStructDecl& decl,
+    const std::unordered_map<std::string, const LirStructDecl*>& structured_decls,
+    std::unordered_set<std::string>* active) {
+  AggregateTypeLayout layout;
+  if (decl.is_opaque) {
+    return layout;
+  }
+
+  layout.kind = AggregateTypeLayout::Kind::Struct;
+  std::size_t current_offset = 0;
+  std::size_t struct_align = 1;
+  for (const auto& field : decl.fields) {
+    const auto field_type = c4c::codegen::lir::trim_lir_arg_text(field.type.str());
+    if (field_type.empty()) {
+      return {};
+    }
+    const auto field_layout =
+        compute_structured_layout_from_type(field_type, structured_decls, active);
+    if (field_layout.kind == AggregateTypeLayout::Kind::Invalid ||
+        field_layout.align_bytes == 0 ||
+        (field_layout.kind == AggregateTypeLayout::Kind::Scalar &&
+         field_layout.size_bytes == 0)) {
+      return {};
+    }
+    if (!decl.is_packed) {
+      current_offset = align_up(current_offset, field_layout.align_bytes);
+    }
+    layout.fields.push_back(AggregateField{
+        .byte_offset = current_offset,
+        .type_text = std::string(field_type),
+    });
+    current_offset += field_layout.size_bytes;
+    if (!decl.is_packed) {
+      struct_align = std::max(struct_align, field_layout.align_bytes);
+    }
+  }
+
+  layout.align_bytes = struct_align;
+  layout.size_bytes = decl.is_packed ? current_offset : align_up(current_offset, struct_align);
+  return layout;
+}
+
+AggregateTypeLayout compute_structured_layout_from_type(
+    std::string_view text,
+    const std::unordered_map<std::string, const LirStructDecl*>& structured_decls,
+    std::unordered_set<std::string>* active) {
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
+  if (trimmed.empty()) {
+    return {};
+  }
+
+  if (const auto scalar_type = lower_scalar_storage_type(trimmed); scalar_type.has_value()) {
+    return AggregateTypeLayout{
+        .kind = AggregateTypeLayout::Kind::Scalar,
+        .scalar_type = *scalar_type,
+        .size_bytes = type_size_bytes(*scalar_type),
+        .align_bytes = type_size_bytes(*scalar_type),
+    };
+  }
+
+  if (trimmed.front() == '%') {
+    const std::string type_name(trimmed);
+    if (!active->insert(type_name).second) {
+      return {};
+    }
+    const auto structured_it = structured_decls.find(type_name);
+    if (structured_it == structured_decls.end()) {
+      active->erase(type_name);
+      return {};
+    }
+    auto layout = compute_structured_decl_layout(*structured_it->second, structured_decls, active);
+    active->erase(type_name);
+    return layout;
+  }
+
+  if (const auto layer = parse_integer_array_layer(trimmed); layer.has_value()) {
+    const auto element_layout =
+        compute_structured_layout_from_type(layer->second, structured_decls, active);
+    if (element_layout.kind == AggregateTypeLayout::Kind::Invalid ||
+        element_layout.size_bytes == 0 || element_layout.align_bytes == 0) {
+      return {};
+    }
+    return AggregateTypeLayout{
+        .kind = AggregateTypeLayout::Kind::Array,
+        .size_bytes = layer->first * element_layout.size_bytes,
+        .align_bytes = element_layout.align_bytes,
+        .array_count = layer->first,
+        .element_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(layer->second)),
+    };
+  }
+
+  if (trimmed.size() < 2 || trimmed.front() != '{' || trimmed.back() != '}') {
+    return {};
+  }
+
+  LirStructDecl inline_struct;
+  const auto body = trimmed.substr(1, trimmed.size() - 2);
+  for (const auto item : split_top_level_initializer_items(body)) {
+    const auto field_type = c4c::codegen::lir::trim_lir_arg_text(item);
+    if (field_type.empty()) {
+      return {};
+    }
+    inline_struct.fields.push_back({c4c::codegen::lir::LirTypeRef(std::string(field_type))});
+  }
+  return compute_structured_decl_layout(inline_struct, structured_decls, active);
+}
+
 }  // namespace
 
 TypeDeclMap build_type_decl_map(const std::vector<std::string>& type_decls) {
@@ -90,6 +237,75 @@ TypeDeclMap build_type_decl_map(const std::vector<std::string>& type_decls) {
     }
   }
   return lowered;
+}
+
+BackendStructuredLayoutTable build_backend_structured_layout_table(
+    const std::vector<c4c::codegen::lir::LirStructDecl>& struct_decls,
+    const c4c::StructNameTable& struct_names,
+    const TypeDeclMap& legacy_type_decls) {
+  std::unordered_map<std::string, const LirStructDecl*> structured_decls;
+  structured_decls.reserve(struct_decls.size());
+  for (const auto& decl : struct_decls) {
+    const std::string_view name = struct_names.spelling(decl.name_id);
+    if (!name.empty()) {
+      structured_decls.emplace(std::string(name), &decl);
+    }
+  }
+
+  BackendStructuredLayoutTable table;
+  table.reserve(structured_decls.size());
+  for (const auto& [name, decl] : structured_decls) {
+    std::unordered_set<std::string> active;
+    active.insert(name);
+
+    BackendStructuredLayoutEntry entry;
+    entry.type_name = name;
+    entry.structured_found = true;
+    entry.structured_layout =
+        compute_structured_decl_layout(*decl, structured_decls, &active);
+
+    const auto legacy_it = legacy_type_decls.find(name);
+    entry.legacy_found = legacy_it != legacy_type_decls.end();
+    if (entry.legacy_found) {
+      entry.legacy_layout = compute_aggregate_type_layout(name, legacy_type_decls);
+    }
+
+    entry.parity_checked =
+        entry.legacy_found &&
+        entry.structured_layout.kind != AggregateTypeLayout::Kind::Invalid &&
+        entry.legacy_layout.kind != AggregateTypeLayout::Kind::Invalid;
+    entry.parity_matches =
+        entry.parity_checked &&
+        aggregate_layouts_match(entry.structured_layout, entry.legacy_layout);
+    table.emplace(name, std::move(entry));
+  }
+  return table;
+}
+
+void report_backend_structured_layout_parity_notes(
+    BirLoweringContext& context,
+    const BackendStructuredLayoutTable& structured_layouts) {
+  for (const auto& [type_name, entry] : structured_layouts) {
+    if (!entry.parity_checked || entry.parity_matches) {
+      continue;
+    }
+
+    std::string message = "structured backend layout parity mismatch for ";
+    message += type_name;
+    message += ": legacy size ";
+    message += std::to_string(entry.legacy_layout.size_bytes);
+    message += ", align ";
+    message += std::to_string(entry.legacy_layout.align_bytes);
+    message += ", fields ";
+    message += layout_field_summary(entry.legacy_layout);
+    message += "; structured size ";
+    message += std::to_string(entry.structured_layout.size_bytes);
+    message += ", align ";
+    message += std::to_string(entry.structured_layout.align_bytes);
+    message += ", fields ";
+    message += layout_field_summary(entry.structured_layout);
+    context.note("module", std::move(message));
+  }
 }
 
 std::optional<std::int64_t> parse_i64(std::string_view text) {
