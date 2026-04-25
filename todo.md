@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/99_hir_module_symbol_structured_lookup_mirror.md
 Source Plan Path: plan.md
-Current Step ID: 7
-Current Step Title: Strengthen focused HIR proof if needed
+Current Step ID: 8
+Current Step Title: Add targeted lookup proof/instrumentation
 
 # Current Packet
 
@@ -14,10 +14,16 @@ structured mirror proof surface. The CTest entry asserts the expected
 namespace-qualified HIR shape and fails if the dump prints a
 `module decl lookup parity mismatches` section.
 
+Route review in `review/99_step8_pre_demotion_route_review.md` found the
+implementation on track through Step 7, but not enough evidence to demote
+rendered fallback yet.
+
 ## Suggested Next
 
-Supervisor should review Step 7 and decide whether the active runbook is ready
-for the Step 8 legacy-fallback demotion route or needs independent review first.
+Execute Step 8 by adding targeted proof or instrumentation that distinguishes
+structured hits, legacy rendered hits, concrete-ID hits, and `LinkNameId` hits
+for module function/global references. Keep rendered fallback parked until
+that evidence is green and supervisor approves any demotion.
 
 ## Watchouts
 
@@ -32,6 +38,11 @@ for the Step 8 legacy-fallback demotion route or needs independent review first.
   call has observed a structured/rendered disagreement.
 - The new focused case proves no parity-mismatch report is emitted for the
   namespace-qualified fixture; it does not alter implementation behavior.
+- Do not demote rendered fallback during Step 8; this step is evidence
+  gathering only.
+- The reviewer specifically noted that resolver parity currently runs after
+  concrete-ID and `LinkNameId` bridge paths, so targeted proof must make those
+  paths distinguishable from structured and legacy rendered hits.
 - Do not broaden into struct/type, member/method, parser, or unrelated sema
   rewrites.
 - Do not downgrade expectations or add testcase-shaped shortcuts.
@@ -41,3 +52,5 @@ for the Step 8 legacy-fallback demotion route or needs independent review first.
 Passed. Proof output is captured in `test_after.log`.
 
 - `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -L "^hir$"`
+
+No Step 8 proof has been run yet after the route review.

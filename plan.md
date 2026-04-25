@@ -45,8 +45,9 @@ emission, diagnostics, ABI/link behavior, and template spelling depend on.
 - Compile-time engine template or consteval definition registries.
 - Enum, const-int, or consteval runtime environment maps.
 - Parser or sema rewrites.
-- Deleting legacy rendered-name maps before mismatch-free proof is stable and
-  supervisor approves the regression state.
+- Demoting or deleting legacy rendered-name fallback before targeted proof
+  distinguishes structured hits, legacy hits, concrete-ID hits, and
+  `LinkNameId` hits, and supervisor approves the regression state.
 
 ## Working Model
 
@@ -225,22 +226,54 @@ Completion check:
 - The focused HIR subset passes without expectation downgrades.
 - Test changes validate semantic behavior, not testcase-shaped shortcuts.
 
-### Step 8: Demote legacy fallback only after proof
+### Step 8: Add targeted lookup proof/instrumentation
 
-Goal: prepare legacy fallback demotion only after mismatch-free stability.
+Goal: keep rendered fallback parked while proving which lookup authority
+resolves each module function/global reference path.
+
+Primary target: module function/global lookup helpers, HIR debug/parity
+reporting, and focused HIR proof.
+
+Actions:
+
+- Add targeted proof or instrumentation that distinguishes structured hits,
+  legacy rendered hits, concrete-ID hits, and `LinkNameId` hits.
+- Cover both module function and module global references.
+- Preserve existing lookup precedence while collecting proof:
+  concrete declaration IDs first, `LinkNameId` bridge next where applicable,
+  structured lookup when metadata is complete, then legacy rendered fallback.
+- Make the proof visible in focused HIR output, diagnostics, counters, or an
+  equivalent supervisor-reviewable artifact.
+- Do not demote rendered fallback in this step.
+
+Completion check:
+
+- Focused proof shows which path resolved the intended structured, legacy,
+  concrete-ID, and `LinkNameId` cases for functions and globals.
+- Existing supported behavior still passes without expectation downgrades.
+- Supervisor has enough evidence to decide whether fallback demotion is safe
+  or should remain parked.
+
+### Step 9: Demote legacy fallback only after approval
+
+Goal: shift semantic lookup authority away from rendered fallback only if the
+Step 8 evidence supports it.
 
 Primary target: lookup helper precedence and migration notes.
 
 Actions:
 
-- Review parity proof results with the supervisor.
+- Review Step 8 proof results with the supervisor before changing fallback
+  authority.
 - Demote rendered fallback only if regression stability is approved.
 - Keep rendered names and link IDs for codegen, diagnostics, and ABI/link
   output even if semantic lookup authority shifts.
+- If proof is incomplete or ambiguous, leave demotion parked for a later idea
+  instead of weakening behavior.
 
 Completion check:
 
-- Supervisor approves fallback demotion or leaves it parked for a later idea.
+- Supervisor approves fallback demotion or explicitly leaves it parked.
 - Rendered-name preservation remains explicit.
 
 ## Acceptance Criteria
