@@ -1,37 +1,51 @@
 Status: Active
 Source Idea Path: ideas/open/95_parser_dual_lookup_structured_identity_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Prefer ID-First Parser Helpers
+Current Step ID: 7
+Current Step Title: Preserve Downstream Bridge Behavior
 
 # Current Packet
 
 ## Just Finished
 
-Step 6 - Prefer ID-First Parser Helpers continued by adding unqualified
-ID-first lookup overloads for `find_typedef_type(TextId, spelling)` and
-`find_var_type(TextId, spelling)`. The string overloads remain compatibility
-bridges, and `find_visible_typedef_type(TextId, spelling)` plus
-`find_visible_var_type(TextId, spelling)` now probe the ID-first global lookup
-before the string fallback path.
+Step 7 - Preserve Downstream Bridge Behavior completed as an audit-only slice.
+No code or test changes were needed.
 
-Focused parser coverage now verifies that mismatched fallback spellings do not
-win when a global TextId-backed typedef or value binding exists, while separate
-fallback bindings remain present for compatibility.
+Confirmed downstream-bound rendered identities from Steps 2-6 remain preserved:
+`Node::name` stays the rendered AST/HIR-facing declaration and instantiated
+struct name, while structured additions live beside it in `unqualified_text_id`,
+qualifier TextIds, namespace context, and parser lookup keys. `TypeSpec::tag`
+continues to carry rendered typedef, struct, enum, and instantiated-template
+tags, including synthesized typedef tags and template instantiation results.
+Typedef and value bridge names remain populated through compatibility string
+tables while structured/TextId lookups are preferred. `UsingValueAlias` keeps
+`target_key` as semantic identity and `compatibility_name` as rendered bridge
+data, with visible-name output rendered from the structured key when possible
+and falling back to the bridge only when needed. Template instantiation de-dup
+now mirrors structured keys and rendered keys without changing final instantiated
+names or returned tags. Known-function registration and lookup use structured
+keys for parser identity while preserving the rendered spelling exposed through
+`has_known_fn_name(string)` and visible value resolution.
+
+Existing focused parser coverage already proves the bridge behaviors with
+mismatched/corrupted fallback spellings for typedef lookup, value lookup, using
+value aliases/imports, using type imports, known-function names, NTTP cache
+mirrors, and template instantiation tag reuse.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 6 by auditing remaining parser-owned
-string fallback probes that already have a `QualifiedNameKey` carrier and can
-be routed through structured/ID-first lookup without changing public
-compatibility overloads.
+Next coherent packet: supervisor should route Step 8 only if the runbook is
+ready to demote parser-owned legacy string paths after reviewing the Step 2-7
+matching proof.
 
 ## Watchouts
 
-- The new TextId lookup overloads are intentionally unqualified helpers; the
-  qualified structured path remains owned by `QualifiedNameKey` helpers.
-- The visible lookup paths still keep the string fallback after the ID-first
-  probe for compatibility when no TextId-backed binding exists.
+- Follow-on cleanup belongs in later ideas or Step 8 demotion, not this Step 7
+  bridge audit: remove or narrow compatibility string mirrors only after stable
+  matching proof, and leave broad AST/HIR/sema/codegen rendered-name model
+  cleanup to a separate downstream initiative.
+- Public string overloads and rendered output fields are still intentional
+  bridge surfaces for downstream consumers and diagnostics.
 
 ## Proof
 
