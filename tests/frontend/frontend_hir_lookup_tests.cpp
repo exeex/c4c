@@ -76,9 +76,13 @@ void test_module_decl_lookup_records_each_authority() {
 
   const c4c::TextId structured_fn_text = texts.intern("structured_fn");
   const c4c::TextId legacy_fn_text = texts.intern("legacy_fn");
+  const c4c::TextId incomplete_qualified_fn_text =
+      texts.intern("incomplete_qualified_fn");
   const c4c::TextId link_fn_text = texts.intern("link_fn");
   const c4c::TextId structured_global_text = texts.intern("structured_global");
   const c4c::TextId legacy_global_text = texts.intern("legacy_global");
+  const c4c::TextId incomplete_qualified_global_text =
+      texts.intern("incomplete_qualified_global");
   const c4c::TextId concrete_global_text = texts.intern("concrete_global");
   const c4c::TextId link_global_text = texts.intern("link_global");
 
@@ -88,16 +92,20 @@ void test_module_decl_lookup_records_each_authority() {
                structured_fn_text, c4c::kInvalidLinkName, api_ns);
   add_function(module, c4c::hir::FunctionId{1}, "legacy_fn",
                c4c::kInvalidText);
-  add_function(module, c4c::hir::FunctionId{2}, "link_fn",
+  add_function(module, c4c::hir::FunctionId{2}, "api::incomplete_qualified_fn",
+               incomplete_qualified_fn_text, c4c::kInvalidLinkName, api_ns);
+  add_function(module, c4c::hir::FunctionId{3}, "link_fn",
                link_fn_text, module.link_names.intern("link_fn"));
 
   add_global(module, c4c::hir::GlobalId{0}, "api::structured_global",
              structured_global_text, c4c::kInvalidLinkName, api_ns);
   add_global(module, c4c::hir::GlobalId{1}, "legacy_global",
              c4c::kInvalidText);
-  add_global(module, c4c::hir::GlobalId{2}, "concrete_global",
+  add_global(module, c4c::hir::GlobalId{2}, "api::incomplete_qualified_global",
+             incomplete_qualified_global_text, c4c::kInvalidLinkName, api_ns);
+  add_global(module, c4c::hir::GlobalId{3}, "concrete_global",
              concrete_global_text);
-  add_global(module, c4c::hir::GlobalId{3}, "link_global",
+  add_global(module, c4c::hir::GlobalId{4}, "link_global",
              link_global_text, module.link_names.intern("link_global"));
 
   c4c::hir::DeclRef structured_fn_ref;
@@ -122,18 +130,32 @@ void test_module_decl_lookup_records_each_authority() {
   expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
                       c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
                       "legacy_fn", 1),
-              "legacy function lookup should record a legacy-rendered hit");
+              "legacy function lookup should record missing declaration metadata");
+
+  c4c::hir::DeclRef incomplete_qualified_fn_ref;
+  incomplete_qualified_fn_ref.name = "api::incomplete_qualified_fn";
+  incomplete_qualified_fn_ref.name_text_id = incomplete_qualified_fn_text;
+  incomplete_qualified_fn_ref.ns_qual.segments.push_back("api");
+  const c4c::hir::Function* incomplete_qualified_fn =
+      module.resolve_function_decl(incomplete_qualified_fn_ref);
+  expect_true(incomplete_qualified_fn != nullptr &&
+                  incomplete_qualified_fn->id.value == 2,
+              "function decl-ref with incomplete qualifier metadata should keep rendered fallback");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
+                      c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
+                      "api::incomplete_qualified_fn", 2),
+              "legacy function lookup should record incomplete qualifier metadata");
 
   c4c::hir::DeclRef link_fn_ref;
   link_fn_ref.name = "link_fn";
   link_fn_ref.name_text_id = link_fn_text;
   link_fn_ref.link_name_id = module.link_names.find("link_fn");
   const c4c::hir::Function* link_fn = module.resolve_function_decl(link_fn_ref);
-  expect_true(link_fn != nullptr && link_fn->id.value == 2,
+  expect_true(link_fn != nullptr && link_fn->id.value == 3,
               "function decl-ref with a LinkNameId should resolve through link-name authority");
   expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
                       c4c::hir::ModuleDeclLookupAuthority::LinkNameId,
-                      "link_fn", 2),
+                      "link_fn", 3),
               "function LinkNameId lookup should record a link-name hit");
 
   c4c::hir::DeclRef structured_global_ref;
@@ -159,19 +181,33 @@ void test_module_decl_lookup_records_each_authority() {
   expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Global,
                       c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
                       "legacy_global", 1),
-              "legacy global lookup should record a legacy-rendered hit");
+              "legacy global lookup should record missing declaration metadata");
+
+  c4c::hir::DeclRef incomplete_qualified_global_ref;
+  incomplete_qualified_global_ref.name = "api::incomplete_qualified_global";
+  incomplete_qualified_global_ref.name_text_id = incomplete_qualified_global_text;
+  incomplete_qualified_global_ref.ns_qual.segments.push_back("api");
+  const c4c::hir::GlobalVar* incomplete_qualified_global =
+      module.resolve_global_decl(incomplete_qualified_global_ref);
+  expect_true(incomplete_qualified_global != nullptr &&
+                  incomplete_qualified_global->id.value == 2,
+              "global decl-ref with incomplete qualifier metadata should keep rendered fallback");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Global,
+                      c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
+                      "api::incomplete_qualified_global", 2),
+              "legacy global lookup should record incomplete qualifier metadata");
 
   c4c::hir::DeclRef concrete_global_ref;
   concrete_global_ref.name = "concrete_global";
   concrete_global_ref.name_text_id = concrete_global_text;
-  concrete_global_ref.global = c4c::hir::GlobalId{2};
+  concrete_global_ref.global = c4c::hir::GlobalId{3};
   const c4c::hir::GlobalVar* concrete_global =
       module.resolve_global_decl(concrete_global_ref);
-  expect_true(concrete_global != nullptr && concrete_global->id.value == 2,
+  expect_true(concrete_global != nullptr && concrete_global->id.value == 3,
               "global decl-ref with a concrete GlobalId should resolve by concrete id");
   expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Global,
                       c4c::hir::ModuleDeclLookupAuthority::ConcreteGlobalId,
-                      "concrete_global", 2),
+                      "concrete_global", 3),
               "concrete GlobalId lookup should record a global-id hit");
 
   c4c::hir::DeclRef link_global_ref;
@@ -180,11 +216,11 @@ void test_module_decl_lookup_records_each_authority() {
   link_global_ref.link_name_id = module.link_names.find("link_global");
   const c4c::hir::GlobalVar* link_global =
       module.resolve_global_decl(link_global_ref);
-  expect_true(link_global != nullptr && link_global->id.value == 3,
+  expect_true(link_global != nullptr && link_global->id.value == 4,
               "global decl-ref with a LinkNameId should resolve through link-name authority");
   expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Global,
                       c4c::hir::ModuleDeclLookupAuthority::LinkNameId,
-                      "link_global", 3),
+                      "link_global", 4),
               "global LinkNameId lookup should record a link-name hit");
 }
 
