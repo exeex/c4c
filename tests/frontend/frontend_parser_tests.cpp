@@ -3,6 +3,7 @@
 #include "parser.hpp"
 
 #include <cstdlib>
+#include <exception>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -3020,6 +3021,58 @@ void test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse()
       "missing structured template instantiation mirrors should be detected");
 }
 
+void test_parser_template_instantiation_dedup_keys_demote_rendered_sync() {
+  c4c::Arena arena;
+  c4c::Parser parser({}, arena, nullptr, nullptr, c4c::SourceProfile::CppSubset);
+
+  c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  primary->name = arena.strdup("Broken");
+  primary->unqualified_name = arena.strdup("Broken");
+  primary->unqualified_text_id = 17;
+  primary->namespace_context_id = parser.current_namespace_context_id();
+  primary->n_template_params = 1;
+  primary->template_param_names = arena.alloc_array<const char*>(1);
+  primary->template_param_names[0] = arena.strdup("T");
+  primary->template_param_is_nttp = arena.alloc_array<bool>(1);
+  primary->template_param_is_nttp[0] = false;
+  primary->template_param_is_pack = arena.alloc_array<bool>(1);
+  primary->template_param_is_pack[0] = false;
+  parser.register_template_struct_primary(
+      parser.current_namespace_context_id(), primary->unqualified_text_id,
+      "Broken", primary);
+
+  parser.template_state_.instantiated_template_struct_keys.insert(
+      "Broken<T=int>");
+
+  c4c::Parser::TemplateArgParseResult arg{};
+  arg.is_value = false;
+  arg.type.array_size = -1;
+  arg.type.inner_rank = -1;
+  arg.type.base = c4c::TB_INT;
+  std::string mangled;
+  bool threw = false;
+  try {
+    (void)parser.ensure_template_struct_instantiated_from_args(
+        "Broken", primary, {arg}, 1, &mangled,
+        "template_instantiation_dedup_demote_rendered_sync");
+  } catch (const std::exception&) {
+    threw = true;
+  }
+
+  expect_true(threw,
+              "no-text-table fixture should stop before template instantiation mark");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_.instantiated_template_struct_keys_by_key.size()),
+      0,
+      "valid-TextId template instantiation sync should not promote legacy-only rendered de-dup keys");
+  expect_eq_int(
+      static_cast<int>(
+          parser.template_state_.template_struct_instantiation_key_mismatch_count),
+      1,
+      "demoted legacy-only template instantiation sync should still record the mismatch");
+}
+
 void test_parser_template_instantiation_dedup_keys_mirror_direct_emission() {
   c4c::Lexer lexer(
       "template<typename T>\n"
@@ -3066,11 +3119,15 @@ void test_parser_template_instantiation_dedup_keys_mirror_direct_emission() {
       "fresh direct template emission should not report a de-dup key mismatch");
 
   parser.template_state_.instantiated_template_struct_keys_by_key.clear();
+  parser.definition_state_.struct_tag_def_map.erase(first.tag);
+  parser.definition_state_.defined_struct_tags.erase(first.tag);
   c4c::TypeSpec second = parse_box_int();
   expect_true(second.base == c4c::TB_STRUCT && second.tag != nullptr,
-              "legacy rendered direct-emission de-dup should keep behavior-compatible reuse");
+              "legacy-only rendered direct-emission de-dup should fall through to concrete emission when a structured key is available");
   expect_eq(first.tag, second.tag,
-            "legacy rendered direct-emission de-dup should preserve the instantiated tag");
+            "demoted rendered direct-emission de-dup should preserve the instantiated tag spelling");
+  expect_true(parser.definition_state_.struct_tag_def_map.count(first.tag) > 0,
+              "legacy-only rendered direct-emission de-dup should recreate the concrete struct definition");
   expect_eq_int(
       static_cast<int>(
           parser.template_state_.instantiated_template_struct_keys.size()),
@@ -3320,6 +3377,7 @@ int main() {
   test_parser_template_lookup_demotes_legacy_rendered_name_bridges();
   test_parser_nttp_default_cache_dual_reads_legacy_mismatch();
   test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse();
+  test_parser_template_instantiation_dedup_keys_demote_rendered_sync();
   test_parser_template_instantiation_dedup_keys_mirror_direct_emission();
   test_parser_alias_template_value_probes_use_token_spelling();
   test_parser_alias_template_info_prefers_structured_key_over_recovery();

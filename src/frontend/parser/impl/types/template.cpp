@@ -57,10 +57,7 @@ void sync_template_instantiation_dedup_keys(
         ++parser.template_state_
               .template_struct_instantiation_key_mismatch_count;
     }
-    if (legacy_present && !structured_present) {
-        parser.template_state_.instantiated_template_struct_keys_by_key.insert(
-            structured_key);
-    } else if (structured_present && !legacy_present) {
+    if (structured_present && !legacy_present) {
         parser.template_state_.instantiated_template_struct_keys.insert(
             legacy_key);
     }

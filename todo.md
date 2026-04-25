@@ -9,30 +9,27 @@ Current Step Title: Demote Parser-Owned Legacy String Paths
 ## Just Finished
 
 Step 8 - Demote Parser-Owned Legacy String Paths continued by auditing
-template primary/specialization rendered-name maps and NTTP default cache
-mirrors in `src/frontend/parser/impl/types/template.cpp`.
+template instantiation de-dup mirrors in
+`src/frontend/parser/impl/types/template.cpp` and
+`src/frontend/parser/impl/types/base.cpp`.
 
-Template primary and specialization lookup now keep structured
-`QualifiedNameKey`/`TextId` lookup as the semantic path when callers provide a
-valid TextId. Rendered-name primary/specialization maps remain as explicit
-TextId-less compatibility fallbacks only; focused parser proof rejects
-valid-TextId promotion from legacy-only rendered maps while preserving
-`kInvalidText` compatibility.
+Template instantiation de-dup sync now treats structured
+`TemplateInstantiationKey` state as authoritative when the key carries a valid
+TextId: legacy-only rendered keys still increment mismatch counters, but no
+longer promote/heal the structured de-dup set. Structured-present paths still
+repopulate the rendered mirror for compatibility.
 
-`eval_deferred_nttp_default` now reads the structured default-token cache first
-when the template name has a TextId, still compares the rendered mirror for
-mismatch counting, and no longer falls back to a legacy-only rendered mirror for
-valid-TextId lookups. TextId-less NTTP default lookup still preserves rendered
-cache compatibility.
+Direct template emission now preserves the rendered de-dup bridge only when no
+structured key is available; when a structured key is available, rendered-only
+state no longer suppresses concrete emission. Focused parser proof covers both
+the pre-mark sync path and the direct-emission fallback path.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 8 by auditing template instantiation
-de-dup mirrors in `src/frontend/parser/impl/types/template.cpp` and
-`src/frontend/parser/impl/types/base.cpp`; demote rendered de-dup fallback only
-where a structured `TemplateInstantiationKey` is available and focused proof
-preserves an explicit compatibility bridge for TextId-less/direct-emission
-paths.
+Next coherent packet: continue Step 8 by auditing parser-owned known-function
+string lookup bridges in `src/frontend/parser/impl/core.cpp` and focused parser
+tests; demote rendered fallback only where `QualifiedNameKey`/TextId lookup is
+available, and preserve public string-facing lookup compatibility explicitly.
 
 ## Watchouts
 
@@ -40,12 +37,15 @@ paths.
   during registration; this packet demoted read fallback, not mirror writes.
 - NTTP default rendered cache mirrors are still populated and mismatch-checked;
   only valid-TextId legacy-only fallback was demoted.
+- Template instantiation de-dup rendered mirrors are still populated by mark
+  paths and healed from structured-present state; legacy-only rendered state is
+  now mismatch-observed but not promoted when a structured
+  `TemplateInstantiationKey` exists.
 - `lookup_value_in_context`, `lookup_using_value_alias`,
   `register_var_type_binding`, string-facing `find_var_type`, and
   `find_visible_var_type(kInvalidText, name)` remain compatibility bridges and
   should not be demoted without focused public-string and visible-lookup proof.
-- Remaining parser string bridges include template instantiation de-dup mirrors
-  and known-function string lookup.
+- Remaining parser string bridges include known-function string lookup.
 
 ## Proof
 
