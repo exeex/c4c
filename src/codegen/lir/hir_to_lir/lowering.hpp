@@ -59,6 +59,7 @@ struct BitfieldAccess {
 
 struct FieldStep {
   std::string tag;
+  StructNameId structured_name_id = kInvalidStructName;
   int llvm_idx = 0;
   bool is_union = false;
   // Bitfield metadata (bit_width >= 0 means this is a bitfield access)
@@ -402,6 +403,8 @@ class StmtEmitter {
   // Returns true and sets out_field_ts.
   bool find_field_chain(const std::string& tag, const std::string& field_name,
                         std::vector<FieldStep>& chain, TypeSpec& out_field_ts);
+  stmt_emitter_detail::StructuredLayoutLookup lookup_field_chain_layout(
+      const std::string& tag, const HirStructDef& sd) const;
   bool resolve_field_access(const std::string& tag, const std::string& field_name,
                             std::vector<FieldStep>& chain, TypeSpec& out_field_ts,
                             BitfieldAccess* out_bf = nullptr);
