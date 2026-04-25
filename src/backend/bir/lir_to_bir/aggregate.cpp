@@ -99,7 +99,16 @@ std::string BirFunctionLowerer::aggregate_param_slot_base(std::string_view param
 std::optional<BirFunctionLowerer::AggregateTypeLayout> BirFunctionLowerer::lower_byval_aggregate_layout(
     std::string_view text,
     const TypeDeclMap& type_decls) {
-  auto layout = compute_aggregate_type_layout(text, type_decls);
+  return lower_byval_aggregate_layout(text, type_decls, nullptr);
+}
+
+std::optional<BirFunctionLowerer::AggregateTypeLayout> BirFunctionLowerer::lower_byval_aggregate_layout(
+    std::string_view text,
+    const TypeDeclMap& type_decls,
+    const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts) {
+  auto layout = structured_layouts != nullptr
+                    ? lookup_backend_aggregate_type_layout(text, type_decls, *structured_layouts)
+                    : compute_aggregate_type_layout(text, type_decls);
   if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
        layout.kind != AggregateTypeLayout::Kind::Array) ||
       layout.size_bytes == 0 || layout.align_bytes == 0) {
@@ -155,7 +164,8 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
     if (lower_integer_type(normalized_type).has_value()) {
       continue;
     }
-    const auto layout = lower_byval_aggregate_layout(normalized_type, type_decls_);
+    const auto layout =
+        lower_byval_aggregate_layout(normalized_type, type_decls_, &structured_layouts_);
     if (!layout.has_value()) {
       return {};
     }
@@ -273,8 +283,10 @@ bool BirFunctionLowerer::append_local_aggregate_copy_from_slots(
     const LocalAggregateSlots& target_slots,
     std::string_view temp_prefix,
     std::vector<bir::Inst>* lowered_insts) const {
-  const auto source_layout = lower_byval_aggregate_layout(source_slots.type_text, type_decls_);
-  const auto target_layout = lower_byval_aggregate_layout(target_slots.type_text, type_decls_);
+  const auto source_layout =
+      lower_byval_aggregate_layout(source_slots.type_text, type_decls_, &structured_layouts_);
+  const auto target_layout =
+      lower_byval_aggregate_layout(target_slots.type_text, type_decls_, &structured_layouts_);
   if (!source_layout.has_value() || !target_layout.has_value() ||
       source_layout->size_bytes != target_layout->size_bytes) {
     return false;

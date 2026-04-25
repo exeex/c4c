@@ -333,9 +333,10 @@ std::optional<bir::Function> BirFunctionLowerer::lower_extern_decl(
     const c4c::codegen::lir::LirExternDecl& decl,
     const c4c::TargetProfile& target_profile) {
   auto return_info =
-      lower_return_info_from_type(decl.return_type_str, TypeDeclMap{}, target_profile);
+      lower_return_info_from_type(decl.return_type_str, TypeDeclMap{}, target_profile, nullptr);
   if (!return_info.has_value()) {
-    return_info = lower_return_info_from_type(decl.return_type.str(), TypeDeclMap{}, target_profile);
+    return_info =
+        lower_return_info_from_type(decl.return_type.str(), TypeDeclMap{}, target_profile, nullptr);
   }
   if (!return_info.has_value()) {
     return std::nullopt;
@@ -435,7 +436,10 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
   };
 
   const auto return_info =
-      lower_return_info_from_type(call.return_type.str(), type_decls, context_.target_profile);
+      lower_return_info_from_type(call.return_type.str(),
+                                  type_decls,
+                                  context_.target_profile,
+                                  &structured_layouts_);
   if (!return_info.has_value()) {
     return fail_call_family(kCallReturnFamily);
   }
@@ -614,7 +618,9 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
             lower_scalar_or_function_pointer_type(parsed_call->typed_call.param_types[index]);
         if (!arg_type.has_value()) {
           const auto aggregate_layout =
-              lower_byval_aggregate_layout(parsed_call->typed_call.param_types[index], type_decls);
+              lower_byval_aggregate_layout(parsed_call->typed_call.param_types[index],
+                                           type_decls,
+                                           &structured_layouts_);
           if (!aggregate_layout.has_value()) {
             return fail_call_family(call_family);
           }
@@ -688,7 +694,9 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           lower_scalar_or_function_pointer_type(parsed_call->param_types[index]);
       if (!arg_type.has_value()) {
         const auto aggregate_layout =
-            lower_byval_aggregate_layout(parsed_call->param_types[index], type_decls);
+            lower_byval_aggregate_layout(parsed_call->param_types[index],
+                                         type_decls,
+                                         &structured_layouts_);
         if (!aggregate_layout.has_value()) {
           return fail_call_family(call_family);
         }
@@ -809,7 +817,8 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
       return fail_runtime_family("variadic runtime family");
     }
     if (!lowered_type.has_value()) {
-      const auto aggregate_layout = lower_byval_aggregate_layout(va_arg.type_str.str(), type_decls_);
+      const auto aggregate_layout =
+          lower_byval_aggregate_layout(va_arg.type_str.str(), type_decls_, &structured_layouts_);
       if (!aggregate_layout.has_value()) {
         return fail_runtime_family("variadic runtime family");
       }
@@ -1114,7 +1123,7 @@ std::optional<bir::Function> BirFunctionLowerer::lower_decl_function(
   bir::Function lowered;
   lowered.name = function.name;
   auto return_info =
-      lower_signature_return_info(function.signature_text, TypeDeclMap{}, target_profile);
+      lower_signature_return_info(function.signature_text, TypeDeclMap{}, target_profile, nullptr);
   if (!return_info.has_value()) {
     lowered.return_type = lower_param_type(function.return_type).value_or(bir::TypeKind::Void);
     lowered.return_abi = compute_function_return_abi(target_profile, lowered.return_type, false);
@@ -1124,11 +1133,11 @@ std::optional<bir::Function> BirFunctionLowerer::lower_decl_function(
     lowered.return_align_bytes = return_info->align_bytes;
     lowered.return_abi = return_info->abi;
   }
-  if (!lower_function_params(function,
-                             target_profile,
-                             return_info,
-                             TypeDeclMap{},
-                             &lowered)) {
+  if (!lower_function_params_fallback(function,
+                                      target_profile,
+                                      return_info,
+                                      TypeDeclMap{},
+                                      &lowered)) {
     return std::nullopt;
   }
   lowered.is_declaration = true;

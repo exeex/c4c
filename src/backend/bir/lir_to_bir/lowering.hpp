@@ -364,6 +364,10 @@ class BirFunctionLowerer {
   static std::optional<AggregateTypeLayout> lower_byval_aggregate_layout(
       std::string_view text,
       const TypeDeclMap& type_decls);
+  static std::optional<AggregateTypeLayout> lower_byval_aggregate_layout(
+      std::string_view text,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts);
   static std::optional<AggregateTypeLayout> lower_intrinsic_aggregate_layout(
       std::string_view text,
       const TypeDeclMap& type_decls,
@@ -422,17 +426,32 @@ class BirFunctionLowerer {
   static std::optional<LoweredReturnInfo> lower_return_info_from_type(
       std::string_view type_text,
       const TypeDeclMap& type_decls,
-      const c4c::TargetProfile& target_profile);
+      const c4c::TargetProfile& target_profile,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts);
   std::optional<LoweredReturnInfo> infer_function_return_info() const;
   static std::optional<LoweredReturnInfo> lower_signature_return_info(
       std::string_view signature_text,
       const TypeDeclMap& type_decls,
-      const c4c::TargetProfile& target_profile);
-  static bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
-                                    const c4c::TargetProfile& target_profile,
-                                    const std::optional<LoweredReturnInfo>& return_info,
-                                    const TypeDeclMap& type_decls,
-                                    bir::Function* lowered);
+      const c4c::TargetProfile& target_profile,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts);
+  bool lower_function_params(const c4c::codegen::lir::LirFunction& function,
+                             const c4c::TargetProfile& target_profile,
+                             const std::optional<LoweredReturnInfo>& return_info,
+                             const TypeDeclMap& type_decls,
+                             bir::Function* lowered) const;
+  static bool lower_function_params_fallback(
+      const c4c::codegen::lir::LirFunction& function,
+      const c4c::TargetProfile& target_profile,
+      const std::optional<LoweredReturnInfo>& return_info,
+      const TypeDeclMap& type_decls,
+      bir::Function* lowered);
+  static bool lower_function_params_with_layouts(
+      const c4c::codegen::lir::LirFunction& function,
+      const c4c::TargetProfile& target_profile,
+      const std::optional<LoweredReturnInfo>& return_info,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
+      bir::Function* lowered);
   void note_function_lowering_family_failure(std::string_view family);
   void note_semantic_call_family_failure(std::string_view family);
   void note_runtime_intrinsic_family_failure(std::string_view family);

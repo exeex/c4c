@@ -168,7 +168,8 @@ BirFunctionLowerer::parse_function_signature_params(std::string_view signature_t
 std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_return_info_from_type(
     std::string_view type_text,
     const TypeDeclMap& type_decls,
-    const c4c::TargetProfile& target_profile) {
+    const c4c::TargetProfile& target_profile,
+    const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts) {
   const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(type_text);
   if (trimmed == "void") {
     return LoweredReturnInfo{};
@@ -179,7 +180,8 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_r
         .abi = lir_to_bir_detail::compute_function_return_abi(target_profile, *scalar_type, false),
     };
   }
-  if (const auto aggregate_layout = lower_byval_aggregate_layout(trimmed, type_decls);
+  if (const auto aggregate_layout =
+          lower_byval_aggregate_layout(trimmed, type_decls, structured_layouts);
       aggregate_layout.has_value()) {
     return LoweredReturnInfo{
         .type = bir::TypeKind::Void,
@@ -202,7 +204,10 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::infer_f
       continue;
     }
     const auto lowered_type =
-        lower_return_info_from_type(ret->type_str, type_decls_, context_.target_profile);
+        lower_return_info_from_type(ret->type_str,
+                                    type_decls_,
+                                    context_.target_profile,
+                                    &structured_layouts_);
     if (!lowered_type.has_value()) {
       return std::nullopt;
     }
@@ -223,7 +228,8 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::infer_f
 std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_signature_return_info(
     std::string_view signature_text,
     const TypeDeclMap& type_decls,
-    const c4c::TargetProfile& target_profile) {
+    const c4c::TargetProfile& target_profile,
+    const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts) {
   const auto line = c4c::codegen::lir::trim_lir_arg_text(signature_text);
   const auto first_space = line.find(' ');
   const auto at_pos = line.find('@');
@@ -233,14 +239,15 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_s
   }
   const auto return_type_text =
       c4c::codegen::lir::trim_lir_arg_text(line.substr(first_space + 1, at_pos - first_space - 1));
-  return lower_return_info_from_type(return_type_text, type_decls, target_profile);
+  return lower_return_info_from_type(return_type_text, type_decls, target_profile, structured_layouts);
 }
 
-bool BirFunctionLowerer::lower_function_params(
+bool BirFunctionLowerer::lower_function_params_with_layouts(
     const c4c::codegen::lir::LirFunction& function,
     const c4c::TargetProfile& target_profile,
     const std::optional<LoweredReturnInfo>& return_info,
     const TypeDeclMap& type_decls,
+    const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
     bir::Function* lowered) {
   const auto initial_param_count = lowered->params.size();
   if (return_info.has_value() && return_info->returned_via_sret) {
@@ -302,7 +309,8 @@ bool BirFunctionLowerer::lower_function_params(
       if (!parsed_params.has_value() || index >= parsed_params->size()) {
         return false;
       }
-      const auto layout = lower_byval_aggregate_layout((*parsed_params)[index].type, type_decls);
+      const auto layout =
+          lower_byval_aggregate_layout((*parsed_params)[index].type, type_decls, structured_layouts);
       if (!layout.has_value() || param.first.empty()) {
         return false;
       }
@@ -370,7 +378,7 @@ bool BirFunctionLowerer::lower_function_params(
       });
       continue;
     }
-    const auto layout = lower_byval_aggregate_layout(param.type, type_decls);
+    const auto layout = lower_byval_aggregate_layout(param.type, type_decls, structured_layouts);
     if (!layout.has_value() || param.operand.empty()) {
       return false;
     }
@@ -394,6 +402,34 @@ bool BirFunctionLowerer::lower_function_params(
   }
   lowered->is_variadic = parsed_is_variadic;
   return true;
+}
+
+bool BirFunctionLowerer::lower_function_params(
+    const c4c::codegen::lir::LirFunction& function,
+    const c4c::TargetProfile& target_profile,
+    const std::optional<LoweredReturnInfo>& return_info,
+    const TypeDeclMap& type_decls,
+    bir::Function* lowered) const {
+  return lower_function_params_with_layouts(function,
+                                            target_profile,
+                                            return_info,
+                                            type_decls,
+                                            &structured_layouts_,
+                                            lowered);
+}
+
+bool BirFunctionLowerer::lower_function_params_fallback(
+    const c4c::codegen::lir::LirFunction& function,
+    const c4c::TargetProfile& target_profile,
+    const std::optional<LoweredReturnInfo>& return_info,
+    const TypeDeclMap& type_decls,
+    bir::Function* lowered) {
+  return lower_function_params_with_layouts(function,
+                                            target_profile,
+                                            return_info,
+                                            type_decls,
+                                            nullptr,
+                                            lowered);
 }
 
 std::optional<bir::CallArgAbiInfo> lir_to_bir_detail::compute_call_arg_abi(
