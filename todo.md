@@ -11,52 +11,29 @@ Test Baseline Reminder Handled: accepted full-suite test_baseline.log for commit
 
 ## Just Finished
 
-Step 3 is complete for the active runbook surface.
+Step 4 is complete for the delegated naming-normalization packet.
 
-Completed helper-reuse coverage:
+Renamed the ambiguous `AggregateByteOffsetProjection` offset fields within the
+active consolidation surface:
 
-- The constant-index array/struct child traversal before a local dynamic
-  pointer-array index in `resolve_local_aggregate_dynamic_pointer_array_access`
-  now consumes `resolve_aggregate_child_index_projection` while preserving the
-  old zero-sized array-element rejection.
-- The constant-index tail walk after the dynamic array index also consumes
-  `resolve_aggregate_child_index_projection`.
-- The first-index policy, dynamic-index lowering, pointer-leaf return policy,
-  and local slot publication policy remain local to the caller path.
-- The dynamic tail walk keeps its existing layout validity guards before using
-  the helper for child offset and next-type projection.
-- The dynamic aggregate array projection surface named by the Step 3 review is
-  already covered by the shared extent/projection helpers: global and local
-  dynamic aggregate array access both use
-  `find_repeated_aggregate_extent_at_offset`, and dynamic local aggregate GEP
-  projection reuses `resolve_local_aggregate_gep_slot`, whose constant child
-  traversal now consumes `resolve_aggregate_child_index_projection`.
-- No remaining Step 3 packet is needed before naming normalization. The
-  remaining dynamic aggregate array behavior is extent-based and should stay at
-  the caller sites unless a later runbook explicitly changes that policy.
+- `child_byte_offset` is now `byte_offset_within_child`.
+- `child_absolute_byte_offset` is now `child_start_byte_offset`.
+
+The change is naming-only across `memory_helpers.hpp`, `addressing.cpp`, and
+`local_gep.cpp`; behavior, diagnostics, BIR output policy, and expectations
+were not changed.
 
 ## Suggested Next
 
-Begin Step 4 by normalizing projection naming only within the active
-consolidation surface touched by Steps 2 and 3. Focus on shared terms for byte
-offset, child type/index, element stride, repeated extent, and scalar leaf
-facts while avoiding cosmetic churn outside the updated helper/call-site code.
+Have the supervisor decide whether Step 4 needs another narrow naming packet or
+whether the active runbook is ready for review, lifecycle handling, or commit.
 
 ## Watchouts
 
-- Preserve BIR output, diagnostics, and testcase expectations.
-- Keep `BirFunctionLowerer` as the stateful lowering owner.
-- Prefer existing `memory_helpers.hpp`; do not add a new header unless the
-  active plan is explicitly revised.
-- Do not turn the inventory into testcase-shaped matching.
-- Do not move publication policy into pure helpers. Helpers should report facts;
-  callers should still decide which state map to update.
-- Be careful with first-index policy: local aggregate GEP, absolute global GEP,
-  relative global GEP, dynamic aggregate GEP, and runtime pointer provenance use
-  similar layout math but different acceptance rules.
-- Treat dynamic aggregate array access as extent-based unless future execution
-  finds a genuine duplicated projection walk that is not already routed through
-  `find_repeated_aggregate_extent_at_offset` or `resolve_local_aggregate_gep_slot`.
+- This packet intentionally did not broaden into cosmetic renames beyond the
+  delegated projection helper field/call-site surface.
+- A repo-wide stale-name scan only found unrelated vendored LLVM reference
+  matches under `ref/llvm-project/lldb/`.
 
 ## Proof
 

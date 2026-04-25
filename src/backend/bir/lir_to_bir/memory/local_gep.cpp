@@ -150,7 +150,7 @@ std::optional<std::string> BirFunctionLowerer::resolve_local_aggregate_gep_slot(
     switch (projection->kind) {
       case AggregateByteOffsetProjection::Kind::ArrayElement:
       case AggregateByteOffsetProjection::Kind::StructField:
-        byte_offset += projection->child_absolute_byte_offset;
+        byte_offset += projection->child_start_byte_offset;
         current_type = projection->child_type_text;
         break;
       default:
@@ -244,7 +244,7 @@ BirFunctionLowerer::resolve_local_aggregate_pointer_array_slots(
         }
         [[fallthrough]];
       case AggregateByteOffsetProjection::Kind::StructField:
-        byte_offset += projection->child_absolute_byte_offset;
+        byte_offset += projection->child_start_byte_offset;
         current_type = projection->child_type_text;
         break;
       default:
@@ -324,7 +324,7 @@ BirFunctionLowerer::resolve_local_aggregate_dynamic_pointer_array_access(
           }
           [[fallthrough]];
         case AggregateByteOffsetProjection::Kind::StructField:
-          byte_offset += projection->child_absolute_byte_offset;
+          byte_offset += projection->child_start_byte_offset;
           current_type = projection->child_type_text;
           break;
         default:
@@ -373,7 +373,7 @@ BirFunctionLowerer::resolve_local_aggregate_dynamic_pointer_array_access(
           switch (projection->kind) {
             case AggregateByteOffsetProjection::Kind::ArrayElement:
             case AggregateByteOffsetProjection::Kind::StructField:
-              element_leaf_offset += projection->child_absolute_byte_offset;
+              element_leaf_offset += projection->child_start_byte_offset;
               element_type = projection->child_type_text;
               break;
             default:
@@ -479,7 +479,7 @@ std::optional<LocalAggregateGepTarget> BirFunctionLowerer::resolve_local_aggrega
     switch (projection->kind) {
       case AggregateByteOffsetProjection::Kind::ArrayElement:
       case AggregateByteOffsetProjection::Kind::StructField:
-        byte_offset += projection->child_absolute_byte_offset;
+        byte_offset += projection->child_start_byte_offset;
         current_type = projection->child_type_text;
         break;
       default:

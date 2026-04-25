@@ -39,7 +39,7 @@ find_repeated_aggregate_extent_at_offset_impl(
 
   switch (projection->kind) {
     case AggregateByteOffsetProjection::Kind::ArrayElement:
-      if (projection->child_byte_offset == 0 &&
+      if (projection->byte_offset_within_child == 0 &&
           c4c::codegen::lir::trim_lir_arg_text(projection->child_type_text) ==
               c4c::codegen::lir::trim_lir_arg_text(repeated_type_text)) {
         return BirFunctionLowerer::AggregateArrayExtent{
@@ -49,18 +49,18 @@ find_repeated_aggregate_extent_at_offset_impl(
       }
       return find_repeated_aggregate_extent_at_offset_impl(
           projection->child_type_text,
-          projection->child_byte_offset,
+          projection->byte_offset_within_child,
           repeated_type_text,
           type_decls,
           include_struct_field_runs);
     case AggregateByteOffsetProjection::Kind::StructField:
-      if (include_struct_field_runs && projection->child_byte_offset == 0 &&
+      if (include_struct_field_runs && projection->byte_offset_within_child == 0 &&
           projection->child_layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid &&
           projection->child_layout.size_bytes != 0 &&
           c4c::codegen::lir::trim_lir_arg_text(projection->child_type_text) ==
               c4c::codegen::lir::trim_lir_arg_text(repeated_type_text)) {
         std::size_t repeated_count = 0;
-        const auto field_begin = projection->child_absolute_byte_offset;
+        const auto field_begin = projection->child_start_byte_offset;
         for (std::size_t repeated_index = projection->child_index;
              repeated_index < projection->layout.fields.size();
              ++repeated_index) {
@@ -81,7 +81,7 @@ find_repeated_aggregate_extent_at_offset_impl(
         }
       }
       return find_repeated_aggregate_extent_at_offset_impl(projection->child_type_text,
-                                                           projection->child_byte_offset,
+                                                           projection->byte_offset_within_child,
                                                            repeated_type_text,
                                                            type_decls,
                                                            include_struct_field_runs);
@@ -121,9 +121,9 @@ std::optional<AggregateByteOffsetProjection> resolve_aggregate_byte_offset_proje
           .child_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(
               layout.element_type_text)),
           .child_index = element_index,
-          .child_byte_offset = target_offset % element_layout.size_bytes,
+          .byte_offset_within_child = target_offset % element_layout.size_bytes,
           .target_byte_offset = target_offset,
-          .child_absolute_byte_offset = element_index * element_layout.size_bytes,
+          .child_start_byte_offset = element_index * element_layout.size_bytes,
           .child_stride_bytes = element_layout.size_bytes,
       };
     }
@@ -145,9 +145,9 @@ std::optional<AggregateByteOffsetProjection> resolve_aggregate_byte_offset_proje
             .child_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(
                 layout.fields[index].type_text)),
             .child_index = index,
-            .child_byte_offset = target_offset - field_begin,
+            .byte_offset_within_child = target_offset - field_begin,
             .target_byte_offset = target_offset,
-            .child_absolute_byte_offset = field_begin,
+            .child_start_byte_offset = field_begin,
             .child_stride_bytes = child_layout.size_bytes,
         };
       }
@@ -175,7 +175,7 @@ std::optional<AggregateByteOffsetProjection> resolve_aggregate_child_index_proje
           child_index >= layout.array_count) {
         return std::nullopt;
       }
-      const auto child_absolute_byte_offset = child_index * element_layout.size_bytes;
+      const auto child_start_byte_offset = child_index * element_layout.size_bytes;
       return AggregateByteOffsetProjection{
           .kind = AggregateByteOffsetProjection::Kind::ArrayElement,
           .layout = layout,
@@ -183,9 +183,9 @@ std::optional<AggregateByteOffsetProjection> resolve_aggregate_child_index_proje
           .child_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(
               layout.element_type_text)),
           .child_index = child_index,
-          .child_byte_offset = 0,
-          .target_byte_offset = child_absolute_byte_offset,
-          .child_absolute_byte_offset = child_absolute_byte_offset,
+          .byte_offset_within_child = 0,
+          .target_byte_offset = child_start_byte_offset,
+          .child_start_byte_offset = child_start_byte_offset,
           .child_stride_bytes = element_layout.size_bytes,
       };
     }
@@ -202,9 +202,9 @@ std::optional<AggregateByteOffsetProjection> resolve_aggregate_child_index_proje
           .child_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(
               layout.fields[child_index].type_text)),
           .child_index = child_index,
-          .child_byte_offset = 0,
+          .byte_offset_within_child = 0,
           .target_byte_offset = layout.fields[child_index].byte_offset,
-          .child_absolute_byte_offset = layout.fields[child_index].byte_offset,
+          .child_start_byte_offset = layout.fields[child_index].byte_offset,
           .child_stride_bytes = child_layout.size_bytes,
       };
     }
@@ -324,7 +324,7 @@ BirFunctionLowerer::resolve_relative_gep_target(
     switch (projection->kind) {
       case AggregateByteOffsetProjection::Kind::ArrayElement:
       case AggregateByteOffsetProjection::Kind::StructField:
-        byte_offset += static_cast<std::int64_t>(projection->child_absolute_byte_offset);
+        byte_offset += static_cast<std::int64_t>(projection->child_start_byte_offset);
         current_type = projection->child_type_text;
         break;
       default:
@@ -356,10 +356,10 @@ std::optional<std::size_t> BirFunctionLowerer::find_pointer_array_length_at_offs
         return projection->layout.array_count;
       }
       return find_pointer_array_length_at_offset(
-          projection->child_type_text, projection->child_byte_offset, type_decls);
+          projection->child_type_text, projection->byte_offset_within_child, type_decls);
     case AggregateByteOffsetProjection::Kind::StructField:
       return find_pointer_array_length_at_offset(
-          projection->child_type_text, projection->child_byte_offset, type_decls);
+          projection->child_type_text, projection->byte_offset_within_child, type_decls);
     default:
       return std::nullopt;
   }
@@ -407,7 +407,7 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_global_gep_address(
     switch (projection->kind) {
       case AggregateByteOffsetProjection::Kind::ArrayElement:
       case AggregateByteOffsetProjection::Kind::StructField:
-        byte_offset += projection->child_absolute_byte_offset;
+        byte_offset += projection->child_start_byte_offset;
         current_type = projection->child_type_text;
         break;
       default:
@@ -473,7 +473,7 @@ std::optional<GlobalAddress> BirFunctionLowerer::resolve_relative_global_gep_add
     switch (projection->kind) {
       case AggregateByteOffsetProjection::Kind::ArrayElement:
       case AggregateByteOffsetProjection::Kind::StructField:
-        byte_offset += projection->child_absolute_byte_offset;
+        byte_offset += projection->child_start_byte_offset;
         current_type = projection->child_type_text;
         break;
       default:
@@ -551,7 +551,7 @@ BirFunctionLowerer::resolve_global_dynamic_pointer_array_access(
           }
           [[fallthrough]];
         case AggregateByteOffsetProjection::Kind::StructField:
-          byte_offset += projection->child_absolute_byte_offset;
+          byte_offset += projection->child_start_byte_offset;
           current_type = projection->child_type_text;
           break;
         default:

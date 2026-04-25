@@ -36,9 +36,9 @@ struct AggregateByteOffsetProjection {
   BirFunctionLowerer::AggregateTypeLayout child_layout;
   std::string child_type_text;
   std::size_t child_index = 0;
-  std::size_t child_byte_offset = 0;
+  std::size_t byte_offset_within_child = 0;
   std::size_t target_byte_offset = 0;
-  std::size_t child_absolute_byte_offset = 0;
+  std::size_t child_start_byte_offset = 0;
   std::size_t child_stride_bytes = 0;
 };
 
