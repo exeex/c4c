@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/05_bir-memory-intrinsic-family-extraction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Extract `memory/intrinsics.cpp`
+Current Step ID: Step 4
+Current Step Title: Final Acceptance Check
 
 # Current Packet
 
