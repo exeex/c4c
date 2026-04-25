@@ -11,20 +11,34 @@
 namespace c4c::backend {
 
 using DynamicLocalAggregateArrayAccess = BirFunctionLowerer::DynamicLocalAggregateArrayAccess;
+using BackendStructuredLayoutTable = lir_to_bir_detail::BackendStructuredLayoutTable;
 using lir_to_bir_detail::compute_aggregate_type_layout;
 using lir_to_bir_detail::is_known_function_symbol;
+using lir_to_bir_detail::lookup_backend_aggregate_type_layout;
 using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::parse_i64;
 using lir_to_bir_detail::parse_typed_operand;
 using lir_to_bir_detail::resolve_index_operand;
 using lir_to_bir_detail::type_size_bytes;
 
+namespace {
+
+BirFunctionLowerer::AggregateTypeLayout lookup_scalar_byte_offset_layout(
+    std::string_view type_text,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
+  return structured_layouts != nullptr
+             ? lookup_backend_aggregate_type_layout(type_text, type_decls, *structured_layouts)
+             : compute_aggregate_type_layout(type_text, type_decls);
+}
+
 static std::optional<ScalarLayoutLeafFacts> resolve_scalar_layout_leaf_facts_at_byte_offset(
     std::string_view type_text,
     std::size_t target_offset,
     const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts,
     std::size_t base_byte_offset) {
-  const auto layout = compute_aggregate_type_layout(type_text, type_decls);
+  const auto layout = lookup_scalar_byte_offset_layout(type_text, type_decls, structured_layouts);
   if (layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
       target_offset >= layout.size_bytes) {
     return std::nullopt;
@@ -41,7 +55,8 @@ static std::optional<ScalarLayoutLeafFacts> resolve_scalar_layout_leaf_facts_at_
                    })
                  : std::nullopt;
     case BirFunctionLowerer::AggregateTypeLayout::Kind::Array: {
-      const auto element_layout = compute_aggregate_type_layout(layout.element_type_text, type_decls);
+      const auto element_layout =
+          lookup_scalar_byte_offset_layout(layout.element_type_text, type_decls, structured_layouts);
       if (element_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
           element_layout.size_bytes == 0) {
         return std::nullopt;
@@ -55,6 +70,7 @@ static std::optional<ScalarLayoutLeafFacts> resolve_scalar_layout_leaf_facts_at_
           layout.element_type_text,
           nested_offset,
           type_decls,
+          structured_layouts,
           base_byte_offset + element_index * element_layout.size_bytes);
     }
     case BirFunctionLowerer::AggregateTypeLayout::Kind::Struct:
@@ -70,6 +86,7 @@ static std::optional<ScalarLayoutLeafFacts> resolve_scalar_layout_leaf_facts_at_
             layout.fields[index].type_text,
             target_offset - field_begin,
             type_decls,
+            structured_layouts,
             base_byte_offset + field_begin);
       }
       return std::nullopt;
@@ -78,11 +95,12 @@ static std::optional<ScalarLayoutLeafFacts> resolve_scalar_layout_leaf_facts_at_
   }
 }
 
-std::optional<ScalarLayoutByteOffsetFacts> resolve_scalar_layout_facts_at_byte_offset(
+std::optional<ScalarLayoutByteOffsetFacts> resolve_scalar_layout_facts_at_byte_offset_impl(
     std::string_view type_text,
     std::size_t target_offset,
-    const BirFunctionLowerer::TypeDeclMap& type_decls) {
-  const auto layout = compute_aggregate_type_layout(type_text, type_decls);
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
+  const auto layout = lookup_scalar_byte_offset_layout(type_text, type_decls, structured_layouts);
   if (layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
       target_offset >= layout.size_bytes) {
     return std::nullopt;
@@ -92,8 +110,28 @@ std::optional<ScalarLayoutByteOffsetFacts> resolve_scalar_layout_facts_at_byte_o
       .object_size_bytes = layout.size_bytes,
       .target_byte_offset = target_offset,
       .remaining_object_bytes = layout.size_bytes - target_offset,
-      .leaf = resolve_scalar_layout_leaf_facts_at_byte_offset(type_text, target_offset, type_decls, 0),
+      .leaf = resolve_scalar_layout_leaf_facts_at_byte_offset(
+          type_text, target_offset, type_decls, structured_layouts, 0),
   };
+}
+
+}  // namespace
+
+std::optional<ScalarLayoutByteOffsetFacts> resolve_scalar_layout_facts_at_byte_offset(
+    std::string_view type_text,
+    std::size_t target_offset,
+    const BirFunctionLowerer::TypeDeclMap& type_decls) {
+  return resolve_scalar_layout_facts_at_byte_offset_impl(
+      type_text, target_offset, type_decls, nullptr);
+}
+
+std::optional<ScalarLayoutByteOffsetFacts> resolve_scalar_layout_facts_at_byte_offset(
+    std::string_view type_text,
+    std::size_t target_offset,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts) {
+  return resolve_scalar_layout_facts_at_byte_offset_impl(
+      type_text, target_offset, type_decls, &structured_layouts);
 }
 
 std::optional<std::vector<std::string>> BirFunctionLowerer::collect_local_scalar_array_slots(

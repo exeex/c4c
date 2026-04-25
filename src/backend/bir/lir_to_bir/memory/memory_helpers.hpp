@@ -47,6 +47,12 @@ std::optional<ScalarLayoutByteOffsetFacts> resolve_scalar_layout_facts_at_byte_o
     std::size_t target_offset,
     const BirFunctionLowerer::TypeDeclMap& type_decls);
 
+std::optional<ScalarLayoutByteOffsetFacts> resolve_scalar_layout_facts_at_byte_offset(
+    std::string_view type_text,
+    std::size_t target_offset,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts);
+
 std::optional<AggregateByteOffsetProjection> resolve_aggregate_byte_offset_projection(
     std::string_view type_text,
     std::size_t target_offset,

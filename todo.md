@@ -8,42 +8,43 @@ Current Step Title: Convert Aggregate Size And Addressing Consumers
 
 ## Just Finished
 
-Step 3 - Convert Aggregate Size And Addressing Consumers converted the memory
-intrinsic aggregate whole-object size and leaf-view paths to prefer structured
-layout when the optional backend structured layout table is available.
+Step 3 - Convert Aggregate Size And Addressing Consumers converted local GEP
+raw-byte scalar leaf discovery to prefer structured scalar byte-offset facts
+when the optional backend structured layout table is available.
 
 Changed files:
 
-- `src/backend/bir/lir_to_bir/lowering.hpp`
-- `src/backend/bir/lir_to_bir/memory/intrinsics.cpp`
+- `src/backend/bir/lir_to_bir/memory/memory_helpers.hpp`
+- `src/backend/bir/lir_to_bir/memory/local_slots.cpp`
+- `src/backend/bir/lir_to_bir/memory/local_gep.cpp`
 - `todo.md`
 - `test_after.log`
 
-Converted consumers: `try_lower_immediate_local_memset()` and
-`try_lower_immediate_local_memcpy()` now route aggregate whole-object layout
-queries through `lower_intrinsic_aggregate_layout()`, which uses
-`lookup_backend_aggregate_type_layout()` when callers provide a structured
-layout table and keeps `lower_byval_aggregate_layout()` as the `nullptr`
-wrapper fallback.
+Converted consumers: `resolve_scalar_layout_facts_at_byte_offset()` now has a
+structured-aware overload that uses `lookup_backend_aggregate_type_layout()`
+when a structured table is supplied and keeps the original three-argument
+legacy helper as a `nullptr` fallback wrapper. The recursive scalar leaf walker
+uses the same lookup path for nested array elements and struct fields.
 
-Converted call sites: `collect_sorted_leaf_slots_for_memops()`, whole-aggregate
-`memset` size lookup, `build_memcpy_leaf_view_from_aggregate()`, and the
-pointer-to-first-leaf aggregate best-match size comparison in `memcpy` leaf view
-resolution.
+Converted call sites: `resolve_local_aggregate_raw_byte_slice_leaf()` now passes
+its optional structured table into scalar byte-offset fact resolution, so the
+raw-byte slice fast path used by local aggregate GEP slot and target discovery
+uses structured layout when available.
 
-Remaining fallback-only paths: legacy wrapper callers that pass `nullptr` to
-the intrinsic helper surface intentionally keep `lower_byval_aggregate_layout`;
-raw-byte slice scalar leaf discovery still uses
-`resolve_scalar_layout_facts_at_byte_offset`; `collect_local_scalar_array_slots`
-still uses the legacy local-slots helper; static global-address helper
-wrappers, ABI and call lowering, globals, initializers, local slots, and
-unrelated load/store-heavy lowering remain outside this packet.
+Remaining fallback-only paths: legacy callers of the three-argument scalar
+byte-offset helper intentionally keep `compute_aggregate_type_layout()`;
+`collect_local_scalar_array_slots()` still uses the legacy local-slots helper;
+`provenance.cpp` still calls the legacy scalar byte-offset helper; static
+global-address helper wrappers, ABI and call lowering, globals, initializers,
+local slot load/store-heavy lowering, and unrelated local slot paths remain
+outside this packet.
 
 ## Suggested Next
 
-Next coherent conversion packet: convert the remaining local scalar array
-collection or raw-byte scalar leaf discovery path with the same
-structured-when-available, legacy-wrapper-fallback shape.
+Next coherent conversion packet: convert `collect_local_scalar_array_slots()` or
+the remaining provenance scalar byte-offset query with the same
+structured-when-available, legacy-wrapper-fallback shape, if the supervisor
+wants to continue Step 3 before broader review.
 
 ## Watchouts
 

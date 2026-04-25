@@ -108,8 +108,15 @@ std::optional<LocalAggregateRawByteSliceLeaf> resolve_local_aggregate_raw_byte_s
     return std::nullopt;
   }
 
-  const auto scalar_facts = resolve_scalar_layout_facts_at_byte_offset(
-      base_type_text, static_cast<std::size_t>(*byte_index), type_decls);
+  const auto scalar_facts =
+      structured_layouts != nullptr
+          ? resolve_scalar_layout_facts_at_byte_offset(
+                base_type_text,
+                static_cast<std::size_t>(*byte_index),
+                type_decls,
+                *structured_layouts)
+          : resolve_scalar_layout_facts_at_byte_offset(
+                base_type_text, static_cast<std::size_t>(*byte_index), type_decls);
   if (!scalar_facts.has_value() || !scalar_facts->leaf.has_value()) {
     return std::nullopt;
   }
