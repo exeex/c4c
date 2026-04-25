@@ -1,6 +1,6 @@
 # HIR To LIR TextId Bridge Inventory And Cleanup
 
-Status: Open
+Status: Closed
 Created: 2026-04-25
 Last Updated: 2026-04-25
 
@@ -121,3 +121,25 @@ Write a review or plan artifact that lists:
   confused with semantic lookup keys.
 - Any implemented cleanup remains behavior-preserving and is validated with
   focused HIR/LIR/codegen proof.
+
+## Closure Summary
+
+Closed: 2026-04-25
+
+The active runbook completed the intended inventory and first cleanup slice.
+The seam inventory classified semantic identity, type identity, ABI/link
+spelling, printer-only, diagnostic/debug, literal-byte, and temporary rendered
+lowering paths. The first cleanup made HIR-to-LIR function/global deduplication
+prefer stable `LinkNameId`, then `name_text_id`, with rendered-name fallback
+preserved for behavior parity.
+
+Remaining work is intentionally bounded as follow-up, not part of this cleanup
+slice: structured reference collection for dead-internal elimination, initializer
+designator owner authority, user-label/block owner identity, structured inline
+asm argument operands, typed GEP/aggregate operand text, and a structured LIR
+type-declaration/signature printer model.
+
+Close validation used matching full-suite canonical logs from:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure`.
+The regression guard with `--allow-non-decreasing-passed` passed with
+2976/2976 tests passing before and after, no new failures.
