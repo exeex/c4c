@@ -844,6 +844,73 @@ bool append_prepared_i32_passthrough_return_function(
 }
 
 std::optional<std::string_view> supported_i32_binary_immediate_mnemonic(
+    c4c::backend::bir::BinaryOpcode opcode);
+
+bool append_prepared_i32_rematerialized_return_function(
+    c4c::backend::x86::core::Text& out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    const Data& data) {
+  if (function.blocks.size() != 1) {
+    return false;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.insts.size() != 1 ||
+      block.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !block.terminator.value.has_value() ||
+      block.terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
+      block.terminator.value->type != c4c::backend::bir::TypeKind::I32) {
+    return false;
+  }
+
+  const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&block.insts.front());
+  if (binary == nullptr || binary->operand_type != c4c::backend::bir::TypeKind::I32 ||
+      binary->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      binary->result.type != c4c::backend::bir::TypeKind::I32 ||
+      binary->result.name != block.terminator.value->name ||
+      binary->lhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+      binary->lhs.type != c4c::backend::bir::TypeKind::I32 ||
+      binary->rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+      binary->rhs.type != c4c::backend::bir::TypeKind::I32 ||
+      !supported_i32_binary_immediate_mnemonic(binary->opcode).has_value()) {
+    return false;
+  }
+
+  const auto* function_locations = require_prepared_value_location_function(module, function);
+  const auto& home = require_prepared_i32_value_home(module,
+                                                     *function_locations,
+                                                     function,
+                                                     block.terminator.value->name,
+                                                     "return value");
+  if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate) {
+    return false;
+  }
+  if (!home.immediate_i32.has_value()) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has a rematerializable return without an immediate");
+  }
+
+  const auto& return_move =
+      require_prepared_i32_return_move(*function_locations, function, block, 0);
+  if (return_move.from_value_id != home.value_id) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' return move source drifted from rematerialized home");
+  }
+
+  const auto symbol_name = data.render_asm_symbol_name(function.name);
+  out.append_line(".globl " + symbol_name);
+  out.append_line(".type " + symbol_name + ", @function");
+  out.append_line(symbol_name + ":");
+  out.append_line("    mov " +
+                  c4c::backend::x86::abi::narrow_i32_register_name(
+                      *return_move.destination_register_name) +
+                  ", " + std::to_string(*home.immediate_i32));
+  out.append_line("    ret");
+  return true;
+}
+
+std::optional<std::string_view> supported_i32_binary_immediate_mnemonic(
     c4c::backend::bir::BinaryOpcode opcode) {
   switch (opcode) {
     case c4c::backend::bir::BinaryOpcode::Add:
@@ -1027,6 +1094,9 @@ bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
                                       const Data& data) {
   validate_prepared_control_flow_handoff(module, function);
   if (append_prepared_i32_immediate_return_function(out, module, function, data)) {
+    return true;
+  }
+  if (append_prepared_i32_rematerialized_return_function(out, module, function, data)) {
     return true;
   }
   if (append_prepared_i32_passthrough_return_function(out, module, function, data)) {
