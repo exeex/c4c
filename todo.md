@@ -3,30 +3,44 @@
 Status: Active
 Source Idea Path: ideas/open/120_bir_raw_label_fallback_cleanup_after_assembler_id_path.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Convert Prepared Pipeline Consumers To Id-First Lookup
+Current Step ID: 5
+Current Step Title: Prove Assembler Handoff And Document Retained Boundaries
 
 ## Just Finished
 
-`plan.md` Step 4 converted the owned regalloc select-materialized join consumer
-to prefer `BlockLabelId` authority before raw block-label spelling.
+`plan.md` Step 4 prepared-consumer cleanup landed through the liveness,
+stack/call-frame, dynamic-stack, out-of-SSA, and regalloc consumer packets.
 
 Completed work:
 
-- `src/backend/prealloc/regalloc.cpp`: `append_consumer_move_resolution` now
+- `src/backend/prealloc/out_of_ssa.cpp`: prepared out-of-SSA phi/materialized
+  join handling prefers id-backed prepared block names before raw block spelling.
+- `src/backend/prealloc/prealloc.cpp`: stack/call-frame and dynamic-stack
+  prepared consumers prefer id-backed prepared block lookup while retaining raw
+  spelling as a narrow invalid/unresolved-id compatibility fallback.
+- `src/backend/prealloc/regalloc.cpp`: select-materialized join move resolution
   resolves the current block from the existing BIR `BlockLabelId` through
   prepared names first, and falls back to raw block spelling only when the id is
   invalid or unresolved.
-- `tests/backend/backend_prepare_liveness_test.cpp`: the select-materialized
-  join move-resolution fixture now makes the raw join block spelling stale after
-  out-of-SSA publication, proving regalloc consumes the id-authoritative join
-  transfer.
+- Focused backend tests for phi materialization, authoritative join ownership,
+  structured context, prepared printing, frame/stack call contracts, dynamic
+  stack restore CLI coverage, and prepared liveness passed in the executor
+  packets.
 
 ## Suggested Next
 
-Next cleanup packet: convert the remaining prepared-pipeline consumer lookup
-sites called out by the runbook, especially backend handoff lookup sites that
-still resolve block identity from raw spelling.
+Step 5 handoff proof is currently blocked in this checkout. Enabling
+`C4C_ENABLE_X86_BACKEND_TESTS=ON` makes `backend_x86_handoff_boundary_test`
+compile against x86 handoff headers that are not present here:
+
+- `src/backend/mir/x86/codegen/api/x86_codegen_api.hpp`
+- `src/backend/mir/x86/codegen/abi/x86_target_abi.hpp`
+
+The normal backend build configuration has been restored with
+`C4C_ENABLE_X86_BACKEND_TESTS=OFF`. Next action belongs to the supervisor:
+either restore/provide the missing x86 handoff test infrastructure for the
+Step 5 proof, or delegate a non-x86 assembler/backend handoff proof path that
+still satisfies the runbook's id-consumption requirement.
 
 ## Watchouts
 
@@ -41,12 +55,19 @@ still resolve block identity from raw spelling.
   code not covered by this packet.
 - `clang-format` is not installed in this container, so this packet was kept
   manually formatted.
+- Do not treat the unavailable `backend_x86_handoff_boundary_test` as proof
+  that assembler handoff is complete. It is an infrastructure blocker for
+  Step 5, not a completed proof.
 
 ## Proof
 
-Passed.
+Step 4 focused proofs passed in executor packets.
 
-Proof command:
+Latest Step 4 proof command:
 `( cmake -S . -B build-backend -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DENABLE_C4C_BACKEND=ON && cmake --build build-backend --target backend_prepare_liveness_test && ctest --test-dir build-backend -j --output-on-failure -R 'backend_prepare_liveness' ) > test_after.log 2>&1`
 
 Proof log: `test_after.log`
+
+Step 5 proof status: blocked before compile because the optional x86 handoff
+test target depends on absent x86 codegen headers in this checkout. No
+assembler/x86 handoff acceptance proof is recorded yet.
