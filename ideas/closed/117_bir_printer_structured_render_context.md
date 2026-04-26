@@ -1,8 +1,9 @@
 # BIR Printer Structured Render Context
 
-Status: Open
+Status: Closed
 Created: 2026-04-26
 Last Updated: 2026-04-26
+Closed: 2026-04-26
 
 Parent Ideas:
 - [116_bir_layout_dual_path_coverage_and_dump_guard.md](/workspaces/c4c/ideas/closed/116_bir_layout_dual_path_coverage_and_dump_guard.md)
@@ -77,6 +78,20 @@ Out of scope:
   legacy-backed spelling for selected aggregate-sensitive paths.
 - The remaining raw-string printer fallbacks are enumerated and are not active
   authority for the covered paths.
+
+## Closure Notes
+
+The active runbook completed Steps 1-6. Covered aggregate sret direct call
+returns now render through structured metadata instead of legacy return type
+text as active authority, while preserving byte-stable BIR dump output.
+Remaining raw-string fallback surfaces are inventoried in the final `todo.md`
+Step 6 packet for follow-up under idea 118.
+
+Close-scope proof used the backend-wide command
+`{ cmake --build build-backend && ctest --test-dir build-backend -j --output-on-failure -R '^backend_'; }`.
+Both canonical logs report 107/107 runnable backend tests passing with 12
+disabled MIR-focus backend tests not run; the regression guard passed in
+non-decreasing mode with no new failures.
 
 ## Deferred
 
