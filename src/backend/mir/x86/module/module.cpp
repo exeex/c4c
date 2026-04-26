@@ -31,6 +31,14 @@ namespace {
                               std::move(detail));
 }
 
+[[noreturn]] void throw_unsupported_x86_scalar_handoff_shape() {
+  throw std::invalid_argument(
+      "x86 prepared-module consumer only supports a minimal single-block i32 return terminator, "
+      "a bounded equality-against-immediate guard family with immediate return leaves including "
+      "fixed-offset same-module global i32 loads and pointer-backed same-module global roots, or "
+      "one bounded compare-against-zero branch family through the canonical prepared-module handoff");
+}
+
 std::string render_prepared_label_id(c4c::BlockLabelId label) {
   if (label == c4c::kInvalidBlockLabel) {
     return "<invalid>";
@@ -1563,6 +1571,347 @@ void append_prepared_i32_leaf_return(
   function_out.append_line("    ret");
 }
 
+void require_prepared_compare_join_parallel_copy(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    c4c::BlockLabelId predecessor_label,
+    c4c::BlockLabelId successor_label) {
+  const auto* parallel_copy =
+      c4c::backend::prepare::find_prepared_parallel_copy_bundle(
+          control_flow, predecessor_label, successor_label);
+  if (parallel_copy == nullptr) {
+    throw_prepared_control_flow_handoff_error(
+        "compare-join edge has no authoritative prepared parallel-copy bundle");
+  }
+  const auto* move_bundle =
+      c4c::backend::prepare::find_prepared_out_of_ssa_parallel_copy_move_bundle(
+          names, function, function_locations, *parallel_copy);
+  if (move_bundle == nullptr ||
+      !c4c::backend::prepare::prepared_move_bundle_has_out_of_ssa_parallel_copy_authority(
+          *move_bundle)) {
+    throw_prepared_value_location_handoff_error(
+        "compare-join edge has no authoritative prepared out-of-SSA move bundle");
+  }
+  for (std::size_t step_index = 0; step_index < parallel_copy->steps.size(); ++step_index) {
+    if (c4c::backend::prepare::find_prepared_parallel_copy_move_for_step(
+            *parallel_copy, step_index) == nullptr ||
+        c4c::backend::prepare::find_prepared_out_of_ssa_parallel_copy_move_for_step(
+            *move_bundle, step_index) == nullptr) {
+      throw_prepared_value_location_handoff_error(
+          "compare-join edge parallel-copy step drifted from prepared move authority");
+    }
+  }
+}
+
+void append_prepared_i32_compare_join_return_arm(
+    c4c::backend::x86::core::Text& function_out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& join_block,
+    std::size_t join_block_index,
+    const c4c::backend::prepare::PreparedMaterializedCompareJoinReturnContext& return_context) {
+  const auto& return_move =
+      require_prepared_i32_return_move(function_locations, function, join_block, join_block_index);
+  const auto return_register =
+      c4c::backend::x86::abi::narrow_i32_register_name(*return_move.destination_register_name);
+
+  bool adjusted_stack = false;
+  const auto ensure_stack_frame = [&]() {
+    if (!adjusted_stack && module.stack_layout.frame_size_bytes != 0) {
+      function_out.append_line("    sub rsp, " +
+                               std::to_string(module.stack_layout.frame_size_bytes));
+      adjusted_stack = true;
+    }
+  };
+
+  const auto& selected_value = return_context.selected_value;
+  switch (selected_value.base.kind) {
+    case c4c::backend::prepare::PreparedComputedBaseKind::ImmediateI32:
+      function_out.append_line("    mov " + return_register + ", " +
+                               std::to_string(selected_value.base.immediate));
+      break;
+    case c4c::backend::prepare::PreparedComputedBaseKind::ParamValue: {
+      const auto param_name =
+          c4c::backend::prepare::prepared_value_name(module.names,
+                                                     selected_value.base.param_name_id);
+      const auto& param_home =
+          require_prepared_i32_value_home(module,
+                                          function_locations,
+                                          function,
+                                          param_name,
+                                          "compare-join selected parameter value");
+      if (return_move.from_value_id != param_home.value_id &&
+          !return_context.trailing_binary.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' compare-join return move source drifted from selected parameter home");
+      }
+      if (param_home.kind ==
+          c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate) {
+        if (!param_home.immediate_i32.has_value()) {
+          throw_prepared_value_location_handoff_error(
+              "defined function '" + function.name +
+              "' has a rematerializable compare-join selected parameter without an immediate");
+        }
+        function_out.append_line("    mov " + return_register + ", " +
+                                 std::to_string(*param_home.immediate_i32));
+      } else {
+        if (param_home.kind == c4c::backend::prepare::PreparedValueHomeKind::StackSlot) {
+          ensure_stack_frame();
+        }
+        function_out.append_line("    mov " + return_register + ", " +
+                                 render_prepared_i32_value_home_operand(param_home, function));
+      }
+      break;
+    }
+    case c4c::backend::prepare::PreparedComputedBaseKind::GlobalI32Load:
+      throw_prepared_value_location_handoff_error(
+          "defined function '" + function.name +
+          "' has an unsupported same-module global compare-join selected value");
+    case c4c::backend::prepare::PreparedComputedBaseKind::PointerBackedGlobalI32Load:
+      throw_prepared_value_location_handoff_error(
+          "defined function '" + function.name +
+          "' has an unsupported pointer-backed global compare-join selected value");
+  }
+
+  for (const auto& operation : selected_value.operations) {
+    const auto mnemonic = supported_i32_binary_immediate_mnemonic(operation.opcode);
+    if (!mnemonic.has_value()) {
+      throw_prepared_value_location_handoff_error(
+          "defined function '" + function.name +
+          "' has an unsupported compare-join selected-value operation");
+    }
+    function_out.append_line("    " + std::string(*mnemonic) + " " + return_register + ", " +
+                             std::to_string(operation.immediate));
+  }
+  if (return_context.trailing_binary.has_value()) {
+    const auto mnemonic =
+        supported_i32_binary_immediate_mnemonic(return_context.trailing_binary->opcode);
+    if (!mnemonic.has_value()) {
+      throw_prepared_value_location_handoff_error(
+          "defined function '" + function.name +
+          "' has an unsupported compare-join trailing operation");
+    }
+    function_out.append_line("    " + std::string(*mnemonic) + " " + return_register + ", " +
+                             std::to_string(return_context.trailing_binary->immediate));
+  }
+  if (adjusted_stack) {
+    function_out.append_line("    add rsp, " + std::to_string(module.stack_layout.frame_size_bytes));
+  }
+  function_out.append_line("    ret");
+}
+
+bool prepared_i32_compare_join_return_arm_is_supported(
+    const c4c::backend::prepare::PreparedMaterializedCompareJoinReturnArm& return_arm) {
+  switch (return_arm.shape) {
+    case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::ImmediateI32:
+    case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
+        ImmediateI32WithTrailingImmediateBinary:
+    case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::ParamValue:
+    case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
+        ParamValueWithTrailingImmediateBinary:
+      return true;
+    case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::GlobalI32Load:
+    case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
+        GlobalI32LoadWithTrailingImmediateBinary:
+    case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
+        PointerBackedGlobalI32Load:
+    case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
+        PointerBackedGlobalI32LoadWithTrailingImmediateBinary:
+      return false;
+  }
+
+  std::abort();
+}
+
+bool append_prepared_i32_param_zero_compare_join_return_function(
+    c4c::backend::x86::core::Text& out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    const Data& data) {
+  const auto function_name =
+      c4c::backend::prepare::resolve_prepared_function_name_id(module.names, function.name);
+  const auto* control_flow =
+      function_name.has_value()
+          ? c4c::backend::prepare::find_prepared_control_flow_function(module.control_flow,
+                                                                       *function_name)
+          : nullptr;
+  if (function.return_type != c4c::backend::bir::TypeKind::I32) {
+    return false;
+  }
+  if (function.params.size() != 1 ||
+      function.params.front().type != c4c::backend::bir::TypeKind::I32) {
+    if (control_flow != nullptr && !control_flow->branch_conditions.empty() &&
+        !control_flow->join_transfers.empty()) {
+      throw_unsupported_x86_scalar_handoff_shape();
+    }
+    return false;
+  }
+  if (!function_name.has_value()) {
+    throw_prepared_control_flow_handoff_error("defined function '" + function.name +
+                                              "' has no prepared function id");
+  }
+  if (control_flow == nullptr) {
+    return false;
+  }
+
+  const auto* function_locations = require_prepared_value_location_function(module, function);
+  const auto param_name =
+      c4c::backend::prepare::resolve_prepared_value_name_id(module.names, function.params.front().name);
+  if (!param_name.has_value()) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' parameter has no prepared value id");
+  }
+
+  for (const auto& source_block : function.blocks) {
+    if (source_block.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch) {
+      continue;
+    }
+
+    const auto source_block_label =
+        bir_block_label_id(module.module.names, module.names, source_block);
+    if (!source_block_label.has_value()) {
+      throw_prepared_control_flow_handoff_error("compare-join source block '" +
+                                                source_block.label +
+                                                "' has no prepared block id");
+    }
+    if (control_flow->join_transfers.empty()) {
+      const auto prepared_branch =
+          c4c::backend::prepare::find_prepared_param_zero_branch_condition(module.names,
+                                                                           *control_flow,
+                                                                           *source_block_label,
+                                                                           source_block,
+                                                                           *param_name,
+                                                                           false);
+      if (!prepared_branch.has_value() || prepared_branch->branch_condition == nullptr) {
+        continue;
+      }
+      const auto true_block_index = find_bir_block_index_by_prepared_label_id(
+          function, module.module.names, module.names, prepared_branch->branch_condition->true_label);
+      const auto false_block_index = find_bir_block_index_by_prepared_label_id(
+          function, module.module.names, module.names, prepared_branch->branch_condition->false_label);
+      if (true_block_index.has_value() && false_block_index.has_value() &&
+          (function.blocks[*true_block_index].terminator.kind ==
+               c4c::backend::bir::TerminatorKind::Branch ||
+           function.blocks[*false_block_index].terminator.kind ==
+               c4c::backend::bir::TerminatorKind::Branch)) {
+        throw_prepared_control_flow_handoff_error(
+            "compare-join source block has no authoritative prepared join metadata");
+      }
+      continue;
+    }
+
+    const auto prepared_branch =
+        c4c::backend::prepare::find_prepared_param_zero_branch_condition(module.names,
+                                                                         *control_flow,
+                                                                         *source_block_label,
+                                                                         source_block,
+                                                                         *param_name,
+                                                                         false);
+    if (!prepared_branch.has_value() || prepared_branch->branch_condition == nullptr) {
+      if (control_flow->branch_conditions.empty()) {
+        throw_prepared_control_flow_handoff_error(
+            "compare-join source block has no authoritative prepared branch metadata");
+      }
+      continue;
+    }
+
+    auto mutable_names = module.names;
+    const auto prepared_compare_join =
+        c4c::backend::prepare::find_prepared_param_zero_materialized_compare_join_branches(
+            mutable_names, *control_flow, function, source_block, function.params.front(), false);
+    if (!prepared_compare_join.has_value()) {
+      throw_prepared_control_flow_handoff_error(
+          "compare-join source block has no authoritative prepared join metadata");
+    }
+    const auto render_contract =
+        c4c::backend::prepare::find_prepared_materialized_compare_join_render_contract(
+            mutable_names, *prepared_compare_join);
+    if (!render_contract.has_value()) {
+      throw_prepared_control_flow_handoff_error(
+          "compare-join source block has no authoritative prepared render contract");
+    }
+    if (!prepared_i32_compare_join_return_arm_is_supported(render_contract->true_return) ||
+        !prepared_i32_compare_join_return_arm_is_supported(render_contract->false_return)) {
+      throw_prepared_value_location_handoff_error(
+          "defined function '" + function.name +
+          "' has an unsupported global compare-join return context");
+    }
+
+    const auto& join_context = prepared_compare_join->prepared_join_branches.compare_join_context;
+    if (join_context.join_transfer == nullptr || join_context.true_transfer == nullptr ||
+        join_context.false_transfer == nullptr || join_context.join_block == nullptr) {
+      throw_prepared_control_flow_handoff_error(
+          "compare-join source block has incomplete authoritative join metadata");
+    }
+    const auto join_block_index = find_bir_block_index_by_prepared_label_id(
+        function, module.module.names, module.names, join_context.join_transfer->join_block_label);
+    if (!join_block_index.has_value()) {
+      throw_prepared_control_flow_handoff_error(
+          "compare-join join block has no authoritative prepared block id");
+    }
+    require_prepared_compare_join_parallel_copy(module.names,
+                                                function,
+                                                *control_flow,
+                                                *function_locations,
+                                                join_context.true_transfer->predecessor_label,
+                                                join_context.true_transfer->successor_label);
+    require_prepared_compare_join_parallel_copy(module.names,
+                                                function,
+                                                *control_flow,
+                                                *function_locations,
+                                                join_context.false_transfer->predecessor_label,
+                                                join_context.false_transfer->successor_label);
+
+    const auto symbol_name = data.render_asm_symbol_name(function.name);
+    c4c::backend::x86::core::Text function_out;
+    function_out.append_line(".globl " + symbol_name);
+    function_out.append_line(".type " + symbol_name + ", @function");
+    function_out.append_line(symbol_name + ":");
+
+    const auto test_register = render_prepared_i32_zero_test_source(
+        module, *function_locations, function, function.params.front(), function_out);
+    if (test_register.has_value()) {
+      function_out.append_line("    test " + *test_register + ", " + *test_register);
+    }
+    function_out.append_line("    " + std::string(render_contract->branch_plan.false_branch_opcode) +
+                             " " + render_function_local_label(
+                                       function.name,
+                                       c4c::backend::prepare::prepared_block_label(
+                                           module.names,
+                                           render_contract->branch_plan.target_labels.false_label)));
+    append_prepared_i32_compare_join_return_arm(
+        function_out,
+        module,
+        *function_locations,
+        function,
+        *join_context.join_block,
+        *join_block_index,
+        render_contract->true_return.context);
+    function_out.append_line(render_function_local_label(
+                                 function.name,
+                                 c4c::backend::prepare::prepared_block_label(
+                                     module.names,
+                                     render_contract->branch_plan.target_labels.false_label)) +
+                             ":");
+    append_prepared_i32_compare_join_return_arm(
+        function_out,
+        module,
+        *function_locations,
+        function,
+        *join_context.join_block,
+        *join_block_index,
+        render_contract->false_return.context);
+    out.append_raw(function_out.take_text());
+    return true;
+  }
+
+  return false;
+}
+
 bool append_prepared_i32_param_zero_branch_return_function(
     c4c::backend::x86::core::Text& out,
     const c4c::backend::prepare::PreparedBirModule& module,
@@ -1697,6 +2046,9 @@ bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
     return true;
   }
   if (append_prepared_i32_same_module_global_sub_return_function(out, module, function, data)) {
+    return true;
+  }
+  if (append_prepared_i32_param_zero_compare_join_return_function(out, module, function, data)) {
     return true;
   }
   if (append_prepared_i32_param_zero_branch_return_function(out, module, function, data)) {

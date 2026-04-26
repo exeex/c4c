@@ -9,23 +9,28 @@ Current Step Title: Recover Prepared Control-Flow Rendering Semantics
 ## Just Finished
 
 Step 4 Recover Prepared Control-Flow Rendering Semantics restored the bounded
-prepared-module compare-against-zero branch renderer for the minimal scalar
-branch lanes. The x86 prepared-module consumer now renders the branch predicate
-and false label from authoritative prepared branch metadata, resolves true and
-false leaf blocks through structured BIR label ids matching prepared label
-identity, follows prepared value homes for register, stack, and rematerialized
-entry values, requires prepared value homes and return bundles for parameter
-leaf returns, and rejects missing prepared branch records, unmapped prepared
-blocks, drifted prepared branch authority, and raw-label-only branch target
-recovery.
+prepared-module compare-against-zero compare-join renderer for the
+stack-backed and rematerialized parameter-home lanes. The x86 prepared-module
+consumer now enters that route through the authoritative prepared
+materialized compare-join contract, validates the published out-of-SSA
+parallel-copy bundles and move bundles for both join edges, renders each
+return arm from the prepared parameter home and return bundle, and rejects
+missing join-transfer or parallel-copy authority instead of reopening raw
+compare-join recovery. The follow-up review repair removed mutable
+prepared-name-table emission, rejects global and pointer-backed compare-join
+return contexts before publishing assembly, and lets non-matching one-param
+join-bearing candidates fall through unless this compare-join route owns the
+prepared branch contract.
 
 ## Suggested Next
 
-Continue Step 4 with the next blocker exposed by the same proof: recover
-prepared-module rendering for `scalar-control-flow compare-against-zero
-compare-join lane with stack-backed parameter home`, where the x86
-prepared-module consumer no longer follows the authoritative prepared stack
-home through compare-join entry and return.
+Continue with the next blocker exposed by the same proof:
+`bounded direct extern-call prepared-module route: x86 prepared-module
+consumer did not emit the canonical asm`. The compare-join slice is past the
+requested stack-backed lane, adjacent rematerialized lane, missing
+join-transfer rejection, missing parallel-copy rejection, predecessor-owned
+bundle placement, successor-entry relocation, and multi-parameter
+compare-driven rejection checks.
 
 ## Watchouts
 
@@ -39,10 +44,14 @@ explicit. The current route renders into a local buffer and only publishes
 assembly after the whole supported shape is accepted; keep that
 all-or-nothing behavior for later candidate renderers so unsupported
 control-flow forms can still fall through cleanly.
-The newly recovered minimal compare-branch renderer intentionally stops before
-join-transfer and parallel-copy rendering; the compare-join failure should stay
-on the prepared join/out-of-SSA metadata path rather than widening the leaf
-branch renderer into raw topology recovery.
+The compare-join renderer intentionally remains bounded to the prepared
+param-zero materialized compare-join contract. It should continue to use
+prepared branch labels, join-transfer metadata, published parallel-copy
+bundles, out-of-SSA move bundles, prepared value homes, and prepared return
+bundles as authority rather than recovering from raw labels or fixture shape.
+Global and pointer-backed selected-value compare-join returns remain
+unsupported by this slice; a later packet should use the resolved same-module
+global contract before enabling them.
 The Step 4 review blocker in
 `review/step4_compare_branch_slice_review.md` is repaired: validation no longer
 skips BIR blocks that cannot map to prepared control-flow blocks, and the
@@ -55,10 +64,10 @@ label spelling.
 rebuilt `tests/backend/backend_x86_handoff_boundary_test` and
 `tests/backend/backend_x86_prepared_handoff_label_authority_test`, kept
 `backend_x86_prepared_handoff_label_authority` passing, and advanced past the
-minimal `scalar-control-flow compare-against-zero branch lane` and related
-prepared-control-flow ownership checks after the prepared-label authority
-review repair. The aggregate proof now fails later at `scalar-control-flow
-compare-against-zero compare-join lane with stack-backed parameter home: x86
-prepared-module consumer stopped following the authoritative prepared stack home
-through compare-join entry and return`.
+minimal compare-branch lanes, the requested `scalar-control-flow
+compare-against-zero compare-join lane with stack-backed parameter home`, the
+adjacent rematerialized compare-join lane, and the compare-join authority
+rejection/relocation checks after the compare-join review repair. The aggregate
+proof still fails later at `bounded direct extern-call prepared-module route:
+x86 prepared-module consumer did not emit the canonical asm`.
 Canonical proof log: `test_after.log`.
