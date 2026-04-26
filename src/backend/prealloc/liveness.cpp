@@ -495,13 +495,46 @@ void record_point_activity(const std::vector<std::size_t>& uses,
   }
 }
 
+[[nodiscard]] BlockLabelId intern_preferred_block_label(PreparedNameTables& names,
+                                                        const bir::NameTables& bir_names,
+                                                        BlockLabelId block_label_id,
+                                                        std::string_view raw_label) {
+  if (block_label_id != kInvalidBlockLabel) {
+    const std::string_view structured_label = bir_names.block_labels.spelling(block_label_id);
+    if (!structured_label.empty()) {
+      return names.block_labels.intern(structured_label);
+    }
+  }
+  return names.block_labels.intern(raw_label);
+}
+
+[[nodiscard]] std::optional<BlockLabelId> resolve_preferred_existing_block_label(
+    const PreparedNameTables& names,
+    const bir::NameTables& bir_names,
+    BlockLabelId block_label_id,
+    std::string_view raw_label) {
+  if (block_label_id != kInvalidBlockLabel) {
+    const std::string_view structured_label = bir_names.block_labels.spelling(block_label_id);
+    if (!structured_label.empty()) {
+      const BlockLabelId prepared_label_id = names.block_labels.find(structured_label);
+      if (prepared_label_id == kInvalidBlockLabel) {
+        return std::nullopt;
+      }
+      return prepared_label_id;
+    }
+  }
+  return resolve_prepared_block_label_id(names, raw_label);
+}
+
 [[nodiscard]] std::vector<BlockLabelId> build_function_block_label_ids(
     PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     const bir::Function& function) {
   std::vector<BlockLabelId> block_label_ids;
   block_label_ids.reserve(function.blocks.size());
   for (const auto& block : function.blocks) {
-    block_label_ids.push_back(names.block_labels.intern(block.label));
+    block_label_ids.push_back(
+        intern_preferred_block_label(names, bir_names, block.label_id, block.label));
   }
   return block_label_ids;
 }
@@ -521,13 +554,15 @@ void record_point_activity(const std::vector<std::size_t>& uses,
 
 [[nodiscard]] std::vector<std::vector<std::size_t>> build_successors(
     const PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     const bir::Function& function,
     const std::unordered_map<BlockLabelId, std::size_t>& block_indices) {
   std::vector<std::vector<std::size_t>> successors(function.blocks.size());
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     const auto& terminator = function.blocks[block_index].terminator;
-    auto append_successor = [&](std::string_view label) {
-      const auto block_label_id = resolve_prepared_block_label_id(names, label);
+    auto append_successor = [&](BlockLabelId label_id, std::string_view label) {
+      const auto block_label_id =
+          resolve_preferred_existing_block_label(names, bir_names, label_id, label);
       if (!block_label_id.has_value()) {
         return;
       }
@@ -538,10 +573,10 @@ void record_point_activity(const std::vector<std::size_t>& uses,
     };
 
     if (terminator.kind == bir::TerminatorKind::Branch) {
-      append_successor(terminator.target_label);
+      append_successor(terminator.target_label_id, terminator.target_label);
     } else if (terminator.kind == bir::TerminatorKind::CondBranch) {
-      append_successor(terminator.true_label);
-      append_successor(terminator.false_label);
+      append_successor(terminator.true_label_id, terminator.true_label);
+      append_successor(terminator.false_label_id, terminator.false_label);
     }
     sort_and_unique(successors[block_index]);
   }
@@ -561,6 +596,7 @@ void record_point_activity(const std::vector<std::size_t>& uses,
 
 [[nodiscard]] std::vector<std::vector<std::size_t>> collect_phi_predecessor_uses(
     const PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     const bir::Function& function,
     const DenseValueSet& dense_values,
     const std::unordered_map<BlockLabelId, std::size_t>& block_indices) {
@@ -572,7 +608,8 @@ void record_point_activity(const std::vector<std::size_t>& uses,
         continue;
       }
       for (const auto& incoming : phi->incomings) {
-        const auto predecessor_label_id = resolve_prepared_block_label_id(names, incoming.label);
+        const auto predecessor_label_id = resolve_preferred_existing_block_label(
+            names, bir_names, incoming.label_id, incoming.label);
         const auto value_name_id = resolve_named_value_id(names, incoming.value);
         if (!predecessor_label_id.has_value() || !value_name_id.has_value()) {
           continue;
@@ -865,12 +902,14 @@ void BirPreAlloc::run_liveness() {
 
     const DenseValueSet dense_values =
         build_dense_value_set(prepared_.names, function, prepared_.stack_layout);
-    const auto block_label_ids = build_function_block_label_ids(prepared_.names, function);
+    const auto block_label_ids =
+        build_function_block_label_ids(prepared_.names, prepared_.module.names, function);
     const auto block_indices = build_block_index_map(block_label_ids);
-    const auto successors = build_successors(prepared_.names, function, block_indices);
+    const auto successors =
+        build_successors(prepared_.names, prepared_.module.names, function, block_indices);
     const auto predecessors = build_predecessors(successors);
-    const auto phi_predecessor_uses =
-        collect_phi_predecessor_uses(prepared_.names, function, dense_values, block_indices);
+    const auto phi_predecessor_uses = collect_phi_predecessor_uses(
+        prepared_.names, prepared_.module.names, function, dense_values, block_indices);
     ProgramPointState points =
         assign_program_points(function, prepared_.names, dense_values, phi_predecessor_uses);
     const auto [live_in, live_out] =

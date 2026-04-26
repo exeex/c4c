@@ -1,5 +1,6 @@
 #include "stack_layout.hpp"
 
+#include <optional>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -20,6 +21,46 @@ struct SlotUseSummary {
   std::unordered_set<std::string_view> direct_access_slots;
   std::unordered_set<std::string_view> sret_storage_slots;
 };
+
+struct BlockIndexLookup {
+  std::unordered_map<BlockLabelId, std::size_t> by_id;
+  std::unordered_map<std::string_view, std::size_t> by_raw_label;
+};
+
+[[nodiscard]] BlockIndexLookup build_block_index_lookup(const bir::Function& function) {
+  BlockIndexLookup lookup;
+  lookup.by_id.reserve(function.blocks.size());
+  lookup.by_raw_label.reserve(function.blocks.size());
+
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    if (block.label_id != kInvalidBlockLabel) {
+      lookup.by_id.emplace(block.label_id, block_index);
+    }
+    lookup.by_raw_label.emplace(block.label, block_index);
+  }
+
+  return lookup;
+}
+
+[[nodiscard]] std::optional<std::size_t> find_block_index(
+    const BlockIndexLookup& lookup,
+    BlockLabelId block_label_id,
+    std::string_view raw_label) {
+  if (block_label_id != kInvalidBlockLabel) {
+    const auto by_id_it = lookup.by_id.find(block_label_id);
+    if (by_id_it != lookup.by_id.end()) {
+      return by_id_it->second;
+    }
+    return std::nullopt;
+  }
+
+  const auto by_raw_it = lookup.by_raw_label.find(raw_label);
+  if (by_raw_it == lookup.by_raw_label.end()) {
+    return std::nullopt;
+  }
+  return by_raw_it->second;
+}
 
 void record_root_pointer_use(const RootNameSet& roots,
                              std::size_t block_index,
@@ -171,12 +212,7 @@ void record_call_pointer_uses(const bir::CallInst& call,
                                                       const SlotNameSet& local_slot_names) {
   SlotUseSummary summary;
   PointerAliasMap pointer_aliases;
-  std::unordered_map<std::string_view, std::size_t> block_indices_by_label;
-  block_indices_by_label.reserve(function.blocks.size());
-
-  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
-    block_indices_by_label.emplace(function.blocks[block_index].label, block_index);
-  }
+  const BlockIndexLookup block_indices = build_block_index_lookup(function);
 
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     const auto& block = function.blocks[block_index];
@@ -227,10 +263,9 @@ void record_call_pointer_uses(const bir::CallInst& call,
         RootNameSet roots;
         bool saw_unrooted_pointer = false;
         for (const auto& incoming : phi->incomings) {
-          const auto incoming_block_it = block_indices_by_label.find(incoming.label);
           const std::size_t incoming_block_index =
-              incoming_block_it == block_indices_by_label.end() ? block_index
-                                                                : incoming_block_it->second;
+              find_block_index(block_indices, incoming.label_id, incoming.label)
+                  .value_or(block_index);
           merge_pointer_roots(incoming.value, local_slot_names, pointer_aliases, roots);
           saw_unrooted_pointer |=
               is_unrooted_pointer_value(incoming.value, local_slot_names, pointer_aliases);

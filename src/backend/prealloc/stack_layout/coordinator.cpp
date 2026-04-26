@@ -19,6 +19,19 @@ struct ResolvedFrameSlot {
   std::int64_t byte_offset_adjust = 0;
 };
 
+[[nodiscard]] BlockLabelId intern_preferred_block_label(PreparedNameTables& names,
+                                                        const bir::NameTables& bir_names,
+                                                        BlockLabelId block_label_id,
+                                                        std::string_view raw_label) {
+  if (block_label_id != kInvalidBlockLabel) {
+    const std::string_view structured_label = bir_names.block_labels.spelling(block_label_id);
+    if (!structured_label.empty()) {
+      return names.block_labels.intern(structured_label);
+    }
+  }
+  return names.block_labels.intern(raw_label);
+}
+
 [[nodiscard]] std::optional<std::pair<std::string_view, std::size_t>> parse_slot_slice_name(
     std::string_view slot_name) {
   const auto dot = slot_name.rfind('.');
@@ -539,10 +552,12 @@ struct ResolvedFrameSlot {
 void append_direct_frame_slot_accesses(PreparedNameTables& names,
                                        PreparedAddressingFunction& function_addressing,
                                        FunctionNameId function_name_id,
+                                       const bir::NameTables& bir_names,
                                        const bir::Function& function,
                                        const FrameSlotMap& frame_slots_by_name) {
   for (const auto& block : function.blocks) {
-    const BlockLabelId block_label_id = names.block_labels.intern(block.label);
+    const BlockLabelId block_label_id =
+        intern_preferred_block_label(names, bir_names, block.label_id, block.label);
     for (std::size_t inst_index = 0; inst_index < block.insts.size(); ++inst_index) {
       const auto& inst = block.insts[inst_index];
       if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
@@ -661,6 +676,7 @@ void BirPreAlloc::run_stack_layout() {
         prepared_.names,
         function_addressing,
         function_name_id,
+        prepared_.module.names,
         function,
         build_frame_slot_map(function_objects, function_slots));
 

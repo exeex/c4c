@@ -8,34 +8,33 @@ Current Step Title: Convert Prepared Pipeline Consumers To Id-First Lookup
 
 ## Just Finished
 
-`plan.md` Step 2 converted the owned ordinary BIR backend fixtures to attach
-`BlockLabelId` through available `NameTables` while retaining raw strings as
-display text and compatibility payloads.
+`plan.md` Step 4 converted the owned prepared liveness and nearby stack-layout
+consumers to prefer `BlockLabelId` authority before raw block-label spelling.
 
 Completed work:
 
-- `tests/backend/backend_prepare_liveness_test.cpp`: added local fixture
-  helpers for id-backed blocks, branch targets, conditional branch targets, and
-  phi incoming labels. Manual BIR construction in this file now interns block
-  labels through `module.names.block_labels` before the prepared pipeline sees
-  the module.
-- `tests/backend/backend_prepare_block_only_control_flow_test.cpp`: attached
-  ids to the ordinary block-only fixture's block headers and branch target.
-- `tests/backend/backend_prepare_structured_context_test.cpp`: attached an id
-  to the ordinary BIR call-rendering block and preserved the existing
-  id-preferred and explicit raw-fallback label fixtures.
-
-Fallback classification after this packet: ordinary owned construction is now
-id-backed construction convenience plus rendering compatibility. Remaining
-raw-only owned fixtures are explicit raw fallback coverage for invalid or
-unresolved label ids, not silent ordinary construction.
+- `src/backend/prealloc/liveness.cpp`: liveness block ids now translate from
+  existing BIR block ids when valid, successor resolution uses terminator label
+  ids first, and phi incoming predecessor lookup uses incoming label ids first.
+  Raw spelling remains the invalid or unresolved id fallback.
+- `src/backend/prealloc/stack_layout/coordinator.cpp`: prepared memory-access
+  block labels now come from existing BIR block ids when valid, with raw spelling
+  retained as the fallback boundary.
+- `src/backend/prealloc/stack_layout/alloca_coalescing.cpp`: phi incoming block
+  lookup now indexes blocks by valid BIR label ids first and consults raw labels
+  only when the incoming id is invalid.
+- `tests/backend/backend_prepare_liveness_test.cpp`: added an id-authoritative
+  phi liveness fixture with stale raw block strings to prove block indexing,
+  successor resolution, and phi predecessor uses follow ids.
+- `tests/backend/backend_prepare_stack_layout_test.cpp`: added an
+  id-authoritative prepared-addressing fixture with stale raw block spelling to
+  prove stack-layout memory-access block lookup follows ids.
 
 ## Suggested Next
 
-Next cleanup packet: update prepared liveness and nearby stack-layout lookup
-code to prefer BIR `BlockLabelId` for block indexing, successor resolution, and
-phi incoming predecessor lookup, retaining raw spelling only as unresolved-id
-fallback.
+Next cleanup packet: convert the remaining prepared consumers called out by the
+runbook, especially dynamic-stack, out-of-SSA, regalloc, and backend handoff
+lookup sites that still resolve block identity from raw spelling.
 
 ## Watchouts
 
@@ -45,11 +44,9 @@ fallback.
 - Do not expand into MIR migration unless the supervisor opens a separate
   initiative.
 - Avoid testcase-overfit cleanup that only makes one known case pass.
-- `c4c-clang-tool-ccdb` is installed, but `build/compile_commands.json` did not
-  contain the queried backend sources, so this inventory used targeted `rg` and
-  source snippets for those files.
-- `clang-format` is not installed in this environment; the C++ edits were kept
-  manually formatted.
+- `c4c-clang-tool-ccdb` is installed and was used against
+  `build-backend/compile_commands.json` to inventory the owned C++ helper
+  signatures before editing.
 - Do not remove raw label spelling fields yet. They are still the compatibility
   payload for printer output, unresolved-id fallback, and existing downstream
   code not covered by this packet.
@@ -59,6 +56,6 @@ fallback.
 Passed.
 
 Proof command:
-`( cmake -S . -B build-backend -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DENABLE_C4C_BACKEND=ON && cmake --build build-backend --target backend_prepare_structured_context_test backend_prepare_liveness_test backend_prepare_block_only_control_flow_test && ctest --test-dir build-backend -j --output-on-failure -R 'backend_prepare_(structured_context|liveness|block_only_control_flow)' ) > test_after.log 2>&1`
+`( cmake -S . -B build-backend -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DENABLE_C4C_BACKEND=ON && cmake --build build-backend --target backend_prepare_liveness_test backend_prepare_stack_layout_test && ctest --test-dir build-backend -j --output-on-failure -R 'backend_prepare_(liveness|stack_layout)' ) > test_after.log 2>&1`
 
 Proof log: `test_after.log`

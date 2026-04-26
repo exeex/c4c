@@ -4,6 +4,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -61,6 +62,34 @@ c4c::FunctionNameId find_function_name_id(const prepare::PreparedBirModule& prep
 c4c::BlockLabelId find_block_label_id(const prepare::PreparedBirModule& prepared,
                                       std::string_view block_label) {
   return prepared.names.block_labels.find(block_label);
+}
+
+c4c::BlockLabelId block_label_id(bir::Module& module, std::string_view label) {
+  return module.names.block_labels.intern(label);
+}
+
+bir::Block make_block(bir::Module& module, std::string_view label) {
+  return bir::Block{
+      .label = std::string(label),
+      .label_id = block_label_id(module, label),
+  };
+}
+
+bir::BranchTerminator make_branch(bir::Module& module, std::string_view target_label) {
+  return bir::BranchTerminator{
+      .target_label = std::string(target_label),
+      .target_label_id = block_label_id(module, target_label),
+  };
+}
+
+bir::PhiIncoming make_phi_incoming(bir::Module& module,
+                                   std::string_view label,
+                                   bir::Value value) {
+  return bir::PhiIncoming{
+      .label = std::string(label),
+      .value = std::move(value),
+      .label_id = block_label_id(module, label),
+  };
 }
 
 bir::Function make_stack_layout_analysis_object_collection_function() {
@@ -1853,6 +1882,48 @@ prepare::PreparedBirModule prepare_phi_escaped_local_slot_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_id_authoritative_stack_access_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_id_authoritative_block_access_activation";
+  function.return_type = bir::TypeKind::I32;
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "lv.id.access",
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  auto entry = make_block(module, "entry");
+  entry.label = "raw.entry.block";
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "lv.id.loaded"),
+      .slot_name = "lv.id.access",
+      .align_bytes = 4,
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "lv.id.loaded"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_phi_single_block_local_slot_module() {
   bir::Module module;
 
@@ -3216,6 +3287,35 @@ int check_phi_escaped_local_slot_activation(const prepare::PreparedBirModule& pr
   return 0;
 }
 
+int check_id_authoritative_stack_access_activation(const prepare::PreparedBirModule& prepared) {
+  const auto* object = find_stack_object(prepared, "lv.id.access");
+  if (object == nullptr) {
+    return fail("expected id-authoritative stack access slot to produce an object");
+  }
+
+  const auto* function_addressing = prepare::find_prepared_addressing(
+      prepared,
+      find_function_name_id(prepared, "stack_layout_id_authoritative_block_access_activation"));
+  if (function_addressing == nullptr) {
+    return fail("expected id-authoritative stack access fixture to publish addressing");
+  }
+  const c4c::BlockLabelId entry_block_label_id = find_block_label_id(prepared, "entry");
+  if (entry_block_label_id == c4c::kInvalidBlockLabel) {
+    return fail("expected id-authoritative stack access block label to use structured spelling");
+  }
+  const auto* access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 0);
+  if (access == nullptr) {
+    return fail("expected prepared addressing to use BlockLabelId for stale raw block spelling");
+  }
+  if (!access->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *access->result_value_name) != "lv.id.loaded") {
+    return fail("expected id-authoritative stack access to preserve load result metadata");
+  }
+
+  return 0;
+}
+
 int check_phi_single_block_local_slot_activation(const prepare::PreparedBirModule& prepared) {
   const auto* root_object = find_stack_object(prepared, "lv.phi.single.root");
   if (root_object == nullptr) {
@@ -3642,6 +3742,13 @@ int main() {
 
   const auto phi_escaped_prepared = prepare_phi_escaped_local_slot_module();
   if (const int rc = check_phi_escaped_local_slot_activation(phi_escaped_prepared); rc != 0) {
+    return rc;
+  }
+  const auto id_authoritative_stack_access_prepared =
+      prepare_id_authoritative_stack_access_module();
+  if (const int rc = check_id_authoritative_stack_access_activation(
+          id_authoritative_stack_access_prepared);
+      rc != 0) {
     return rc;
   }
 

@@ -399,6 +399,101 @@ prepare::PreparedBirModule prepare_phi_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_id_authoritative_phi_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "id_authoritative_phi_liveness";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "p.flag",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  auto entry = make_block(module, "entry");
+  entry.label = "raw.entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I32, "cond0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "p.flag"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  entry.terminator =
+      make_cond_branch(module, bir::Value::named(bir::TypeKind::I32, "cond0"), "left", "right");
+  entry.terminator.true_label = "raw.left.target";
+  entry.terminator.false_label = "raw.right.target";
+
+  auto left = make_block(module, "left");
+  left.label = "raw.left.block";
+  left.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "left.v"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(10),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  left.terminator = make_branch(module, "join");
+  left.terminator.target_label = "raw.join.from.left";
+
+  auto right = make_block(module, "right");
+  right.label = "raw.right.block";
+  right.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "right.v"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(20),
+      .rhs = bir::Value::immediate_i32(2),
+  });
+  right.terminator = make_branch(module, "join");
+  right.terminator.target_label = "raw.join.from.right";
+
+  auto join = make_block(module, "join");
+  join.label = "raw.join.block";
+  auto left_incoming =
+      make_phi_incoming(module, "left", bir::Value::named(bir::TypeKind::I32, "left.v"));
+  left_incoming.label = "raw.left.incoming";
+  auto right_incoming =
+      make_phi_incoming(module, "right", bir::Value::named(bir::TypeKind::I32, "right.v"));
+  right_incoming.label = "raw.right.incoming";
+  join.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "phi.v"),
+      .incomings = {std::move(left_incoming), std::move(right_incoming)},
+  });
+  join.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "sum"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "phi.v"),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  join.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "sum"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(left));
+  function.blocks.push_back(std::move(right));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = false;
+  options.run_liveness = true;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_liveness();
+  return std::move(planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_phi_module_with_regalloc() {
   auto prepared = prepare_phi_module();
 
@@ -3140,6 +3235,40 @@ int check_phi_predecessor_edge_liveness(const prepare::PreparedBirModule& prepar
   return 0;
 }
 
+int check_id_authoritative_phi_liveness(const prepare::PreparedBirModule& prepared) {
+  const auto* function = find_liveness_function(prepared, "id_authoritative_phi_liveness");
+  if (function == nullptr) {
+    return fail("expected liveness output for id-authoritative phi fixture");
+  }
+  if (function->blocks.size() != 4) {
+    return fail("expected id-authoritative phi fixture to publish all liveness blocks");
+  }
+  if (prepare::prepared_block_label(prepared.names, function->blocks[0].block_name) != "entry" ||
+      prepare::prepared_block_label(prepared.names, function->blocks[1].block_name) != "left" ||
+      prepare::prepared_block_label(prepared.names, function->blocks[2].block_name) != "right" ||
+      prepare::prepared_block_label(prepared.names, function->blocks[3].block_name) != "join") {
+    return fail("expected liveness block labels to come from BlockLabelId spelling");
+  }
+  if (function->blocks[0].successor_block_indices != std::vector<std::size_t>{1, 2} ||
+      function->blocks[1].successor_block_indices != std::vector<std::size_t>{3} ||
+      function->blocks[2].successor_block_indices != std::vector<std::size_t>{3} ||
+      function->blocks[3].predecessor_block_indices != std::vector<std::size_t>{1, 2}) {
+    return fail("expected liveness CFG edges to resolve through BlockLabelId authority");
+  }
+
+  const auto* left = find_liveness_value(prepared, *function, "left.v");
+  const auto* right = find_liveness_value(prepared, *function, "right.v");
+  if (left == nullptr || right == nullptr) {
+    return fail("expected id-authoritative phi predecessor values in liveness");
+  }
+  if (left->use_points != std::vector<std::size_t>{3} ||
+      right->use_points != std::vector<std::size_t>{5}) {
+    return fail("expected phi incoming predecessor uses to resolve through BlockLabelId authority");
+  }
+
+  return 0;
+}
+
 int check_phi_regalloc_seed_activation(const prepare::PreparedBirModule& prepared) {
   const auto* function = find_regalloc_function(prepared, "phi_liveness");
   if (function == nullptr) {
@@ -5376,6 +5505,12 @@ int check_general_grouped_cross_call(const prepare::PreparedBirModule& prepared)
 int main() {
   const auto liveness_prepared = prepare_phi_module();
   if (const int rc = check_phi_predecessor_edge_liveness(liveness_prepared); rc != 0) {
+    return rc;
+  }
+  const auto id_authoritative_liveness_prepared = prepare_id_authoritative_phi_module();
+  if (const int rc =
+          check_id_authoritative_phi_liveness(id_authoritative_liveness_prepared);
+      rc != 0) {
     return rc;
   }
 
