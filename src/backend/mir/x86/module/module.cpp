@@ -1656,6 +1656,31 @@ void append_prepared_i32_compare_join_return_arm(
       require_prepared_i32_return_move(function_locations, function, join_block, join_block_index);
   const auto return_register =
       c4c::backend::x86::abi::narrow_i32_register_name(*return_move.destination_register_name);
+  if (return_context.block_index != join_block_index ||
+      return_context.instruction_index > join_block.insts.size()) {
+    throw_prepared_value_location_handoff_error(
+        "defined function '" + function.name +
+        "' compare-join return context drifted from prepared join block");
+  }
+  if (join_block.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !join_block.terminator.value.has_value() ||
+      join_block.terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
+      join_block.terminator.value->type != c4c::backend::bir::TypeKind::I32) {
+    throw_prepared_value_location_handoff_error(
+        "defined function '" + function.name +
+        "' has an unsupported compare-join return terminator");
+  }
+  const auto& joined_return_home =
+      require_prepared_i32_value_home(module,
+                                      function_locations,
+                                      function,
+                                      join_block.terminator.value->name,
+                                      "compare-join returned value");
+  if (return_move.from_value_id != joined_return_home.value_id) {
+    throw_prepared_value_location_handoff_error(
+        "defined function '" + function.name +
+        "' compare-join return move source drifted from prepared returned value home");
+  }
 
   bool adjusted_stack = false;
   const auto ensure_stack_frame = [&]() {
@@ -1682,12 +1707,6 @@ void append_prepared_i32_compare_join_return_arm(
                                           function,
                                           param_name,
                                           "compare-join selected parameter value");
-      if (return_move.from_value_id != param_home.value_id &&
-          !return_context.trailing_binary.has_value()) {
-        throw_prepared_value_location_handoff_error(
-            "defined function '" + function.name +
-            "' compare-join return move source drifted from selected parameter home");
-      }
       if (param_home.kind ==
           c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate) {
         if (!param_home.immediate_i32.has_value()) {

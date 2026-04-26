@@ -9,23 +9,19 @@ Current Step Title: Recover Prepared Control-Flow Rendering Semantics
 ## Just Finished
 
 Step 4 Recover Prepared Control-Flow Rendering Semantics repaired the
-joined-branch compare-join prepared block-id blocker in the x86
-prepared-module renderer. The compare-join route now keeps the authoritative
-prepared join-transfer label check, verifies the join label has a prepared
-control-flow block, and derives the return-move block index from the prepared
-compare-join context's owned BIR join-block pointer instead of recovering the
-join block through raw label spelling or requiring the raw BIR label id to
-remain aligned.
+joined-branch compare-join return-move source mismatch in the x86
+prepared-module renderer. The compare-join return arm now validates the
+prepared return bundle against the prepared home of the join block's actual
+returned value and verifies the render context still belongs to the prepared
+join block, while selected parameter materialization remains driven by
+prepared value homes rather than raw labels or fixture names.
 
 ## Suggested Next
 
 Continue Step 4 on the next joined-branch handoff blocker exposed by the same
 proof:
-`scalar-control-flow compare-against-zero joined branch lane: x86
-prepared-module consumer rejected the prepared handoff with exception:
-canonical prepared-module handoff rejected x86 value-location authority:
-defined function 'branch_join_adjust' compare-join return move source drifted
-from selected parameter home`.
+`canonical prepared-module handoff rejected x86 control-flow label authority:
+BIR block 'carrier.zero' has no prepared control-flow block`.
 
 ## Watchouts
 
@@ -65,6 +61,10 @@ The Step 4 review blocker in
 skips BIR blocks that cannot map to prepared control-flow blocks, and the
 compare-branch renderer no longer resolves true/false leaf targets through raw
 label spelling.
+The compare-join return-move source check should stay anchored on the prepared
+join return value home. The selected-value base home only explains how to
+materialize the branch arm; the prepared out-of-SSA edge bundles and join
+return bundle own the carrier-to-return authority.
 
 ## Proof
 
@@ -72,13 +72,9 @@ label spelling.
 rebuilt `tests/backend/backend_x86_handoff_boundary_test` and
 `tests/backend/backend_x86_prepared_handoff_label_authority_test`, kept
 `backend_x86_prepared_handoff_label_authority` passing, and advanced past the
-minimal compare-branch lanes, the compare-join lanes and authority
-rejection/relocation checks, the bounded direct extern-call prepared-module
-route plus prepared call-bundle drift checks, and the requested joined-branch
-prepared block-id blocker. The aggregate proof still fails later at
-`scalar-control-flow compare-against-zero joined branch lane: x86
-prepared-module consumer rejected the prepared handoff with exception:
-canonical prepared-module handoff rejected x86 value-location authority:
-defined function 'branch_join_adjust' compare-join return move source drifted
-from selected parameter home`.
+requested `defined function 'branch_join_adjust' compare-join return move
+source drifted from selected parameter home` blocker. The aggregate proof still
+fails later after aborting at `canonical prepared-module handoff rejected x86
+control-flow label authority: BIR block 'carrier.zero' has no prepared
+control-flow block`.
 Canonical proof log: `test_after.log`.
