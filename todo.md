@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/121_x86_prepared_module_renderer_recovery.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Recover Supported Scalar Rendering Semantics
+Current Step ID: Step 4
+Current Step Title: Recover Prepared Control-Flow Rendering Semantics
 
 ## Just Finished
 
@@ -20,18 +20,22 @@ path.
 
 ## Suggested Next
 
-Next packet should move to the next blocker exposed by the same proof:
-recover prepared-module rendering for the `scalar-control-flow
-compare-against-zero branch lane`.
+Execute Step 4 - Recover Prepared Control-Flow Rendering Semantics. Start from
+the next blocker exposed by the same proof: recover prepared-module rendering
+for the `scalar-control-flow compare-against-zero branch lane`, where the x86
+prepared-module consumer did not emit the canonical asm.
 
 ## Watchouts
 
-Do not turn the same-module global route into a named-fixture dispatcher. The
-new route is gated by supported same-module globals, `i32` immediate stores,
-`i32` global loads without pointer-backed addresses, `i32` subtraction, and
-prepared value-location authority. The current route renders into a local
-buffer and only publishes assembly after the whole supported shape is accepted;
-keep that all-or-nothing behavior for later candidate renderers so unsupported
+Do not turn the same-module global or control-flow route into a named-fixture
+dispatcher. The scalar route is gated by supported same-module globals, `i32`
+immediate stores, `i32` global loads without pointer-backed addresses, `i32`
+subtraction, and prepared value-location authority. Step 4 should route
+branches and labels through prepared label identity where available, reject or
+surface missing and drifted label ids, and keep scalar rendering assumptions
+explicit. The current route renders into a local buffer and only publishes
+assembly after the whole supported shape is accepted; keep that
+all-or-nothing behavior for later candidate renderers so unsupported
 control-flow forms can still fall through cleanly.
 
 ## Proof
