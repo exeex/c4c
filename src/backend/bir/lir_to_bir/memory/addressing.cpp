@@ -1615,12 +1615,15 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
                                                    type_decls,
                                                    structured_layouts_);
           auto storage_type_text =
-              addressed_ptr_it != pointer_value_addresses.end()
+              addressed_ptr_it != pointer_value_addresses.end() &&
+                      !addressed_ptr_it->second.storage_type_text.empty()
                   ? addressed_ptr_it->second.storage_type_text
                   : std::string(c4c::codegen::lir::trim_lir_arg_text(gep.element_type.str()));
           if (leaf_layout.kind == AggregateTypeLayout::Kind::Struct ||
               leaf_layout.kind == AggregateTypeLayout::Kind::Array) {
-            storage_type_text = resolved_target->type_text;
+            if (resolved_target->byte_offset == static_cast<std::int64_t>(base_byte_offset)) {
+              storage_type_text = resolved_target->type_text;
+            }
           }
           pointer_value_addresses[gep.result.str()] = PointerAddress{
               .base_value = *base_pointer,

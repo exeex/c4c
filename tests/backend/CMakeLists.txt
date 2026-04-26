@@ -1514,6 +1514,20 @@ c4c_set_backend_test_labels(
   backend_route
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_nested_pointer_param_dynamic_member_array_load_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/nested_pointer_param_dynamic_member_array_load.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/nested_pointer_param_dynamic_member_array_load_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @get_at(ptr %p.p, i32 %p.i) -> i32 {|%t1 = bir.load_local ptr %t1.addr, addr %p.p+8|%t6.elt0 = bir.load_local i32 %t6.elt0.addr, addr %t1+4|%t6.elt1 = bir.load_local i32 %t6.elt1.addr, addr %t1+8|%t6.elt2 = bir.load_local i32 %t6.elt2.addr, addr %t1+12|%t6 = bir.select eq i64 %t4, 0, i32 %t6.elt0, %t6.sel1|bir.call i32 get_at(ptr %lv.outer, i32 2)|bir.ret i32 %t16"
+  FORBIDDEN_SNIPPETS "define i32 @get_at|load i32, ptr|getelementptr i32, ptr"
+)
+c4c_set_backend_test_labels(
+  backend_codegen_route_x86_64_nested_pointer_param_dynamic_member_array_load_observe_semantic_bir
+  backend_route
+)
+
 add_test(
   NAME backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir
   COMMAND "${CMAKE_COMMAND}"
