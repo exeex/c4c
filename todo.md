@@ -1,42 +1,31 @@
 Status: Active
 Source Idea Path: ideas/open/118_lir_bir_legacy_type_text_removal.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Remove Covered Layout Authority From Legacy Declarations
+Current Step ID: 5
+Current Step Title: Preserve Output Contracts Across Prepared BIR And Backend Runs
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 for the covered named structured aggregate layout
-path used by aggregate call ABI lowering. `lookup_backend_aggregate_type_layout`
-now returns valid structured layout metadata for a named type when no legacy
-`TypeDeclMap` declaration body exists, and still only trusts structured layout
-over legacy text when parity was checked and matched.
-
-Strengthened `backend_prepare_structured_context` so the real `%struct.Pair`
-aggregate-call fixture has structured declaration metadata but no
-`module.type_decls` body, then still lowers and prints the expected sret
-call ABI shape through structured layout authority.
+Recorded supervisor-run broader validation for `plan.md` Step 5 after the
+Step 2 structured-layout-without-legacy-decl change and the Step 3 structured
+sret return fallback text removal. Backend build plus the full runnable
+backend test subset passed with current output contracts preserved.
 
 ## Suggested Next
 
-Delegate the next narrow covered layout-authority packet only after choosing a
-remaining `TypeDeclMap` fallback surface whose structured metadata is already
-complete enough to replace legacy declaration text without weakening parity
-mismatch diagnostics or fallback behavior.
+Either delegate another narrow Step 2 layout-authority packet for a directly
+provable remaining legacy fallback family, or move to Step 6 final
+classification/handoff if no such family is selected.
 
 ## Watchouts
 
-- If a legacy declaration exists and parity is checked but mismatched,
-  `lookup_backend_aggregate_type_layout` still falls back to
-  `compute_aggregate_type_layout(trimmed, type_decls)` so compatibility and
-  parity notes are preserved.
-- Structured layout is only selected when the structured layout itself is valid;
-  invalid or absent structured entries still use existing `TypeDeclMap`
-  fallback behavior.
-- The context-population parity fixture remains intentionally backed by both
-  structured declarations and legacy `type_decls`.
+- The broader backend checkpoint covered runnable `backend_` tests only; 12
+  disabled MIR-focus tests did not run.
+- Keep separating output-contract preservation from legacy-authority removal:
+  passing backend output contracts does not by itself retire the remaining
+  legacy text surfaces listed below.
 
 ## Remaining Legacy Surface Inventory
 
@@ -60,5 +49,7 @@ mismatch diagnostics or fallback behavior.
 
 ## Proof
 
-Ran `{ cmake --build build-backend --target backend_prepare_structured_context_test backend_lir_to_bir_notes_test && ctest --test-dir build-backend -j --output-on-failure -R '^(backend_prepare_structured_context|backend_lir_to_bir_notes)$'; } > test_after.log 2>&1`;
-passed. Proof log: `test_after.log`.
+Supervisor-run validation checkpoint:
+`{ cmake --build build-backend && ctest --test-dir build-backend -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`;
+107/107 runnable backend tests passed, and 12 disabled MIR-focus tests did not
+run. Proof log: `test_after.log`.
