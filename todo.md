@@ -8,22 +8,20 @@ Current Step Title: Recover Prepared Control-Flow Rendering Semantics
 
 ## Just Finished
 
-Step 4 Recover Prepared Control-Flow Rendering Semantics repaired the
-joined-branch `carrier.zero` prepared control-flow block authority blocker in
-the x86 prepared-module handoff validator without keeping the reviewed
-generic branch-owned PhiEdge skip. BIR blocks that are prepared compare-join
-branch targets now prove ownership from the prepared compare branch condition,
-the candidate BIR block's prepared target identity, authoritative true/false
-edge-transfer records, materialized join-transfer carrier authority, and
-published join-block control flow; resolved compare-join predecessors still
-use the materialized compare-join context and published parallel-copy bundles.
+Step 4 Recover Prepared Control-Flow Rendering Semantics repaired the prepared
+true/false branch target resolution blocker for branch-owned compare-join
+targets. Prepared target validation still requires direct BIR block identity by
+default, but now accepts a prepared target label when the source branch has
+authoritative prepared compare-join metadata: owned prepared branch target
+labels, authoritative true/false join-transfer records, non-empty join carrier
+authority, and a published join control-flow block.
 
 ## Suggested Next
 
 Continue Step 4 on the next joined-branch handoff blocker exposed by the same
 proof:
 `canonical prepared-module handoff rejected x86 control-flow label authority:
-prepared true branch target label #2 does not name a BIR block by id`.
+prepared block #2 does not match any BIR block by label id`.
 
 ## Watchouts
 
@@ -73,8 +71,14 @@ control-flow blocks. It is gated by prepared compare-branch target identity,
 candidate BIR block identity, materialized join-transfer carrier authority,
 and authoritative true/false edge transfers rather than any branch-owned
 PhiEdge transfer. Keep future repairs from weakening ordinary prepared block
-validation; the remaining true-branch-target blocker is a separate target
-resolution drift after the `carrier.zero` block authority check.
+validation; the remaining blocker is now prepared block identity for the
+superseded true-lane block after target resolution succeeds.
+The prepared true/false target repair deliberately does not recover from raw
+BIR terminator label spelling. The new target authority path is limited to
+prepared branch-condition labels plus authoritative compare-join transfer and
+carrier metadata; ordinary prepared block validation still rejects missing
+BIR block identity and now exposes that as the next blocker for prepared block
+`#2`.
 
 ## Proof
 
@@ -82,8 +86,8 @@ resolution drift after the `carrier.zero` block authority check.
 rebuilt `tests/backend/backend_x86_handoff_boundary_test` and
 `tests/backend/backend_x86_prepared_handoff_label_authority_test`, kept
 `backend_x86_prepared_handoff_label_authority` passing, and advanced past the
-requested `BIR block 'carrier.zero' has no prepared control-flow block`
+requested `prepared true branch target label #2 does not name a BIR block by id`
 blocker. The aggregate proof still fails later after aborting at `canonical
 prepared-module handoff rejected x86 control-flow label authority: prepared
-true branch target label #2 does not name a BIR block by id`.
+block #2 does not match any BIR block by label id`.
 Canonical proof log: `test_after.log`.

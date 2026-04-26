@@ -173,13 +173,104 @@ std::optional<std::size_t> find_bir_block_index_by_pointer(
   return std::nullopt;
 }
 
+bool prepared_compare_join_owns_branch_target_block(
+    c4c::backend::prepare::PreparedNameTables& mutable_names,
+    const c4c::backend::bir::NameTables& bir_names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& candidate_block,
+    c4c::BlockLabelId candidate_label);
+
+bool prepared_compare_join_owns_branch_target_label(
+    c4c::backend::prepare::PreparedNameTables& mutable_names,
+    const c4c::backend::bir::NameTables& bir_names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    c4c::BlockLabelId candidate_label) {
+  const auto* candidate_block =
+      find_bir_block_by_prepared_label(function, bir_names, mutable_names, candidate_label);
+  return candidate_block != nullptr &&
+         prepared_compare_join_owns_branch_target_block(
+             mutable_names, bir_names, control_flow, function, *candidate_block, candidate_label);
+}
+
+bool prepared_compare_join_metadata_owns_target_label(
+    c4c::backend::prepare::PreparedNameTables& mutable_names,
+    const c4c::backend::bir::NameTables& bir_names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    c4c::BlockLabelId source_block_label,
+    c4c::BlockLabelId target_label) {
+  const auto continuation_targets =
+      c4c::backend::prepare::find_prepared_compare_join_continuation_targets(
+          mutable_names, control_flow, function, source_block_label);
+  if (!continuation_targets.has_value() ||
+      (continuation_targets->true_label != target_label &&
+       continuation_targets->false_label != target_label)) {
+    const auto* prepared_block =
+        c4c::backend::prepare::find_prepared_control_flow_block(control_flow, source_block_label);
+    if (prepared_block == nullptr ||
+        prepared_block->terminator_kind != c4c::backend::bir::TerminatorKind::CondBranch ||
+        (prepared_block->true_label != target_label &&
+         prepared_block->false_label != target_label)) {
+      return false;
+    }
+
+    const auto authoritative_join_transfer =
+        c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
+            mutable_names, control_flow, source_block_label);
+    if (!authoritative_join_transfer.has_value() ||
+        authoritative_join_transfer->join_transfer == nullptr ||
+        authoritative_join_transfer->true_transfer == nullptr ||
+        authoritative_join_transfer->false_transfer == nullptr ||
+        c4c::backend::prepare::effective_prepared_join_transfer_carrier_kind(
+            *authoritative_join_transfer->join_transfer) ==
+            c4c::backend::prepare::PreparedJoinTransferCarrierKind::None ||
+        c4c::backend::prepare::find_prepared_control_flow_block(
+            control_flow, authoritative_join_transfer->join_transfer->join_block_label) ==
+            nullptr) {
+      return false;
+    }
+  }
+
+  const auto* branch_condition =
+      c4c::backend::prepare::find_prepared_branch_condition(control_flow, source_block_label);
+  if (branch_condition == nullptr) {
+    return false;
+  }
+  return prepared_compare_join_owns_branch_target_label(mutable_names,
+                                                        bir_names,
+                                                        control_flow,
+                                                        function,
+                                                        branch_condition->true_label) &&
+         prepared_compare_join_owns_branch_target_label(mutable_names,
+                                                        bir_names,
+                                                        control_flow,
+                                                        function,
+                                                        branch_condition->false_label);
+}
+
 void require_prepared_target_block(const c4c::backend::bir::Function& function,
                                    const c4c::backend::bir::NameTables& bir_names,
-                                   const c4c::backend::prepare::PreparedNameTables& names,
+                                   c4c::backend::prepare::PreparedNameTables& mutable_names,
                                    c4c::BlockLabelId target_label,
-                                   std::string_view context) {
-  require_prepared_block_label(names, target_label, context);
-  if (find_bir_block_by_prepared_label(function, bir_names, names, target_label) == nullptr) {
+                                   std::string_view context,
+                                   const c4c::backend::prepare::PreparedControlFlowFunction*
+                                       control_flow = nullptr,
+                                   c4c::BlockLabelId source_block_label =
+                                       c4c::kInvalidBlockLabel) {
+  require_prepared_block_label(mutable_names, target_label, context);
+  if (find_bir_block_by_prepared_label(function, bir_names, mutable_names, target_label) ==
+      nullptr) {
+    if (control_flow != nullptr &&
+        prepared_compare_join_metadata_owns_target_label(mutable_names,
+                                                         bir_names,
+                                                         *control_flow,
+                                                         function,
+                                                         source_block_label,
+                                                         target_label)) {
+      return;
+    }
     throw_prepared_control_flow_handoff_error(std::string(context) + " label " +
                                               render_prepared_label_id(target_label) +
                                               " does not name a BIR block by id");
@@ -202,10 +293,11 @@ std::optional<c4c::BlockLabelId> bir_block_label_id(
 void validate_prepared_block_targets(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::NameTables& bir_names,
-    const c4c::backend::prepare::PreparedNameTables& names,
+    c4c::backend::prepare::PreparedNameTables& mutable_names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::prepare::PreparedControlFlowBlock& prepared_block) {
-  const auto* bir_block =
-      find_bir_block_by_prepared_label(function, bir_names, names, prepared_block.block_label);
+  const auto* bir_block = find_bir_block_by_prepared_label(
+      function, bir_names, mutable_names, prepared_block.block_label);
   if (bir_block == nullptr) {
     throw_prepared_control_flow_handoff_error(
         "prepared block " + render_prepared_label_id(prepared_block.block_label) +
@@ -223,42 +315,93 @@ void validate_prepared_block_targets(
     case c4c::backend::bir::TerminatorKind::Branch:
       require_prepared_target_block(function,
                                     bir_names,
-                                    names,
+                                    mutable_names,
                                     prepared_block.branch_target_label,
-                                    "prepared branch target");
+                                    "prepared branch target",
+                                    &control_flow,
+                                    prepared_block.block_label);
       break;
     case c4c::backend::bir::TerminatorKind::CondBranch:
       require_prepared_target_block(function,
                                     bir_names,
-                                    names,
+                                    mutable_names,
                                     prepared_block.true_label,
-                                    "prepared true branch target");
+                                    "prepared true branch target",
+                                    &control_flow,
+                                    prepared_block.block_label);
       require_prepared_target_block(function,
                                     bir_names,
-                                    names,
+                                    mutable_names,
                                     prepared_block.false_label,
-                                    "prepared false branch target");
+                                    "prepared false branch target",
+                                    &control_flow,
+                                    prepared_block.block_label);
       break;
   }
+}
+
+bool prepared_branch_condition_matches_block_or_join_metadata(
+    c4c::backend::prepare::PreparedNameTables& mutable_names,
+    const c4c::backend::bir::NameTables& bir_names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedControlFlowBlock& block,
+    const c4c::backend::prepare::PreparedBranchCondition& condition) {
+  if (block.terminator_kind != c4c::backend::bir::TerminatorKind::CondBranch) {
+    return false;
+  }
+  if (block.true_label == condition.true_label && block.false_label == condition.false_label) {
+    return true;
+  }
+
+  const auto continuation_targets =
+      c4c::backend::prepare::find_prepared_compare_join_continuation_targets(
+          mutable_names, control_flow, function, condition.block_label);
+  return continuation_targets.has_value() &&
+         continuation_targets->true_label == block.true_label &&
+         continuation_targets->false_label == block.false_label &&
+         prepared_compare_join_owns_branch_target_label(mutable_names,
+                                                        bir_names,
+                                                        control_flow,
+                                                        function,
+                                                        condition.true_label) &&
+         prepared_compare_join_owns_branch_target_label(mutable_names,
+                                                        bir_names,
+                                                        control_flow,
+                                                        function,
+                                                        condition.false_label);
 }
 
 void validate_prepared_branch_condition(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::NameTables& bir_names,
-    const c4c::backend::prepare::PreparedNameTables& names,
+    c4c::backend::prepare::PreparedNameTables& mutable_names,
     const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
     const c4c::backend::prepare::PreparedBranchCondition& condition) {
   require_prepared_target_block(
-      function, bir_names, names, condition.block_label, "prepared condition block");
+      function, bir_names, mutable_names, condition.block_label, "prepared condition block");
   require_prepared_target_block(
-      function, bir_names, names, condition.true_label, "prepared condition true target");
+      function,
+      bir_names,
+      mutable_names,
+      condition.true_label,
+      "prepared condition true target",
+      &control_flow,
+      condition.block_label);
   require_prepared_target_block(
-      function, bir_names, names, condition.false_label, "prepared condition false target");
+      function,
+      bir_names,
+      mutable_names,
+      condition.false_label,
+      "prepared condition false target",
+      &control_flow,
+      condition.block_label);
 
   const auto* block = c4c::backend::prepare::find_prepared_control_flow_block(
       control_flow, condition.block_label);
-  if (block == nullptr || block->terminator_kind != c4c::backend::bir::TerminatorKind::CondBranch ||
-      block->true_label != condition.true_label || block->false_label != condition.false_label) {
+  if (block == nullptr ||
+      !prepared_branch_condition_matches_block_or_join_metadata(
+          mutable_names, bir_names, control_flow, function, *block, condition)) {
     throw_prepared_control_flow_handoff_error(
         "prepared branch condition targets drifted from prepared block targets");
   }
@@ -434,11 +577,12 @@ void validate_prepared_control_flow_handoff(
   }
 
   for (const auto& block : control_flow->blocks) {
-    validate_prepared_block_targets(function, module.module.names, module.names, block);
+    validate_prepared_block_targets(
+        function, module.module.names, mutable_names, *control_flow, block);
   }
   for (const auto& condition : control_flow->branch_conditions) {
     validate_prepared_branch_condition(
-        function, module.module.names, module.names, *control_flow, condition);
+        function, module.module.names, mutable_names, *control_flow, condition);
   }
 }
 
