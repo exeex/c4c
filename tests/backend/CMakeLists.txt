@@ -382,6 +382,21 @@ set_tests_properties(backend_cli_dump_bir_vla_goto_stackrestore_cfg PROPERTIES
 )
 
 add_test(
+  NAME backend_cli_dump_bir_layout_sensitive_aggregate
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+          -DDUMP_FLAG=--dump-bir
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/backend/case/aggregate_param_return_pair.c
+          "-DREQUIRED_SNIPPETS=bir.func @id_pair(ptr sret(size=8, align=4) %ret.sret, ptr byval(size=8, align=4) %p.p) -> void {|%lv.param.p.p.aggregate.param.copy.4 = bir.load_local i32 %lv.param.p.p.4, addr %p.p+4|bir.store_local %lv.param.p.p.4, i32 id_pair.ret.sret.copy.4, addr %ret.sret+4|bir.call void id_pair(ptr sret(size=8, align=4) %t3, ptr byval(size=8, align=4) %lv.p)"
+          "-DFORBIDDEN_SNIPPETS=prepared.module|--- prepared-control-flow ---|define %struct.Pair @id_pair|call %struct.Pair"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_bir_layout_sensitive_aggregate PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
   NAME backend_cli_dump_prepared_bir_vla_goto_stackrestore_cfg
   COMMAND "${CMAKE_COMMAND}"
           -DCOMPILER=$<TARGET_FILE:c4cll>
