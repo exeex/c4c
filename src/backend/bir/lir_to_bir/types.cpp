@@ -282,6 +282,32 @@ BackendStructuredLayoutTable build_backend_structured_layout_table(
   return table;
 }
 
+bir::StructuredTypeSpellingContext build_bir_structured_type_spelling_context(
+    const std::vector<c4c::codegen::lir::LirStructDecl>& struct_decls,
+    const c4c::StructNameTable& struct_names) {
+  bir::StructuredTypeSpellingContext context;
+  context.declarations.reserve(struct_decls.size());
+  for (const auto& decl : struct_decls) {
+    const std::string_view name = struct_names.spelling(decl.name_id);
+    if (name.empty()) {
+      continue;
+    }
+
+    bir::StructuredTypeDeclSpelling lowered_decl;
+    lowered_decl.name = std::string(name);
+    lowered_decl.fields.reserve(decl.fields.size());
+    lowered_decl.is_packed = decl.is_packed;
+    lowered_decl.is_opaque = decl.is_opaque;
+    for (const auto& field : decl.fields) {
+      lowered_decl.fields.push_back(bir::StructuredTypeFieldSpelling{
+          .type_name = std::string(c4c::codegen::lir::trim_lir_arg_text(field.type.str())),
+      });
+    }
+    context.declarations.push_back(std::move(lowered_decl));
+  }
+  return context;
+}
+
 void report_backend_structured_layout_parity_notes(
     BirLoweringContext& context,
     const BackendStructuredLayoutTable& structured_layouts) {

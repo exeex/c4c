@@ -71,6 +71,16 @@ Value Value::named(TypeKind type, std::string value_name) {
   return result;
 }
 
+const StructuredTypeDeclSpelling* StructuredTypeSpellingContext::find_struct_decl(
+    std::string_view name) const {
+  for (const auto& declaration : declarations) {
+    if (declaration.name == name) {
+      return &declaration;
+    }
+  }
+  return nullptr;
+}
+
 std::string render_type(TypeKind type) {
   switch (type) {
     case TypeKind::Void:

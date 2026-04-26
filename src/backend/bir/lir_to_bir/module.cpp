@@ -10,6 +10,7 @@ namespace {
 
 using lir_to_bir_detail::build_type_decl_map;
 using lir_to_bir_detail::build_backend_structured_layout_table;
+using lir_to_bir_detail::build_bir_structured_type_spelling_context;
 using lir_to_bir_detail::FunctionSymbolSet;
 using lir_to_bir_detail::GlobalInfo;
 using lir_to_bir_detail::GlobalTypes;
@@ -792,6 +793,9 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     function_symbols.insert(function_with_resolved_name(context.lir_module, function).name);
   }
   const auto type_decls = build_type_decl_map(context.lir_module.type_decls);
+  module.structured_types = build_bir_structured_type_spelling_context(
+      context.lir_module.struct_decls,
+      context.lir_module.struct_names);
   const auto structured_layouts = build_backend_structured_layout_table(
       context.lir_module.struct_decls,
       context.lir_module.struct_names,

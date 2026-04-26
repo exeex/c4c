@@ -117,6 +117,9 @@ BackendStructuredLayoutTable build_backend_structured_layout_table(
     const std::vector<c4c::codegen::lir::LirStructDecl>& struct_decls,
     const c4c::StructNameTable& struct_names,
     const TypeDeclMap& legacy_type_decls);
+bir::StructuredTypeSpellingContext build_bir_structured_type_spelling_context(
+    const std::vector<c4c::codegen::lir::LirStructDecl>& struct_decls,
+    const c4c::StructNameTable& struct_names);
 void report_backend_structured_layout_parity_notes(
     BirLoweringContext& context,
     const BackendStructuredLayoutTable& structured_layouts);

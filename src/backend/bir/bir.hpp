@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -151,6 +152,24 @@ struct StringConstant {
   std::string name;
   std::string bytes;
   std::size_t align_bytes = 1;
+};
+
+struct StructuredTypeFieldSpelling {
+  std::string type_name;
+};
+
+struct StructuredTypeDeclSpelling {
+  std::string name;
+  std::vector<StructuredTypeFieldSpelling> fields;
+  bool is_packed = false;
+  bool is_opaque = false;
+};
+
+struct StructuredTypeSpellingContext {
+  std::vector<StructuredTypeDeclSpelling> declarations;
+
+  [[nodiscard]] const StructuredTypeDeclSpelling* find_struct_decl(
+      std::string_view name) const;
 };
 
 struct MemoryAddress {
@@ -372,6 +391,7 @@ struct Function {
 struct Module {
   std::string target_triple;
   std::string data_layout;
+  StructuredTypeSpellingContext structured_types;
   std::vector<Global> globals;
   std::vector<StringConstant> string_constants;
   std::vector<Function> functions;
