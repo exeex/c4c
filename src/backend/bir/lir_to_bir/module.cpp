@@ -1,6 +1,7 @@
 #include "lowering.hpp"
 
 #include <optional>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -144,6 +145,46 @@ void record_block_integer_constant_alias(
       return;
     }
     (*block_value_aliases)[cast->result.str()] = bir::Value::immediate_i64(*immediate);
+  }
+}
+
+void intern_known_block_labels(bir::Module* module, bir::Function* function) {
+  std::unordered_map<std::string_view, c4c::BlockLabelId> known_labels;
+  known_labels.reserve(function->blocks.size());
+  for (auto& block : function->blocks) {
+    block.label_id = module->names.block_labels.intern(block.label);
+    if (block.label_id != c4c::kInvalidBlockLabel) {
+      known_labels.emplace(block.label, block.label_id);
+    }
+  }
+
+  const auto find_known_label = [&](std::string_view label) {
+    const auto it = known_labels.find(label);
+    return it == known_labels.end() ? c4c::kInvalidBlockLabel : it->second;
+  };
+
+  for (auto& block : function->blocks) {
+    for (auto& inst : block.insts) {
+      auto* phi = std::get_if<bir::PhiInst>(&inst);
+      if (phi == nullptr) {
+        continue;
+      }
+      for (auto& incoming : phi->incomings) {
+        incoming.label_id = find_known_label(incoming.label);
+      }
+    }
+
+    switch (block.terminator.kind) {
+      case bir::TerminatorKind::Return:
+        break;
+      case bir::TerminatorKind::Branch:
+        block.terminator.target_label_id = find_known_label(block.terminator.target_label);
+        break;
+      case bir::TerminatorKind::CondBranch:
+        block.terminator.true_label_id = find_known_label(block.terminator.true_label);
+        block.terminator.false_label_id = find_known_label(block.terminator.false_label);
+        break;
+    }
   }
 }
 
@@ -951,6 +992,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
       context.note("module", std::move(message));
       return std::nullopt;
     }
+    intern_known_block_labels(&module, &*lowered_function);
     module.functions.push_back(std::move(*lowered_function));
   }
 

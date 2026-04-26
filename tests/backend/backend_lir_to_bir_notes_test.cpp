@@ -59,6 +59,7 @@ LirModule make_admitted_aggregate_pointer_field_global_module();
 LirModule make_admitted_aggregate_zero_sized_member_global_module();
 LirModule make_admitted_aggregate_string_array_field_global_module();
 LirModule make_admitted_aggregate_long_double_field_global_module();
+LirModule make_structured_block_label_id_module();
 
 int expect_failure_notes(std::string_view case_name,
                          const LirModule& module,
@@ -236,6 +237,82 @@ int expect_admitted_aggregate_zero_sized_member_global() {
   if (global->initializer_elements[0] != c4c::backend::bir::Value::immediate_i8(1) ||
       global->initializer_elements[1] != c4c::backend::bir::Value::immediate_i8(18)) {
     return fail("aggregate globals with zero-sized members should preserve only the concrete surrounding payload bytes");
+  }
+
+  return 0;
+}
+
+int expect_structured_block_label_ids() {
+  auto result = try_lower_to_bir_with_options(make_structured_block_label_id_module(),
+                                              BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("expected semantic BIR lowering to admit structured block label id fixture");
+  }
+
+  const auto& module = *result.module;
+  if (module.functions.size() != 1) {
+    return fail("structured block label id fixture should lower the test function");
+  }
+
+  const auto* switch_function = &module.functions.front();
+  const auto find_block = [&](const c4c::backend::bir::Function& function,
+                              std::string_view label) -> const c4c::backend::bir::Block* {
+    for (const auto& block : function.blocks) {
+      if (block.label == label) {
+        return &block;
+      }
+    }
+    return nullptr;
+  };
+  const auto expect_label_id = [&](const c4c::backend::bir::Block* block) {
+    return block != nullptr && block->label_id != c4c::kInvalidBlockLabel &&
+           module.names.block_labels.spelling(block->label_id) == block->label;
+  };
+
+  const auto* entry = find_block(*switch_function, "entry");
+  const auto* switch_case_1 = find_block(*switch_function, "entry.switch.case.1");
+  const auto* case_one = find_block(*switch_function, "case_one");
+  const auto* case_two = find_block(*switch_function, "case_two");
+  const auto* case_default = find_block(*switch_function, "case_default");
+  const auto* join = find_block(*switch_function, "join");
+  if (!expect_label_id(entry) || !expect_label_id(switch_case_1) ||
+      !expect_label_id(case_one) || !expect_label_id(case_two) ||
+      !expect_label_id(case_default) || !expect_label_id(join)) {
+    return fail("lowered BIR blocks should carry interned structured label ids");
+  }
+
+  if (entry->terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
+      entry->terminator.true_label_id != case_one->label_id ||
+      entry->terminator.false_label_id != switch_case_1->label_id) {
+    return fail("switch entry compare terminator should carry structured case label ids");
+  }
+  if (switch_case_1->terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
+      switch_case_1->terminator.true_label_id != case_two->label_id ||
+      switch_case_1->terminator.false_label_id != case_default->label_id) {
+    return fail("switch-generated compare block should carry structured successor label ids");
+  }
+  if (case_one->terminator.target_label_id != join->label_id ||
+      case_two->terminator.target_label_id != join->label_id ||
+      case_default->terminator.target_label_id != join->label_id) {
+    return fail("plain branch terminators should carry structured target label ids");
+  }
+
+  const auto* phi = join->insts.empty()
+                        ? nullptr
+                        : std::get_if<c4c::backend::bir::PhiInst>(&join->insts.front());
+  if (phi == nullptr || phi->incomings.size() != 4) {
+    return fail("structured block label id fixture should lower the scalar phi join");
+  }
+  for (const auto& incoming : phi->incomings) {
+    const auto* source = find_block(*switch_function, incoming.label);
+    if (source != nullptr && incoming.label_id != source->label_id) {
+      return fail("scalar phi incoming labels should carry matching structured label ids");
+    }
+    if (source == nullptr &&
+        (incoming.label != "ghost" || incoming.label_id != c4c::kInvalidBlockLabel ||
+         module.names.block_labels.find(incoming.label) != c4c::kInvalidBlockLabel)) {
+      return fail("unresolved phi incoming labels should preserve raw strings and invalid ids");
+    }
   }
 
   return 0;
@@ -1968,6 +2045,72 @@ LirModule make_bad_load_module() {
   return module;
 }
 
+LirModule make_structured_block_label_id_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirFunction switch_function;
+  switch_function.name = "structured_block_label_ids";
+  switch_function.signature_text = "define i32 @structured_block_label_ids(i32 %selector)";
+  switch_function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+  c4c::TypeSpec int_type{};
+  int_type.base = c4c::TB_INT;
+  int_type.enum_underlying_base = c4c::TB_VOID;
+  switch_function.params.push_back({"%selector", int_type});
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirSwitch{
+      .selector_name = "%selector",
+      .selector_type = "i32",
+      .default_label = "case_default",
+      .cases = {{1, "case_one"}, {2, "case_two"}},
+  };
+
+  LirBlock case_one;
+  case_one.label = "case_one";
+  case_one.terminator = LirBr{
+      .target_label = "join",
+  };
+
+  LirBlock case_two;
+  case_two.label = "case_two";
+  case_two.terminator = LirBr{
+      .target_label = "join",
+  };
+
+  LirBlock case_default;
+  case_default.label = "case_default";
+  case_default.terminator = LirBr{
+      .target_label = "join",
+  };
+
+  LirBlock join;
+  join.label = "join";
+  join.insts.push_back(LirPhiOp{
+      .result = LirOperand("%merged"),
+      .type_str = "i32",
+      .incoming = {
+          {"11", "case_one"},
+          {"22", "case_two"},
+          {"33", "case_default"},
+          {"44", "ghost"},
+      },
+  });
+  join.terminator = LirRet{
+      .value_str = "%merged",
+      .type_str = "i32",
+  };
+
+  switch_function.blocks.push_back(std::move(entry));
+  switch_function.blocks.push_back(std::move(case_one));
+  switch_function.blocks.push_back(std::move(case_two));
+  switch_function.blocks.push_back(std::move(case_default));
+  switch_function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(switch_function));
+  return module;
+}
+
 }  // namespace
 
 int main() {
@@ -2240,6 +2383,11 @@ int main() {
           "aggregate phi joins should not keep the module on the scalar-control-flow semantic-family note");
       aggregate_phi_join_status != 0) {
     return aggregate_phi_join_status;
+  }
+
+  if (const int structured_block_label_id_status = expect_structured_block_label_ids();
+      structured_block_label_id_status != 0) {
+    return structured_block_label_id_status;
   }
 
   if (const int scalar_float_globals_status = expect_admitted_scalar_float_globals();
