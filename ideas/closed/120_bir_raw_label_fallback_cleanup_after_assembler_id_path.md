@@ -1,8 +1,9 @@
 # BIR Raw Label Fallback Cleanup After Assembler Id Path
 
-Status: Open
+Status: Closed
 Created: 2026-04-26
 Last Updated: 2026-04-26
+Closed: 2026-04-26
 
 Parent Ideas:
 - [119_bir_block_label_structured_identity_for_assembler.md](/workspaces/c4c/ideas/closed/119_bir_block_label_structured_identity_for_assembler.md)
@@ -59,3 +60,19 @@ Candidate cleanup surfaces:
 - Existing dump spelling remains stable unless a contract change is approved.
 - Tests cover both valid id rendering and any intentionally retained fallback
   behavior.
+
+## Closure Summary
+
+Closed after Step 6 final validation. Raw BIR label spelling remains only as an
+explicit compatibility payload for stable dumps, raw-only fixtures,
+unresolved-id paths, selector spelling boundaries, older prepared-module
+contract fixtures, and target-local MIR/codegen routes that belong to separate
+work. Ordinary BIR construction, printing, focus handling, prepared pipeline
+consumers, and the bounded x86 prepared handoff path now prefer structured
+`BlockLabelId` authority where ids are available.
+
+Close proof used the accepted Step 5 backend baseline in `test_before.log` and
+the fresh Step 6 backend proof in `test_after.log` for the same backend command
+with x86 backend tests disabled by configuration. Both logs report 108/108
+enabled backend tests passing; the close-time regression guard passed in
+non-decreasing mode with no new failures.
