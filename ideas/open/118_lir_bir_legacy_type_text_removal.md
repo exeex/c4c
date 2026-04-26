@@ -5,7 +5,7 @@ Created: 2026-04-26
 Last Updated: 2026-04-26
 
 Parent Ideas:
-- [116_bir_layout_dual_path_coverage_and_dump_guard.md](/workspaces/c4c/ideas/open/116_bir_layout_dual_path_coverage_and_dump_guard.md)
+- [116_bir_layout_dual_path_coverage_and_dump_guard.md](/workspaces/c4c/ideas/closed/116_bir_layout_dual_path_coverage_and_dump_guard.md)
 - [117_bir_printer_structured_render_context.md](/workspaces/c4c/ideas/open/117_bir_printer_structured_render_context.md)
 
 ## Goal
