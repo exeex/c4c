@@ -90,8 +90,60 @@ int check_structured_context_population() {
   return 0;
 }
 
+int check_call_return_rendering_prefers_structured_context() {
+  bir::Module module;
+  module.structured_types.declarations.push_back(bir::StructuredTypeDeclSpelling{
+      .name = "%struct.Pair",
+      .fields = {bir::StructuredTypeFieldSpelling{.type_name = "i32"},
+                 bir::StructuredTypeFieldSpelling{.type_name = "i32"}},
+  });
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::Void;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "make_pair",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "%ret.sret")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Memory,
+          .sret_pointer = true,
+      }},
+      .structured_return_type_name = "%struct.Pair",
+      .return_type_name = "legacy-return-text-should-not-render",
+      .return_type = bir::TypeKind::Void,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Void,
+          .primary_class = bir::AbiValueClass::Memory,
+          .returned_in_memory = true,
+      },
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  const std::string printed = bir::print(module);
+  if (printed.find("bir.call void make_pair(ptr sret(size=8, align=4) %ret.sret)") ==
+      std::string::npos) {
+    return fail("BIR call return rendering did not use structured context for sret void spelling");
+  }
+  if (printed.find("legacy-return-text-should-not-render") != std::string::npos) {
+    return fail("BIR call return rendering used legacy return_type_name before structured context");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
-  return check_structured_context_population();
+  if (const int status = check_structured_context_population(); status != 0) {
+    return status;
+  }
+  return check_call_return_rendering_prefers_structured_context();
 }

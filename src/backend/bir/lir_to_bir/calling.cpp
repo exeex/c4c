@@ -754,6 +754,13 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
   lowered_call.args = std::move(lowered_args);
   lowered_call.arg_types = std::move(lowered_arg_types);
   lowered_call.arg_abi = std::move(lowered_arg_abi);
+  if (call.return_type.has_struct_name_id()) {
+    const auto structured_return_name =
+        context_.lir_module.struct_names.spelling(call.return_type.struct_name_id());
+    if (!structured_return_name.empty()) {
+      lowered_call.structured_return_type_name = std::string(structured_return_name);
+    }
+  }
   lowered_call.return_type_name =
       return_info->returned_via_sret ? "void" : std::string(call.return_type.str());
   lowered_call.return_type = return_info->type;

@@ -276,6 +276,7 @@ struct CallInst {
   std::vector<Value> args;
   std::vector<TypeKind> arg_types;
   std::vector<CallArgAbiInfo> arg_abi;
+  std::optional<std::string> structured_return_type_name;
   std::string return_type_name;
   TypeKind return_type = TypeKind::Void;
   std::optional<CallResultAbiInfo> result_abi;

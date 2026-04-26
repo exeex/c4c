@@ -50,7 +50,18 @@ std::string render_value(const Value& value) {
   return std::to_string(value.immediate);
 }
 
-std::string render_call_type_name(const CallInst& call) {
+std::string render_call_type_name(const CallInst& call,
+                                  const StructuredTypeSpellingContext& structured_types) {
+  if (call.structured_return_type_name.has_value() &&
+      structured_types.find_struct_decl(*call.structured_return_type_name) != nullptr) {
+    if (call.result_abi.has_value() && call.result_abi->returned_in_memory) {
+      return "void";
+    }
+    if (call.return_type == TypeKind::Void) {
+      return "void";
+    }
+    return *call.structured_return_type_name;
+  }
   if (!call.return_type_name.empty()) {
     return call.return_type_name;
   }
@@ -135,7 +146,9 @@ void render_phi_observation(std::ostringstream& out, const PhiObservation& obser
   out << "\n";
 }
 
-void render_function(std::ostringstream& out, const Function& function) {
+void render_function(std::ostringstream& out,
+                     const Function& function,
+                     const StructuredTypeSpellingContext& structured_types) {
   out << "bir.func @" << function.name << "(";
   for (std::size_t index = 0; index < function.params.size(); ++index) {
     if (index != 0) {
@@ -197,7 +210,7 @@ void render_function(std::ostringstream& out, const Function& function) {
               } else {
                 out << "  ";
               }
-              out << "bir.call " << render_call_type_name(lowered) << " "
+              out << "bir.call " << render_call_type_name(lowered, structured_types) << " "
                   << render_call_target(lowered) << "(";
               for (std::size_t arg_index = 0; arg_index < lowered.args.size(); ++arg_index) {
                 if (arg_index != 0) {
@@ -302,7 +315,7 @@ std::string print(const Module& module) {
     if (index != 0) {
       out << "\n";
     }
-    render_function(out, module.functions[index]);
+    render_function(out, module.functions[index], module.structured_types);
   }
   return out.str();
 }
