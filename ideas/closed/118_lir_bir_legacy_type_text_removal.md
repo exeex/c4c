@@ -1,6 +1,6 @@
 # LIR BIR Legacy Type Text Removal
 
-Status: Open
+Status: Closed
 Created: 2026-04-26
 Last Updated: 2026-04-26
 
@@ -72,6 +72,43 @@ Out of scope unless a runbook explicitly proves readiness:
   type-ref-authority work, planned-rebuild residue, or explicitly deferred
   compatibility surfaces.
 - No testcase-overfit expectation rewrite is used to claim progress.
+
+## Completion Notes
+
+Closed after the active runbook completed Steps 1 through 6.
+
+Accepted removals:
+
+- Structured aggregate sret calls no longer populate
+  `CallInst::return_type_name` when `structured_return_type_name` exists.
+- `lookup_backend_aggregate_type_layout` can use valid named structured layout
+  metadata without a legacy type declaration body, while preserving the
+  parity-mismatch fallback.
+
+Remaining legacy text is intentionally classified rather than silently folded
+into this route:
+
+- Final spelling/output data remains for LIR printing, final LLVM emission,
+  scalar/pointer call return spellings, runtime intrinsics, inline asm,
+  prepared-BIR/manual calls, and declarations/globals that still need exact
+  textual output.
+- Type-ref-authority work remains for raw `LirTypeRef` consumers such as call
+  return parsing, typed call args, GEP/load/store/cast/phi/select type strings,
+  aggregate field text, and declaration/global strings that still mix final
+  spelling with lowering authority.
+- Planned-rebuild residue remains around `LirModule::type_decls` and
+  `TypeDeclMap` for unnamed aggregate text, named types without valid
+  structured layout metadata, invalid structured layouts, and proof-only
+  structured-layout parity notes.
+- Compatibility fallbacks remain for named structured types with legacy parity
+  mismatches and structured aggregate sret calls whose producers do not yet
+  supply `structured_return_type_name`.
+
+Close validation used the existing backend regression logs:
+`test_before.log` and `test_after.log` both covered
+`{ cmake --build build-backend && ctest --test-dir build-backend -j --output-on-failure -R '^backend_'; }`.
+The non-regression guard passed with 107/107 runnable backend tests passing
+before and after; 12 disabled MIR-focus tests did not run.
 
 ## Deferred
 
