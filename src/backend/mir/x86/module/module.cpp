@@ -24,11 +24,24 @@ namespace {
                               std::move(detail));
 }
 
+[[noreturn]] void throw_prepared_value_location_handoff_error(std::string detail) {
+  throw std::invalid_argument("canonical prepared-module handoff rejected x86 value-location "
+                              "authority: " +
+                              std::move(detail));
+}
+
 std::string render_prepared_label_id(c4c::BlockLabelId label) {
   if (label == c4c::kInvalidBlockLabel) {
     return "<invalid>";
   }
   return "#" + std::to_string(label);
+}
+
+std::string render_stack_memory_operand(std::size_t byte_offset, std::string_view size_name) {
+  if (byte_offset == 0) {
+    return std::string(size_name) + " PTR [rsp]";
+  }
+  return std::string(size_name) + " PTR [rsp + " + std::to_string(byte_offset) + "]";
 }
 
 std::string_view require_prepared_block_label(
@@ -610,11 +623,145 @@ std::optional<std::int32_t> fold_supported_pointer_compare_return(
   return found->second;
 }
 
+const c4c::backend::prepare::PreparedValueLocationFunction*
+require_prepared_value_location_function(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function) {
+  const auto function_name =
+      c4c::backend::prepare::resolve_prepared_function_name_id(module.names, function.name);
+  if (!function_name.has_value()) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has no prepared function id");
+  }
+  for (const auto& function_locations : module.value_locations.functions) {
+    if (function_locations.function_name == *function_name) {
+      return &function_locations;
+    }
+  }
+  throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                              "' has no prepared value-location record");
+}
+
+const c4c::backend::prepare::PreparedMoveResolution& require_prepared_i32_return_move(
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& block,
+    std::size_t block_index) {
+  const auto* before_return = c4c::backend::prepare::find_prepared_move_bundle(
+      function_locations,
+      c4c::backend::prepare::PreparedMovePhase::BeforeReturn,
+      block_index,
+      block.insts.size());
+  if (before_return == nullptr) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has no prepared return move bundle");
+  }
+  if (before_return->moves.size() != 1) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has an ambiguous prepared return move bundle");
+  }
+  const auto& move = before_return->moves.front();
+  if (move.destination_kind !=
+          c4c::backend::prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
+      move.destination_storage_kind != c4c::backend::prepare::PreparedMoveStorageKind::Register ||
+      !move.destination_register_name.has_value()) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has an unsupported prepared return ABI move");
+  }
+  return move;
+}
+
+std::string render_prepared_i32_value_home_operand(
+    const c4c::backend::prepare::PreparedValueHome& home,
+    const c4c::backend::bir::Function& function) {
+  switch (home.kind) {
+    case c4c::backend::prepare::PreparedValueHomeKind::Register:
+      if (!home.register_name.has_value()) {
+        throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                    "' has a register home without a register");
+      }
+      return c4c::backend::x86::abi::narrow_i32_register_name(*home.register_name);
+    case c4c::backend::prepare::PreparedValueHomeKind::StackSlot:
+      if (!home.offset_bytes.has_value()) {
+        throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                    "' has a stack home without an offset");
+      }
+      return render_stack_memory_operand(*home.offset_bytes, "DWORD");
+    case c4c::backend::prepare::PreparedValueHomeKind::None:
+    case c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate:
+    case c4c::backend::prepare::PreparedValueHomeKind::PointerBasePlusOffset:
+      break;
+  }
+  throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                              "' has an unsupported prepared i32 return home");
+}
+
+bool append_prepared_i32_passthrough_return_function(
+    c4c::backend::x86::core::Text& out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    const Data& data) {
+  if (function.blocks.size() != 1) {
+    return false;
+  }
+
+  const auto& block = function.blocks.front();
+  if (!block.insts.empty() ||
+      block.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !block.terminator.value.has_value() ||
+      block.terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
+      block.terminator.value->type != c4c::backend::bir::TypeKind::I32) {
+    return false;
+  }
+
+  const auto* function_locations = require_prepared_value_location_function(module, function);
+  const auto value_name =
+      c4c::backend::prepare::resolve_prepared_value_name_id(module.names,
+                                                            block.terminator.value->name);
+  if (!value_name.has_value()) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' returns a value with no prepared name id");
+  }
+  const auto* home =
+      c4c::backend::prepare::find_prepared_value_home(*function_locations, *value_name);
+  if (home == nullptr) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' returns a value with no prepared home");
+  }
+
+  const auto& return_move =
+      require_prepared_i32_return_move(*function_locations, function, block, 0);
+  if (return_move.from_value_id != home->value_id) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' return move source drifted from value home");
+  }
+
+  const auto symbol_name = data.render_asm_symbol_name(function.name);
+  out.append_line(".globl " + symbol_name);
+  out.append_line(".type " + symbol_name + ", @function");
+  out.append_line(symbol_name + ":");
+  if (module.stack_layout.frame_size_bytes != 0) {
+    out.append_line("    sub rsp, " + std::to_string(module.stack_layout.frame_size_bytes));
+  }
+  out.append_line("    mov " +
+                  c4c::backend::x86::abi::narrow_i32_register_name(
+                      *return_move.destination_register_name) +
+                  ", " + render_prepared_i32_value_home_operand(*home, function));
+  if (module.stack_layout.frame_size_bytes != 0) {
+    out.append_line("    add rsp, " + std::to_string(module.stack_layout.frame_size_bytes));
+  }
+  out.append_line("    ret");
+  return true;
+}
+
 bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
                                       const c4c::backend::prepare::PreparedBirModule& module,
                                       const c4c::backend::bir::Function& function,
                                       const Data& data) {
   validate_prepared_control_flow_handoff(module, function);
+  if (append_prepared_i32_passthrough_return_function(out, module, function, data)) {
+    return true;
+  }
   const auto folded_return = fold_supported_pointer_compare_return(module.module, function);
   if (!folded_return.has_value()) {
     return false;
