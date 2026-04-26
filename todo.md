@@ -8,26 +8,21 @@ Current Step Title: Make Safe Structured Layout Lookups First-Class
 
 ## Just Finished
 
-Completed `plan.md` Step 2 declaration/signature ABI slice.
+Completed `plan.md` Step 2 local direct dynamic member-array lookup guard.
 
-`BirFunctionLowerer::lower_extern_decl(...)` and
-`BirFunctionLowerer::lower_decl_function(...)` now receive the module
-`TypeDeclMap` and `BackendStructuredLayoutTable`. Extern declaration return
-lowering, declaration-only function signature return lowering, and
-declaration-only parameter ABI lowering now call the existing structured-aware
-aggregate ABI helpers with module layout authority when it is available.
-
-Legacy fallback remains available through the existing fallback helper and
-through `lookup_backend_aggregate_type_layout(...)`; named `%struct` behavior
-still stays parity-gated by the shared lookup rather than becoming globally
-structured-first.
+This slice is coverage-only for an already structured-ready local aggregate
+slot path: `local_direct_dynamic_member_array_load.c` now places `xs[3]`
+behind a leading `char`, forcing dynamic member-array loads through a nonzero
+field offset with padding. The semantic BIR guard now checks that the lowered
+local slots are `%lv.p.4`, `%lv.p.8`, and `%lv.p.12` and still use dynamic
+selects instead of falling back to LLVM `getelementptr`.
 
 ## Suggested Next
 
-Continue `plan.md` Step 2 with the next safe structured layout lookup family:
-pick one covered aggregate size/alignment or field-offset query family and add
-focused tests around nested, packed, empty, array, or pointer-containing
-aggregates as appropriate.
+Continue `plan.md` Step 2 with the next safe structured layout lookup family,
+preferably a real capability repair for pointer-parameter dynamic nested member
+arrays or another small aggregate size/alignment or field-offset lookup that
+can be proven without changing global lookup policy.
 
 ## Watchouts
 
@@ -36,17 +31,15 @@ aggregates as appropriate.
 - Treat `--dump-bir` tests as guards for lowered BIR facts, not as a BIR
   printer render-context migration.
 - Do not downgrade expectations or add named-case shortcuts.
-- The module declaration call sites had to be threaded alongside the delegated
-  declaration helpers so declaration lowering can actually receive module
-  layout authority.
+- An exploratory nested pointer-parameter case like `p->inner.xs[i]` currently
+  lowered to only the first element at `addr %p.p+8`; that route was not kept
+  in this slice because it needs a separate capability repair rather than a
+  snippet update.
 
 ## Proof
 
 Proof command run:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|abi_)'; } > test_after.log 2>&1`
+`{ cmake --build build-backend && ctest --test-dir build-backend -j --output-on-failure -R '^backend_codegen_route_x86_64_(nested_member_pointer_array|local_dynamic_member_array|local_dynamic_member_array_store|local_direct_dynamic_member_array_store|local_direct_dynamic_member_array_load|local_direct_dynamic_struct_array_call)_observe_semantic_bir$'; } > test_after.log 2>&1`
 
-Result: passed. Build completed and 7/7 selected tests passed.
+Result: passed. Build completed and 6/6 selected tests passed.
 Proof log: `test_after.log`.
-
-Additional compile sanity check passed because the delegated `build` preset has
-`ENABLE_C4C_BACKEND=OFF`: `cmake --build build-backend --target c4c_backend`.

@@ -1580,7 +1580,7 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DSRC_A=${BACKEND_CASE_ROOT}/local_direct_dynamic_member_array_load.c
           -DOUT_A=${CMAKE_BINARY_DIR}/backend_route/local_direct_dynamic_member_array_load_semantic_bir_x86_64.ll
-          "-DREQUIRED_SNIPPETS_A=bir.func @main() -> i32 {|bir.store_local %lv.p.0, i32 4|bir.store_local %lv.p.4, i32 8|bir.store_local %lv.p.8, i32 11|bir.store_local %lv.i, i32 1|%t14 = bir.load_local i32 %lv.i|%t15 = bir.sext i32 %t14 to i64|%t17.elt0 = bir.load_local i32 %lv.p.0|%t17.elt1 = bir.load_local i32 %lv.p.4|%t17.elt2 = bir.load_local i32 %lv.p.8|%t17 = bir.select eq i64 %t15, 0, i32 %t17.elt0, %t17.sel1|bir.ret i32 %t17"
+          "-DREQUIRED_SNIPPETS_A=bir.func @main() -> i32 {|bir.store_local %lv.p.0, i8 2|bir.store_local %lv.p.4, i32 4|bir.store_local %lv.p.8, i32 8|bir.store_local %lv.p.12, i32 11|bir.store_local %lv.i, i32 1|%t16 = bir.load_local i32 %lv.i|%t17 = bir.sext i32 %t16 to i64|%t19.elt0 = bir.load_local i32 %lv.p.4|%t19.elt1 = bir.load_local i32 %lv.p.8|%t19.elt2 = bir.load_local i32 %lv.p.12|%t19 = bir.select eq i64 %t17, 0, i32 %t19.elt0, %t19.sel1|bir.ret i32 %t19"
           "-DFORBIDDEN_SNIPPETS_A=define i32 @main()|load i32, ptr|getelementptr [3 x i32], ptr"
           -DSRC_B=${BACKEND_CASE_ROOT}/local_array.c
           -DOUT_B=${CMAKE_BINARY_DIR}/backend_route/local_direct_dynamic_member_array_load_local_array_semantic_bir_x86_64.ll
