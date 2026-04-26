@@ -1198,6 +1198,242 @@ bool append_prepared_i32_same_module_global_return_function(
   return true;
 }
 
+bool append_prepared_i32_same_module_global_sub_return_function(
+    c4c::backend::x86::core::Text& out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    const Data& data) {
+  if (function.blocks.size() != 1) {
+    return false;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.insts.empty() ||
+      block.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !block.terminator.value.has_value() ||
+      block.terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
+      block.terminator.value->type != c4c::backend::bir::TypeKind::I32) {
+    return false;
+  }
+
+  const auto* function_locations = require_prepared_value_location_function(module, function);
+  std::unordered_map<std::string_view, std::string> value_locations;
+  std::unordered_map<std::string_view, const c4c::backend::prepare::PreparedValueHome*> value_homes;
+  std::string current_eax_value;
+
+  const auto require_register_home =
+      [&](std::string_view value_name,
+          std::string_view context) -> const c4c::backend::prepare::PreparedValueHome& {
+    const auto& home =
+        require_prepared_i32_value_home(module, *function_locations, function, value_name, context);
+    if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+        !home.register_name.has_value()) {
+      throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                  "' has an unsupported prepared i32 " +
+                                                  std::string(context) + " home");
+    }
+    value_homes[value_name] = &home;
+    return home;
+  };
+
+  const auto narrow_home_register =
+      [](const c4c::backend::prepare::PreparedValueHome& home) -> std::string {
+    return c4c::backend::x86::abi::narrow_i32_register_name(*home.register_name);
+  };
+
+  const auto value_location = [&](std::string_view value_name) -> std::optional<std::string> {
+    const auto found = value_locations.find(value_name);
+    if (found == value_locations.end()) {
+      return std::nullopt;
+    }
+    return found->second;
+  };
+
+  const auto value_is_used_later = [&](std::string_view value_name,
+                                       std::size_t after_inst_index) -> bool {
+    for (std::size_t later_index = after_inst_index + 1; later_index < block.insts.size();
+         ++later_index) {
+      const auto* later_binary =
+          std::get_if<c4c::backend::bir::BinaryInst>(&block.insts[later_index]);
+      if (later_binary == nullptr) {
+        continue;
+      }
+      if ((later_binary->lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+           later_binary->lhs.name == value_name) ||
+          (later_binary->rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+           later_binary->rhs.name == value_name)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const auto validate_binary_operand_move =
+      [&](const c4c::backend::bir::Value& operand,
+          const c4c::backend::prepare::PreparedValueHome& result_home,
+          const c4c::backend::prepare::PreparedMoveBundle& bundle) {
+    if (operand.kind != c4c::backend::bir::Value::Kind::Named) {
+      return;
+    }
+    const auto home_found = value_homes.find(operand.name);
+    if (home_found == value_homes.end()) {
+      throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                  "' binary operand has no tracked prepared home");
+    }
+    const auto matching_move =
+        std::find_if(bundle.moves.begin(),
+                     bundle.moves.end(),
+                     [&](const c4c::backend::prepare::PreparedMoveResolution& move) {
+                       return move.from_value_id == home_found->second->value_id &&
+                              move.to_value_id == result_home.value_id &&
+                              move.destination_kind ==
+                                  c4c::backend::prepare::PreparedMoveDestinationKind::Value &&
+                              move.destination_storage_kind ==
+                                  c4c::backend::prepare::PreparedMoveStorageKind::Register;
+                     });
+    if (matching_move == bundle.moves.end()) {
+      throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                  "' instruction move drifted from binary operand homes");
+    }
+  };
+
+  const auto symbol_name = data.render_asm_symbol_name(function.name);
+  c4c::backend::x86::core::Text function_out;
+  function_out.append_line(".globl " + symbol_name);
+  function_out.append_line(".type " + symbol_name + ", @function");
+  function_out.append_line(symbol_name + ":");
+
+  bool saw_binary_sub = false;
+  for (std::size_t inst_index = 0; inst_index < block.insts.size(); ++inst_index) {
+    if (const auto* store_global =
+            std::get_if<c4c::backend::bir::StoreGlobalInst>(&block.insts[inst_index])) {
+      if (store_global->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+          store_global->value.type != c4c::backend::bir::TypeKind::I32 ||
+          store_global->address.has_value() ||
+          find_supported_same_module_i32_global(
+              module.module, store_global->global_name, store_global->byte_offset) == nullptr) {
+        return false;
+      }
+      function_out.append_line("    mov " +
+                               render_global_i32_memory_operand(
+                                   data, store_global->global_name, store_global->byte_offset) +
+                               ", " + std::to_string(store_global->value.immediate));
+      continue;
+    }
+
+    if (const auto* load_global =
+            std::get_if<c4c::backend::bir::LoadGlobalInst>(&block.insts[inst_index])) {
+      if (load_global->result.kind != c4c::backend::bir::Value::Kind::Named ||
+          load_global->result.type != c4c::backend::bir::TypeKind::I32 ||
+          load_global->address.has_value() ||
+          find_supported_same_module_i32_global(
+              module.module, load_global->global_name, load_global->byte_offset) == nullptr) {
+        return false;
+      }
+      require_register_home(load_global->result.name, "global load result value");
+      function_out.append_line("    mov eax, " +
+                               render_global_i32_memory_operand(
+                                   data, load_global->global_name, load_global->byte_offset));
+      value_locations[load_global->result.name] = "eax";
+      current_eax_value = load_global->result.name;
+      continue;
+    }
+
+    const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&block.insts[inst_index]);
+    if (binary == nullptr || binary->opcode != c4c::backend::bir::BinaryOpcode::Sub ||
+        binary->operand_type != c4c::backend::bir::TypeKind::I32 ||
+        binary->result.kind != c4c::backend::bir::Value::Kind::Named ||
+        binary->result.type != c4c::backend::bir::TypeKind::I32 ||
+        binary->lhs.type != c4c::backend::bir::TypeKind::I32 ||
+        binary->rhs.type != c4c::backend::bir::TypeKind::I32) {
+      return false;
+    }
+
+    const auto& result_home = require_register_home(binary->result.name, "binary result value");
+    const auto* instruction_move = c4c::backend::prepare::find_prepared_move_bundle(
+        *function_locations,
+        c4c::backend::prepare::PreparedMovePhase::BeforeInstruction,
+        0,
+        inst_index);
+    if (instruction_move == nullptr) {
+      throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                  "' has no prepared binary instruction move bundle");
+    }
+    const std::size_t named_operand_count =
+        (binary->lhs.kind == c4c::backend::bir::Value::Kind::Named ? 1U : 0U) +
+        (binary->rhs.kind == c4c::backend::bir::Value::Kind::Named ? 1U : 0U);
+    if (instruction_move->moves.size() != named_operand_count) {
+      throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                  "' has an ambiguous prepared binary instruction move bundle");
+    }
+    validate_binary_operand_move(binary->lhs, result_home, *instruction_move);
+    validate_binary_operand_move(binary->rhs, result_home, *instruction_move);
+
+    std::string rhs_operand;
+    if (binary->rhs.kind == c4c::backend::bir::Value::Kind::Immediate) {
+      rhs_operand = std::to_string(binary->rhs.immediate);
+    } else {
+      const auto rhs_location = value_location(binary->rhs.name);
+      if (!rhs_location.has_value()) {
+        return false;
+      }
+      function_out.append_line("    mov ecx, " + *rhs_location);
+      rhs_operand = "ecx";
+    }
+
+    if (binary->lhs.kind == c4c::backend::bir::Value::Kind::Immediate) {
+      function_out.append_line("    mov eax, " + std::to_string(binary->lhs.immediate));
+    } else {
+      const auto lhs_location = value_location(binary->lhs.name);
+      if (!lhs_location.has_value()) {
+        return false;
+      }
+      if (*lhs_location != "eax") {
+        function_out.append_line("    mov eax, " + *lhs_location);
+      }
+    }
+    function_out.append_line("    sub eax, " + rhs_operand);
+
+    const auto result_register = narrow_home_register(result_home);
+    if (result_register != "eax") {
+      function_out.append_line("    mov " + result_register + ", eax");
+    }
+    if (value_is_used_later(binary->result.name, inst_index)) {
+      function_out.append_line("    mov ecx, eax");
+    }
+    value_locations[binary->result.name] = result_register;
+    current_eax_value = binary->result.name;
+    saw_binary_sub = true;
+  }
+
+  if (!saw_binary_sub) {
+    return false;
+  }
+
+  const auto return_location = value_location(block.terminator.value->name);
+  if (!return_location.has_value()) {
+    return false;
+  }
+  const auto return_home_found = value_homes.find(block.terminator.value->name);
+  if (return_home_found == value_homes.end()) {
+    return false;
+  }
+  const auto& return_move =
+      require_prepared_i32_return_move(*function_locations, function, block, 0);
+  if (return_move.from_value_id != return_home_found->second->value_id) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' return move source drifted from expression home");
+  }
+  const auto return_register =
+      c4c::backend::x86::abi::narrow_i32_register_name(*return_move.destination_register_name);
+  if (current_eax_value != block.terminator.value->name && *return_location != return_register) {
+    function_out.append_line("    mov " + return_register + ", " + *return_location);
+  }
+  function_out.append_line("    ret");
+  out.append_raw(function_out.take_text());
+  return true;
+}
+
 bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
                                       const c4c::backend::prepare::PreparedBirModule& module,
                                       const c4c::backend::bir::Function& function,
@@ -1216,6 +1452,9 @@ bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
     return true;
   }
   if (append_prepared_i32_same_module_global_return_function(out, module, function, data)) {
+    return true;
+  }
+  if (append_prepared_i32_same_module_global_sub_return_function(out, module, function, data)) {
     return true;
   }
   const auto folded_return = fold_supported_pointer_compare_return(module.module, function);

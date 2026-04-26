@@ -9,28 +9,30 @@ Current Step Title: Recover Supported Scalar Rendering Semantics
 ## Just Finished
 
 Step 3 Recover Supported Scalar Rendering Semantics restored semantic
-prepared-module rendering for the minimal same-module global `i32` load return
+prepared-module rendering for the minimal same-module global `i32` sub return
 lane. The x86 prepared-module consumer now accepts a supported single-block
-same-module global scalar form with `i32` immediate global stores followed by a
-returned `i32` global load, consumes the prepared load result home plus the
-authoritative prepared return move, emits the load through the prepared return
-ABI register, emits RIP-relative global accesses, and publishes the matching
-same-module zero global data definition.
+same-module global scalar expression form with `i32` immediate global stores,
+same-module `i32` global loads, and `i32` subtraction over immediate or tracked
+named operands; validates prepared register homes, binary instruction move
+bundles, and the authoritative prepared return move; emits RIP-relative global
+accesses; and keeps same-module data definition emission on the existing data
+path.
 
 ## Suggested Next
 
-Next packet should continue Step 3 on the next scalar blocker from the same
-proof: recover semantic prepared-module rendering for the `minimal named
-same-module global sub return route`.
+Next packet should move to the next blocker exposed by the same proof:
+recover prepared-module rendering for the `scalar-control-flow
+compare-against-zero branch lane`.
 
 ## Watchouts
 
 Do not turn the same-module global route into a named-fixture dispatcher. The
 new route is gated by supported same-module globals, `i32` immediate stores,
-`i32` global loads without pointer-backed addresses, and prepared value-location
-authority. The live blocker is still in the same-module global family, but it
-adds multiple global loads plus intervening `i32` subtraction rather than a
-single loaded value returned directly.
+`i32` global loads without pointer-backed addresses, `i32` subtraction, and
+prepared value-location authority. The current route renders into a local
+buffer and only publishes assembly after the whole supported shape is accepted;
+keep that all-or-nothing behavior for later candidate renderers so unsupported
+control-flow forms can still fall through cleanly.
 
 ## Proof
 
@@ -38,7 +40,7 @@ single loaded value returned directly.
 rebuilt `tests/backend/backend_x86_handoff_boundary_test` and
 `tests/backend/backend_x86_prepared_handoff_label_authority_test`, kept
 `backend_x86_prepared_handoff_label_authority` passing, and advanced past
-`minimal named same-module global return route`. The aggregate proof now fails
-later at `minimal named same-module global sub return route: x86 prepared-module
-consumer did not emit the canonical asm`.
+`minimal named same-module global sub return route`. The aggregate proof now
+fails later at `scalar-control-flow compare-against-zero branch lane: x86
+prepared-module consumer did not emit the canonical asm`.
 Canonical proof log: `test_after.log`.
