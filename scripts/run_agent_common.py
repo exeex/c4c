@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import os
 import re
 import shutil
@@ -185,6 +186,10 @@ def build_command(cli: str, prompt: str, args: argparse.Namespace) -> list[str]:
         command = [
             "claude",
             "--dangerously-skip-permissions",
+            "--verbose",
+            "--output-format",
+            "stream-json",
+            "--include-partial-messages",
             "-p",
             prompt,
             "--model",
@@ -212,7 +217,82 @@ def build_command(cli: str, prompt: str, args: argparse.Namespace) -> list[str]:
     raise ValueError(f"Unsupported CLI: {cli}")
 
 
-def stream_process(command: list[str], logfile: Path, tmp_log_path: Path) -> int:
+def render_claude_event(raw_line: str) -> str:
+    """Convert one stream-json line into a human-readable chunk.
+
+    Returns "" to swallow the event. Output may be a partial chunk (no
+    trailing newline) so streaming text/thinking deltas concatenate naturally.
+    """
+    raw_line = raw_line.strip()
+    if not raw_line:
+        return ""
+    try:
+        event = json.loads(raw_line)
+    except json.JSONDecodeError:
+        return raw_line + "\n"
+
+    t = event.get("type")
+    if t == "system":
+        sub = event.get("subtype")
+        if sub == "init":
+            sid = (event.get("session_id") or "")[:8]
+            return f"[claude] session {sid} init\n"
+        if sub == "status":
+            return f"[claude] {event.get('status', '')}\n"
+        return ""
+    if t == "stream_event":
+        ev = event.get("event", {})
+        et = ev.get("type")
+        if et == "content_block_start":
+            cb = ev.get("content_block", {}) or {}
+            cb_type = cb.get("type")
+            if cb_type == "thinking":
+                return "\n[thinking] "
+            if cb_type == "text":
+                return "\n[assistant] "
+            if cb_type == "tool_use":
+                return f"\n[tool: {cb.get('name', '?')}] "
+            return ""
+        if et == "content_block_delta":
+            d = ev.get("delta", {}) or {}
+            dt_ = d.get("type")
+            if dt_ == "thinking_delta":
+                return d.get("thinking", "")
+            if dt_ == "text_delta":
+                return d.get("text", "")
+            if dt_ == "input_json_delta":
+                return d.get("partial_json", "")
+            return ""
+        if et == "message_stop":
+            return "\n"
+        return ""
+    if t == "user":
+        msg = event.get("message", {}) or {}
+        out = []
+        for c in msg.get("content", []) or []:
+            if not isinstance(c, dict) or c.get("type") != "tool_result":
+                continue
+            tr = c.get("content", "")
+            if isinstance(tr, list):
+                parts = []
+                for item in tr:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        parts.append(item.get("text", ""))
+                tr = "".join(parts)
+            head = (tr or "").splitlines()[0] if tr else ""
+            out.append(f"\n[tool result] {head[:160]}")
+        return ("".join(out) + "\n") if out else ""
+    if t == "rate_limit_event":
+        info = event.get("rate_limit_info", {}) or {}
+        return f"\n[rate limit] status={info.get('status', '')}\n"
+    if t == "result":
+        ok = not event.get("is_error", True)
+        ms = event.get("duration_ms", 0)
+        return f"\n[claude result] success={ok} duration={ms}ms\n"
+    return ""
+
+
+def stream_process(command: list[str], logfile: Path, tmp_log_path: Path, cli: str) -> int:
     ensure_parent_dir(logfile)
     ensure_parent_dir(tmp_log_path)
     with logfile.open("w", encoding="utf-8", errors="replace") as log_fp, tmp_log_path.open(
@@ -228,11 +308,14 @@ def stream_process(command: list[str], logfile: Path, tmp_log_path: Path) -> int
         )
         assert process.stdout is not None
         for line in process.stdout:
-            sys.stdout.write(line)
+            chunk = render_claude_event(line) if cli == "claude" else line
+            if not chunk:
+                continue
+            sys.stdout.write(chunk)
             sys.stdout.flush()
-            log_fp.write(line)
+            log_fp.write(chunk)
             log_fp.flush()
-            tmp_fp.write(line)
+            tmp_fp.write(chunk)
             tmp_fp.flush()
         return process.wait()
 
@@ -341,7 +424,7 @@ def main() -> int:
         print("[harness] Preserving supervisor-managed test_before.log/test_after.log.")
 
         command = build_command(cli, prompt, args)
-        exit_code = stream_process(command, logfile, tmp_log_path)
+        exit_code = stream_process(command, logfile, tmp_log_path, cli)
 
         print(f"[harness] === Iteration {iteration} done. Current score: ===")
         show_current_score()
