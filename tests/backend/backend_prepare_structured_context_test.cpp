@@ -241,6 +241,173 @@ int check_call_return_rendering_prefers_structured_context() {
   return 0;
 }
 
+int check_block_label_rendering_prefers_structured_identity() {
+  bir::Module module;
+  const c4c::BlockLabelId entry_id = module.names.block_labels.intern("entry");
+  const c4c::BlockLabelId pred_id = module.names.block_labels.intern("pred");
+  const c4c::BlockLabelId then_id = module.names.block_labels.intern("then");
+  const c4c::BlockLabelId else_id = module.names.block_labels.intern("else");
+  const c4c::BlockLabelId join_id = module.names.block_labels.intern("join");
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "raw.entry";
+  entry.label_id = entry_id;
+  entry.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%phi"),
+      .incomings = {bir::PhiIncoming{
+          .label = "raw.pred",
+          .value = bir::Value::immediate_i32(7),
+          .label_id = pred_id,
+      }},
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "%addr"),
+      .slot_name = "%slot",
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::Label,
+          .base_name = "raw.join.addr",
+          .base_label_id = join_id,
+      },
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "%cond"),
+      .true_label = "raw.then",
+      .false_label = "raw.else",
+      .true_label_id = then_id,
+      .false_label_id = else_id,
+  };
+  function.blocks.push_back(std::move(entry));
+
+  bir::Block then_block;
+  then_block.label = "raw.then";
+  then_block.label_id = then_id;
+  then_block.terminator = bir::BranchTerminator{
+      .target_label = "raw.join",
+      .target_label_id = join_id,
+  };
+  function.blocks.push_back(std::move(then_block));
+
+  bir::Block else_block;
+  else_block.label = "raw.else";
+  else_block.label_id = else_id;
+  else_block.terminator = bir::BranchTerminator{
+      .target_label = "raw.join",
+      .target_label_id = join_id,
+  };
+  function.blocks.push_back(std::move(else_block));
+
+  bir::Block join_block;
+  join_block.label = "raw.join";
+  join_block.label_id = join_id;
+  join_block.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+  function.blocks.push_back(std::move(join_block));
+
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%phi.slot",
+      .type = bir::TypeKind::I32,
+      .phi_observation = bir::PhiObservation{
+          .result = bir::Value::named(bir::TypeKind::I32, "%observed"),
+          .incomings = {bir::PhiIncoming{
+                            .label = "raw.then",
+                            .value = bir::Value::immediate_i32(1),
+                            .label_id = then_id,
+                        },
+                        bir::PhiIncoming{
+                            .label = "raw.missing",
+                            .value = bir::Value::immediate_i32(2),
+                        }},
+      },
+  });
+
+  module.functions.push_back(std::move(function));
+
+  const std::string printed = bir::print(module);
+  if (printed.find("entry:\n") == std::string::npos ||
+      printed.find("then:\n") == std::string::npos ||
+      printed.find("join:\n") == std::string::npos) {
+    return fail("BIR printer did not use structured ids for block headers");
+  }
+  if (printed.find("bir.cond_br i1 %cond, then, else") == std::string::npos ||
+      printed.find("bir.br join") == std::string::npos) {
+    return fail("BIR printer did not use structured ids for branch labels");
+  }
+  if (printed.find("bir.phi i32 [pred, 7]") == std::string::npos ||
+      printed.find("; semantic_phi %observed = bir.phi i32 [then, 1] [raw.missing, 2]") ==
+          std::string::npos) {
+    return fail("BIR printer did not use structured ids for phi labels with raw fallback");
+  }
+  if (printed.find("addr join") == std::string::npos) {
+    return fail("BIR printer did not use structured ids for label memory addresses");
+  }
+  if (printed.find("raw.entry") != std::string::npos ||
+      printed.find("raw.then") != std::string::npos ||
+      printed.find("raw.join") != std::string::npos ||
+      printed.find("raw.pred") != std::string::npos) {
+    return fail("BIR printer rendered raw label text despite available structured ids");
+  }
+  return 0;
+}
+
+int check_block_label_rendering_keeps_raw_fallbacks() {
+  bir::Module module;
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "raw.entry";
+  entry.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%phi"),
+      .incomings = {bir::PhiIncoming{
+          .label = "raw.pred",
+          .value = bir::Value::immediate_i32(9),
+      }},
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "%addr"),
+      .slot_name = "%slot",
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::Label,
+          .base_name = "raw.addr",
+      },
+  });
+  entry.terminator = bir::BranchTerminator{.target_label = "raw.join"};
+  function.blocks.push_back(std::move(entry));
+
+  bir::Block join_block;
+  join_block.label = "raw.join";
+  join_block.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+  function.blocks.push_back(std::move(join_block));
+
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "%phi.slot",
+      .type = bir::TypeKind::I32,
+      .phi_observation = bir::PhiObservation{
+          .result = bir::Value::named(bir::TypeKind::I32, "%observed"),
+          .incomings = {bir::PhiIncoming{
+              .label = "raw.pred",
+              .value = bir::Value::immediate_i32(3),
+          }},
+      },
+  });
+  module.functions.push_back(std::move(function));
+
+  const std::string printed = bir::print(module);
+  if (printed.find("raw.entry:\n") == std::string::npos ||
+      printed.find("bir.br raw.join") == std::string::npos ||
+      printed.find("bir.phi i32 [raw.pred, 9]") == std::string::npos ||
+      printed.find("; semantic_phi %observed = bir.phi i32 [raw.pred, 3]") ==
+          std::string::npos ||
+      printed.find("addr raw.addr") == std::string::npos) {
+    return fail("BIR printer did not preserve raw label fallback spelling");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -251,5 +418,13 @@ int main() {
       status != 0) {
     return status;
   }
-  return check_call_return_rendering_prefers_structured_context();
+  if (const int status = check_call_return_rendering_prefers_structured_context();
+      status != 0) {
+    return status;
+  }
+  if (const int status = check_block_label_rendering_prefers_structured_identity();
+      status != 0) {
+    return status;
+  }
+  return check_block_label_rendering_keeps_raw_fallbacks();
 }

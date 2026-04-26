@@ -1,49 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/119_bir_block_label_structured_identity_for_assembler.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Intern Labels During LIR-To-BIR Lowering
+Current Step ID: 4
+Current Step Title: Render Labels Through Structured Identity
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 lowering population completed in `src/backend/bir/lir_to_bir/module.cpp`
-and `tests/backend/backend_lir_to_bir_notes_test.cpp`.
+Step 4 printer rendering completed in `src/backend/bir/bir_printer.cpp` and
+`tests/backend/backend_prepare_structured_context_test.cpp`.
 
-Lowering now interns known lowered BIR block labels once through
-`bir::Module::names.block_labels` after each function lowers, assigns
-`bir::Block::label_id`, and fills matching structured ids for scalar phi
-incoming labels plus branch and conditional-branch terminator labels. Unknown
-label references preserve the raw string and keep `kInvalidBlockLabel`.
+The BIR printer now routes block labels through a small helper that resolves
+`BlockLabelId` with `bir::Module::names.block_labels` and falls back to the raw
+string when no structured spelling is available. The helper is used for block
+headers, `bir.br`, `bir.cond_br`, `bir.phi`, semantic phi observations, and
+`MemoryAddress::BaseKind::Label` rendering without moving ownership of the
+block-header trailing colon.
 
-Added a direct lowering test covering normal blocks, switch-generated compare
-blocks, branch targets, scalar phi incoming labels, and an unresolved phi
-incoming label without relying on printer text.
+Added direct tests proving id-preferred rendering for every updated surface and
+raw-string fallback behavior for the same surfaces.
 
 ## Suggested Next
 
-Next coherent packet: teach the next downstream consumer to prefer structured
-block label ids where available while preserving raw-string fallbacks and
-current dump/validation contracts.
+Next coherent packet: move the next downstream label consumer to structured
+block identity, keeping raw-string fallback behavior until a later cleanup idea
+removes legacy strings.
 
 ## Watchouts
 
-- Preserve existing BIR dump text, including block-header trailing colons.
+- Existing focused BIR dump tests stayed byte-stable under the delegated proof.
 - Keep raw label strings as fallbacks until a later cleanup idea removes them.
 - Do not expand this plan into MIR target codegen migration.
 - Same-spelled labels such as `entry` across functions will share an id under
   the module table, which matches the prepared backend spelling-table model.
-- The Step 3 helper intentionally only resolves labels present in the lowered
-  BIR function, so malformed/unresolved references are not interned as if they
-  were known blocks.
+- The printer helper intentionally treats an absent/invalid id as fallback-only
+  and does not try to intern or repair labels during rendering.
 
 ## Proof
 
 Passed. Proof log: `test_after.log`.
 
 Command run exactly:
-`( cmake --build build-backend --target c4cll backend_lir_to_bir_notes_test && ctest --test-dir build-backend/tests/backend -R '(backend_lir_to_bir_notes|backend_cli_dump_bir_(is_semantic|vla_goto_stackrestore_cfg|focus_block_entry_00204|focus_value_t1_00204))$' --output-on-failure ) > test_after.log 2>&1`
+`( cmake --build build-backend --target c4cll backend_prepare_structured_context_test && ctest --test-dir build-backend/tests/backend -R '(backend_prepare_structured_context|backend_cli_dump_bir_(is_semantic|vla_goto_stackrestore_cfg|focus_block_entry_00204|focus_value_t1_00204))$' --output-on-failure ) > test_after.log 2>&1`
 
-Result: `c4cll` and `backend_lir_to_bir_notes_test` built successfully and all
+Result: `c4cll` and `backend_prepare_structured_context_test` built successfully and all
 5 selected backend tests passed.

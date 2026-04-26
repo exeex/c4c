@@ -116,14 +116,28 @@ void render_sret_suffix(std::ostringstream& out, std::size_t size_bytes, std::si
   }
 }
 
-void render_memory_address(std::ostringstream& out, const MemoryAddress& address) {
+std::string render_block_label(const NameTables& names,
+                               BlockLabelId label_id,
+                               const std::string& fallback) {
+  const std::string_view spelling = names.block_labels.spelling(label_id);
+  if (!spelling.empty()) {
+    return std::string(spelling);
+  }
+  return fallback;
+}
+
+void render_memory_address(std::ostringstream& out,
+                           const MemoryAddress& address,
+                           const NameTables& names) {
   out << ", addr ";
   switch (address.base_kind) {
     case MemoryAddress::BaseKind::LocalSlot:
     case MemoryAddress::BaseKind::GlobalSymbol:
-    case MemoryAddress::BaseKind::Label:
     case MemoryAddress::BaseKind::StringConstant:
       out << address.base_name;
+      break;
+    case MemoryAddress::BaseKind::Label:
+      out << render_block_label(names, address.base_label_id, address.base_name);
       break;
     case MemoryAddress::BaseKind::PointerValue:
       out << render_value(address.base_value);
@@ -137,18 +151,22 @@ void render_memory_address(std::ostringstream& out, const MemoryAddress& address
   }
 }
 
-void render_phi_observation(std::ostringstream& out, const PhiObservation& observation) {
+void render_phi_observation(std::ostringstream& out,
+                            const PhiObservation& observation,
+                            const NameTables& names) {
   out << "; semantic_phi " << observation.result.name << " = bir.phi "
       << render_type(observation.result.type);
   for (const auto& incoming : observation.incomings) {
-    out << " [" << incoming.label << ", " << render_value(incoming.value) << "]";
+    out << " [" << render_block_label(names, incoming.label_id, incoming.label) << ", "
+        << render_value(incoming.value) << "]";
   }
   out << "\n";
 }
 
 void render_function(std::ostringstream& out,
                      const Function& function,
-                     const StructuredTypeSpellingContext& structured_types) {
+                     const StructuredTypeSpellingContext& structured_types,
+                     const NameTables& names) {
   out << "bir.func @" << function.name << "(";
   for (std::size_t index = 0; index < function.params.size(); ++index) {
     if (index != 0) {
@@ -172,7 +190,7 @@ void render_function(std::ostringstream& out,
 
   out << " {\n";
   for (const auto& block : function.blocks) {
-    out << block.label << ":\n";
+    out << render_block_label(names, block.label_id, block.label) << ":\n";
     for (const auto& inst : block.insts) {
       std::visit(
           [&](const auto& lowered) {
@@ -201,7 +219,8 @@ void render_function(std::ostringstream& out,
               out << "  " << lowered.result.name << " = bir.phi "
                   << render_type(lowered.result.type);
               for (const auto& incoming : lowered.incomings) {
-                out << " [" << incoming.label << ", " << render_value(incoming.value) << "]";
+                out << " [" << render_block_label(names, incoming.label_id, incoming.label)
+                    << ", " << render_value(incoming.value) << "]";
               }
               out << "\n";
             } else if constexpr (std::is_same_v<T, CallInst>) {
@@ -251,7 +270,7 @@ void render_function(std::ostringstream& out,
               out << "  " << lowered.result.name << " = bir.load_local "
                   << render_type(lowered.result.type) << " " << lowered.slot_name;
               if (lowered.address.has_value()) {
-                render_memory_address(out, *lowered.address);
+                render_memory_address(out, *lowered.address, names);
               }
               out << "\n";
             } else if constexpr (std::is_same_v<T, LoadGlobalInst>) {
@@ -272,7 +291,7 @@ void render_function(std::ostringstream& out,
               out << "  bir.store_local " << lowered.slot_name << ", "
                   << render_type(lowered.value.type) << " " << render_value(lowered.value);
               if (lowered.address.has_value()) {
-                render_memory_address(out, *lowered.address);
+                render_memory_address(out, *lowered.address, names);
               }
               out << "\n";
             }
@@ -289,12 +308,20 @@ void render_function(std::ostringstream& out,
         }
         break;
       case TerminatorKind::Branch:
-        out << "bir.br " << block.terminator.target_label;
+        out << "bir.br "
+            << render_block_label(
+                   names, block.terminator.target_label_id, block.terminator.target_label);
         break;
       case TerminatorKind::CondBranch:
         out << "bir.cond_br " << render_type(block.terminator.condition.type) << " "
             << render_value(block.terminator.condition) << ", "
-            << block.terminator.true_label << ", " << block.terminator.false_label;
+            << render_block_label(names,
+                                  block.terminator.true_label_id,
+                                  block.terminator.true_label)
+            << ", "
+            << render_block_label(names,
+                                  block.terminator.false_label_id,
+                                  block.terminator.false_label);
         break;
     }
     out << "\n";
@@ -302,7 +329,7 @@ void render_function(std::ostringstream& out,
   out << "}\n";
   for (const auto& slot : function.local_slots) {
     if (slot.phi_observation.has_value()) {
-      render_phi_observation(out, *slot.phi_observation);
+      render_phi_observation(out, *slot.phi_observation, names);
     }
   }
 }
@@ -315,7 +342,7 @@ std::string print(const Module& module) {
     if (index != 0) {
       out << "\n";
     }
-    render_function(out, module.functions[index], module.structured_types);
+    render_function(out, module.functions[index], module.structured_types, module.names);
   }
   return out.str();
 }
