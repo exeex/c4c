@@ -151,7 +151,18 @@ std::string expected_x86_constant_pointer_eq_null_return_asm() {
          "    ret\n";
 }
 
-bir::Module make_x86_constant_pointer_eq_null_return_module() {
+std::string expected_x86_constant_pointer_ne_null_return_asm() {
+  return ".intel_syntax noprefix\n"
+         ".text\n"
+         ".globl main\n"
+         ".type main, @function\n"
+         "main:\n"
+         "    mov eax, 1\n"
+         "    ret\n";
+}
+
+bir::Module make_x86_constant_pointer_compare_null_return_module(bir::BinaryOpcode opcode,
+                                                                 std::string result_name) {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
   module.string_constants.push_back(bir::StringConstant{
@@ -166,8 +177,8 @@ bir::Module make_x86_constant_pointer_eq_null_return_module() {
   bir::Block entry;
   entry.label = "entry";
   entry.insts.push_back(bir::BinaryInst{
-      .opcode = bir::BinaryOpcode::Eq,
-      .result = bir::Value::named(bir::TypeKind::I32, "%t2"),
+      .opcode = opcode,
+      .result = bir::Value::named(bir::TypeKind::I32, result_name),
       .operand_type = bir::TypeKind::Ptr,
       .lhs = bir::Value::named(bir::TypeKind::Ptr, "%t0"),
       .rhs = bir::Value{
@@ -177,12 +188,20 @@ bir::Module make_x86_constant_pointer_eq_null_return_module() {
       },
   });
   entry.terminator = bir::ReturnTerminator{
-      .value = bir::Value::named(bir::TypeKind::I32, "%t2"),
+      .value = bir::Value::named(bir::TypeKind::I32, result_name),
   };
 
   function.blocks.push_back(std::move(entry));
   module.functions.push_back(std::move(function));
   return module;
+}
+
+bir::Module make_x86_constant_pointer_eq_null_return_module() {
+  return make_x86_constant_pointer_compare_null_return_module(bir::BinaryOpcode::Eq, "%t2");
+}
+
+bir::Module make_x86_constant_pointer_ne_null_return_module() {
+  return make_x86_constant_pointer_compare_null_return_module(bir::BinaryOpcode::Ne, "%t3");
 }
 
 int check_constant_pointer_eq_null_single_block_return_route() {
@@ -191,6 +210,14 @@ int check_constant_pointer_eq_null_single_block_return_route() {
                              expected_x86_constant_pointer_eq_null_return_asm(),
                              "%t2 = bir.eq ptr %t0, 0",
                              "single-block constant pointer-eq-null return route");
+}
+
+int check_constant_pointer_ne_null_single_block_return_route() {
+  auto module = make_x86_constant_pointer_ne_null_return_module();
+  return check_route_outputs(module,
+                             expected_x86_constant_pointer_ne_null_return_asm(),
+                             "%t3 = bir.ne ptr %t0, 0",
+                             "single-block constant pointer-ne-null return route");
 }
 
 }  // namespace
@@ -211,6 +238,10 @@ int run_backend_x86_handoff_boundary_local_slot_guard_lane_tests();
 
 int main() {
   if (const auto status = check_constant_pointer_eq_null_single_block_return_route();
+      status != 0) {
+    return status;
+  }
+  if (const auto status = check_constant_pointer_ne_null_single_block_return_route();
       status != 0) {
     return status;
   }

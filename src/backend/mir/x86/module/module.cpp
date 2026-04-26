@@ -7,8 +7,11 @@
 #include "../../../prealloc/prepared_printer.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <stdexcept>
+#include <string_view>
+#include <unordered_map>
 #include <utility>
 
 namespace c4c::backend::x86::module {
@@ -491,6 +494,141 @@ void append_grouped_authority_comments(c4c::backend::x86::core::Text& out,
   }
 }
 
+bool block_defines_named_value(const c4c::backend::bir::Block& block, std::string_view name) {
+  if (name.empty()) {
+    return false;
+  }
+  for (const auto& inst : block.insts) {
+    const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
+    if (binary != nullptr && binary->result.kind == c4c::backend::bir::Value::Kind::Named &&
+        binary->result.name == name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::optional<std::int32_t> fold_supported_pointer_compare_return(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::bir::Function& function) {
+  if (function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !block.terminator.value.has_value() ||
+      block.terminator.value->type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string_view, std::int32_t> folded_i32_values;
+  std::unordered_map<std::string_view, std::size_t> symbolic_pointer_roots;
+  std::size_t next_symbolic_pointer_root = 1;
+
+  const auto intern_symbolic_pointer_root = [&](std::string_view value_name) -> std::size_t {
+    const auto [it, inserted] =
+        symbolic_pointer_roots.emplace(value_name, next_symbolic_pointer_root);
+    if (inserted) {
+      ++next_symbolic_pointer_root;
+    }
+    return it->second;
+  };
+
+  const auto resolve_pointer = [&](const c4c::backend::bir::Value& value)
+      -> std::optional<std::size_t> {
+    if (value.type != c4c::backend::bir::TypeKind::Ptr) {
+      return std::nullopt;
+    }
+    if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+      if (value.immediate < 0) {
+        return std::nullopt;
+      }
+      return static_cast<std::size_t>(value.immediate);
+    }
+    const auto is_pointer_param = std::any_of(
+        function.params.begin(), function.params.end(), [&](const c4c::backend::bir::Param& param) {
+          return param.type == c4c::backend::bir::TypeKind::Ptr && param.name == value.name;
+        });
+    if (is_pointer_param || block_defines_named_value(block, value.name)) {
+      return std::nullopt;
+    }
+    if (!value.name.empty() && value.name.front() == '@') {
+      const std::string_view symbol_name(value.name.data() + 1, value.name.size() - 1);
+      const auto names_string_constant =
+          std::any_of(module.string_constants.begin(),
+                      module.string_constants.end(),
+                      [&](const c4c::backend::bir::StringConstant& constant) {
+                        return constant.name == symbol_name;
+                      });
+      const auto names_global =
+          std::any_of(module.globals.begin(),
+                      module.globals.end(),
+                      [&](const c4c::backend::bir::Global& global) {
+                        return global.name == symbol_name;
+                      });
+      if (!names_string_constant && !names_global) {
+        return std::nullopt;
+      }
+    }
+    return intern_symbolic_pointer_root(value.name);
+  };
+
+  for (const auto& inst : block.insts) {
+    const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
+    if (binary == nullptr || binary->result.kind != c4c::backend::bir::Value::Kind::Named ||
+        binary->result.type != c4c::backend::bir::TypeKind::I32 ||
+        binary->operand_type != c4c::backend::bir::TypeKind::Ptr) {
+      return std::nullopt;
+    }
+    const auto lhs = resolve_pointer(binary->lhs);
+    const auto rhs = resolve_pointer(binary->rhs);
+    if (!lhs.has_value() || !rhs.has_value()) {
+      return std::nullopt;
+    }
+
+    switch (binary->opcode) {
+      case c4c::backend::bir::BinaryOpcode::Eq:
+        folded_i32_values.emplace(binary->result.name, *lhs == *rhs ? 1 : 0);
+        break;
+      case c4c::backend::bir::BinaryOpcode::Ne:
+        folded_i32_values.emplace(binary->result.name, *lhs != *rhs ? 1 : 0);
+        break;
+      default:
+        return std::nullopt;
+    }
+  }
+
+  const auto& return_value = *block.terminator.value;
+  if (return_value.kind != c4c::backend::bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto found = folded_i32_values.find(return_value.name);
+  if (found == folded_i32_values.end()) {
+    return std::nullopt;
+  }
+  return found->second;
+}
+
+bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
+                                      const c4c::backend::prepare::PreparedBirModule& module,
+                                      const c4c::backend::bir::Function& function,
+                                      const Data& data) {
+  validate_prepared_control_flow_handoff(module, function);
+  const auto folded_return = fold_supported_pointer_compare_return(module.module, function);
+  if (!folded_return.has_value()) {
+    return false;
+  }
+
+  const auto symbol_name = data.render_asm_symbol_name(function.name);
+  out.append_line(".globl " + symbol_name);
+  out.append_line(".type " + symbol_name + ", @function");
+  out.append_line(symbol_name + ":");
+  out.append_line("    mov eax, " + std::to_string(*folded_return));
+  out.append_line("    ret");
+  return true;
+}
+
 void append_function_stub(c4c::backend::x86::core::Text& out,
                           const c4c::backend::prepare::PreparedBirModule& module,
                           const c4c::backend::bir::Function& function,
@@ -527,22 +665,28 @@ std::string emit(const c4c::backend::prepare::PreparedBirModule& module) {
   c4c::backend::x86::core::Text out;
   out.append_line(".intel_syntax noprefix");
   out.append_line(".text");
-  out.append_line("# x86 backend contract-first module emitter");
 
   bool emitted_any_function = false;
+  bool emitted_only_supported_scalar_functions = true;
   for (const auto& function : module.module.functions) {
     if (function.is_declaration) {
       continue;
     }
     emitted_any_function = true;
-    append_function_stub(out, module, function, data);
+    if (!append_supported_scalar_function(out, module, function, data)) {
+      emitted_only_supported_scalar_functions = false;
+      out.append_line("# x86 backend contract-first module emitter");
+      append_function_stub(out, module, function, data);
+    }
   }
 
   if (!emitted_any_function) {
     out.append_line("# no defined functions");
   }
 
-  out.append_raw(data.emit_data());
+  if (!(emitted_any_function && emitted_only_supported_scalar_functions)) {
+    out.append_raw(data.emit_data());
+  }
   return out.take_text();
 }
 
