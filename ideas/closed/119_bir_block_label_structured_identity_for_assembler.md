@@ -1,12 +1,16 @@
 # BIR Block Label Structured Identity For Assembler
 
-Status: Open
+Status: Closed
 Created: 2026-04-26
 Last Updated: 2026-04-26
+Closed: 2026-04-26
 
 Parent Ideas:
 - [116_bir_layout_dual_path_coverage_and_dump_guard.md](/workspaces/c4c/ideas/closed/116_bir_layout_dual_path_coverage_and_dump_guard.md)
 - [117_bir_printer_structured_render_context.md](/workspaces/c4c/ideas/closed/117_bir_printer_structured_render_context.md)
+
+Follow-up Ideas:
+- [120_bir_raw_label_fallback_cleanup_after_assembler_id_path.md](/workspaces/c4c/ideas/open/120_bir_raw_label_fallback_cleanup_after_assembler_id_path.md)
 
 ## Goal
 
@@ -81,7 +85,32 @@ Out of scope:
   idea.
 - The idea explicitly leaves LIR/BIR type legacy removal unblocked.
 
+## Closure Notes
+
+Closed after active runbook Step 6 completed.
+
+Completed outcomes:
+- BIR blocks, branch targets, conditional branch true/false targets, scalar phi
+  incoming labels, label-address rendering, and the prepared control-flow
+  handoff can carry structured label ids backed by shared spelling.
+- BIR printing resolves labels through `bir::Module::names.block_labels` when
+  ids are valid and preserves raw strings as compatibility fallback text.
+- Dump text compatibility was preserved for the accepted paths.
+- The remaining raw-string fallback dependencies are inventoried and moved into
+  follow-up idea 120 instead of expanding this completed dual-path runbook.
+- LIR/BIR type legacy removal remains unblocked; this idea only covered CFG
+  label identity.
+
+Close proof:
+- Recorded backend proof: `( cmake --build build-backend && ctest --test-dir build-backend/tests/backend --output-on-failure ) > test_after.log 2>&1`
+- Result recorded in the active `todo.md` before closure: 107 runnable backend
+  tests passed, 0 failed; existing disabled backend CLI trace/focus tests
+  remained disabled.
+- Close-scope regression guard accepted the recorded backend proof as a
+  no-code-change lifecycle close baseline with non-decreasing pass count.
+
 ## Deferred
 
-- Removing raw BIR label string fallbacks should be a later cleanup after
-  assembler consumption proves the id path.
+Raw BIR label string fallback removal is intentionally deferred until assembler
+consumption proves the id path. That cleanup is tracked by
+`ideas/open/120_bir_raw_label_fallback_cleanup_after_assembler_id_path.md`.
