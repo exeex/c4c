@@ -162,6 +162,17 @@ std::optional<std::size_t> find_bir_block_index_by_prepared_label_id(
   return std::nullopt;
 }
 
+std::optional<std::size_t> find_bir_block_index_by_pointer(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& target_block) {
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    if (&function.blocks[block_index] == &target_block) {
+      return block_index;
+    }
+  }
+  return std::nullopt;
+}
+
 void require_prepared_target_block(const c4c::backend::bir::Function& function,
                                    const c4c::backend::bir::NameTables& bir_names,
                                    const c4c::backend::prepare::PreparedNameTables& names,
@@ -1875,11 +1886,15 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
       throw_prepared_control_flow_handoff_error(
           "compare-join source block has incomplete authoritative join metadata");
     }
-    const auto join_block_index = find_bir_block_index_by_prepared_label_id(
-        function, module.module.names, module.names, join_context.join_transfer->join_block_label);
+    if (c4c::backend::prepare::find_prepared_control_flow_block(
+            *control_flow, join_context.join_transfer->join_block_label) == nullptr) {
+      throw_prepared_control_flow_handoff_error(
+          "compare-join join block has no authoritative prepared control-flow block");
+    }
+    const auto join_block_index = find_bir_block_index_by_pointer(function, *join_context.join_block);
     if (!join_block_index.has_value()) {
       throw_prepared_control_flow_handoff_error(
-          "compare-join join block has no authoritative prepared block id");
+          "compare-join join block is not owned by the prepared function body");
     }
     require_prepared_compare_join_parallel_copy(module.names,
                                                 function,

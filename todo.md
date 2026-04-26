@@ -8,28 +8,24 @@ Current Step Title: Recover Prepared Control-Flow Rendering Semantics
 
 ## Just Finished
 
-Step 5 Reprove X86 Handoff And Decide Lifecycle Outcome recovered the bounded
-direct extern-call prepared-module route in the x86 prepared-module consumer.
-The renderer now accepts a single-block direct extern call sequence through
-semantic prepared call plans and prepared value-location bundles, uses
-authoritative `BeforeCall` metadata for argument ABI registers, authoritative
-`AfterCall` metadata plus prepared value homes for call-result captures, emits
-the x86-64 call-alignment adjustment, and renders referenced prepared string
-constants for the accepted route. The route rejects missing argument/result
-call-bundle authority instead of reopening local ABI fallback.
-
-The same proof then advanced back into a prepared control-flow authority
-blocker, so active execution returns to Step 4 rather than treating the next
-packet as Step 5 lifecycle-outcome reproving.
+Step 4 Recover Prepared Control-Flow Rendering Semantics repaired the
+joined-branch compare-join prepared block-id blocker in the x86
+prepared-module renderer. The compare-join route now keeps the authoritative
+prepared join-transfer label check, verifies the join label has a prepared
+control-flow block, and derives the return-move block index from the prepared
+compare-join context's owned BIR join-block pointer instead of recovering the
+join block through raw label spelling or requiring the raw BIR label id to
+remain aligned.
 
 ## Suggested Next
 
-Resume Step 4 control-flow recovery on the next x86 handoff blocker exposed by
-the same proof:
+Continue Step 4 on the next joined-branch handoff blocker exposed by the same
+proof:
 `scalar-control-flow compare-against-zero joined branch lane: x86
 prepared-module consumer rejected the prepared handoff with exception:
-canonical prepared-module handoff rejected x86 control-flow label authority:
-compare-join join block has no authoritative prepared block id`.
+canonical prepared-module handoff rejected x86 value-location authority:
+defined function 'branch_join_adjust' compare-join return move source drifted
+from selected parameter home`.
 
 ## Watchouts
 
@@ -57,6 +53,10 @@ param-zero materialized compare-join contract. It should continue to use
 prepared branch labels, join-transfer metadata, published parallel-copy
 bundles, out-of-SSA move bundles, prepared value homes, and prepared return
 bundles as authority rather than recovering from raw labels or fixture shape.
+For joined-branch compare-join ownership cases, the BIR block index may need to
+come from the prepared compare-join context's owned block pointer when raw BIR
+label ids are intentionally drifted; keep any later value-location repair on
+prepared move/home authority rather than reintroducing raw label recovery.
 Global and pointer-backed selected-value compare-join returns remain
 unsupported by this slice; a later packet should use the resolved same-module
 global contract before enabling them.
@@ -72,14 +72,13 @@ label spelling.
 rebuilt `tests/backend/backend_x86_handoff_boundary_test` and
 `tests/backend/backend_x86_prepared_handoff_label_authority_test`, kept
 `backend_x86_prepared_handoff_label_authority` passing, and advanced past the
-minimal compare-branch lanes, the requested `scalar-control-flow
-compare-against-zero compare-join lane with stack-backed parameter home`, the
-adjacent rematerialized compare-join lane, the compare-join authority
-rejection/relocation checks after the compare-join review repair, and the
-bounded direct extern-call prepared-module route plus its prepared call-bundle
-drift checks. The aggregate proof still fails later at `scalar-control-flow
-compare-against-zero joined branch lane: x86 prepared-module consumer rejected
-the prepared handoff with exception: canonical prepared-module handoff rejected
-x86 control-flow label authority: compare-join join block has no authoritative
-prepared block id`.
+minimal compare-branch lanes, the compare-join lanes and authority
+rejection/relocation checks, the bounded direct extern-call prepared-module
+route plus prepared call-bundle drift checks, and the requested joined-branch
+prepared block-id blocker. The aggregate proof still fails later at
+`scalar-control-flow compare-against-zero joined branch lane: x86
+prepared-module consumer rejected the prepared handoff with exception:
+canonical prepared-module handoff rejected x86 value-location authority:
+defined function 'branch_join_adjust' compare-join return move source drifted
+from selected parameter home`.
 Canonical proof log: `test_after.log`.
