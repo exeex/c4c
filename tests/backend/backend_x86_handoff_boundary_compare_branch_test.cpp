@@ -829,8 +829,9 @@ int check_compare_join_route_accepts_successor_entry_parallel_copy_handoff(
                  ": prepare no longer publishes the compare-join control-flow contract")
                     .c_str());
   }
-  auto* bundle = prepare::find_prepared_parallel_copy_bundle(
-      prepared.names, *control_flow, "is_zero", "join");
+  auto* bundle = const_cast<prepare::PreparedParallelCopyBundle*>(
+      prepare::find_prepared_parallel_copy_bundle(
+          prepared.names, *control_flow, "is_zero", "join"));
   if (bundle == nullptr ||
       bundle->execution_site != prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator) {
     return fail((std::string(failure_context) +
