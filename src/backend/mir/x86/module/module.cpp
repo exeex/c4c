@@ -8,10 +8,199 @@
 
 #include <algorithm>
 #include <optional>
+#include <stdexcept>
+#include <utility>
 
 namespace c4c::backend::x86::module {
 
 namespace {
+
+[[noreturn]] void throw_prepared_control_flow_handoff_error(std::string detail) {
+  throw std::invalid_argument("canonical prepared-module handoff rejected x86 control-flow "
+                              "label authority: " +
+                              std::move(detail));
+}
+
+std::string render_prepared_label_id(c4c::BlockLabelId label) {
+  if (label == c4c::kInvalidBlockLabel) {
+    return "<invalid>";
+  }
+  return "#" + std::to_string(label);
+}
+
+std::string_view require_prepared_block_label(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    c4c::BlockLabelId label,
+    std::string_view context) {
+  if (label == c4c::kInvalidBlockLabel) {
+    throw_prepared_control_flow_handoff_error(std::string(context) + " has an invalid label id");
+  }
+  const auto spelling = c4c::backend::prepare::prepared_block_label(names, label);
+  if (spelling.empty()) {
+    throw_prepared_control_flow_handoff_error(std::string(context) + " references unknown label " +
+                                              render_prepared_label_id(label));
+  }
+  return spelling;
+}
+
+bool bir_block_matches_prepared_label(
+    const c4c::backend::bir::Block& block,
+    const c4c::backend::bir::NameTables& bir_names,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    c4c::BlockLabelId prepared_label) {
+  const auto prepared_spelling = c4c::backend::prepare::prepared_block_label(names, prepared_label);
+  if (block.label_id != c4c::kInvalidBlockLabel) {
+    return bir_names.block_labels.spelling(block.label_id) == prepared_spelling;
+  }
+  return block.label == prepared_spelling;
+}
+
+const c4c::backend::bir::Block* find_bir_block_by_prepared_label(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::NameTables& bir_names,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    c4c::BlockLabelId prepared_label) {
+  for (const auto& block : function.blocks) {
+    if (bir_block_matches_prepared_label(block, bir_names, names, prepared_label)) {
+      return &block;
+    }
+  }
+  return nullptr;
+}
+
+void require_prepared_target_block(const c4c::backend::bir::Function& function,
+                                   const c4c::backend::bir::NameTables& bir_names,
+                                   const c4c::backend::prepare::PreparedNameTables& names,
+                                   c4c::BlockLabelId target_label,
+                                   std::string_view context) {
+  require_prepared_block_label(names, target_label, context);
+  if (find_bir_block_by_prepared_label(function, bir_names, names, target_label) == nullptr) {
+    throw_prepared_control_flow_handoff_error(std::string(context) + " label " +
+                                              render_prepared_label_id(target_label) +
+                                              " does not name a BIR block by id");
+  }
+}
+
+std::optional<c4c::BlockLabelId> bir_block_label_id(
+    const c4c::backend::bir::NameTables& bir_names,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Block& block) {
+  if (block.label_id != c4c::kInvalidBlockLabel) {
+    const auto structured_label = bir_names.block_labels.spelling(block.label_id);
+    if (!structured_label.empty()) {
+      return c4c::backend::prepare::resolve_prepared_block_label_id(names, structured_label);
+    }
+  }
+  return c4c::backend::prepare::resolve_prepared_block_label_id(names, block.label);
+}
+
+void validate_prepared_block_targets(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::NameTables& bir_names,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowBlock& prepared_block) {
+  const auto* bir_block =
+      find_bir_block_by_prepared_label(function, bir_names, names, prepared_block.block_label);
+  if (bir_block == nullptr) {
+    throw_prepared_control_flow_handoff_error(
+        "prepared block " + render_prepared_label_id(prepared_block.block_label) +
+        " does not match any BIR block by label id");
+  }
+  if (bir_block->terminator.kind != prepared_block.terminator_kind) {
+    throw_prepared_control_flow_handoff_error(
+        "prepared block " + render_prepared_label_id(prepared_block.block_label) +
+        " terminator kind drifted from BIR");
+  }
+
+  switch (prepared_block.terminator_kind) {
+    case c4c::backend::bir::TerminatorKind::Return:
+      break;
+    case c4c::backend::bir::TerminatorKind::Branch:
+      require_prepared_target_block(function,
+                                    bir_names,
+                                    names,
+                                    prepared_block.branch_target_label,
+                                    "prepared branch target");
+      break;
+    case c4c::backend::bir::TerminatorKind::CondBranch:
+      require_prepared_target_block(function,
+                                    bir_names,
+                                    names,
+                                    prepared_block.true_label,
+                                    "prepared true branch target");
+      require_prepared_target_block(function,
+                                    bir_names,
+                                    names,
+                                    prepared_block.false_label,
+                                    "prepared false branch target");
+      break;
+  }
+}
+
+void validate_prepared_branch_condition(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::NameTables& bir_names,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::prepare::PreparedBranchCondition& condition) {
+  require_prepared_target_block(
+      function, bir_names, names, condition.block_label, "prepared condition block");
+  require_prepared_target_block(
+      function, bir_names, names, condition.true_label, "prepared condition true target");
+  require_prepared_target_block(
+      function, bir_names, names, condition.false_label, "prepared condition false target");
+
+  const auto* block = c4c::backend::prepare::find_prepared_control_flow_block(
+      control_flow, condition.block_label);
+  if (block == nullptr || block->terminator_kind != c4c::backend::bir::TerminatorKind::CondBranch ||
+      block->true_label != condition.true_label || block->false_label != condition.false_label) {
+    throw_prepared_control_flow_handoff_error(
+        "prepared branch condition targets drifted from prepared block targets");
+  }
+}
+
+void validate_prepared_control_flow_handoff(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function) {
+  if (module.control_flow.functions.empty()) {
+    return;
+  }
+
+  const auto function_name =
+      c4c::backend::prepare::resolve_prepared_function_name_id(module.names, function.name);
+  if (!function_name.has_value()) {
+    throw_prepared_control_flow_handoff_error("defined function '" + function.name +
+                                              "' has no prepared function id");
+  }
+
+  const auto* control_flow = c4c::backend::prepare::find_prepared_control_flow_function(
+      module.control_flow, *function_name);
+  if (control_flow == nullptr) {
+    throw_prepared_control_flow_handoff_error("defined function '" + function.name +
+                                              "' has no prepared control-flow record");
+  }
+
+  for (const auto& block : function.blocks) {
+    const auto block_label = bir_block_label_id(module.module.names, module.names, block);
+    if (!block_label.has_value()) {
+      throw_prepared_control_flow_handoff_error("BIR block '" + block.label +
+                                                "' has no prepared block id");
+    }
+    if (c4c::backend::prepare::find_prepared_control_flow_block(*control_flow, *block_label) ==
+        nullptr) {
+      throw_prepared_control_flow_handoff_error("BIR block '" + block.label +
+                                                "' has no prepared control-flow block");
+    }
+  }
+
+  for (const auto& block : control_flow->blocks) {
+    validate_prepared_block_targets(function, module.module.names, module.names, block);
+  }
+  for (const auto& condition : control_flow->branch_conditions) {
+    validate_prepared_branch_condition(
+        function, module.module.names, module.names, *control_flow, condition);
+  }
+}
 
 bool is_grouped_span(std::size_t contiguous_width,
                      const std::vector<std::string>& occupied_register_names) {
@@ -306,6 +495,7 @@ void append_function_stub(c4c::backend::x86::core::Text& out,
                           const c4c::backend::prepare::PreparedBirModule& module,
                           const c4c::backend::bir::Function& function,
                           const Data& data) {
+  validate_prepared_control_flow_handoff(module, function);
   const auto symbol_name = data.render_asm_symbol_name(function.name);
   out.append_line(".globl " + symbol_name);
   out.append_line(".type " + symbol_name + ", @function");

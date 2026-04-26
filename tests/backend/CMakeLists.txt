@@ -322,6 +322,28 @@ set_tests_properties(backend_prepared_printer PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_executable(backend_x86_prepared_handoff_label_authority_test
+    "${BACKEND_TEST_ROOT}/backend_x86_prepared_handoff_label_authority_test.cpp"
+)
+target_include_directories(backend_x86_prepared_handoff_label_authority_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_x86_prepared_handoff_label_authority_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_x86_prepared_handoff_label_authority_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_x86_prepared_handoff_label_authority
+  COMMAND $<TARGET_FILE:backend_x86_prepared_handoff_label_authority_test>
+)
+set_tests_properties(backend_x86_prepared_handoff_label_authority PROPERTIES
+  LABELS "backend;internal;cpp;x86"
+)
+
 if(C4C_ENABLE_X86_BACKEND_TESTS)
   add_executable(backend_x86_route_debug_test
       "${BACKEND_TEST_ROOT}/backend_x86_route_debug_test.cpp"
