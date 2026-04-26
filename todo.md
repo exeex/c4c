@@ -4,7 +4,7 @@ Status: Active
 Source Idea Path: ideas/open/120_bir_raw_label_fallback_cleanup_after_assembler_id_path.md
 Source Plan Path: plan.md
 Current Step ID: 5
-Current Step Title: Prove Assembler Handoff And Document Retained Boundaries
+Current Step Title: Prove Bounded Assembler Handoff Boundaries
 
 ## Just Finished
 
@@ -27,20 +27,35 @@ Completed work:
   stack restore CLI coverage, and prepared liveness passed in the executor
   packets.
 
+Step 5 route reset:
+
+- `review/step5_x86_handoff_dirty_slice_review.md` is the formal basis for the
+  reset.
+- The attempted x86 `module.cpp` renderer recovery was rejected as
+  testcase-overfit/route drift and is not accepted Step 5 progress.
+- Any future x86 prepared-module renderer recovery belongs to
+  `ideas/open/121_x86_prepared_module_renderer_recovery.md` unless the
+  supervisor explicitly switches lifecycle state.
+
 ## Suggested Next
 
-Step 5 handoff proof is currently blocked in this checkout. Enabling
-`C4C_ENABLE_X86_BACKEND_TESTS=ON` makes `backend_x86_handoff_boundary_test`
-compile against x86 handoff headers that are not present here:
+Continue Step 5 only as a bounded assembler/backend label-id handoff proof.
+The next executor packet should start from accepted Step 4 prepared-control-flow
+state and prove id consumption plus missing/drifted-id rejection without
+recovering broad x86 scalar/module rendering.
+
+Current checkout blocker: enabling `C4C_ENABLE_X86_BACKEND_TESTS=ON` makes
+`backend_x86_handoff_boundary_test` compile against x86 handoff headers that are
+not present here:
 
 - `src/backend/mir/x86/codegen/api/x86_codegen_api.hpp`
 - `src/backend/mir/x86/codegen/abi/x86_target_abi.hpp`
 
-The normal backend build configuration has been restored with
+The normal backend build configuration was restored with
 `C4C_ENABLE_X86_BACKEND_TESTS=OFF`. Next action belongs to the supervisor:
-either restore/provide the missing x86 handoff test infrastructure for the
-Step 5 proof, or delegate a non-x86 assembler/backend handoff proof path that
-still satisfies the runbook's id-consumption requirement.
+either restore/provide a bounded handoff proof surface, delegate a non-x86
+assembler/backend handoff proof path that still satisfies the id-consumption
+requirement, or switch lifecycle state to the separate x86 renderer initiative.
 
 ## Watchouts
 
@@ -58,6 +73,11 @@ still satisfies the runbook's id-consumption requirement.
 - Do not treat the unavailable `backend_x86_handoff_boundary_test` as proof
   that assembler handoff is complete. It is an infrastructure blocker for
   Step 5, not a completed proof.
+- Do not add handwritten BIR-shape dispatch in x86 `module.cpp` as a Step 5
+  proof route.
+- Do not count compile-compatibility work or scalar x86 emission recovery as
+  label-id handoff proof unless it directly proves prepared control-flow id
+  consumption and missing/drifted-id rejection.
 
 ## Proof
 
@@ -68,6 +88,7 @@ Latest Step 4 proof command:
 
 Proof log: `test_after.log`
 
-Step 5 proof status: blocked before compile because the optional x86 handoff
-test target depends on absent x86 codegen headers in this checkout. No
-assembler/x86 handoff acceptance proof is recorded yet.
+Step 5 proof status: route reset after reviewer-confirmed testcase-overfit in
+the x86 handoff attempt. The optional x86 handoff target remains blocked by
+absent x86 codegen headers in this checkout, and no bounded assembler/backend
+handoff acceptance proof is recorded yet.

@@ -35,6 +35,8 @@ proven to consume `BlockLabelId` or has an explicit compatibility boundary.
 - CLI focus filters and matching for function, block, and value selectors.
 - Prepared liveness, stack layout, dynamic stack, out-of-SSA, and assembler
   consumption paths that still intern or match labels from raw spelling.
+- Bounded assembler/backend handoff proof surfaces that can exercise prepared
+  control-flow label ids without rebuilding target scalar rendering.
 - Tests that prove valid id rendering and intentionally retained fallback
   behavior.
 
@@ -44,6 +46,9 @@ proven to consume `BlockLabelId` or has an explicit compatibility boundary.
   contract change.
 - Do not migrate MIR target codegen internals as part of this runbook if it
   grows beyond raw fallback cleanup.
+- Do not recover broad x86 scalar/module rendering as the means of proving
+  label-id handoff; that is tracked separately in
+  `ideas/open/121_x86_prepared_module_renderer_recovery.md`.
 - Do not weaken or mark supported-path tests unsupported to make cleanup pass.
 - Do not fabricate ids for unresolved raw-only paths.
 
@@ -69,6 +74,9 @@ proven to consume `BlockLabelId` or has an explicit compatibility boundary.
 - Escalate to a broader backend test run before treating the runbook as
   complete, because label identity crosses BIR printing, preparation, and
   assembler handoff.
+- Treat `review/step5_x86_handoff_dirty_slice_review.md` as the formal route
+  reset basis for Step 5. The rejected x86 renderer recovery attempt is not
+  accepted progress for this plan.
 
 ## Ordered Steps
 
@@ -167,24 +175,40 @@ Completion check:
   flow, and narrow backend tests prove branch, conditional branch, phi incoming,
   and label-address behavior.
 
-### Step 5: Prove Assembler Handoff And Document Retained Boundaries
+### Step 5: Prove Bounded Assembler Handoff Boundaries
 
-Goal: verify assembler/backend consumption no longer depends on raw label
-spelling for the cleaned paths.
+Goal: verify assembler/backend consumers of the cleaned prepared-control-flow
+paths use structured label authority without expanding into target renderer
+recovery.
 
 Primary targets:
-- Backend handoff routes from prepared BIR into assembler or target-local code.
-- Tests that exercise codegen asm with prepared BIR.
+- Prepared-control-flow handoff routes that already carry `BlockLabelId` or
+  prepared block identity from Step 4.
+- Existing assembler/backend boundary tests or a restored x86 handoff test
+  surface, limited to id consumption and missing/drifted-id rejection.
 
 Concrete actions:
-- Trace label identity through the assembler handoff for cleaned paths.
-- Add assertions or tests that fail when a required id is missing.
+- Start from the accepted Step 4 prepared-consumer state, not from the rejected
+  x86 renderer dirty slice.
+- Use `review/step5_x86_handoff_dirty_slice_review.md` as the route-reset
+  record when explaining why broad x86 renderer recovery is out of scope.
+- Trace label identity through a bounded handoff path that can observe prepared
+  branch/conditional-branch labels and reject missing or drifted ids.
+- If the optional x86 handoff test infrastructure is restored, keep the packet
+  limited to compile compatibility and label-id handoff assertions. Do not add
+  handwritten scalar BIR-shape dispatch in `module.cpp` or recover unrelated
+  x86 scalar emission to reach the assertion.
+- If no bounded assembler/backend proof surface exists in this checkout, stop
+  with a Step 5 blocker and ask the supervisor to choose between restoring
+  handoff infrastructure and switching to the separate x86 renderer initiative.
 - Document retained raw-label boundaries in `todo.md` with the upstream
   consumer that still requires them.
 
 Completion check:
-- Assembler/backend handoff proof demonstrates id consumption for affected
-  paths, and all retained raw fallback behavior has an explicit reason.
+- A bounded handoff proof demonstrates id consumption and missing/drifted-id
+  rejection for affected prepared-control-flow paths, or `todo.md` records the
+  exact missing proof surface as a blocker. No broad target renderer recovery
+  or testcase-shaped scalar emission is counted as Step 5 progress.
 
 ### Step 6: Final Validation And Completion Review
 
