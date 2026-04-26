@@ -170,6 +170,9 @@ int check_lowered_aggregate_call_prints_through_structured_context() {
       aggregate_call->return_type != bir::TypeKind::Void) {
     return fail("lowered aggregate call did not use the expected sret ABI shape");
   }
+  if (!aggregate_call->return_type_name.empty()) {
+    return fail("lowered aggregate call still populated legacy return_type_name fallback text");
+  }
 
   aggregate_call->return_type_name = "legacy-return-text-should-not-render";
 

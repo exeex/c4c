@@ -761,8 +761,11 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       lowered_call.structured_return_type_name = std::string(structured_return_name);
     }
   }
-  lowered_call.return_type_name =
-      return_info->returned_via_sret ? "void" : std::string(call.return_type.str());
+  if (!return_info->returned_via_sret ||
+      !lowered_call.structured_return_type_name.has_value()) {
+    lowered_call.return_type_name =
+        return_info->returned_via_sret ? "void" : std::string(call.return_type.str());
+  }
   lowered_call.return_type = return_info->type;
   lowered_call.result_abi = return_info->abi;
   lowered_call.is_indirect = is_indirect_call;
