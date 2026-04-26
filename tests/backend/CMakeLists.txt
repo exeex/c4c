@@ -1027,6 +1027,16 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_local_aggregate_member_offsets_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/local_aggregate_member_offsets.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/local_aggregate_member_offsets_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.p.0, i32 1|bir.store_local %lv.p.4, i32 2|bir.store_local %lv.p.4, i32 5|%t4 = bir.load_local i32 %lv.p.0|%t6 = bir.load_local i32 %lv.p.4|bir.ret i32 %t7"
+  FORBIDDEN_SNIPPETS "define i32 @main()|getelementptr %struct.Pair, ptr"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_local_arg_call_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/local_arg_call.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu

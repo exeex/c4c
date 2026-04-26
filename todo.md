@@ -8,21 +8,19 @@ Current Step Title: Cover Aggregate Storage And Initializer Paths
 
 ## Just Finished
 
-Completed `plan.md` Step 3 global aggregate storage and initializer coverage.
+Completed `plan.md` Step 3 local aggregate slot/address coverage for direct
+struct member offsets.
 
-Registered the existing global aggregate fixtures as semantic BIR route tests:
-defined global struct stores, global struct array read/store, and nested global
-struct array read/store. The new guards assert concrete global offsets for
-field and array addressing (`@v+4`, `@pairs+8`, `@pairs+12`, `@s+4`, and
-`@s+8`) while the delegated subset continues to prove the existing local
-aggregate memcpy/memset initializer paths. Backend behavior was not changed;
-legacy `type_decls` remain fallback/parity evidence.
+Added `local_aggregate_member_offsets.c` and registered it as a semantic BIR
+backend route test. The guard observes concrete local stores and loads at
+`%lv.p.0` and `%lv.p.4` for initializer stores, a direct member overwrite, and
+direct member reads. Backend behavior was not changed.
 
 ## Suggested Next
 
-Take one small Step 3 packet for local aggregate slot/address coverage not
-already covered by memcpy/memset, then decide whether Step 3 is ready to hand
-to plan review or move to Step 4.
+Ask the supervisor to decide whether Step 3 is now ready for plan review or
+whether one final adjacent aggregate-storage guard is still needed before
+moving to Step 4.
 
 ## Watchouts
 
@@ -31,16 +29,14 @@ to plan review or move to Step 4.
 - Treat `--dump-bir` tests as guards for lowered BIR facts, not as a BIR
   printer render-context migration.
 - Do not downgrade expectations or add named-case shortcuts.
-- The new global tests are CMake registrations for existing fixtures; they do
-  not add backend behavior or change case source semantics.
-- Local memcpy/memset coverage proves initializer-derived local storage paths,
-  but a direct non-intrinsic local slot/addressing guard may still be useful
-  before Step 3 is considered exhausted.
+- This packet added only a test fixture and CMake registration; any future
+  failing local aggregate guard should be treated as a general backend issue,
+  not patched through a named-case shortcut.
 
 ## Proof
 
 Proof command run:
-`{ cmake --build build-backend && ctest --test-dir build-backend -j --output-on-failure -R '^(frontend_lir_|backend_codegen_route_x86_64_(defined_global_struct_store|global_struct_array_(read|store)|nested_global_struct_array_(read|store)|builtin_memcpy_(local_pair|nested_pair_field|local_i32_array|nested_i32_array_field)|builtin_memset_(local_pair|local_i32_array|nested_i32_array_field)|builtin_memset_nonzero_(local_pair|local_i32_array|nested_i32_array_field))_observe_semantic_bir$)'; } > test_after.log 2>&1`
+`{ cmake --build build-backend && ctest --test-dir build-backend -j --output-on-failure -R '^(frontend_lir_|backend_codegen_route_x86_64_(local_aggregate_member_offsets|local_dynamic_member_array|local_dynamic_member_array_store|local_direct_dynamic_member_array_(load|store)|local_direct_dynamic_struct_array_call|builtin_memcpy_(local_pair|nested_pair_field|local_i32_array|nested_i32_array_field)|builtin_memset_(local_pair|local_i32_array|nested_i32_array_field)|builtin_memset_nonzero_(local_pair|local_i32_array|nested_i32_array_field))_observe_semantic_bir$)'; } > test_after.log 2>&1`
 
-Result: passed. Build completed and 19/19 selected tests passed.
+Result: passed. Build completed and 20/20 selected tests passed.
 Proof log: `test_after.log`.
