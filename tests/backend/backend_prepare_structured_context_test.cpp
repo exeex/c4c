@@ -1,5 +1,6 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/bir/lir_to_bir.hpp"
+#include "src/backend/prealloc/prealloc.hpp"
 #include "src/codegen/lir/ir.hpp"
 #include "src/shared/text_id_table.hpp"
 #include "src/target_profile.hpp"
@@ -7,15 +8,35 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <utility>
 
 namespace {
 
 namespace bir = c4c::backend::bir;
 namespace lir = c4c::codegen::lir;
+namespace prepare = c4c::backend::prepare;
 
 int fail(const char* message) {
   std::cerr << message << "\n";
   return 1;
+}
+
+const prepare::PreparedControlFlowFunction* find_control_flow_function(
+    const prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto function_name_id = prepared.names.function_names.find(function_name);
+  if (function_name_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  return prepare::find_prepared_control_flow_function(prepared.control_flow, function_name_id);
+}
+
+prepare::PreparedBirModule legalize_only(const bir::Module& module) {
+  prepare::BirPreAlloc prealloc(
+      module, c4c::target_profile_from_triple("x86_64-unknown-linux-gnu"));
+  prealloc.run_legalize();
+  return prealloc.prepared();
 }
 
 lir::LirModule make_structured_decl_lir_module() {
@@ -408,6 +429,138 @@ int check_block_label_rendering_keeps_raw_fallbacks() {
   return 0;
 }
 
+int check_prepared_control_flow_prefers_structured_label_ids() {
+  bir::Module module;
+  const c4c::BlockLabelId entry_id = module.names.block_labels.intern("entry");
+  const c4c::BlockLabelId then_id = module.names.block_labels.intern("then");
+  const c4c::BlockLabelId else_id = module.names.block_labels.intern("else");
+  const c4c::BlockLabelId join_id = module.names.block_labels.intern("join");
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "raw.entry";
+  entry.label_id = entry_id;
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "%cond"),
+      .true_label = "raw.then",
+      .false_label = "raw.else",
+      .true_label_id = then_id,
+      .false_label_id = else_id,
+  };
+  function.blocks.push_back(std::move(entry));
+
+  bir::Block then_block;
+  then_block.label = "raw.then";
+  then_block.label_id = then_id;
+  then_block.terminator = bir::BranchTerminator{
+      .target_label = "raw.join",
+      .target_label_id = join_id,
+  };
+  function.blocks.push_back(std::move(then_block));
+
+  bir::Block else_block;
+  else_block.label = "raw.else";
+  else_block.label_id = else_id;
+  else_block.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+  function.blocks.push_back(std::move(else_block));
+
+  bir::Block join_block;
+  join_block.label = "raw.join";
+  join_block.label_id = join_id;
+  join_block.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(1)};
+  function.blocks.push_back(std::move(join_block));
+
+  module.functions.push_back(std::move(function));
+
+  const auto prepared = legalize_only(module);
+  const auto* control_flow = find_control_flow_function(prepared, "main");
+  if (control_flow == nullptr || control_flow->blocks.size() != 4 ||
+      control_flow->branch_conditions.size() != 1) {
+    return fail("prepared control-flow did not publish the expected structured-id fixture");
+  }
+
+  const auto& prepared_entry = control_flow->blocks[0];
+  if (prepare::prepared_block_label(prepared.names, prepared_entry.block_label) != "entry" ||
+      prepare::prepared_block_label(prepared.names, prepared_entry.true_label) != "then" ||
+      prepare::prepared_block_label(prepared.names, prepared_entry.false_label) != "else") {
+    return fail("prepared conditional branch labels did not prefer structured BIR ids");
+  }
+
+  const auto& prepared_then = control_flow->blocks[1];
+  if (prepare::prepared_block_label(prepared.names, prepared_then.block_label) != "then" ||
+      prepare::prepared_block_label(prepared.names, prepared_then.branch_target_label) != "join") {
+    return fail("prepared branch target label did not prefer structured BIR ids");
+  }
+
+  const auto& condition = control_flow->branch_conditions.front();
+  if (prepare::prepared_block_label(prepared.names, condition.block_label) != "entry" ||
+      prepare::prepared_block_label(prepared.names, condition.true_label) != "then" ||
+      prepare::prepared_block_label(prepared.names, condition.false_label) != "else") {
+    return fail("prepared branch condition labels did not prefer structured BIR ids");
+  }
+
+  return 0;
+}
+
+int check_prepared_control_flow_keeps_raw_label_fallbacks() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "main";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "raw.entry";
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "%cond"),
+      .true_label = "raw.then",
+      .false_label = "raw.else",
+  };
+  function.blocks.push_back(std::move(entry));
+
+  bir::Block then_block;
+  then_block.label = "raw.then";
+  then_block.terminator = bir::BranchTerminator{.target_label = "raw.join"};
+  function.blocks.push_back(std::move(then_block));
+
+  bir::Block else_block;
+  else_block.label = "raw.else";
+  else_block.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+  function.blocks.push_back(std::move(else_block));
+
+  bir::Block join_block;
+  join_block.label = "raw.join";
+  join_block.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(1)};
+  function.blocks.push_back(std::move(join_block));
+
+  module.functions.push_back(std::move(function));
+
+  const auto prepared = legalize_only(module);
+  const auto* control_flow = find_control_flow_function(prepared, "main");
+  if (control_flow == nullptr || control_flow->blocks.size() != 4 ||
+      control_flow->branch_conditions.size() != 1) {
+    return fail("prepared control-flow did not publish the expected raw fallback fixture");
+  }
+
+  const auto& prepared_entry = control_flow->blocks[0];
+  const auto& prepared_then = control_flow->blocks[1];
+  const auto& condition = control_flow->branch_conditions.front();
+  if (prepare::prepared_block_label(prepared.names, prepared_entry.block_label) != "raw.entry" ||
+      prepare::prepared_block_label(prepared.names, prepared_entry.true_label) != "raw.then" ||
+      prepare::prepared_block_label(prepared.names, prepared_entry.false_label) != "raw.else" ||
+      prepare::prepared_block_label(prepared.names, prepared_then.branch_target_label) !=
+          "raw.join" ||
+      prepare::prepared_block_label(prepared.names, condition.block_label) != "raw.entry" ||
+      prepare::prepared_block_label(prepared.names, condition.true_label) != "raw.then" ||
+      prepare::prepared_block_label(prepared.names, condition.false_label) != "raw.else") {
+    return fail("prepared control-flow did not preserve raw label fallback spelling");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -426,5 +579,12 @@ int main() {
       status != 0) {
     return status;
   }
-  return check_block_label_rendering_keeps_raw_fallbacks();
+  if (const int status = check_block_label_rendering_keeps_raw_fallbacks(); status != 0) {
+    return status;
+  }
+  if (const int status = check_prepared_control_flow_prefers_structured_label_ids();
+      status != 0) {
+    return status;
+  }
+  return check_prepared_control_flow_keeps_raw_label_fallbacks();
 }

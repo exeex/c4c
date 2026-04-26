@@ -224,15 +224,32 @@ const bir::BinaryInst* find_compare_for_condition(const bir::Block& block,
   return nullptr;
 }
 
+BlockLabelId intern_prepared_block_label(PreparedNameTables& names,
+                                         const bir::NameTables& bir_names,
+                                         BlockLabelId label_id,
+                                         std::string_view raw_label) {
+  if (label_id != kInvalidBlockLabel) {
+    const std::string_view structured_label = bir_names.block_labels.spelling(label_id);
+    if (!structured_label.empty()) {
+      return names.block_labels.intern(structured_label);
+    }
+  }
+  return names.block_labels.intern(raw_label);
+}
+
 PreparedBranchCondition make_branch_condition(PreparedNameTables& names,
+                                              const bir::NameTables& bir_names,
                                               FunctionNameId function_name,
                                               const bir::Block& block) {
   PreparedBranchCondition condition{
       .function_name = function_name,
-      .block_label = names.block_labels.intern(block.label),
+      .block_label =
+          intern_prepared_block_label(names, bir_names, block.label_id, block.label),
       .condition_value = block.terminator.condition,
-      .true_label = names.block_labels.intern(block.terminator.true_label),
-      .false_label = names.block_labels.intern(block.terminator.false_label),
+      .true_label = intern_prepared_block_label(
+          names, bir_names, block.terminator.true_label_id, block.terminator.true_label),
+      .false_label = intern_prepared_block_label(
+          names, bir_names, block.terminator.false_label_id, block.terminator.false_label),
   };
   if (const auto* compare = find_compare_for_condition(block, block.terminator.condition);
       compare != nullptr) {
@@ -388,20 +405,23 @@ void legalize_module(const c4c::TargetProfile& target_profile,
       }
       legalize_value(target_profile, block.terminator.condition);
       PreparedControlFlowBlock prepared_block{
-          .block_label = names.block_labels.intern(block.label),
+          .block_label =
+              intern_prepared_block_label(names, module.names, block.label_id, block.label),
           .terminator_kind = block.terminator.kind,
       };
       if (block.terminator.kind == bir::TerminatorKind::Branch) {
-        prepared_block.branch_target_label =
-            names.block_labels.intern(block.terminator.target_label);
+        prepared_block.branch_target_label = intern_prepared_block_label(
+            names, module.names, block.terminator.target_label_id, block.terminator.target_label);
       } else if (block.terminator.kind == bir::TerminatorKind::CondBranch) {
-        prepared_block.true_label = names.block_labels.intern(block.terminator.true_label);
-        prepared_block.false_label = names.block_labels.intern(block.terminator.false_label);
+        prepared_block.true_label = intern_prepared_block_label(
+            names, module.names, block.terminator.true_label_id, block.terminator.true_label);
+        prepared_block.false_label = intern_prepared_block_label(
+            names, module.names, block.terminator.false_label_id, block.terminator.false_label);
       }
       function_control_flow.blocks.push_back(std::move(prepared_block));
       if (block.terminator.kind == bir::TerminatorKind::CondBranch) {
         function_control_flow.branch_conditions.push_back(
-            make_branch_condition(names, function_name_id, block));
+            make_branch_condition(names, module.names, function_name_id, block));
       }
     }
 
