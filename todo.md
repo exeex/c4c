@@ -1,6 +1,6 @@
 # Current Packet
 
-Status: Active
+Status: Complete
 Source Idea Path: ideas/open/120_bir_raw_label_fallback_cleanup_after_assembler_id_path.md
 Source Plan Path: plan.md
 Current Step ID: 6
@@ -8,62 +8,78 @@ Current Step Title: Final Validation And Completion Review
 
 ## Just Finished
 
-`plan.md` Step 5 bounded assembler/backend handoff proof was added without
-recovering broad x86 scalar/module rendering.
+`plan.md` Step 6 final validation and completion review is complete.
 
 Completed work:
 
-- `src/backend/mir/x86/module/module.cpp`: the contract-first x86 module handoff
-  now validates prepared control-flow label authority before stub rendering. It
-  requires prepared function/control-flow records, resolves prepared block label
-  ids through the prepared name table, maps those ids back to BIR block
-  identities, and rejects invalid, missing, or drifted prepared branch labels
-  when prepared control-flow metadata is present. Existing prepared-module
-  contract fixtures that intentionally publish frame/regalloc/storage authority
-  without any prepared control-flow records remain accepted by the x86 stub
-  emitter.
-- `tests/backend/backend_x86_prepared_handoff_label_authority_test.cpp`: added a
-  focused x86 prepared-module handoff test proving that valid prepared label ids
-  are consumed even when raw BIR label spelling is drifted, while a missing
-  prepared label id and a drifted prepared branch-condition label are rejected
-  with the canonical prepared-module handoff message.
-- `tests/backend/CMakeLists.txt`: registered
-  `backend_x86_prepared_handoff_label_authority_test` as a narrow backend target
-  independent of the unavailable broad x86 handoff boundary suite.
+- Ran the supervisor-selected broad backend validation command against the
+  accepted Step 5 state.
+- Reviewed the remaining raw-label fallback boundaries against the source idea
+  acceptance criteria.
+- Found no testcase-overfit route in the accepted slice: the Step 5 handoff
+  proof validates prepared control-flow label ids and rejects missing/drifted
+  prepared ids without restoring broad x86 scalar rendering or adding
+  testcase-shaped BIR matching.
+
+Remaining raw-label fallback boundaries:
+
+- BIR structs still retain raw label spelling beside `BlockLabelId` fields for
+  dump text, printer compatibility, raw-only fixture construction, and
+  unresolved-id compatibility. This is intentionally retained by the source idea
+  because dump spelling must remain stable unless a separate contract change is
+  approved.
+- BIR printing prefers structured ids for block headers, branch targets, phi
+  incoming labels, label-address bases, and semantic phi observations when ids
+  are available, and falls back to raw text only when the id is invalid or
+  unresolved.
+- LIR-to-BIR lowering interns ordinary known block labels and edges through the
+  module label table. Unresolved labels keep raw spelling with invalid ids
+  instead of fabricating ids.
+- CLI focus filtering remains a user-facing spelling boundary: selectors are
+  text input, but prepared/BIR focus paths resolve labels through prepared or
+  structured ids where those tables are available.
+- Prepared liveness, stack layout, dynamic stack/out-of-SSA, phi materialization,
+  and prepared control-flow records now use preferred `BlockLabelId` authority
+  for ordinary label identity while retaining raw spelling only as an explicit
+  invalid-id or legacy construction boundary.
+- The x86 prepared-module handoff validates prepared control-flow label ids when
+  prepared control-flow records exist, including missing/drifted id rejection.
+  Prepared modules with an empty `control_flow.functions` table remain an
+  explicit compatibility boundary for older contract fixtures.
+- Target-local MIR/codegen generated labels and broad x86 renderer recovery are
+  outside this idea's accepted scope and remain separate work.
 
 ## Suggested Next
 
-Execute `plan.md` Step 6: run final backend validation selected by the
-supervisor, review remaining raw-label fallback sites against the source idea
-acceptance criteria, and record any intentionally retained compatibility
-boundaries plus proof results here for closure judgment.
+Ask the plan owner to evaluate closure for
+`ideas/open/120_bir_raw_label_fallback_cleanup_after_assembler_id_path.md`.
+From this executor review, the source idea appears ready for plan-owner closure
+judgment: raw fallback dependencies are either narrowed, covered as explicit
+compatibility boundaries, or documented here as intentionally retained.
 
 ## Watchouts
 
-- Preserve BIR dump spelling unless a contract change is explicitly approved.
-- Treat invalid or unresolved `BlockLabelId` values as proof gaps, not as a
-  reason to add broader raw string matching.
-- Do not remove raw label spelling fields yet. They are still the compatibility
-  payload for printer output, unresolved-id fallback, and existing downstream
-  code not covered by this packet.
-- `clang-format` is not installed in this container, so this packet was kept
-  manually formatted.
-- The hook intentionally validates prepared control-flow metadata before the
-  current x86 stub fallback; it does not add handwritten scalar BIR-shape
-  rendering or change dump spelling.
-- Prepared modules with an empty `control_flow.functions` table are a retained
-  compatibility boundary for older contract fixtures. Do not turn that absence
-  into a hard x86 handoff failure unless the source fixture starts publishing
-  prepared control-flow records.
-- Raw label spelling remains retained for BIR/printer compatibility; this proof
-  only establishes the x86/backend handoff boundary for prepared ids.
+- No current Step 6 blocker was found.
+- Closure should not be interpreted as permission to delete all raw label
+  spelling fields. Several retained boundaries are compatibility payloads for
+  stable dumps, unresolved raw-only fixtures, selector spelling, and older
+  prepared-module contract fixtures.
+- The disabled optional x86 MIR trace/focus tests were not part of the delegated
+  `C4C_ENABLE_X86_BACKEND_TESTS=OFF` proof. Broad x86 renderer recovery remains
+  tracked separately by idea 121.
 
 ## Proof
 
-Step 5 acceptance proof command:
+Step 6 final validation proof command:
 `( cmake -S . -B build-backend -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DENABLE_C4C_BACKEND=ON -DC4C_ENABLE_X86_BACKEND_TESTS=OFF && cmake --build build-backend && ctest --test-dir build-backend -j --output-on-failure -R '^backend_' ) > test_after.log 2>&1`
 
 Proof log: `test_after.log`
 
-Result: passed, 108/108 enabled backend tests; 12 optional x86 MIR trace tests
-were disabled by the normal `C4C_ENABLE_X86_BACKEND_TESTS=OFF` configuration.
+Result: passed, 108/108 enabled backend tests; 12 optional x86 MIR trace/focus
+tests were disabled by the delegated `C4C_ENABLE_X86_BACKEND_TESTS=OFF`
+configuration.
+
+Proof sufficiency: sufficient for this executor packet. It freshly builds the
+backend-enabled Release tree and runs the broad backend test subset selected by
+the supervisor, including the Step 5
+`backend_x86_prepared_handoff_label_authority` proof.
