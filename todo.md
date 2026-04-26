@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/121_x86_prepared_module_renderer_recovery.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Restore X86 Handoff Test Compile Compatibility
+Current Step ID: Step 3
+Current Step Title: Recover Supported Scalar Rendering Semantics
 
 ## Just Finished
 
@@ -19,9 +19,11 @@ lookup returned a const pointer.
 
 ## Suggested Next
 
-Next packet should run the `backend_x86_handoff_boundary_test` executable or
-the supervisor-selected runtime subset to expose the first actual x86 handoff
-runtime/renderer blocker now that the target builds.
+Next packet should begin Step 3 by running the
+`backend_x86_handoff_boundary_test` executable or the supervisor-selected
+runtime subset to expose the first scalar x86 handoff renderer blocker now that
+the target builds, then recover supported scalar rendering through semantic
+renderer rules with nearby same-feature coverage.
 
 ## Watchouts
 
