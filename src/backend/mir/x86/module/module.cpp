@@ -5,6 +5,7 @@
 #include "../core/core.hpp"
 
 #include "../../../prealloc/prepared_printer.hpp"
+#include "../../../prealloc/target_register_profile.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -744,6 +745,46 @@ std::string render_prepared_i32_value_home_operand(
                                               "' has an unsupported prepared i32 return home");
 }
 
+bool append_prepared_i32_immediate_return_function(
+    c4c::backend::x86::core::Text& out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    const Data& data) {
+  if (function.blocks.size() != 1) {
+    return false;
+  }
+
+  const auto& block = function.blocks.front();
+  if (!block.insts.empty() ||
+      block.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !block.terminator.value.has_value() ||
+      block.terminator.value->kind != c4c::backend::bir::Value::Kind::Immediate ||
+      block.terminator.value->type != c4c::backend::bir::TypeKind::I32) {
+    return false;
+  }
+
+  if (!function.return_abi.has_value()) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has no prepared return ABI");
+  }
+  const auto return_register = c4c::backend::prepare::call_result_destination_register_name(
+      c4c::backend::x86::abi::resolve_target_profile(module), *function.return_abi);
+  if (!return_register.has_value()) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has no prepared register return ABI destination");
+  }
+
+  const auto symbol_name = data.render_asm_symbol_name(function.name);
+  out.append_line(".globl " + symbol_name);
+  out.append_line(".type " + symbol_name + ", @function");
+  out.append_line(symbol_name + ":");
+  out.append_line("    mov " +
+                  c4c::backend::x86::abi::narrow_i32_register_name(*return_register) + ", " +
+                  std::to_string(block.terminator.value->immediate));
+  out.append_line("    ret");
+  return true;
+}
+
 bool append_prepared_i32_passthrough_return_function(
     c4c::backend::x86::core::Text& out,
     const c4c::backend::prepare::PreparedBirModule& module,
@@ -985,6 +1026,9 @@ bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
                                       const c4c::backend::bir::Function& function,
                                       const Data& data) {
   validate_prepared_control_flow_handoff(module, function);
+  if (append_prepared_i32_immediate_return_function(out, module, function, data)) {
+    return true;
+  }
   if (append_prepared_i32_passthrough_return_function(out, module, function, data)) {
     return true;
   }
