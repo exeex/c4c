@@ -911,7 +911,9 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   for (const auto& decl : context.lir_module.extern_decls) {
     auto lowered_decl = BirFunctionLowerer::lower_extern_decl(
         extern_decl_with_resolved_name(context.lir_module, decl),
-        context.target_profile);
+        context.target_profile,
+        type_decls,
+        structured_layouts);
     if (!lowered_decl.has_value()) {
       continue;
     }
@@ -922,7 +924,8 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     const auto resolved_function = function_with_resolved_name(context.lir_module, function);
     if (resolved_function.is_declaration) {
       auto lowered_decl =
-          BirFunctionLowerer::lower_decl_function(resolved_function, context.target_profile);
+          BirFunctionLowerer::lower_decl_function(
+              resolved_function, context.target_profile, type_decls, structured_layouts);
       if (!lowered_decl.has_value()) {
         continue;
       }

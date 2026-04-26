@@ -331,12 +331,14 @@ BirFunctionLowerer::parse_direct_global_typed_call(const c4c::codegen::lir::LirC
 }
 std::optional<bir::Function> BirFunctionLowerer::lower_extern_decl(
     const c4c::codegen::lir::LirExternDecl& decl,
-    const c4c::TargetProfile& target_profile) {
-  auto return_info =
-      lower_return_info_from_type(decl.return_type_str, TypeDeclMap{}, target_profile, nullptr);
+    const c4c::TargetProfile& target_profile,
+    const TypeDeclMap& type_decls,
+    const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts) {
+  auto return_info = lower_return_info_from_type(
+      decl.return_type_str, type_decls, target_profile, &structured_layouts);
   if (!return_info.has_value()) {
-    return_info =
-        lower_return_info_from_type(decl.return_type.str(), TypeDeclMap{}, target_profile, nullptr);
+    return_info = lower_return_info_from_type(
+        decl.return_type.str(), type_decls, target_profile, &structured_layouts);
   }
   if (!return_info.has_value()) {
     return std::nullopt;
@@ -1119,11 +1121,13 @@ void BirFunctionLowerer::note_runtime_intrinsic_family_failure(std::string_view 
 
 std::optional<bir::Function> BirFunctionLowerer::lower_decl_function(
     const c4c::codegen::lir::LirFunction& function,
-    const c4c::TargetProfile& target_profile) {
+    const c4c::TargetProfile& target_profile,
+    const TypeDeclMap& type_decls,
+    const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts) {
   bir::Function lowered;
   lowered.name = function.name;
-  auto return_info =
-      lower_signature_return_info(function.signature_text, TypeDeclMap{}, target_profile, nullptr);
+  auto return_info = lower_signature_return_info(
+      function.signature_text, type_decls, target_profile, &structured_layouts);
   if (!return_info.has_value()) {
     lowered.return_type = lower_param_type(function.return_type).value_or(bir::TypeKind::Void);
     lowered.return_abi = compute_function_return_abi(target_profile, lowered.return_type, false);
@@ -1133,11 +1137,12 @@ std::optional<bir::Function> BirFunctionLowerer::lower_decl_function(
     lowered.return_align_bytes = return_info->align_bytes;
     lowered.return_abi = return_info->abi;
   }
-  if (!lower_function_params_fallback(function,
-                                      target_profile,
-                                      return_info,
-                                      TypeDeclMap{},
-                                      &lowered)) {
+  if (!lower_function_params_with_layouts(function,
+                                          target_profile,
+                                          return_info,
+                                          type_decls,
+                                          &structured_layouts,
+                                          &lowered)) {
     return std::nullopt;
   }
   lowered.is_declaration = true;

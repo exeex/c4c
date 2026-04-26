@@ -227,10 +227,14 @@ class BirFunctionLowerer {
       std::string_view signature_text);
   static std::optional<bir::Function> lower_extern_decl(
       const c4c::codegen::lir::LirExternDecl& decl,
-      const c4c::TargetProfile& target_profile);
+      const c4c::TargetProfile& target_profile,
+      const lir_to_bir_detail::TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts);
   static std::optional<bir::Function> lower_decl_function(
       const c4c::codegen::lir::LirFunction& function,
-      const c4c::TargetProfile& target_profile);
+      const c4c::TargetProfile& target_profile,
+      const lir_to_bir_detail::TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts);
 
   // Shared type buckets used by the split lowering translation units.
   using ValueMap = lir_to_bir_detail::ValueMap;
