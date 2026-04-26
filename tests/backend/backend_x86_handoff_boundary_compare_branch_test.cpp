@@ -251,6 +251,32 @@ std::string expected_minimal_param_ne_zero_branch_asm(const char* function_name,
          std::to_string(false_returned_value) + "\n    ret\n";
 }
 
+void attach_structured_block_label_ids(bir::Module& module) {
+  for (auto& function : module.functions) {
+    for (auto& block : function.blocks) {
+      block.label_id = module.names.block_labels.intern(block.label);
+      if (block.terminator.kind == bir::TerminatorKind::Branch) {
+        block.terminator.target_label_id =
+            module.names.block_labels.intern(block.terminator.target_label);
+      } else if (block.terminator.kind == bir::TerminatorKind::CondBranch) {
+        block.terminator.true_label_id =
+            module.names.block_labels.intern(block.terminator.true_label);
+        block.terminator.false_label_id =
+            module.names.block_labels.intern(block.terminator.false_label);
+      }
+      for (auto& inst : block.insts) {
+        auto* phi = std::get_if<bir::PhiInst>(&inst);
+        if (phi == nullptr) {
+          continue;
+        }
+        for (auto& incoming : phi->incomings) {
+          incoming.label_id = module.names.block_labels.intern(incoming.label);
+        }
+      }
+    }
+  }
+}
+
 bir::Module make_x86_param_eq_zero_branch_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -296,6 +322,7 @@ bir::Module make_x86_param_eq_zero_branch_module() {
   function.blocks.push_back(std::move(is_zero));
   function.blocks.push_back(std::move(is_nonzero));
   module.functions.push_back(std::move(function));
+  attach_structured_block_label_ids(module);
   return module;
 }
 
@@ -344,6 +371,7 @@ bir::Module make_x86_param_eq_zero_branch_param_or_immediate_module() {
   function.blocks.push_back(std::move(is_zero));
   function.blocks.push_back(std::move(is_nonzero));
   module.functions.push_back(std::move(function));
+  attach_structured_block_label_ids(module);
   return module;
 }
 
@@ -429,6 +457,7 @@ bir::Module make_x86_param_eq_zero_branch_joined_add_or_sub_then_xor_module() {
   function.blocks.push_back(std::move(is_nonzero));
   function.blocks.push_back(std::move(join));
   module.functions.push_back(std::move(function));
+  attach_structured_block_label_ids(module);
   return module;
 }
 
@@ -491,6 +520,7 @@ bir::Module make_x86_param_ne_zero_branch_module() {
   function.blocks.push_back(std::move(is_nonzero));
   function.blocks.push_back(std::move(is_zero));
   module.functions.push_back(std::move(function));
+  attach_structured_block_label_ids(module);
   return module;
 }
 
@@ -587,9 +617,21 @@ int check_minimal_compare_branch_consumes_prepared_control_flow_impl(
   entry_compare->lhs = bir::Value::immediate_i32(9);
   entry_compare->rhs = bir::Value::immediate_i32(3);
   if (add_unreachable_block) {
+    const auto dead_label = prepared.module.names.block_labels.intern("contract.dead.unreachable");
+    auto* mutable_control_flow = find_control_flow_function(prepared, function_name);
+    if (mutable_control_flow == nullptr) {
+      return fail((std::string(failure_context) +
+                   ": prepared minimal compare branch fixture lost its mutable control-flow contract")
+                      .c_str());
+    }
+    mutable_control_flow->blocks.push_back(prepare::PreparedControlFlowBlock{
+        .block_label = prepared.names.block_labels.intern("contract.dead.unreachable"),
+        .terminator_kind = bir::TerminatorKind::Return,
+    });
     function.blocks.push_back(bir::Block{
         .label = "contract.dead.unreachable",
         .terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(99)},
+        .label_id = dead_label,
     });
   }
 
