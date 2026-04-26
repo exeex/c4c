@@ -375,9 +375,9 @@ std::vector<std::string_view> split_top_level_initializer_items(std::string_view
   int depth = 0;
   for (std::size_t index = 0; index < text.size(); ++index) {
     const char ch = text[index];
-    if (ch == '[' || ch == '{' || ch == '(') {
+    if (ch == '[' || ch == '{' || ch == '(' || ch == '<') {
       ++depth;
-    } else if (ch == ']' || ch == '}' || ch == ')') {
+    } else if (ch == ']' || ch == '}' || ch == ')' || ch == '>') {
       --depth;
     } else if (ch == ',' && depth == 0) {
       items.push_back(text.substr(item_start, index - item_start));
@@ -452,11 +452,18 @@ AggregateTypeLayout compute_aggregate_type_layout(std::string_view text,
     };
   }
 
-  if (trimmed.size() < 2 || trimmed.front() != '{' || trimmed.back() != '}') {
+  bool is_packed_struct = false;
+  std::string_view body;
+  if (trimmed.size() >= 4 && trimmed.substr(0, 2) == "<{" &&
+      trimmed.substr(trimmed.size() - 2) == "}>") {
+    is_packed_struct = true;
+    body = trimmed.substr(2, trimmed.size() - 4);
+  } else if (trimmed.size() >= 2 && trimmed.front() == '{' && trimmed.back() == '}') {
+    body = trimmed.substr(1, trimmed.size() - 2);
+  } else {
     return {};
   }
 
-  const auto body = trimmed.substr(1, trimmed.size() - 2);
   const auto field_items = split_top_level_initializer_items(body);
   AggregateTypeLayout layout;
   layout.kind = AggregateTypeLayout::Kind::Struct;
@@ -472,17 +479,21 @@ AggregateTypeLayout compute_aggregate_type_layout(std::string_view text,
         (field_layout.kind == AggregateTypeLayout::Kind::Scalar && field_layout.size_bytes == 0)) {
       return {};
     }
-    current_offset = align_up(current_offset, field_layout.align_bytes);
+    if (!is_packed_struct) {
+      current_offset = align_up(current_offset, field_layout.align_bytes);
+    }
     layout.fields.push_back(AggregateField{
         .byte_offset = current_offset,
         .type_text = std::string(field_type),
     });
     current_offset += field_layout.size_bytes;
-    struct_align = std::max(struct_align, field_layout.align_bytes);
+    if (!is_packed_struct) {
+      struct_align = std::max(struct_align, field_layout.align_bytes);
+    }
   }
 
   layout.align_bytes = struct_align;
-  layout.size_bytes = align_up(current_offset, struct_align);
+  layout.size_bytes = is_packed_struct ? current_offset : align_up(current_offset, struct_align);
   return layout;
 }
 

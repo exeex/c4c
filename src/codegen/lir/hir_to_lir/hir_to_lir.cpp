@@ -407,16 +407,20 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
     LirStructDecl structured_decl;
     structured_decl.name_id =
         lir_module ? lir_module->struct_names.intern(sty) : kInvalidStructName;
+    structured_decl.is_packed = sd.pack_align > 0;
     auto record_structured_decl = [&]() {
       if (lir_module) lir_module->record_struct_decl(std::move(structured_decl));
     };
 
     if (sd.fields.empty() && sd.base_tags.empty()) {
       if (sd.size_bytes == 0) {
-        decls.push_back(sty + " = type {}");
+        decls.push_back(sty + " = type " +
+                         std::string(structured_decl.is_packed ? "<{}>" : "{}"));
       } else {
-        decls.push_back(sty + " = type { [" +
-                         std::to_string(sd.size_bytes) + " x i8] }");
+        decls.push_back(sty + " = type " +
+                         std::string(structured_decl.is_packed ? "<{ " : "{ ") +
+                         "[" + std::to_string(sd.size_bytes) + " x i8]" +
+                         std::string(structured_decl.is_packed ? " }>" : " }"));
         structured_decl.fields.push_back(
             {LirTypeRef("[" + std::to_string(sd.size_bytes) + " x i8]")});
       }
@@ -424,14 +428,16 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
       continue;
     }
     if (sd.is_union) {
-      decls.push_back(sty + " = type { [" +
-                       std::to_string(sd.size_bytes) + " x i8] }");
+      decls.push_back(sty + " = type " +
+                       std::string(structured_decl.is_packed ? "<{ " : "{ ") +
+                       "[" + std::to_string(sd.size_bytes) + " x i8]" +
+                       std::string(structured_decl.is_packed ? " }>" : " }"));
       structured_decl.fields.push_back(
           {LirTypeRef("[" + std::to_string(sd.size_bytes) + " x i8]")});
       record_structured_decl();
     } else {
       std::ostringstream line;
-      line << sty << " = type { ";
+      line << sty << " = type " << (structured_decl.is_packed ? "<{ " : "{ ");
       bool first = true;
       int cur_offset = 0;
       for (const auto& base_tag : sd.base_tags) {
@@ -487,7 +493,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
         line << pad_ty;
         structured_decl.fields.push_back({LirTypeRef(pad_ty)});
       }
-      line << " }";
+      line << (structured_decl.is_packed ? " }>" : " }");
       decls.push_back(line.str());
       record_structured_decl();
     }
