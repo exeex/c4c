@@ -9,19 +9,21 @@ Current Step Title: Recover Prepared Control-Flow Rendering Semantics
 ## Just Finished
 
 Step 4 Recover Prepared Control-Flow Rendering Semantics repaired the
-joined-branch compare-join return-move source mismatch in the x86
-prepared-module renderer. The compare-join return arm now validates the
-prepared return bundle against the prepared home of the join block's actual
-returned value and verifies the render context still belongs to the prepared
-join block, while selected parameter materialization remains driven by
-prepared value homes rather than raw labels or fixture names.
+joined-branch `carrier.zero` prepared control-flow block authority blocker in
+the x86 prepared-module handoff validator without keeping the reviewed
+generic branch-owned PhiEdge skip. BIR blocks that are prepared compare-join
+branch targets now prove ownership from the prepared compare branch condition,
+the candidate BIR block's prepared target identity, authoritative true/false
+edge-transfer records, materialized join-transfer carrier authority, and
+published join-block control flow; resolved compare-join predecessors still
+use the materialized compare-join context and published parallel-copy bundles.
 
 ## Suggested Next
 
 Continue Step 4 on the next joined-branch handoff blocker exposed by the same
 proof:
 `canonical prepared-module handoff rejected x86 control-flow label authority:
-BIR block 'carrier.zero' has no prepared control-flow block`.
+prepared true branch target label #2 does not name a BIR block by id`.
 
 ## Watchouts
 
@@ -65,6 +67,14 @@ The compare-join return-move source check should stay anchored on the prepared
 join return value home. The selected-value base home only explains how to
 materialize the branch arm; the prepared out-of-SSA edge bundles and join
 return bundle own the carrier-to-return authority.
+The validator now has a narrower compare-join branch-target authority path for
+prepared branch-plan targets that are not themselves published as prepared
+control-flow blocks. It is gated by prepared compare-branch target identity,
+candidate BIR block identity, materialized join-transfer carrier authority,
+and authoritative true/false edge transfers rather than any branch-owned
+PhiEdge transfer. Keep future repairs from weakening ordinary prepared block
+validation; the remaining true-branch-target blocker is a separate target
+resolution drift after the `carrier.zero` block authority check.
 
 ## Proof
 
@@ -72,9 +82,8 @@ return bundle own the carrier-to-return authority.
 rebuilt `tests/backend/backend_x86_handoff_boundary_test` and
 `tests/backend/backend_x86_prepared_handoff_label_authority_test`, kept
 `backend_x86_prepared_handoff_label_authority` passing, and advanced past the
-requested `defined function 'branch_join_adjust' compare-join return move
-source drifted from selected parameter home` blocker. The aggregate proof still
-fails later after aborting at `canonical prepared-module handoff rejected x86
-control-flow label authority: BIR block 'carrier.zero' has no prepared
-control-flow block`.
+requested `BIR block 'carrier.zero' has no prepared control-flow block`
+blocker. The aggregate proof still fails later after aborting at `canonical
+prepared-module handoff rejected x86 control-flow label authority: prepared
+true branch target label #2 does not name a BIR block by id`.
 Canonical proof log: `test_after.log`.

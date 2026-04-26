@@ -264,6 +264,136 @@ void validate_prepared_branch_condition(
   }
 }
 
+bool prepared_compare_join_owns_predecessor_block(
+    c4c::backend::prepare::PreparedNameTables& mutable_names,
+    const c4c::backend::bir::NameTables& bir_names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& candidate_block) {
+  if (function.params.size() != 1 ||
+      function.params.front().type != c4c::backend::bir::TypeKind::I32) {
+    return false;
+  }
+
+  const auto param_name =
+      c4c::backend::prepare::resolve_prepared_value_name_id(mutable_names,
+                                                            function.params.front().name);
+  if (!param_name.has_value()) {
+    return false;
+  }
+
+  for (const auto& source_block : function.blocks) {
+    if (source_block.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch) {
+      continue;
+    }
+
+    const auto source_block_label =
+        bir_block_label_id(bir_names, mutable_names, source_block);
+    if (!source_block_label.has_value()) {
+      continue;
+    }
+
+    const auto compare_join_context =
+        c4c::backend::prepare::find_prepared_param_zero_materialized_compare_join_context(
+            mutable_names,
+            control_flow,
+            function,
+            *source_block_label,
+            source_block,
+            *param_name,
+            false);
+    if (!compare_join_context.has_value() ||
+        compare_join_context->compare_join_context.join_transfer == nullptr ||
+        compare_join_context->compare_join_context.true_transfer == nullptr ||
+        compare_join_context->compare_join_context.false_transfer == nullptr) {
+      continue;
+    }
+
+    const auto& join_context = compare_join_context->compare_join_context;
+    if (&candidate_block != join_context.true_predecessor &&
+        &candidate_block != join_context.false_predecessor) {
+      continue;
+    }
+
+    const auto* join_transfer = join_context.join_transfer;
+    if (c4c::backend::prepare::find_prepared_control_flow_block(
+            control_flow, join_transfer->join_block_label) == nullptr) {
+      return false;
+    }
+    if (c4c::backend::prepare::find_prepared_parallel_copy_bundle(
+            control_flow,
+            join_context.true_transfer->predecessor_label,
+            join_context.true_transfer->successor_label) == nullptr ||
+        c4c::backend::prepare::find_prepared_parallel_copy_bundle(
+            control_flow,
+            join_context.false_transfer->predecessor_label,
+            join_context.false_transfer->successor_label) == nullptr) {
+      return false;
+    }
+    return true;
+  }
+
+  return false;
+}
+
+bool prepared_compare_join_owns_branch_target_block(
+    c4c::backend::prepare::PreparedNameTables& mutable_names,
+    const c4c::backend::bir::NameTables& bir_names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& candidate_block,
+    c4c::BlockLabelId candidate_label) {
+  if (candidate_label == c4c::kInvalidBlockLabel) {
+    return false;
+  }
+
+  if (find_bir_block_by_prepared_label(function, bir_names, mutable_names, candidate_label) !=
+      &candidate_block) {
+    return false;
+  }
+
+  for (const auto& branch_condition : control_flow.branch_conditions) {
+    if (branch_condition.block_label == c4c::kInvalidBlockLabel ||
+        !branch_condition.predicate.has_value() || !branch_condition.compare_type.has_value() ||
+        !branch_condition.lhs.has_value() || !branch_condition.rhs.has_value() ||
+        (*branch_condition.predicate != c4c::backend::bir::BinaryOpcode::Eq &&
+         *branch_condition.predicate != c4c::backend::bir::BinaryOpcode::Ne) ||
+        *branch_condition.compare_type != c4c::backend::bir::TypeKind::I32 ||
+        (branch_condition.true_label != candidate_label &&
+         branch_condition.false_label != candidate_label)) {
+      continue;
+    }
+    const auto authoritative_join_transfer =
+        c4c::backend::prepare::find_authoritative_branch_owned_join_transfer(
+            mutable_names, control_flow, branch_condition.block_label);
+    if (!authoritative_join_transfer.has_value() ||
+        authoritative_join_transfer->join_transfer == nullptr ||
+        authoritative_join_transfer->true_transfer == nullptr ||
+        authoritative_join_transfer->false_transfer == nullptr) {
+      continue;
+    }
+
+    const auto* join_transfer = authoritative_join_transfer->join_transfer;
+    if (c4c::backend::prepare::effective_prepared_join_transfer_carrier_kind(*join_transfer) ==
+            c4c::backend::prepare::PreparedJoinTransferCarrierKind::None ||
+        authoritative_join_transfer->true_transfer->predecessor_label ==
+            c4c::kInvalidBlockLabel ||
+        authoritative_join_transfer->true_transfer->successor_label == c4c::kInvalidBlockLabel ||
+        authoritative_join_transfer->false_transfer->predecessor_label ==
+            c4c::kInvalidBlockLabel ||
+        authoritative_join_transfer->false_transfer->successor_label == c4c::kInvalidBlockLabel) {
+      continue;
+    }
+    if (c4c::backend::prepare::find_prepared_control_flow_block(
+            control_flow, join_transfer->join_block_label) == nullptr) {
+      return false;
+    }
+    return true;
+  }
+
+  return false;
+}
+
 void validate_prepared_control_flow_handoff(
     const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::bir::Function& function) {
@@ -285,6 +415,7 @@ void validate_prepared_control_flow_handoff(
                                               "' has no prepared control-flow record");
   }
 
+  auto mutable_names = module.names;
   for (const auto& block : function.blocks) {
     const auto block_label = bir_block_label_id(module.module.names, module.names, block);
     if (!block_label.has_value()) {
@@ -292,7 +423,11 @@ void validate_prepared_control_flow_handoff(
                                                 "' has no prepared block id");
     }
     if (c4c::backend::prepare::find_prepared_control_flow_block(*control_flow, *block_label) ==
-        nullptr) {
+        nullptr &&
+        !prepared_compare_join_owns_branch_target_block(
+            mutable_names, module.module.names, *control_flow, function, block, *block_label) &&
+        !prepared_compare_join_owns_predecessor_block(
+            mutable_names, module.module.names, *control_flow, function, block)) {
       throw_prepared_control_flow_handoff_error("BIR block '" + block.label +
                                                 "' has no prepared control-flow block");
     }
