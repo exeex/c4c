@@ -1,8 +1,8 @@
 #include "src/backend/backend.hpp"
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/bir/lir_to_bir/lowering.hpp"
-#include "src/backend/mir/x86/codegen/abi/x86_target_abi.hpp"
-#include "src/backend/mir/x86/codegen/api/x86_codegen_api.hpp"
+#include "src/backend/mir/x86/abi/abi.hpp"
+#include "src/backend/mir/x86/api/api.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 
 #include <cstdlib>
