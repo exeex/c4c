@@ -977,6 +977,56 @@ c4c_add_backend_codegen_route_test(
 )
 
 c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_defined_global_struct_store_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/defined_global_struct_store.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/defined_global_struct_store_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @v, i32 1|bir.store_global @v, offset 4, i32 2|%t3 = bir.load_global i32 @v|%t6 = bir.load_global i32 @v, offset 4|bir.ret i32 %t7"
+  FORBIDDEN_SNIPPETS "define i32 @main()"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_global_struct_array_read_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/global_struct_array_read.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/global_struct_array_read_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t4 = bir.load_global i32 @pairs, offset 12|bir.ret i32 %t4"
+  FORBIDDEN_SNIPPETS "define i32 @main()"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_global_struct_array_store_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/global_struct_array_store.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/global_struct_array_store_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @pairs, offset 8, i32 9|%t8 = bir.load_global i32 @pairs, offset 8|bir.ret i32 %t8"
+  FORBIDDEN_SNIPPETS "define i32 @main()"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_nested_global_struct_array_read_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/nested_global_struct_array_read.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/nested_global_struct_array_read_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t5 = bir.load_global i32 @s, offset 8|bir.ret i32 %t5"
+  FORBIDDEN_SNIPPETS "define i32 @main()"
+)
+
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_x86_64_nested_global_struct_array_store_observe_semantic_bir
+  SRC "${BACKEND_CASE_ROOT}/nested_global_struct_array_store.c"
+  TARGET_TRIPLE x86_64-unknown-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/nested_global_struct_array_store_semantic_bir_x86_64.ll"
+  EXTRA_COMPILER_ARGS "--backend-bir-stage|semantic"
+  REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_global @s, offset 4, i32 9|%t10 = bir.load_global i32 @s, offset 4|bir.ret i32 %t10"
+  FORBIDDEN_SNIPPETS "define i32 @main()"
+)
+
+c4c_add_backend_codegen_route_test(
   backend_codegen_route_x86_64_local_arg_call_observe_semantic_bir
   SRC "${BACKEND_CASE_ROOT}/local_arg_call.c"
   TARGET_TRIPLE x86_64-unknown-linux-gnu
