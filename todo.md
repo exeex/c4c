@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/121_x86_prepared_module_renderer_recovery.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Reprove X86 Handoff And Decide Lifecycle Outcome
+Current Step ID: Step 4
+Current Step Title: Recover Prepared Control-Flow Rendering Semantics
 
 ## Just Finished
 
@@ -18,9 +18,14 @@ the x86-64 call-alignment adjustment, and renders referenced prepared string
 constants for the accepted route. The route rejects missing argument/result
 call-bundle authority instead of reopening local ABI fallback.
 
+The same proof then advanced back into a prepared control-flow authority
+blocker, so active execution returns to Step 4 rather than treating the next
+packet as Step 5 lifecycle-outcome reproving.
+
 ## Suggested Next
 
-Continue Step 5 with the next x86 handoff blocker exposed by the same proof:
+Resume Step 4 control-flow recovery on the next x86 handoff blocker exposed by
+the same proof:
 `scalar-control-flow compare-against-zero joined branch lane: x86
 prepared-module consumer rejected the prepared handoff with exception:
 canonical prepared-module handoff rejected x86 control-flow label authority:
