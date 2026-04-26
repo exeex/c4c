@@ -3,6 +3,7 @@
 #include "src/backend/prealloc/prepared_printer.hpp"
 #include "src/target_profile.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <optional>
@@ -70,6 +71,15 @@ const prepare::PreparedParallelCopyBundle* find_parallel_copy_bundle(
 const bir::Block* find_block(const bir::Function& function, const char* label) {
   for (const auto& block : function.blocks) {
     if (block.label == label) {
+      return &block;
+    }
+  }
+  return nullptr;
+}
+
+const bir::Block* find_block_by_id(const bir::Function& function, c4c::BlockLabelId label_id) {
+  for (const auto& block : function.blocks) {
+    if (block.label_id == label_id) {
       return &block;
     }
   }
@@ -543,6 +553,66 @@ int check_loop_countdown_control_flow_contract(const prepare::PreparedBirModule&
       join_transfer.incomings[1].label != "body" ||
       !is_named_i32(join_transfer.incomings[1].value, "next")) {
     return fail("expected the loop join metadata to preserve entry and backedge incoming ownership");
+  }
+
+  return 0;
+}
+
+int check_id_authoritative_loop_countdown_contract(
+    const prepare::PreparedBirModule& prepared,
+    const char* function_name) {
+  const auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr) {
+    return fail("expected prepared control-flow metadata for id-authoritative loop lane");
+  }
+  if (control_flow->join_transfers.size() != 1 || control_flow->parallel_copy_bundles.size() != 2) {
+    return fail("expected id-authoritative loop lane to publish one join transfer and two bundles");
+  }
+
+  const auto& join_transfer = control_flow->join_transfers.front();
+  if (join_transfer.kind != prepare::PreparedJoinTransferKind::LoopCarry ||
+      prepare::prepared_block_label(prepared.names, join_transfer.join_block_label) != "loop" ||
+      join_transfer.edge_transfers.size() != 2) {
+    return fail("expected id-authoritative loop join transfer to use canonical loop ids");
+  }
+  if (prepare::prepared_block_label(prepared.names,
+                                    join_transfer.edge_transfers[0].predecessor_label) !=
+          "entry" ||
+      prepare::prepared_block_label(prepared.names,
+                                    join_transfer.edge_transfers[1].predecessor_label) !=
+          "body") {
+    return fail("expected id-authoritative phi incomings to publish canonical predecessor ids");
+  }
+
+  const auto* entry_bundle = find_parallel_copy_bundle(prepared, function_name, "entry", "loop");
+  const auto* body_bundle = find_parallel_copy_bundle(prepared, function_name, "body", "loop");
+  if (entry_bundle == nullptr || body_bundle == nullptr) {
+    return fail("expected id-authoritative loop bundles to be indexed by canonical ids");
+  }
+
+  if (prepared.module.functions.size() != 1) {
+    return fail("expected one id-authoritative loop function");
+  }
+  const auto& function = prepared.module.functions.front();
+  const c4c::BlockLabelId entry_id = prepared.module.names.block_labels.find("entry");
+  const c4c::BlockLabelId body_id = prepared.module.names.block_labels.find("body");
+  const auto* entry_block = find_block_by_id(function, entry_id);
+  const auto* body_block = find_block_by_id(function, body_id);
+  if (entry_block == nullptr || body_block == nullptr) {
+    return fail("expected stale-spelled loop blocks to remain findable by canonical ids");
+  }
+  const auto entry_store = std::find_if(entry_block->insts.begin(),
+                                        entry_block->insts.end(),
+                                        [](const bir::Inst& inst) {
+                                          return std::holds_alternative<bir::StoreLocalInst>(inst);
+                                        });
+  const auto body_store = std::find_if(body_block->insts.begin(),
+                                       body_block->insts.end(),
+                                       [](const bir::Inst& inst) {
+                                         return std::holds_alternative<bir::StoreLocalInst>(inst);
+                                       });
+  if (entry_store == entry_block->insts.end() || body_store == body_block->insts.end()) {
+    return fail("expected id-authoritative phi lowering to place stores in canonical predecessor blocks");
   }
 
   return 0;
@@ -1152,6 +1222,103 @@ prepare::PreparedBirModule legalize_loop_countdown_module() {
 
   bir::Block exit;
   exit.label = "exit";
+  exit.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "counter"),
+  };
+
+  function.blocks = {
+      std::move(entry),
+      std::move(loop),
+      std::move(body),
+      std::move(exit),
+  };
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  planner.run_out_of_ssa();
+  return std::move(planner.prepared());
+}
+
+prepare::PreparedBirModule legalize_id_authoritative_loop_countdown_module() {
+  bir::Module module;
+
+  const c4c::BlockLabelId entry_id = module.names.block_labels.intern("entry");
+  const c4c::BlockLabelId loop_id = module.names.block_labels.intern("loop");
+  const c4c::BlockLabelId body_id = module.names.block_labels.intern("body");
+  const c4c::BlockLabelId exit_id = module.names.block_labels.intern("exit");
+
+  bir::Function function;
+  function.name = "id_authoritative_loop_countdown_prepare_contract";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "stale.entry";
+  entry.label_id = entry_id;
+  entry.terminator = bir::BranchTerminator{
+      .target_label = "stale.loop",
+      .target_label_id = loop_id,
+  };
+
+  bir::Block loop;
+  loop.label = "stale.loop";
+  loop.label_id = loop_id;
+  loop.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "counter"),
+      .incomings = {
+          bir::PhiIncoming{
+              .label = "stale.entry",
+              .value = bir::Value::immediate_i32(3),
+              .label_id = entry_id,
+          },
+          bir::PhiIncoming{
+              .label = "stale.body",
+              .value = bir::Value::named(bir::TypeKind::I32, "next"),
+              .label_id = body_id,
+          },
+      },
+  });
+  loop.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Ne,
+      .result = bir::Value::named(bir::TypeKind::I32, "cmp0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "counter"),
+      .rhs = bir::Value::immediate_i32(0),
+  });
+  loop.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I32, "cmp0"),
+      .true_label = "stale.body",
+      .false_label = "stale.exit",
+      .true_label_id = body_id,
+      .false_label_id = exit_id,
+  };
+
+  bir::Block body;
+  body.label = "stale.body";
+  body.label_id = body_id;
+  body.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "next"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "counter"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  body.terminator = bir::BranchTerminator{
+      .target_label = "stale.loop",
+      .target_label_id = loop_id,
+  };
+
+  bir::Block exit;
+  exit.label = "stale.exit";
+  exit.label_id = exit_id;
   exit.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, "counter"),
   };
@@ -2342,6 +2509,20 @@ int main() {
   if (const int status =
           check_loop_countdown_control_flow_contract(prepared_loop_countdown,
                                                     "loop_countdown_prepare_contract");
+      status != 0) {
+    return status;
+  }
+
+  const auto prepared_id_authoritative_loop = legalize_id_authoritative_loop_countdown_module();
+  if (const int status = check_prepare_phi_invariant(prepared_id_authoritative_loop); status != 0) {
+    return status;
+  }
+  if (const int status = check_prepare_i1_invariant(prepared_id_authoritative_loop); status != 0) {
+    return status;
+  }
+  if (const int status = check_id_authoritative_loop_countdown_contract(
+          prepared_id_authoritative_loop,
+          "id_authoritative_loop_countdown_prepare_contract");
       status != 0) {
     return status;
   }

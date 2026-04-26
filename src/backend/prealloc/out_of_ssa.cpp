@@ -33,6 +33,59 @@ const bir::Block* find_block(const bir::Function& function, std::string_view lab
   return nullptr;
 }
 
+std::string_view preferred_bir_block_label(const bir::NameTables& bir_names,
+                                           BlockLabelId label_id,
+                                           std::string_view raw_label) {
+  if (label_id != kInvalidBlockLabel) {
+    const std::string_view structured_label = bir_names.block_labels.spelling(label_id);
+    if (!structured_label.empty()) {
+      return structured_label;
+    }
+  }
+  return raw_label;
+}
+
+const bir::Block* find_block_by_preferred_label(const bir::Function& function,
+                                                const bir::NameTables& bir_names,
+                                                std::string_view label) {
+  for (const auto& block : function.blocks) {
+    if (preferred_bir_block_label(bir_names, block.label_id, block.label) == label) {
+      return &block;
+    }
+  }
+  return find_block(function, label);
+}
+
+const bir::Block* find_block_by_prepared_label(const PreparedNameTables& names,
+                                               const bir::NameTables& bir_names,
+                                               const bir::Function& function,
+                                               BlockLabelId label_id) {
+  if (label_id == kInvalidBlockLabel) {
+    return nullptr;
+  }
+  return find_block_by_preferred_label(function, bir_names, prepared_block_label(names, label_id));
+}
+
+BlockLabelId intern_preferred_block_label(PreparedNameTables& names,
+                                          const bir::NameTables& bir_names,
+                                          BlockLabelId label_id,
+                                          std::string_view raw_label) {
+  return names.block_labels.intern(preferred_bir_block_label(bir_names, label_id, raw_label));
+}
+
+std::optional<BlockLabelId> resolve_preferred_existing_block_label(
+    const PreparedNameTables& names,
+    const bir::NameTables& bir_names,
+    BlockLabelId label_id,
+    std::string_view raw_label) {
+  const BlockLabelId prepared_label_id =
+      names.block_labels.find(preferred_bir_block_label(bir_names, label_id, raw_label));
+  if (prepared_label_id == kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+  return prepared_label_id;
+}
+
 const bir::BinaryInst* find_trailing_branch_compare(const bir::Block& block) {
   if (block.terminator.kind != bir::TerminatorKind::Branch || block.insts.empty()) {
     return nullptr;
@@ -280,18 +333,27 @@ std::optional<std::string> inst_result_name(const bir::Inst& inst) {
   return std::nullopt;
 }
 
-bool block_has_successor(const bir::Block& block, std::string_view successor_label) {
+bool block_has_successor(const bir::NameTables& bir_names,
+                         const bir::Block& block,
+                         std::string_view successor_label) {
   if (block.terminator.kind == bir::TerminatorKind::Branch) {
-    return block.terminator.target_label == successor_label;
+    return preferred_bir_block_label(
+               bir_names, block.terminator.target_label_id, block.terminator.target_label) ==
+           successor_label;
   }
   if (block.terminator.kind == bir::TerminatorKind::CondBranch) {
-    return block.terminator.true_label == successor_label ||
-           block.terminator.false_label == successor_label;
+    return preferred_bir_block_label(
+               bir_names, block.terminator.true_label_id, block.terminator.true_label) ==
+               successor_label ||
+           preferred_bir_block_label(
+               bir_names, block.terminator.false_label_id, block.terminator.false_label) ==
+               successor_label;
   }
   return false;
 }
 
 bool is_reachable_without_revisiting(const bir::Function& function,
+                                     const bir::NameTables& bir_names,
                                      std::string_view start_label,
                                      std::string_view target_label) {
   if (start_label == target_label) {
@@ -308,7 +370,7 @@ bool is_reachable_without_revisiting(const bir::Function& function,
       continue;
     }
 
-    const auto* block = find_block(function, label);
+    const auto* block = find_block_by_preferred_label(function, bir_names, label);
     if (block == nullptr) {
       continue;
     }
@@ -325,14 +387,17 @@ bool is_reachable_without_revisiting(const bir::Function& function,
     };
 
     if (block->terminator.kind == bir::TerminatorKind::Branch) {
-      if (push_successor(block->terminator.target_label)) {
+      if (push_successor(preferred_bir_block_label(
+              bir_names, block->terminator.target_label_id, block->terminator.target_label))) {
         break;
       }
     } else if (block->terminator.kind == bir::TerminatorKind::CondBranch) {
-      if (push_successor(block->terminator.true_label)) {
+      if (push_successor(preferred_bir_block_label(
+              bir_names, block->terminator.true_label_id, block->terminator.true_label))) {
         break;
       }
-      if (push_successor(block->terminator.false_label)) {
+      if (push_successor(preferred_bir_block_label(
+              bir_names, block->terminator.false_label_id, block->terminator.false_label))) {
         break;
       }
     }
@@ -342,14 +407,18 @@ bool is_reachable_without_revisiting(const bir::Function& function,
 }
 
 PreparedJoinTransferKind classify_phi_join_transfer_kind(const bir::Function& function,
+                                                         const bir::NameTables& bir_names,
                                                          std::string_view join_block_label,
                                                          const bir::PhiInst& phi) {
   for (const auto& incoming : phi.incomings) {
-    const auto* predecessor = find_block(function, incoming.label);
-    if (predecessor == nullptr || !block_has_successor(*predecessor, join_block_label)) {
+    const std::string_view incoming_label =
+        preferred_bir_block_label(bir_names, incoming.label_id, incoming.label);
+    const auto* predecessor = find_block_by_preferred_label(function, bir_names, incoming_label);
+    if (predecessor == nullptr ||
+        !block_has_successor(bir_names, *predecessor, join_block_label)) {
       continue;
     }
-    if (is_reachable_without_revisiting(function, join_block_label, incoming.label)) {
+    if (is_reachable_without_revisiting(function, bir_names, join_block_label, incoming_label)) {
       return PreparedJoinTransferKind::LoopCarry;
     }
   }
@@ -438,6 +507,7 @@ bool block_uses_named_value(const bir::Block& block,
 
 bool successor_tree_uses_named_value(
     const std::unordered_map<std::string, bir::Block*>& blocks_by_label,
+    const bir::NameTables& bir_names,
     std::string_view start_label,
     const std::unordered_set<std::string>& names) {
   std::unordered_set<std::string> visited;
@@ -457,12 +527,15 @@ bool successor_tree_uses_named_value(
       return true;
     }
     if (block.terminator.kind == bir::TerminatorKind::Branch) {
-      pending.push_back(block.terminator.target_label);
+      pending.push_back(std::string(preferred_bir_block_label(
+          bir_names, block.terminator.target_label_id, block.terminator.target_label)));
       continue;
     }
     if (block.terminator.kind == bir::TerminatorKind::CondBranch) {
-      pending.push_back(block.terminator.true_label);
-      pending.push_back(block.terminator.false_label);
+      pending.push_back(std::string(preferred_bir_block_label(
+          bir_names, block.terminator.true_label_id, block.terminator.true_label)));
+      pending.push_back(std::string(preferred_bir_block_label(
+          bir_names, block.terminator.false_label_id, block.terminator.false_label)));
     }
   }
   return false;
@@ -474,10 +547,11 @@ struct BlockAnalysis {
   std::unordered_map<std::string, bir::Block*> def_blocks_by_name;
 };
 
-BlockAnalysis analyze_function(bir::Function* function) {
+BlockAnalysis analyze_function(const bir::NameTables& bir_names, bir::Function* function) {
   BlockAnalysis analysis;
   for (auto& block : function->blocks) {
-    analysis.blocks_by_label.emplace(block.label, &block);
+    analysis.blocks_by_label.emplace(
+        std::string(preferred_bir_block_label(bir_names, block.label_id, block.label)), &block);
     for (auto& inst : block.insts) {
       if (const auto result_name = inst_result_name(inst); result_name.has_value()) {
         analysis.defs_by_name.emplace(*result_name, &inst);
@@ -490,6 +564,7 @@ BlockAnalysis analyze_function(bir::Function* function) {
 
 std::optional<std::vector<std::string>> collect_funnel_leaf_labels(
     const std::unordered_map<std::string, bir::Block*>& blocks_by_label,
+    const bir::NameTables& bir_names,
     std::string_view start_label,
     std::string_view join_label,
     std::unordered_set<std::string>* visiting) {
@@ -501,20 +576,31 @@ std::optional<std::vector<std::string>> collect_funnel_leaf_labels(
   const auto clear_visit = [&] { visiting->erase(std::string(start_label)); };
   const auto* block = it->second;
   if (block->terminator.kind == bir::TerminatorKind::Branch) {
-    if (block->terminator.target_label == join_label) {
+    const std::string_view target_label =
+        preferred_bir_block_label(bir_names, block->terminator.target_label_id, block->terminator.target_label);
+    if (target_label == join_label) {
       clear_visit();
-      return std::vector<std::string>{block->label};
+      return std::vector<std::string>{
+          std::string(preferred_bir_block_label(bir_names, block->label_id, block->label))};
     }
     auto next = collect_funnel_leaf_labels(
-        blocks_by_label, block->terminator.target_label, join_label, visiting);
+        blocks_by_label, bir_names, target_label, join_label, visiting);
     clear_visit();
     return next;
   }
   if (block->terminator.kind == bir::TerminatorKind::CondBranch) {
     auto true_leaves = collect_funnel_leaf_labels(
-        blocks_by_label, block->terminator.true_label, join_label, visiting);
+        blocks_by_label,
+        bir_names,
+        preferred_bir_block_label(bir_names, block->terminator.true_label_id, block->terminator.true_label),
+        join_label,
+        visiting);
     auto false_leaves = collect_funnel_leaf_labels(
-        blocks_by_label, block->terminator.false_label, join_label, visiting);
+        blocks_by_label,
+        bir_names,
+        preferred_bir_block_label(bir_names, block->terminator.false_label_id, block->terminator.false_label),
+        join_label,
+        visiting);
     clear_visit();
     if (!true_leaves.has_value() || !false_leaves.has_value()) {
       return std::nullopt;
@@ -545,6 +631,7 @@ const bir::BinaryInst* find_compare_for_condition(const bir::Block& block,
 
 struct PhiMaterializeContext {
   bir::Function* function = nullptr;
+  const bir::NameTables* bir_names = nullptr;
   const BlockAnalysis* analysis = nullptr;
   bir::Block* target_block = nullptr;
   std::vector<bir::Inst> emitted_insts;
@@ -554,6 +641,7 @@ struct PhiMaterializeContext {
 };
 
 PreparedJoinTransfer make_join_transfer(PreparedNameTables& names,
+                                        const bir::NameTables& bir_names,
                                         FunctionNameId function_name,
                                         BlockLabelId join_block_label,
                                         const bir::PhiInst& phi,
@@ -565,7 +653,8 @@ PreparedJoinTransfer make_join_transfer(PreparedNameTables& names,
   edge_transfers.reserve(phi.incomings.size());
   for (const auto& incoming : phi.incomings) {
     edge_transfers.push_back(PreparedEdgeValueTransfer{
-        .predecessor_label = names.block_labels.intern(incoming.label),
+        .predecessor_label =
+            intern_preferred_block_label(names, bir_names, incoming.label_id, incoming.label),
         .successor_label = join_block_label,
         .incoming_value = incoming.value,
         .destination_value = phi.result,
@@ -615,8 +704,11 @@ std::optional<bir::Value> materialize_funnel_subtree(
   const auto clear_visit = [&] { visiting->erase(std::string(start_label)); };
   const auto* block = block_it->second;
   if (block->terminator.kind == bir::TerminatorKind::Branch) {
-    if (block->terminator.target_label == join_label) {
-      const auto incoming_it = incoming_values.find(block->label);
+    const std::string_view target_label = preferred_bir_block_label(
+        *context->bir_names, block->terminator.target_label_id, block->terminator.target_label);
+    if (target_label == join_label) {
+      const auto incoming_it = incoming_values.find(std::string(preferred_bir_block_label(
+          *context->bir_names, block->label_id, block->label)));
       clear_visit();
       if (incoming_it == incoming_values.end()) {
         return std::nullopt;
@@ -624,7 +716,7 @@ std::optional<bir::Value> materialize_funnel_subtree(
       return materialize_value(incoming_it->second, context);
     }
     const auto forwarded = materialize_funnel_subtree(phi,
-                                                      block->terminator.target_label,
+                                                      target_label,
                                                       join_label,
                                                       incoming_values,
                                                       desired_result,
@@ -646,14 +738,18 @@ std::optional<bir::Value> materialize_funnel_subtree(
   }
 
   const auto lowered_true = materialize_funnel_subtree(phi,
-                                                       block->terminator.true_label,
+                                                       preferred_bir_block_label(*context->bir_names,
+                                                                                 block->terminator.true_label_id,
+                                                                                 block->terminator.true_label),
                                                        join_label,
                                                        incoming_values,
                                                        std::nullopt,
                                                        visiting,
                                                        context);
   const auto lowered_false = materialize_funnel_subtree(phi,
-                                                        block->terminator.false_label,
+                                                        preferred_bir_block_label(*context->bir_names,
+                                                                                  block->terminator.false_label_id,
+                                                                                  block->terminator.false_label),
                                                         join_label,
                                                         incoming_values,
                                                         std::nullopt,
@@ -689,7 +785,10 @@ std::optional<bir::Value> materialize_phi(const bir::PhiInst& phi,
   std::unordered_map<std::string, bir::Value> incoming_values;
   incoming_values.reserve(phi.incomings.size());
   for (const auto& incoming : phi.incomings) {
-    if (!incoming_values.emplace(incoming.label, incoming.value).second) {
+    if (!incoming_values.emplace(std::string(preferred_bir_block_label(
+                                     *context->bir_names, incoming.label_id, incoming.label)),
+                                 incoming.value)
+             .second) {
       return std::nullopt;
     }
   }
@@ -701,7 +800,11 @@ std::optional<bir::Value> materialize_phi(const bir::PhiInst& phi,
 
     std::unordered_set<std::string> visiting;
     const auto leaves = collect_funnel_leaf_labels(
-        context->analysis->blocks_by_label, block->label, phi_block.label, &visiting);
+        context->analysis->blocks_by_label,
+        *context->bir_names,
+        preferred_bir_block_label(*context->bir_names, block->label_id, block->label),
+        preferred_bir_block_label(*context->bir_names, phi_block.label_id, phi_block.label),
+        &visiting);
     if (!leaves.has_value()) {
       continue;
     }
@@ -726,7 +829,13 @@ std::optional<bir::Value> materialize_phi(const bir::PhiInst& phi,
 
     visiting.clear();
     const auto materialized = materialize_funnel_subtree(
-        phi, block->label, phi_block.label, incoming_values, phi.result, &visiting, context);
+        phi,
+        preferred_bir_block_label(*context->bir_names, block->label_id, block->label),
+        preferred_bir_block_label(*context->bir_names, phi_block.label_id, phi_block.label),
+        incoming_values,
+        phi.result,
+        &visiting,
+        context);
     if (materialized.has_value()) {
       context->removed_names.insert(phi.result.name);
       context->materialized_names.insert(phi.result.name);
@@ -795,6 +904,7 @@ std::optional<bir::Value> materialize_value(const bir::Value& value,
 
 bool try_materialize_root_phi_block(bir::Function* function,
                                     PreparedNameTables& names,
+                                    const bir::NameTables& bir_names,
                                     const BlockAnalysis& analysis,
                                     bir::Block* block,
                                     std::vector<PreparedJoinTransfer>* join_transfers) {
@@ -818,13 +928,25 @@ bool try_materialize_root_phi_block(bir::Function* function,
   if (!has_non_phi_after_top && !terminator_uses_phi) {
     if (block->terminator.kind == bir::TerminatorKind::Branch) {
       successor_tree_uses_phi = successor_tree_uses_named_value(
-          analysis.blocks_by_label, block->terminator.target_label, phi_names);
+          analysis.blocks_by_label,
+          bir_names,
+          preferred_bir_block_label(
+              bir_names, block->terminator.target_label_id, block->terminator.target_label),
+          phi_names);
     } else if (block->terminator.kind == bir::TerminatorKind::CondBranch) {
       successor_tree_uses_phi =
           successor_tree_uses_named_value(
-              analysis.blocks_by_label, block->terminator.true_label, phi_names) ||
+              analysis.blocks_by_label,
+              bir_names,
+              preferred_bir_block_label(
+                  bir_names, block->terminator.true_label_id, block->terminator.true_label),
+              phi_names) ||
           successor_tree_uses_named_value(
-              analysis.blocks_by_label, block->terminator.false_label, phi_names);
+              analysis.blocks_by_label,
+              bir_names,
+              preferred_bir_block_label(
+                  bir_names, block->terminator.false_label_id, block->terminator.false_label),
+              phi_names);
     }
   }
   if (!saw_phi || (!has_non_phi_after_top && !terminator_uses_phi && !successor_tree_uses_phi)) {
@@ -833,6 +955,7 @@ bool try_materialize_root_phi_block(bir::Function* function,
 
   PhiMaterializeContext context{
       .function = function,
+      .bir_names = &bir_names,
       .analysis = &analysis,
       .target_block = block,
   };
@@ -848,9 +971,11 @@ bool try_materialize_root_phi_block(bir::Function* function,
     }
     if (join_transfers != nullptr) {
       const FunctionNameId function_name_id = names.function_names.intern(function->name);
-      const BlockLabelId block_label_id = names.block_labels.intern(block->label);
+      const BlockLabelId block_label_id =
+          intern_preferred_block_label(names, bir_names, block->label_id, block->label);
       block_join_transfers.push_back(make_join_transfer(
           names,
+          bir_names,
           function_name_id,
           block_label_id,
           *phi,
@@ -890,9 +1015,10 @@ bool try_materialize_root_phi_block(bir::Function* function,
 
 void materialize_reducible_phi_trees(bir::Function* function,
                                      PreparedNameTables& names,
+                                     const bir::NameTables& bir_names,
                                      std::vector<PreparedJoinTransfer>* join_transfers) {
   while (true) {
-    const auto analysis = analyze_function(function);
+    const auto analysis = analyze_function(bir_names, function);
     bir::Block* root_block = nullptr;
     for (auto& block : function->blocks) {
       if (!block.insts.empty() && std::holds_alternative<bir::PhiInst>(block.insts.front())) {
@@ -900,7 +1026,8 @@ void materialize_reducible_phi_trees(bir::Function* function,
       }
     }
     if (root_block == nullptr ||
-        !try_materialize_root_phi_block(function, names, analysis, root_block, join_transfers)) {
+        !try_materialize_root_phi_block(
+            function, names, bir_names, analysis, root_block, join_transfers)) {
       return;
     }
   }
@@ -908,13 +1035,14 @@ void materialize_reducible_phi_trees(bir::Function* function,
 
 void lower_phi_nodes(bir::Function* function,
                      PreparedNameTables& names,
+                     const bir::NameTables& bir_names,
                      std::vector<PreparedJoinTransfer>* join_transfers) {
   struct PhiLoweringPlan {
     std::string slot_name;
     std::vector<bir::PhiIncoming> incomings;
   };
 
-  materialize_reducible_phi_trees(function, names, join_transfers);
+  materialize_reducible_phi_trees(function, names, bir_names, join_transfers);
 
   std::unordered_map<std::string, std::vector<PhiLoweringPlan>> phis_by_block;
   std::unordered_set<std::string> used_slot_names;
@@ -955,16 +1083,22 @@ void lower_phi_nodes(bir::Function* function,
           };
         }
 
-        phis_by_block[block.label].push_back(PhiLoweringPlan{
+        phis_by_block[std::string(preferred_bir_block_label(
+                         bir_names, block.label_id, block.label))]
+            .push_back(PhiLoweringPlan{
             .slot_name = slot_name,
             .incomings = phi->incomings,
         });
         if (join_transfers != nullptr) {
-          const auto transfer_kind = classify_phi_join_transfer_kind(*function, block.label, *phi);
+          const std::string_view block_label =
+              preferred_bir_block_label(bir_names, block.label_id, block.label);
+          const auto transfer_kind =
+              classify_phi_join_transfer_kind(*function, bir_names, block_label, *phi);
           join_transfers->push_back(make_join_transfer(
               names,
+              bir_names,
               names.function_names.intern(function->name),
-              names.block_labels.intern(block.label),
+              intern_preferred_block_label(names, bir_names, block.label_id, block.label),
               *phi,
               transfer_kind,
               PreparedJoinTransferCarrierKind::EdgeStoreSlot,
@@ -990,14 +1124,16 @@ void lower_phi_nodes(bir::Function* function,
 
   std::unordered_map<std::string, bir::Block*> blocks_by_label;
   for (auto& block : function->blocks) {
-    blocks_by_label.emplace(block.label, &block);
+    blocks_by_label.emplace(
+        std::string(preferred_bir_block_label(bir_names, block.label_id, block.label)), &block);
   }
 
   for (const auto& [block_label, plans] : phis_by_block) {
     (void)block_label;
     for (const auto& plan : plans) {
       for (const auto& incoming : plan.incomings) {
-        const auto pred_it = blocks_by_label.find(incoming.label);
+        const auto pred_it = blocks_by_label.find(std::string(
+            preferred_bir_block_label(bir_names, incoming.label_id, incoming.label)));
         if (pred_it == blocks_by_label.end()) {
           continue;
         }
@@ -1088,6 +1224,7 @@ void build_parallel_copy_bundles(const PreparedNameTables&,
 
 void publish_branch_owned_join_transfer_continuation_labels(
     const PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     const bir::Function& function,
     const PreparedControlFlowFunction& function_control_flow,
     PreparedJoinTransfer* transfer) {
@@ -1096,7 +1233,7 @@ void publish_branch_owned_join_transfer_continuation_labels(
   }
 
   const auto* join_block =
-      find_block(function, prepared_block_label(names, transfer->join_block_label));
+      find_block_by_prepared_label(names, bir_names, function, transfer->join_block_label);
   const auto* join_branch_condition =
       find_prepared_branch_condition(function_control_flow, transfer->join_block_label);
   if (join_block == nullptr || join_branch_condition == nullptr) {
@@ -1115,6 +1252,7 @@ void publish_branch_owned_join_transfer_continuation_labels(
 
 void annotate_branch_owned_join_transfers(
     const PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     const bir::Function& function,
     const PreparedControlFlowFunction& function_control_flow,
     std::vector<PreparedJoinTransfer>* join_transfers) {
@@ -1179,13 +1317,14 @@ void annotate_branch_owned_join_transfers(
 
     if (transfer.source_branch_block_label.has_value()) {
       publish_branch_owned_join_transfer_continuation_labels(
-          names, function, function_control_flow, &transfer);
+          names, bir_names, function, function_control_flow, &transfer);
     }
   }
 }
 
 void publish_short_circuit_continuation_branch_conditions(
     PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     const bir::Function& function,
     PreparedControlFlowFunction* function_control_flow) {
   if (function_control_flow == nullptr ||
@@ -1199,7 +1338,7 @@ void publish_short_circuit_continuation_branch_conditions(
   for (std::size_t index = 0; index < original_branch_condition_count; ++index) {
     const auto& entry_branch_condition = function_control_flow->branch_conditions[index];
     const auto* entry_block =
-        find_block(function, prepared_block_label(names, entry_branch_condition.block_label));
+        find_block_by_prepared_label(names, bir_names, function, entry_branch_condition.block_label);
     if (entry_block == nullptr) {
       continue;
     }
@@ -1251,7 +1390,7 @@ void publish_short_circuit_continuation_branch_conditions(
       }
 
       const auto* continuation_block =
-          find_block(function, prepared_block_label(names, target->block_label));
+          find_block_by_prepared_label(names, bir_names, function, target->block_label);
       if (continuation_block == nullptr) {
         continue;
       }
@@ -1263,7 +1402,8 @@ void publish_short_circuit_continuation_branch_conditions(
 
       function_control_flow->branch_conditions.push_back(PreparedBranchCondition{
           .function_name = function_control_flow->function_name,
-          .block_label = names.block_labels.intern(continuation_block->label),
+          .block_label = intern_preferred_block_label(
+              names, bir_names, continuation_block->label_id, continuation_block->label),
           .kind = PreparedBranchConditionKind::FusedCompare,
           .condition_value = continuation_compare->result,
           .predicate = continuation_compare->opcode,
@@ -1280,6 +1420,7 @@ void publish_short_circuit_continuation_branch_conditions(
 
 void collect_select_materialized_join_transfers(
     PreparedNameTables& names,
+    const bir::NameTables& bir_names,
     const bir::Function& function,
     const PreparedControlFlowFunction& function_control_flow,
     std::vector<PreparedJoinTransfer>* join_transfers) {
@@ -1293,7 +1434,8 @@ void collect_select_materialized_join_transfers(
   }
 
   for (const auto& block : function.blocks) {
-    const auto join_block_label = resolve_prepared_block_label_id(names, block.label);
+    const auto join_block_label =
+        resolve_preferred_existing_block_label(names, bir_names, block.label_id, block.label);
     if (block.insts.empty() || !join_block_label.has_value() ||
         existing_join_blocks.find(*join_block_label) != existing_join_blocks.end()) {
       continue;
@@ -1391,6 +1533,7 @@ void out_of_ssa_module(bir::Module& module,
 
     lower_phi_nodes(&function,
                     names,
+                    module.names,
                     function_control_flow != nullptr ? &function_control_flow->join_transfers
                                                     : nullptr);
     if (function_control_flow == nullptr) {
@@ -1398,14 +1541,15 @@ void out_of_ssa_module(bir::Module& module,
     }
 
     collect_select_materialized_join_transfers(
-        names, function, *function_control_flow, &function_control_flow->join_transfers);
+        names, module.names, function, *function_control_flow, &function_control_flow->join_transfers);
     annotate_branch_owned_join_transfers(names,
+                                         module.names,
                                          function,
                                          *function_control_flow,
                                          &function_control_flow->join_transfers);
     build_parallel_copy_bundles(names, function_control_flow);
     publish_short_circuit_continuation_branch_conditions(
-        names, function, function_control_flow);
+        names, module.names, function, function_control_flow);
   }
 }
 
