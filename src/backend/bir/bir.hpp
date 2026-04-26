@@ -4,12 +4,54 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
+
+#include "../../shared/text_id_table.hpp"
 
 namespace c4c::backend::bir {
 
 struct Module;
+
+struct NameTables {
+  NameTables() { reattach(); }
+
+  NameTables(const NameTables& other) : texts(other.texts), block_labels(other.block_labels) {
+    reattach();
+  }
+
+  NameTables(NameTables&& other) noexcept
+      : texts(std::move(other.texts)), block_labels(std::move(other.block_labels)) {
+    reattach();
+  }
+
+  NameTables& operator=(const NameTables& other) {
+    if (this == &other) {
+      return *this;
+    }
+    texts = other.texts;
+    block_labels = other.block_labels;
+    reattach();
+    return *this;
+  }
+
+  NameTables& operator=(NameTables&& other) noexcept {
+    if (this == &other) {
+      return *this;
+    }
+    texts = std::move(other.texts);
+    block_labels = std::move(other.block_labels);
+    reattach();
+    return *this;
+  }
+
+  TextTable texts;
+  BlockLabelTable block_labels{&texts};
+
+ private:
+  void reattach() { block_labels.attach_text_table(&texts); }
+};
 
 enum class TypeKind : unsigned char {
   Void,
@@ -82,6 +124,7 @@ inline bool operator!=(const Value& lhs, const Value& rhs) {
 struct PhiIncoming {
   std::string label;
   Value value;
+  BlockLabelId label_id = kInvalidBlockLabel;
 };
 
 struct PhiObservation {
@@ -190,6 +233,7 @@ struct MemoryAddress {
   std::size_t align_bytes = 0;
   AddressSpace address_space = AddressSpace::Default;
   bool is_volatile = false;
+  BlockLabelId base_label_id = kInvalidBlockLabel;
 };
 
 enum class BinaryOpcode : unsigned char {
@@ -336,12 +380,15 @@ struct ReturnTerminator {
 
 struct BranchTerminator {
   std::string target_label;
+  BlockLabelId target_label_id = kInvalidBlockLabel;
 };
 
 struct CondBranchTerminator {
   Value condition;
   std::string true_label;
   std::string false_label;
+  BlockLabelId true_label_id = kInvalidBlockLabel;
+  BlockLabelId false_label_id = kInvalidBlockLabel;
 };
 
 enum class TerminatorKind : unsigned char {
@@ -355,24 +402,32 @@ struct Terminator {
   std::optional<Value> value;
   Value condition;
   std::string target_label;
+  BlockLabelId target_label_id = kInvalidBlockLabel;
   std::string true_label;
+  BlockLabelId true_label_id = kInvalidBlockLabel;
   std::string false_label;
+  BlockLabelId false_label_id = kInvalidBlockLabel;
 
   Terminator() = default;
   Terminator(const ReturnTerminator& ret) : kind(TerminatorKind::Return), value(ret.value) {}
   Terminator(const BranchTerminator& br)
-      : kind(TerminatorKind::Branch), target_label(br.target_label) {}
+      : kind(TerminatorKind::Branch),
+        target_label(br.target_label),
+        target_label_id(br.target_label_id) {}
   Terminator(const CondBranchTerminator& br)
       : kind(TerminatorKind::CondBranch),
         condition(br.condition),
         true_label(br.true_label),
-        false_label(br.false_label) {}
+        true_label_id(br.true_label_id),
+        false_label(br.false_label),
+        false_label_id(br.false_label_id) {}
 };
 
 struct Block {
   std::string label;
   std::vector<Inst> insts;
   Terminator terminator;
+  BlockLabelId label_id = kInvalidBlockLabel;
 };
 
 struct Function {
@@ -396,6 +451,7 @@ struct Module {
   std::vector<Global> globals;
   std::vector<StringConstant> string_constants;
   std::vector<Function> functions;
+  NameTables names;
 };
 
 inline bool is_compare_opcode(BinaryOpcode opcode) {
