@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/120_bir_raw_label_fallback_cleanup_after_assembler_id_path.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Narrow BIR Construction And Validation Fallbacks
+Current Step ID: 4
+Current Step Title: Convert Prepared Pipeline Consumers To Id-First Lookup
 
 ## Just Finished
 
