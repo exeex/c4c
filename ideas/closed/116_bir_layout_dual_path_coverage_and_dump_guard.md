@@ -1,6 +1,6 @@
 # BIR Layout Dual Path Coverage And Dump Guard
 
-Status: Open
+Status: Closed
 Created: 2026-04-26
 Last Updated: 2026-04-26
 
@@ -83,3 +83,16 @@ Out of scope:
 
 - BIR printer structured render context belongs to idea 117.
 - Active legacy removal belongs to idea 118.
+
+## Closure
+
+Closed: 2026-04-26
+
+Completed through the active runbook Steps 1-6. Structured aggregate layout now
+serves the selected BIR declaration/signature, storage/addressing, call ABI,
+variadic, and layout-sensitive dump guard paths while legacy `type_decls`
+remains available as fallback and parity evidence.
+
+Remaining fallback-only legacy layout users were inventoried in `todo.md` for
+later printer or legacy-removal ideas rather than treated as solved by this
+bridge.
