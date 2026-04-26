@@ -824,7 +824,26 @@ prepare::PreparedBirModule prepare_select_materialized_join_module_with_regalloc
   options.run_regalloc = true;
 
   prepare::BirPreAlloc planner(std::move(prepared), options);
-  return planner.run();
+  planner.run_legalize();
+  planner.run_stack_layout();
+  planner.run_liveness();
+  planner.run_out_of_ssa();
+
+  auto& seeded = planner.prepared();
+  for (auto& prepared_function : seeded.module.functions) {
+    if (prepared_function.name != "select_materialized_join_move_resolution") {
+      continue;
+    }
+    for (auto& block : prepared_function.blocks) {
+      if (seeded.module.names.block_labels.spelling(block.label_id) == "join") {
+        block.label = "stale.raw.join";
+      }
+    }
+  }
+
+  planner.run_regalloc();
+  planner.publish_contract_plans();
+  return std::move(planner.prepared());
 }
 
 prepare::PreparedBirModule prepare_phi_loop_cycle_move_module_with_regalloc() {
@@ -3714,6 +3733,21 @@ int check_select_materialized_join_move_resolution(const prepare::PreparedBirMod
   const auto join_block_id = prepared.names.block_labels.find("join");
   if (join_block_id == c4c::kInvalidBlockLabel) {
     return fail("expected the select-materialized join block to stay interned");
+  }
+  const auto* module_function =
+      find_module_function(prepared, "select_materialized_join_move_resolution");
+  const bir::Block* stale_raw_join_block = nullptr;
+  if (module_function != nullptr) {
+    for (const auto& block : module_function->blocks) {
+      if (block.label == "stale.raw.join") {
+        stale_raw_join_block = &block;
+        break;
+      }
+    }
+  }
+  if (stale_raw_join_block == nullptr ||
+      prepared.module.names.block_labels.spelling(stale_raw_join_block->label_id) != "join") {
+    return fail("expected select-materialized join proof to carry stale raw spelling with authoritative label id");
   }
   const auto* join_transfer =
       prepare::find_prepared_join_transfer(prepared.names, *control_flow, join_block_id, "phi.move");

@@ -8,24 +8,25 @@ Current Step Title: Convert Prepared Pipeline Consumers To Id-First Lookup
 
 ## Just Finished
 
-`plan.md` Step 4 converted the owned dynamic-stack prepared consumer to prefer
-`BlockLabelId` authority before raw block-label spelling.
+`plan.md` Step 4 converted the owned regalloc select-materialized join consumer
+to prefer `BlockLabelId` authority before raw block-label spelling.
 
 Completed work:
 
-- `src/backend/prealloc/prealloc.cpp`: `populate_dynamic_stack_plan` now
-  resolves each operation block from the existing BIR `BlockLabelId` through
+- `src/backend/prealloc/regalloc.cpp`: `append_consumer_move_resolution` now
+  resolves the current block from the existing BIR `BlockLabelId` through
   prepared names first, and falls back to raw block spelling only when the id is
   invalid or unresolved.
-- `tests/backend/backend_prepare_frame_stack_call_contract_test.cpp`: added a
-  stale-raw-block fixture whose `label_id` carries the canonical block spelling,
-  proving dynamic-stack operation metadata follows id authority.
+- `tests/backend/backend_prepare_liveness_test.cpp`: the select-materialized
+  join move-resolution fixture now makes the raw join block spelling stale after
+  out-of-SSA publication, proving regalloc consumes the id-authoritative join
+  transfer.
 
 ## Suggested Next
 
-Next cleanup packet: convert the remaining prepared consumers called out by the
-runbook, especially regalloc and backend handoff lookup sites that still resolve
-block identity from raw spelling.
+Next cleanup packet: convert the remaining prepared-pipeline consumer lookup
+sites called out by the runbook, especially backend handoff lookup sites that
+still resolve block identity from raw spelling.
 
 ## Watchouts
 
@@ -46,6 +47,6 @@ block identity from raw spelling.
 Passed.
 
 Proof command:
-`( cmake -S . -B build-backend -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DENABLE_C4C_BACKEND=ON && cmake --build build-backend --target backend_prepare_frame_stack_call_contract_test c4cll && ctest --test-dir build-backend -j --output-on-failure -R 'backend_prepare_frame_stack_call_contract|backend_cli_dump_prepared_bir_vla_goto_stackrestore_cfg' ) > test_after.log 2>&1`
+`( cmake -S . -B build-backend -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DENABLE_C4C_BACKEND=ON && cmake --build build-backend --target backend_prepare_liveness_test && ctest --test-dir build-backend -j --output-on-failure -R 'backend_prepare_liveness' ) > test_after.log 2>&1`
 
 Proof log: `test_after.log`

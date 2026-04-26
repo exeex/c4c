@@ -1577,7 +1577,24 @@ void append_phi_move_resolution(const PreparedNameTables& names,
   }
 }
 
+[[nodiscard]] std::optional<BlockLabelId> resolve_existing_consumer_block_label_id(
+    const PreparedNameTables& names,
+    const bir::NameTables& bir_names,
+    const bir::Block& block) {
+  if (block.label_id != kInvalidBlockLabel) {
+    const std::string_view structured_label = bir_names.block_labels.spelling(block.label_id);
+    if (!structured_label.empty()) {
+      const BlockLabelId prepared_label_id = names.block_labels.find(structured_label);
+      if (prepared_label_id != kInvalidBlockLabel) {
+        return prepared_label_id;
+      }
+    }
+  }
+  return resolve_prepared_block_label_id(names, block.label);
+}
+
 void append_consumer_move_resolution(const PreparedNameTables& names,
+                                     const bir::NameTables& bir_names,
                                      const bir::Function& function,
                                      const PreparedControlFlowFunction* function_cf,
                                      PreparedRegallocFunction& regalloc_function) {
@@ -1587,7 +1604,7 @@ void append_consumer_move_resolution(const PreparedNameTables& names,
           return false;
         }
 
-        const auto block_label_id = resolve_prepared_block_label_id(names, block.label);
+        const auto block_label_id = resolve_existing_consumer_block_label_id(names, bir_names, block);
         if (!block_label_id.has_value()) {
           return false;
         }
@@ -2336,9 +2353,11 @@ void BirPreAlloc::run_regalloc() {
               find_prepared_control_flow_function(prepared_.control_flow, regalloc_function.function_name);
           function_cf != nullptr) {
         append_phi_move_resolution(prepared_.names, *function, *function_cf, regalloc_function);
-        append_consumer_move_resolution(prepared_.names, *function, function_cf, regalloc_function);
+        append_consumer_move_resolution(
+            prepared_.names, prepared_.module.names, *function, function_cf, regalloc_function);
       } else {
-        append_consumer_move_resolution(prepared_.names, *function, nullptr, regalloc_function);
+        append_consumer_move_resolution(
+            prepared_.names, prepared_.module.names, *function, nullptr, regalloc_function);
       }
       append_call_arg_move_resolution(
           prepared_.names, prepared_.target_profile, *function, regalloc_function);
