@@ -1,26 +1,30 @@
 Status: Active
 Source Idea Path: ideas/open/116_bir_layout_dual_path_coverage_and_dump_guard.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Cover Aggregate Storage And Initializer Paths
+Current Step ID: 4
+Current Step Title: Cover Aggregate Call ABI And Variadic Paths
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3 local aggregate slot/address coverage for direct
-struct member offsets.
+Completed `plan.md` Step 4 aggregate call ABI and variadic coverage inventory
+without changing backend behavior.
 
-Added `local_aggregate_member_offsets.c` and registered it as a semantic BIR
-backend route test. The guard observes concrete local stores and loads at
-`%lv.p.0` and `%lv.p.4` for initializer stores, a direct member overwrite, and
-direct member reads. Backend behavior was not changed.
+Existing semantic BIR route tests already cover sret aggregate returns,
+byval/byref aggregate parameters, direct and indirect aggregate
+function-pointer calls, scalar and aggregate variadic arguments, indirect
+variadic calls, `va_arg` for scalar and aggregate values, and `va_copy`.
+The HFA-like mixed payload fixture remains runtime-level coverage because the
+semantic BIR route does not expose stable target HFA classification for that
+case.
 
 ## Suggested Next
 
-Ask the supervisor to decide whether Step 3 is now ready for plan review or
-whether one final adjacent aggregate-storage guard is still needed before
-moving to Step 4.
+Advance to `plan.md` Step 5 with one focused dump-guard packet for an existing
+layout-sensitive aggregate path whose semantic BIR output already exposes
+stable facts, such as aggregate `sret`/`byval` call ABI or aggregate `va_arg`
+copy offsets.
 
 ## Watchouts
 
@@ -29,14 +33,15 @@ moving to Step 4.
 - Treat `--dump-bir` tests as guards for lowered BIR facts, not as a BIR
   printer render-context migration.
 - Do not downgrade expectations or add named-case shortcuts.
-- This packet added only a test fixture and CMake registration; any future
-  failing local aggregate guard should be treated as a general backend issue,
-  not patched through a named-case shortcut.
+- Do not force HFA-like coverage into a semantic BIR text check unless the
+  route starts exposing stable target HFA classification facts.
+- The Step 4 inventory found no obvious missing focused semantic BIR route
+  guard among the delegated aggregate call ABI and variadic families.
 
 ## Proof
 
 Proof command run:
-`{ cmake --build build-backend && ctest --test-dir build-backend -j --output-on-failure -R '^(frontend_lir_|backend_codegen_route_x86_64_(local_aggregate_member_offsets|local_dynamic_member_array|local_dynamic_member_array_store|local_direct_dynamic_member_array_(load|store)|local_direct_dynamic_struct_array_call|builtin_memcpy_(local_pair|nested_pair_field|local_i32_array|nested_i32_array_field)|builtin_memset_(local_pair|local_i32_array|nested_i32_array_field)|builtin_memset_nonzero_(local_pair|local_i32_array|nested_i32_array_field))_observe_semantic_bir$)'; } > test_after.log 2>&1`
+`{ cmake --build build-backend && ctest --test-dir build-backend -j --output-on-failure -R '^(frontend_lir_|backend_codegen_route_x86_64_(byval_member_array_params|aggregate_return_pair|aggregate_param_return_pair|indirect_aggregate_param_return_pair|aggregate_param_return_pair_fn_param|variadic_sum2|indirect_variadic_sum2|variadic_double_bytes|variadic_pair_second|indirect_variadic_pair_second|variadic_va_copy_accumulate|byval_helper_mixed_hfa_payload)_observe_semantic_bir|backend_runtime_byval_helper_mixed_hfa_payload)$'; } > test_after.log 2>&1`
 
-Result: passed. Build completed and 20/20 selected tests passed.
+Result: passed. Build completed and 12/12 selected tests passed.
 Proof log: `test_after.log`.
