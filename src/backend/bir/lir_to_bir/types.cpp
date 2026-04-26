@@ -530,10 +530,12 @@ AggregateTypeLayout lookup_backend_aggregate_type_layout(
   const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
   if (!trimmed.empty() && trimmed.front() == '%') {
     const auto structured_it = structured_layouts.find(std::string(trimmed));
-    if (structured_it != structured_layouts.end() &&
-        structured_it->second.parity_checked &&
-        structured_it->second.parity_matches) {
-      return structured_it->second.structured_layout;
+    if (structured_it != structured_layouts.end()) {
+      const auto& entry = structured_it->second;
+      if (entry.structured_layout.kind != AggregateTypeLayout::Kind::Invalid &&
+          (!entry.legacy_found || (entry.parity_checked && entry.parity_matches))) {
+        return entry.structured_layout;
+      }
     }
   }
 

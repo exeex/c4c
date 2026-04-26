@@ -70,7 +70,6 @@ lir::LirModule make_structured_aggregate_call_lir_module() {
       .fields = {lir::LirStructField{lir::LirTypeRef("i32")},
                  lir::LirStructField{lir::LirTypeRef("i32")}},
   });
-  module.type_decls.push_back("%struct.Pair = type { i32, i32 }");
 
   lir::LirFunction decl;
   decl.name = "id_pair";
@@ -137,6 +136,9 @@ int check_structured_context_population() {
 
 int check_lowered_aggregate_call_prints_through_structured_context() {
   const auto lir_module = make_structured_aggregate_call_lir_module();
+  if (!lir_module.type_decls.empty()) {
+    return fail("structured aggregate call fixture unexpectedly has legacy type declarations");
+  }
   auto lowered =
       c4c::backend::try_lower_to_bir_with_options(lir_module, c4c::backend::BirLoweringOptions{});
   if (!lowered.module.has_value()) {
