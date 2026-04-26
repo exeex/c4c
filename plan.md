@@ -1,0 +1,198 @@
+# x86 Prepared Module Renderer Recovery Runbook
+
+Status: Active
+Source Idea: ideas/open/121_x86_prepared_module_renderer_recovery.md
+Activated From: ideas/open/121_x86_prepared_module_renderer_recovery.md
+
+## Purpose
+
+Recover the x86 prepared-module rendering path on semantic grounds so x86
+handoff and codegen tests can execute real scalar and control-flow assembly
+again.
+
+## Goal
+
+Restore documented, tested x86 prepared-module rendering capability for
+supported scalar and control-flow forms without testcase-shaped shortcuts.
+
+## Core Rule
+
+Do not prove x86 handoff by adding narrow pattern dispatch, instruction-count
+assumptions, or fixture-shaped rendering; restore renderer capability through
+general semantic lowering and nearby same-feature coverage.
+
+## Read First
+
+- `ideas/open/121_x86_prepared_module_renderer_recovery.md`
+- `review/step5_x86_handoff_dirty_slice_review.md`
+- `src/backend/mir/x86/module/module.cpp`
+- Existing x86 prepared-module, handoff, and backend codegen tests.
+- Current MIR, prepared-module, and target-specific x86 backend interfaces.
+
+## Current Targets
+
+- x86 prepared-module rendering entry points and helper boundaries.
+- Missing or replaced headers and APIs that currently prevent x86 backend
+  handoff tests from compiling.
+- Scalar instruction rendering for supported x86 prepared-module forms.
+- Control-flow rendering and prepared label consumption through the x86 path.
+- Tests that distinguish semantic renderer support from fixture-shaped output.
+
+## Non-Goals
+
+- Do not add narrow pattern dispatch that only recognizes current tests.
+- Do not weaken supported-path tests or rewrite expectations to hide missing
+  renderer capability.
+- Do not treat this plan as acceptance progress for idea 120 unless the active
+  lifecycle state is explicitly switched back and the proof consumes prepared
+  label ids directly.
+- Do not broaden into unrelated target backend rewrites unless a blocker is
+  recorded and the plan is deliberately revised.
+
+## Working Model
+
+- x86 renderer recovery is separate from raw-label fallback cleanup.
+- Compile compatibility comes before behavior claims: handoff tests must build
+  against current headers and backend APIs before they can prove execution.
+- Scalar and control-flow support should be expressed as renderer rules over
+  supported prepared-module constructs, not as named-case recognition.
+- Prepared control-flow label proofs are valid only when the x86 path consumes
+  prepared label ids directly and rejects missing or drifted ids.
+
+## Execution Rules
+
+- Start with inventory and compile-surface repair before changing renderer
+  semantics.
+- Prefer existing backend abstractions and helper APIs over introducing a new
+  rendering layer.
+- Keep every code-changing step paired with fresh build or compile proof and a
+  narrow x86/backend test subset chosen by the supervisor.
+- When a renderer form is restored, add or update nearby same-feature tests so
+  one known handoff fixture is not the only proof.
+- Treat expectation downgrades, unsupported-path rewrites, and fixture-shaped
+  output matching as route drift.
+- Escalate to broader backend validation before the source idea is considered
+  complete, because this path affects target codegen and prepared control flow.
+
+## Ordered Steps
+
+### Step 1: Inventory X86 Prepared Renderer And Compile Surface
+
+Goal: map the current x86 prepared-module renderer state and identify the first
+compile-compatible recovery packet.
+
+Primary targets:
+- `src/backend/mir/x86/module/module.cpp`
+- x86 prepared-module and handoff test files.
+- Headers and APIs referenced by existing x86 backend tests.
+- Any current unsupported markers or skipped x86 prepared-module coverage.
+
+Concrete actions:
+- Inspect the current x86 prepared-module rendering entry points and helper
+  structure.
+- Identify missing headers, renamed APIs, or stale test harness assumptions
+  that prevent x86 backend handoff tests from compiling.
+- Classify existing x86 prepared-module tests as compile-blocked,
+  renderer-blocked, control-flow-blocked, or already valid.
+- Record the first narrow compile or test proof command in `todo.md` once the
+  supervisor delegates execution.
+- Do not change implementation files in this lifecycle step.
+
+Completion check:
+- `todo.md` identifies the first executable recovery packet, target files, the
+  suspected compile or renderer blocker, and the narrow proof command.
+
+### Step 2: Restore X86 Handoff Test Compile Compatibility
+
+Goal: make the x86 backend handoff tests build against the current backend
+interfaces without weakening supported-path contracts.
+
+Primary targets:
+- x86 backend handoff tests and their includes.
+- Current prepared-module, MIR, and target x86 public interfaces.
+- Test harness helpers used by backend codegen or handoff tests.
+
+Concrete actions:
+- Replace stale includes or helper calls with current APIs when the replacement
+  route is available.
+- Keep supported-path tests supported; do not mark them unsupported to get a
+  green result.
+- Preserve test intent while separating compile-harness repair from renderer
+  behavior changes.
+- Run the delegated build or narrow test proof after each bounded repair.
+
+Completion check:
+- The selected x86 handoff/codegen test subset compiles far enough to expose
+  real renderer behavior instead of stale interface failures.
+
+### Step 3: Recover Supported Scalar Rendering Semantics
+
+Goal: restore scalar instruction rendering for supported x86 prepared-module
+forms through general renderer rules.
+
+Primary targets:
+- x86 prepared-module renderer helpers in `src/backend/mir/x86/module/`.
+- Scalar instruction selection or emission surfaces used by prepared-module
+  tests.
+- Nearby same-feature scalar tests.
+
+Concrete actions:
+- Identify scalar forms that are intended to be supported by the current x86
+  backend.
+- Implement renderer support through semantic lowering helpers, not through
+  fixture names, instruction counts, or one-off pattern dispatch.
+- Add or update tests for adjacent scalar cases so coverage is not limited to a
+  single known handoff fixture.
+- Keep raw label or control-flow assertions out of this step unless needed for
+  scalar renderer proof.
+
+Completion check:
+- Supported scalar prepared-module cases render through the x86 path with
+  same-feature coverage, and the delegated narrow proof is green.
+
+### Step 4: Recover Prepared Control-Flow Rendering Semantics
+
+Goal: restore control-flow rendering, including branches and labels, without
+falling back to raw or drifted identity.
+
+Primary targets:
+- x86 control-flow rendering in the prepared-module path.
+- Prepared label id consumption and validation boundaries.
+- Branch, conditional branch, and label-target tests for the x86 backend.
+
+Concrete actions:
+- Route control-flow emission through prepared label identity where available.
+- Reject or surface missing and drifted label ids rather than recovering through
+  broad raw-string matching.
+- Cover nearby branch and conditional-branch cases, not only the handoff case
+  that exposed the drift.
+- Keep scalar rendering assumptions explicit so control-flow proof does not
+  hide unrelated renderer gaps.
+
+Completion check:
+- x86 prepared control-flow cases consume prepared label ids directly, reject
+  invalid identity where appropriate, and pass the delegated narrow proof.
+
+### Step 5: Reprove X86 Handoff And Decide Lifecycle Outcome
+
+Goal: determine whether the recovered renderer now satisfies the source idea
+and produces a reusable handoff proof for later raw-label cleanup work.
+
+Primary targets:
+- x86 handoff/codegen tests that exercise real scalar and control-flow asm.
+- Prepared label id validation tests.
+- Broader backend validation selected by the supervisor.
+
+Concrete actions:
+- Run the supervisor-selected narrow x86 handoff proof after scalar and
+  control-flow recovery.
+- Verify the proof consumes prepared label ids directly and rejects missing or
+  drifted ids.
+- Run the required broader backend validation before requesting closure.
+- Record any remaining renderer gaps in `todo.md`; if they are durable source
+  scope, ask the plan owner to revise or split the plan instead of closing.
+
+Completion check:
+- The source idea acceptance criteria are met, broader validation is recorded,
+  and the supervisor has enough evidence to either close the idea or request a
+  focused lifecycle revision.
