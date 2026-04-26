@@ -68,6 +68,34 @@ std::string render_function_local_label(std::string_view function_name, std::str
   return ".L" + std::string(function_name) + "_" + std::string(label);
 }
 
+std::string escape_asm_string(std::string_view raw_bytes) {
+  std::string escaped;
+  escaped.reserve(raw_bytes.size());
+  for (const unsigned char ch : raw_bytes) {
+    switch (ch) {
+      case '\\':
+        escaped += "\\\\";
+        break;
+      case '"':
+        escaped += "\\\"";
+        break;
+      case '\n':
+        escaped += "\\n";
+        break;
+      case '\t':
+        escaped += "\\t";
+        break;
+      case '\r':
+        escaped += "\\r";
+        break;
+      default:
+        escaped.push_back(static_cast<char>(ch));
+        break;
+    }
+  }
+  return escaped;
+}
+
 std::string_view require_prepared_block_label(
     const c4c::backend::prepare::PreparedNameTables& names,
     c4c::BlockLabelId label,
@@ -2025,6 +2053,266 @@ bool append_prepared_i32_param_zero_branch_return_function(
   return false;
 }
 
+const c4c::backend::prepare::PreparedMoveBundle& require_prepared_call_bundle(
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const c4c::backend::bir::Function& function,
+    c4c::backend::prepare::PreparedMovePhase phase,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  const auto* bundle = c4c::backend::prepare::find_prepared_move_bundle(
+      function_locations, phase, block_index, instruction_index);
+  if (bundle == nullptr) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has no authoritative prepared call-bundle handoff");
+  }
+  return *bundle;
+}
+
+std::optional<std::string> prepared_call_argument_register(
+    const c4c::backend::prepare::PreparedMoveBundle& before_call_bundle,
+    std::size_t arg_index) {
+  for (const auto& move : before_call_bundle.moves) {
+    if (move.destination_kind ==
+            c4c::backend::prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+        move.destination_storage_kind ==
+            c4c::backend::prepare::PreparedMoveStorageKind::Register &&
+        move.destination_abi_index == std::optional<std::size_t>{arg_index} &&
+        move.destination_register_name.has_value()) {
+      return *move.destination_register_name;
+    }
+  }
+  for (const auto& binding : before_call_bundle.abi_bindings) {
+    if (binding.destination_kind ==
+            c4c::backend::prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+        binding.destination_storage_kind ==
+            c4c::backend::prepare::PreparedMoveStorageKind::Register &&
+        binding.destination_abi_index == std::optional<std::size_t>{arg_index} &&
+        binding.destination_register_name.has_value()) {
+      return *binding.destination_register_name;
+    }
+  }
+  return std::nullopt;
+}
+
+const c4c::backend::prepare::PreparedMoveResolution& require_prepared_call_result_move(
+    const c4c::backend::prepare::PreparedMoveBundle& after_call_bundle,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedValueHome& result_home) {
+  for (const auto& move : after_call_bundle.moves) {
+    if (move.destination_kind ==
+            c4c::backend::prepare::PreparedMoveDestinationKind::CallResultAbi &&
+        move.destination_storage_kind ==
+            c4c::backend::prepare::PreparedMoveStorageKind::Register &&
+        move.to_value_id == result_home.value_id && move.destination_register_name.has_value()) {
+      return move;
+    }
+  }
+  throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                              "' has no authoritative prepared call-bundle handoff");
+}
+
+bool append_prepared_direct_extern_call_argument(
+    c4c::backend::x86::core::Text& function_out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const c4c::backend::bir::Function& function,
+    const Data& data,
+    const c4c::backend::bir::Value& argument,
+    const std::string& destination_register) {
+  if (argument.kind == c4c::backend::bir::Value::Kind::Named && !argument.name.empty() &&
+      argument.name.front() == '@' && argument.type == c4c::backend::bir::TypeKind::Ptr) {
+    std::string_view symbol_name(argument.name.data() + 1, argument.name.size() - 1);
+    const auto names_string_constant =
+        std::any_of(module.module.string_constants.begin(),
+                    module.module.string_constants.end(),
+                    [&](const c4c::backend::bir::StringConstant& constant) {
+                      return constant.name == symbol_name;
+                    });
+    if (!names_string_constant) {
+      return false;
+    }
+    function_out.append_line("    lea " + destination_register + ", [rip + " +
+                             data.render_private_data_label(symbol_name) + "]");
+    return true;
+  }
+
+  if (argument.kind == c4c::backend::bir::Value::Kind::Named &&
+      argument.type == c4c::backend::bir::TypeKind::I32) {
+    const auto& home = require_prepared_i32_value_home(
+        module, function_locations, function, argument.name, "direct extern call argument");
+    if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+        !home.register_name.has_value()) {
+      throw_prepared_value_location_handoff_error(
+          "defined function '" + function.name +
+          "' has an unsupported prepared direct extern call argument home");
+    }
+    function_out.append_line("    mov " +
+                             c4c::backend::x86::abi::narrow_i32_register_name(
+                                 destination_register) +
+                             ", " +
+                             c4c::backend::x86::abi::narrow_i32_register_name(
+                                 *home.register_name));
+    return true;
+  }
+
+  if (argument.kind == c4c::backend::bir::Value::Kind::Immediate &&
+      argument.type == c4c::backend::bir::TypeKind::I32) {
+    function_out.append_line("    mov " +
+                             c4c::backend::x86::abi::narrow_i32_register_name(
+                                 destination_register) +
+                             ", " + std::to_string(argument.immediate));
+    return true;
+  }
+
+  return false;
+}
+
+bool append_prepared_direct_extern_call_return_function(
+    c4c::backend::x86::core::Text& out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    const Data& data) {
+  if (function.blocks.size() != 1 || function.return_type != c4c::backend::bir::TypeKind::I32) {
+    return false;
+  }
+  const auto& block = function.blocks.front();
+  if (block.insts.empty() ||
+      block.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !block.terminator.value.has_value() ||
+      block.terminator.value->kind != c4c::backend::bir::Value::Kind::Immediate ||
+      block.terminator.value->type != c4c::backend::bir::TypeKind::I32) {
+    return false;
+  }
+
+  const auto function_name =
+      c4c::backend::prepare::resolve_prepared_function_name_id(module.names, function.name);
+  if (!function_name.has_value()) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has no prepared function id");
+  }
+  const auto consumed = c4c::backend::x86::consume_plans(module, *function_name);
+  if (consumed.calls == nullptr) {
+    return false;
+  }
+  const auto* function_locations = require_prepared_value_location_function(module, function);
+
+  const auto symbol_name = data.render_asm_symbol_name(function.name);
+  c4c::backend::x86::core::Text function_out;
+  function_out.append_line(".globl " + symbol_name);
+  function_out.append_line(".type " + symbol_name + ", @function");
+  function_out.append_line(symbol_name + ":");
+  const std::size_t frame_adjust_bytes =
+      module.stack_layout.frame_size_bytes != 0 ? module.stack_layout.frame_size_bytes : 8;
+  if (frame_adjust_bytes != 0) {
+    function_out.append_line("    sub rsp, " + std::to_string(frame_adjust_bytes));
+  }
+
+  for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
+       ++instruction_index) {
+    const auto* call = std::get_if<c4c::backend::bir::CallInst>(&block.insts[instruction_index]);
+    if (call == nullptr || call->is_indirect ||
+        call->return_type != c4c::backend::bir::TypeKind::I32 || call->inline_asm.has_value() ||
+        call->sret_storage_name.has_value()) {
+      return false;
+    }
+    const auto* call_plan =
+        c4c::backend::x86::find_consumed_call_plan(consumed, 0, instruction_index);
+    if (call_plan == nullptr ||
+        (call_plan->wrapper_kind !=
+             c4c::backend::prepare::PreparedCallWrapperKind::DirectExternFixedArity &&
+         call_plan->wrapper_kind !=
+             c4c::backend::prepare::PreparedCallWrapperKind::DirectExternVariadic) ||
+        !call_plan->direct_callee_name.has_value() || *call_plan->direct_callee_name != call->callee) {
+      return false;
+    }
+
+    const c4c::backend::prepare::PreparedMoveBundle* before_call_bundle = nullptr;
+    if (!call->args.empty()) {
+      before_call_bundle = &require_prepared_call_bundle(
+          *function_locations,
+          function,
+          c4c::backend::prepare::PreparedMovePhase::BeforeCall,
+          0,
+          instruction_index);
+    }
+    for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
+      const auto destination_register =
+          prepared_call_argument_register(*before_call_bundle, arg_index);
+      if (!destination_register.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' has no authoritative prepared call-bundle handoff");
+      }
+      if (!append_prepared_direct_extern_call_argument(function_out,
+                                                      module,
+                                                      *function_locations,
+                                                      function,
+                                                      data,
+                                                      call->args[arg_index],
+                                                      *destination_register)) {
+        return false;
+      }
+    }
+
+    function_out.append_line("    xor eax, eax");
+    function_out.append_line("    call " + data.render_asm_symbol_name(call->callee));
+
+    if (call->result.has_value()) {
+      if (call->result->kind != c4c::backend::bir::Value::Kind::Named ||
+          call->result->type != c4c::backend::bir::TypeKind::I32) {
+        return false;
+      }
+      const auto& result_home = require_prepared_i32_value_home(
+          module, *function_locations, function, call->result->name, "direct extern call result");
+      if (result_home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+          !result_home.register_name.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' has an unsupported prepared direct extern call result home");
+      }
+      const auto& after_call_bundle = require_prepared_call_bundle(
+          *function_locations,
+          function,
+          c4c::backend::prepare::PreparedMovePhase::AfterCall,
+          0,
+          instruction_index);
+      const auto& result_move =
+          require_prepared_call_result_move(after_call_bundle, function, result_home);
+      function_out.append_line("    mov " +
+                               c4c::backend::x86::abi::narrow_i32_register_name(
+                                   *result_home.register_name) +
+                               ", " +
+                               c4c::backend::x86::abi::narrow_i32_register_name(
+                                   *result_move.destination_register_name));
+    }
+  }
+
+  if (!function.return_abi.has_value()) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has no prepared return ABI");
+  }
+  const auto return_register = c4c::backend::prepare::call_result_destination_register_name(
+      c4c::backend::x86::abi::resolve_target_profile(module), *function.return_abi);
+  if (!return_register.has_value()) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has no prepared register return ABI destination");
+  }
+  function_out.append_line("    mov " +
+                           c4c::backend::x86::abi::narrow_i32_register_name(*return_register) +
+                           ", " + std::to_string(block.terminator.value->immediate));
+  if (frame_adjust_bytes != 0) {
+    function_out.append_line("    add rsp, " + std::to_string(frame_adjust_bytes));
+  }
+  function_out.append_line("    ret");
+  for (const auto& constant : module.module.string_constants) {
+    function_out.append_line(".section .rodata");
+    function_out.append_line(data.render_private_data_label(constant.name) + ":");
+    function_out.append_line("    .asciz \"" + escape_asm_string(constant.bytes) + "\"");
+  }
+  out.append_raw(function_out.take_text());
+  return true;
+}
+
 bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
                                       const c4c::backend::prepare::PreparedBirModule& module,
                                       const c4c::backend::bir::Function& function,
@@ -2046,6 +2334,9 @@ bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
     return true;
   }
   if (append_prepared_i32_same_module_global_sub_return_function(out, module, function, data)) {
+    return true;
+  }
+  if (append_prepared_direct_extern_call_return_function(out, module, function, data)) {
     return true;
   }
   if (append_prepared_i32_param_zero_compare_join_return_function(out, module, function, data)) {

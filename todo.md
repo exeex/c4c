@@ -8,30 +8,23 @@ Current Step Title: Reprove X86 Handoff And Decide Lifecycle Outcome
 
 ## Just Finished
 
-Step 4 Recover Prepared Control-Flow Rendering Semantics restored the bounded
-prepared-module compare-against-zero compare-join renderer for the
-stack-backed and rematerialized parameter-home lanes. The x86 prepared-module
-consumer now enters that route through the authoritative prepared
-materialized compare-join contract, validates the published out-of-SSA
-parallel-copy bundles and move bundles for both join edges, renders each
-return arm from the prepared parameter home and return bundle, and rejects
-missing join-transfer or parallel-copy authority instead of reopening raw
-compare-join recovery. The follow-up review repair removed mutable
-prepared-name-table emission, rejects global and pointer-backed compare-join
-return contexts before publishing assembly, and lets non-matching one-param
-join-bearing candidates fall through unless this compare-join route owns the
-prepared branch contract.
+Step 5 Reprove X86 Handoff And Decide Lifecycle Outcome recovered the bounded
+direct extern-call prepared-module route in the x86 prepared-module consumer.
+The renderer now accepts a single-block direct extern call sequence through
+semantic prepared call plans and prepared value-location bundles, uses
+authoritative `BeforeCall` metadata for argument ABI registers, authoritative
+`AfterCall` metadata plus prepared value homes for call-result captures, emits
+the x86-64 call-alignment adjustment, and renders referenced prepared string
+constants for the accepted route. The route rejects missing argument/result
+call-bundle authority instead of reopening local ABI fallback.
 
 ## Suggested Next
 
-Advance to Step 5 and continue with the next x86 handoff blocker exposed by
-the same proof:
-`bounded direct extern-call prepared-module route: x86 prepared-module
-consumer did not emit the canonical asm`. The compare-join slice is past the
-requested stack-backed lane, adjacent rematerialized lane, missing
-join-transfer rejection, missing parallel-copy rejection, predecessor-owned
-bundle placement, successor-entry relocation, and multi-parameter
-compare-driven rejection checks.
+Continue Step 5 with the next x86 handoff blocker exposed by the same proof:
+`scalar-control-flow compare-against-zero joined branch lane: x86
+prepared-module consumer rejected the prepared handoff with exception:
+canonical prepared-module handoff rejected x86 control-flow label authority:
+compare-join join block has no authoritative prepared block id`.
 
 ## Watchouts
 
@@ -50,6 +43,10 @@ recovery contract. Treat it as the first Step 5 handoff reproving blocker:
 repair only if it is required for the supervisor-selected x86 handoff proof,
 and preserve the anti-overfit bar by using a semantic prepared-module call
 route rather than a named fixture or canonical-asm shortcut.
+The direct extern-call route now uses prepared call-plan wrapper/callee
+identity, prepared call move bundles, prepared value homes, and prepared string
+constant identity. Keep later call work on those semantic records; do not
+replace it with fixture names or expected-assembly matching.
 The compare-join renderer intentionally remains bounded to the prepared
 param-zero materialized compare-join contract. It should continue to use
 prepared branch labels, join-transfer metadata, published parallel-copy
@@ -72,8 +69,12 @@ rebuilt `tests/backend/backend_x86_handoff_boundary_test` and
 `backend_x86_prepared_handoff_label_authority` passing, and advanced past the
 minimal compare-branch lanes, the requested `scalar-control-flow
 compare-against-zero compare-join lane with stack-backed parameter home`, the
-adjacent rematerialized compare-join lane, and the compare-join authority
-rejection/relocation checks after the compare-join review repair. The aggregate
-proof still fails later at `bounded direct extern-call prepared-module route:
-x86 prepared-module consumer did not emit the canonical asm`.
+adjacent rematerialized compare-join lane, the compare-join authority
+rejection/relocation checks after the compare-join review repair, and the
+bounded direct extern-call prepared-module route plus its prepared call-bundle
+drift checks. The aggregate proof still fails later at `scalar-control-flow
+compare-against-zero joined branch lane: x86 prepared-module consumer rejected
+the prepared handoff with exception: canonical prepared-module handoff rejected
+x86 control-flow label authority: compare-join join block has no authoritative
+prepared block id`.
 Canonical proof log: `test_after.log`.
