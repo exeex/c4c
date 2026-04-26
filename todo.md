@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/121_x86_prepared_module_renderer_recovery.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Recover Prepared Control-Flow Rendering Semantics
+Current Step ID: Step 5
+Current Step Title: Reprove X86 Handoff And Decide Lifecycle Outcome
 
 ## Just Finished
 
@@ -24,7 +24,8 @@ prepared branch contract.
 
 ## Suggested Next
 
-Continue with the next blocker exposed by the same proof:
+Advance to Step 5 and continue with the next x86 handoff blocker exposed by
+the same proof:
 `bounded direct extern-call prepared-module route: x86 prepared-module
 consumer did not emit the canonical asm`. The compare-join slice is past the
 requested stack-backed lane, adjacent rematerialized lane, missing
@@ -44,6 +45,11 @@ explicit. The current route renders into a local buffer and only publishes
 assembly after the whole supported shape is accepted; keep that
 all-or-nothing behavior for later candidate renderers so unsupported
 control-flow forms can still fall through cleanly.
+The direct extern-call blocker is not part of Step 4's prepared branch/label
+recovery contract. Treat it as the first Step 5 handoff reproving blocker:
+repair only if it is required for the supervisor-selected x86 handoff proof,
+and preserve the anti-overfit bar by using a semantic prepared-module call
+route rather than a named fixture or canonical-asm shortcut.
 The compare-join renderer intentionally remains bounded to the prepared
 param-zero materialized compare-join contract. It should continue to use
 prepared branch labels, join-transfer metadata, published parallel-copy
