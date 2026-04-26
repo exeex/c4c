@@ -83,6 +83,22 @@ namespace {
   return id;
 }
 
+[[nodiscard]] BlockLabelId find_preferred_block_label_id(const PreparedNameTables& names,
+                                                         const bir::NameTables& bir_names,
+                                                         BlockLabelId label_id,
+                                                         std::string_view raw_label) {
+  if (label_id != kInvalidBlockLabel) {
+    const std::string_view structured_label = bir_names.block_labels.spelling(label_id);
+    if (!structured_label.empty()) {
+      const BlockLabelId prepared_label_id = names.block_labels.find(structured_label);
+      if (prepared_label_id != kInvalidBlockLabel) {
+        return prepared_label_id;
+      }
+    }
+  }
+  return names.block_labels.find(raw_label);
+}
+
 [[nodiscard]] bool is_dynamic_alloca_call(std::string_view callee) {
   return callee.substr(0, std::string_view("llvm.dynamic_alloca.").size()) ==
          "llvm.dynamic_alloca.";
@@ -718,7 +734,8 @@ void populate_dynamic_stack_plan(PreparedBirModule& prepared) {
 
     for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
       const auto& block = function.blocks[block_index];
-      const BlockLabelId block_label_id = prepared.names.block_labels.find(block.label);
+      const BlockLabelId block_label_id = find_preferred_block_label_id(
+          prepared.names, prepared.module.names, block.label_id, block.label);
       for (std::size_t inst_index = 0; inst_index < block.insts.size(); ++inst_index) {
         const auto* call = std::get_if<bir::CallInst>(&block.insts[inst_index]);
         if (call == nullptr) {

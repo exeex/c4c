@@ -1854,6 +1854,55 @@ bir::Module make_dynamic_stack_module() {
   return module;
 }
 
+bir::Module make_dynamic_stack_stale_raw_block_label_module() {
+  bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  const auto canonical_entry = module.names.block_labels.intern("entry.authoritative");
+
+  bir::Function function;
+  function.name = "dynamic_stack_stale_raw_block_label_contract";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "stale.entry.raw";
+  entry.label_id = canonical_entry;
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "saved.sp"),
+      .callee = "llvm.stacksave",
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "vla.buf"),
+      .callee = "llvm.dynamic_alloca.i32",
+      .args = {bir::Value::immediate_i64(16)},
+      .arg_types = {bir::TypeKind::I64},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+  });
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 bir::Module make_cross_block_dynamic_stack_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -3134,6 +3183,26 @@ int check_dynamic_stack_contract() {
       saved_sp->bank != prepare::PreparedRegisterBank::Gpr ||
       vla_buf->bank != prepare::PreparedRegisterBank::Gpr) {
     return fail("dynamic-stack contract: storage_plans lost dynamic-stack pointer homes");
+  }
+  return 0;
+}
+
+int check_dynamic_stack_plan_reads_authoritative_block_label_id() {
+  const auto prepared = prepare_module(make_dynamic_stack_stale_raw_block_label_module());
+  const auto function_id =
+      prepared.names.function_names.find("dynamic_stack_stale_raw_block_label_contract");
+  const auto* dynamic_plan = prepare::find_prepared_dynamic_stack_plan(prepared, function_id);
+  const auto expected_block = prepared.names.block_labels.find("entry.authoritative");
+  if (function_id == c4c::kInvalidFunctionName || dynamic_plan == nullptr ||
+      dynamic_plan->operations.size() != 2 || expected_block == c4c::kInvalidBlockLabel) {
+    return fail(
+        "dynamic-stack authoritative block-label contract: fixture failed to publish dynamic-stack operations");
+  }
+  for (const auto& op : dynamic_plan->operations) {
+    if (op.block_label != expected_block) {
+      return fail(
+          "dynamic-stack authoritative block-label contract: dynamic_stack_plan used stale raw block spelling instead of BlockLabelId authority");
+    }
   }
   return 0;
 }
@@ -4761,6 +4830,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_dynamic_stack_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_dynamic_stack_plan_reads_authoritative_block_label_id(); rc != 0) {
     return rc;
   }
   if (const int rc = check_cross_block_dynamic_stack_cfg_contract(); rc != 0) {
