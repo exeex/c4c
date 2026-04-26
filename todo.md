@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/120_bir_raw_label_fallback_cleanup_after_assembler_id_path.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Prove Bounded Assembler Handoff Boundaries
+Current Step ID: 6
+Current Step Title: Final Validation And Completion Review
 
 ## Just Finished
 
@@ -33,9 +33,10 @@ Completed work:
 
 ## Suggested Next
 
-Supervisor should review and decide whether Step 5 has enough bounded proof to
-close or whether a second narrow handoff check is needed for another prepared
-control-flow carrier.
+Execute `plan.md` Step 6: run final backend validation selected by the
+supervisor, review remaining raw-label fallback sites against the source idea
+acceptance criteria, and record any intentionally retained compatibility
+boundaries plus proof results here for closure judgment.
 
 ## Watchouts
 
