@@ -45,6 +45,17 @@ std::string render_stack_memory_operand(std::size_t byte_offset, std::string_vie
   return std::string(size_name) + " PTR [rsp + " + std::to_string(byte_offset) + "]";
 }
 
+std::string render_global_i32_memory_operand(const Data& data,
+                                             std::string_view global_name,
+                                             std::size_t byte_offset) {
+  std::string operand = "DWORD PTR [rip + " + data.render_asm_symbol_name(global_name);
+  if (byte_offset != 0) {
+    operand += " + " + std::to_string(byte_offset);
+  }
+  operand += "]";
+  return operand;
+}
+
 std::string_view require_prepared_block_label(
     const c4c::backend::prepare::PreparedNameTables& names,
     c4c::BlockLabelId label,
@@ -520,6 +531,22 @@ bool block_defines_named_value(const c4c::backend::bir::Block& block, std::strin
     }
   }
   return false;
+}
+
+const c4c::backend::bir::Global* find_supported_same_module_i32_global(
+    const c4c::backend::bir::Module& module,
+    std::string_view global_name,
+    std::size_t byte_offset) {
+  for (const auto& global : module.globals) {
+    if (global.name != global_name || global.is_extern || global.is_thread_local) {
+      continue;
+    }
+    if (byte_offset > global.size_bytes || global.size_bytes - byte_offset < 4) {
+      return nullptr;
+    }
+    return &global;
+  }
+  return nullptr;
 }
 
 std::optional<std::int32_t> fold_supported_pointer_compare_return(
@@ -1088,6 +1115,89 @@ bool append_prepared_i32_binary_immediate_return_function(
   return true;
 }
 
+bool append_prepared_i32_same_module_global_return_function(
+    c4c::backend::x86::core::Text& out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    const Data& data) {
+  if (function.blocks.size() != 1) {
+    return false;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.insts.size() < 1 ||
+      block.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !block.terminator.value.has_value() ||
+      block.terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
+      block.terminator.value->type != c4c::backend::bir::TypeKind::I32) {
+    return false;
+  }
+
+  const auto* load_global =
+      std::get_if<c4c::backend::bir::LoadGlobalInst>(&block.insts.back());
+  if (load_global == nullptr ||
+      load_global->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      load_global->result.type != c4c::backend::bir::TypeKind::I32 ||
+      load_global->result.name != block.terminator.value->name ||
+      load_global->address.has_value() ||
+      find_supported_same_module_i32_global(
+          module.module, load_global->global_name, load_global->byte_offset) == nullptr) {
+    return false;
+  }
+
+  for (std::size_t inst_index = 0; inst_index + 1 < block.insts.size(); ++inst_index) {
+    const auto* store_global =
+        std::get_if<c4c::backend::bir::StoreGlobalInst>(&block.insts[inst_index]);
+    if (store_global == nullptr ||
+        store_global->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+        store_global->value.type != c4c::backend::bir::TypeKind::I32 ||
+        store_global->address.has_value() ||
+        find_supported_same_module_i32_global(
+            module.module, store_global->global_name, store_global->byte_offset) == nullptr) {
+      return false;
+    }
+  }
+
+  const auto* function_locations = require_prepared_value_location_function(module, function);
+  const auto& load_home = require_prepared_i32_value_home(module,
+                                                         *function_locations,
+                                                         function,
+                                                         load_global->result.name,
+                                                         "global load result value");
+  if (load_home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+      !load_home.register_name.has_value()) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has an unsupported prepared i32 global load home");
+  }
+
+  const auto& return_move =
+      require_prepared_i32_return_move(*function_locations, function, block, 0);
+  if (return_move.from_value_id != load_home.value_id) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' return move source drifted from global load home");
+  }
+
+  const auto return_register = c4c::backend::x86::abi::narrow_i32_register_name(
+      *return_move.destination_register_name);
+  const auto symbol_name = data.render_asm_symbol_name(function.name);
+  out.append_line(".globl " + symbol_name);
+  out.append_line(".type " + symbol_name + ", @function");
+  out.append_line(symbol_name + ":");
+  for (std::size_t inst_index = 0; inst_index + 1 < block.insts.size(); ++inst_index) {
+    const auto& store_global =
+        *std::get_if<c4c::backend::bir::StoreGlobalInst>(&block.insts[inst_index]);
+    out.append_line("    mov " +
+                    render_global_i32_memory_operand(
+                        data, store_global.global_name, store_global.byte_offset) +
+                    ", " + std::to_string(store_global.value.immediate));
+  }
+  out.append_line("    mov " + return_register + ", " +
+                  render_global_i32_memory_operand(
+                      data, load_global->global_name, load_global->byte_offset));
+  out.append_line("    ret");
+  return true;
+}
+
 bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
                                       const c4c::backend::prepare::PreparedBirModule& module,
                                       const c4c::backend::bir::Function& function,
@@ -1103,6 +1213,9 @@ bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
     return true;
   }
   if (append_prepared_i32_binary_immediate_return_function(out, module, function, data)) {
+    return true;
+  }
+  if (append_prepared_i32_same_module_global_return_function(out, module, function, data)) {
     return true;
   }
   const auto folded_return = fold_supported_pointer_compare_return(module.module, function);
@@ -1174,7 +1287,8 @@ std::string emit(const c4c::backend::prepare::PreparedBirModule& module) {
     out.append_line("# no defined functions");
   }
 
-  if (!(emitted_any_function && emitted_only_supported_scalar_functions)) {
+  if (!(emitted_any_function && emitted_only_supported_scalar_functions) ||
+      !module.module.globals.empty()) {
     out.append_raw(data.emit_data());
   }
   return out.take_text();

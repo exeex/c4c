@@ -9,25 +9,28 @@ Current Step Title: Recover Supported Scalar Rendering Semantics
 ## Just Finished
 
 Step 3 Recover Supported Scalar Rendering Semantics restored semantic
-prepared-module rendering for single-block named immediate `i32` binary returns.
-The x86 prepared-module consumer now accepts a supported immediate/immediate
-`i32` binary whose named result is returned, requires the rematerializable
-prepared result home plus the authoritative prepared return move, and emits the
-prepared immediate into the narrowed return ABI register.
+prepared-module rendering for the minimal same-module global `i32` load return
+lane. The x86 prepared-module consumer now accepts a supported single-block
+same-module global scalar form with `i32` immediate global stores followed by a
+returned `i32` global load, consumes the prepared load result home plus the
+authoritative prepared return move, emits the load through the prepared return
+ABI register, emits RIP-relative global accesses, and publishes the matching
+same-module zero global data definition.
 
 ## Suggested Next
 
 Next packet should continue Step 3 on the next scalar blocker from the same
 proof: recover semantic prepared-module rendering for the `minimal named
-same-module global return route`.
+same-module global sub return route`.
 
 ## Watchouts
 
-Do not turn the rematerialized constant route into a named-fixture dispatcher.
-The named immediate-add fix is gated by a supported single-block
-immediate/immediate `i32` binary shape and consumes the prepared
-`RematerializableImmediate` result home. The next blocker appears to be the
-same-module global load return lane, not the constant-expression lane.
+Do not turn the same-module global route into a named-fixture dispatcher. The
+new route is gated by supported same-module globals, `i32` immediate stores,
+`i32` global loads without pointer-backed addresses, and prepared value-location
+authority. The live blocker is still in the same-module global family, but it
+adds multiple global loads plus intervening `i32` subtraction rather than a
+single loaded value returned directly.
 
 ## Proof
 
@@ -35,7 +38,7 @@ same-module global load return lane, not the constant-expression lane.
 rebuilt `tests/backend/backend_x86_handoff_boundary_test` and
 `tests/backend/backend_x86_prepared_handoff_label_authority_test`, kept
 `backend_x86_prepared_handoff_label_authority` passing, and advanced past
-`minimal named immediate-add route`. The aggregate proof now fails later at
-`minimal named same-module global return route: x86 prepared-module consumer did
-not emit the canonical asm`.
+`minimal named same-module global return route`. The aggregate proof now fails
+later at `minimal named same-module global sub return route: x86 prepared-module
+consumer did not emit the canonical asm`.
 Canonical proof log: `test_after.log`.
