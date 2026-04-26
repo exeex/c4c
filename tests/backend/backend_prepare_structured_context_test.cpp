@@ -57,6 +57,51 @@ lir::LirModule make_structured_decl_lir_module() {
   return module;
 }
 
+lir::LirModule make_structured_aggregate_call_lir_module() {
+  lir::LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  const c4c::StructNameId pair_id = module.struct_names.intern("%struct.Pair");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = pair_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("i32")},
+                 lir::LirStructField{lir::LirTypeRef("i32")}},
+  });
+  module.type_decls.push_back("%struct.Pair = type { i32, i32 }");
+
+  lir::LirFunction decl;
+  decl.name = "id_pair";
+  decl.is_declaration = true;
+  decl.signature_text = "declare %struct.Pair @id_pair(%struct.Pair)";
+  module.functions.push_back(std::move(decl));
+
+  lir::LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main(%struct.Pair %p)";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_INT};
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirCallOp{
+      .result = lir::LirOperand("%pair.copy"),
+      .return_type = lir::LirTypeRef::struct_type("%struct.Pair", pair_id),
+      .callee = lir::LirOperand("@id_pair"),
+      .callee_type_suffix = "(%struct.Pair)",
+      .args_str = "%struct.Pair %p",
+      .arg_type_refs = {lir::LirTypeRef::struct_type("%struct.Pair", pair_id)},
+  });
+  entry.terminator = lir::LirRet{
+      .value_str = std::string("0"),
+      .type_str = "i32",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 int check_structured_context_population() {
   const auto lir_module = make_structured_decl_lir_module();
   const auto lowered =
@@ -86,6 +131,58 @@ int check_structured_context_population() {
   if (printed.find("%struct.Pair") != std::string::npos ||
       printed.find("%struct.Nested") != std::string::npos) {
     return fail("BIR printer started rendering structured context before the render step");
+  }
+  return 0;
+}
+
+int check_lowered_aggregate_call_prints_through_structured_context() {
+  const auto lir_module = make_structured_aggregate_call_lir_module();
+  auto lowered =
+      c4c::backend::try_lower_to_bir_with_options(lir_module, c4c::backend::BirLoweringOptions{});
+  if (!lowered.module.has_value()) {
+    return fail("structured aggregate call fixture did not lower to BIR");
+  }
+
+  bir::CallInst* aggregate_call = nullptr;
+  for (auto& function : lowered.module->functions) {
+    if (function.name != "main") {
+      continue;
+    }
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* call = std::get_if<bir::CallInst>(&inst)) {
+          if (call->callee == "id_pair") {
+            aggregate_call = call;
+          }
+        }
+      }
+    }
+  }
+  if (aggregate_call == nullptr) {
+    return fail("structured aggregate call fixture did not produce an id_pair BIR call");
+  }
+  if (!aggregate_call->structured_return_type_name.has_value() ||
+      *aggregate_call->structured_return_type_name != "%struct.Pair") {
+    return fail("lowered aggregate call did not preserve structured return metadata");
+  }
+  if (!aggregate_call->result_abi.has_value() ||
+      !aggregate_call->result_abi->returned_in_memory ||
+      aggregate_call->return_type != bir::TypeKind::Void) {
+    return fail("lowered aggregate call did not use the expected sret ABI shape");
+  }
+
+  aggregate_call->return_type_name = "legacy-return-text-should-not-render";
+
+  const std::string printed = bir::print(*lowered.module);
+  if (printed.find("bir.call void id_pair(ptr sret(size=8, align=4)") ==
+      std::string::npos) {
+    return fail("lowered aggregate call did not print byte-stable sret void spelling");
+  }
+  if (printed.find("legacy-return-text-should-not-render") != std::string::npos) {
+    return fail("lowered aggregate call printer used legacy return_type_name as active authority");
+  }
+  if (printed.find("call %struct.Pair") != std::string::npos) {
+    return fail("lowered aggregate call printer regressed to source aggregate call spelling");
   }
   return 0;
 }
@@ -143,6 +240,10 @@ int check_call_return_rendering_prefers_structured_context() {
 
 int main() {
   if (const int status = check_structured_context_population(); status != 0) {
+    return status;
+  }
+  if (const int status = check_lowered_aggregate_call_prints_through_structured_context();
+      status != 0) {
     return status;
   }
   return check_call_return_rendering_prefers_structured_context();
