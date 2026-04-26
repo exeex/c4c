@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/121_x86_prepared_module_renderer_recovery.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Inventory X86 Prepared Renderer And Compile Surface
+Current Step ID: Step 2
+Current Step Title: Restore X86 Handoff Test Compile Compatibility
 
 ## Just Finished
 
@@ -42,10 +42,11 @@ not the prepared-module assembly renderer itself.
 
 ## Suggested Next
 
-First narrow recovery packet: update only the disabled x86 handoff boundary test
-includes from the stale `codegen/api` and `codegen/abi` paths to the current
-`src/backend/mir/x86/api/api.hpp` and `src/backend/mir/x86/abi/abi.hpp` paths,
-without changing expectations or renderer behavior. Suggested proof:
+Step 2 first narrow recovery packet: update only the disabled x86 handoff
+boundary test includes from the stale `codegen/api` and `codegen/abi` paths to
+the current `src/backend/mir/x86/api/api.hpp` and
+`src/backend/mir/x86/abi/abi.hpp` paths, without changing expectations or
+renderer behavior. Suggested proof:
 `cmake -S . -B build-x86 -DC4C_ENABLE_X86_BACKEND_TESTS=ON && cmake --build build-x86 --target backend_x86_handoff_boundary_test -j2`.
 
 ## Watchouts
