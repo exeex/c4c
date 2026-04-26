@@ -226,6 +226,7 @@ int check_call_return_rendering_prefers_structured_context() {
   function.return_type = bir::TypeKind::Void;
 
   bir::Block entry;
+  entry.label_id = module.names.block_labels.intern("entry");
   entry.label = "entry";
   entry.insts.push_back(bir::CallInst{
       .callee = "make_pair",

@@ -32,6 +32,8 @@ const prepare::PreparedControlFlowFunction* find_control_flow_function(
 
 prepare::PreparedBirModule legalize_block_only_control_flow_module() {
   bir::Module module;
+  const c4c::BlockLabelId entry_id = module.names.block_labels.intern("entry");
+  const c4c::BlockLabelId exit_id = module.names.block_labels.intern("exit");
 
   bir::Function function;
   function.name = "block_only_control_flow_prepare_contract";
@@ -39,10 +41,15 @@ prepare::PreparedBirModule legalize_block_only_control_flow_module() {
 
   bir::Block entry;
   entry.label = "entry";
-  entry.terminator = bir::BranchTerminator{.target_label = "exit"};
+  entry.label_id = entry_id;
+  entry.terminator = bir::BranchTerminator{
+      .target_label = "exit",
+      .target_label_id = exit_id,
+  };
 
   bir::Block exit;
   exit.label = "exit";
+  exit.label_id = exit_id;
   exit.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(7)};
 
   function.blocks = {std::move(entry), std::move(exit)};

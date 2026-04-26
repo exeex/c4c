@@ -10,7 +10,9 @@
 #include <cstdlib>
 #include <iostream>
 #include <optional>
+#include <string>
 #include <string_view>
+#include <utility>
 
 namespace {
 
@@ -37,6 +39,47 @@ int fail(const char* message) {
 bool is_named_i32(const bir::Value& value, std::string_view expected_name) {
   return value.kind == bir::Value::Kind::Named && value.type == bir::TypeKind::I32 &&
          value.name == expected_name;
+}
+
+c4c::BlockLabelId block_label_id(bir::Module& module, std::string_view label) {
+  return module.names.block_labels.intern(label);
+}
+
+bir::Block make_block(bir::Module& module, std::string_view label) {
+  return bir::Block{
+      .label = std::string(label),
+      .label_id = block_label_id(module, label),
+  };
+}
+
+bir::BranchTerminator make_branch(bir::Module& module, std::string_view target_label) {
+  return bir::BranchTerminator{
+      .target_label = std::string(target_label),
+      .target_label_id = block_label_id(module, target_label),
+  };
+}
+
+bir::CondBranchTerminator make_cond_branch(bir::Module& module,
+                                           bir::Value condition,
+                                           std::string_view true_label,
+                                           std::string_view false_label) {
+  return bir::CondBranchTerminator{
+      .condition = std::move(condition),
+      .true_label = std::string(true_label),
+      .false_label = std::string(false_label),
+      .true_label_id = block_label_id(module, true_label),
+      .false_label_id = block_label_id(module, false_label),
+  };
+}
+
+bir::PhiIncoming make_phi_incoming(bir::Module& module,
+                                   std::string_view label,
+                                   bir::Value value) {
+  return bir::PhiIncoming{
+      .label = std::string(label),
+      .value = std::move(value),
+      .label_id = block_label_id(module, label),
+  };
 }
 
 const prepare::PreparedLivenessFunction* find_liveness_function(
@@ -285,8 +328,7 @@ prepare::PreparedBirModule prepare_phi_module() {
       .align_bytes = 4,
   });
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Eq,
       .result = bir::Value::named(bir::TypeKind::I32, "cond0"),
@@ -294,14 +336,9 @@ prepare::PreparedBirModule prepare_phi_module() {
       .lhs = bir::Value::named(bir::TypeKind::I32, "p.flag"),
       .rhs = bir::Value::immediate_i32(0),
   });
-  entry.terminator = bir::CondBranchTerminator{
-      .condition = bir::Value::named(bir::TypeKind::I32, "cond0"),
-      .true_label = "left",
-      .false_label = "right",
-  };
+  entry.terminator = make_cond_branch(module, bir::Value::named(bir::TypeKind::I32, "cond0"), "left", "right");
 
-  bir::Block left;
-  left.label = "left";
+  auto left = make_block(module, "left");
   left.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "left.v"),
@@ -309,10 +346,9 @@ prepare::PreparedBirModule prepare_phi_module() {
       .lhs = bir::Value::immediate_i32(10),
       .rhs = bir::Value::immediate_i32(1),
   });
-  left.terminator = bir::BranchTerminator{.target_label = "join"};
+  left.terminator = make_branch(module, "join");
 
-  bir::Block right;
-  right.label = "right";
+  auto right = make_block(module, "right");
   right.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Sub,
       .result = bir::Value::named(bir::TypeKind::I32, "right.v"),
@@ -320,15 +356,14 @@ prepare::PreparedBirModule prepare_phi_module() {
       .lhs = bir::Value::immediate_i32(20),
       .rhs = bir::Value::immediate_i32(2),
   });
-  right.terminator = bir::BranchTerminator{.target_label = "join"};
+  right.terminator = make_branch(module, "join");
 
-  bir::Block join;
-  join.label = "join";
+  auto join = make_block(module, "join");
   join.insts.push_back(bir::PhiInst{
       .result = bir::Value::named(bir::TypeKind::I32, "phi.v"),
       .incomings = {
-          bir::PhiIncoming{.label = "left", .value = bir::Value::named(bir::TypeKind::I32, "left.v")},
-          bir::PhiIncoming{.label = "right", .value = bir::Value::named(bir::TypeKind::I32, "right.v")},
+          make_phi_incoming(module, "left", bir::Value::named(bir::TypeKind::I32, "left.v")),
+          make_phi_incoming(module, "right", bir::Value::named(bir::TypeKind::I32, "right.v")),
       },
   });
   join.insts.push_back(bir::BinaryInst{
@@ -391,8 +426,7 @@ prepare::PreparedBirModule prepare_phi_join_move_module_with_regalloc() {
       .align_bytes = 4,
   });
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Eq,
       .result = bir::Value::named(bir::TypeKind::I32, "cond0"),
@@ -400,14 +434,9 @@ prepare::PreparedBirModule prepare_phi_join_move_module_with_regalloc() {
       .lhs = bir::Value::named(bir::TypeKind::I32, "p.flag"),
       .rhs = bir::Value::immediate_i32(0),
   });
-  entry.terminator = bir::CondBranchTerminator{
-      .condition = bir::Value::named(bir::TypeKind::I32, "cond0"),
-      .true_label = "left",
-      .false_label = "right",
-  };
+  entry.terminator = make_cond_branch(module, bir::Value::named(bir::TypeKind::I32, "cond0"), "left", "right");
 
-  bir::Block left;
-  left.label = "left";
+  auto left = make_block(module, "left");
   left.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "left.hot0"),
@@ -457,10 +486,9 @@ prepare::PreparedBirModule prepare_phi_join_move_module_with_regalloc() {
       .lhs = bir::Value::named(bir::TypeKind::I32, "left.hot2"),
       .rhs = bir::Value::named(bir::TypeKind::I32, "left.hot0"),
   });
-  left.terminator = bir::BranchTerminator{.target_label = "join"};
+  left.terminator = make_branch(module, "join");
 
-  bir::Block right;
-  right.label = "right";
+  auto right = make_block(module, "right");
   right.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "right.feed"),
@@ -468,44 +496,35 @@ prepare::PreparedBirModule prepare_phi_join_move_module_with_regalloc() {
       .lhs = bir::Value::immediate_i32(50),
       .rhs = bir::Value::immediate_i32(5),
   });
-  right.terminator = bir::BranchTerminator{.target_label = "join"};
+  right.terminator = make_branch(module, "join");
 
-  bir::Block join;
-  join.label = "join";
+  auto join = make_block(module, "join");
   join.insts.push_back(bir::PhiInst{
       .result = bir::Value::named(bir::TypeKind::I32, "phi.move"),
       .incomings = {
-          bir::PhiIncoming{.label = "left",
-                           .value = bir::Value::named(bir::TypeKind::I32, "left.feed")},
-          bir::PhiIncoming{.label = "right",
-                           .value = bir::Value::named(bir::TypeKind::I32, "right.feed")},
+          make_phi_incoming(module, "left", bir::Value::named(bir::TypeKind::I32, "left.feed")),
+          make_phi_incoming(module, "right", bir::Value::named(bir::TypeKind::I32, "right.feed")),
       },
   });
   join.insts.push_back(bir::PhiInst{
       .result = bir::Value::named(bir::TypeKind::I32, "phi.keep0"),
       .incomings = {
-          bir::PhiIncoming{.label = "left",
-                           .value = bir::Value::named(bir::TypeKind::I32, "left.hot0")},
-          bir::PhiIncoming{.label = "right",
-                           .value = bir::Value::named(bir::TypeKind::I32, "right.feed")},
+          make_phi_incoming(module, "left", bir::Value::named(bir::TypeKind::I32, "left.hot0")),
+          make_phi_incoming(module, "right", bir::Value::named(bir::TypeKind::I32, "right.feed")),
       },
   });
   join.insts.push_back(bir::PhiInst{
       .result = bir::Value::named(bir::TypeKind::I32, "phi.keep1"),
       .incomings = {
-          bir::PhiIncoming{.label = "left",
-                           .value = bir::Value::named(bir::TypeKind::I32, "left.hot1")},
-          bir::PhiIncoming{.label = "right",
-                           .value = bir::Value::named(bir::TypeKind::I32, "right.feed")},
+          make_phi_incoming(module, "left", bir::Value::named(bir::TypeKind::I32, "left.hot1")),
+          make_phi_incoming(module, "right", bir::Value::named(bir::TypeKind::I32, "right.feed")),
       },
   });
   join.insts.push_back(bir::PhiInst{
       .result = bir::Value::named(bir::TypeKind::I32, "phi.keep2"),
       .incomings = {
-          bir::PhiIncoming{.label = "left",
-                           .value = bir::Value::named(bir::TypeKind::I32, "left.hot2")},
-          bir::PhiIncoming{.label = "right",
-                           .value = bir::Value::named(bir::TypeKind::I32, "right.feed")},
+          make_phi_incoming(module, "left", bir::Value::named(bir::TypeKind::I32, "left.hot2")),
+          make_phi_incoming(module, "right", bir::Value::named(bir::TypeKind::I32, "right.feed")),
       },
   });
   join.insts.push_back(bir::BinaryInst{
@@ -566,8 +585,7 @@ prepare::PreparedBirModule prepare_select_materialized_join_module_with_regalloc
       .align_bytes = 4,
   });
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Eq,
       .result = bir::Value::named(bir::TypeKind::I32, "cond0"),
@@ -575,14 +593,9 @@ prepare::PreparedBirModule prepare_select_materialized_join_module_with_regalloc
       .lhs = bir::Value::named(bir::TypeKind::I32, "p.flag"),
       .rhs = bir::Value::immediate_i32(0),
   });
-  entry.terminator = bir::CondBranchTerminator{
-      .condition = bir::Value::named(bir::TypeKind::I32, "cond0"),
-      .true_label = "left",
-      .false_label = "right",
-  };
+  entry.terminator = make_cond_branch(module, bir::Value::named(bir::TypeKind::I32, "cond0"), "left", "right");
 
-  bir::Block left;
-  left.label = "left";
+  auto left = make_block(module, "left");
   left.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "left.hot0"),
@@ -632,10 +645,9 @@ prepare::PreparedBirModule prepare_select_materialized_join_module_with_regalloc
       .lhs = bir::Value::named(bir::TypeKind::I32, "left.hot2"),
       .rhs = bir::Value::named(bir::TypeKind::I32, "left.hot0"),
   });
-  left.terminator = bir::BranchTerminator{.target_label = "join"};
+  left.terminator = make_branch(module, "join");
 
-  bir::Block right;
-  right.label = "right";
+  auto right = make_block(module, "right");
   right.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "right.feed"),
@@ -643,44 +655,35 @@ prepare::PreparedBirModule prepare_select_materialized_join_module_with_regalloc
       .lhs = bir::Value::immediate_i32(50),
       .rhs = bir::Value::immediate_i32(5),
   });
-  right.terminator = bir::BranchTerminator{.target_label = "join"};
+  right.terminator = make_branch(module, "join");
 
-  bir::Block join;
-  join.label = "join";
+  auto join = make_block(module, "join");
   join.insts.push_back(bir::PhiInst{
       .result = bir::Value::named(bir::TypeKind::I32, "phi.move"),
       .incomings = {
-          bir::PhiIncoming{.label = "left",
-                           .value = bir::Value::named(bir::TypeKind::I32, "left.feed")},
-          bir::PhiIncoming{.label = "right",
-                           .value = bir::Value::named(bir::TypeKind::I32, "right.feed")},
+          make_phi_incoming(module, "left", bir::Value::named(bir::TypeKind::I32, "left.feed")),
+          make_phi_incoming(module, "right", bir::Value::named(bir::TypeKind::I32, "right.feed")),
       },
   });
   join.insts.push_back(bir::PhiInst{
       .result = bir::Value::named(bir::TypeKind::I32, "phi.keep0"),
       .incomings = {
-          bir::PhiIncoming{.label = "left",
-                           .value = bir::Value::named(bir::TypeKind::I32, "left.hot0")},
-          bir::PhiIncoming{.label = "right",
-                           .value = bir::Value::named(bir::TypeKind::I32, "right.feed")},
+          make_phi_incoming(module, "left", bir::Value::named(bir::TypeKind::I32, "left.hot0")),
+          make_phi_incoming(module, "right", bir::Value::named(bir::TypeKind::I32, "right.feed")),
       },
   });
   join.insts.push_back(bir::PhiInst{
       .result = bir::Value::named(bir::TypeKind::I32, "phi.keep1"),
       .incomings = {
-          bir::PhiIncoming{.label = "left",
-                           .value = bir::Value::named(bir::TypeKind::I32, "left.hot1")},
-          bir::PhiIncoming{.label = "right",
-                           .value = bir::Value::named(bir::TypeKind::I32, "right.feed")},
+          make_phi_incoming(module, "left", bir::Value::named(bir::TypeKind::I32, "left.hot1")),
+          make_phi_incoming(module, "right", bir::Value::named(bir::TypeKind::I32, "right.feed")),
       },
   });
   join.insts.push_back(bir::PhiInst{
       .result = bir::Value::named(bir::TypeKind::I32, "phi.keep2"),
       .incomings = {
-          bir::PhiIncoming{.label = "left",
-                           .value = bir::Value::named(bir::TypeKind::I32, "left.hot2")},
-          bir::PhiIncoming{.label = "right",
-                           .value = bir::Value::named(bir::TypeKind::I32, "right.feed")},
+          make_phi_incoming(module, "left", bir::Value::named(bir::TypeKind::I32, "left.hot2")),
+          make_phi_incoming(module, "right", bir::Value::named(bir::TypeKind::I32, "right.feed")),
       },
   });
   join.insts.push_back(bir::BinaryInst{
@@ -736,36 +739,22 @@ prepare::PreparedBirModule prepare_phi_loop_cycle_move_module_with_regalloc() {
   function.name = "phi_loop_cycle_move_resolution";
   function.return_type = bir::TypeKind::I32;
 
-  bir::Block entry;
-  entry.label = "entry";
-  entry.terminator = bir::BranchTerminator{.target_label = "loop"};
+  auto entry = make_block(module, "entry");
+  entry.terminator = make_branch(module, "loop");
 
-  bir::Block loop;
-  loop.label = "loop";
+  auto loop = make_block(module, "loop");
   loop.insts.push_back(bir::PhiInst{
       .result = bir::Value::named(bir::TypeKind::I32, "a"),
       .incomings = {
-          bir::PhiIncoming{
-              .label = "entry",
-              .value = bir::Value::immediate_i32(1),
-          },
-          bir::PhiIncoming{
-              .label = "body",
-              .value = bir::Value::named(bir::TypeKind::I32, "b"),
-          },
+          make_phi_incoming(module, "entry", bir::Value::immediate_i32(1)),
+          make_phi_incoming(module, "body", bir::Value::named(bir::TypeKind::I32, "b")),
       },
   });
   loop.insts.push_back(bir::PhiInst{
       .result = bir::Value::named(bir::TypeKind::I32, "b"),
       .incomings = {
-          bir::PhiIncoming{
-              .label = "entry",
-              .value = bir::Value::immediate_i32(2),
-          },
-          bir::PhiIncoming{
-              .label = "body",
-              .value = bir::Value::named(bir::TypeKind::I32, "a"),
-          },
+          make_phi_incoming(module, "entry", bir::Value::immediate_i32(2)),
+          make_phi_incoming(module, "body", bir::Value::named(bir::TypeKind::I32, "a")),
       },
   });
   loop.insts.push_back(bir::BinaryInst{
@@ -775,18 +764,12 @@ prepare::PreparedBirModule prepare_phi_loop_cycle_move_module_with_regalloc() {
       .lhs = bir::Value::named(bir::TypeKind::I32, "a"),
       .rhs = bir::Value::immediate_i32(0),
   });
-  loop.terminator = bir::CondBranchTerminator{
-      .condition = bir::Value::named(bir::TypeKind::I1, "cmp0"),
-      .true_label = "body",
-      .false_label = "exit",
-  };
+  loop.terminator = make_cond_branch(module, bir::Value::named(bir::TypeKind::I1, "cmp0"), "body", "exit");
 
-  bir::Block body;
-  body.label = "body";
-  body.terminator = bir::BranchTerminator{.target_label = "loop"};
+  auto body = make_block(module, "body");
+  body.terminator = make_branch(module, "loop");
 
-  bir::Block exit;
-  exit.label = "exit";
+  auto exit = make_block(module, "exit");
   exit.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, "a"),
   };
@@ -827,8 +810,7 @@ prepare::PreparedBirModule prepare_byval_home_slot_module_with_regalloc() {
       .is_byval = true,
   });
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Eq,
       .result = bir::Value::named(bir::TypeKind::I32, "cmp0"),
@@ -864,8 +846,7 @@ prepare::PreparedBirModule prepare_call_crossing_module_with_regalloc() {
   function.name = "call_crossing_spillover";
   function.return_type = bir::TypeKind::I32;
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "carry"),
@@ -943,8 +924,7 @@ prepare::PreparedBirModule prepare_weighted_post_call_module_with_regalloc() {
   function.name = "weighted_post_call_pressure";
   function.return_type = bir::TypeKind::I32;
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "carry"),
@@ -1043,8 +1023,7 @@ prepare::PreparedBirModule prepare_call_arg_move_module_with_regalloc() {
   function.name = "call_arg_move_resolution";
   function.return_type = bir::TypeKind::I32;
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "carry0"),
@@ -1146,8 +1125,7 @@ prepare::PreparedBirModule prepare_call_result_move_module_with_regalloc() {
   function.name = "call_result_move_resolution";
   function.return_type = bir::TypeKind::F32;
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::CallInst{
       .result = bir::Value::named(bir::TypeKind::F32, "call.result"),
       .callee = "source_f32",
@@ -1186,8 +1164,7 @@ prepare::PreparedBirModule prepare_return_move_module_with_regalloc() {
   function.name = "return_move_resolution";
   function.return_type = bir::TypeKind::F32;
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::F32, "ret.value"),
@@ -1223,8 +1200,7 @@ prepare::PreparedBirModule prepare_return_same_storage_module_with_regalloc() {
   function.name = "return_same_storage_resolution";
   function.return_type = bir::TypeKind::I32;
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "ret.value"),
@@ -1288,8 +1264,7 @@ prepare::PreparedBirModule prepare_grouped_call_boundary_move_module_with_regall
   bir::Function call_arg_function;
   call_arg_function.name = "grouped_call_arg_move_resolution";
   call_arg_function.return_type = bir::TypeKind::I32;
-  bir::Block call_arg_entry;
-  call_arg_entry.label = "entry";
+  auto call_arg_entry = make_block(module, "entry");
   call_arg_entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "grouped.arg"),
@@ -1320,8 +1295,7 @@ prepare::PreparedBirModule prepare_grouped_call_boundary_move_module_with_regall
   bir::Function call_result_function;
   call_result_function.name = "grouped_call_result_move_resolution";
   call_result_function.return_type = bir::TypeKind::I32;
-  bir::Block call_result_entry;
-  call_result_entry.label = "entry";
+  auto call_result_entry = make_block(module, "entry");
   call_result_entry.insts.push_back(bir::CallInst{
       .result = bir::Value::named(bir::TypeKind::I32, "grouped.call.result"),
       .callee = "source_pair",
@@ -1345,8 +1319,7 @@ prepare::PreparedBirModule prepare_grouped_call_boundary_move_module_with_regall
       .type = bir::TypeKind::I32,
       .primary_class = bir::AbiValueClass::Integer,
   };
-  bir::Block return_entry;
-  return_entry.label = "entry";
+  auto return_entry = make_block(module, "entry");
   return_entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "grouped.ret.value"),
@@ -1816,8 +1789,7 @@ prepare::PreparedBirModule prepare_evicted_spill_module_with_regalloc() {
   function.name = "evicted_value_spill_ops";
   function.return_type = bir::TypeKind::I32;
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "carry0"),
@@ -1969,8 +1941,7 @@ prepare::PreparedBirModule prepare_grouped_evicted_spill_module_with_regalloc() 
       .align_bytes = 4,
   });
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "carry"),
@@ -2130,8 +2101,7 @@ prepare::PreparedBirModule prepare_general_grouped_evicted_spill_module_with_reg
       .align_bytes = 4,
   });
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "carry"),
@@ -2282,8 +2252,7 @@ prepare::PreparedBirModule prepare_float_grouped_evicted_spill_module_with_regal
       .align_bytes = 4,
   });
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::F32, "carry"),
@@ -2403,8 +2372,7 @@ prepare::PreparedBirModule prepare_loop_weighted_priority_module_with_regalloc()
   function.name = "loop_weighted_priority";
   function.return_type = bir::TypeKind::I32;
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "seed"),
@@ -2412,10 +2380,9 @@ prepare::PreparedBirModule prepare_loop_weighted_priority_module_with_regalloc()
       .lhs = bir::Value::immediate_i32(1),
       .rhs = bir::Value::immediate_i32(1),
   });
-  entry.terminator = bir::BranchTerminator{.target_label = "loop"};
+  entry.terminator = make_branch(module, "loop");
 
-  bir::Block loop;
-  loop.label = "loop";
+  auto loop = make_block(module, "loop");
   loop.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "loop.hot"),
@@ -2437,14 +2404,9 @@ prepare::PreparedBirModule prepare_loop_weighted_priority_module_with_regalloc()
       .lhs = bir::Value::named(bir::TypeKind::I32, "loop.hot"),
       .rhs = bir::Value::immediate_i32(0),
   });
-  loop.terminator = bir::CondBranchTerminator{
-      .condition = bir::Value::named(bir::TypeKind::I32, "loop.cond"),
-      .true_label = "exit",
-      .false_label = "loop",
-  };
+  loop.terminator = make_cond_branch(module, bir::Value::named(bir::TypeKind::I32, "loop.cond"), "exit", "loop");
 
-  bir::Block exit;
-  exit.label = "exit";
+  auto exit = make_block(module, "exit");
   exit.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "result"),
@@ -2494,8 +2456,7 @@ prepare::PreparedBirModule prepare_cross_call_boundary_module_with_regalloc() {
   function.name = "cross_call_boundary";
   function.return_type = bir::TypeKind::I32;
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "pre.only"),
@@ -2572,8 +2533,7 @@ prepare::PreparedBirModule prepare_indirect_call_preservation_module_with_regall
   function.name = "indirect_call_preservation";
   function.return_type = bir::TypeKind::I32;
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "carry"),
@@ -2665,8 +2625,7 @@ prepare::PreparedBirModule prepare_same_start_priority_module_with_regalloc() {
       .align_bytes = 4,
   });
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "hot0"),
@@ -2761,8 +2720,7 @@ prepare::PreparedBirModule prepare_float_linear_scan_module_with_regalloc() {
       .align_bytes = 4,
   });
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::F32, "hot0"),
@@ -2851,8 +2809,7 @@ prepare::PreparedBirModule prepare_vector_grouped_linear_scan_module_with_regall
       .align_bytes = 4,
   });
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "hot0"),
@@ -2955,8 +2912,7 @@ prepare::PreparedBirModule prepare_vector_grouped_cross_call_module_with_regallo
       .align_bytes = 4,
   });
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "carry.pre"),
@@ -3057,8 +3013,7 @@ prepare::PreparedBirModule prepare_general_grouped_cross_call_module_with_regall
       .align_bytes = 4,
   });
 
-  bir::Block entry;
-  entry.label = "entry";
+  auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, "carry.pre"),
