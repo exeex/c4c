@@ -26,6 +26,7 @@ general semantic lowering and nearby same-feature coverage.
 - `ideas/open/121_x86_prepared_module_renderer_recovery.md`
 - `review/step5_x86_handoff_dirty_slice_review.md`
 - `review/step4_current_x86_control_flow_route_review.md`
+- `review/step4_loop_countdown_dirty_slice_acceptance_review.md`
 - `review/step3_accumulated_scalar_local_slot_route_review.md`
 - `review/step3_accumulated_local_slot_renderer_review.md`
 - `src/backend/mir/x86/module/module.cpp`
@@ -224,8 +225,9 @@ Completion check:
 ### Step 4: Recover Prepared Control-Flow Rendering Semantics
 
 Goal: restore control-flow rendering, including branches and labels, without
-falling back to raw or drifted identity. If the x86 consumer reaches missing
-or drifted prepared identity, repair the prepared producer records before
+falling back to raw, drifted, ambiguous, or consumer-synthesized identity. If
+the x86 consumer reaches missing or drifted prepared identity, repair the
+prepared producer records or record a semantic unsupported boundary before
 adding any x86-side acceptance path.
 
 Primary targets:
@@ -240,17 +242,33 @@ Concrete actions:
   the next Step 4 packet must publish explicit prepared identity for mutated
   or bridge carrier blocks, or document a semantic unsupported boundary before
   returning to x86 rendering.
+- Treat the rejected loop-countdown dirty slice as unaccepted route drift until
+  the synthesized x86-consumer fallback is removed or split away:
+  `PreparedBranchCondition` records must not be fabricated from BIR compare
+  shape, prepared target blocks, successor counts, or countdown-header layout
+  when the prepared producer did not publish the branch-condition identity.
+- Before pursuing the guard-chain positive blocker, repair the two-segment
+  countdown producer publication path or mark the missing branch-condition
+  identity as an explicit semantic unsupported boundary. Do not claim Step 4
+  progress from a consumer-side fallback that lets the aggregate proof advance
+  to a later failure.
 - Publish or preserve enough prepared identity for the consumer to tie every
   live control-flow block and authoritative parallel-copy bundle to the exact
   prepared edge or branch metadata it represents.
 - Route control-flow emission through prepared label identity where available.
 - Reject or surface missing and drifted label ids rather than recovering
   through broad raw-string matching, compare-join-specific validator
-  exceptions, or same-successor parallel-copy guesses.
+  exceptions, same-successor parallel-copy guesses, or synthesized branch
+  conditions.
 - Cover nearby branch and conditional-branch cases, not only the handoff case
   that exposed the drift.
 - Add same-feature negative coverage for missing, drifted, and ambiguous
   prepared identities before treating the Step 4 route as progress.
+- Add direct same-feature loop-countdown coverage before claiming the
+  loop-countdown route: at least one focused positive that proves prepared
+  label/branch/join/parallel-copy consumption and focused negatives for
+  missing or drifted branch-condition identity, join transfer identity, edge
+  transfer identity, and predecessor-owned parallel-copy bundle identity.
 - Do not add or accept standalone scalar local-slot renderers in this step.
   Local-slot code may remain in Step 4 only when it is inseparable from a
   prepared branch, label, branch-plan, continuation, or parallel-copy control
@@ -261,10 +279,14 @@ Concrete actions:
   hide unrelated renderer gaps.
 
 Completion check:
-- Prepared producer records publish the identity needed by x86 control-flow
-  rendering; x86 prepared control-flow cases consume prepared label ids
-  directly, reject invalid identity where appropriate, and pass the delegated
-  narrow proof without consumer-side raw-label or missing-identity escapes.
+- The synthesized consumer fallback from the rejected dirty slice is removed or
+  isolated outside accepted Step 4 progress; prepared producer records publish
+  the identity needed by x86 control-flow rendering, or the missing-identity
+  boundary is recorded as semantic unsupported. x86 prepared control-flow cases
+  consume prepared label ids directly, include direct positive and negative
+  loop-countdown coverage, reject invalid identity where appropriate, and pass
+  the delegated narrow proof without consumer-side raw-label, raw-label
+  spelling, or missing-identity escapes.
 
 ### Step 5: Reprove X86 Handoff And Decide Lifecycle Outcome
 
