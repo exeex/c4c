@@ -258,7 +258,7 @@ std::string expected_minimal_param_eq_zero_branch_joined_globals_then_xor_asm(
          std::string(false_global_name) + "]\n    xor " + minimal_i32_return_register() + ", " +
          std::to_string(joined_immediate) + "\n    ret\n.data\n.globl " +
          std::string(true_global_name) + "\n.type " + std::string(true_global_name) +
-         ", @object\n.p2align 2\n" + std::string(true_global_name) + ":\n    .long 5\n.data\n.globl " +
+         ", @object\n.p2align 2\n" + std::string(true_global_name) + ":\n    .long 5\n.globl " +
          std::string(false_global_name) + "\n.type " + std::string(false_global_name) +
          ", @object\n.p2align 2\n" + std::string(false_global_name) + ":\n    .long 1\n";
 }
@@ -283,7 +283,7 @@ std::string expected_minimal_param_eq_zero_branch_joined_global_chains_then_xor_
          ", " + std::to_string(joined_immediate) +
          "\n    ret\n.data\n.globl " + std::string(true_global_name) + "\n.type " +
          std::string(true_global_name) + ", @object\n.p2align 2\n" +
-         std::string(true_global_name) + ":\n    .long 5\n.data\n.globl " +
+         std::string(true_global_name) + ":\n    .long 5\n.globl " +
          std::string(false_global_name) + "\n.type " + std::string(false_global_name) +
          ", @object\n.p2align 2\n" + std::string(false_global_name) + ":\n    .long 1\n";
 }
@@ -305,13 +305,14 @@ std::string expected_minimal_param_eq_zero_branch_joined_pointer_backed_globals_
          ", DWORD PTR [rip + " + std::string(false_global_name) + "]\n    xor " +
          minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
          "\n    ret\n.data\n.globl " + std::string(true_root_name) + "\n.type " +
-         std::string(true_root_name) + ", @object\n.p2align 2\n" + std::string(true_root_name) +
-         ":\n    .quad " + std::string(true_global_name) + "\n.data\n.globl " +
+         std::string(true_root_name) + ", @object\n.p2align 3\n" + std::string(true_root_name) +
+         ":\n    # global data emission deferred to behavior-recovery packet\n.globl " +
          std::string(true_global_name) + "\n.type " + std::string(true_global_name) +
-         ", @object\n.p2align 2\n" + std::string(true_global_name) + ":\n    .long 5\n.data\n.globl " +
+         ", @object\n.p2align 2\n" + std::string(true_global_name) + ":\n    .long 5\n.globl " +
          std::string(false_root_name) + "\n.type " + std::string(false_root_name) +
-         ", @object\n.p2align 2\n" + std::string(false_root_name) + ":\n    .quad " +
-         std::string(false_global_name) + "\n.data\n.globl " + std::string(false_global_name) +
+         ", @object\n.p2align 3\n" + std::string(false_root_name) +
+         ":\n    # global data emission deferred to behavior-recovery packet\n.globl " +
+         std::string(false_global_name) +
          "\n.type " + std::string(false_global_name) + ", @object\n.p2align 2\n" +
          std::string(false_global_name) + ":\n    .long 1\n";
 }
@@ -338,13 +339,14 @@ std::string expected_minimal_param_eq_zero_branch_joined_pointer_backed_global_c
          ", " + std::to_string(false_chain_immediate) + "\n    xor " +
          minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
          "\n    ret\n.data\n.globl " + std::string(true_root_name) + "\n.type " +
-         std::string(true_root_name) + ", @object\n.p2align 2\n" + std::string(true_root_name) +
-         ":\n    .quad " + std::string(true_global_name) + "\n.data\n.globl " +
+         std::string(true_root_name) + ", @object\n.p2align 3\n" + std::string(true_root_name) +
+         ":\n    # global data emission deferred to behavior-recovery packet\n.globl " +
          std::string(true_global_name) + "\n.type " + std::string(true_global_name) +
-         ", @object\n.p2align 2\n" + std::string(true_global_name) + ":\n    .long 5\n.data\n.globl " +
+         ", @object\n.p2align 2\n" + std::string(true_global_name) + ":\n    .long 5\n.globl " +
          std::string(false_root_name) + "\n.type " + std::string(false_root_name) +
-         ", @object\n.p2align 2\n" + std::string(false_root_name) + ":\n    .quad " +
-         std::string(false_global_name) + "\n.data\n.globl " + std::string(false_global_name) +
+         ", @object\n.p2align 3\n" + std::string(false_root_name) +
+         ":\n    # global data emission deferred to behavior-recovery packet\n.globl " +
+         std::string(false_global_name) +
          "\n.type " + std::string(false_global_name) + ", @object\n.p2align 2\n" +
          std::string(false_global_name) + ":\n    .long 1\n";
 }
@@ -370,13 +372,15 @@ std::string expected_minimal_param_eq_zero_branch_joined_offset_pointer_backed_g
          "]\n    xor " + minimal_i32_return_register() + ", " +
          std::to_string(joined_immediate) + "\n    ret\n.data\n.globl " +
          std::string(true_root_name) + "\n.type " + std::string(true_root_name) +
-         ", @object\n.p2align 2\n" + std::string(true_root_name) + ":\n    .quad " +
-         std::string(true_global_name) + "\n.data\n.globl " + std::string(true_global_name) +
+         ", @object\n.p2align 3\n" + std::string(true_root_name) +
+         ":\n    # global data emission deferred to behavior-recovery packet\n.globl " +
+         std::string(true_global_name) +
          "\n.type " + std::string(true_global_name) + ", @object\n.p2align 2\n" +
-         std::string(true_global_name) + ":\n    .long 0\n    .long 5\n.data\n.globl " +
+         std::string(true_global_name) + ":\n    .long 0\n    .long 5\n.globl " +
          std::string(false_root_name) + "\n.type " + std::string(false_root_name) +
-         ", @object\n.p2align 2\n" + std::string(false_root_name) + ":\n    .quad " +
-         std::string(false_global_name) + "\n.data\n.globl " + std::string(false_global_name) +
+         ", @object\n.p2align 3\n" + std::string(false_root_name) +
+         ":\n    # global data emission deferred to behavior-recovery packet\n.globl " +
+         std::string(false_global_name) +
          "\n.type " + std::string(false_global_name) + ", @object\n.p2align 2\n" +
          std::string(false_global_name) + ":\n    .long 0\n    .long 1\n";
 }
@@ -406,14 +410,16 @@ std::string expected_minimal_param_eq_zero_branch_joined_offset_pointer_backed_g
          ", " + std::to_string(false_chain_immediate) + "\n    xor " +
          minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
          "\n    ret\n.data\n.globl " + std::string(true_root_name) + "\n.type " +
-         std::string(true_root_name) + ", @object\n.p2align 2\n" +
-         std::string(true_root_name) + ":\n    .quad " + std::string(true_global_name) +
-         "\n.data\n.globl " + std::string(true_global_name) + "\n.type " +
+         std::string(true_root_name) + ", @object\n.p2align 3\n" +
+         std::string(true_root_name) +
+         ":\n    # global data emission deferred to behavior-recovery packet\n.globl " +
+         std::string(true_global_name) + "\n.type " +
          std::string(true_global_name) + ", @object\n.p2align 2\n" +
-         std::string(true_global_name) + ":\n    .long 0\n    .long 5\n.data\n.globl " +
+         std::string(true_global_name) + ":\n    .long 0\n    .long 5\n.globl " +
          std::string(false_root_name) + "\n.type " + std::string(false_root_name) +
-         ", @object\n.p2align 2\n" + std::string(false_root_name) + ":\n    .quad " +
-         std::string(false_global_name) + "\n.data\n.globl " + std::string(false_global_name) +
+         ", @object\n.p2align 3\n" + std::string(false_root_name) +
+         ":\n    # global data emission deferred to behavior-recovery packet\n.globl " +
+         std::string(false_global_name) +
          "\n.type " + std::string(false_global_name) + ", @object\n.p2align 2\n" +
          std::string(false_global_name) + ":\n    .long 0\n    .long 1\n";
 }
@@ -437,7 +443,7 @@ std::string expected_minimal_param_eq_zero_branch_joined_offset_globals_then_xor
          std::to_string(joined_immediate) + "\n    ret\n.data\n.globl " +
          std::string(true_global_name) + "\n.type " + std::string(true_global_name) +
          ", @object\n.p2align 2\n" + std::string(true_global_name) +
-         ":\n    .long 0\n    .long 5\n.data\n.globl " + std::string(false_global_name) +
+         ":\n    .long 0\n    .long 5\n.globl " + std::string(false_global_name) +
          "\n.type " + std::string(false_global_name) + ", @object\n.p2align 2\n" +
          std::string(false_global_name) + ":\n    .long 0\n    .long 1\n";
 }
@@ -465,7 +471,7 @@ std::string expected_minimal_param_eq_zero_branch_joined_offset_global_chains_th
          minimal_i32_return_register() + ", " + std::to_string(joined_immediate) +
          "\n    ret\n.data\n.globl " + std::string(true_global_name) + "\n.type " +
          std::string(true_global_name) + ", @object\n.p2align 2\n" +
-         std::string(true_global_name) + ":\n    .long 0\n    .long 5\n.data\n.globl " +
+         std::string(true_global_name) + ":\n    .long 0\n    .long 5\n.globl " +
          std::string(false_global_name) + "\n.type " + std::string(false_global_name) +
          ", @object\n.p2align 2\n" + std::string(false_global_name) +
          ":\n    .long 0\n    .long 1\n";

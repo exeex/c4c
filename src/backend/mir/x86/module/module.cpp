@@ -64,6 +64,10 @@ std::string render_global_i32_memory_operand(const Data& data,
   return operand;
 }
 
+std::string render_global_ptr_memory_operand(const Data& data, std::string_view global_name) {
+  return "QWORD PTR [rip + " + data.render_asm_symbol_name(global_name) + "]";
+}
+
 std::string render_function_local_label(std::string_view function_name, std::string_view label) {
   return ".L" + std::string(function_name) + "_" + std::string(label);
 }
@@ -1949,11 +1953,13 @@ void require_prepared_compare_join_parallel_copy(
 void append_prepared_i32_compare_join_return_arm(
     c4c::backend::x86::core::Text& function_out,
     const c4c::backend::prepare::PreparedBirModule& module,
+    const Data& data,
     const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::Block& join_block,
     std::size_t join_block_index,
-    const c4c::backend::prepare::PreparedMaterializedCompareJoinReturnContext& return_context) {
+    const c4c::backend::prepare::PreparedResolvedMaterializedCompareJoinReturnArm& return_arm) {
+  const auto& return_context = return_arm.arm.context;
   const auto& return_move =
       require_prepared_i32_return_move(function_locations, function, join_block, join_block_index);
   const auto return_register =
@@ -2027,14 +2033,53 @@ void append_prepared_i32_compare_join_return_arm(
       }
       break;
     }
-    case c4c::backend::prepare::PreparedComputedBaseKind::GlobalI32Load:
-      throw_prepared_value_location_handoff_error(
-          "defined function '" + function.name +
-          "' has an unsupported same-module global compare-join selected value");
+    case c4c::backend::prepare::PreparedComputedBaseKind::GlobalI32Load: {
+      if (return_arm.global == nullptr ||
+          find_supported_same_module_i32_global(module.module,
+                                                return_arm.global->name,
+                                                selected_value.base.global_byte_offset) !=
+              return_arm.global) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' compare-join selected global drifted from prepared same-module global ownership");
+      }
+      function_out.append_line("    mov " + return_register + ", " +
+                               render_global_i32_memory_operand(
+                                   data,
+                                   return_arm.global->name,
+                                   selected_value.base.global_byte_offset));
+      break;
+    }
     case c4c::backend::prepare::PreparedComputedBaseKind::PointerBackedGlobalI32Load:
-      throw_prepared_value_location_handoff_error(
-          "defined function '" + function.name +
-          "' has an unsupported pointer-backed global compare-join selected value");
+      if (return_arm.global == nullptr ||
+          find_supported_same_module_i32_global(module.module,
+                                                return_arm.global->name,
+                                                selected_value.base.global_byte_offset) !=
+              return_arm.global) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' compare-join pointer-backed selected global drifted from prepared same-module global ownership");
+      }
+      if (return_arm.pointer_root_global == nullptr ||
+          return_arm.pointer_root_global->is_extern ||
+          return_arm.pointer_root_global->is_thread_local ||
+          return_arm.pointer_root_global->type != c4c::backend::bir::TypeKind::Ptr ||
+          return_arm.pointer_root_global->size_bytes < 8 ||
+          !return_arm.pointer_root_global->initializer_symbol_name.has_value() ||
+          *return_arm.pointer_root_global->initializer_symbol_name != return_arm.global->name) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' compare-join pointer root drifted from prepared same-module global ownership");
+      }
+      function_out.append_line("    mov rax, " +
+                               render_global_ptr_memory_operand(data,
+                                                                return_arm.pointer_root_global->name));
+      function_out.append_line("    mov " + return_register + ", " +
+                               render_global_i32_memory_operand(
+                                   data,
+                                   return_arm.global->name,
+                                   selected_value.base.global_byte_offset));
+      break;
   }
 
   for (const auto& operation : selected_value.operations) {
@@ -2073,7 +2118,6 @@ bool prepared_i32_compare_join_return_arm_is_supported(
     case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::ParamValue:
     case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
         ParamValueWithTrailingImmediateBinary:
-      return true;
     case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::GlobalI32Load:
     case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
         GlobalI32LoadWithTrailingImmediateBinary:
@@ -2081,7 +2125,7 @@ bool prepared_i32_compare_join_return_arm_is_supported(
         PointerBackedGlobalI32Load:
     case c4c::backend::prepare::PreparedMaterializedCompareJoinReturnShape::
         PointerBackedGlobalI32LoadWithTrailingImmediateBinary:
-      return false;
+      return true;
   }
 
   std::abort();
@@ -2188,14 +2232,14 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
           "compare-join source block has no authoritative prepared join metadata");
     }
     const auto render_contract =
-        c4c::backend::prepare::find_prepared_materialized_compare_join_render_contract(
-            mutable_names, *prepared_compare_join);
+        c4c::backend::prepare::find_prepared_resolved_materialized_compare_join_render_contract(
+            mutable_names, module.module, *prepared_compare_join);
     if (!render_contract.has_value()) {
       throw_prepared_control_flow_handoff_error(
           "compare-join source block has no authoritative prepared render contract");
     }
-    if (!prepared_i32_compare_join_return_arm_is_supported(render_contract->true_return) ||
-        !prepared_i32_compare_join_return_arm_is_supported(render_contract->false_return)) {
+    if (!prepared_i32_compare_join_return_arm_is_supported(render_contract->true_return.arm) ||
+        !prepared_i32_compare_join_return_arm_is_supported(render_contract->false_return.arm)) {
       throw_prepared_value_location_handoff_error(
           "defined function '" + function.name +
           "' has an unsupported global compare-join return context");
@@ -2250,11 +2294,12 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
     append_prepared_i32_compare_join_return_arm(
         function_out,
         module,
+        data,
         *function_locations,
         function,
         *join_context.join_block,
         *join_block_index,
-        render_contract->true_return.context);
+        render_contract->true_return);
     function_out.append_line(render_function_local_label(
                                  function.name,
                                  c4c::backend::prepare::prepared_block_label(
@@ -2264,11 +2309,12 @@ bool append_prepared_i32_param_zero_compare_join_return_function(
     append_prepared_i32_compare_join_return_arm(
         function_out,
         module,
+        data,
         *function_locations,
         function,
         *join_context.join_block,
         *join_block_index,
-        render_contract->false_return.context);
+        render_contract->false_return);
     out.append_raw(function_out.take_text());
     return true;
   }
