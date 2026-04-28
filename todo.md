@@ -8,21 +8,35 @@ Current Step Title: Recover Prepared Control-Flow Rendering Semantics
 
 ## Just Finished
 
-Step 4 Recover Prepared Control-Flow Rendering Semantics repaired the prepared
-return move bundle blocker for `branch_join_immediate_then_xor`. Regalloc now
-infers scalar return ABI authority when semantic BIR has a return type but no
-explicit return ABI record, and the joined-branch immediate return-context
-fixture refreshes its prepared value-location return bundle after mutating the
-already-prepared join carrier/topology metadata.
+Step 4 Recover Prepared Control-Flow Rendering Semantics was reviewed in
+`review/step4_global_short_circuit_slice_review.md`. That review rejected the
+current whole dirty global/short-circuit slice as drifting and recommended a
+plan/todo rewrite before more execution.
+
+Do not treat the accumulated dirty route as accepted Step 4 progress. The
+review says the same-module global compare-join work and the short-circuit
+execution-site clarification may be separable semantic pieces, but the
+local-slot short-circuit renderer is too fixture-shaped to accept as-is.
 
 ## Suggested Next
 
-Continue Step 4 at the later value-location blocker now exposed by the selected
-proof: the selected x86 handoff subset advances to
-`branch_join_global_then_xor`, where the prepared consumer rejects the route as
-an unsupported global compare-join return context. Keep any repair on prepared
-same-module global/value-location records; do not add expected-assembly or
-function-name fallbacks.
+Continue Step 4 only on one bounded route chosen by the supervisor:
+
+1. Split and validate only the semantic same-module global compare-join pieces
+   plus the short-circuit execution-site clarification, leaving the
+   local-slot short-circuit renderer out of the commit.
+2. Rework the short-circuit renderer around a clearly defined semantic
+   prepared lowering class, with nearby positive and negative coverage for
+   missing, drifted, and ambiguous prepared identities before claiming
+   progress.
+3. Repair the missing bridge identity first: the selected proof fails on
+   `contract.rhs.bridge` having no prepared block id, so the next packet may
+   need to publish or preserve exact prepared identity for that bridge before
+   any x86-side renderer acceptance path is valid.
+
+Whichever route is chosen, do not expand or commit the current local-slot
+short-circuit renderer as-is, do not add raw label recovery, and do not add
+x86-side fallback acceptance for missing prepared identity.
 
 ## Watchouts
 
@@ -48,16 +62,26 @@ identity, prepared call move bundles, prepared value homes, and prepared string
 constant identity. Keep later call work on those semantic records; do not
 replace it with fixture names or expected-assembly matching.
 
-Global and pointer-backed selected-value compare-join returns remain
-unsupported by this slice; a later packet should use the resolved same-module
-global contract before enabling them.
+Direct and pointer-backed same-module global selected-value compare-join
+returns now use the resolved prepared same-module global contract. Pointer-root
+data emission still uses the existing x86 data emitter behavior for symbol
+initializer globals: it emits deferred initializer comments rather than `.quad`
+symbol initializers.
 
 The Step 4 review blocker in
 `review/step4_compare_branch_slice_review.md` was previously repaired:
 validation should not skip BIR blocks that cannot map to prepared control-flow
 blocks, and the compare-branch renderer should not resolve true/false leaf
 targets through raw label spelling. Preserve that bar while reworking the
-current dirty route.
+current dirty route. The newer
+`review/step4_global_short_circuit_slice_review.md` is the controlling review
+for the active dirty slice: it rejects the whole slice as commit-ready and
+requires either splitting out only the semantic portions, reworking the
+short-circuit lowering class with negative coverage, or repairing missing
+bridge identity first. Short-circuit branch-condition target validation has a
+narrow exception only when exact prepared short-circuit branch-plan
+continuation ownership is present; add negative coverage before using that
+exception as a foundation for broader short-circuit rendering.
 
 The compare-join return-move source check should stay anchored on the prepared
 join return value home. The selected-value base home only explains how to
@@ -74,26 +98,30 @@ Immediate-source compare-join edge moves now have explicit
 the prepared parallel-copy move carries the immediate source, and the matching
 out-of-SSA move-resolution record must carry the same immediate source marker.
 
-The rejected dirty route no longer remains in `module.cpp`. Do not reintroduce
-missing-identity acceptance through compare-join-specific validator exceptions.
-The producer-side identity blockers for retargeted condition targets, bridge
-blocks, parallel-copy bundles, out-of-SSA move bundles, and renamed
-compare-join carrier homes have been driven forward in the handoff fixture.
-The branch-condition semantic authority negative test and the
-`branch_join_adjust_then_xor` prepared return bundle blocker are now repaired.
-The immediate selected-value compare-join edge move-bundle blocker is now
-repaired, and `branch_join_immediate_then_xor` now has prepared return-bundle
-authority. The remaining selected-proof failure is the unsupported same-module
-global compare-join return context.
+Do not carry forward the previous todo wording that described the minimal
+local-slot short-circuit branch-target, unsupported-renderer, and
+execution-site assertion blockers as repaired or clarified. The review did not
+accept that route as a coherent Step 4 packet. If the supervisor chooses to
+split out the global and execution-site portions, keep the pointer-backed
+global behavior explicit as a remaining boundary: the reviewed dirty route
+validates the pointer-root global but does not yet prove complete semantic
+pointer dereference lowering.
+
+The current selected-proof failure remains useful as a blocker, not acceptance
+proof: `contract.rhs.bridge` lacks a prepared block id. Prefer repairing
+producer-side identity for that bridge over adding consumer-side exceptions.
 
 ## Proof
 
 Delegated proof command was run and preserved in `test_after.log`:
 `backend_x86_prepared_handoff_label_authority` passed, and
-`backend_x86_handoff_boundary` advanced past the previous `defined function
-'branch_join_immediate_then_xor' has no prepared return move bundle` blocker.
-It now fails later with `canonical prepared-module handoff rejected x86
-value-location authority: defined function 'branch_join_global_then_xor' has an
-unsupported global compare-join return context`. This is not acceptance proof;
-it is the current Step 4 semantic blocker after immediate return-bundle
-authority repair.
+`backend_x86_handoff_boundary` advanced past the previous
+`prepare no longer classifies the branch-owned short-circuit handoff as
+critical-edge executable` assertion. It now fails later with `canonical
+prepared-module handoff rejected x86 control-flow label authority: BIR block
+'contract.rhs.bridge' has no prepared block id`.
+
+This is not acceptance proof. After
+`review/step4_global_short_circuit_slice_review.md`, treat it only as blocker
+evidence for the next Step 4 route. Fresh validation is required for any split
+semantic subset or reworked short-circuit renderer.
