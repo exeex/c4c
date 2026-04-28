@@ -40,6 +40,17 @@ namespace {
       "one bounded compare-against-zero branch family through the canonical prepared-module handoff");
 }
 
+[[noreturn]] void throw_unsupported_x86_multi_function_handoff_shape() {
+  throw std::invalid_argument(
+      "x86 backend emitter only supports direct immediate i32 returns, "
+      "constant-evaluable straight-line no-parameter i32 return expressions, "
+      "direct single-parameter i32 passthrough returns, "
+      "single-parameter i32 add-immediate/sub-immediate/mul-immediate/and-immediate/"
+      "or-immediate/xor-immediate/shl-immediate/lshr-immediate/ashr-immediate returns, "
+      "a bounded equality-against-immediate guard family with immediate return leaves, "
+      "or one bounded compare-against-zero branch family through the canonical prepared-module handoff");
+}
+
 std::string render_prepared_label_id(c4c::BlockLabelId label) {
   if (label == c4c::kInvalidBlockLabel) {
     return "<invalid>";
@@ -5806,6 +5817,10 @@ std::string emit(const c4c::backend::prepare::PreparedBirModule& module) {
   out.append_line(".intel_syntax noprefix");
   out.append_line(".text");
 
+  const auto defined_function_count = static_cast<std::size_t>(std::count_if(
+      module.module.functions.begin(), module.module.functions.end(), [](const auto& function) {
+        return !function.is_declaration;
+      }));
   bool emitted_any_function = false;
   bool emitted_only_supported_scalar_functions = true;
   for (const auto& function : module.module.functions) {
@@ -5819,6 +5834,9 @@ std::string emit(const c4c::backend::prepare::PreparedBirModule& module) {
     emitted_any_function = true;
     if (!append_supported_scalar_function(out, module, function, data)) {
       emitted_only_supported_scalar_functions = false;
+      if (defined_function_count > 1) {
+        throw_unsupported_x86_multi_function_handoff_shape();
+      }
       out.append_line("# x86 backend contract-first module emitter");
       append_function_stub(out, module, function, data);
     }

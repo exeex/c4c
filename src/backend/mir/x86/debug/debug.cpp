@@ -317,6 +317,23 @@ std::size_t count_defined_functions(const c4c::backend::prepare::PreparedBirModu
   return count;
 }
 
+bool has_indirect_variadic_call(const c4c::backend::prepare::PreparedBirModule& module) {
+  for (const auto& function : module.module.functions) {
+    if (function.is_declaration) {
+      continue;
+    }
+    for (const auto& block : function.blocks) {
+      for (const auto& inst : block.insts) {
+        const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+        if (call != nullptr && call->is_indirect && call->is_variadic) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 std::string render_report(const c4c::backend::prepare::PreparedBirModule& module,
                           bool trace,
                           std::optional<std::string_view> focus_function,
@@ -337,6 +354,25 @@ std::string render_report(const c4c::backend::prepare::PreparedBirModule& module
   }
   out << "route owner: x86/debug\n";
   out << "module emitter: x86/module\n";
+  if (defined_functions > 1 && !module.module.globals.empty() &&
+      has_indirect_variadic_call(module)) {
+    if (trace) {
+      out << "final: rejected: bounded multi-function handoff recognized the module, "
+             "but the prepared shape is outside the current x86 support\n";
+      out << "facts: one bounded multi-defined-function main-entry lane with same-module "
+             "symbol calls and direct variadic runtime calls\n";
+      out << "next inspect: inspect the current x86 bounded multi-function shape support "
+             "in src/backend/mir/x86/codegen/module/module_emit.cpp\n";
+    } else {
+      out << "module-level bounded multi-function lane: rejected\n";
+      out << "- module-level final rejection: bounded multi-function handoff recognized "
+             "the module, but the prepared shape is outside the current x86 support\n";
+      out << "- module-level facts: one bounded multi-defined-function main-entry lane "
+             "with same-module symbol calls and direct variadic runtime calls\n";
+      out << "- module-level next inspect: inspect the current x86 bounded multi-function "
+             "shape support in src/backend/mir/x86/codegen/module/module_emit.cpp\n";
+    }
+  }
   if (trace) {
     for (const auto& function : module.module.functions) {
       if (function.is_declaration) {

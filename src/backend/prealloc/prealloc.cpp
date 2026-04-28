@@ -428,6 +428,24 @@ namespace {
   return preferred;
 }
 
+[[nodiscard]] const PreparedAbiBinding* find_call_register_abi_binding(
+    const PreparedMoveBundle* move_bundle,
+    PreparedMoveDestinationKind destination_kind,
+    std::optional<std::size_t> destination_abi_index) {
+  if (move_bundle == nullptr) {
+    return nullptr;
+  }
+  for (const auto& binding : move_bundle->abi_bindings) {
+    if (binding.destination_kind == destination_kind &&
+        binding.destination_storage_kind == PreparedMoveStorageKind::Register &&
+        binding.destination_abi_index == destination_abi_index &&
+        binding.destination_register_name.has_value()) {
+      return &binding;
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] std::vector<PreparedClobberedRegister> build_call_clobber_set(
     const c4c::TargetProfile& target_profile,
     const PreparedRegallocFunction* regalloc_function) {
@@ -922,6 +940,20 @@ void populate_call_plans(PreparedBirModule& prepared) {
                 binding->destination_occupied_register_names;
             arg_plan.destination_stack_offset_bytes = binding->destination_stack_offset_bytes;
             if (binding->destination_register_name.has_value()) {
+              arg_plan.destination_register_bank = arg_plan.value_bank;
+            }
+          }
+          if (!arg_plan.destination_register_name.has_value()) {
+            if (const auto* register_binding =
+                    find_call_register_abi_binding(before_call_bundle,
+                                                   PreparedMoveDestinationKind::CallArgumentAbi,
+                                                   arg_index);
+                register_binding != nullptr) {
+              arg_plan.destination_register_name = register_binding->destination_register_name;
+              arg_plan.destination_contiguous_width =
+                  register_binding->destination_contiguous_width;
+              arg_plan.destination_occupied_register_names =
+                  register_binding->destination_occupied_register_names;
               arg_plan.destination_register_bank = arg_plan.value_bank;
             }
           }

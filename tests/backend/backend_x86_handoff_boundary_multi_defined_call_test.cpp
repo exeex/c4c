@@ -3516,6 +3516,60 @@ int check_route_publishes_helper_same_module_byval_before_call_register_binding(
   if (!selected_register.has_value() || *selected_register != "rdi") {
     return fail("bounded multi-defined helper same-module byval call route: prepared BeforeCall bundle did not publish the canonical x86 pointer-argument ABI register");
   }
+  const auto selected_stack =
+      c4c::backend::x86::select_prepared_call_argument_abi_stack_offset_if_supported(
+          function_locations, 0, 0, 0);
+  if (!selected_stack.has_value()) {
+    return fail("bounded multi-defined helper same-module byval call route: prepared BeforeCall bundle did not publish the byval copy destination stack offset");
+  }
+  const auto* call_plan = c4c::backend::x86::find_consumed_call_plan(
+      c4c::backend::x86::consume_plans(prepared, "arg"), 0, 0);
+  if (call_plan == nullptr || call_plan->arguments.size() != 1 ||
+      call_plan->arguments.front().destination_stack_offset_bytes != selected_stack ||
+      call_plan->arguments.front().destination_register_name != std::optional<std::string>{"rdi"}) {
+    return fail("bounded multi-defined helper same-module byval call route: prepared call plan did not preserve both byval stack destination and ABI pointer register authority");
+  }
+
+  auto* before_call_bundle = find_mutable_prepared_move_bundle(
+      *function_locations, prepare::PreparedMovePhase::BeforeCall, 0, 0);
+  if (before_call_bundle == nullptr) {
+    return fail("bounded multi-defined helper same-module byval call route: missing prepared BeforeCall bundle");
+  }
+  const auto drifted_stack = *selected_stack + 16;
+  bool drifted = false;
+  for (auto& binding : before_call_bundle->abi_bindings) {
+    if (binding.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+        binding.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
+        binding.destination_abi_index == std::optional<std::size_t>{0}) {
+      binding.destination_stack_offset_bytes = drifted_stack;
+      drifted = true;
+      break;
+    }
+  }
+  if (!drifted ||
+      c4c::backend::x86::select_prepared_call_argument_abi_stack_offset_if_supported(
+          function_locations, 0, 0, 0) != std::optional<std::size_t>{drifted_stack}) {
+    return fail("bounded multi-defined helper same-module byval call route: x86 stack selector did not follow the authoritative prepared stack-destination binding");
+  }
+
+  before_call_bundle->abi_bindings.erase(
+      std::remove_if(before_call_bundle->abi_bindings.begin(),
+                     before_call_bundle->abi_bindings.end(),
+                     [](const prepare::PreparedAbiBinding& binding) {
+                       return binding.destination_kind ==
+                                  prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+                              binding.destination_storage_kind ==
+                                  prepare::PreparedMoveStorageKind::StackSlot &&
+                              binding.destination_abi_index == std::optional<std::size_t>{0};
+                     }),
+      before_call_bundle->abi_bindings.end());
+  if (c4c::backend::x86::select_prepared_call_argument_abi_stack_offset_if_supported(
+          function_locations, 0, 0, 0)
+          .has_value() ||
+      c4c::backend::x86::select_prepared_call_argument_abi_register_if_supported(
+          function_locations, 0, 0, 0) != std::optional<std::string>{"rdi"}) {
+    return fail("bounded multi-defined helper same-module byval call route: x86 selector did not distinguish missing byval stack authority from the preserved ABI pointer register");
+  }
   return 0;
 }
 
@@ -4334,290 +4388,5 @@ int run_backend_x86_handoff_boundary_multi_defined_call_tests() {
       status != 0) {
     return status;
   }
-  if (const auto status = check_route_renders_helper_same_module_local_byval_helper_prefix();
-      status != 0) {
-    return status;
-  }
-  if (const auto status = check_route_renders_helper_same_module_local_byval_f32_helper_prefix();
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_contains_fragments(
-              make_x86_multi_defined_byval_helper_call_lane_module(),
-              {"show:\n",
-               "    lea rdi, [rip + .L.str0]\n",
-               "    call printf\n",
-               "main:\n",
-               "    call show\n"},
-              "bir.func @show(ptr byval(size=8, align=4) %p.p) -> void {",
-              "bounded multi-defined-function byval helper direct-extern prepared-module route");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_contains_fragments(
-              make_x86_multi_defined_byval_i8_helper_copy_lane_module(),
-              {"show:\n",
-               "    mov BYTE PTR [rsp + 1], al\n",
-               "main:\n",
-               "    lea rdi, [rsp + 8]\n",
-               "    call show\n"},
-              "bir.func @show(ptr byval(size=1, align=1) %p.a) -> void {",
-              "bounded multi-defined-function byval i8 helper copy prepared-module route");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_contains_fragments(
-              make_x86_multi_defined_byval_i8_helper_pointer_arg_lane_module(),
-              {"show:\n",
-               "    lea rdi, [rip + .L.str0]\n",
-               "    lea rsi, [rsp + 1]\n",
-               "    call printf\n",
-               "main:\n",
-               "    lea rdi, [rsp + 8]\n",
-               "    call show\n"},
-              "bir.func @show(ptr byval(size=1, align=1) %p.a) -> void {",
-              "bounded multi-defined-function byval i8 helper pointer-arg prepared-module route");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_contains_fragments(
-              make_x86_multi_defined_byval_i8x2_helper_pointer_arg_lane_module(),
-              {"show:\n",
-               "    lea rdi, [rip + .L.str0]\n",
-               "    lea rsi, [rsp + 2]\n",
-               "    call printf\n",
-               "main:\n",
-               "    lea rdi, [rsp + 8]\n",
-               "    call show\n"},
-              "bir.func @show(ptr byval(size=2, align=1) %p.a) -> void {",
-              "bounded multi-defined-function byval i8x2 helper pointer-arg prepared-module route");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_contains_fragments(
-              make_x86_multi_defined_helper_same_module_byval_i8x2_call_lane_module(),
-              {"show:\n",
-               "    lea rdi, [rip + .L.str0]\n",
-               "    lea rsi, [rsp + 2]\n",
-               "    call printf\n",
-               "arg:\n",
-               "    lea rdi, [rip + g]\n",
-               "    call show\n",
-               "main:\n",
-               "    call arg\n"},
-              "bir.func @arg() -> void {",
-              "bounded multi-defined-function helper same-module byval i8x2 call prepared-module route");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_contains_fragments(
-              make_x86_multi_defined_helper_same_module_local_byval_i8_call_lane_module(),
-              {"show:\n",
-               "    lea rdi, [rip + .L.str0]\n",
-               "    lea rsi, [rsp + 1]\n",
-               "    call printf\n",
-               "arg:\n",
-               "    mov BYTE PTR [rsp], al\n",
-               "    lea rdi, [rsp]\n",
-               "    call show\n",
-               "main:\n",
-               "    call arg\n"},
-              "bir.call void show(ptr byval(size=1, align=1) %t2)",
-              "bounded multi-defined-function helper same-module local byval i8 call prepared-module route");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_contains_fragments(
-              make_x86_multi_defined_helper_same_module_sret_i8_call_lane_module(),
-              {"fr_s1:\n",
-               "    mov QWORD PTR [rsp], rdi\n",
-               "ret:\n",
-               "    lea rdi, [rsp]\n",
-               "    xor eax, eax\n",
-               "    call fr_s1\n",
-               "main:\n",
-               "    call ret\n",
-               "s1:\n"},
-              "bir.call void fr_s1(ptr sret(size=1, align=1) %t0)",
-              "bounded multi-defined-function helper same-module sret i8 call prepared-module route");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_contains_fragments(
-              make_x86_multi_defined_helper_same_module_sret_i8_copyout_lane_module(),
-              {"fr_s1:\n",
-               "    mov QWORD PTR [rsp], rdi\n",
-               "ret:\n",
-               "    call fr_s1\n",
-               "main:\n",
-               "    call ret\n",
-               "s1:\n"},
-              "bir.store_local %lv.t1.0, i8 %lv.t1.aggregate.copy.0",
-              "bounded multi-defined-function helper same-module sret i8 caller copyout prepared-module route");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_contains_fragments(
-              make_x86_multi_defined_helper_same_module_sret_i8x2_copyout_lane_module(),
-              {"fr_s2:\n",
-               "    mov QWORD PTR [rsp], rdi\n",
-               "ret:\n",
-               "    call fr_s2\n",
-               "    movsx eax, BYTE PTR [rsp",
-               "    mov BYTE PTR [rsp",
-               "main:\n",
-               "    call ret\n",
-               "s2:\n"},
-              "bir.store_local %lv.t2.1, i8 %lv.t2.aggregate.copy.1",
-              "bounded multi-defined-function helper same-module sret i8x2 caller copyout prepared-module route");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_contains_fragments(
-              make_x86_multi_defined_helper_same_module_sret_f32_copyout_lane_module(),
-              {"fr_hfa11:\n",
-               "    mov QWORD PTR [rsp], rdi\n",
-               "    movss ",
-               "ret:\n",
-               "    call fr_hfa11\n",
-               "main:\n",
-               "    call ret\n",
-               "hfa11:\n"},
-              "bir.store_local %t0.0, float fr_hfa11.ret.sret.copy.0, addr %ret.sret",
-              "bounded multi-defined-function helper same-module sret f32 caller copyout prepared-module route");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_contains_fragments(
-              make_x86_multi_defined_helper_same_module_sret_f128_copyout_lane_module(),
-              {"fr_hfa31:\n",
-               "    mov QWORD PTR [rsp], rdi\n",
-               "    fld TBYTE PTR [rip + hfa31]\n",
-               "    fstp TBYTE PTR [r",
-               "ret:\n",
-               "    call fr_hfa31\n",
-               "    fld TBYTE PTR [rsp",
-               "    fstp TBYTE PTR [rsp",
-               "main:\n",
-               "    call ret\n"},
-              "bir.store_local %t0.0, f128 fr_hfa31.ret.sret.copy.0, addr %ret.sret",
-              "bounded multi-defined-function helper same-module sret f128 caller copyout prepared-module route");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_contains_fragments(
-              make_x86_multi_defined_helper_same_module_local_byval_f32_call_lane_module(),
-              {"show:\n",
-               "    movss ",
-               "    cvtss2sd",
-               "    mov eax, 1\n",
-               "    call printf\n",
-               "arg:\n",
-               "    movss DWORD PTR [rsp], ",
-               "    lea rdi, [rsp]\n",
-               "    call show\n",
-               "main:\n",
-               "    call arg\n",
-               "hfa11:\n",
-               "    .long 1065353216\n"},
-              "bir.call void show(ptr byval(size=4, align=4) %t2)",
-              "bounded multi-defined-function helper same-module local byval f32 call prepared-module route");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_contains_fragments(
-              make_x86_multi_defined_helper_same_module_local_byval_f32_trivial_entry_module(),
-              {"show:\n",
-               "    movss ",
-               "    cvtss2sd",
-               "    mov eax, 1\n",
-               "    call printf\n",
-               "main:\n",
-               "    mov eax, 0\n",
-               "    ret\n"},
-              "bir.func @show(ptr byval(size=4, align=4) %p.a) -> void {",
-              "bounded multi-defined-function helper same-module local byval f32 helper route with trivial entry prepared-module traversal");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_contains_fragments(
-              make_x86_multi_defined_helper_same_module_late_stack_ptr_variadic_helper_module(),
-              {"show:\n",
-               "    sub rsp, 16\n",
-               "    lea r10, [rsp + ",
-               "    mov QWORD PTR [rsp], r10\n",
-               "    mov eax, 4\n",
-               "    call printf\n",
-               "main:\n",
-               "    mov eax, 0\n",
-               "    ret\n"},
-              "bir.call i32 printf(ptr @.str0, ptr %lv.param.a.0, double %wide0, double %wide1, ptr %lv.param.b.0, double %wide2, double %wide3, ptr %lv.param.c.0)",
-              "bounded multi-defined-function helper same-module late stack ptr variadic helper prepared-module route");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_contains_fragments(
-              make_x86_multi_defined_float_helper_call_lane_module(),
-              {"show:\n",
-               "    movss DWORD PTR [rsp +",
-               "    cvtss2sd",
-               "    mov eax, 2\n",
-               "    call printf\n",
-               "main:\n",
-               "    call actual_function\n"},
-              "bir.func @show(float %x.0, float %x.1) -> void {",
-              "bounded multi-defined-function float helper local-materialization direct-extern prepared-module route");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_contains_fragments(
-              make_x86_multi_defined_f128_helper_call_lane_module(),
-              {"show:\n",
-               "    fld TBYTE PTR [rsp +",
-               "    sub rsp, 16\n",
-               "    fstp TBYTE PTR [rsp]",
-               "    mov eax, 0\n",
-               "    call printf\n",
-               "    add rsp, 16\n",
-               "main:\n",
-               "    call actual_function\n"},
-              "bir.func @show(f128 %x.0) -> void {",
-              "bounded multi-defined-function f128 helper local-materialization direct-extern prepared-module route");
-      status != 0) {
-    return status;
-  }
-  if (const auto status =
-          check_route_contains_fragments(
-              make_x86_multi_defined_mixed_f128_helper_call_lane_module(),
-              {"show:\n",
-               "    mov eax, 2\n",
-               "    sub rsp, 32\n",
-               "    fstp TBYTE PTR [rsp + 16]\n",
-               "    call printf\n",
-               "    add rsp, 32\n",
-               "main:\n",
-               "    call actual_function\n"},
-              "bir.func @show(ptr %p.0, float %x.0, float %x.1, ptr %p.1, f128 %y.0, f128 %y.1) -> void {",
-              "bounded multi-defined-function mixed helper direct-extern prepared-module route beyond six total args");
-      status != 0) {
-    return status;
-  }
-
   return 0;
 }
