@@ -346,6 +346,7 @@ std::optional<bir::Function> BirFunctionLowerer::lower_extern_decl(
 
   bir::Function lowered;
   lowered.name = decl.name;
+  lowered.link_name_id = decl.link_name_id;
   lowered.return_type = return_info->type;
   lowered.return_size_bytes = return_info->size_bytes;
   lowered.return_align_bytes = return_info->align_bytes;
@@ -594,7 +595,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         returned_pointer_address = maybe_resolve_direct_calloc_pointer_address(
             semantic_direct_callee, parsed_call->typed_call);
       }
-      callee_name = std::move(semantic_direct_callee);
+      callee_name = std::string(parsed_call->symbol_name);
       is_variadic_call = parsed_call->is_variadic;
       lowered_args.reserve(parsed_call->typed_call.args.size());
       lowered_arg_types.reserve(parsed_call->typed_call.param_types.size());
@@ -658,7 +659,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
             *compute_call_arg_abi(context_.target_profile, *arg_type));
       }
     } else if (c4c::codegen::lir::trim_lir_arg_text(call.args_str).empty()) {
-      callee_name = resolved_direct_callee_name(*direct_callee);
+      callee_name = std::string(*direct_callee);
     } else {
       return fail_call_family(call_family);
     }
@@ -750,6 +751,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     lowered_call.callee_value = std::move(*callee_value);
   } else {
     lowered_call.callee = std::move(*callee_name);
+    lowered_call.callee_link_name_id = call.direct_callee_link_name_id;
   }
   lowered_call.args = std::move(lowered_args);
   lowered_call.arg_types = std::move(lowered_arg_types);
@@ -1136,6 +1138,7 @@ std::optional<bir::Function> BirFunctionLowerer::lower_decl_function(
     const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts) {
   bir::Function lowered;
   lowered.name = function.name;
+  lowered.link_name_id = function.link_name_id;
   auto return_info = lower_signature_return_info(
       function.signature_text, type_decls, target_profile, &structured_layouts);
   if (!return_info.has_value()) {

@@ -96,40 +96,24 @@ std::string function_name_for_reporting(const c4c::codegen::lir::LirModule& modu
   return function.name;
 }
 
-c4c::codegen::lir::LirFunction function_with_resolved_name(
-    const c4c::codegen::lir::LirModule& module,
-    const c4c::codegen::lir::LirFunction& function) {
-  c4c::codegen::lir::LirFunction resolved = function;
-  const std::string_view resolved_name = resolve_link_name(module.link_names,
-                                                           function.link_name_id);
-  if (!resolved_name.empty()) {
-    resolved.name = std::string(resolved_name);
-  }
-  return resolved;
-}
-
-c4c::codegen::lir::LirGlobal global_with_resolved_name(
-    const c4c::codegen::lir::LirModule& module,
-    const c4c::codegen::lir::LirGlobal& global) {
-  c4c::codegen::lir::LirGlobal resolved = global;
+std::string global_name_for_identity(const c4c::codegen::lir::LirModule& module,
+                                     const c4c::codegen::lir::LirGlobal& global) {
   const std::string_view resolved_name = resolve_link_name(module.link_names,
                                                            global.link_name_id);
   if (!resolved_name.empty()) {
-    resolved.name = std::string(resolved_name);
+    return std::string(resolved_name);
   }
-  return resolved;
+  return global.name;
 }
 
-c4c::codegen::lir::LirExternDecl extern_decl_with_resolved_name(
-    const c4c::codegen::lir::LirModule& module,
-    const c4c::codegen::lir::LirExternDecl& decl) {
-  c4c::codegen::lir::LirExternDecl resolved = decl;
+std::string extern_decl_name_for_identity(const c4c::codegen::lir::LirModule& module,
+                                          const c4c::codegen::lir::LirExternDecl& decl) {
   const std::string_view resolved_name = resolve_link_name(module.link_names,
                                                            decl.link_name_id);
   if (!resolved_name.empty()) {
-    resolved.name = std::string(resolved_name);
+    return std::string(resolved_name);
   }
-  return resolved;
+  return decl.name;
 }
 
 void record_block_integer_constant_alias(
@@ -370,6 +354,7 @@ std::optional<bir::Function> BirFunctionLowerer::try_lower_canonical_select_func
 
   bir::Function lowered;
   lowered.name = function_.name;
+  lowered.link_name_id = function_.link_name_id;
   lowered.return_type = return_info->type;
   lowered.return_size_bytes = return_info->size_bytes;
   lowered.return_align_bytes = return_info->align_bytes;
@@ -760,6 +745,7 @@ std::optional<bir::Function> BirFunctionLowerer::lower() {
   }
 
   lowered_function_.name = function_.name;
+  lowered_function_.link_name_id = function_.link_name_id;
   lowered_function_.return_type = return_info_->type;
   lowered_function_.return_size_bytes = return_info_->size_bytes;
   lowered_function_.return_align_bytes = return_info_->align_bytes;
@@ -808,6 +794,10 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   bir::Module module;
   module.target_triple = c4c::llvm_target_triple(context.target_profile);
   module.data_layout = context.lir_module.data_layout;
+  if (context.lir_module.link_name_texts != nullptr) {
+    module.names.import_link_names(*context.lir_module.link_name_texts,
+                                   context.lir_module.link_names);
+  }
 
   if (analysis.function_count == 0 && analysis.global_count == 0 &&
       analysis.string_constant_count == 0 && analysis.extern_decl_count == 0) {
@@ -828,10 +818,10 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   function_symbols.reserve(context.lir_module.extern_decls.size() +
                            context.lir_module.functions.size());
   for (const auto& decl : context.lir_module.extern_decls) {
-    function_symbols.insert(extern_decl_with_resolved_name(context.lir_module, decl).name);
+    function_symbols.insert(extern_decl_name_for_identity(context.lir_module, decl));
   }
   for (const auto& function : context.lir_module.functions) {
-    function_symbols.insert(function_with_resolved_name(context.lir_module, function).name);
+    function_symbols.insert(function_name_for_reporting(context.lir_module, function));
   }
   const auto type_decls = build_type_decl_map(context.lir_module.type_decls);
   module.structured_types = build_bir_structured_type_spelling_context(
@@ -843,16 +833,16 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
       type_decls);
   report_backend_structured_layout_parity_notes(context, structured_layouts);
   for (const auto& global : context.lir_module.globals) {
-    const auto resolved_global = global_with_resolved_name(context.lir_module, global);
     GlobalInfo info;
-    auto lowered_global = lower_minimal_global(resolved_global, type_decls, structured_layouts, &info);
+    auto lowered_global = lower_minimal_global(global, type_decls, structured_layouts, &info);
     if (!lowered_global.has_value()) {
       context.note(
           "module",
           "bootstrap lir_to_bir only supports scalar integer/pointer globals, linear integer-array globals, and aggregate-backed globals with honest byte-address semantics right now");
       return std::nullopt;
     }
-    global_types.emplace(lowered_global->name, info);
+    info.link_name_id = global.link_name_id;
+    global_types.emplace(global_name_for_identity(context.lir_module, global), info);
     module.globals.push_back(std::move(*lowered_global));
   }
 
@@ -955,7 +945,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
 
   for (const auto& decl : context.lir_module.extern_decls) {
     auto lowered_decl = BirFunctionLowerer::lower_extern_decl(
-        extern_decl_with_resolved_name(context.lir_module, decl),
+        decl,
         context.target_profile,
         type_decls,
         structured_layouts);
@@ -966,11 +956,10 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   }
 
   for (const auto& function : context.lir_module.functions) {
-    const auto resolved_function = function_with_resolved_name(context.lir_module, function);
-    if (resolved_function.is_declaration) {
+    if (function.is_declaration) {
       auto lowered_decl =
           BirFunctionLowerer::lower_decl_function(
-              resolved_function, context.target_profile, type_decls, structured_layouts);
+              function, context.target_profile, type_decls, structured_layouts);
       if (!lowered_decl.has_value()) {
         continue;
       }
@@ -979,7 +968,7 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     }
 
     BirFunctionLowerer function_lowerer(
-        context, resolved_function, global_types, function_symbols, type_decls, structured_layouts);
+        context, function, global_types, function_symbols, type_decls, structured_layouts);
     auto lowered_function = function_lowerer.lower();
     if (!lowered_function.has_value()) {
       std::string message = "semantic lir_to_bir failed outside the ";

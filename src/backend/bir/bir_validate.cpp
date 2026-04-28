@@ -16,6 +16,15 @@ bool fail(std::string* error, std::string message) {
   return false;
 }
 
+bool validate_link_name_id(const Module& module,
+                           LinkNameId id,
+                           std::string_view context,
+                           std::string* error);
+
+const Function* find_function(const Module& module,
+                              std::string_view function_name,
+                              LinkNameId function_name_id);
+
 bool validate_named_value(const Value& value,
                           std::string_view context,
                           std::string* error) {
@@ -115,7 +124,8 @@ bool validate_phi(const Function& function,
   return true;
 }
 
-bool validate_call(const Function& function,
+bool validate_call(const Module& module,
+                   const Function& function,
                    const CallInst& inst,
                    std::vector<std::string>* defined_names,
                    std::string* error) {
@@ -126,6 +136,15 @@ bool validate_call(const Function& function,
     }
   } else if (inst.callee.empty()) {
     return fail(error, "bir call in @" + function.name + " must name a callee");
+  }
+  if (!validate_link_name_id(
+          module, inst.callee_link_name_id, "bir call in @" + function.name, error)) {
+    return false;
+  }
+  if (!inst.is_indirect && inst.callee_link_name_id != kInvalidLinkName &&
+      find_function(module, inst.callee, inst.callee_link_name_id) == nullptr) {
+    return fail(error, "bir call in @" + function.name +
+                           " must reference a declared function by LinkNameId");
   }
   if (inst.result.has_value()) {
     if (inst.result->kind != Value::Kind::Named || inst.result->name.empty()) {
@@ -169,11 +188,50 @@ bool validate_local_slot_names(const Function& function, std::string* error) {
   return true;
 }
 
-const Global* find_global(const Module& module, std::string_view global_name) {
+bool validate_link_name_id(const Module& module,
+                           LinkNameId id,
+                           std::string_view context,
+                           std::string* error) {
+  if (id == kInvalidLinkName) {
+    return true;
+  }
+  if (module.names.link_names.spelling(id).empty()) {
+    return fail(error, std::string(context) + " must reference a known LinkNameId");
+  }
+  return true;
+}
+
+const Global* find_global(const Module& module,
+                          std::string_view global_name,
+                          LinkNameId global_name_id = kInvalidLinkName) {
+  if (global_name_id != kInvalidLinkName) {
+    const auto it = std::find_if(
+        module.globals.begin(),
+        module.globals.end(),
+        [&](const Global& global) { return global.link_name_id == global_name_id; });
+    return it == module.globals.end() ? nullptr : &*it;
+  }
   const auto it = std::find_if(module.globals.begin(),
                                module.globals.end(),
                                [&](const Global& global) { return global.name == global_name; });
   return it == module.globals.end() ? nullptr : &*it;
+}
+
+const Function* find_function(const Module& module,
+                              std::string_view function_name,
+                              LinkNameId function_name_id = kInvalidLinkName) {
+  if (function_name_id != kInvalidLinkName) {
+    const auto it = std::find_if(
+        module.functions.begin(),
+        module.functions.end(),
+        [&](const Function& function) { return function.link_name_id == function_name_id; });
+    return it == module.functions.end() ? nullptr : &*it;
+  }
+  const auto it = std::find_if(
+      module.functions.begin(),
+      module.functions.end(),
+      [&](const Function& function) { return function.name == function_name; });
+  return it == module.functions.end() ? nullptr : &*it;
 }
 
 const LocalSlot* find_local_slot(const Function& function, std::string_view slot_name) {
@@ -208,7 +266,11 @@ bool validate_load_global(const Module& module,
     return fail(error, "bir global load result in @" + function.name +
                            " must use a non-empty named value");
   }
-  if (find_global(module, inst.global_name) == nullptr) {
+  if (!validate_link_name_id(
+          module, inst.global_name_id, "bir global load in @" + function.name, error)) {
+    return false;
+  }
+  if (find_global(module, inst.global_name, inst.global_name_id) == nullptr) {
     return fail(error, "bir global load in @" + function.name +
                            " must reference a declared global");
   }
@@ -241,7 +303,11 @@ bool validate_store_global(const Module& module,
                            const StoreGlobalInst& inst,
                            const std::vector<std::string>& defined_names,
                            std::string* error) {
-  if (find_global(module, inst.global_name) == nullptr) {
+  if (!validate_link_name_id(
+          module, inst.global_name_id, "bir global store in @" + function.name, error)) {
+    return false;
+  }
+  if (find_global(module, inst.global_name, inst.global_name_id) == nullptr) {
     return fail(error, "bir global store in @" + function.name +
                            " must reference a declared global");
   }
@@ -345,13 +411,25 @@ bool validate_terminator(const Function& function,
 
 bool validate(const Module& module, std::string* error) {
   std::vector<std::string_view> global_names;
+  std::vector<LinkNameId> global_name_ids;
   global_names.reserve(module.globals.size());
+  global_name_ids.reserve(module.globals.size());
   for (const auto& global : module.globals) {
     if (global.name.empty()) {
       return fail(error, "bir global must have a non-empty name");
     }
+    if (!validate_link_name_id(module, global.link_name_id, "bir global @" + global.name, error)) {
+      return false;
+    }
     if (std::find(global_names.begin(), global_names.end(), global.name) != global_names.end()) {
       return fail(error, "bir globals must not reuse an existing name");
+    }
+    if (global.link_name_id != kInvalidLinkName) {
+      if (std::find(global_name_ids.begin(), global_name_ids.end(), global.link_name_id) !=
+          global_name_ids.end()) {
+        return fail(error, "bir globals must not reuse an existing LinkNameId");
+      }
+      global_name_ids.push_back(global.link_name_id);
     }
     if (!global.is_extern && !global.initializer.has_value() &&
         !global.initializer_symbol_name.has_value() && global.initializer_elements.empty()) {
@@ -360,6 +438,12 @@ bool validate(const Module& module, std::string* error) {
     if (global.initializer_symbol_name.has_value() && global.initializer_symbol_name->empty()) {
       return fail(error, "bir global initializer symbol @" + global.name +
                              " must not use an empty name");
+    }
+    if (!validate_link_name_id(module,
+                               global.initializer_symbol_name_id,
+                               "bir global initializer symbol @" + global.name,
+                               error)) {
+      return false;
     }
     if (global.initializer.has_value()) {
       if (global.initializer->kind == Value::Kind::Named &&
@@ -395,12 +479,25 @@ bool validate(const Module& module, std::string* error) {
     global_names.push_back(global.name);
   }
 
+  std::vector<LinkNameId> function_name_ids;
+  function_name_ids.reserve(module.functions.size());
   for (std::size_t function_index = 0; function_index < module.functions.size();
        ++function_index) {
     const auto& function = module.functions[function_index];
     if (function.name.empty()) {
       return fail(error, "bir function " + std::to_string(function_index) +
                              " must have a name");
+    }
+    if (!validate_link_name_id(
+            module, function.link_name_id, "bir function @" + function.name, error)) {
+      return false;
+    }
+    if (function.link_name_id != kInvalidLinkName) {
+      if (std::find(function_name_ids.begin(), function_name_ids.end(), function.link_name_id) !=
+          function_name_ids.end()) {
+        return fail(error, "bir functions must not reuse an existing LinkNameId");
+      }
+      function_name_ids.push_back(function.link_name_id);
     }
     if (function.is_declaration) {
       if (!function.blocks.empty()) {
@@ -449,7 +546,7 @@ bool validate(const Module& module, std::string* error) {
               } else if constexpr (std::is_same_v<T, PhiInst>) {
                 return validate_phi(function, block_labels, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, CallInst>) {
-                return validate_call(function, lowered, &defined_names, error);
+                return validate_call(module, function, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, LoadLocalInst>) {
                 return validate_load_local(function, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, LoadGlobalInst>) {

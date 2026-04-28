@@ -16,6 +16,13 @@ using lir_to_bir_detail::GlobalInfo;
 using lir_to_bir_detail::is_known_function_symbol;
 using lir_to_bir_detail::type_size_bytes;
 
+static LinkNameId link_name_id_for_global(
+    const BirFunctionLowerer::GlobalTypes& global_types,
+    std::string_view global_name) {
+  const auto it = global_types.find(std::string(global_name));
+  return it == global_types.end() ? kInvalidLinkName : it->second.link_name_id;
+}
+
 static bool can_address_scalar_subobject(std::int64_t byte_offset,
                                          bir::TypeKind stored_type,
                                          std::string_view type_text,
@@ -357,6 +364,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
     lowered_insts->push_back(bir::LoadGlobalInst{
         .result = bir::Value::named(value_type, load.result.str()),
         .global_name = global_name,
+        .global_name_id = link_name_id_for_global(global_types, global_name),
     });
     return true;
   }
@@ -394,6 +402,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
       lowered_insts->push_back(bir::LoadGlobalInst{
           .result = bir::Value::named(value_type, load.result.str()),
           .global_name = global_object_it->second.global_name,
+          .global_name_id = link_name_id_for_global(global_types, global_object_it->second.global_name),
           .byte_offset = global_object_it->second.byte_offset,
       });
       return true;
@@ -412,6 +421,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
       lowered_insts->push_back(bir::LoadGlobalInst{
           .result = bir::Value::named(value_type, load.result.str()),
           .global_name = honest_address->global_name,
+          .global_name_id = link_name_id_for_global(global_types, honest_address->global_name),
           .byte_offset = honest_address->byte_offset,
       });
       return true;
@@ -422,6 +432,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
       lowered_insts->push_back(bir::LoadGlobalInst{
           .result = bir::Value::named(value_type, load.result.str()),
           .global_name = linear_address->global_name,
+          .global_name_id = link_name_id_for_global(global_types, linear_address->global_name),
           .byte_offset = linear_address->byte_offset,
       });
       return true;
@@ -441,6 +452,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
     lowered_insts->push_back(bir::LoadGlobalInst{
         .result = bir::Value::named(value_type, load.result.str()),
         .global_name = global_ptr_it->second.global_name,
+        .global_name_id = link_name_id_for_global(global_types, global_ptr_it->second.global_name),
     });
     return true;
   }
@@ -501,6 +513,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_load(
   lowered_insts->push_back(bir::LoadGlobalInst{
       .result = bir::Value::named(value_type, load.result.str()),
       .global_name = global_ptr_it->second.global_name,
+      .global_name_id = link_name_id_for_global(global_types, global_ptr_it->second.global_name),
       .byte_offset = global_ptr_it->second.byte_offset,
   });
   return true;
@@ -536,6 +549,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_store(
     }
     lowered_insts->push_back(bir::StoreGlobalInst{
         .global_name = global_name,
+        .global_name_id = link_name_id_for_global(global_types, global_name),
         .value = value,
     });
     return true;
@@ -555,6 +569,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_store(
           resolve_pointer_store_value_address(store.val, pointer_value_addresses);
       lowered_insts->push_back(bir::StoreGlobalInst{
           .global_name = global_object_it->second.global_name,
+          .global_name_id = link_name_id_for_global(global_types, global_object_it->second.global_name),
           .value = value,
           .byte_offset = global_object_it->second.byte_offset,
       });
@@ -573,6 +588,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_store(
         honest_address.has_value()) {
       lowered_insts->push_back(bir::StoreGlobalInst{
           .global_name = honest_address->global_name,
+          .global_name_id = link_name_id_for_global(global_types, honest_address->global_name),
           .value = value,
           .byte_offset = honest_address->byte_offset,
       });
@@ -583,6 +599,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_store(
         linear_address.has_value()) {
       lowered_insts->push_back(bir::StoreGlobalInst{
           .global_name = linear_address->global_name,
+          .global_name_id = link_name_id_for_global(global_types, linear_address->global_name),
           .value = value,
           .byte_offset = linear_address->byte_offset,
       });
@@ -601,6 +618,7 @@ std::optional<bool> BirFunctionLowerer::try_lower_global_provenance_store(
   }
   lowered_insts->push_back(bir::StoreGlobalInst{
       .global_name = global_ptr_it->second.global_name,
+      .global_name_id = link_name_id_for_global(global_types, global_ptr_it->second.global_name),
       .value = value,
       .byte_offset = global_ptr_it->second.byte_offset,
   });

@@ -2,6 +2,7 @@
 
 #include <array>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <string_view>
 #include <vector>
@@ -60,6 +61,8 @@ LirModule make_admitted_aggregate_zero_sized_member_global_module();
 LirModule make_admitted_aggregate_string_array_field_global_module();
 LirModule make_admitted_aggregate_long_double_field_global_module();
 LirModule make_structured_block_label_id_module();
+
+int expect_link_name_id_symbol_identity_survives_drifted_display_names();
 
 int expect_failure_notes(std::string_view case_name,
                          const LirModule& module,
@@ -172,6 +175,96 @@ int expect_admitted_scalar_i16_globals() {
     return fail("scalar i16 nonzero globals should lower into an admitted I16 BIR initializer lane");
   }
 
+  return 0;
+}
+
+int expect_link_name_id_symbol_identity_survives_drifted_display_names() {
+  LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  const c4c::LinkNameId global_id = module.link_names.intern("semantic_global");
+  const c4c::LinkNameId callee_id = module.link_names.intern("semantic_callee");
+  const c4c::LinkNameId user_id = module.link_names.intern("semantic_user");
+
+  LirGlobal global;
+  global.name = "drifted_global_display";
+  global.link_name_id = global_id;
+  global.llvm_type = "i32";
+  global.init_text = "i32 7";
+  global.align_bytes = 4;
+  module.globals.push_back(std::move(global));
+
+  c4c::codegen::lir::LirExternDecl callee;
+  callee.name = "drifted_callee_display";
+  callee.link_name_id = callee_id;
+  callee.return_type_str = "void";
+  callee.return_type = c4c::codegen::lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(callee));
+
+  LirFunction function;
+  function.name = "drifted_user_display";
+  function.link_name_id = user_id;
+  function.return_type.base = c4c::TB_INT;
+
+  LirBlock entry;
+  entry.id = function.alloc_block();
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{
+      .type_str = c4c::codegen::lir::LirTypeRef("i32"),
+      .val = LirOperand("5"),
+      .ptr = LirOperand("@semantic_global"),
+  });
+  entry.insts.push_back(LirCallOp{
+      .return_type = c4c::codegen::lir::LirTypeRef("void"),
+      .callee = LirOperand("@stale_callee_display"),
+      .direct_callee_link_name_id = callee_id,
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%loaded"),
+      .type_str = c4c::codegen::lir::LirTypeRef("i32"),
+      .ptr = LirOperand("@semantic_global"),
+  });
+  entry.terminator = LirRet{std::string("%loaded"), "i32"};
+  function.entry = entry.id;
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("LinkNameId symbol identity fixture should lower to BIR");
+  }
+
+  if (result.module->globals.empty() ||
+      result.module->globals.front().name != "drifted_global_display" ||
+      result.module->globals.front().link_name_id != global_id) {
+    return fail("BIR global should preserve drifted display spelling beside LinkNameId");
+  }
+  const auto& lowered_function = result.module->functions.back();
+  if (lowered_function.name != "drifted_user_display" ||
+      lowered_function.link_name_id != user_id) {
+    return fail("BIR function should preserve drifted display spelling beside LinkNameId");
+  }
+
+  const auto* store =
+      std::get_if<c4c::backend::bir::StoreGlobalInst>(&lowered_function.blocks.front().insts[0]);
+  if (store == nullptr || store->global_name != "semantic_global" ||
+      store->global_name_id != global_id) {
+    return fail("BIR global store should carry LinkNameId identity for semantic global refs");
+  }
+  const auto* call =
+      std::get_if<c4c::backend::bir::CallInst>(&lowered_function.blocks.front().insts[1]);
+  if (call == nullptr || call->callee != "stale_callee_display" ||
+      call->callee_link_name_id != callee_id) {
+    return fail("BIR direct call should carry LinkNameId identity despite stale callee spelling");
+  }
+  const auto* load =
+      std::get_if<c4c::backend::bir::LoadGlobalInst>(&lowered_function.blocks.front().insts[2]);
+  if (load == nullptr || load->global_name != "semantic_global" ||
+      load->global_name_id != global_id) {
+    return fail("BIR global load should carry LinkNameId identity for semantic global refs");
+  }
   return 0;
 }
 
@@ -2398,6 +2491,12 @@ int main() {
   if (const int scalar_i16_globals_status = expect_admitted_scalar_i16_globals();
       scalar_i16_globals_status != 0) {
     return scalar_i16_globals_status;
+  }
+
+  if (const int link_name_identity_status =
+          expect_link_name_id_symbol_identity_survives_drifted_display_names();
+      link_name_identity_status != 0) {
+    return link_name_identity_status;
   }
 
   if (const int aggregate_pointer_field_global_status =

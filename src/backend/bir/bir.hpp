@@ -17,12 +17,15 @@ struct Module;
 struct NameTables {
   NameTables() { reattach(); }
 
-  NameTables(const NameTables& other) : texts(other.texts), block_labels(other.block_labels) {
+  NameTables(const NameTables& other)
+      : texts(other.texts), link_names(other.link_names), block_labels(other.block_labels) {
     reattach();
   }
 
   NameTables(NameTables&& other) noexcept
-      : texts(std::move(other.texts)), block_labels(std::move(other.block_labels)) {
+      : texts(std::move(other.texts)),
+        link_names(std::move(other.link_names)),
+        block_labels(std::move(other.block_labels)) {
     reattach();
   }
 
@@ -31,6 +34,7 @@ struct NameTables {
       return *this;
     }
     texts = other.texts;
+    link_names = other.link_names;
     block_labels = other.block_labels;
     reattach();
     return *this;
@@ -41,16 +45,28 @@ struct NameTables {
       return *this;
     }
     texts = std::move(other.texts);
+    link_names = std::move(other.link_names);
     block_labels = std::move(other.block_labels);
     reattach();
     return *this;
   }
 
+  void import_link_names(const TextTable& source_texts,
+                         const LinkNameTable& source_link_names) {
+    texts = source_texts;
+    link_names = source_link_names;
+    reattach();
+  }
+
   TextTable texts;
+  LinkNameTable link_names{&texts};
   BlockLabelTable block_labels{&texts};
 
  private:
-  void reattach() { block_labels.attach_text_table(&texts); }
+  void reattach() {
+    link_names.attach_text_table(&texts);
+    block_labels.attach_text_table(&texts);
+  }
 };
 
 enum class TypeKind : unsigned char {
@@ -180,6 +196,7 @@ struct LocalSlot {
 
 struct Global {
   std::string name;
+  LinkNameId link_name_id = kInvalidLinkName;
   TypeKind type = TypeKind::Void;
   bool is_extern = false;
   bool is_thread_local = false;
@@ -188,6 +205,7 @@ struct Global {
   std::size_t align_bytes = 0;
   std::optional<Value> initializer;
   std::optional<std::string> initializer_symbol_name;
+  LinkNameId initializer_symbol_name_id = kInvalidLinkName;
   std::vector<Value> initializer_elements;
 };
 
@@ -233,6 +251,7 @@ struct MemoryAddress {
   std::size_t align_bytes = 0;
   AddressSpace address_space = AddressSpace::Default;
   bool is_volatile = false;
+  LinkNameId base_link_name_id = kInvalidLinkName;
   BlockLabelId base_label_id = kInvalidBlockLabel;
 };
 
@@ -316,6 +335,7 @@ struct InlineAsmMetadata {
 struct CallInst {
   std::optional<Value> result;
   std::string callee;
+  LinkNameId callee_link_name_id = kInvalidLinkName;
   std::optional<Value> callee_value;
   std::vector<Value> args;
   std::vector<TypeKind> arg_types;
@@ -343,6 +363,7 @@ struct LoadLocalInst {
 struct LoadGlobalInst {
   Value result;
   std::string global_name;
+  LinkNameId global_name_id = kInvalidLinkName;
   std::size_t byte_offset = 0;
   std::size_t align_bytes = 0;
   std::optional<MemoryAddress> address;
@@ -350,6 +371,7 @@ struct LoadGlobalInst {
 
 struct StoreGlobalInst {
   std::string global_name;
+  LinkNameId global_name_id = kInvalidLinkName;
   Value value;
   std::size_t byte_offset = 0;
   std::size_t align_bytes = 0;
@@ -432,6 +454,7 @@ struct Block {
 
 struct Function {
   std::string name;
+  LinkNameId link_name_id = kInvalidLinkName;
   TypeKind return_type = TypeKind::Void;
   std::size_t return_size_bytes = 0;
   std::size_t return_align_bytes = 0;

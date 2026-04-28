@@ -45,6 +45,7 @@ struct GlobalAddress {
 };
 
 struct GlobalInfo {
+  LinkNameId link_name_id = kInvalidLinkName;
   bir::TypeKind value_type = bir::TypeKind::Void;
   std::size_t element_size_bytes = 0;
   std::size_t element_count = 0;

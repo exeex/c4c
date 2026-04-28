@@ -63,6 +63,7 @@ std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGloba
 
   bir::Global lowered;
   lowered.name = global.name;
+  lowered.link_name_id = global.link_name_id;
   lowered.type = *lowered_type;
   lowered.is_extern = global.is_extern_decl;
   lowered.is_constant = global.is_const;
@@ -316,6 +317,7 @@ std::optional<bir::Global> lower_minimal_global_impl(
 
     bir::Global lowered;
     lowered.name = global.name;
+    lowered.link_name_id = global.link_name_id;
     lowered.type = integer_array->element_type;
     lowered.is_extern = global.is_extern_decl;
     lowered.is_constant = global.is_const;
