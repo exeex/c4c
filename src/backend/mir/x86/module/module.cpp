@@ -5028,7 +5028,8 @@ bool append_prepared_local_slot_short_circuit_or_guard_function(
     const auto* candidate_condition =
         c4c::backend::prepare::find_prepared_branch_condition(*control_flow, *block_label);
     if (candidate_condition == nullptr) {
-      return false;
+      throw_prepared_control_flow_handoff_error(
+          "local-slot short-circuit entry block has no authoritative prepared branch metadata");
     }
     entry_block = &block;
     entry_label = *block_label;
@@ -5117,7 +5118,8 @@ bool append_prepared_local_slot_short_circuit_or_guard_function(
           ? c4c::backend::prepare::find_prepared_branch_condition(*control_flow, *rhs_label)
           : nullptr;
   if (rhs_block == nullptr || rhs_condition == nullptr) {
-    return false;
+    throw_prepared_control_flow_handoff_error(
+        "local-slot short-circuit rhs continuation block has no authoritative prepared branch metadata");
   }
   if (rhs_condition->true_label != rhs_target->continuation->true_label ||
       rhs_condition->false_label != rhs_target->continuation->false_label) {

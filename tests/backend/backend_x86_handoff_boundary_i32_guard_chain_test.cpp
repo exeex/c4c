@@ -715,10 +715,18 @@ int check_i32_guard_chain_route_requires_authoritative_prepared_branch_record(
                  ": x86 prepared-module consumer unexpectedly accepted a missing prepared guard-chain branch record")
                     .c_str());
   } catch (const std::invalid_argument& error) {
-    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
-        std::string_view::npos) {
+    const auto message = std::string_view(error.what());
+    const auto expected_missing_branch_diagnostic =
+        std::string_view(branch_block_label) == "entry"
+            ? std::string_view(
+                  "immediate guard entry block has no authoritative prepared branch metadata")
+            : std::string_view(
+                  "immediate guard source block has no authoritative prepared branch metadata");
+    if (message.find("canonical prepared-module handoff") == std::string_view::npos ||
+        message.find(expected_missing_branch_diagnostic) == std::string_view::npos) {
       return fail((std::string(failure_context) +
-                   ": x86 prepared-module consumer rejected the missing prepared guard-chain branch record with the wrong contract message")
+                   ": x86 prepared-module consumer rejected the missing prepared guard-chain branch record with the wrong contract message: " +
+                   error.what())
                       .c_str());
     }
   }

@@ -2094,8 +2094,10 @@ int check_short_circuit_route_rejects_missing_authoritative_rhs_prepared_branch_
                  ": x86 prepared-module consumer unexpectedly accepted a missing rhs prepared branch record")
                     .c_str());
   } catch (const std::invalid_argument& error) {
-    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
-        std::string_view::npos) {
+    const auto message = std::string_view(error.what());
+    if (message.find("canonical prepared-module handoff") == std::string_view::npos ||
+        message.find("local-slot short-circuit rhs continuation block has no authoritative prepared branch metadata") ==
+            std::string_view::npos) {
       return fail((std::string(failure_context) +
                    ": x86 prepared-module consumer rejected the missing rhs prepared branch record with the wrong contract message")
                       .c_str());
@@ -2346,8 +2348,10 @@ int check_short_circuit_route_rejects_missing_authoritative_entry_prepared_branc
                  ": x86 prepared-module consumer unexpectedly accepted a missing entry prepared branch record")
                     .c_str());
   } catch (const std::invalid_argument& error) {
-    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
-        std::string_view::npos) {
+    const auto message = std::string_view(error.what());
+    if (message.find("canonical prepared-module handoff") == std::string_view::npos ||
+        message.find("local-slot short-circuit entry block has no authoritative prepared branch metadata") ==
+            std::string_view::npos) {
       return fail((std::string(failure_context) +
                    ": x86 prepared-module consumer rejected the missing entry prepared branch record with the wrong contract message")
                       .c_str());

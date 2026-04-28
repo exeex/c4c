@@ -8,24 +8,27 @@ Current Step Title: Recover Prepared Control-Flow Rendering Semantics
 
 ## Just Finished
 
-Step 4 added direct short-circuit route-level negatives for missing
-authoritative prepared branch-condition records. The PhiEdge and EdgeStoreSlot
-short-circuit routes now reject removed entry branch records and removed
-rhs/continuation branch records instead of recovering from raw block topology.
+Step 4 tightened the missing-identity negatives for guard-chain and
+short-circuit branch records. Guard-chain tests now assert the precise missing
+entry/source branch metadata diagnostic, and PhiEdge plus EdgeStoreSlot
+short-circuit tests assert precise missing entry and rhs continuation branch
+metadata diagnostics. The short-circuit renderer now surfaces only those
+missing prepared-identity errors instead of falling through to broad handoff
+shape rejection.
 
 ## Suggested Next
 
-Supervisor should review this focused Step 4 short-circuit missing-metadata
-extension for acceptance. The next coherent packet is either a reviewer pass for
-remaining control-flow route drift or another prepared control-flow form that
-still lacks direct missing/drifted identity coverage.
+Supervisor should review this focused Step 4 missing-identity diagnostic
+narrowing for acceptance. The next coherent packet is either a reviewer pass for
+remaining prepared control-flow route drift or another prepared control-flow
+form that still lacks direct missing/drifted identity coverage.
 
 ## Watchouts
 
-This slice did not change renderer behavior. The new short-circuit negatives
-assert that exactly one authoritative entry or rhs prepared branch record is
-removed before expecting canonical handoff rejection. This packet did not resume
-helper-prefix/local-byval renderer work.
+This slice did not add fallback rendering or recovery. The short-circuit
+renderer still requires the route to be otherwise identifiable before throwing
+the new missing entry/rhs prepared branch metadata diagnostics. This packet did
+not resume helper-prefix/local-byval renderer work.
 
 ## Proof
 
