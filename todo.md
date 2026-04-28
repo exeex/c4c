@@ -3,25 +3,27 @@
 Status: Active
 Source Idea Path: ideas/open/122_bir_string_legacy_path_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Demote Local BIR Semantic String Authority
+Current Step ID: Step 3
+Current Step Title: Carry Structured Identity Through LIR-To-BIR
 
 ## Just Finished
 
-Completed Step 2 follow-up symbol-boundary packet for idea 122. BIR verifier
-now rejects ordinary global load/store, direct-call, and pointer-initializer
-symbol paths when a present `LinkNameId` is paired with fallback text that names
-a different declared global/function. The remaining intentionally unresolved
-boundaries are documented in code: pointer initializer symbols parsed from
-legacy LIR text, string-pool compatibility globals, runtime/intrinsic
-placeholder callees, and dynamic scalar-array materialization paths.
+Accepted Step 2 for idea 122 after the committed symbol-string boundary work.
+BIR verifier coverage now rejects ordinary global load/store, direct-call, and
+pointer-initializer symbol paths when a present `LinkNameId` is paired with
+fallback text that names a different declared global/function. The remaining
+string-backed symbol boundaries are classified as intentionally unresolved or
+compatibility/display payloads: pointer initializer symbols parsed from legacy
+LIR text, string-pool compatibility globals, runtime/intrinsic placeholder
+callees, and dynamic scalar-array materialization paths.
 
 ## Suggested Next
 
-Step 2 appears ready for supervisor review/acceptance. Suggested next packet:
-have the supervisor decide whether to accept this Step 2 follow-up as complete
-or route a reviewer pass over the symbol-string boundary classification before
-moving to the next plan step.
+Begin Step 3 with a bounded LIR-to-BIR identity-threading packet. Pick one
+ordinary authority family where LIR already has structured identity available
+before BIR construction, thread that identity through the lowering boundary,
+and add boundary tests for both successful structured lowering and missing or
+drifted identity rejection.
 
 ## Watchouts
 
@@ -37,7 +39,9 @@ conflicts.
 Dynamic global scalar-array materialization still has no structured id because
 that static helper receives only compatibility-derived access text. Treat it as
 a retained unresolved-id boundary unless a later packet deliberately threads
-identity into that access record.
+identity into that access record. For Step 3, do not pull parser or HIR cleanup
+into the packet; if BIR cannot receive needed structure yet, record that as an
+upstream gap rather than expanding this plan.
 
 ## Proof
 
