@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/122_bir_string_legacy_path_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Inventory BIR String Authority
+Current Step ID: Step 2
+Current Step Title: Demote Local BIR Semantic String Authority
 
 ## Just Finished
 
@@ -68,12 +68,12 @@ Candidate structured-id paths:
 
 ## Suggested Next
 
-First implementation packet: thread `LinkNameId` through the BIR function,
-global, extern declaration, and direct-call symbol boundary while preserving
-the existing string spelling for printer/dump compatibility. Keep the slice to
-symbol identity only: update BIR records, LIR-to-BIR lowering, validation, and
-focused LIR-to-BIR tests so a drifted raw name cannot override a valid
-`LinkNameId`.
+Step 2 first implementation packet: thread `LinkNameId` through the BIR
+function, global, extern declaration, and direct-call symbol boundary while
+preserving the existing string spelling for printer/dump compatibility. Keep
+the slice to symbol identity only: update BIR records, LIR-to-BIR lowering,
+validation, and focused LIR-to-BIR tests so a drifted raw name cannot override
+a valid `LinkNameId`.
 
 ## Watchouts
 
