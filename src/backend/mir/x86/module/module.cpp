@@ -73,6 +73,26 @@ std::string narrow_i16_register_name(std::string_view wide_register) {
   return std::string(wide_register);
 }
 
+std::string narrow_i8_register_name(std::string_view wide_register) {
+  if (wide_register == "rax" || wide_register == "eax") return "al";
+  if (wide_register == "rbx" || wide_register == "ebx") return "bl";
+  if (wide_register == "rcx" || wide_register == "ecx") return "cl";
+  if (wide_register == "rdx" || wide_register == "edx") return "dl";
+  if (wide_register == "rdi" || wide_register == "edi") return "dil";
+  if (wide_register == "rsi" || wide_register == "esi") return "sil";
+  if (wide_register == "rbp" || wide_register == "ebp") return "bpl";
+  if (wide_register == "rsp" || wide_register == "esp") return "spl";
+  if (wide_register == "r8" || wide_register == "r8d") return "r8b";
+  if (wide_register == "r9" || wide_register == "r9d") return "r9b";
+  if (wide_register == "r10" || wide_register == "r10d") return "r10b";
+  if (wide_register == "r11" || wide_register == "r11d") return "r11b";
+  if (wide_register == "r12" || wide_register == "r12d") return "r12b";
+  if (wide_register == "r13" || wide_register == "r13d") return "r13b";
+  if (wide_register == "r14" || wide_register == "r14d") return "r14b";
+  if (wide_register == "r15" || wide_register == "r15d") return "r15b";
+  return std::string(wide_register);
+}
+
 std::size_t normalize_x86_local_frame_adjust(std::size_t prepared_frame_size_bytes) {
   if (prepared_frame_size_bytes == 0) {
     return 0;
@@ -2834,6 +2854,17 @@ struct PreparedLocalSlotCompareLoad {
   std::string memory_operand;
 };
 
+struct PreparedLocalSlotRenderedValue {
+  c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
+  std::optional<std::string> register_name;
+  std::optional<std::string> memory_operand;
+};
+
+struct PreparedLocalSlotRenderedGuardPrefix {
+  std::string compare_register;
+  bool saw_store = false;
+};
+
 std::optional<std::string> render_prepared_local_slot_statement_memory_operand(
     const c4c::backend::prepare::PreparedBirModule& module,
     const c4c::backend::prepare::PreparedAddressingFunction& addressing,
@@ -3002,7 +3033,8 @@ std::optional<PreparedLocalSlotCompareLoad> find_prepared_local_slot_compare_loa
         cast->result.name != *loaded_value_name ||
         cast->result.type != *branch_condition.compare_type ||
         cast->operand.kind != c4c::backend::bir::Value::Kind::Named ||
-        cast->operand.type != c4c::backend::bir::TypeKind::I16) {
+        (cast->operand.type != c4c::backend::bir::TypeKind::I16 &&
+         cast->operand.type != c4c::backend::bir::TypeKind::I8)) {
       continue;
     }
     for (std::size_t load_index = 0; load_index < cast_index; ++load_index) {
@@ -3010,7 +3042,7 @@ std::optional<PreparedLocalSlotCompareLoad> find_prepared_local_slot_compare_loa
       if (load == nullptr ||
           load->result.kind != c4c::backend::bir::Value::Kind::Named ||
           load->result.name != cast->operand.name ||
-          load->result.type != c4c::backend::bir::TypeKind::I16) {
+          load->result.type != cast->operand.type) {
         continue;
       }
       const auto prepared_value_name =
@@ -3074,6 +3106,253 @@ std::optional<std::string> render_prepared_local_slot_statement_memory_operand(
         "local-slot statement drifted from prepared frame-slot access");
   }
   return memory;
+}
+
+std::optional<std::size_t> find_prepared_local_slot_compare_instruction_index(
+    const c4c::backend::bir::Block& block,
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition) {
+  if (branch_condition.condition_value.kind != c4c::backend::bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  for (std::size_t index = 0; index < block.insts.size(); ++index) {
+    const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&block.insts[index]);
+    if (binary != nullptr &&
+        (binary->opcode == c4c::backend::bir::BinaryOpcode::Eq ||
+         binary->opcode == c4c::backend::bir::BinaryOpcode::Ne) &&
+        binary->result.kind == c4c::backend::bir::Value::Kind::Named &&
+        binary->result.name == branch_condition.condition_value.name) {
+      return index;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> prepared_local_slot_named_i32_operand_register(
+    c4c::backend::x86::core::Text& function_out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const c4c::backend::bir::Function& function,
+    std::unordered_map<std::string_view, PreparedLocalSlotRenderedValue>& values,
+    std::string_view value_name,
+    std::string_view context) {
+  const auto value = values.find(value_name);
+  if (value == values.end() || value->second.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  if (value->second.register_name.has_value()) {
+    return *value->second.register_name;
+  }
+  if (!value->second.memory_operand.has_value()) {
+    return std::nullopt;
+  }
+  const auto register_name =
+      require_prepared_i32_register_home(module, function_locations, function, value_name, context);
+  function_out.append_line("    mov " + register_name + ", " + *value->second.memory_operand);
+  value->second.register_name = register_name;
+  return register_name;
+}
+
+std::optional<PreparedLocalSlotRenderedGuardPrefix> render_prepared_local_slot_i32_guard_prefix(
+    c4c::backend::x86::core::Text& function_out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::Block& block,
+    c4c::BlockLabelId block_label,
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    bool require_binary_expression) {
+  if (!branch_condition.compare_type.has_value() ||
+      *branch_condition.compare_type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  const auto compare_index =
+      find_prepared_local_slot_compare_instruction_index(block, branch_condition);
+  if (!compare_index.has_value()) {
+    return std::nullopt;
+  }
+  const auto* compare_binary =
+      std::get_if<c4c::backend::bir::BinaryInst>(&block.insts[*compare_index]);
+  if (compare_binary == nullptr ||
+      compare_binary->operand_type != c4c::backend::bir::TypeKind::I32 ||
+      compare_binary->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      compare_binary->result.type != c4c::backend::bir::TypeKind::I32 ||
+      !branch_condition.lhs.has_value() ||
+      !branch_condition.rhs.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto compare_named_operand =
+      prepared_branch_condition_named_operand(branch_condition);
+  if (!compare_named_operand.has_value()) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string_view, PreparedLocalSlotRenderedValue> values;
+  bool saw_store = false;
+  bool saw_binary = false;
+  for (std::size_t index = 0; index < *compare_index; ++index) {
+    if (const auto* store =
+            std::get_if<c4c::backend::bir::StoreLocalInst>(&block.insts[index])) {
+      std::optional<c4c::ValueNameId> stored_value;
+      std::string source_operand;
+      if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate &&
+          store->value.type == c4c::backend::bir::TypeKind::I32) {
+        source_operand = std::to_string(store->value.immediate);
+      } else if (store->value.kind == c4c::backend::bir::Value::Kind::Named &&
+                 store->value.type == c4c::backend::bir::TypeKind::I32) {
+        stored_value =
+            c4c::backend::prepare::resolve_prepared_value_name_id(module.names, store->value.name);
+        if (!stored_value.has_value()) {
+          throw_prepared_value_location_handoff_error(
+              "defined function '" + function.name +
+              "' local-slot guard store has no prepared value id");
+        }
+        auto source_register = prepared_local_slot_named_i32_operand_register(
+            function_out,
+            module,
+            function_locations,
+            function,
+            values,
+            store->value.name,
+            "local-slot guard stored value");
+        if (!source_register.has_value()) {
+          return std::nullopt;
+        }
+        source_operand = *source_register;
+      } else {
+        return std::nullopt;
+      }
+
+      const auto memory = render_prepared_local_slot_statement_memory_operand(module,
+                                                                              addressing,
+                                                                              block_label,
+                                                                              index,
+                                                                              c4c::backend::bir::TypeKind::I32,
+                                                                              std::nullopt,
+                                                                              stored_value);
+      if (!memory.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' local-slot guard store has no prepared frame-slot access");
+      }
+      saw_store = true;
+      function_out.append_line("    mov " + *memory + ", " + source_operand);
+      continue;
+    }
+
+    if (const auto* load =
+            std::get_if<c4c::backend::bir::LoadLocalInst>(&block.insts[index])) {
+      if (load->result.kind != c4c::backend::bir::Value::Kind::Named ||
+          load->result.type != c4c::backend::bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      const auto prepared_value_name =
+          c4c::backend::prepare::resolve_prepared_value_name_id(module.names, load->result.name);
+      if (!prepared_value_name.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name + "' local-slot guard load has no prepared value id");
+      }
+      const auto memory = render_prepared_local_slot_statement_memory_operand(module,
+                                                                              addressing,
+                                                                              block_label,
+                                                                              index,
+                                                                              load->result.type,
+                                                                              *prepared_value_name,
+                                                                              std::nullopt);
+      if (!memory.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' local-slot guard load has no prepared frame-slot access");
+      }
+      values[load->result.name] = PreparedLocalSlotRenderedValue{
+          .type = load->result.type,
+          .register_name = std::nullopt,
+          .memory_operand = *memory,
+      };
+      continue;
+    }
+
+    if (const auto* binary =
+            std::get_if<c4c::backend::bir::BinaryInst>(&block.insts[index])) {
+      if (binary->operand_type != c4c::backend::bir::TypeKind::I32 ||
+          binary->result.kind != c4c::backend::bir::Value::Kind::Named ||
+          binary->result.type != c4c::backend::bir::TypeKind::I32 ||
+          binary->lhs.kind != c4c::backend::bir::Value::Kind::Named) {
+        return std::nullopt;
+      }
+      const auto mnemonic = supported_i32_binary_immediate_mnemonic(binary->opcode);
+      if (!mnemonic.has_value()) {
+        return std::nullopt;
+      }
+      auto lhs_register = prepared_local_slot_named_i32_operand_register(function_out,
+                                                                         module,
+                                                                         function_locations,
+                                                                         function,
+                                                                         values,
+                                                                         binary->lhs.name,
+                                                                         "local-slot guard binary lhs");
+      if (!lhs_register.has_value()) {
+        return std::nullopt;
+      }
+      const auto result_register =
+          require_prepared_i32_register_home(module,
+                                             function_locations,
+                                             function,
+                                             binary->result.name,
+                                             "local-slot guard binary result value");
+      if (*lhs_register != result_register) {
+        function_out.append_line("    mov " + result_register + ", " + *lhs_register);
+      }
+
+      std::string rhs_operand;
+      if (binary->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+          binary->rhs.type == c4c::backend::bir::TypeKind::I32) {
+        rhs_operand = std::to_string(binary->rhs.immediate);
+      } else if (binary->rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+                 binary->rhs.type == c4c::backend::bir::TypeKind::I32) {
+        const auto rhs_value = values.find(binary->rhs.name);
+        if (rhs_value == values.end()) {
+          return std::nullopt;
+        }
+        if (rhs_value->second.memory_operand.has_value()) {
+          rhs_operand = *rhs_value->second.memory_operand;
+        } else if (rhs_value->second.register_name.has_value()) {
+          rhs_operand = *rhs_value->second.register_name;
+        } else {
+          return std::nullopt;
+        }
+      } else {
+        return std::nullopt;
+      }
+      function_out.append_line("    " + std::string(*mnemonic) + " " + result_register +
+                               ", " + rhs_operand);
+      values[binary->result.name] = PreparedLocalSlotRenderedValue{
+          .type = binary->result.type,
+          .register_name = result_register,
+          .memory_operand = std::nullopt,
+      };
+      saw_binary = true;
+      continue;
+    }
+
+    return std::nullopt;
+  }
+
+  auto compare_register = prepared_local_slot_named_i32_operand_register(function_out,
+                                                                         module,
+                                                                         function_locations,
+                                                                         function,
+                                                                         values,
+                                                                         *compare_named_operand,
+                                                                         "local-slot guard compare value");
+  if ((require_binary_expression && !saw_binary) || !compare_register.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedLocalSlotRenderedGuardPrefix{
+      .compare_register = *compare_register,
+      .saw_store = saw_store,
+  };
 }
 
 bool append_prepared_local_slot_return_function(
@@ -3328,16 +3607,8 @@ bool append_prepared_local_slot_immediate_guard_function(
         "prepared local-slot guard targets drifted from prepared block targets");
   }
 
-  const auto compare_load =
-      find_prepared_local_slot_compare_load(module,
-                                            *addressing,
-                                            *function_locations,
-                                            function,
-                                            *guard_block,
-                                            guard_label,
-                                            *guard_condition);
   const auto immediate = prepared_branch_condition_immediate_operand(*guard_condition);
-  if (!compare_load.has_value() || !immediate.has_value()) {
+  if (!immediate.has_value()) {
     return false;
   }
 
@@ -3367,6 +3638,118 @@ bool append_prepared_local_slot_immediate_guard_function(
   function_out.append_line(".type " + symbol_name + ", @function");
   function_out.append_line(symbol_name + ":");
   function_out.append_line("    sub rsp, " + std::to_string(frame_adjust_bytes));
+
+  c4c::backend::x86::core::Text rendered_i32_prefix_text;
+  bool rendered_i32_predecessor_store = false;
+  for (const auto& predecessor_block : function.blocks) {
+    if (predecessor_block.terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
+      continue;
+    }
+    const auto predecessor_label =
+        bir_block_label_id(module.module.names, module.names, predecessor_block);
+    if (!predecessor_label.has_value()) {
+      continue;
+    }
+    const auto* prepared_predecessor =
+        c4c::backend::prepare::find_prepared_control_flow_block(*control_flow,
+                                                                 *predecessor_label);
+    if (prepared_predecessor == nullptr ||
+        prepared_predecessor->terminator_kind != c4c::backend::bir::TerminatorKind::Branch ||
+        prepared_predecessor->branch_target_label != guard_label) {
+      continue;
+    }
+    for (std::size_t index = 0; index < predecessor_block.insts.size(); ++index) {
+      const auto* store =
+          std::get_if<c4c::backend::bir::StoreLocalInst>(&predecessor_block.insts[index]);
+      if (store == nullptr ||
+          store->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+          store->value.type != c4c::backend::bir::TypeKind::I32) {
+        rendered_i32_predecessor_store = false;
+        break;
+      }
+      const auto store_memory =
+          render_prepared_local_slot_statement_memory_operand(module,
+                                                              *addressing,
+                                                              *predecessor_label,
+                                                              index,
+                                                              store->value.type,
+                                                              std::nullopt,
+                                                              std::nullopt);
+      if (!store_memory.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' local-slot branch predecessor store has no prepared frame-slot access");
+      }
+      rendered_i32_prefix_text.append_line("    mov " + *store_memory + ", " +
+                                           std::to_string(store->value.immediate));
+      rendered_i32_predecessor_store = true;
+    }
+  }
+  const auto rendered_i32_prefix =
+      render_prepared_local_slot_i32_guard_prefix(rendered_i32_prefix_text,
+                                                  module,
+                                                  *addressing,
+                                                  *function_locations,
+                                                  function,
+                                                  *guard_block,
+                                                  guard_label,
+                                                  *guard_condition,
+                                                  !rendered_i32_predecessor_store);
+  if (rendered_i32_prefix.has_value()) {
+    if (!rendered_i32_prefix->saw_store && !rendered_i32_predecessor_store) {
+      return false;
+    }
+    function_out.append_raw(rendered_i32_prefix_text.take_text());
+    function_out.append_line("    cmp " + rendered_i32_prefix->compare_register + ", " +
+                             std::to_string(*immediate));
+
+    const auto jump_on_equal =
+        *guard_condition->predicate == c4c::backend::bir::BinaryOpcode::Eq
+            ? branch_targets->true_label
+            : branch_targets->false_label;
+    const auto fallthrough_label =
+        *guard_condition->predicate == c4c::backend::bir::BinaryOpcode::Eq
+            ? branch_targets->false_label
+            : branch_targets->true_label;
+    const auto jump_label_text =
+        c4c::backend::prepare::prepared_block_label(module.names, jump_on_equal);
+    function_out.append_line("    je " +
+                             render_function_local_label(function.name, jump_label_text));
+
+    if (!append_prepared_short_circuit_return_leaf(function_out,
+                                                  module,
+                                                  *function_locations,
+                                                  function,
+                                                  fallthrough_label,
+                                                  frame_adjust_bytes)) {
+      return false;
+    }
+
+    function_out.append_line(render_function_local_label(function.name, jump_label_text) + ":");
+    if (!append_prepared_short_circuit_return_leaf(function_out,
+                                                  module,
+                                                  *function_locations,
+                                                  function,
+                                                  jump_on_equal,
+                                                  frame_adjust_bytes)) {
+      return false;
+    }
+
+    out.append_raw(function_out.take_text());
+    return true;
+  }
+
+  const auto compare_load =
+      find_prepared_local_slot_compare_load(module,
+                                            *addressing,
+                                            *function_locations,
+                                            function,
+                                            *guard_block,
+                                            guard_label,
+                                            *guard_condition);
+  if (!compare_load.has_value()) {
+    return false;
+  }
 
   const auto entry_type = compare_load->load->result.type;
   bool saw_store = false;
@@ -3410,8 +3793,11 @@ bool append_prepared_local_slot_immediate_guard_function(
         if (stored_register == scalar_registers.end()) {
           return false;
         }
-        function_out.append_line("    mov " + *store_memory + ", " +
-                                 narrow_i16_register_name(stored_register->second));
+        const auto stored_narrow_register =
+            entry_type == c4c::backend::bir::TypeKind::I8
+                ? narrow_i8_register_name(stored_register->second)
+                : narrow_i16_register_name(stored_register->second);
+        function_out.append_line("    mov " + *store_memory + ", " + stored_narrow_register);
       }
       continue;
     }
@@ -3419,8 +3805,9 @@ bool append_prepared_local_slot_immediate_guard_function(
     if (const auto* load =
             std::get_if<c4c::backend::bir::LoadLocalInst>(&guard_block->insts[index])) {
       if (load->result.kind != c4c::backend::bir::Value::Kind::Named ||
-          load->result.type != c4c::backend::bir::TypeKind::I16 ||
-          entry_type != c4c::backend::bir::TypeKind::I16) {
+          load->result.type != entry_type ||
+          (entry_type != c4c::backend::bir::TypeKind::I16 &&
+           entry_type != c4c::backend::bir::TypeKind::I8)) {
         return false;
       }
       const auto prepared_value_name =
@@ -3449,7 +3836,8 @@ bool append_prepared_local_slot_immediate_guard_function(
 
     if (const auto* cast =
             std::get_if<c4c::backend::bir::CastInst>(&guard_block->insts[index])) {
-      if (entry_type != c4c::backend::bir::TypeKind::I16 ||
+      if ((entry_type != c4c::backend::bir::TypeKind::I16 &&
+           entry_type != c4c::backend::bir::TypeKind::I8) ||
           cast->result.kind != c4c::backend::bir::Value::Kind::Named ||
           cast->operand.kind != c4c::backend::bir::Value::Kind::Named) {
         return false;
@@ -3459,7 +3847,7 @@ bool append_prepared_local_slot_immediate_guard_function(
         return false;
       }
       if (cast->opcode == c4c::backend::bir::CastOpcode::SExt &&
-          cast->operand.type == c4c::backend::bir::TypeKind::I16 &&
+          cast->operand.type == entry_type &&
           cast->result.type == c4c::backend::bir::TypeKind::I32) {
         const auto result_register =
             require_prepared_i32_register_home(module,
@@ -3475,7 +3863,7 @@ bool append_prepared_local_slot_immediate_guard_function(
       }
       if (cast->opcode == c4c::backend::bir::CastOpcode::Trunc &&
           cast->operand.type == c4c::backend::bir::TypeKind::I32 &&
-          cast->result.type == c4c::backend::bir::TypeKind::I16) {
+          cast->result.type == entry_type) {
         scalar_registers[cast->result.name] = source_register->second;
         continue;
       }
