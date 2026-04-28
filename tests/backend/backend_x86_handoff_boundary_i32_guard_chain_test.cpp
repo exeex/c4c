@@ -157,15 +157,15 @@ std::string expected_minimal_pointer_backed_same_module_global_guard_chain_asm(
            ".L" + function_name + "_block_12:\n"
            "    mov eax, 0\n"
            "    ret\n"
-           ".data\n.globl s\n.type s, @object\n.p2align 2\ns:\n"
+           ".data\n.globl s\n.type s, @object\n.p2align 3\ns:\n"
            "    .quad s_backing\n"
-           ".data\n.globl s_backing\n.type s_backing, @object\n.p2align 2\ns_backing:\n"
+           ".globl s_backing\n.type s_backing, @object\n.p2align 3\ns_backing:\n"
            "    .long 1\n"
            "    .long 2\n"
            "    .quad gs1\n"
            "    .long 1\n"
            "    .long 2\n"
-           ".data\n.globl gs1\n.type gs1, @object\n.p2align 2\ngs1:\n"
+           ".globl gs1\n.type gs1, @object\n.p2align 2\ngs1:\n"
            "    .long 1\n"
            "    .long 2\n";
 }

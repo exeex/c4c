@@ -44,8 +44,56 @@ bool is_zero_initialized_global(const c4c::backend::bir::Global& global) {
   return global.initializer_symbol_name.has_value() ? false : global.size_bytes != 0;
 }
 
+bool has_named_pointer_initializer_element(const c4c::backend::bir::Global& global) {
+  return std::any_of(global.initializer_elements.begin(),
+                     global.initializer_elements.end(),
+                     [](const c4c::backend::bir::Value& element) {
+                       return element.kind == c4c::backend::bir::Value::Kind::Named &&
+                              element.type == c4c::backend::bir::TypeKind::Ptr;
+                     });
+}
+
+std::string_view logical_symbol_name(std::string_view symbol_name) {
+  if (!symbol_name.empty() && symbol_name.front() == '@') {
+    symbol_name.remove_prefix(1);
+  }
+  return symbol_name;
+}
+
+const c4c::backend::bir::Global* find_defined_same_module_global(
+    const c4c::backend::bir::Module& module,
+    std::string_view symbol_name) {
+  const auto logical_name = logical_symbol_name(symbol_name);
+  for (const auto& global : module.globals) {
+    if (global.name == logical_name && !global.is_extern && !global.is_thread_local) {
+      return &global;
+    }
+  }
+  return nullptr;
+}
+
+bool symbol_name_initializer_targets_mixed_pointer_global(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::bir::Global& global) {
+  if (!global.initializer_symbol_name.has_value()) {
+    return false;
+  }
+  const auto* target = find_defined_same_module_global(module, *global.initializer_symbol_name);
+  return target != nullptr && has_named_pointer_initializer_element(*target);
+}
+
 std::optional<std::string> render_global_initializer_directive(
-    const c4c::backend::bir::Value& value) {
+    const c4c::backend::bir::Value& value,
+    const c4c::backend::bir::Module& module,
+    std::string_view target_triple) {
+  if (value.kind == c4c::backend::bir::Value::Kind::Named) {
+    if (value.type != c4c::backend::bir::TypeKind::Ptr || value.name.empty() ||
+        find_defined_same_module_global(module, value.name) == nullptr) {
+      return std::nullopt;
+    }
+    return ".quad " + c4c::backend::x86::abi::render_asm_symbol_name(
+                         target_triple, logical_symbol_name(value.name));
+  }
   if (value.kind != c4c::backend::bir::Value::Kind::Immediate) {
     return std::nullopt;
   }
@@ -71,9 +119,13 @@ std::optional<std::string> render_global_initializer_directive(
 }
 
 bool emit_global_initializer(c4c::backend::x86::core::Text& out,
-                             const c4c::backend::bir::Global& global) {
+                             const c4c::backend::bir::Module& module,
+                             const c4c::backend::bir::Global& global,
+                             std::string_view target_triple) {
   if (global.initializer.has_value()) {
-    const auto directive = render_global_initializer_directive(*global.initializer);
+    const auto directive = render_global_initializer_directive(*global.initializer,
+                                                               module,
+                                                               target_triple);
     if (!directive.has_value()) {
       return false;
     }
@@ -82,7 +134,7 @@ bool emit_global_initializer(c4c::backend::x86::core::Text& out,
   }
   if (!global.initializer_elements.empty()) {
     for (const auto& element : global.initializer_elements) {
-      const auto directive = render_global_initializer_directive(element);
+      const auto directive = render_global_initializer_directive(element, module, target_triple);
       if (!directive.has_value()) {
         return false;
       }
@@ -91,7 +143,13 @@ bool emit_global_initializer(c4c::backend::x86::core::Text& out,
     return true;
   }
   if (global.initializer_symbol_name.has_value()) {
-    return false;
+    if (!symbol_name_initializer_targets_mixed_pointer_global(module, global)) {
+      return false;
+    }
+    out.append_line("    .quad " +
+                    c4c::backend::x86::abi::render_asm_symbol_name(
+                        target_triple, logical_symbol_name(*global.initializer_symbol_name)));
+    return true;
   }
   if (global.size_bytes != 0) {
     out.append_line("    .zero " + std::to_string(global.size_bytes));
@@ -150,7 +208,7 @@ std::string Data::emit_data() const {
         out.append_line(".p2align " + std::to_string(p2align_for_alignment(global.align_bytes)));
       }
       out.append_line(render_asm_symbol_name(global.name) + ":");
-      if (!emit_global_initializer(out, global)) {
+      if (!emit_global_initializer(out, module->module, global, target_triple)) {
         out.append_line("    # global data emission deferred to behavior-recovery packet");
       }
     }

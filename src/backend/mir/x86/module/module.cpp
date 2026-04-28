@@ -127,8 +127,15 @@ std::string render_global_i32_memory_operand(const Data& data,
   return operand;
 }
 
-std::string render_global_ptr_memory_operand(const Data& data, std::string_view global_name) {
-  return "QWORD PTR [rip + " + data.render_asm_symbol_name(global_name) + "]";
+std::string render_global_ptr_memory_operand(const Data& data,
+                                             std::string_view global_name,
+                                             std::size_t byte_offset = 0) {
+  std::string operand = "QWORD PTR [rip + " + data.render_asm_symbol_name(global_name);
+  if (byte_offset != 0) {
+    operand += " + " + std::to_string(byte_offset);
+  }
+  operand += "]";
+  return operand;
 }
 
 std::string render_function_local_label(std::string_view function_name, std::string_view label) {
@@ -4821,6 +4828,478 @@ bool append_prepared_local_slot_short_circuit_or_guard_function(
   return true;
 }
 
+bool append_prepared_i32_immediate_guard_return_leaf(
+    c4c::backend::x86::core::Text& function_out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const c4c::backend::bir::Function& function,
+    c4c::BlockLabelId block_label,
+    bool emit_block_label) {
+  const auto* block =
+      find_bir_block_by_prepared_label(function, module.module.names, module.names, block_label);
+  const auto block_index =
+      block != nullptr ? find_bir_block_index_by_pointer(function, *block) : std::nullopt;
+  if (block == nullptr || !block_index.has_value() ||
+      block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !block->terminator.value.has_value() ||
+      block->terminator.value->kind != c4c::backend::bir::Value::Kind::Immediate ||
+      block->terminator.value->type != c4c::backend::bir::TypeKind::I32 ||
+      !block->insts.empty()) {
+    return false;
+  }
+
+  if (emit_block_label) {
+    const auto block_label_text =
+        c4c::backend::prepare::prepared_block_label(module.names, block_label);
+    function_out.append_line(render_function_local_label(function.name, block_label_text) + ":");
+  }
+
+  const auto* before_return = c4c::backend::prepare::find_prepared_move_bundle(
+      function_locations,
+      c4c::backend::prepare::PreparedMovePhase::BeforeReturn,
+      *block_index,
+      block->insts.size());
+  std::optional<std::string> return_register_name;
+  if (before_return != nullptr) {
+    if (before_return->moves.size() != 1) {
+      throw_prepared_value_location_handoff_error(
+          "defined function '" + function.name +
+          "' has an ambiguous prepared immediate guard return move bundle");
+    }
+    const auto& return_move = before_return->moves.front();
+    if (return_move.destination_kind !=
+            c4c::backend::prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
+        return_move.destination_storage_kind !=
+            c4c::backend::prepare::PreparedMoveStorageKind::Register ||
+        !return_move.destination_register_name.has_value()) {
+      throw_prepared_value_location_handoff_error(
+          "defined function '" + function.name +
+          "' has an unsupported prepared immediate guard return ABI move");
+    }
+    if (return_move.source_immediate_i32.has_value() &&
+        *return_move.source_immediate_i32 != block->terminator.value->immediate) {
+      throw_prepared_value_location_handoff_error(
+          "defined function '" + function.name +
+          "' immediate guard return drifted from prepared return move");
+    }
+    return_register_name = *return_move.destination_register_name;
+  } else {
+    if (!function.return_abi.has_value()) {
+      throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                  "' has no prepared return ABI");
+    }
+    return_register_name = c4c::backend::prepare::call_result_destination_register_name(
+        c4c::backend::x86::abi::resolve_target_profile(module), *function.return_abi);
+    if (!return_register_name.has_value()) {
+      throw_prepared_value_location_handoff_error(
+          "defined function '" + function.name +
+          "' has no prepared immediate guard register return ABI destination");
+    }
+  }
+
+  function_out.append_line("    mov " +
+                           c4c::backend::x86::abi::narrow_i32_register_name(*return_register_name) +
+                           ", " + std::to_string(block->terminator.value->immediate));
+  function_out.append_line("    ret");
+  return true;
+}
+
+struct PreparedGuardCompareOperands {
+  std::optional<std::string_view> named_operand;
+  std::int64_t immediate = 0;
+  std::optional<std::int64_t> lhs_immediate;
+  std::optional<std::int64_t> rhs_immediate;
+};
+
+std::optional<PreparedGuardCompareOperands> prepared_i32_guard_compare_operands(
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition) {
+  if (!branch_condition.predicate.has_value() || !branch_condition.compare_type.has_value() ||
+      !branch_condition.lhs.has_value() || !branch_condition.rhs.has_value() ||
+      *branch_condition.compare_type != c4c::backend::bir::TypeKind::I32 ||
+      (*branch_condition.predicate != c4c::backend::bir::BinaryOpcode::Eq &&
+       *branch_condition.predicate != c4c::backend::bir::BinaryOpcode::Ne)) {
+    return std::nullopt;
+  }
+  if (branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+      branch_condition.lhs->type == c4c::backend::bir::TypeKind::I32 &&
+      branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+      branch_condition.rhs->type == c4c::backend::bir::TypeKind::I32) {
+    return PreparedGuardCompareOperands{
+        .lhs_immediate = branch_condition.lhs->immediate,
+        .rhs_immediate = branch_condition.rhs->immediate,
+    };
+  }
+  if (branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Named &&
+      branch_condition.lhs->type == c4c::backend::bir::TypeKind::I32 &&
+      branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+      branch_condition.rhs->type == c4c::backend::bir::TypeKind::I32) {
+    return PreparedGuardCompareOperands{
+        .named_operand = branch_condition.lhs->name,
+        .immediate = branch_condition.rhs->immediate,
+    };
+  }
+  if (branch_condition.rhs->kind == c4c::backend::bir::Value::Kind::Named &&
+      branch_condition.rhs->type == c4c::backend::bir::TypeKind::I32 &&
+      branch_condition.lhs->kind == c4c::backend::bir::Value::Kind::Immediate &&
+      branch_condition.lhs->type == c4c::backend::bir::TypeKind::I32) {
+    return PreparedGuardCompareOperands{
+        .named_operand = branch_condition.rhs->name,
+        .immediate = branch_condition.lhs->immediate,
+    };
+  }
+  return std::nullopt;
+}
+
+const c4c::backend::bir::Global* find_supported_same_module_global_span(
+    const c4c::backend::bir::Module& module,
+    std::string_view global_name,
+    std::size_t byte_offset,
+    std::size_t size_bytes) {
+  for (const auto& global : module.globals) {
+    if (global.name != global_name || global.is_extern || global.is_thread_local) {
+      continue;
+    }
+    if (byte_offset > global.size_bytes || global.size_bytes - byte_offset < size_bytes) {
+      return nullptr;
+    }
+    return &global;
+  }
+  return nullptr;
+}
+
+std::optional<std::string> render_prepared_same_module_global_memory_operand(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const Data& data,
+    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    c4c::backend::bir::TypeKind type,
+    std::optional<c4c::ValueNameId> expected_result,
+    std::optional<c4c::ValueNameId> expected_stored_value) {
+  const auto* access =
+      c4c::backend::prepare::find_prepared_memory_access(addressing, block_label, instruction_index);
+  if (access == nullptr || access->result_value_name != expected_result ||
+      access->stored_value_name != expected_stored_value ||
+      access->address.base_kind != c4c::backend::prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !access->address.symbol_name.has_value() || access->address.byte_offset < 0 ||
+      !access->address.can_use_base_plus_offset) {
+    return std::nullopt;
+  }
+  const auto global_name =
+      c4c::backend::prepare::prepared_link_name(module.names, *access->address.symbol_name);
+  const auto byte_offset = static_cast<std::size_t>(access->address.byte_offset);
+  switch (type) {
+    case c4c::backend::bir::TypeKind::I32:
+      if (access->address.size_bytes != 4 ||
+          find_supported_same_module_global_span(module.module, global_name, byte_offset, 4) ==
+              nullptr) {
+        return std::nullopt;
+      }
+      return render_global_i32_memory_operand(data, global_name, byte_offset);
+    case c4c::backend::bir::TypeKind::Ptr:
+      if (access->address.size_bytes != 8 ||
+          find_supported_same_module_global_span(module.module, global_name, byte_offset, 8) ==
+              nullptr) {
+        return std::nullopt;
+      }
+      return render_global_ptr_memory_operand(data, global_name, byte_offset);
+    default:
+      return std::nullopt;
+  }
+}
+
+bool block_carries_prepared_i32_compare_condition(
+    const c4c::backend::bir::Block& block,
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition) {
+  if (block.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
+      block.terminator.condition.kind != branch_condition.condition_value.kind ||
+      block.terminator.condition.type != branch_condition.condition_value.type ||
+      block.terminator.condition.name != branch_condition.condition_value.name ||
+      branch_condition.condition_value.kind != c4c::backend::bir::Value::Kind::Named ||
+      branch_condition.condition_value.type != c4c::backend::bir::TypeKind::I32) {
+    return false;
+  }
+
+  return std::any_of(block.insts.begin(), block.insts.end(), [&](const auto& inst) {
+    const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
+    return binary != nullptr &&
+           binary->result.kind == c4c::backend::bir::Value::Kind::Named &&
+           binary->result.name == branch_condition.condition_value.name &&
+           binary->result.type == c4c::backend::bir::TypeKind::I32;
+  });
+}
+
+bool append_prepared_i32_guard_compare_source(
+    c4c::backend::x86::core::Text& function_out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const Data& data,
+    const c4c::backend::prepare::PreparedAddressingFunction* addressing,
+    const c4c::backend::bir::Block& block,
+    c4c::BlockLabelId block_label,
+    const PreparedGuardCompareOperands& operands) {
+  if (operands.lhs_immediate.has_value() && operands.rhs_immediate.has_value()) {
+    function_out.append_line("    mov eax, " + std::to_string(*operands.lhs_immediate));
+    function_out.append_line("    cmp eax, " + std::to_string(*operands.rhs_immediate));
+    return true;
+  }
+  if (!operands.named_operand.has_value() || addressing == nullptr) {
+    return false;
+  }
+
+  bool loaded_compare_operand = false;
+  for (std::size_t index = 0; index < block.insts.size(); ++index) {
+    if (const auto* binary = std::get_if<c4c::backend::bir::BinaryInst>(&block.insts[index])) {
+      if (binary->result.kind == c4c::backend::bir::Value::Kind::Named &&
+          binary->result.type == c4c::backend::bir::TypeKind::I32 &&
+          binary->result.name == block.terminator.condition.name) {
+        break;
+      }
+      return false;
+    }
+
+    if (const auto* store_global =
+            std::get_if<c4c::backend::bir::StoreGlobalInst>(&block.insts[index])) {
+      if (store_global->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+          store_global->value.type != c4c::backend::bir::TypeKind::I32) {
+        return false;
+      }
+      const auto memory = render_prepared_same_module_global_memory_operand(
+          module,
+          data,
+          *addressing,
+          block_label,
+          index,
+          store_global->value.type,
+          std::nullopt,
+          std::nullopt);
+      if (!memory.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function has no authoritative prepared same-module global store access");
+      }
+      function_out.append_line("    mov " + *memory + ", " +
+                               std::to_string(store_global->value.immediate));
+      continue;
+    }
+
+    if (const auto* load_global =
+            std::get_if<c4c::backend::bir::LoadGlobalInst>(&block.insts[index])) {
+      if (load_global->result.kind != c4c::backend::bir::Value::Kind::Named ||
+          (load_global->result.type != c4c::backend::bir::TypeKind::I32 &&
+           load_global->result.type != c4c::backend::bir::TypeKind::Ptr)) {
+        return false;
+      }
+      const auto prepared_value_name =
+          c4c::backend::prepare::resolve_prepared_value_name_id(module.names,
+                                                                load_global->result.name);
+      if (!prepared_value_name.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function has no authoritative prepared same-module global load value");
+      }
+      const auto memory = render_prepared_same_module_global_memory_operand(
+          module,
+          data,
+          *addressing,
+          block_label,
+          index,
+          load_global->result.type,
+          *prepared_value_name,
+          std::nullopt);
+      if (!memory.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function has no authoritative prepared same-module global load access");
+      }
+      if (load_global->result.type == c4c::backend::bir::TypeKind::Ptr) {
+        function_out.append_line("    mov rax, " + *memory);
+      } else if (load_global->result.name == *operands.named_operand) {
+        function_out.append_line("    mov eax, " + *memory);
+        loaded_compare_operand = true;
+      }
+      continue;
+    }
+
+    return false;
+  }
+
+  if (!loaded_compare_operand) {
+    return false;
+  }
+  function_out.append_line("    cmp eax, " + std::to_string(operands.immediate));
+  return true;
+}
+
+bool append_prepared_i32_immediate_guard_chain_block(
+    c4c::backend::x86::core::Text& function_out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const Data& data,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction* addressing,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    c4c::BlockLabelId block_label,
+    bool emit_block_label,
+    std::size_t remaining_depth) {
+  if (remaining_depth == 0) {
+    return false;
+  }
+  if (append_prepared_i32_immediate_guard_return_leaf(
+          function_out, module, function_locations, function, block_label, emit_block_label)) {
+    return true;
+  }
+
+  const auto* block =
+      find_bir_block_by_prepared_label(function, module.module.names, module.names, block_label);
+  if (block == nullptr || block->terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch) {
+    return false;
+  }
+
+  const auto* branch_condition =
+      c4c::backend::prepare::find_prepared_branch_condition(control_flow, block_label);
+  if (branch_condition == nullptr) {
+    throw_prepared_control_flow_handoff_error(
+        "immediate guard source block has no authoritative prepared branch metadata");
+  }
+
+  auto mutable_names = module.names;
+  validate_prepared_branch_condition(function,
+                                     module.module.names,
+                                     mutable_names,
+                                     control_flow,
+                                     *branch_condition);
+
+  const auto branch_targets =
+      c4c::backend::prepare::resolve_prepared_compare_branch_target_labels(
+          module.names, &control_flow, block_label, *block, *branch_condition);
+  if (!branch_targets.has_value()) {
+    throw_prepared_control_flow_handoff_error(
+        "prepared immediate guard targets drifted from prepared block targets");
+  }
+
+  const auto operands = prepared_i32_guard_compare_operands(*branch_condition);
+  if (!operands.has_value()) {
+    return false;
+  }
+  if (!block_carries_prepared_i32_compare_condition(*block, *branch_condition)) {
+    throw_prepared_control_flow_handoff_error(
+        "immediate guard source block drifted from prepared compare carrier");
+  }
+
+  if (emit_block_label) {
+    const auto block_label_text =
+        c4c::backend::prepare::prepared_block_label(module.names, block_label);
+    function_out.append_line(render_function_local_label(function.name, block_label_text) + ":");
+  }
+
+  const auto jump_on_equal =
+      *branch_condition->predicate == c4c::backend::bir::BinaryOpcode::Eq
+          ? branch_targets->true_label
+          : branch_targets->false_label;
+  const auto fallthrough_label =
+      *branch_condition->predicate == c4c::backend::bir::BinaryOpcode::Eq
+          ? branch_targets->false_label
+          : branch_targets->true_label;
+  const auto jump_label_text =
+      c4c::backend::prepare::prepared_block_label(module.names, jump_on_equal);
+
+  if (!append_prepared_i32_guard_compare_source(
+          function_out, module, data, addressing, *block, block_label, *operands)) {
+    return false;
+  }
+  function_out.append_line("    je " +
+                           render_function_local_label(function.name, jump_label_text));
+
+  if (!append_prepared_i32_immediate_guard_chain_block(function_out,
+                                                       module,
+                                                       data,
+                                                       function_locations,
+                                                       addressing,
+                                                       control_flow,
+                                                       function,
+                                                       fallthrough_label,
+                                                       false,
+                                                       remaining_depth - 1)) {
+    return false;
+  }
+
+  if (!append_prepared_i32_immediate_guard_chain_block(function_out,
+                                                       module,
+                                                       data,
+                                                       function_locations,
+                                                       addressing,
+                                                       control_flow,
+                                                       function,
+                                                       jump_on_equal,
+                                                       true,
+                                                       remaining_depth - 1)) {
+    return false;
+  }
+
+  return true;
+}
+
+bool append_prepared_i32_immediate_guard_chain_function(
+    c4c::backend::x86::core::Text& out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    const Data& data) {
+  if (function.return_type != c4c::backend::bir::TypeKind::I32 || function.blocks.empty()) {
+    return false;
+  }
+
+  const auto function_name =
+      c4c::backend::prepare::resolve_prepared_function_name_id(module.names, function.name);
+  if (!function_name.has_value()) {
+    return false;
+  }
+  const auto* control_flow =
+      c4c::backend::prepare::find_prepared_control_flow_function(module.control_flow,
+                                                                 *function_name);
+  const auto* function_locations =
+      c4c::backend::prepare::find_prepared_value_location_function(module, *function_name);
+  const auto* addressing =
+      c4c::backend::prepare::find_prepared_addressing(module, *function_name);
+  if (control_flow == nullptr || function_locations == nullptr ||
+      !control_flow->join_transfers.empty() ||
+      function.blocks.front().terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch) {
+    return false;
+  }
+
+  const auto entry_label =
+      bir_block_label_id(module.module.names, module.names, function.blocks.front());
+  if (!entry_label.has_value()) {
+    return false;
+  }
+  const auto* entry_condition =
+      c4c::backend::prepare::find_prepared_branch_condition(*control_flow, *entry_label);
+  if (entry_condition == nullptr) {
+    throw_prepared_control_flow_handoff_error(
+        "immediate guard entry block has no authoritative prepared branch metadata");
+  }
+  if (!prepared_i32_guard_compare_operands(*entry_condition).has_value()) {
+    return false;
+  }
+
+  const auto symbol_name = data.render_asm_symbol_name(function.name);
+  c4c::backend::x86::core::Text function_out;
+  function_out.append_line(".globl " + symbol_name);
+  function_out.append_line(".type " + symbol_name + ", @function");
+  function_out.append_line(symbol_name + ":");
+  if (!append_prepared_i32_immediate_guard_chain_block(function_out,
+                                                       module,
+                                                       data,
+                                                       *function_locations,
+                                                       addressing,
+                                                       *control_flow,
+                                                       function,
+                                                       *entry_label,
+                                                       false,
+                                                       function.blocks.size())) {
+    return false;
+  }
+
+  out.append_raw(function_out.take_text());
+  return true;
+}
+
 bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
                                       const c4c::backend::prepare::PreparedBirModule& module,
                                       const c4c::backend::bir::Function& function,
@@ -4838,6 +5317,9 @@ bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
     return true;
   }
   validate_prepared_control_flow_handoff(module, function);
+  if (append_prepared_i32_immediate_guard_chain_function(out, module, function, data)) {
+    return true;
+  }
   if (append_prepared_i32_immediate_return_function(out, module, function, data)) {
     return true;
   }
