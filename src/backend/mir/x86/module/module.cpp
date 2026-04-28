@@ -738,6 +738,372 @@ void validate_prepared_control_flow_handoff(
   }
 }
 
+const c4c::backend::bir::Block* find_prepared_loop_countdown_block(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::NameTables& bir_names,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    c4c::BlockLabelId label) {
+  return find_bir_block_by_prepared_label(function, bir_names, names, label);
+}
+
+const c4c::backend::bir::Block* require_prepared_loop_countdown_branch_target(
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::bir::NameTables& bir_names,
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Block& source_block) {
+  const auto source_label = bir_block_label_id(bir_names, names, source_block);
+  if (!source_label.has_value()) {
+    throw_prepared_control_flow_handoff_error(
+        "loop-countdown branch source has no prepared block id");
+  }
+
+  const auto* prepared_block =
+      c4c::backend::prepare::find_prepared_control_flow_block(control_flow, *source_label);
+  if (prepared_block == nullptr ||
+      prepared_block->terminator_kind != c4c::backend::bir::TerminatorKind::Branch ||
+      prepared_block->branch_target_label == c4c::kInvalidBlockLabel) {
+    throw_prepared_control_flow_handoff_error(
+        "loop-countdown branch source has no authoritative prepared branch target");
+  }
+
+  const auto* target_block = find_prepared_loop_countdown_block(
+      function, bir_names, names, prepared_block->branch_target_label);
+  if (target_block == nullptr || target_block == &source_block) {
+    throw_prepared_control_flow_handoff_error(
+        "loop-countdown prepared branch target does not name a BIR block by id");
+  }
+  return target_block;
+}
+
+bool prepared_loop_countdown_condition_matches(
+    const c4c::backend::prepare::PreparedBranchCondition& condition,
+    const c4c::backend::bir::BinaryInst& compare,
+    std::string_view counter_name) {
+  if (!condition.predicate.has_value() || !condition.compare_type.has_value() ||
+      !condition.lhs.has_value() || !condition.rhs.has_value() ||
+      *condition.compare_type != c4c::backend::bir::TypeKind::I32 ||
+      condition.condition_value.kind != c4c::backend::bir::Value::Kind::Named ||
+      condition.condition_value.name != compare.result.name) {
+    return false;
+  }
+
+  const auto names_counter = [&](const c4c::backend::bir::Value& value) {
+    return value.kind == c4c::backend::bir::Value::Kind::Named &&
+           value.type == c4c::backend::bir::TypeKind::I32 &&
+           value.name == counter_name;
+  };
+  const auto is_zero = [](const c4c::backend::bir::Value& value) {
+    return value.kind == c4c::backend::bir::Value::Kind::Immediate &&
+           value.type == c4c::backend::bir::TypeKind::I32 && value.immediate == 0;
+  };
+  return (names_counter(*condition.lhs) && is_zero(*condition.rhs)) ||
+         (names_counter(*condition.rhs) && is_zero(*condition.lhs));
+}
+
+bool append_prepared_loop_join_countdown_function(
+    c4c::backend::x86::core::Text& out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    const Data& data) {
+  if (!function.params.empty() || function.blocks.empty() ||
+      function.return_type != c4c::backend::bir::TypeKind::I32 ||
+      c4c::backend::x86::abi::resolve_target_profile(module).arch != c4c::TargetArch::X86_64) {
+    return false;
+  }
+
+  const auto function_name =
+      c4c::backend::prepare::resolve_prepared_function_name_id(module.names, function.name);
+  if (!function_name.has_value()) {
+    return false;
+  }
+  const auto* control_flow = c4c::backend::prepare::find_prepared_control_flow_function(
+      module.control_flow, *function_name);
+  if (control_flow == nullptr) {
+    return false;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
+    return false;
+  }
+
+  bool saw_related_loop_contract = false;
+  for (const auto& candidate_join_transfer : control_flow->join_transfers) {
+    const auto* loop_block = find_prepared_loop_countdown_block(function,
+                                                                module.module.names,
+                                                                module.names,
+                                                                candidate_join_transfer.join_block_label);
+    if (loop_block == nullptr || loop_block == &entry ||
+        loop_block->terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch ||
+        loop_block->insts.empty()) {
+      continue;
+    }
+
+    const auto* loop_carrier =
+        std::get_if<c4c::backend::bir::LoadLocalInst>(&loop_block->insts.front());
+    const auto* loop_compare =
+        std::get_if<c4c::backend::bir::BinaryInst>(&loop_block->insts.back());
+    if (loop_carrier == nullptr || loop_compare == nullptr ||
+        loop_carrier->result.kind != c4c::backend::bir::Value::Kind::Named ||
+        loop_carrier->result.type != c4c::backend::bir::TypeKind::I32 ||
+        loop_carrier->byte_offset != 0 || loop_carrier->address.has_value()) {
+      continue;
+    }
+
+    const auto loop_label = bir_block_label_id(module.module.names, module.names, *loop_block);
+    if (!loop_label.has_value()) {
+      continue;
+    }
+    const auto* branch_condition =
+        c4c::backend::prepare::find_prepared_branch_condition(*control_flow, *loop_label);
+    if (branch_condition == nullptr) {
+      continue;
+    }
+    saw_related_loop_contract = true;
+
+    if (candidate_join_transfer.kind !=
+            c4c::backend::prepare::PreparedJoinTransferKind::LoopCarry ||
+        candidate_join_transfer.result.kind != c4c::backend::bir::Value::Kind::Named ||
+        candidate_join_transfer.result.type != c4c::backend::bir::TypeKind::I32 ||
+        candidate_join_transfer.result.name != loop_carrier->result.name ||
+        candidate_join_transfer.edge_transfers.size() != 2) {
+      throw_prepared_control_flow_handoff_error(
+          "loop-countdown join transfer drifted from authoritative loop-carry metadata");
+    }
+    if (!prepared_loop_countdown_condition_matches(
+            *branch_condition, *loop_compare, candidate_join_transfer.result.name)) {
+      throw_prepared_control_flow_handoff_error(
+          "loop-countdown branch condition drifted from authoritative prepared metadata");
+    }
+
+    const auto counter_id = c4c::backend::prepare::resolve_prepared_value_name_id(
+        module.names, candidate_join_transfer.result.name);
+    const auto* join_edges =
+        counter_id.has_value()
+            ? c4c::backend::prepare::incoming_transfers_for_join(
+                  module.names,
+                  *control_flow,
+                  candidate_join_transfer.join_block_label,
+                  *counter_id)
+            : nullptr;
+    if (join_edges == nullptr || join_edges->size() != 2) {
+      throw_prepared_control_flow_handoff_error(
+          "loop-countdown join transfer has no authoritative incoming edge set");
+    }
+
+    std::string body_label_text;
+    std::string exit_label_text;
+    if (*branch_condition->predicate == c4c::backend::bir::BinaryOpcode::Ne) {
+      body_label_text =
+          std::string(c4c::backend::prepare::prepared_block_label(module.names,
+                                                                  branch_condition->true_label));
+      exit_label_text =
+          std::string(c4c::backend::prepare::prepared_block_label(module.names,
+                                                                  branch_condition->false_label));
+    } else if (*branch_condition->predicate == c4c::backend::bir::BinaryOpcode::Eq) {
+      body_label_text =
+          std::string(c4c::backend::prepare::prepared_block_label(module.names,
+                                                                  branch_condition->false_label));
+      exit_label_text =
+          std::string(c4c::backend::prepare::prepared_block_label(module.names,
+                                                                  branch_condition->true_label));
+    } else {
+      return false;
+    }
+
+    const auto* body_block = find_prepared_loop_countdown_block(
+        function,
+        module.module.names,
+        module.names,
+        *branch_condition->predicate == c4c::backend::bir::BinaryOpcode::Ne
+            ? branch_condition->true_label
+            : branch_condition->false_label);
+    const auto* exit_block = find_prepared_loop_countdown_block(
+        function,
+        module.module.names,
+        module.names,
+        *branch_condition->predicate == c4c::backend::bir::BinaryOpcode::Ne
+            ? branch_condition->false_label
+            : branch_condition->true_label);
+    if (body_block == nullptr || exit_block == nullptr || body_block == &entry ||
+        exit_block == &entry || body_block == loop_block || exit_block == loop_block ||
+        body_block == exit_block ||
+        body_block->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
+        require_prepared_loop_countdown_branch_target(function,
+                                                      module.module.names,
+                                                      module.names,
+                                                      *control_flow,
+                                                      *body_block) != loop_block ||
+        exit_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+        !exit_block->terminator.value.has_value() || body_block->insts.empty()) {
+      return false;
+    }
+
+    const auto& exit_value = *exit_block->terminator.value;
+    const bool exit_returns_counter =
+        exit_value.kind == c4c::backend::bir::Value::Kind::Named &&
+        exit_value.type == c4c::backend::bir::TypeKind::I32 &&
+        exit_value.name == candidate_join_transfer.result.name;
+    const bool exit_returns_zero =
+        exit_value.kind == c4c::backend::bir::Value::Kind::Immediate &&
+        exit_value.type == c4c::backend::bir::TypeKind::I32 && exit_value.immediate == 0;
+    const auto* body_update =
+        std::get_if<c4c::backend::bir::BinaryInst>(&body_block->insts.front());
+    if ((!exit_returns_counter && !exit_returns_zero) || body_update == nullptr ||
+        body_update->opcode != c4c::backend::bir::BinaryOpcode::Sub ||
+        body_update->operand_type != c4c::backend::bir::TypeKind::I32 ||
+        body_update->result.type != c4c::backend::bir::TypeKind::I32 ||
+        body_update->lhs.kind != c4c::backend::bir::Value::Kind::Named ||
+        body_update->lhs.name != candidate_join_transfer.result.name ||
+        body_update->rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+        body_update->rhs.type != c4c::backend::bir::TypeKind::I32 ||
+        body_update->rhs.immediate != 1) {
+      return false;
+    }
+
+    const c4c::backend::prepare::PreparedEdgeValueTransfer* init_incoming = nullptr;
+    const c4c::backend::prepare::PreparedEdgeValueTransfer* body_incoming = nullptr;
+    const auto body_block_label = bir_block_label_id(module.module.names, module.names, *body_block);
+    if (!body_block_label.has_value()) {
+      throw_prepared_control_flow_handoff_error(
+          "loop-countdown body block has no prepared block id");
+    }
+    for (const auto& incoming : *join_edges) {
+      if (incoming.predecessor_label == *body_block_label) {
+        body_incoming = &incoming;
+      } else {
+        init_incoming = &incoming;
+      }
+    }
+    if (init_incoming == nullptr || body_incoming == nullptr ||
+        c4c::backend::prepare::find_prepared_parallel_copy_bundle(
+            *control_flow,
+            init_incoming->predecessor_label,
+            init_incoming->successor_label) == nullptr ||
+        c4c::backend::prepare::find_prepared_parallel_copy_bundle(
+            *control_flow,
+            body_incoming->predecessor_label,
+            body_incoming->successor_label) == nullptr) {
+      throw_prepared_control_flow_handoff_error(
+          "loop-countdown edge has no authoritative prepared parallel-copy bundle");
+    }
+
+    const auto* init_block = find_prepared_loop_countdown_block(function,
+                                                                module.module.names,
+                                                                module.names,
+                                                                init_incoming->predecessor_label);
+    const auto block_has_supported_init_handoff_carrier =
+        [&](const c4c::backend::bir::Block& candidate) {
+          if (candidate.insts.size() != 1) {
+            return false;
+          }
+          const auto* init_store =
+              std::get_if<c4c::backend::bir::StoreLocalInst>(&candidate.insts.front());
+          return init_store != nullptr && init_store->byte_offset == 0 &&
+                 !init_store->address.has_value() &&
+                 init_store->slot_name == loop_carrier->slot_name;
+        };
+    const auto find_unique_transparent_branch_predecessor =
+        [&](const c4c::backend::bir::Block& target_block) {
+          const c4c::backend::bir::Block* predecessor = nullptr;
+          for (const auto& candidate : function.blocks) {
+            if (candidate.terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
+              continue;
+            }
+            if (require_prepared_loop_countdown_branch_target(function,
+                                                             module.module.names,
+                                                             module.names,
+                                                             *control_flow,
+                                                             candidate) != &target_block) {
+              continue;
+            }
+            if (predecessor != nullptr) {
+              return static_cast<const c4c::backend::bir::Block*>(nullptr);
+            }
+            predecessor = &candidate;
+          }
+          return predecessor;
+        };
+
+    const bool entry_reaches_loop_through_supported_handoff_prefix = [&]() {
+      if (init_block == nullptr) {
+        return false;
+      }
+      if (init_block == &entry) {
+        return require_prepared_loop_countdown_branch_target(function,
+                                                            module.module.names,
+                                                            module.names,
+                                                            *control_flow,
+                                                            entry) == loop_block &&
+               block_has_supported_init_handoff_carrier(entry);
+      }
+      if (init_block == loop_block || init_block == body_block || init_block == exit_block ||
+          init_block->terminator.kind != c4c::backend::bir::TerminatorKind::Branch ||
+          require_prepared_loop_countdown_branch_target(function,
+                                                       module.module.names,
+                                                       module.names,
+                                                       *control_flow,
+                                                       *init_block) != loop_block ||
+          !block_has_supported_init_handoff_carrier(*init_block)) {
+        return false;
+      }
+
+      const auto* predecessor = find_unique_transparent_branch_predecessor(*init_block);
+      std::size_t transparent_prefix_depth = 0;
+      while (predecessor != nullptr && predecessor != &entry) {
+        if (predecessor == loop_block || predecessor == body_block ||
+            predecessor == exit_block || predecessor == init_block ||
+            !predecessor->insts.empty()) {
+          return false;
+        }
+        predecessor = find_unique_transparent_branch_predecessor(*predecessor);
+        if (++transparent_prefix_depth > function.blocks.size()) {
+          return false;
+        }
+      }
+      return predecessor == &entry && predecessor->insts.empty() &&
+             predecessor->terminator.kind == c4c::backend::bir::TerminatorKind::Branch;
+    }();
+
+    if (!entry_reaches_loop_through_supported_handoff_prefix ||
+        init_incoming->incoming_value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+        init_incoming->incoming_value.type != c4c::backend::bir::TypeKind::I32 ||
+        init_incoming->incoming_value.immediate < 0 ||
+        body_incoming->incoming_value.kind != c4c::backend::bir::Value::Kind::Named ||
+        body_incoming->incoming_value.type != c4c::backend::bir::TypeKind::I32 ||
+        body_incoming->incoming_value.name != body_update->result.name) {
+      return false;
+    }
+
+    const auto symbol_name = data.render_asm_symbol_name(function.name);
+    out.append_line(".globl " + symbol_name);
+    out.append_line(".type " + symbol_name + ", @function");
+    out.append_line(symbol_name + ":");
+    out.append_line("    mov eax, " +
+                    std::to_string(static_cast<std::int32_t>(
+                        init_incoming->incoming_value.immediate)));
+    out.append_line(render_function_local_label(function.name, loop_block->label) + ":");
+    out.append_line("    test eax, eax");
+    out.append_line("    je " + render_function_local_label(function.name, exit_label_text));
+    out.append_line(render_function_local_label(function.name, body_label_text) + ":");
+    out.append_line("    sub eax, 1");
+    out.append_line("    jmp " + render_function_local_label(function.name, loop_block->label));
+    out.append_line(render_function_local_label(function.name, exit_label_text) + ":");
+    if (exit_returns_zero) {
+      out.append_line("    mov eax, 0");
+    }
+    out.append_line("    ret");
+    return true;
+  }
+
+  if (saw_related_loop_contract) {
+    throw_prepared_control_flow_handoff_error(
+        "loop-countdown prepared control-flow contract is outside the supported x86 shape");
+  }
+  return false;
+}
+
 bool is_grouped_span(std::size_t contiguous_width,
                      const std::vector<std::string>& occupied_register_names) {
   return contiguous_width > 1 || occupied_register_names.size() > 1;
@@ -4459,6 +4825,9 @@ bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
                                       const c4c::backend::prepare::PreparedBirModule& module,
                                       const c4c::backend::bir::Function& function,
                                       const Data& data) {
+  if (append_prepared_loop_join_countdown_function(out, module, function, data)) {
+    return true;
+  }
   if (append_prepared_local_slot_return_function(out, module, function, data)) {
     return true;
   }
