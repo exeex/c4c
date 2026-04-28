@@ -781,6 +781,71 @@ int check_short_circuit_regalloc_consumes_published_parallel_copy_execution_site
   return 0;
 }
 
+int check_short_circuit_route_rejects_drifted_branch_plan_continuation_targets(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 3 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the short-circuit continuation branch contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* rhs_block = find_block(function, "logic.rhs.7");
+  if (rhs_block == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer has the expected rhs compare block")
+                    .c_str());
+  }
+
+  auto* rhs_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
+    const auto rhs_block_label = find_block_label_id(prepared, rhs_block->label);
+    for (auto& branch_condition : control_flow->branch_conditions) {
+      if (branch_condition.block_label == rhs_block_label) {
+        return &branch_condition;
+      }
+    }
+    return nullptr;
+  }();
+  if (rhs_branch_condition == nullptr ||
+      !rhs_branch_condition->predicate.has_value() ||
+      !rhs_branch_condition->compare_type.has_value() ||
+      !rhs_branch_condition->lhs.has_value() ||
+      !rhs_branch_condition->rhs.has_value() ||
+      rhs_branch_condition->true_label == rhs_branch_condition->false_label) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes rhs continuation compare metadata")
+                    .c_str());
+  }
+
+  std::swap(rhs_branch_condition->true_label, rhs_branch_condition->false_label);
+
+  try {
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted drifted prepared branch-plan continuation targets")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    const std::string_view message(error.what());
+    if (message.find("canonical prepared-module handoff") == std::string_view::npos ||
+        message.find("prepared branch condition targets drifted from prepared block targets") ==
+            std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected drifted prepared branch-plan continuation targets with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_short_circuit_route_consumes_prepared_control_flow_impl(const bir::Module& module,
                                                                   const char* function_name,
                                                                   const char* failure_context,
@@ -2810,6 +2875,15 @@ int run_backend_x86_handoff_boundary_short_circuit_tests() {
               make_x86_local_i32_short_circuit_or_guard_module(),
               "main",
               "minimal local-slot compare-against-immediate guard route rejects fallback when authoritative short-circuit join ownership remains active");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_short_circuit_route_rejects_drifted_branch_plan_continuation_targets(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit route rejects drifted prepared branch-plan continuation targets");
       status != 0) {
     return status;
   }

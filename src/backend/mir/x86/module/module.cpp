@@ -376,6 +376,66 @@ bool prepared_branch_condition_matches_block_or_join_metadata(
                                                         condition.false_label);
 }
 
+bool prepared_short_circuit_branch_plan_owns_condition_targets(
+    c4c::backend::prepare::PreparedNameTables& mutable_names,
+    const c4c::backend::bir::NameTables& bir_names,
+    const c4c::backend::prepare::PreparedControlFlowFunction& control_flow,
+    const c4c::backend::bir::Function& function,
+    const c4c::backend::prepare::PreparedBranchCondition& condition) {
+  for (const auto& source_block : function.blocks) {
+    if (source_block.terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch) {
+      continue;
+    }
+
+    const auto source_label =
+        bir_block_label_id(bir_names, mutable_names, source_block);
+    if (!source_label.has_value()) {
+      continue;
+    }
+
+    const auto join_context =
+        c4c::backend::prepare::find_prepared_short_circuit_join_context(
+            mutable_names, control_flow, function, *source_label);
+    if (!join_context.has_value()) {
+      continue;
+    }
+
+    const auto* source_condition =
+        c4c::backend::prepare::find_prepared_branch_condition(control_flow, *source_label);
+    if (source_condition == nullptr) {
+      continue;
+    }
+
+    const auto direct_targets =
+        c4c::backend::prepare::find_prepared_compare_branch_target_labels(
+            mutable_names, *source_condition, source_block);
+    if (!direct_targets.has_value()) {
+      continue;
+    }
+
+    const auto branch_plan =
+        c4c::backend::prepare::find_prepared_short_circuit_branch_plan(
+            mutable_names, *join_context, *direct_targets);
+    if (!branch_plan.has_value()) {
+      continue;
+    }
+
+    const auto target_owns_condition =
+        [&](const c4c::backend::prepare::PreparedShortCircuitTargetLabels& target) {
+          return target.block_label == condition.block_label &&
+                 target.continuation.has_value() &&
+                 target.continuation->true_label == condition.true_label &&
+                 target.continuation->false_label == condition.false_label;
+        };
+    if (target_owns_condition(branch_plan->on_compare_true) ||
+        target_owns_condition(branch_plan->on_compare_false)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 void validate_prepared_branch_condition(
     const c4c::backend::bir::Function& function,
     const c4c::backend::bir::NameTables& bir_names,
@@ -419,6 +479,10 @@ void validate_prepared_branch_condition(
   if (block == nullptr ||
       !prepared_branch_condition_matches_block_or_join_metadata(
           mutable_names, bir_names, control_flow, function, *block, condition)) {
+    if (prepared_short_circuit_branch_plan_owns_condition_targets(
+            mutable_names, bir_names, control_flow, function, condition)) {
+      return;
+    }
     throw_prepared_control_flow_handoff_error(
         "prepared branch condition targets drifted from prepared block targets");
   }
