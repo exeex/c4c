@@ -877,6 +877,14 @@ bool append_prepared_loop_join_countdown_function(
     const auto* branch_condition =
         c4c::backend::prepare::find_prepared_branch_condition(*control_flow, *loop_label);
     if (branch_condition == nullptr) {
+      if (candidate_join_transfer.kind ==
+              c4c::backend::prepare::PreparedJoinTransferKind::LoopCarry &&
+          candidate_join_transfer.result.kind == c4c::backend::bir::Value::Kind::Named &&
+          candidate_join_transfer.result.type == c4c::backend::bir::TypeKind::I32 &&
+          candidate_join_transfer.result.name == loop_carrier->result.name) {
+        throw_prepared_control_flow_handoff_error(
+            "loop-countdown join transfer has no authoritative prepared branch condition");
+      }
       continue;
     }
     saw_related_loop_contract = true;

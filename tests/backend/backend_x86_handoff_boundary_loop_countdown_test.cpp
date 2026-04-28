@@ -2,6 +2,7 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/mir/x86/api/api.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <optional>
@@ -1068,6 +1069,76 @@ int check_loop_countdown_route_requires_authoritative_prepared_branch_condition(
   return 0;
 }
 
+int check_loop_countdown_route_requires_published_branch_condition(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the loop countdown control-flow contract")
+                    .c_str());
+  }
+
+  control_flow->branch_conditions.clear();
+
+  try {
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly recovered a loop branch condition from BIR topology")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected missing loop branch metadata with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
+int check_loop_countdown_route_requires_published_join_transfer(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the loop countdown control-flow contract")
+                    .c_str());
+  }
+
+  control_flow->join_transfers.clear();
+
+  try {
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly recovered a loop join transfer from BIR topology")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected missing loop join metadata with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_loop_countdown_route_rejects_transfer_drift_when_authoritative_branch_contract_remains(
     const bir::Module& module,
     const char* function_name,
@@ -1117,6 +1188,91 @@ int check_loop_countdown_route_rejects_transfer_drift_when_authoritative_branch_
   return 0;
 }
 
+int check_loop_countdown_route_requires_published_edge_transfers(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1 ||
+      control_flow->join_transfers.front().edge_transfers.size() != 2) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the loop countdown edge-transfer contract")
+                    .c_str());
+  }
+
+  control_flow->join_transfers.front().edge_transfers.pop_back();
+
+  try {
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly recovered a missing loop edge transfer")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected missing loop edge metadata with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
+int check_loop_countdown_route_rejects_drifted_edge_transfer_identity(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1 ||
+      control_flow->join_transfers.front().edge_transfers.size() != 2) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the loop countdown edge-transfer contract")
+                    .c_str());
+  }
+
+  auto& edge_transfers = control_flow->join_transfers.front().edge_transfers;
+  auto body_edge = std::find_if(edge_transfers.begin(),
+                                edge_transfers.end(),
+                                [&](const prepare::PreparedEdgeValueTransfer& transfer) {
+                                  return block_label(prepared, transfer.predecessor_label) ==
+                                         "body";
+                                });
+  if (body_edge == edge_transfers.end()) {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture no longer exposes the body backedge transfer")
+                    .c_str());
+  }
+
+  body_edge->predecessor_label = intern_block_label(prepared, "exit");
+
+  try {
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted a drifted loop edge-transfer predecessor")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected drifted loop edge metadata with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_loop_countdown_route_requires_authoritative_parallel_copy_bundles(
     const bir::Module& module,
     const char* function_name,
@@ -1159,6 +1315,58 @@ int check_loop_countdown_route_requires_authoritative_parallel_copy_bundles(
         std::string_view::npos) {
       return fail((std::string(failure_context) +
                    ": x86 prepared-module consumer rejected missing loop-countdown parallel-copy publication with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
+int check_loop_countdown_route_rejects_drifted_predecessor_owned_parallel_copy_bundle(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() != 1 ||
+      control_flow->join_transfers.size() != 1 || control_flow->parallel_copy_bundles.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the loop countdown parallel-copy bundle contract")
+                    .c_str());
+  }
+
+  auto bundle = std::find_if(control_flow->parallel_copy_bundles.begin(),
+                             control_flow->parallel_copy_bundles.end(),
+                             [&](const prepare::PreparedParallelCopyBundle& candidate) {
+                               return block_label(prepared, candidate.predecessor_label) ==
+                                          "body" &&
+                                      block_label(prepared, candidate.successor_label) ==
+                                          "loop";
+                             });
+  if (bundle == control_flow->parallel_copy_bundles.end() ||
+      bundle->execution_site !=
+          prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator) {
+    return fail((std::string(failure_context) +
+                 ": prepared loop fixture no longer exposes the predecessor-owned body backedge bundle")
+                    .c_str());
+  }
+
+  bundle->predecessor_label = intern_block_label(prepared, "exit");
+  bundle->execution_block_label = bundle->predecessor_label;
+
+  try {
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted a drifted predecessor-owned loop bundle")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected drifted loop bundle metadata with the wrong contract message")
                       .c_str());
     }
   }
@@ -1613,6 +1821,22 @@ int run_backend_x86_handoff_boundary_loop_countdown_tests() {
     return status;
   }
   if (const auto status =
+          check_loop_countdown_route_requires_published_branch_condition(
+              make_x86_loop_countdown_join_module(),
+              "main",
+              "minimal loop-carried join countdown prepared-control-flow ownership rejects missing prepared branch metadata instead of recovering from BIR topology");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_loop_countdown_route_requires_published_join_transfer(
+              make_x86_loop_countdown_join_module(),
+              "main",
+              "minimal loop-carried join countdown prepared-control-flow ownership rejects missing prepared join-transfer metadata instead of recovering from BIR topology");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_loop_countdown_route_rejects_transfer_drift_when_authoritative_branch_contract_remains(
               make_x86_loop_countdown_join_module(),
               "main",
@@ -1621,10 +1845,34 @@ int run_backend_x86_handoff_boundary_loop_countdown_tests() {
     return status;
   }
   if (const auto status =
+          check_loop_countdown_route_requires_published_edge_transfers(
+              make_x86_loop_countdown_join_module(),
+              "main",
+              "minimal loop-carried join countdown prepared-control-flow ownership rejects missing prepared edge-transfer metadata instead of guessing loop ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_loop_countdown_route_rejects_drifted_edge_transfer_identity(
+              make_x86_loop_countdown_join_module(),
+              "main",
+              "minimal loop-carried join countdown prepared-control-flow ownership rejects drifted prepared edge-transfer predecessor identity");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_loop_countdown_route_requires_authoritative_parallel_copy_bundles(
               make_x86_loop_countdown_join_module(),
               "main",
               "minimal loop-carried join countdown prepared-control-flow ownership rejects loop phi-edge obligations when authoritative parallel-copy publication is removed but join metadata remains");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_loop_countdown_route_rejects_drifted_predecessor_owned_parallel_copy_bundle(
+              make_x86_loop_countdown_join_module(),
+              "main",
+              "minimal loop-carried join countdown prepared-control-flow ownership rejects drifted predecessor-owned parallel-copy bundle identity");
       status != 0) {
     return status;
   }
