@@ -27,6 +27,7 @@ general semantic lowering and nearby same-feature coverage.
 - `review/step5_x86_handoff_dirty_slice_review.md`
 - `review/step4_current_x86_control_flow_route_review.md`
 - `review/step4_loop_countdown_dirty_slice_acceptance_review.md`
+- `review/step4_i8_local_byval_helper_prefix_slice_review.md`
 - `review/step3_accumulated_scalar_local_slot_route_review.md`
 - `review/step3_accumulated_local_slot_renderer_review.md`
 - `src/backend/mir/x86/module/module.cpp`
@@ -242,6 +243,13 @@ Concrete actions:
   the next Step 4 packet must publish explicit prepared identity for mutated
   or bridge carrier blocks, or document a semantic unsupported boundary before
   returning to x86 rendering.
+- Treat the rejected i8 local-byval helper-prefix renderer slice as unaccepted
+  route drift until the helper renderer is removed, retired, or split into a
+  separate semantic scalar/byval initiative. Step 4 may preserve the
+  producer-authority insight that x86 byval pointer calls need an authoritative
+  prepared stack copy destination, but that insight must be proven separately
+  with missing and drifted stack-destination coverage before it can support any
+  renderer packet.
 - Treat the rejected loop-countdown dirty slice as unaccepted route drift until
   the synthesized x86-consumer fallback is removed or split away:
   `PreparedBranchCondition` records must not be fabricated from BIR compare
@@ -275,6 +283,10 @@ Concrete actions:
   flow proof. Route no-branch local-slot return, i16 increment, and other
   scalar-width lowering through Step 3 or record an explicit unsupported
   boundary before continuing Step 4.
+- Do not continue Step 4 by widening the helper-prefix path from i8
+  local-byval to f32 or other local-byval fixture lanes. The next executable
+  Step 4 renderer packet must be control-flow identity work, not another
+  no-branch scalar local/byval helper renderer.
 - Keep scalar rendering assumptions explicit so control-flow proof does not
   hide unrelated renderer gaps.
 
