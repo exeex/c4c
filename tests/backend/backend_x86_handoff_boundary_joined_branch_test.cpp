@@ -4821,10 +4821,13 @@ int check_materialized_compare_join_route_requires_authoritative_prepared_branch
                  ": x86 prepared-module consumer unexpectedly accepted a missing compare-join prepared branch record")
                     .c_str());
   } catch (const std::invalid_argument& error) {
-    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
-        std::string_view::npos) {
+    const auto message = std::string_view(error.what());
+    if (message.find("canonical prepared-module handoff") == std::string_view::npos ||
+        message.find("compare-join source block has no authoritative prepared branch metadata") ==
+            std::string_view::npos) {
       return fail((std::string(failure_context) +
-                   ": x86 prepared-module consumer rejected the missing compare-join prepared branch record with the wrong contract message")
+                   ": x86 prepared-module consumer rejected the missing compare-join prepared branch record with the wrong contract message: " +
+                   error.what())
                       .c_str());
     }
   }
@@ -6211,10 +6214,17 @@ int check_materialized_compare_join_branches_publish_prepared_global_return_cont
                    ": x86 prepared-module consumer unexpectedly accepted a broken compare-join prepared branch contract")
                       .c_str());
     } catch (const std::invalid_argument& error) {
-      if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
-          std::string_view::npos) {
+      const auto message = std::string_view(error.what());
+      const auto expected_diagnostic =
+          reject_missing_branch_record
+              ? std::string_view(
+                    "compare-join source block has no authoritative prepared branch metadata")
+              : std::string_view("canonical prepared-module handoff");
+      if (message.find("canonical prepared-module handoff") == std::string_view::npos ||
+          message.find(expected_diagnostic) == std::string_view::npos) {
         return fail((std::string(failure_context) +
-                     ": x86 prepared-module consumer rejected the broken compare-join prepared branch contract with the wrong contract message")
+                     ": x86 prepared-module consumer rejected the broken compare-join prepared branch contract with the wrong contract message: " +
+                     error.what())
                         .c_str());
       }
     }

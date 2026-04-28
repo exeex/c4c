@@ -2921,7 +2921,7 @@ bool append_prepared_i32_param_zero_branch_return_function(
         false);
     if (!prepared_branch.has_value() || prepared_branch->branch_condition == nullptr) {
       throw_prepared_control_flow_handoff_error(
-          "compare branch source block has no authoritative prepared branch condition");
+          "compare branch source block has no authoritative prepared branch metadata");
     }
 
     const auto true_block_index = find_bir_block_index_by_prepared_label_id(
@@ -5694,6 +5694,10 @@ bool append_prepared_i32_immediate_guard_chain_function(
   const auto* entry_condition =
       c4c::backend::prepare::find_prepared_branch_condition(*control_flow, *entry_label);
   if (entry_condition == nullptr) {
+    if (function.params.size() == 1 &&
+        function.params.front().type == c4c::backend::bir::TypeKind::I32) {
+      return false;
+    }
     throw_prepared_control_flow_handoff_error(
         "immediate guard entry block has no authoritative prepared branch metadata");
   }

@@ -8,27 +8,34 @@ Current Step Title: Recover Prepared Control-Flow Rendering Semantics
 
 ## Just Finished
 
-Step 4 tightened the missing-identity negatives for guard-chain and
-short-circuit branch records. Guard-chain tests now assert the precise missing
-entry/source branch metadata diagnostic, and PhiEdge plus EdgeStoreSlot
-short-circuit tests assert precise missing entry and rhs continuation branch
-metadata diagnostics. The short-circuit renderer now surfaces only those
-missing prepared-identity errors instead of falling through to broad handoff
-shape rejection.
+Step 4 tightened compare-branch and compare-join missing prepared-control-flow
+identity diagnostics. The compare-branch missing branch-record negative now
+asserts the precise missing prepared branch metadata diagnostic, and the x86
+consumer defers one-parameter compare-branch fixtures out of the immediate-guard
+missing-entry path so the compare-branch route can own that rejection. The
+compare-join missing join-transfer, missing branch-record, and missing
+parallel-copy-bundle negatives now assert their precise semantic diagnostics.
+Per `review/step4_post_tightened_branch_metadata_route_review.md`, the accepted
+range since `f8bf064c` also includes the byval stack-authority packet and the
+loop-countdown missing/drifted branch, join, edge-transfer, and
+predecessor-owned bundle identity packet; this bookkeeping note prevents those
+committed Step 4 packets from being lost before completion review.
 
 ## Suggested Next
 
-Supervisor should review this focused Step 4 missing-identity diagnostic
-narrowing for acceptance. The next coherent packet is either a reviewer pass for
-remaining prepared control-flow route drift or another prepared control-flow
-form that still lacks direct missing/drifted identity coverage.
+Supervisor should review the updated Step 4 bookkeeping plus this focused
+compare-branch/compare-join diagnostic tightening for acceptance. The next
+coherent packet is a deliberate Step 4 completion review or another remaining
+prepared control-flow family that lacks direct missing/drifted identity
+coverage.
 
 ## Watchouts
 
-This slice did not add fallback rendering or recovery. The short-circuit
-renderer still requires the route to be otherwise identifiable before throwing
-the new missing entry/rhs prepared branch metadata diagnostics. This packet did
-not resume helper-prefix/local-byval renderer work.
+This slice did not add renderer fallback, raw-label recovery, or exact-output
+shortcuts. It only narrows diagnostic ownership for missing prepared branch,
+join, and parallel-copy records where the current x86 consumers can surface
+them. Step 4 is still not completion-ready without broader supervisor/plan-owner
+acceptance review and broader proof.
 
 ## Proof
 

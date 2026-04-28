@@ -720,10 +720,13 @@ int check_minimal_compare_branch_requires_authoritative_prepared_branch_record(
                  ": x86 prepared-module consumer unexpectedly reopened raw compare-branch recovery after the prepared branch record was removed")
                     .c_str());
   } catch (const std::invalid_argument& error) {
-    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
-        std::string_view::npos) {
+    const auto message = std::string_view(error.what());
+    if (message.find("canonical prepared-module handoff") == std::string_view::npos ||
+        message.find("compare branch source block has no authoritative prepared branch metadata") ==
+            std::string_view::npos) {
       return fail((std::string(failure_context) +
-                   ": x86 prepared-module consumer rejected the missing prepared compare-branch record with the wrong contract message")
+                   ": x86 prepared-module consumer rejected the missing prepared compare-branch record with the wrong contract message: " +
+                   error.what())
                       .c_str());
     }
   }
@@ -755,10 +758,13 @@ int check_compare_join_requires_authoritative_join_transfer_record(
                  ": x86 prepared-module consumer unexpectedly reopened raw compare-join recovery after authoritative out-of-SSA metadata was removed")
                     .c_str());
   } catch (const std::invalid_argument& error) {
-    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
-        std::string_view::npos) {
+    const auto message = std::string_view(error.what());
+    if (message.find("canonical prepared-module handoff") == std::string_view::npos ||
+        message.find("compare-join source block has no authoritative prepared join metadata") ==
+            std::string_view::npos) {
       return fail((std::string(failure_context) +
-                   ": x86 prepared-module consumer rejected the missing compare-join metadata with the wrong contract message")
+                   ": x86 prepared-module consumer rejected the missing compare-join metadata with the wrong contract message: " +
+                   error.what())
                       .c_str());
     }
   }
@@ -798,10 +804,13 @@ int check_compare_join_requires_authoritative_parallel_copy_bundles(
                  ": x86 prepared-module consumer unexpectedly accepted compare-join phi edge obligations after authoritative parallel-copy publication was removed")
                     .c_str());
   } catch (const std::invalid_argument& error) {
-    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
-        std::string_view::npos) {
+    const auto message = std::string_view(error.what());
+    if (message.find("canonical prepared-module handoff") == std::string_view::npos ||
+        message.find("compare-join edge has no authoritative prepared parallel-copy bundle") ==
+            std::string_view::npos) {
       return fail((std::string(failure_context) +
-                   ": x86 prepared-module consumer rejected missing compare-join parallel-copy publication with the wrong contract message")
+                   ": x86 prepared-module consumer rejected missing compare-join parallel-copy publication with the wrong contract message: " +
+                   error.what())
                       .c_str());
     }
   }
