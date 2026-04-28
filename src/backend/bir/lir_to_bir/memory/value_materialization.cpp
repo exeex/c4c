@@ -177,6 +177,9 @@ std::optional<bir::Value> BirFunctionLowerer::load_dynamic_global_scalar_array_v
       const std::string element_name =
           std::string(result_name) + ".outer" + std::to_string(outer_index) + ".elt" +
           std::to_string(element_index);
+      // Dynamic scalar-array materialization is fed by compatibility access
+      // text rather than the structured global table, so this remains an
+      // explicitly unresolved LinkNameId boundary.
       lowered_insts->push_back(bir::LoadGlobalInst{
           .result = bir::Value::named(value_type, element_name),
           .global_name = access.global_name,

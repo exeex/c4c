@@ -173,6 +173,7 @@ set_tests_properties(backend_prepare_authoritative_join_ownership PROPERTIES
 add_executable(backend_lir_to_bir_notes_test
     "${BACKEND_TEST_ROOT}/backend_lir_to_bir_notes_test.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir/bir_validate.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/aggregate.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir/analysis.cpp"

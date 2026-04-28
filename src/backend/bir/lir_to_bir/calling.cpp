@@ -810,6 +810,8 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     if (!lowered_ap.has_value()) {
       return fail_runtime_family("variadic runtime family");
     }
+    // Runtime helpers are synthesized BIR compatibility calls rather than
+    // user/extern symbols, so callee_link_name_id intentionally stays invalid.
     lowered_insts->push_back(bir::CallInst{
         .callee = std::string(callee_name),
         .args = {*lowered_ap},
@@ -841,6 +843,8 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         return fail_runtime_family("variadic runtime family");
       }
       aggregate_value_aliases_[va_arg.result.str()] = va_arg.result.str();
+      // Runtime helpers are synthesized BIR compatibility calls rather than
+      // user/extern symbols, so callee_link_name_id intentionally stays invalid.
       lowered_insts->push_back(bir::CallInst{
           .callee = "llvm.va_arg.aggregate",
           .args = {bir::Value::named(bir::TypeKind::Ptr, va_arg.result.str()), *lowered_ap},
@@ -875,6 +879,8 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
       [&](const c4c::codegen::lir::LirInlineAsmOp& inline_asm) -> bool {
     const auto return_type_text =
         std::string(c4c::codegen::lir::trim_lir_arg_text(inline_asm.ret_type.str()));
+    // Inline asm is represented as a runtime placeholder, not a link-name
+    // symbol. Its callee_link_name_id intentionally stays invalid.
     bir::CallInst lowered_call{
         .callee = "llvm.inline_asm",
         .return_type_name = return_type_text,

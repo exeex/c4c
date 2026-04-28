@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -63,6 +64,7 @@ LirModule make_admitted_aggregate_long_double_field_global_module();
 LirModule make_structured_block_label_id_module();
 
 int expect_link_name_id_symbol_identity_survives_drifted_display_names();
+int expect_bir_verifier_rejects_known_link_name_mismatches();
 
 int expect_failure_notes(std::string_view case_name,
                          const LirModule& module,
@@ -265,6 +267,129 @@ int expect_link_name_id_symbol_identity_survives_drifted_display_names() {
       load->global_name_id != global_id) {
     return fail("BIR global load should carry LinkNameId identity for semantic global refs");
   }
+  return 0;
+}
+
+c4c::backend::bir::Module make_link_name_mismatch_verifier_module() {
+  namespace bir = c4c::backend::bir;
+
+  bir::Module module;
+  const c4c::LinkNameId actual_global_id = module.names.link_names.intern("actual_global");
+  const c4c::LinkNameId other_global_id = module.names.link_names.intern("other_global");
+  const c4c::LinkNameId actual_callee_id = module.names.link_names.intern("actual_callee");
+  const c4c::LinkNameId other_callee_id = module.names.link_names.intern("other_callee");
+
+  module.globals.push_back(bir::Global{
+      .name = "actual_global",
+      .link_name_id = actual_global_id,
+      .type = bir::TypeKind::I32,
+      .is_extern = true,
+      .size_bytes = 4,
+  });
+  module.globals.push_back(bir::Global{
+      .name = "other_global",
+      .link_name_id = other_global_id,
+      .type = bir::TypeKind::I32,
+      .is_extern = true,
+      .size_bytes = 4,
+  });
+
+  module.functions.push_back(bir::Function{
+      .name = "actual_callee",
+      .link_name_id = actual_callee_id,
+      .return_type = bir::TypeKind::Void,
+      .is_declaration = true,
+  });
+  module.functions.push_back(bir::Function{
+      .name = "other_callee",
+      .link_name_id = other_callee_id,
+      .return_type = bir::TypeKind::Void,
+      .is_declaration = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator = bir::ReturnTerminator{};
+
+  module.functions.push_back(bir::Function{
+      .name = "user",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {std::move(entry)},
+  });
+  return module;
+}
+
+bool validate_rejects_with_message(const c4c::backend::bir::Module& module,
+                                   std::string_view needle) {
+  std::string error;
+  if (c4c::backend::bir::validate(module, &error)) {
+    return false;
+  }
+  return error.find(needle) != std::string::npos;
+}
+
+int expect_bir_verifier_rejects_known_link_name_mismatches() {
+  namespace bir = c4c::backend::bir;
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_global");
+    module.functions.back().blocks.front().insts.push_back(bir::StoreGlobalInst{
+        .global_name = "other_global",
+        .global_name_id = actual_id,
+        .value = bir::Value::immediate_i32(1),
+    });
+    if (!validate_rejects_with_message(
+            module,
+            "bir global store in @user must not pair LinkNameId with a different declared global name")) {
+      return fail("BIR verifier should reject global store LinkNameId/display-name mismatch");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_global");
+    module.functions.back().blocks.front().insts.push_back(bir::LoadGlobalInst{
+        .result = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+        .global_name = "other_global",
+        .global_name_id = actual_id,
+    });
+    if (!validate_rejects_with_message(
+            module,
+            "bir global load in @user must not pair LinkNameId with a different declared global name")) {
+      return fail("BIR verifier should reject global load LinkNameId/display-name mismatch");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_callee");
+    module.functions.back().blocks.front().insts.push_back(bir::CallInst{
+        .callee = "other_callee",
+        .callee_link_name_id = actual_id,
+        .return_type_name = "void",
+        .return_type = bir::TypeKind::Void,
+    });
+    if (!validate_rejects_with_message(
+            module,
+            "bir call in @user must not pair LinkNameId with a different declared function name")) {
+      return fail("BIR verifier should reject direct-call LinkNameId/display-name mismatch");
+    }
+  }
+
+  {
+    auto module = make_link_name_mismatch_verifier_module();
+    const c4c::LinkNameId actual_id = module.names.link_names.intern("actual_global");
+    module.globals.front().is_extern = false;
+    module.globals.front().initializer_symbol_name = "other_global";
+    module.globals.front().initializer_symbol_name_id = actual_id;
+    if (!validate_rejects_with_message(
+            module,
+            "bir global initializer symbol @actual_global must not pair LinkNameId with a different declared global name")) {
+      return fail("BIR verifier should reject initializer-symbol LinkNameId/display-name mismatch");
+    }
+  }
+
   return 0;
 }
 
@@ -2497,6 +2622,12 @@ int main() {
           expect_link_name_id_symbol_identity_survives_drifted_display_names();
       link_name_identity_status != 0) {
     return link_name_identity_status;
+  }
+
+  if (const int link_name_mismatch_status =
+          expect_bir_verifier_rejects_known_link_name_mismatches();
+      link_name_mismatch_status != 0) {
+    return link_name_mismatch_status;
   }
 
   if (const int aggregate_pointer_field_global_status =

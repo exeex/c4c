@@ -205,11 +205,17 @@ struct Global {
   std::size_t align_bytes = 0;
   std::optional<Value> initializer;
   std::optional<std::string> initializer_symbol_name;
+  // Retained compatibility/display spelling for pointer initializers parsed
+  // from legacy LIR text. The id remains invalid until lowering has threaded
+  // semantic identity for that initializer target; verifier checks any present
+  // id against declared globals/functions.
   LinkNameId initializer_symbol_name_id = kInvalidLinkName;
   std::vector<Value> initializer_elements;
 };
 
 struct StringConstant {
+  // String-pool constants are still display/compatibility names, not semantic
+  // link-name symbols. They intentionally do not carry LinkNameId yet.
   std::string name;
   std::string bytes;
   std::size_t align_bytes = 1;
@@ -335,6 +341,9 @@ struct InlineAsmMetadata {
 struct CallInst {
   std::optional<Value> result;
   std::string callee;
+  // Direct user/extern calls carry LinkNameId when LIR provides one.
+  // Runtime/intrinsic placeholder calls synthesized by BIR lowering keep this
+  // invalid and use callee only as an explicit compatibility/display token.
   LinkNameId callee_link_name_id = kInvalidLinkName;
   std::optional<Value> callee_value;
   std::vector<Value> args;
@@ -363,6 +372,8 @@ struct LoadLocalInst {
 struct LoadGlobalInst {
   Value result;
   std::string global_name;
+  // Known global references carry LinkNameId; compatibility-only dynamic
+  // global paths can still be unresolved and are validated by display name.
   LinkNameId global_name_id = kInvalidLinkName;
   std::size_t byte_offset = 0;
   std::size_t align_bytes = 0;
@@ -371,6 +382,8 @@ struct LoadGlobalInst {
 
 struct StoreGlobalInst {
   std::string global_name;
+  // Known global references carry LinkNameId; compatibility-only dynamic
+  // global paths can still be unresolved and are validated by display name.
   LinkNameId global_name_id = kInvalidLinkName;
   Value value;
   std::size_t byte_offset = 0;
