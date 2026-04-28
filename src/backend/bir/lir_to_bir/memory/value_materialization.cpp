@@ -11,6 +11,17 @@ namespace c4c::backend {
 using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::type_size_bytes;
 
+namespace {
+
+LinkNameId link_name_id_for_dynamic_global(
+    const BirFunctionLowerer::GlobalTypes& global_types,
+    std::string_view global_name) {
+  const auto it = global_types.find(std::string(global_name));
+  return it == global_types.end() ? kInvalidLinkName : it->second.link_name_id;
+}
+
+}  // namespace
+
 std::optional<bir::Value> BirFunctionLowerer::lower_zero_initializer_value(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I1:
@@ -177,12 +188,10 @@ std::optional<bir::Value> BirFunctionLowerer::load_dynamic_global_scalar_array_v
       const std::string element_name =
           std::string(result_name) + ".outer" + std::to_string(outer_index) + ".elt" +
           std::to_string(element_index);
-      // Dynamic scalar-array materialization is fed by compatibility access
-      // text rather than the structured global table, so this remains an
-      // explicitly unresolved LinkNameId boundary.
       lowered_insts->push_back(bir::LoadGlobalInst{
           .result = bir::Value::named(value_type, element_name),
           .global_name = access.global_name,
+          .global_name_id = link_name_id_for_dynamic_global(global_types_, access.global_name),
           .byte_offset = access.byte_offset + outer_index * access.outer_element_stride_bytes +
                          element_index * access.element_stride_bytes,
           .align_bytes = slot_size,

@@ -8,22 +8,20 @@ Current Step Title: Carry Structured Identity Through LIR-To-BIR
 
 ## Just Finished
 
-Accepted Step 2 for idea 122 after the committed symbol-string boundary work.
-BIR verifier coverage now rejects ordinary global load/store, direct-call, and
-pointer-initializer symbol paths when a present `LinkNameId` is paired with
-fallback text that names a different declared global/function. The remaining
-string-backed symbol boundaries are classified as intentionally unresolved or
-compatibility/display payloads: pointer initializer symbols parsed from legacy
-LIR text, string-pool compatibility globals, runtime/intrinsic placeholder
-callees, and dynamic scalar-array materialization paths.
+Completed the first Step 3 packet by threading the LIR-to-BIR global table into
+dynamic global scalar-array materialization. The generated `LoadGlobalInst`
+entries now set `global_name_id` from the structured global identity when that
+identity is available, while genuinely missing table entries still produce the
+existing invalid-id boundary. Focused coverage proves dynamic scalar-array
+loads keep the semantic `LinkNameId` even when the LIR global display spelling
+has drifted.
 
 ## Suggested Next
 
-Begin Step 3 with a bounded LIR-to-BIR identity-threading packet. Pick one
-ordinary authority family where LIR already has structured identity available
-before BIR construction, thread that identity through the lowering boundary,
-and add boundary tests for both successful structured lowering and missing or
-drifted identity rejection.
+Continue Step 3 with the next bounded LIR-to-BIR identity-threading packet.
+Prefer another ordinary authority family that already has structured identity
+available at the lowering boundary, then add focused coverage for drifted
+display text or missing-identity rejection.
 
 ## Watchouts
 
@@ -36,12 +34,12 @@ symbol; this preserves display compatibility while rejecting known identity
 conflicts.
 
 `clang-format` is not installed in this environment, so formatting was not run.
-Dynamic global scalar-array materialization still has no structured id because
-that static helper receives only compatibility-derived access text. Treat it as
-a retained unresolved-id boundary unless a later packet deliberately threads
-identity into that access record. For Step 3, do not pull parser or HIR cleanup
-into the packet; if BIR cannot receive needed structure yet, record that as an
-upstream gap rather than expanding this plan.
+Dynamic global scalar-array materialization now uses `global_types_` for
+`LoadGlobalInst::global_name_id`; do not reclassify that path as a compatibility
+unresolved-id boundary unless the global table entry is genuinely unavailable.
+For Step 3, do not pull parser or HIR cleanup into the packet; if BIR cannot
+receive needed structure yet, record that as an upstream gap rather than
+expanding this plan.
 
 ## Proof
 
@@ -50,8 +48,7 @@ Ran the delegated proof command:
 
 Result: passed, 7/7 tests. Log path: `test_after.log`.
 
-Supervisor acceptance also ran the broader backend bucket after the verifier
-and test-target wiring changes:
+Supervisor acceptance also ran the broader backend bucket:
 `ctest --test-dir build-x86 -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
 
 Result: passed, 122/122 tests. Log path: `test_after.log`.

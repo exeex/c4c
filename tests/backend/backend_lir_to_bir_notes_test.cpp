@@ -62,8 +62,10 @@ LirModule make_admitted_aggregate_zero_sized_member_global_module();
 LirModule make_admitted_aggregate_string_array_field_global_module();
 LirModule make_admitted_aggregate_long_double_field_global_module();
 LirModule make_structured_block_label_id_module();
+LirModule make_dynamic_indexed_gep_global_member_array_module();
 
 int expect_link_name_id_symbol_identity_survives_drifted_display_names();
+int expect_dynamic_global_scalar_array_loads_carry_link_name_id();
 int expect_bir_verifier_rejects_known_link_name_mismatches();
 
 int expect_failure_notes(std::string_view case_name,
@@ -266,6 +268,47 @@ int expect_link_name_id_symbol_identity_survives_drifted_display_names() {
   if (load == nullptr || load->global_name != "semantic_global" ||
       load->global_name_id != global_id) {
     return fail("BIR global load should carry LinkNameId identity for semantic global refs");
+  }
+  return 0;
+}
+
+int expect_dynamic_global_scalar_array_loads_carry_link_name_id() {
+  LirModule module = make_dynamic_indexed_gep_global_member_array_module();
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  const c4c::LinkNameId cases_id = module.link_names.intern("cases");
+  const c4c::LinkNameId function_id =
+      module.link_names.intern("dynamic_indexed_gep_global_member_array");
+  module.globals.front().name = "drifted_cases_display";
+  module.globals.front().link_name_id = cases_id;
+  module.functions.front().name = "drifted_dynamic_array_display";
+  module.functions.front().link_name_id = function_id;
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("dynamic global scalar-array fixture should lower to BIR");
+  }
+  std::size_t dynamic_load_count = 0;
+  const auto& lowered_function = result.module->functions.back();
+  for (const auto& block : lowered_function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* load = std::get_if<c4c::backend::bir::LoadGlobalInst>(&inst);
+      if (load == nullptr) {
+        continue;
+      }
+      if (load->global_name != "cases") {
+        return fail("dynamic scalar-array load should keep semantic global reference text");
+      }
+      if (load->global_name_id != cases_id) {
+        return fail("dynamic scalar-array load should carry LinkNameId despite drifted display spelling");
+      }
+      ++dynamic_load_count;
+    }
+  }
+  if (dynamic_load_count == 0) {
+    return fail("dynamic scalar-array fixture should materialize global loads");
   }
   return 0;
 }
@@ -2823,6 +2866,12 @@ int main() {
           "unexpected dynamic indexed global member-array gep module failure note");
       dynamic_global_array_lane_status != 0) {
     return dynamic_global_array_lane_status;
+  }
+
+  if (const int dynamic_global_array_identity_status =
+          expect_dynamic_global_scalar_array_loads_carry_link_name_id();
+      dynamic_global_array_identity_status != 0) {
+    return dynamic_global_array_identity_status;
   }
 
   if (const int store_status = expect_failure_notes(
