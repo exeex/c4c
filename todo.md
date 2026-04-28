@@ -8,27 +8,20 @@ Current Step Title: Document Retained String Boundaries
 
 ## Just Finished
 
-Completed the Step 3 identity-threading sequence far enough to advance to Step
-4. The committed Step 3 packets thread structured identity into dynamic global
-scalar loads and BIR pointer initializer symbol IDs, after earlier packets had
-already threaded ordinary link-name identity through BIR declarations and direct
-symbol references. Pointer initializer display text is now retained spelling,
-while `initializer_symbol_name_id` is populated when the target resolves through
-the existing global or function symbol tables. Focused coverage proves drifted
-global/function display spelling cannot override the structured initializer
-target identity, and unknown compatibility-only initializer symbols remain valid
-only with an invalid `LinkNameId`.
+Completed Step 4's retained-string documentation/classification packet. Updated
+the BIR and LIR-to-BIR comments that still described pointer initializer
+`initializer_symbol_name_id` as future-only: pointer initializer spelling is now
+documented as retained display text, while known global/function targets gain
+structured `LinkNameId` authority during module lowering. Also audited nearby
+dynamic global load/store and string-pool comments so known dynamic globals are
+classified as LinkNameId-backed and unresolved string-pool names remain an
+intentional compatibility-only boundary.
 
 ## Suggested Next
 
-Start Step 4 with a bounded retained-string documentation/classification
-packet. Update the retained-boundary comments/map for pointer initializer
-symbols, especially the stale comments that still say
-`initializer_symbol_name_id` remains invalid until identity is threaded, and
-audit nearby dynamic global load/store comments so they distinguish retained
-display or compatibility spelling from structured `LinkNameId` authority. Keep
-the packet documentation/classification-focused; only add or tighten focused
-tests if needed to make the retained-string boundary observable.
+Have the supervisor decide whether Step 4 needs a plan-owner/reviewer
+completion check or can advance to the next lifecycle packet. No additional
+code or test-expectation tightening was needed for this documentation slice.
 
 ## Watchouts
 
@@ -51,14 +44,15 @@ identified remaining Step 3 implementation family. For Step 4, do not pull
 parser or HIR cleanup into the packet; if BIR cannot receive needed structure
 yet, record that as an upstream gap rather than expanding this plan.
 
+This packet intentionally left `tests/backend/backend_lir_to_bir_notes_test.cpp`
+unchanged because the existing focused coverage already observes the retained
+display spelling versus structured `LinkNameId` authority split for direct
+globals, dynamic scalar-array loads, pointer initializers, and unresolved
+compatibility-only initializer symbols.
+
 ## Proof
 
 Ran the delegated proof command:
-`cmake -S . -B build-x86 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DENABLE_C4C_BACKEND=ON -DC4C_ENABLE_X86_BACKEND_TESTS=ON && cmake --build build-x86 -j2 && ctest --test-dir build-x86 -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_cli_dump_bir_is_semantic|backend_cli_dump_bir_focus_function_filters_00204|frontend_lir_(global_type_ref|extern_decl_type_ref|call_type_ref|function_signature_type_ref))$' > test_after.log 2>&1`
+`cmake -S . -B build-x86 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DENABLE_C4C_BACKEND=ON -DC4C_ENABLE_X86_BACKEND_TESTS=ON && cmake --build build-x86 -j2 && ctest --test-dir build-x86 -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_cli_dump_bir_is_semantic|backend_cli_dump_bir_focus_function_filters_00204)$' > test_after.log 2>&1`
 
-Result: passed, 7/7 tests. Log path: `test_after.log`.
-
-Supervisor acceptance also ran the broader backend bucket:
-`ctest --test-dir build-x86 -j --output-on-failure -R '^backend_' > test_after.log 2>&1`
-
-Result: passed, 122/122 tests. Log path: `test_after.log`.
+Result: passed, 3/3 tests. Log path: `test_after.log`.

@@ -83,9 +83,9 @@ std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGloba
           return std::nullopt;
         }
         // Pointer-initializer targets are still parsed from compatibility LIR
-        // text here. Keep the display spelling explicit and leave the
-        // LinkNameId invalid until upstream LIR threads target identity into
-        // this initializer record.
+        // text here, so keep the display spelling explicit. Module lowering
+        // resolves initializer_symbol_name_id from the structured
+        // global/function symbol tables once every declaration is known.
         lowered.initializer_symbol_name = initializer_address->global_name;
       }
     } else {
@@ -395,9 +395,10 @@ std::optional<bir::Global> lower_string_constant_global(
   }
 
   bir::Global lowered;
-  // The string pool exposes addressable byte data through a compatibility
-  // global name. It intentionally remains outside LinkNameId identity until
-  // the LIR string-constant record carries semantic symbol identity.
+  // The string pool exposes addressable byte data through a retained
+  // compatibility name. Unlike ordinary globals and pointer initializer
+  // targets, LIR string constants do not yet carry semantic LinkNameId
+  // identity, so this boundary intentionally stays name-only.
   lowered.name = string_constant.pool_name.front() == '@'
                      ? string_constant.pool_name.substr(1)
                      : string_constant.pool_name;
