@@ -73,8 +73,32 @@ std::string expected_minimal_local_i16_increment_guard_asm(const char* function_
   return asm_header(function_name) + "    sub rsp, 16\n"
          "    mov WORD PTR [rsp], 0\n"
          "    movsx eax, WORD PTR [rsp]\n"
-         "    add eax, 1\n"
-         "    mov WORD PTR [rsp], ax\n"
+         "    mov r11d, eax\n"
+         "    mov ebx, r11d\n"
+         "    add ebx, 1\n"
+         "    mov WORD PTR [rsp], bx\n"
+         "    movsx eax, WORD PTR [rsp]\n"
+         "    cmp eax, 1\n"
+         "    je .L" + std::string(function_name) + "_block_2\n"
+         "    mov eax, 1\n"
+         "    add rsp, 16\n"
+         "    ret\n"
+         ".L" + function_name + "_block_2:\n"
+         "    mov eax, 0\n"
+         "    add rsp, 16\n"
+         "    ret\n";
+}
+
+std::string expected_minimal_local_i16_increment_guard_asm_with_widened_home(
+    const char* function_name,
+    const char* register_name,
+    const char* narrow_register_name) {
+  return asm_header(function_name) + "    sub rsp, 16\n"
+         "    mov WORD PTR [rsp], 0\n"
+         "    movsx eax, WORD PTR [rsp]\n"
+         "    mov " + register_name + ", eax\n"
+         "    add " + register_name + ", 1\n"
+         "    mov WORD PTR [rsp], " + narrow_register_name + "\n"
          "    movsx eax, WORD PTR [rsp]\n"
          "    cmp eax, 1\n"
          "    je .L" + std::string(function_name) + "_block_2\n"
@@ -282,7 +306,8 @@ int check_route_outputs(const bir::Module& module,
   }
   if (prepared_asm != expected_asm) {
     return fail((std::string(failure_context) +
-                 ": x86 prepared-module consumer did not emit the canonical asm")
+                 ": x86 prepared-module consumer did not emit the canonical asm:\n" +
+                 prepared_asm)
                     .c_str());
   }
 
@@ -378,6 +403,74 @@ int check_local_i16_guard_route_requires_authoritative_prepared_branch_record(
                    ": x86 prepared-module consumer rejected the missing prepared i16 branch record with the wrong contract message")
                       .c_str());
     }
+  }
+
+  return 0;
+}
+
+int check_local_i16_guard_route_consumes_prepared_widened_result_home(
+    const bir::Module& module,
+    const std::string& expected_asm,
+    const char* function_name,
+    const char* widened_result_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto function_name_id = find_function_name_id(prepared, function_name);
+  const auto widened_result_id = prepared.names.value_names.find(widened_result_name);
+  prepare::PreparedValueHome* widened_home = nullptr;
+  for (auto& function_locations : prepared.value_locations.functions) {
+    if (function_locations.function_name != function_name_id) {
+      continue;
+    }
+    for (auto& home : function_locations.value_homes) {
+      if (home.value_name == widened_result_id) {
+        widened_home = &home;
+        break;
+      }
+    }
+  }
+  if (widened_home == nullptr ||
+      widened_home->kind != prepare::PreparedValueHomeKind::Register ||
+      !widened_home->register_name.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the widened local i16 arithmetic result home")
+                    .c_str());
+  }
+
+  widened_home->register_name = "r11";
+
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
+  if (prepared_asm != expected_asm) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer ignored the authoritative widened arithmetic register home")
+                    .c_str());
+  }
+
+  return 0;
+}
+
+int check_local_i16_i64_sub_return_route_is_explicitly_unsupported(
+    const bir::Module& module,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  const auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
+  if (prepared_asm.find("# x86 backend contract-first module emitter") == std::string::npos ||
+      prepared_asm.find("# x86 backend contract-first stub") == std::string::npos ||
+      prepared_asm.find("    xor eax, eax\n") == std::string::npos) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer no longer parks the boundary as an explicit unsupported stub")
+                    .c_str());
+  }
+  if (prepared_asm.find("    sub rax, QWORD PTR [rsp + 8]\n") != std::string::npos) {
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer claimed the parked boundary through scalar subtract rendering")
+                    .c_str());
   }
 
   return 0;
@@ -485,19 +578,20 @@ int run_backend_x86_handoff_boundary_local_i16_guard_tests() {
     return status;
   }
   if (const auto status =
-          check_route_outputs(make_x86_local_i16_i64_sub_return_module(),
-                              expected_minimal_local_i16_i64_sub_return_asm("main"),
-                              "%t3 = bir.sub i64 %t2, %t0",
-                              "minimal local-slot i16/i64 subtract return route");
+          check_local_i16_guard_route_consumes_prepared_widened_result_home(
+              make_x86_local_i16_increment_guard_module(),
+              expected_minimal_local_i16_increment_guard_asm_with_widened_home(
+                  "main", "r11d", "r11w"),
+              "main",
+              "%t3",
+              "minimal local-slot i16 increment guard widened arithmetic home ownership");
       status != 0) {
     return status;
   }
   if (const auto status =
-          check_local_i16_i64_sub_return_route_consumes_prepared_frame_access_contract(
+          check_local_i16_i64_sub_return_route_is_explicitly_unsupported(
               make_x86_local_i16_i64_sub_return_module(),
-              expected_minimal_local_i16_i64_sub_return_asm("main"),
-              "main",
-              "minimal local-slot i16/i64 subtract return prepared frame-slot access ownership");
+              "minimal local-slot i16/i64 subtract return route");
       status != 0) {
     return status;
   }

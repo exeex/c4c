@@ -1235,6 +1235,23 @@ const c4c::backend::prepare::PreparedValueHome& require_prepared_i32_value_home(
   return *home;
 }
 
+std::string require_prepared_i32_register_home(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedValueLocationFunction& function_locations,
+    const c4c::backend::bir::Function& function,
+    std::string_view value_name,
+    std::string_view context) {
+  const auto& home =
+      require_prepared_i32_value_home(module, function_locations, function, value_name, context);
+  if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+      !home.register_name.has_value()) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has an unsupported prepared " +
+                                                std::string(context) + " home");
+  }
+  return c4c::backend::x86::abi::narrow_i32_register_name(*home.register_name);
+}
+
 std::string render_prepared_i32_value_home_operand(
     const c4c::backend::prepare::PreparedValueHome& home,
     const c4c::backend::bir::Function& function) {
@@ -3444,12 +3461,16 @@ bool append_prepared_local_slot_immediate_guard_function(
       if (cast->opcode == c4c::backend::bir::CastOpcode::SExt &&
           cast->operand.type == c4c::backend::bir::TypeKind::I16 &&
           cast->result.type == c4c::backend::bir::TypeKind::I32) {
-        (void)require_prepared_i32_value_home(module,
-                                              *function_locations,
-                                              function,
-                                              cast->result.name,
-                                              "local-slot guard sext result value");
-        scalar_registers[cast->result.name] = source_register->second;
+        const auto result_register =
+            require_prepared_i32_register_home(module,
+                                               *function_locations,
+                                               function,
+                                               cast->result.name,
+                                               "local-slot guard sext result value");
+        if (result_register != source_register->second) {
+          function_out.append_line("    mov " + result_register + ", " + source_register->second);
+        }
+        scalar_registers[cast->result.name] = result_register;
         continue;
       }
       if (cast->opcode == c4c::backend::bir::CastOpcode::Trunc &&
@@ -3480,14 +3501,15 @@ bool append_prepared_local_slot_immediate_guard_function(
       if (source_register == scalar_registers.end()) {
         return false;
       }
-      const auto& result_home = require_prepared_i32_value_home(
-          module, *function_locations, function, binary->result.name, "local-slot guard binary result value");
-      if (result_home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
-          !result_home.register_name.has_value()) {
-        throw_prepared_value_location_handoff_error(
-            "defined function '" + function.name + "' has an unsupported prepared local-slot guard binary home");
-      }
-      const auto result_register = std::string("eax");
+      const auto prepared_result_register =
+          require_prepared_i32_register_home(module,
+                                             *function_locations,
+                                             function,
+                                             binary->result.name,
+                                             "local-slot guard binary result value");
+      const auto result_register = entry_type == c4c::backend::bir::TypeKind::I16
+                                       ? prepared_result_register
+                                       : std::string("eax");
       if (result_register != source_register->second) {
         function_out.append_line("    mov " + result_register + ", " + source_register->second);
       }
