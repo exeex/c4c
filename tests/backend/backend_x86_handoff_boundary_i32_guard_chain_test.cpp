@@ -686,7 +686,7 @@ int check_i32_guard_chain_route_requires_authoritative_prepared_branch_record(
       prepare::prepare_semantic_bir_module_with_options(
           module, target_profile_from_module_triple(module.target_triple, target_profile));
   auto* control_flow = find_control_flow_function(prepared, function_name);
-  if (control_flow == nullptr || control_flow->branch_conditions.size() < 2 ||
+  if (control_flow == nullptr || control_flow->branch_conditions.empty() ||
       !control_flow->join_transfers.empty()) {
     return fail((std::string(failure_context) +
                  ": prepare no longer publishes the guard-chain prepared branch contracts")
@@ -1184,6 +1184,15 @@ int run_backend_x86_handoff_boundary_i32_guard_chain_tests() {
     return status;
   }
   if (const auto status =
+          check_i32_guard_chain_route_requires_authoritative_prepared_branch_record(
+              make_x86_same_module_global_i32_guard_chain_module(),
+              "main",
+              "block_2",
+              "same-module defined-global equality-against-immediate guard route rejects missing prepared branch metadata instead of recovering from raw guard-chain topology");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_same_module_global_guard_chain_route_consumes_prepared_address_contract(
               make_x86_same_module_global_i32_guard_chain_module(),
               expected_minimal_same_module_global_i32_guard_chain_asm("main"),
@@ -1227,6 +1236,15 @@ int run_backend_x86_handoff_boundary_i32_guard_chain_tests() {
     return status;
   }
   if (const auto status =
+          check_i32_guard_chain_route_requires_authoritative_prepared_branch_record(
+              make_x86_same_module_global_i32_store_guard_chain_module(),
+              "main",
+              "entry",
+              "same-module defined-global offset-store equality-against-immediate guard route rejects missing prepared branch metadata instead of recovering from raw guard-chain topology");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_same_module_global_store_guard_chain_route_requires_authoritative_prepared_address_contract(
               make_x86_same_module_global_i32_store_guard_chain_module(),
               "main",
@@ -1250,6 +1268,15 @@ int run_backend_x86_handoff_boundary_i32_guard_chain_tests() {
               "main",
               "block_10",
               "pointer-backed same-module global equality-against-immediate guard route rejects drifted prepared branch labels instead of falling back to the raw guard-chain matcher");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_i32_guard_chain_route_requires_authoritative_prepared_branch_record(
+              make_x86_pointer_backed_same_module_global_guard_chain_module(),
+              "main",
+              "block_10",
+              "pointer-backed same-module global equality-against-immediate guard route rejects missing prepared branch metadata instead of recovering from raw guard-chain topology");
       status != 0) {
     return status;
   }
