@@ -2928,6 +2928,195 @@ std::optional<PreparedLocalSlotCompareLoad> find_prepared_local_slot_compare_loa
   return std::nullopt;
 }
 
+std::optional<std::string> render_prepared_local_slot_statement_memory_operand(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    c4c::backend::bir::TypeKind type,
+    std::optional<c4c::ValueNameId> expected_result,
+    std::optional<c4c::ValueNameId> expected_stored_value) {
+  const auto* access =
+      c4c::backend::prepare::find_prepared_memory_access(addressing, block_label, instruction_index);
+  const auto memory =
+      render_prepared_frame_slot_memory_operand(module, addressing, block_label, instruction_index, type);
+  if (!memory.has_value()) {
+    return std::nullopt;
+  }
+  if (access == nullptr || access->result_value_name != expected_result ||
+      access->stored_value_name != expected_stored_value) {
+    throw_prepared_value_location_handoff_error(
+        "local-slot statement drifted from prepared frame-slot access");
+  }
+  return memory;
+}
+
+bool append_prepared_local_slot_return_function(
+    c4c::backend::x86::core::Text& out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    const Data& data) {
+  if (function.return_type != c4c::backend::bir::TypeKind::I32 ||
+      function.blocks.size() != 1) {
+    return false;
+  }
+
+  const auto function_name =
+      c4c::backend::prepare::resolve_prepared_function_name_id(module.names, function.name);
+  if (!function_name.has_value()) {
+    return false;
+  }
+  const auto* function_locations =
+      c4c::backend::prepare::find_prepared_value_location_function(module, *function_name);
+  const auto* addressing =
+      c4c::backend::prepare::find_prepared_addressing(module, *function_name);
+  if (function_locations == nullptr || addressing == nullptr) {
+    return false;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !block.terminator.value.has_value() ||
+      block.terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
+      block.terminator.value->type != c4c::backend::bir::TypeKind::I32) {
+    return false;
+  }
+  const auto block_label = bir_block_label_id(module.module.names, module.names, block);
+  if (!block_label.has_value()) {
+    return false;
+  }
+
+  const auto frame_adjust_bytes =
+      normalize_x86_local_frame_adjust(addressing->frame_size_bytes != 0
+                                           ? addressing->frame_size_bytes
+                                           : module.stack_layout.frame_size_bytes);
+  if (frame_adjust_bytes == 0) {
+    return false;
+  }
+
+  if (std::none_of(block.insts.begin(), block.insts.end(), [](const auto& inst) {
+        return std::holds_alternative<c4c::backend::bir::StoreLocalInst>(inst) ||
+               std::holds_alternative<c4c::backend::bir::LoadLocalInst>(inst);
+      })) {
+    return false;
+  }
+
+  const auto& return_home =
+      require_prepared_i32_value_home(module,
+                                      *function_locations,
+                                      function,
+                                      block.terminator.value->name,
+                                      "local-slot return value");
+  const auto& return_move =
+      require_prepared_i32_return_move(*function_locations, function, block, 0);
+  if (return_move.from_value_id != return_home.value_id) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' local-slot return move source drifted from value home");
+  }
+  if (return_home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+      !return_home.register_name.has_value()) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has an unsupported prepared local-slot return home");
+  }
+  const auto return_register =
+      c4c::backend::x86::abi::narrow_i32_register_name(*return_move.destination_register_name);
+
+  std::unordered_map<std::string_view, std::string> loaded_values;
+  bool saw_local_slot_statement = false;
+  const auto symbol_name = data.render_asm_symbol_name(function.name);
+  c4c::backend::x86::core::Text function_out;
+  function_out.append_line(".globl " + symbol_name);
+  function_out.append_line(".type " + symbol_name + ", @function");
+  function_out.append_line(symbol_name + ":");
+  function_out.append_line("    sub rsp, " + std::to_string(frame_adjust_bytes));
+
+  for (std::size_t inst_index = 0; inst_index < block.insts.size(); ++inst_index) {
+    if (const auto* store =
+            std::get_if<c4c::backend::bir::StoreLocalInst>(&block.insts[inst_index])) {
+      if (store->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+          store->value.type != c4c::backend::bir::TypeKind::I32) {
+        return false;
+      }
+      const auto memory = render_prepared_local_slot_statement_memory_operand(
+          module,
+          *addressing,
+          *block_label,
+          inst_index,
+          store->value.type,
+          std::nullopt,
+          std::nullopt);
+      if (!memory.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' local-slot store has no prepared frame-slot access");
+      }
+      saw_local_slot_statement = true;
+      function_out.append_line("    mov " + *memory + ", " +
+                               std::to_string(store->value.immediate));
+      continue;
+    }
+
+    if (const auto* load =
+            std::get_if<c4c::backend::bir::LoadLocalInst>(&block.insts[inst_index])) {
+      if (load->result.kind != c4c::backend::bir::Value::Kind::Named ||
+          load->result.type != c4c::backend::bir::TypeKind::I32) {
+        return false;
+      }
+      const auto prepared_value_name =
+          c4c::backend::prepare::resolve_prepared_value_name_id(module.names, load->result.name);
+      if (!prepared_value_name.has_value()) {
+        throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                    "' local-slot load has no prepared value id");
+      }
+      const auto& load_home = require_prepared_i32_value_home(
+          module, *function_locations, function, load->result.name, "local-slot load result value");
+      const auto memory = render_prepared_local_slot_statement_memory_operand(
+          module,
+          *addressing,
+          *block_label,
+          inst_index,
+          load->result.type,
+          *prepared_value_name,
+          std::nullopt);
+      if (!memory.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' local-slot load has no prepared frame-slot access");
+      }
+      if (load_home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+          !load_home.register_name.has_value()) {
+        throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                    "' has an unsupported prepared local-slot load home");
+      }
+      saw_local_slot_statement = true;
+      const auto load_register = load->result.name == block.terminator.value->name
+                                     ? return_register
+                                     : c4c::backend::x86::abi::narrow_i32_register_name(
+                                           *load_home.register_name);
+      function_out.append_line("    mov " + load_register + ", " + *memory);
+      loaded_values[load->result.name] = load_register;
+      continue;
+    }
+
+    return false;
+  }
+
+  if (!saw_local_slot_statement) {
+    return false;
+  }
+  const auto returned_value = loaded_values.find(block.terminator.value->name);
+  if (returned_value == loaded_values.end()) {
+    return false;
+  }
+  if (returned_value->second != return_register) {
+    function_out.append_line("    mov " + return_register + ", " + returned_value->second);
+  }
+  function_out.append_line("    add rsp, " + std::to_string(frame_adjust_bytes));
+  function_out.append_line("    ret");
+  out.append_raw(function_out.take_text());
+  return true;
+}
+
 bool append_prepared_short_circuit_return_leaf(
     c4c::backend::x86::core::Text& function_out,
     const c4c::backend::prepare::PreparedBirModule& module,
@@ -3272,6 +3461,9 @@ bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
                                       const c4c::backend::prepare::PreparedBirModule& module,
                                       const c4c::backend::bir::Function& function,
                                       const Data& data) {
+  if (append_prepared_local_slot_return_function(out, module, function, data)) {
+    return true;
+  }
   if (append_prepared_local_slot_short_circuit_or_guard_function(out, module, function, data)) {
     return true;
   }
