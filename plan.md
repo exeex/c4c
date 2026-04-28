@@ -36,7 +36,8 @@ general semantic lowering and nearby same-feature coverage.
   handoff tests from compiling.
 - Scalar instruction rendering for supported x86 prepared-module forms.
 - Control-flow rendering and prepared label consumption through the x86 path.
-- Tests that distinguish semantic renderer support from fixture-shaped output.
+- x86 backend BIR, handoff, and codegen tests that distinguish semantic
+  renderer support, explicit unsupported boundaries, and fixture-shaped output.
 
 ## Non-Goals
 
@@ -69,6 +70,9 @@ general semantic lowering and nearby same-feature coverage.
   narrow x86/backend test subset chosen by the supervisor.
 - When a renderer form is restored, add or update nearby same-feature tests so
   one known handoff fixture is not the only proof.
+- Keep stale x86 backend BIR/handoff tests in scope when they block acceptance:
+  repair their API or harness drift so failures describe renderer capability,
+  not obsolete test infrastructure.
 - Treat expectation downgrades, unsupported-path rewrites, and fixture-shaped
   output matching as route drift.
 - Escalate to broader backend validation before the source idea is considered
@@ -109,6 +113,8 @@ interfaces without weakening supported-path contracts.
 
 Primary targets:
 - x86 backend handoff tests and their includes.
+- x86 backend BIR tests that should express the supported/unsupported renderer
+  matrix.
 - Current prepared-module, MIR, and target x86 public interfaces.
 - Test harness helpers used by backend codegen or handoff tests.
 
@@ -119,11 +125,14 @@ Concrete actions:
   green result.
 - Preserve test intent while separating compile-harness repair from renderer
   behavior changes.
+- Keep unsupported boundaries explicit in tests; do not silently skip stale
+  x86 BIR coverage instead of repairing the harness or recording the blocker.
 - Run the delegated build or narrow test proof after each bounded repair.
 
 Completion check:
-- The selected x86 handoff/codegen test subset compiles far enough to expose
-  real renderer behavior instead of stale interface failures.
+- The selected x86 BIR, handoff, or codegen test subset compiles far enough to
+  expose real renderer behavior instead of stale interface failures, and any
+  remaining unsupported forms are named boundaries rather than hidden skips.
 
 ### Step 3: Recover Supported Scalar Rendering Semantics
 
@@ -180,6 +189,7 @@ and produces a reusable handoff proof for later raw-label cleanup work.
 
 Primary targets:
 - x86 handoff/codegen tests that exercise real scalar and control-flow asm.
+- x86 backend BIR tests that define the supported/unsupported renderer matrix.
 - Prepared label id validation tests.
 - Broader backend validation selected by the supervisor.
 
@@ -188,11 +198,15 @@ Concrete actions:
   control-flow recovery.
 - Verify the proof consumes prepared label ids directly and rejects missing or
   drifted ids.
+- Verify x86 backend BIR/handoff tests are usable acceptance surfaces: supported
+  forms run as supported, unsupported forms are explicit, and closure does not
+  depend on a single handoff fixture.
 - Run the required broader backend validation before requesting closure.
 - Record any remaining renderer gaps in `todo.md`; if they are durable source
   scope, ask the plan owner to revise or split the plan instead of closing.
 
 Completion check:
-- The source idea acceptance criteria are met, broader validation is recorded,
-  and the supervisor has enough evidence to either close the idea or request a
-  focused lifecycle revision.
+- The source idea acceptance criteria are met, x86 backend BIR/handoff tests
+  provide a usable supported/unsupported acceptance surface, broader validation
+  is recorded, and the supervisor has enough evidence to either close the idea
+  or request a focused lifecycle revision.

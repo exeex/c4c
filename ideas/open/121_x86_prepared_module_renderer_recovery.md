@@ -30,6 +30,8 @@ not be silently absorbed into idea 120 or used as the means of proving
   infrastructure.
 - Restore compile compatibility for x86 backend handoff tests if the missing
   headers or replacement APIs are available.
+- Restore stale x86 backend BIR/handoff tests so they can describe the real
+  supported/unsupported renderer boundary instead of failing on harness drift.
 - Design real renderer coverage for scalar and control-flow forms without
   instruction-count or testcase-shape shortcuts.
 - Prove prepared control-flow label consumption through the x86 path only after
@@ -48,5 +50,8 @@ not be silently absorbed into idea 120 or used as the means of proving
 - x86 prepared-module rendering has a documented semantic route for supported
   scalar and control-flow forms.
 - Tests cover nearby same-feature cases, not only one known handoff fixture.
+- x86 backend BIR/handoff tests are a usable acceptance surface: stale API or
+  harness failures are repaired, supported forms run as supported, and any
+  remaining unsupported forms are recorded as explicit boundaries.
 - Any x86 handoff proof that later contributes to idea 120 consumes prepared
   label ids directly and rejects missing or drifted ids.
