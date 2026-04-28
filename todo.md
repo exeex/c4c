@@ -8,34 +8,36 @@ Current Step Title: Recover Prepared Control-Flow Rendering Semantics
 
 ## Just Finished
 
-Step 4 rejected an attempted prepared loop-carry countdown renderer in
-`src/backend/mir/x86/module/module.cpp`. The attempt consumed prepared loop
-labels, branch predicates, loop-carry edge transfers, predecessor execution-site
-move bundles, and the prepared entry-prefix path, but it was not committed
-because the recognizer was too broad.
+Step 4 rejected a narrower prepared loop-countdown renderer probe after review.
+The probe required a real `PreparedJoinTransferKind::LoopCarry` join, a
+prepared branch condition bound to that join block, loop-carry edge transfers
+for init/backedge traffic, authoritative out-of-SSA parallel-copy move bundles,
+and the prepared transparent entry-prefix path before rendering the countdown.
 
-The attempt exposed a route-quality blocker: the loop-carry candidate also took
-over `minimal non-global equality-against-immediate guard-chain route` and
-produced non-canonical asm. Accepting that would mix Step 4 loop-carry rendering
-with a nearby guard-chain shape, so the implementation was reverted.
+The identity split looked credible: the countdown probe no longer accepted the
+nearby `minimal non-global equality-against-immediate guard-chain route`.
+However, the required delegated subset still failed at that guard-chain route,
+the probe had no direct countdown positive/negative coverage, and it also
+touched missing-branch-record rejection behavior outside the countdown path. The
+implementation was reverted.
 
 ## Suggested Next
 
-Next executor packet should tighten the Step 4 loop-carry recognizer around a
-semantic prepared loop-countdown contract before adding more rendering. The
-smallest useful packet is to identify why the non-global equality guard-chain
-also satisfies the current loop-carry predicate, then add a prepared identity
-distinction or an explicit unsupported boundary so the countdown route cannot
-claim unrelated guard-chain ownership.
+Next executor packet should either add a prepared semantic renderer for the
+non-global equality-against-immediate guard-chain contract or park countdown
+rendering until that guard-chain route has an explicit prepared consumer
+boundary. The smallest unblocker is to make the guard-chain route emit canonical
+asm from prepared branch metadata instead of falling through to the
+contract-first stub.
 
 ## Watchouts
 
 Do not broaden the loop-carry renderer by raw label spelling or named testcase
-shape. The current blocker is specifically a missing prepared identity
-distinction between the minimal countdown loop-carry contract and a nearby
-non-global equality guard-chain contract. The rejected attempt also touched
-existing missing-branch-record rejection behavior while probing the guard-chain
-fallout; review that risk before accepting any future slice.
+shape. The rejected loop probe distinguished countdown from guard-chain by
+requiring an actual `LoopCarry` join transfer plus loop-carry parallel-copy
+authority; preserve that direction if the route is retried. Also keep missing
+prepared branch metadata rejection behavior out of the countdown slice unless
+there is direct coverage for the guard routes it affects.
 
 ## Proof
 
@@ -46,5 +48,5 @@ loop-countdown blocker. The delegated proof command was:
 Configure and build passed. `backend_x86_prepared_handoff_label_authority`
 passed. `backend_x86_handoff_boundary` failed with `minimal loop-carried join
 countdown route: x86 prepared-module consumer rejected the prepared handoff
-...`. The rejected attempt's `test_after.log` was discarded with the reverted
-implementation.
+...`. The rejected narrowed probe's `test_after.log` was discarded with the
+reverted implementation.
