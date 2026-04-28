@@ -153,6 +153,9 @@ Concrete actions:
   backend.
 - Implement renderer support through semantic lowering helpers, not through
   fixture names, instruction counts, or one-off pattern dispatch.
+- Own standalone scalar local-slot recovery here, including no-branch
+  store/load/return shapes, scalar-width local increment paths, return-move
+  value-home authority, and frame-slot authority negatives.
 - Add or update tests for adjacent scalar cases so coverage is not limited to a
   single known handoff fixture.
 - Keep raw label or control-flow assertions out of this step unless needed for
@@ -192,6 +195,12 @@ Concrete actions:
   that exposed the drift.
 - Add same-feature negative coverage for missing, drifted, and ambiguous
   prepared identities before treating the Step 4 route as progress.
+- Do not add or accept standalone scalar local-slot renderers in this step.
+  Local-slot code may remain in Step 4 only when it is inseparable from a
+  prepared branch, label, branch-plan, continuation, or parallel-copy control
+  flow proof. Route no-branch local-slot return, i16 increment, and other
+  scalar-width lowering through Step 3 or record an explicit unsupported
+  boundary before continuing Step 4.
 - Keep scalar rendering assumptions explicit so control-flow proof does not
   hide unrelated renderer gaps.
 

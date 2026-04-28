@@ -8,37 +8,45 @@ Current Step Title: Recover Prepared Control-Flow Rendering Semantics
 
 ## Just Finished
 
-Step 4 Recover Prepared Control-Flow Rendering Semantics repaired the prepared
-short-circuit branch-condition target identity mismatch without restoring the
-rejected local-slot short-circuit renderer. The x86 prepared control-flow
-validator now accepts a branch-condition target mismatch only when the exact
-prepared short-circuit branch plan owns that condition as a continuation
-target with matching prepared true/false labels. Nearby negative coverage now
-swaps the prepared RHS continuation true/false labels and proves that drifted
-prepared branch-plan continuation targets are rejected before any unsupported
-renderer path can accept them.
+Reviewer route check `review/step4_accumulated_local_slot_renderer_route_review.md`
+rejected the accumulated dirty Step 4 slice as drifting. The prepared
+short-circuit and local i32 guard helper work remains directionally Step 4
+only where it proves prepared branch, label, branch-plan, continuation,
+parallel-copy, frame-slot, value-home, and return-ABI authority. The
+standalone scalar local-slot return helper and the proposed i16 increment
+route are not Step 4 control-flow work.
 
 ## Suggested Next
 
-Continue Step 4 at the later semantic blocker now exposed by the selected
-proof: the minimal local-slot short-circuit or-guard route advances past
-prepared branch-condition target validation and is again rejected as an
-unsupported x86 prepared-module shape. The next packet should either define a
-semantic prepared renderer rule with nearby negative coverage or keep the
-shape unsupported explicitly; do not revive the removed fixture-shaped
-local-slot short-circuit renderer.
+Split the dirty implementation before any further execution. The Step 4 packet
+may keep only semantic prepared control-flow recovery: prepared short-circuit
+and local i32 guard paths that are branch-owned and locally validate all
+prepared control-flow authority before rendering. Retire or remove the
+standalone scalar local-slot return additions from the Step 4 slice, or route
+them through an explicit Step 3 scalar renderer packet with same-feature
+positive and negative coverage.
+
+Do not chase `minimal local-slot i16 increment guard route` as the next Step 4
+blocker. Classify it as Step 3 scalar local-slot/width lowering unless the
+supervisor deliberately opens a separate scalar recovery packet. If it is not
+in that packet, record it as an explicit unsupported boundary for the current
+Step 4 proof.
 
 ## Watchouts
 
-Do not revive the removed local-slot short-circuit renderer as-is. Any future
-short-circuit renderer needs a clearly defined semantic prepared lowering class
-with nearby negative coverage for missing, drifted, and ambiguous prepared
-identity. The current validator exception is intentionally narrow: it requires
-the prepared short-circuit branch plan to own the continuation condition and
-the exact prepared true/false continuation labels. The new same-feature
-negative should remain before the unsupported positive route in the
-short-circuit test order so it continues to prove the validator path while the
-renderer shape is still unsupported.
+Local-slot code is Step 4 only when it is inseparable from prepared
+control-flow identity recovery. Any helper that runs before
+`validate_prepared_control_flow_handoff` must own equivalent local checks for
+prepared branch-plan, continuation-label, parallel-copy, value-home,
+frame-slot, and return-ABI authority before rendering. Missing or drifted
+prepared authority must reject the route; do not add raw-label fallback, named
+fixture selection, or best-effort local-slot matching.
+
+Standalone scalar local-slot return, mismatched load/store slot checks,
+return-move/value-home drift checks, and scalar-width increment lowering need
+Step 3-style same-feature positive and negative coverage. They are not
+acceptance evidence for Step 4 unless tied to a prepared branch/control-flow
+proof.
 
 The pointer-backed global compare-join route still validates the prepared
 pointer-root global but does not complete semantic pointer dereference lowering;
@@ -53,14 +61,10 @@ Delegated proof command was run and preserved in `test_after.log`:
 
 Configure and build passed. `backend_x86_prepared_handoff_label_authority`
 passed. `backend_x86_handoff_boundary` advanced past the previous
-`prepared branch condition targets drifted from prepared block targets`
-blocker. It now fails later on the same route with `minimal local-slot
-short-circuit or-guard route: x86 prepared-module consumer rejected the
-prepared handoff with exception: x86 prepared-module consumer only supports a
-minimal single-block i32 return terminator, a bounded equality-against-immediate
-guard family with immediate return leaves including fixed-offset same-module
-global i32 loads and pointer-backed same-module global roots, or one bounded
-compare-against-zero branch family through the canonical prepared-module
-handoff`. This is not acceptance proof; it is the current Step 4 semantic
-blocker after the branch-condition target identity repair and the drifted
-branch-plan continuation-target negative coverage.
+`minimal local-slot compare-against-immediate guard route` blocker and its
+missing-prepared-branch-record negative. It now fails later with
+`minimal local-slot i16 increment guard route: x86 prepared-module consumer
+did not emit the canonical asm`. This is not acceptance proof; it is the
+review trigger showing the dirty slice has crossed into scalar local-slot
+renderer recovery and must be split, retired, or explicitly routed through
+Step 3 before more execution.
