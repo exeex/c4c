@@ -1,10 +1,11 @@
 # BIR String Legacy Path Cleanup
 
-Status: Open
+Status: Closed
 Created: 2026-04-28
+Closed: 2026-04-28
 
 Prerequisite Ideas:
-- [121_x86_prepared_module_renderer_recovery.md](/workspaces/c4c/ideas/open/121_x86_prepared_module_renderer_recovery.md)
+- [121_x86_prepared_module_renderer_recovery.md](/workspaces/c4c/ideas/closed/121_x86_prepared_module_renderer_recovery.md)
 
 ## Goal
 
@@ -78,3 +79,15 @@ belongs to unfinished renderer work, open a follow-up idea, expected as idea
   structured path and any intentionally retained string compatibility boundary.
 - Any blocker that belongs to unfinished x86/MIR renderer recovery is recorded
   as a separate follow-up idea rather than absorbed into this cleanup.
+
+## Closure Notes
+
+- Inventory, link-id threading, mismatch validation, pointer/global initializer
+  identity propagation, and retained string-boundary documentation were
+  completed under the active runbook.
+- Step 5 recorded broader backend proof with
+  `ctest --test-dir build-x86 -j --output-on-failure -R '^backend_'`.
+- Close-time regression guard compared matching backend logs with
+  `--allow-non-decreasing-passed`: 122/122 before and 122/122 after.
+- No x86/MIR renderer blocker was identified that needed to be absorbed into
+  this cleanup.
