@@ -38,6 +38,11 @@ int fail(const char* message) {
   return 1;
 }
 
+c4c::FunctionNameId find_function_name_id(const prepare::PreparedBirModule& prepared,
+                                          std::string_view function_name) {
+  return prepared.names.function_names.find(function_name);
+}
+
 std::string minimal_i32_return_register() {
   const auto abi =
       c4c::backend::lir_to_bir_detail::compute_function_return_abi(x86_target_profile(),
@@ -63,29 +68,29 @@ std::string expected_minimal_multi_defined_direct_call_lane_asm() {
   return asm_header("foo") + "    ret\n" +
          asm_header("actual_function") + "    mov " + minimal_i32_return_register() +
          ", 42\n    ret\n" +
-         asm_header("main") + "    sub rsp, 24\n"
+         asm_header("main") + "    sub rsp, 16\n"
          "    xor eax, eax\n"
          "    call actual_function\n"
          "    mov r11d, eax\n"
-         "    mov DWORD PTR [rsp + 16], r11d\n"
-         "    mov eax, DWORD PTR [rsp + 16]\n"
+         "    mov DWORD PTR [rsp], r11d\n"
+         "    mov r11d, DWORD PTR [rsp]\n"
          "    lea rdi, [rip + .L.str0]\n"
-         "    mov esi, eax\n"
+         "    mov esi, r11d\n"
          "    xor eax, eax\n"
          "    call printf\n"
          "    mov DWORD PTR [rsp + 8], eax\n"
          "    xor eax, eax\n"
          "    call actual_function\n"
          "    mov r11d, eax\n"
-         "    mov DWORD PTR [rsp + 20], r11d\n"
-         "    mov eax, DWORD PTR [rsp + 20]\n"
+         "    mov DWORD PTR [rsp + 4], r11d\n"
+         "    mov r11d, DWORD PTR [rsp + 4]\n"
          "    lea rdi, [rip + .L.str0]\n"
-         "    mov esi, eax\n"
+         "    mov esi, r11d\n"
          "    xor eax, eax\n"
          "    call printf\n"
          "    mov DWORD PTR [rsp + 12], eax\n"
          "    mov eax, 0\n"
-         "    add rsp, 24\n"
+         "    add rsp, 16\n"
          "    ret\n"
          ".section .rodata\n"
          ".L.str0:\n"
@@ -96,29 +101,95 @@ std::string expected_multi_defined_direct_call_lane_contract_drift_asm() {
   return asm_header("foo") + "    ret\n" +
          asm_header("actual_function") + "    mov " + minimal_i32_return_register() +
          ", 42\n    ret\n" +
-         asm_header("main") + "    sub rsp, 24\n"
+         asm_header("main") + "    sub rsp, 16\n"
          "    xor eax, eax\n"
          "    call actual_function\n"
          "    mov r10d, eax\n"
-         "    mov DWORD PTR [rsp + 16], r10d\n"
-         "    mov eax, DWORD PTR [rsp + 16]\n"
+         "    mov DWORD PTR [rsp], r10d\n"
+         "    mov r11d, DWORD PTR [rsp]\n"
          "    lea rdi, [rip + .L.str0]\n"
-         "    mov edx, eax\n"
+         "    mov edx, r11d\n"
          "    xor eax, eax\n"
          "    call printf\n"
          "    mov DWORD PTR [rsp + 8], eax\n"
          "    xor eax, eax\n"
          "    call actual_function\n"
          "    mov r11d, eax\n"
-         "    mov DWORD PTR [rsp + 20], r11d\n"
-         "    mov eax, DWORD PTR [rsp + 20]\n"
+         "    mov DWORD PTR [rsp + 4], r11d\n"
+         "    mov r11d, DWORD PTR [rsp + 4]\n"
          "    lea rdi, [rip + .L.str0]\n"
-         "    mov esi, eax\n"
+         "    mov esi, r11d\n"
          "    xor eax, eax\n"
          "    call printf\n"
          "    mov DWORD PTR [rsp + 12], eax\n"
          "    mov eax, 0\n"
-         "    add rsp, 24\n"
+         "    add rsp, 16\n"
+         "    ret\n"
+         ".section .rodata\n"
+         ".L.str0:\n"
+         "    .asciz \"%i\\n\"\n";
+}
+
+std::string expected_multi_defined_direct_call_lane_frame_access_drift_asm() {
+  return asm_header("foo") + "    ret\n" +
+         asm_header("actual_function") + "    mov " + minimal_i32_return_register() +
+         ", 42\n    ret\n" +
+         asm_header("main") + "    sub rsp, 16\n"
+         "    xor eax, eax\n"
+         "    call actual_function\n"
+         "    mov r11d, eax\n"
+         "    mov DWORD PTR [rsp + 4], r11d\n"
+         "    mov r11d, DWORD PTR [rsp + 4]\n"
+         "    lea rdi, [rip + .L.str0]\n"
+         "    mov esi, r11d\n"
+         "    xor eax, eax\n"
+         "    call printf\n"
+         "    mov DWORD PTR [rsp + 8], eax\n"
+         "    xor eax, eax\n"
+         "    call actual_function\n"
+         "    mov r11d, eax\n"
+         "    mov DWORD PTR [rsp + 4], r11d\n"
+         "    mov r11d, DWORD PTR [rsp + 4]\n"
+         "    lea rdi, [rip + .L.str0]\n"
+         "    mov esi, r11d\n"
+         "    xor eax, eax\n"
+         "    call printf\n"
+         "    mov DWORD PTR [rsp + 12], eax\n"
+         "    mov eax, 0\n"
+         "    add rsp, 16\n"
+         "    ret\n"
+         ".section .rodata\n"
+         ".L.str0:\n"
+         "    .asciz \"%i\\n\"\n";
+}
+
+std::string expected_multi_defined_direct_call_lane_load_home_drift_asm() {
+  return asm_header("foo") + "    ret\n" +
+         asm_header("actual_function") + "    mov " + minimal_i32_return_register() +
+         ", 42\n    ret\n" +
+         asm_header("main") + "    sub rsp, 16\n"
+         "    xor eax, eax\n"
+         "    call actual_function\n"
+         "    mov r11d, eax\n"
+         "    mov DWORD PTR [rsp], r11d\n"
+         "    mov r10d, DWORD PTR [rsp]\n"
+         "    lea rdi, [rip + .L.str0]\n"
+         "    mov esi, r10d\n"
+         "    xor eax, eax\n"
+         "    call printf\n"
+         "    mov DWORD PTR [rsp + 8], eax\n"
+         "    xor eax, eax\n"
+         "    call actual_function\n"
+         "    mov r11d, eax\n"
+         "    mov DWORD PTR [rsp + 4], r11d\n"
+         "    mov r11d, DWORD PTR [rsp + 4]\n"
+         "    lea rdi, [rip + .L.str0]\n"
+         "    mov esi, r11d\n"
+         "    xor eax, eax\n"
+         "    call printf\n"
+         "    mov DWORD PTR [rsp + 12], eax\n"
+         "    mov eax, 0\n"
+         "    add rsp, 16\n"
          "    ret\n"
          ".section .rodata\n"
          ".L.str0:\n"
@@ -3090,6 +3161,33 @@ prepare::PreparedValueHome* find_mutable_prepared_value_home(
   return nullptr;
 }
 
+prepare::PreparedAddressingFunction* find_mutable_prepared_addressing_function(
+    prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto function_name_id = find_function_name_id(prepared, function_name);
+  if (function_name_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  for (auto& function_addressing : prepared.addressing.functions) {
+    if (function_addressing.function_name == function_name_id) {
+      return &function_addressing;
+    }
+  }
+  return nullptr;
+}
+
+prepare::PreparedMemoryAccess* find_mutable_prepared_memory_access(
+    prepare::PreparedAddressingFunction& function_addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index) {
+  for (auto& access : function_addressing.accesses) {
+    if (access.block_label == block_label && access.inst_index == instruction_index) {
+      return &access;
+    }
+  }
+  return nullptr;
+}
+
 prepare::PreparedMoveBundle* find_mutable_prepared_move_bundle(
     prepare::PreparedValueLocationFunction& function_locations,
     prepare::PreparedMovePhase phase,
@@ -3327,6 +3425,81 @@ int check_route_requires_authoritative_prepared_before_call_bundle() {
   }
 
   return fail("bounded multi-defined call contract drift route: x86 prepared-module consumer reopened a local call-argument ABI fallback when the authoritative prepared BeforeCall bundle was removed");
+}
+
+int check_route_consumes_prepared_local_frame_access_contract() {
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(make_x86_multi_defined_direct_call_lane_module(),
+                                                        x86_target_profile());
+  auto* function_addressing = find_mutable_prepared_addressing_function(prepared, "main");
+  if (function_addressing == nullptr) {
+    return fail("bounded multi-defined call local-slot frame-access drift route: missing prepared addressing function");
+  }
+  const auto block_label = prepared.names.block_labels.find("entry");
+  if (block_label == c4c::kInvalidBlockLabel) {
+    return fail("bounded multi-defined call local-slot frame-access drift route: missing prepared entry block label");
+  }
+
+  auto* first_store = find_mutable_prepared_memory_access(*function_addressing, block_label, 1);
+  auto* first_load = find_mutable_prepared_memory_access(*function_addressing, block_label, 2);
+  const auto* second_store = prepare::find_prepared_memory_access(*function_addressing, block_label, 5);
+  const auto* second_load = prepare::find_prepared_memory_access(*function_addressing, block_label, 6);
+  if (first_store == nullptr || first_load == nullptr || second_store == nullptr ||
+      second_load == nullptr) {
+    return fail("bounded multi-defined call local-slot frame-access drift route: prepare no longer publishes the expected local-slot accesses");
+  }
+  first_store->address = second_store->address;
+  first_load->address = second_load->address;
+
+  std::string prepared_asm;
+  try {
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
+  } catch (const std::exception& ex) {
+    return fail((std::string("bounded multi-defined call local-slot frame-access drift route: x86 prepared-module consumer rejected the mutated prepared handoff with exception: ") +
+                 ex.what())
+                    .c_str());
+  }
+  if (prepared_asm != expected_multi_defined_direct_call_lane_frame_access_drift_asm()) {
+    return fail("bounded multi-defined call local-slot frame-access drift route: x86 prepared-module consumer stopped following authoritative prepared frame-slot accesses");
+  }
+
+  return 0;
+}
+
+int check_route_consumes_prepared_load_home_contract() {
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(make_x86_multi_defined_direct_call_lane_module(),
+                                                        x86_target_profile());
+  auto* function_locations =
+      find_mutable_prepared_value_location_function(prepared, "main");
+  if (function_locations == nullptr) {
+    return fail("bounded multi-defined call local-slot load-home drift route: missing prepared value-location function");
+  }
+
+  auto* first_loaded_home =
+      find_mutable_prepared_value_home(prepared, *function_locations, "%t3");
+  if (first_loaded_home == nullptr) {
+    return fail("bounded multi-defined call local-slot load-home drift route: missing first loaded value home");
+  }
+  first_loaded_home->kind = prepare::PreparedValueHomeKind::Register;
+  first_loaded_home->register_name = "r10";
+  first_loaded_home->slot_id.reset();
+  first_loaded_home->offset_bytes.reset();
+  first_loaded_home->immediate_i32.reset();
+
+  std::string prepared_asm;
+  try {
+    prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
+  } catch (const std::exception& ex) {
+    return fail((std::string("bounded multi-defined call local-slot load-home drift route: x86 prepared-module consumer rejected the mutated prepared handoff with exception: ") +
+                 ex.what())
+                    .c_str());
+  }
+  if (prepared_asm != expected_multi_defined_direct_call_lane_load_home_drift_asm()) {
+    return fail("bounded multi-defined call local-slot load-home drift route: x86 prepared-module consumer stopped following authoritative prepared load-result homes");
+  }
+
+  return 0;
 }
 
 int check_route_publishes_helper_same_module_byval_before_call_register_binding() {
@@ -4126,6 +4299,13 @@ int run_backend_x86_handoff_boundary_multi_defined_call_tests() {
   }
   if (const auto status = check_route_requires_authoritative_prepared_before_call_bundle();
       status != 0) {
+    return status;
+  }
+  if (const auto status = check_route_consumes_prepared_local_frame_access_contract();
+      status != 0) {
+    return status;
+  }
+  if (const auto status = check_route_consumes_prepared_load_home_contract(); status != 0) {
     return status;
   }
   if (const auto status =

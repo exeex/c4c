@@ -14,6 +14,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace c4c::backend::x86::module {
 
@@ -3220,6 +3221,407 @@ bool append_prepared_direct_extern_call_return_function(
   return true;
 }
 
+std::optional<std::string> render_prepared_local_slot_statement_memory_operand(
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    c4c::backend::bir::TypeKind type,
+    std::optional<c4c::ValueNameId> expected_result,
+    std::optional<c4c::ValueNameId> expected_stored_value);
+
+const c4c::backend::bir::Function* find_defined_same_module_function(
+    const c4c::backend::bir::Module& module,
+    std::string_view function_name) {
+  for (const auto& candidate : module.functions) {
+    if (!candidate.is_declaration && candidate.name == function_name) {
+      return &candidate;
+    }
+  }
+  return nullptr;
+}
+
+const c4c::backend::bir::StringConstant* find_string_constant(
+    const c4c::backend::bir::Module& module,
+    std::string_view string_name) {
+  for (const auto& constant : module.string_constants) {
+    if (constant.name == string_name) {
+      return &constant;
+    }
+  }
+  return nullptr;
+}
+
+void append_prepared_private_string_data(
+    c4c::backend::x86::core::Text& function_out,
+    const Data& data,
+    const std::vector<const c4c::backend::bir::StringConstant*>& constants) {
+  for (const auto* constant : constants) {
+    function_out.append_line(".section .rodata");
+    function_out.append_line(data.render_private_data_label(constant->name) + ":");
+    function_out.append_line("    .asciz \"" + escape_asm_string(constant->bytes) + "\"");
+  }
+}
+
+bool append_prepared_trivial_void_return_function(
+    c4c::backend::x86::core::Text& out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    const Data& data) {
+  if (function.return_type != c4c::backend::bir::TypeKind::Void ||
+      function.blocks.size() != 1 ||
+      !function.blocks.front().insts.empty() ||
+      function.blocks.front().terminator.kind !=
+          c4c::backend::bir::TerminatorKind::Return ||
+      function.blocks.front().terminator.value.has_value()) {
+    return false;
+  }
+
+  validate_prepared_control_flow_handoff(module, function);
+
+  const auto symbol_name = data.render_asm_symbol_name(function.name);
+  out.append_line(".globl " + symbol_name);
+  out.append_line(".type " + symbol_name + ", @function");
+  out.append_line(symbol_name + ":");
+  out.append_line("    ret");
+  return true;
+}
+
+bool append_prepared_symbol_call_local_i32_function(
+    c4c::backend::x86::core::Text& out,
+    const c4c::backend::prepare::PreparedBirModule& module,
+    const c4c::backend::bir::Function& function,
+    const Data& data) {
+  if (function.return_type != c4c::backend::bir::TypeKind::I32 ||
+      function.blocks.size() != 1) {
+    return false;
+  }
+  const auto& block = function.blocks.front();
+  if (block.terminator.kind != c4c::backend::bir::TerminatorKind::Return ||
+      !block.terminator.value.has_value() ||
+      block.terminator.value->kind != c4c::backend::bir::Value::Kind::Immediate ||
+      block.terminator.value->type != c4c::backend::bir::TypeKind::I32) {
+    return false;
+  }
+  if (std::none_of(block.insts.begin(), block.insts.end(), [](const auto& inst) {
+        return std::holds_alternative<c4c::backend::bir::StoreLocalInst>(inst) ||
+               std::holds_alternative<c4c::backend::bir::LoadLocalInst>(inst);
+      })) {
+    return false;
+  }
+
+  const auto function_name =
+      c4c::backend::prepare::resolve_prepared_function_name_id(module.names, function.name);
+  if (!function_name.has_value()) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has no prepared function id");
+  }
+  const auto consumed = c4c::backend::x86::consume_plans(module, *function_name);
+  if (consumed.calls == nullptr) {
+    return false;
+  }
+  const auto* function_locations = require_prepared_value_location_function(module, function);
+  const auto* addressing = c4c::backend::prepare::find_prepared_addressing(module, *function_name);
+  if (addressing == nullptr) {
+    return false;
+  }
+  const auto block_label = bir_block_label_id(module.module.names, module.names, block);
+  if (!block_label.has_value()) {
+    throw_prepared_control_flow_handoff_error("BIR block '" + block.label +
+                                              "' has no prepared block id");
+  }
+
+  const auto frame_adjust_bytes =
+      std::max(module.stack_layout.frame_size_bytes, addressing->frame_size_bytes);
+  if (frame_adjust_bytes == 0) {
+    return false;
+  }
+
+  const auto render_local_slot_memory =
+      [&](c4c::backend::bir::TypeKind type,
+          std::size_t instruction_index,
+          std::optional<c4c::ValueNameId> expected_result,
+          std::optional<c4c::ValueNameId> expected_stored_value) -> std::optional<std::string> {
+    return render_prepared_local_slot_statement_memory_operand(
+        module,
+        *addressing,
+        *block_label,
+        instruction_index,
+        type,
+        expected_result,
+        expected_stored_value);
+  };
+
+  bool saw_same_module_symbol_call = false;
+  std::unordered_map<std::string_view, std::string> loaded_i32_values;
+  std::vector<const c4c::backend::bir::StringConstant*> used_string_constants;
+  const auto remember_string_constant =
+      [&](const c4c::backend::bir::StringConstant& constant) {
+        if (std::find(used_string_constants.begin(),
+                      used_string_constants.end(),
+                      &constant) == used_string_constants.end()) {
+          used_string_constants.push_back(&constant);
+        }
+      };
+
+  const auto symbol_name = data.render_asm_symbol_name(function.name);
+  c4c::backend::x86::core::Text function_out;
+  function_out.append_line(".globl " + symbol_name);
+  function_out.append_line(".type " + symbol_name + ", @function");
+  function_out.append_line(symbol_name + ":");
+  function_out.append_line("    sub rsp, " + std::to_string(frame_adjust_bytes));
+
+  for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
+       ++instruction_index) {
+    if (const auto* call =
+            std::get_if<c4c::backend::bir::CallInst>(&block.insts[instruction_index])) {
+      if (call->return_type != c4c::backend::bir::TypeKind::I32 ||
+          !call->result.has_value() ||
+          call->result->kind != c4c::backend::bir::Value::Kind::Named ||
+          call->result->type != c4c::backend::bir::TypeKind::I32 ||
+          call->inline_asm.has_value() ||
+          call->sret_storage_name.has_value()) {
+        return false;
+      }
+
+      const auto* call_plan =
+          c4c::backend::x86::find_consumed_call_plan(consumed, 0, instruction_index);
+      if (call_plan == nullptr) {
+        return false;
+      }
+
+      if (call->is_indirect) {
+        if (!call->callee_value.has_value() ||
+            call->callee_value->kind != c4c::backend::bir::Value::Kind::Named ||
+            call->callee_value->type != c4c::backend::bir::TypeKind::Ptr ||
+            call->callee_value->name.empty() ||
+            call->callee_value->name.front() != '@' ||
+            call_plan->wrapper_kind != c4c::backend::prepare::PreparedCallWrapperKind::Indirect ||
+            !call_plan->is_indirect ||
+            !call_plan->indirect_callee.has_value()) {
+          return false;
+        }
+        const auto prepared_callee_value =
+            c4c::backend::prepare::resolve_prepared_value_name_id(module.names,
+                                                                  call->callee_value->name);
+        if (!prepared_callee_value.has_value() ||
+            call_plan->indirect_callee->value_name != *prepared_callee_value) {
+          throw_prepared_value_location_handoff_error(
+              "defined function '" + function.name +
+              "' same-module symbol call drifted from prepared indirect callee identity");
+        }
+        const std::string_view callee_symbol(call->callee_value->name.data() + 1,
+                                             call->callee_value->name.size() - 1);
+        if (find_defined_same_module_function(module.module, callee_symbol) == nullptr) {
+          return false;
+        }
+        saw_same_module_symbol_call = true;
+        function_out.append_line("    xor eax, eax");
+        function_out.append_line("    call " + data.render_asm_symbol_name(callee_symbol));
+      } else {
+        if ((call_plan->wrapper_kind !=
+                 c4c::backend::prepare::PreparedCallWrapperKind::DirectExternFixedArity &&
+             call_plan->wrapper_kind !=
+                 c4c::backend::prepare::PreparedCallWrapperKind::DirectExternVariadic) ||
+            !call_plan->direct_callee_name.has_value() ||
+            *call_plan->direct_callee_name != call->callee) {
+          return false;
+        }
+        const auto& before_call_bundle = require_prepared_call_bundle(
+            *function_locations,
+            function,
+            c4c::backend::prepare::PreparedMovePhase::BeforeCall,
+            0,
+            instruction_index);
+        for (std::size_t arg_index = 0; arg_index < call->args.size(); ++arg_index) {
+          const auto destination_register =
+              prepared_call_argument_register(before_call_bundle, arg_index);
+          if (!destination_register.has_value()) {
+            throw_prepared_value_location_handoff_error(
+                "defined function '" + function.name +
+                "' has no authoritative prepared call-bundle handoff");
+          }
+          const auto& argument = call->args[arg_index];
+          if (argument.kind == c4c::backend::bir::Value::Kind::Named &&
+              !argument.name.empty() && argument.name.front() == '@' &&
+              argument.type == c4c::backend::bir::TypeKind::Ptr) {
+            const std::string_view string_name(argument.name.data() + 1,
+                                               argument.name.size() - 1);
+            const auto* constant = find_string_constant(module.module, string_name);
+            if (constant == nullptr) {
+              return false;
+            }
+            remember_string_constant(*constant);
+          }
+          if (argument.kind == c4c::backend::bir::Value::Kind::Named &&
+              argument.type == c4c::backend::bir::TypeKind::I32) {
+            const auto loaded_value = loaded_i32_values.find(argument.name);
+            if (loaded_value != loaded_i32_values.end()) {
+              function_out.append_line("    mov " +
+                                       c4c::backend::x86::abi::narrow_i32_register_name(
+                                           *destination_register) +
+                                       ", " + loaded_value->second);
+            } else if (!append_prepared_direct_extern_call_argument(function_out,
+                                                                    module,
+                                                                    *function_locations,
+                                                                    function,
+                                                                    data,
+                                                                    argument,
+                                                                    *destination_register)) {
+              return false;
+            }
+          } else {
+            if (!append_prepared_direct_extern_call_argument(function_out,
+                                                            module,
+                                                            *function_locations,
+                                                            function,
+                                                            data,
+                                                            argument,
+                                                            *destination_register)) {
+              return false;
+            }
+          }
+        }
+        function_out.append_line("    xor eax, eax");
+        function_out.append_line("    call " + data.render_asm_symbol_name(call->callee));
+      }
+
+      const auto& result_home = require_prepared_i32_value_home(
+          module, *function_locations, function, call->result->name, "call result");
+      const auto& after_call_bundle = require_prepared_call_bundle(
+          *function_locations,
+          function,
+          c4c::backend::prepare::PreparedMovePhase::AfterCall,
+          0,
+          instruction_index);
+      const auto& result_move =
+          require_prepared_call_result_move(after_call_bundle, function, result_home);
+      std::string result_destination;
+      switch (result_home.kind) {
+        case c4c::backend::prepare::PreparedValueHomeKind::Register:
+          if (!result_home.register_name.has_value()) {
+            throw_prepared_value_location_handoff_error(
+                "defined function '" + function.name +
+                "' has a prepared call result register home without a register");
+          }
+          result_destination =
+              c4c::backend::x86::abi::narrow_i32_register_name(*result_home.register_name);
+          break;
+        case c4c::backend::prepare::PreparedValueHomeKind::StackSlot:
+          if (!result_home.offset_bytes.has_value()) {
+            throw_prepared_value_location_handoff_error(
+                "defined function '" + function.name +
+                "' has a prepared call result stack home without an offset");
+          }
+          result_destination = render_stack_memory_operand(*result_home.offset_bytes, "DWORD");
+          break;
+        case c4c::backend::prepare::PreparedValueHomeKind::None:
+        case c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate:
+        case c4c::backend::prepare::PreparedValueHomeKind::PointerBasePlusOffset:
+          throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                      "' has an unsupported prepared call result home");
+      }
+      function_out.append_line("    mov " + result_destination + ", " +
+                               c4c::backend::x86::abi::narrow_i32_register_name(
+                                   *result_move.destination_register_name));
+      continue;
+    }
+
+    if (const auto* store =
+            std::get_if<c4c::backend::bir::StoreLocalInst>(&block.insts[instruction_index])) {
+      if (store->value.kind != c4c::backend::bir::Value::Kind::Named ||
+          store->value.type != c4c::backend::bir::TypeKind::I32) {
+        return false;
+      }
+      const auto stored_value =
+          c4c::backend::prepare::resolve_prepared_value_name_id(module.names, store->value.name);
+      if (!stored_value.has_value()) {
+        throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                    "' local-slot store has no prepared value id");
+      }
+      const auto& source_home = require_prepared_i32_value_home(
+          module, *function_locations, function, store->value.name, "local-slot store value");
+      if (source_home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+          !source_home.register_name.has_value()) {
+        throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                    "' has an unsupported prepared local-slot store home");
+      }
+      const auto memory = render_local_slot_memory(store->value.type,
+                                                   instruction_index,
+                                                   std::nullopt,
+                                                   *stored_value);
+      if (!memory.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' local-slot store has no prepared frame-slot access");
+      }
+      function_out.append_line("    mov " + *memory + ", " +
+                               c4c::backend::x86::abi::narrow_i32_register_name(
+                                   *source_home.register_name));
+      continue;
+    }
+
+    if (const auto* load =
+            std::get_if<c4c::backend::bir::LoadLocalInst>(&block.insts[instruction_index])) {
+      if (load->result.kind != c4c::backend::bir::Value::Kind::Named ||
+          load->result.type != c4c::backend::bir::TypeKind::I32) {
+        return false;
+      }
+      const auto loaded_value =
+          c4c::backend::prepare::resolve_prepared_value_name_id(module.names, load->result.name);
+      if (!loaded_value.has_value()) {
+        throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                    "' local-slot load has no prepared value id");
+      }
+      const auto& load_home = require_prepared_i32_value_home(
+          module, *function_locations, function, load->result.name, "local-slot load result");
+      if (load_home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+          !load_home.register_name.has_value()) {
+        throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                    "' has an unsupported prepared local-slot load home");
+      }
+      const auto memory = render_local_slot_memory(load->result.type,
+                                                   instruction_index,
+                                                   *loaded_value,
+                                                   std::nullopt);
+      if (!memory.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' local-slot load has no prepared frame-slot access");
+      }
+      const auto load_register =
+          c4c::backend::x86::abi::narrow_i32_register_name(*load_home.register_name);
+      function_out.append_line("    mov " + load_register + ", " + *memory);
+      loaded_i32_values[load->result.name] = load_register;
+      continue;
+    }
+
+    return false;
+  }
+
+  if (!saw_same_module_symbol_call) {
+    return false;
+  }
+  if (!function.return_abi.has_value()) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has no prepared return ABI");
+  }
+  const auto return_register = c4c::backend::prepare::call_result_destination_register_name(
+      c4c::backend::x86::abi::resolve_target_profile(module), *function.return_abi);
+  if (!return_register.has_value()) {
+    throw_prepared_value_location_handoff_error("defined function '" + function.name +
+                                                "' has no prepared register return ABI destination");
+  }
+  function_out.append_line("    mov " +
+                           c4c::backend::x86::abi::narrow_i32_register_name(*return_register) +
+                           ", " + std::to_string(block.terminator.value->immediate));
+  function_out.append_line("    add rsp, " + std::to_string(frame_adjust_bytes));
+  function_out.append_line("    ret");
+  append_prepared_private_string_data(function_out, data, used_string_constants);
+  out.append_raw(function_out.take_text());
+  return true;
+}
+
 struct PreparedLocalSlotCompareLoad {
   const c4c::backend::bir::LoadLocalInst* load = nullptr;
   std::size_t instruction_index = 0;
@@ -5304,6 +5706,9 @@ bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
                                       const c4c::backend::prepare::PreparedBirModule& module,
                                       const c4c::backend::bir::Function& function,
                                       const Data& data) {
+  if (append_prepared_trivial_void_return_function(out, module, function, data)) {
+    return true;
+  }
   if (append_prepared_loop_join_countdown_function(out, module, function, data)) {
     return true;
   }
@@ -5336,6 +5741,9 @@ bool append_supported_scalar_function(c4c::backend::x86::core::Text& out,
     return true;
   }
   if (append_prepared_i32_same_module_global_sub_return_function(out, module, function, data)) {
+    return true;
+  }
+  if (append_prepared_symbol_call_local_i32_function(out, module, function, data)) {
     return true;
   }
   if (append_prepared_direct_extern_call_return_function(out, module, function, data)) {
@@ -5403,6 +5811,10 @@ std::string emit(const c4c::backend::prepare::PreparedBirModule& module) {
   for (const auto& function : module.module.functions) {
     if (function.is_declaration) {
       continue;
+    }
+    if (emitted_any_function) {
+      out.append_line(".intel_syntax noprefix");
+      out.append_line(".text");
     }
     emitted_any_function = true;
     if (!append_supported_scalar_function(out, module, function, data)) {
