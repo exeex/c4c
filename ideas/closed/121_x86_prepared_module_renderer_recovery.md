@@ -1,7 +1,8 @@
 # x86 Prepared Module Renderer Recovery
 
-Status: Open
+Status: Closed
 Created: 2026-04-26
+Closed: 2026-04-28
 
 Related Ideas:
 - [120_bir_raw_label_fallback_cleanup_after_assembler_id_path.md](/workspaces/c4c/ideas/open/120_bir_raw_label_fallback_cleanup_after_assembler_id_path.md)
@@ -55,3 +56,20 @@ not be silently absorbed into idea 120 or used as the means of proving
   remaining unsupported forms are recorded as explicit boundaries.
 - Any x86 handoff proof that later contributes to idea 120 consumes prepared
   label ids directly and rejects missing or drifted ids.
+
+## Closure Notes
+
+Closed after Step 5 completion review and backend regression guard.
+Supported x86 prepared-module scalar and control-flow routes are recorded in
+the active lifecycle notes and tests; unsupported forms remain explicit
+contract-first boundaries rather than hidden skips. Prepared control-flow
+handoff now consumes authoritative prepared label/branch/join/parallel-copy
+identity and rejects missing or drifted metadata.
+
+Closure evidence:
+- `review/step5_completion_readiness_review.md` judged the plan on track, the
+  source idea matched, and testcase-overfit risk low.
+- `test_after.log` recorded the delegated Step 5 backend proof passing
+  122/122 tests for `^backend_`.
+- Close-time regression guard compared canonical `test_before.log` and
+  `test_after.log`, improving from 110/122 to 122/122 with no new failures.
