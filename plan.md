@@ -27,6 +27,7 @@ general semantic lowering and nearby same-feature coverage.
 - `review/step5_x86_handoff_dirty_slice_review.md`
 - `review/step4_current_x86_control_flow_route_review.md`
 - `review/step3_accumulated_scalar_local_slot_route_review.md`
+- `review/step3_accumulated_local_slot_renderer_review.md`
 - `src/backend/mir/x86/module/module.cpp`
 - Existing x86 prepared-module, handoff, and backend codegen tests.
 - Current MIR, prepared-module, and target-specific x86 backend interfaces.
@@ -81,11 +82,18 @@ general semantic lowering and nearby same-feature coverage.
   output matching as route drift.
 - Stop the accumulated Step 3 local-slot route before further renderer growth:
   split Step 4 short-circuit/control-flow work away from scalar local-slot
-  work, then either retire the sequence-shaped scalar helpers or replace them
-  with a generalized prepared local-slot expression/statement renderer.
+  work, then either retire the boundary-specific scalar helper chain or
+  replace it with a reusable prepared local-slot expression/statement renderer.
 - Do not add another exact-sequence scalar helper for the red
-  `minimal local-slot add-chain guard route`; instruction counts, hard-coded
-  instruction indexes, and fixture-shaped dispatch are blockers here.
+  `minimal local-slot add-chain guard route` or the current
+  `minimal local-slot i16/i64 subtract return route`; instruction counts,
+  hard-coded instruction indexes, and fixture-shaped dispatch are blockers
+  here.
+- Treat the i16 widened arithmetic register-home mismatch identified in
+  `review/step3_accumulated_local_slot_renderer_review.md` as a Step 3
+  authority bug: emitted registers and memory operands must match prepared
+  value homes and prepared memory accesses, not only prove that some home
+  exists.
 - Escalate to broader backend validation before the source idea is considered
   complete, because this path affects target codegen and prepared control flow.
 
@@ -145,10 +153,12 @@ Completion check:
   expose real renderer behavior instead of stale interface failures, and any
   remaining unsupported forms are named boundaries rather than hidden skips.
 
-### Step 3: Reset The Accumulated Scalar Local-Slot Route
+### Step 3: Consolidate The Prepared Local-Slot Renderer Route
 
-Goal: stop the broad, sequence-shaped Step 3 route and recover scalar
-local-slot work only through a generalized prepared renderer model.
+Goal: stop the accumulated Step 3 helper chain and recover scalar local-slot
+work only through a reusable prepared expression/statement renderer, or park
+unsupported subtract-return boundaries before another boundary-specific helper
+is added.
 
 Primary targets:
 - x86 prepared-module renderer helpers in `src/backend/mir/x86/module/`.
@@ -159,23 +169,30 @@ Primary targets:
 - Nearby same-feature scalar tests.
 
 Concrete actions:
-- First split or retire the current dirty implementation before adding any new
-  scalar renderer support:
+- First split or retire the accumulated helper chain before adding any new
+  scalar boundary:
   - keep Step 4 short-circuit/control-flow authority assertions and helpers out
     of the Step 3 scalar packet;
-  - keep any already-valid i16/i64 subtract-return scalar work separate from
-    the next add-chain/guard-lane problem;
-  - remove or park helpers whose primary selection rule is exact instruction
-    count, fixed instruction indexes, or fixture topology.
-- If scalar local-slot support continues, define one generalized prepared
-  local-slot expression/statement renderer before touching the red add-chain
-  case:
+  - keep the already-green local-slot return, i32 guard, and i16 increment
+    guard evidence as regression constraints, not as justification for another
+    helper;
+  - park the current `minimal local-slot i16/i64 subtract return route` as an
+    explicit unsupported boundary unless it can be handled by the reusable
+    prepared local-slot renderer in this step;
+  - remove, merge, or retire helpers whose primary selection rule is current
+    red-boundary shape instead of prepared statement/expression semantics.
+- If scalar local-slot support continues, define one reusable prepared
+  local-slot expression/statement renderer before touching any new red
+  boundary:
   - consume prepared frame-slot ids, prepared memory accesses, prepared value
     homes, typed scalar operations, return moves, and branch conditions through
     their semantic records;
   - render stores, loads, casts, binary expressions, statement sequencing,
     returns, and branch predicates from those records rather than from a known
     testcase sequence;
+  - validate emitted register names, memory operands, widths, and access
+    authorities against the prepared records, including widened i16 arithmetic
+    homes whose prepared register must match the emitted register;
   - support only the scalar widths and operations that the current backend can
     prove semantically, and record explicit unsupported boundaries for the rest.
 - Add required negative coverage with the generalized route:
@@ -183,9 +200,12 @@ Concrete actions:
   - missing or drifted frame-slot id and wrong access size;
   - divergent load/store access authority;
   - missing value homes for store, load, cast, binary, and return carriers;
+  - prepared register-home drift for widened arithmetic results and return
+    carriers;
   - return source/destination drift;
   - branch-condition missing or drifted identity for guard-lane expressions.
 - Do not claim progress by making only the red
+  `minimal local-slot i16/i64 subtract return route` or
   `minimal local-slot add-chain guard route` pass; nearby add/sub guard-lane
   and return cases must prove the same semantic renderer path.
 - Keep raw label and Step 4 control-flow authority work out of this step unless
@@ -194,10 +214,12 @@ Concrete actions:
 Completion check:
 - The dirty implementation has been split or retired so Step 3 contains only a
   coherent scalar local-slot route; the remaining scalar route is generalized
-  over prepared local-slot expression/statement records, includes the required
-  negative coverage, and the delegated x86 handoff subset is green. If this
-  cannot be achieved without exact-sequence dispatch, record the unsupported
-  boundary and stop for plan review instead of adding another helper chain.
+  over prepared local-slot expression/statement records, validates emitted
+  operands against prepared homes/accesses, includes the required negative
+  coverage, and the delegated x86 handoff subset is green. If this cannot be
+  achieved without boundary-specific dispatch, record the subtract-return
+  boundary as unsupported and stop for plan review instead of adding another
+  helper chain.
 
 ### Step 4: Recover Prepared Control-Flow Rendering Semantics
 
