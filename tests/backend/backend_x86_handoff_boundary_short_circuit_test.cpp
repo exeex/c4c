@@ -2015,6 +2015,112 @@ int check_short_circuit_edge_store_slot_route_requires_authoritative_rhs_prepare
       module, function_name, failure_context, true);
 }
 
+int check_short_circuit_route_rejects_missing_authoritative_rhs_prepared_branch_condition_impl(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context,
+    bool use_edge_store_slot_carrier) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 3 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the short-circuit continuation branch contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* join_block = find_block(function, "logic.end.10");
+  auto* rhs_block = find_block(function, "logic.rhs.7");
+  if (join_block == nullptr || rhs_block == nullptr || join_block->insts.size() < 2) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer has the expected rhs/join shape")
+                    .c_str());
+  }
+
+  auto* join_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
+    for (auto& branch_condition : control_flow->branch_conditions) {
+      if (block_label(prepared, branch_condition.block_label) == join_block->label) {
+        return &branch_condition;
+      }
+    }
+    return nullptr;
+  }();
+  auto* rhs_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
+    for (auto& branch_condition : control_flow->branch_conditions) {
+      if (block_label(prepared, branch_condition.block_label) == rhs_block->label) {
+        return &branch_condition;
+      }
+    }
+    return nullptr;
+  }();
+  if (join_branch_condition == nullptr || rhs_branch_condition == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes the expected rhs/join branch metadata")
+                    .c_str());
+  }
+
+  if (use_edge_store_slot_carrier) {
+    if (const auto status = convert_short_circuit_join_to_edge_store_slot(
+            prepared, *control_flow, function, *join_block, *join_branch_condition, failure_context);
+        status != 0) {
+      return status;
+    }
+  }
+
+  const auto original_branch_condition_count = control_flow->branch_conditions.size();
+  control_flow->branch_conditions.erase(
+      std::remove_if(control_flow->branch_conditions.begin(),
+                     control_flow->branch_conditions.end(),
+                     [&](const prepare::PreparedBranchCondition& branch_condition) {
+                       return block_label(prepared, branch_condition.block_label) ==
+                              rhs_block->label;
+                     }),
+      control_flow->branch_conditions.end());
+  const auto removed_count =
+      original_branch_condition_count - control_flow->branch_conditions.size();
+  if (removed_count != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes exactly one authoritative rhs branch record")
+                    .c_str());
+  }
+
+  try {
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted a missing rhs prepared branch record")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the missing rhs prepared branch record with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
+int check_short_circuit_route_rejects_missing_authoritative_rhs_prepared_branch_condition(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_short_circuit_route_rejects_missing_authoritative_rhs_prepared_branch_condition_impl(
+      module, function_name, failure_context, false);
+}
+
+int check_short_circuit_edge_store_slot_route_rejects_missing_authoritative_rhs_prepared_branch_condition(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_short_circuit_route_rejects_missing_authoritative_rhs_prepared_branch_condition_impl(
+      module, function_name, failure_context, true);
+}
+
 int check_short_circuit_route_requires_authoritative_entry_prepared_branch_condition_impl(
     const bir::Module& module,
     const char* function_name,
@@ -2158,6 +2264,112 @@ int check_short_circuit_edge_store_slot_route_requires_authoritative_entry_prepa
     const char* function_name,
     const char* failure_context) {
   return check_short_circuit_route_requires_authoritative_entry_prepared_branch_condition_impl(
+      module, function_name, failure_context, true);
+}
+
+int check_short_circuit_route_rejects_missing_authoritative_entry_prepared_branch_condition_impl(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context,
+    bool use_edge_store_slot_carrier) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 3 ||
+      control_flow->join_transfers.size() != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the short-circuit entry-branch contract")
+                    .c_str());
+  }
+
+  auto& function = prepared.module.functions.front();
+  auto* entry_block = find_block(function, "entry");
+  auto* join_block = find_block(function, "logic.end.10");
+  if (entry_block == nullptr || join_block == nullptr || join_block->insts.size() < 2) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer has the expected entry/join shape")
+                    .c_str());
+  }
+
+  auto* entry_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
+    for (auto& branch_condition : control_flow->branch_conditions) {
+      if (block_label(prepared, branch_condition.block_label) == entry_block->label) {
+        return &branch_condition;
+      }
+    }
+    return nullptr;
+  }();
+  auto* join_branch_condition = [&]() -> prepare::PreparedBranchCondition* {
+    for (auto& branch_condition : control_flow->branch_conditions) {
+      if (block_label(prepared, branch_condition.block_label) == join_block->label) {
+        return &branch_condition;
+      }
+    }
+    return nullptr;
+  }();
+  if (entry_branch_condition == nullptr || join_branch_condition == nullptr) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes the expected entry/join branch metadata")
+                    .c_str());
+  }
+
+  if (use_edge_store_slot_carrier) {
+    if (const auto status = convert_short_circuit_join_to_edge_store_slot(
+            prepared, *control_flow, function, *join_block, *join_branch_condition, failure_context);
+        status != 0) {
+      return status;
+    }
+  }
+
+  const auto original_branch_condition_count = control_flow->branch_conditions.size();
+  control_flow->branch_conditions.erase(
+      std::remove_if(control_flow->branch_conditions.begin(),
+                     control_flow->branch_conditions.end(),
+                     [&](const prepare::PreparedBranchCondition& branch_condition) {
+                       return block_label(prepared, branch_condition.block_label) ==
+                              entry_block->label;
+                     }),
+      control_flow->branch_conditions.end());
+  const auto removed_count =
+      original_branch_condition_count - control_flow->branch_conditions.size();
+  if (removed_count != 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared short-circuit fixture no longer exposes exactly one authoritative entry branch record")
+                    .c_str());
+  }
+
+  try {
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted a missing entry prepared branch record")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the missing entry prepared branch record with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
+int check_short_circuit_route_rejects_missing_authoritative_entry_prepared_branch_condition(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_short_circuit_route_rejects_missing_authoritative_entry_prepared_branch_condition_impl(
+      module, function_name, failure_context, false);
+}
+
+int check_short_circuit_edge_store_slot_route_rejects_missing_authoritative_entry_prepared_branch_condition(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  return check_short_circuit_route_rejects_missing_authoritative_entry_prepared_branch_condition_impl(
       module, function_name, failure_context, true);
 }
 
@@ -3062,10 +3274,26 @@ int run_backend_x86_handoff_boundary_short_circuit_tests() {
     return status;
   }
   if (const auto status =
+          check_short_circuit_route_rejects_missing_authoritative_rhs_prepared_branch_condition(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit route rejects a missing rhs prepared branch record instead of falling back to the raw rhs compare");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_short_circuit_route_requires_authoritative_entry_prepared_branch_condition(
               make_x86_local_i32_short_circuit_or_guard_module(),
               "main",
               "minimal local-slot short-circuit route rejects a drifted authoritative entry prepared branch contract instead of falling back to the plain conditional lane");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_short_circuit_route_rejects_missing_authoritative_entry_prepared_branch_condition(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit route rejects a missing authoritative entry prepared branch record instead of falling back to the plain conditional lane");
       status != 0) {
     return status;
   }
@@ -3198,10 +3426,26 @@ int run_backend_x86_handoff_boundary_short_circuit_tests() {
     return status;
   }
   if (const auto status =
+          check_short_circuit_edge_store_slot_route_rejects_missing_authoritative_rhs_prepared_branch_condition(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit EdgeStoreSlot route rejects a missing rhs prepared branch record instead of falling back to the raw rhs compare");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
           check_short_circuit_edge_store_slot_route_requires_authoritative_entry_prepared_branch_condition(
               make_x86_local_i32_short_circuit_or_guard_module(),
               "main",
               "minimal local-slot short-circuit EdgeStoreSlot route rejects a drifted authoritative entry prepared branch contract instead of falling back to the plain conditional lane");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_short_circuit_edge_store_slot_route_rejects_missing_authoritative_entry_prepared_branch_condition(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit EdgeStoreSlot route rejects a missing authoritative entry prepared branch record instead of falling back to the plain conditional lane");
       status != 0) {
     return status;
   }

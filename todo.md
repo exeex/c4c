@@ -8,26 +8,24 @@ Current Step Title: Recover Prepared Control-Flow Rendering Semantics
 
 ## Just Finished
 
-Step 4 extended direct missing prepared branch-record negatives to the nearby
-same-feature guard-chain routes that already had drifted-label checks. The
-same-module global, same-module global store, and pointer-backed same-module
-global guard-chain variants now reject removed authoritative prepared branch
-metadata instead of recovering from raw guard-chain topology.
+Step 4 added direct short-circuit route-level negatives for missing
+authoritative prepared branch-condition records. The PhiEdge and EdgeStoreSlot
+short-circuit routes now reject removed entry branch records and removed
+rhs/continuation branch records instead of recovering from raw block topology.
 
 ## Suggested Next
 
-Supervisor should review this focused Step 4 same-feature guard-chain
-missing-metadata extension for acceptance. The next coherent packet is either a
-reviewer pass for remaining control-flow route drift or another prepared
-control-flow form that still lacks direct missing/drifted identity coverage.
+Supervisor should review this focused Step 4 short-circuit missing-metadata
+extension for acceptance. The next coherent packet is either a reviewer pass for
+remaining control-flow route drift or another prepared control-flow form that
+still lacks direct missing/drifted identity coverage.
 
 ## Watchouts
 
-This slice did not change renderer behavior. The reusable missing-record helper
-now accepts one-branch fixtures so the store variant can use the same negative;
-the record-removal assertion still requires exactly one authoritative prepared
-branch record to be removed. This packet did not resume helper-prefix/local-byval
-renderer work.
+This slice did not change renderer behavior. The new short-circuit negatives
+assert that exactly one authoritative entry or rhs prepared branch record is
+removed before expecting canonical handoff rejection. This packet did not resume
+helper-prefix/local-byval renderer work.
 
 ## Proof
 
