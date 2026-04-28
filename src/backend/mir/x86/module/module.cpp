@@ -53,6 +53,26 @@ std::string render_stack_memory_operand(std::size_t byte_offset, std::string_vie
   return std::string(size_name) + " PTR [rsp + " + std::to_string(byte_offset) + "]";
 }
 
+std::string narrow_i16_register_name(std::string_view wide_register) {
+  if (wide_register == "rax" || wide_register == "eax") return "ax";
+  if (wide_register == "rbx" || wide_register == "ebx") return "bx";
+  if (wide_register == "rcx" || wide_register == "ecx") return "cx";
+  if (wide_register == "rdx" || wide_register == "edx") return "dx";
+  if (wide_register == "rdi" || wide_register == "edi") return "di";
+  if (wide_register == "rsi" || wide_register == "esi") return "si";
+  if (wide_register == "rbp" || wide_register == "ebp") return "bp";
+  if (wide_register == "rsp" || wide_register == "esp") return "sp";
+  if (wide_register == "r8" || wide_register == "r8d") return "r8w";
+  if (wide_register == "r9" || wide_register == "r9d") return "r9w";
+  if (wide_register == "r10" || wide_register == "r10d") return "r10w";
+  if (wide_register == "r11" || wide_register == "r11d") return "r11w";
+  if (wide_register == "r12" || wide_register == "r12d") return "r12w";
+  if (wide_register == "r13" || wide_register == "r13d") return "r13w";
+  if (wide_register == "r14" || wide_register == "r14d") return "r14w";
+  if (wide_register == "r15" || wide_register == "r15d") return "r15w";
+  return std::string(wide_register);
+}
+
 std::size_t normalize_x86_local_frame_adjust(std::size_t prepared_frame_size_bytes) {
   if (prepared_frame_size_bytes == 0) {
     return 0;
@@ -2875,6 +2895,13 @@ std::optional<std::string> render_prepared_frame_slot_memory_operand(
       return render_stack_memory_operand(
           frame_slot->offset_bytes + static_cast<std::size_t>(access->address.byte_offset),
           "BYTE");
+    case c4c::backend::bir::TypeKind::I16:
+      if (access->address.size_bytes != 0 && access->address.size_bytes != 2) {
+        return std::nullopt;
+      }
+      return render_stack_memory_operand(
+          frame_slot->offset_bytes + static_cast<std::size_t>(access->address.byte_offset),
+          "WORD");
     case c4c::backend::bir::TypeKind::I32:
       if (access->address.size_bytes != 4) {
         return std::nullopt;
@@ -2949,6 +2976,55 @@ std::optional<PreparedLocalSlotCompareLoad> find_prepared_local_slot_compare_loa
         .frame_slot_id = *access->address.frame_slot_id,
         .memory_operand = *memory,
     };
+  }
+  for (std::size_t cast_index = 0; cast_index < block.insts.size(); ++cast_index) {
+    const auto* cast = std::get_if<c4c::backend::bir::CastInst>(&block.insts[cast_index]);
+    if (cast == nullptr ||
+        cast->opcode != c4c::backend::bir::CastOpcode::SExt ||
+        cast->result.kind != c4c::backend::bir::Value::Kind::Named ||
+        cast->result.name != *loaded_value_name ||
+        cast->result.type != *branch_condition.compare_type ||
+        cast->operand.kind != c4c::backend::bir::Value::Kind::Named ||
+        cast->operand.type != c4c::backend::bir::TypeKind::I16) {
+      continue;
+    }
+    for (std::size_t load_index = 0; load_index < cast_index; ++load_index) {
+      const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&block.insts[load_index]);
+      if (load == nullptr ||
+          load->result.kind != c4c::backend::bir::Value::Kind::Named ||
+          load->result.name != cast->operand.name ||
+          load->result.type != c4c::backend::bir::TypeKind::I16) {
+        continue;
+      }
+      const auto prepared_value_name =
+          c4c::backend::prepare::resolve_prepared_value_name_id(module.names, load->result.name);
+      if (!prepared_value_name.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' short-circuit compare load has no prepared value id");
+      }
+      const auto* access =
+          c4c::backend::prepare::find_prepared_memory_access(addressing, block_label, load_index);
+      const auto memory =
+          render_prepared_local_slot_statement_memory_operand(module,
+                                                              addressing,
+                                                              block_label,
+                                                              load_index,
+                                                              load->result.type,
+                                                              *prepared_value_name,
+                                                              std::nullopt);
+      if (!memory.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' short-circuit compare load has no prepared frame-slot access");
+      }
+      return PreparedLocalSlotCompareLoad{
+          .load = load,
+          .instruction_index = load_index,
+          .frame_slot_id = *access->address.frame_slot_id,
+          .memory_operand = *memory,
+      };
+    }
   }
   return std::nullopt;
 }
@@ -3277,36 +3353,161 @@ bool append_prepared_local_slot_immediate_guard_function(
 
   const auto entry_type = compare_load->load->result.type;
   bool saw_store = false;
+  std::unordered_map<std::string_view, std::string> scalar_registers;
   for (std::size_t index = 0; index < compare_load->instruction_index; ++index) {
-    const auto* store =
-        std::get_if<c4c::backend::bir::StoreLocalInst>(&guard_block->insts[index]);
-    if (store == nullptr ||
-        store->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
-        store->value.type != entry_type) {
+    if (const auto* store =
+            std::get_if<c4c::backend::bir::StoreLocalInst>(&guard_block->insts[index])) {
+      std::optional<c4c::ValueNameId> stored_value;
+      if (store->value.kind == c4c::backend::bir::Value::Kind::Named) {
+        stored_value =
+            c4c::backend::prepare::resolve_prepared_value_name_id(module.names, store->value.name);
+        if (!stored_value.has_value()) {
+          throw_prepared_value_location_handoff_error(
+              "defined function '" + function.name + "' local-slot guard store has no prepared value id");
+        }
+      }
+      if (store->value.type != entry_type ||
+          (store->value.kind != c4c::backend::bir::Value::Kind::Immediate &&
+           store->value.kind != c4c::backend::bir::Value::Kind::Named)) {
+        return false;
+      }
+      const auto store_memory =
+          render_prepared_local_slot_statement_memory_operand(module,
+                                                              *addressing,
+                                                              guard_label,
+                                                              index,
+                                                              entry_type,
+                                                              std::nullopt,
+                                                              stored_value);
+      if (!store_memory.has_value() || *store_memory != compare_load->memory_operand) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' local-slot guard store drifted from prepared frame-slot access");
+      }
+      saw_store = true;
+      if (store->value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+        function_out.append_line("    mov " + *store_memory + ", " +
+                                 std::to_string(store->value.immediate));
+      } else {
+        const auto stored_register = scalar_registers.find(store->value.name);
+        if (stored_register == scalar_registers.end()) {
+          return false;
+        }
+        function_out.append_line("    mov " + *store_memory + ", " +
+                                 narrow_i16_register_name(stored_register->second));
+      }
+      continue;
+    }
+
+    if (const auto* load =
+            std::get_if<c4c::backend::bir::LoadLocalInst>(&guard_block->insts[index])) {
+      if (load->result.kind != c4c::backend::bir::Value::Kind::Named ||
+          load->result.type != c4c::backend::bir::TypeKind::I16 ||
+          entry_type != c4c::backend::bir::TypeKind::I16) {
+        return false;
+      }
+      const auto prepared_value_name =
+          c4c::backend::prepare::resolve_prepared_value_name_id(module.names, load->result.name);
+      if (!prepared_value_name.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name + "' local-slot guard load has no prepared value id");
+      }
+      const auto load_memory =
+          render_prepared_local_slot_statement_memory_operand(module,
+                                                              *addressing,
+                                                              guard_label,
+                                                              index,
+                                                              load->result.type,
+                                                              *prepared_value_name,
+                                                              std::nullopt);
+      if (!load_memory.has_value() || *load_memory != compare_load->memory_operand) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name +
+            "' local-slot guard load drifted from prepared frame-slot access");
+      }
+      function_out.append_line("    movsx eax, " + *load_memory);
+      scalar_registers[load->result.name] = "eax";
+      continue;
+    }
+
+    if (const auto* cast =
+            std::get_if<c4c::backend::bir::CastInst>(&guard_block->insts[index])) {
+      if (entry_type != c4c::backend::bir::TypeKind::I16 ||
+          cast->result.kind != c4c::backend::bir::Value::Kind::Named ||
+          cast->operand.kind != c4c::backend::bir::Value::Kind::Named) {
+        return false;
+      }
+      const auto source_register = scalar_registers.find(cast->operand.name);
+      if (source_register == scalar_registers.end()) {
+        return false;
+      }
+      if (cast->opcode == c4c::backend::bir::CastOpcode::SExt &&
+          cast->operand.type == c4c::backend::bir::TypeKind::I16 &&
+          cast->result.type == c4c::backend::bir::TypeKind::I32) {
+        (void)require_prepared_i32_value_home(module,
+                                              *function_locations,
+                                              function,
+                                              cast->result.name,
+                                              "local-slot guard sext result value");
+        scalar_registers[cast->result.name] = source_register->second;
+        continue;
+      }
+      if (cast->opcode == c4c::backend::bir::CastOpcode::Trunc &&
+          cast->operand.type == c4c::backend::bir::TypeKind::I32 &&
+          cast->result.type == c4c::backend::bir::TypeKind::I16) {
+        scalar_registers[cast->result.name] = source_register->second;
+        continue;
+      }
       return false;
     }
-    const auto store_memory =
-        render_prepared_local_slot_statement_memory_operand(module,
-                                                            *addressing,
-                                                            guard_label,
-                                                            index,
-                                                            entry_type,
-                                                            std::nullopt,
-                                                            std::nullopt);
-    if (!store_memory.has_value() || *store_memory != compare_load->memory_operand) {
-      throw_prepared_value_location_handoff_error(
-          "defined function '" + function.name +
-          "' local-slot guard store drifted from prepared frame-slot access");
+
+    if (const auto* binary =
+            std::get_if<c4c::backend::bir::BinaryInst>(&guard_block->insts[index])) {
+      if (entry_type != c4c::backend::bir::TypeKind::I16 ||
+          binary->operand_type != c4c::backend::bir::TypeKind::I32 ||
+          binary->result.kind != c4c::backend::bir::Value::Kind::Named ||
+          binary->result.type != c4c::backend::bir::TypeKind::I32 ||
+          binary->lhs.kind != c4c::backend::bir::Value::Kind::Named ||
+          binary->rhs.kind != c4c::backend::bir::Value::Kind::Immediate ||
+          binary->rhs.type != c4c::backend::bir::TypeKind::I32) {
+        return false;
+      }
+      const auto mnemonic = supported_i32_binary_immediate_mnemonic(binary->opcode);
+      if (!mnemonic.has_value()) {
+        return false;
+      }
+      const auto source_register = scalar_registers.find(binary->lhs.name);
+      if (source_register == scalar_registers.end()) {
+        return false;
+      }
+      const auto& result_home = require_prepared_i32_value_home(
+          module, *function_locations, function, binary->result.name, "local-slot guard binary result value");
+      if (result_home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+          !result_home.register_name.has_value()) {
+        throw_prepared_value_location_handoff_error(
+            "defined function '" + function.name + "' has an unsupported prepared local-slot guard binary home");
+      }
+      const auto result_register = std::string("eax");
+      if (result_register != source_register->second) {
+        function_out.append_line("    mov " + result_register + ", " + source_register->second);
+      }
+      function_out.append_line("    " + std::string(*mnemonic) + " " + result_register + ", " +
+                               std::to_string(binary->rhs.immediate));
+      scalar_registers[binary->result.name] = result_register;
+      continue;
     }
-    saw_store = true;
-    function_out.append_line("    mov " + *store_memory + ", " +
-                             std::to_string(store->value.immediate));
+
+    return false;
   }
   if (!saw_store) {
     return false;
   }
 
-  function_out.append_line("    mov eax, " + compare_load->memory_operand);
+  if (entry_type == c4c::backend::bir::TypeKind::I16) {
+    function_out.append_line("    movsx eax, " + compare_load->memory_operand);
+  } else {
+    function_out.append_line("    mov eax, " + compare_load->memory_operand);
+  }
   function_out.append_line("    cmp eax, " + std::to_string(*immediate));
 
   const auto jump_on_equal =
