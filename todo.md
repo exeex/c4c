@@ -8,20 +8,22 @@ Current Step Title: Carry Structured Identity Through LIR-To-BIR
 
 ## Just Finished
 
-Completed the first Step 3 packet by threading the LIR-to-BIR global table into
-dynamic global scalar-array materialization. The generated `LoadGlobalInst`
-entries now set `global_name_id` from the structured global identity when that
-identity is available, while genuinely missing table entries still produce the
-existing invalid-id boundary. Focused coverage proves dynamic scalar-array
-loads keep the semantic `LinkNameId` even when the LIR global display spelling
-has drifted.
+Completed the next Step 3 packet by threading structured global/function
+identity into BIR pointer initializer symbol IDs. Parsed LIR pointer initializer
+text still supplies the retained display spelling, but `initializer_symbol_name_id`
+is now populated when that target resolves through the existing semantic global
+table or function symbol table. Focused coverage proves drifted global/function
+display spelling cannot override the structured initializer target identity, and
+unknown compatibility-only initializer symbols remain valid only with an invalid
+`LinkNameId`.
 
 ## Suggested Next
 
 Continue Step 3 with the next bounded LIR-to-BIR identity-threading packet.
-Prefer another ordinary authority family that already has structured identity
-available at the lowering boundary, then add focused coverage for drifted
-display text or missing-identity rejection.
+Prefer another ordinary BIR symbol reference family that still carries only
+compatibility text but already has structured identity available at the lowering
+boundary, then add focused coverage for drifted display text or missing-identity
+rejection.
 
 ## Watchouts
 
@@ -35,11 +37,13 @@ conflicts.
 
 `clang-format` is not installed in this environment, so formatting was not run.
 Dynamic global scalar-array materialization now uses `global_types_` for
-`LoadGlobalInst::global_name_id`; do not reclassify that path as a compatibility
-unresolved-id boundary unless the global table entry is genuinely unavailable.
-For Step 3, do not pull parser or HIR cleanup into the packet; if BIR cannot
-receive needed structure yet, record that as an upstream gap rather than
-expanding this plan.
+`LoadGlobalInst::global_name_id`, and pointer global initializers now resolve
+`initializer_symbol_name_id` from the same structured global identity plus the
+function symbol table. Do not reclassify either path as a compatibility
+unresolved-id boundary unless the structured table entry is genuinely
+unavailable. For Step 3, do not pull parser or HIR cleanup into the packet; if
+BIR cannot receive needed structure yet, record that as an upstream gap rather
+than expanding this plan.
 
 ## Proof
 

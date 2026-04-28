@@ -116,6 +116,21 @@ std::string extern_decl_name_for_identity(const c4c::codegen::lir::LirModule& mo
   return decl.name;
 }
 
+c4c::LinkNameId resolve_initializer_symbol_link_name_id(
+    std::string_view symbol_name,
+    const GlobalTypes& global_types,
+    const FunctionSymbolSet& function_symbols) {
+  const auto global_it = global_types.find(std::string(symbol_name));
+  if (global_it != global_types.end()) {
+    return global_it->second.link_name_id;
+  }
+  const auto function_it = function_symbols.find(std::string(symbol_name));
+  if (function_it != function_symbols.end()) {
+    return function_it->second;
+  }
+  return c4c::kInvalidLinkName;
+}
+
 void record_block_integer_constant_alias(
     const c4c::codegen::lir::LirInst& inst,
     BirFunctionLowerer::ValueMap* block_value_aliases) {
@@ -818,10 +833,12 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   function_symbols.reserve(context.lir_module.extern_decls.size() +
                            context.lir_module.functions.size());
   for (const auto& decl : context.lir_module.extern_decls) {
-    function_symbols.insert(extern_decl_name_for_identity(context.lir_module, decl));
+    function_symbols.emplace(extern_decl_name_for_identity(context.lir_module, decl),
+                             decl.link_name_id);
   }
   for (const auto& function : context.lir_module.functions) {
-    function_symbols.insert(function_name_for_reporting(context.lir_module, function));
+    function_symbols.emplace(function_name_for_reporting(context.lir_module, function),
+                             function.link_name_id);
   }
   const auto type_decls = build_type_decl_map(context.lir_module.type_decls);
   module.structured_types = build_bir_structured_type_spelling_context(
@@ -857,6 +874,15 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     }
     global_types.emplace(lowered_global->name, info);
     module.globals.push_back(std::move(*lowered_global));
+  }
+
+  for (auto& global : module.globals) {
+    if (!global.initializer_symbol_name.has_value()) {
+      continue;
+    }
+    global.initializer_symbol_name_id =
+        resolve_initializer_symbol_link_name_id(
+            *global.initializer_symbol_name, global_types, function_symbols);
   }
 
   if (!resolve_pointer_initializer_offsets(global_types, function_symbols)) {

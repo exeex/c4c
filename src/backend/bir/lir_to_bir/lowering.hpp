@@ -64,7 +64,7 @@ struct GlobalInfo {
 
 using GlobalTypes = std::unordered_map<std::string, GlobalInfo>;
 using TypeDeclMap = std::unordered_map<std::string, std::string>;
-using FunctionSymbolSet = std::unordered_set<std::string>;
+using FunctionSymbolSet = std::unordered_map<std::string, LinkNameId>;
 using LocalSlotTypes = std::unordered_map<std::string, bir::TypeKind>;
 using LocalPointerSlots = std::unordered_map<std::string, std::string>;
 using LocalIndirectPointerSlotSet = std::unordered_set<std::string>;

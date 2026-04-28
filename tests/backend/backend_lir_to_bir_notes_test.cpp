@@ -66,6 +66,7 @@ LirModule make_dynamic_indexed_gep_global_member_array_module();
 
 int expect_link_name_id_symbol_identity_survives_drifted_display_names();
 int expect_dynamic_global_scalar_array_loads_carry_link_name_id();
+int expect_pointer_initializer_symbol_names_carry_link_name_id();
 int expect_bir_verifier_rejects_known_link_name_mismatches();
 
 int expect_failure_notes(std::string_view case_name,
@@ -310,6 +311,93 @@ int expect_dynamic_global_scalar_array_loads_carry_link_name_id() {
   if (dynamic_load_count == 0) {
     return fail("dynamic scalar-array fixture should materialize global loads");
   }
+  return 0;
+}
+
+int expect_pointer_initializer_symbol_names_carry_link_name_id() {
+  LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  const c4c::LinkNameId target_id = module.link_names.intern("semantic_target");
+  const c4c::LinkNameId ptr_to_global_id = module.link_names.intern("semantic_ptr_to_global");
+  const c4c::LinkNameId callee_id = module.link_names.intern("semantic_callee");
+  const c4c::LinkNameId ptr_to_function_id = module.link_names.intern("semantic_ptr_to_function");
+
+  LirGlobal target;
+  target.name = "drifted_target_display";
+  target.link_name_id = target_id;
+  target.llvm_type = "i32";
+  target.init_text = "i32 11";
+  target.align_bytes = 4;
+  module.globals.push_back(std::move(target));
+
+  LirGlobal ptr_to_global;
+  ptr_to_global.name = "drifted_ptr_to_global_display";
+  ptr_to_global.link_name_id = ptr_to_global_id;
+  ptr_to_global.llvm_type = "ptr";
+  ptr_to_global.init_text = "ptr @semantic_target";
+  ptr_to_global.align_bytes = 8;
+  module.globals.push_back(std::move(ptr_to_global));
+
+  c4c::codegen::lir::LirExternDecl callee;
+  callee.name = "drifted_callee_display";
+  callee.link_name_id = callee_id;
+  callee.return_type_str = "void";
+  callee.return_type = c4c::codegen::lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(callee));
+
+  LirGlobal ptr_to_function;
+  ptr_to_function.name = "drifted_ptr_to_function_display";
+  ptr_to_function.link_name_id = ptr_to_function_id;
+  ptr_to_function.llvm_type = "ptr";
+  ptr_to_function.init_text = "ptr @semantic_callee";
+  ptr_to_function.align_bytes = 8;
+  module.globals.push_back(std::move(ptr_to_function));
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("pointer initializer LinkNameId fixture should lower to BIR");
+  }
+
+  const auto find_global = [&](std::string_view name) -> const c4c::backend::bir::Global* {
+    for (const auto& global : result.module->globals) {
+      if (global.name == name) {
+        return &global;
+      }
+    }
+    return nullptr;
+  };
+
+  const auto* lowered_ptr_to_global = find_global("drifted_ptr_to_global_display");
+  if (lowered_ptr_to_global == nullptr ||
+      lowered_ptr_to_global->initializer_symbol_name != "semantic_target" ||
+      lowered_ptr_to_global->initializer_symbol_name_id != target_id) {
+    return fail("pointer initializer to a known global should carry the target LinkNameId");
+  }
+
+  const auto* lowered_ptr_to_function = find_global("drifted_ptr_to_function_display");
+  if (lowered_ptr_to_function == nullptr ||
+      lowered_ptr_to_function->initializer_symbol_name != "semantic_callee" ||
+      lowered_ptr_to_function->initializer_symbol_name_id != callee_id) {
+    return fail("pointer initializer to a known function should carry the target LinkNameId");
+  }
+
+  c4c::backend::bir::Module compatibility_module;
+  compatibility_module.globals.push_back(c4c::backend::bir::Global{
+      .name = "compat_ptr",
+      .type = c4c::backend::bir::TypeKind::Ptr,
+      .is_extern = false,
+      .size_bytes = 8,
+      .initializer_symbol_name = "compat_unknown",
+  });
+  std::string error;
+  if (!c4c::backend::bir::validate(compatibility_module, &error) ||
+      compatibility_module.globals.front().initializer_symbol_name_id != c4c::kInvalidLinkName) {
+    return fail("unknown compatibility initializer symbols should remain valid only without LinkNameId");
+  }
+
   return 0;
 }
 
@@ -2872,6 +2960,12 @@ int main() {
           expect_dynamic_global_scalar_array_loads_carry_link_name_id();
       dynamic_global_array_identity_status != 0) {
     return dynamic_global_array_identity_status;
+  }
+
+  if (const int pointer_initializer_identity_status =
+          expect_pointer_initializer_symbol_names_carry_link_name_id();
+      pointer_initializer_identity_status != 0) {
+    return pointer_initializer_identity_status;
   }
 
   if (const int store_status = expect_failure_notes(
