@@ -26,6 +26,7 @@ general semantic lowering and nearby same-feature coverage.
 - `ideas/open/121_x86_prepared_module_renderer_recovery.md`
 - `review/step5_x86_handoff_dirty_slice_review.md`
 - `review/step4_current_x86_control_flow_route_review.md`
+- `review/step3_accumulated_scalar_local_slot_route_review.md`
 - `src/backend/mir/x86/module/module.cpp`
 - Existing x86 prepared-module, handoff, and backend codegen tests.
 - Current MIR, prepared-module, and target-specific x86 backend interfaces.
@@ -78,6 +79,13 @@ general semantic lowering and nearby same-feature coverage.
   not obsolete test infrastructure.
 - Treat expectation downgrades, unsupported-path rewrites, and fixture-shaped
   output matching as route drift.
+- Stop the accumulated Step 3 local-slot route before further renderer growth:
+  split Step 4 short-circuit/control-flow work away from scalar local-slot
+  work, then either retire the sequence-shaped scalar helpers or replace them
+  with a generalized prepared local-slot expression/statement renderer.
+- Do not add another exact-sequence scalar helper for the red
+  `minimal local-slot add-chain guard route`; instruction counts, hard-coded
+  instruction indexes, and fixture-shaped dispatch are blockers here.
 - Escalate to broader backend validation before the source idea is considered
   complete, because this path affects target codegen and prepared control flow.
 
@@ -137,33 +145,59 @@ Completion check:
   expose real renderer behavior instead of stale interface failures, and any
   remaining unsupported forms are named boundaries rather than hidden skips.
 
-### Step 3: Recover Supported Scalar Rendering Semantics
+### Step 3: Reset The Accumulated Scalar Local-Slot Route
 
-Goal: restore scalar instruction rendering for supported x86 prepared-module
-forms through general renderer rules.
+Goal: stop the broad, sequence-shaped Step 3 route and recover scalar
+local-slot work only through a generalized prepared renderer model.
 
 Primary targets:
 - x86 prepared-module renderer helpers in `src/backend/mir/x86/module/`.
 - Scalar instruction selection or emission surfaces used by prepared-module
   tests.
+- Dirty Step 4 short-circuit/control-flow changes currently mixed with scalar
+  local-slot helpers.
 - Nearby same-feature scalar tests.
 
 Concrete actions:
-- Identify scalar forms that are intended to be supported by the current x86
-  backend.
-- Implement renderer support through semantic lowering helpers, not through
-  fixture names, instruction counts, or one-off pattern dispatch.
-- Own standalone scalar local-slot recovery here, including no-branch
-  store/load/return shapes, scalar-width local increment paths, return-move
-  value-home authority, and frame-slot authority negatives.
-- Add or update tests for adjacent scalar cases so coverage is not limited to a
-  single known handoff fixture.
-- Keep raw label or control-flow assertions out of this step unless needed for
-  scalar renderer proof.
+- First split or retire the current dirty implementation before adding any new
+  scalar renderer support:
+  - keep Step 4 short-circuit/control-flow authority assertions and helpers out
+    of the Step 3 scalar packet;
+  - keep any already-valid i16/i64 subtract-return scalar work separate from
+    the next add-chain/guard-lane problem;
+  - remove or park helpers whose primary selection rule is exact instruction
+    count, fixed instruction indexes, or fixture topology.
+- If scalar local-slot support continues, define one generalized prepared
+  local-slot expression/statement renderer before touching the red add-chain
+  case:
+  - consume prepared frame-slot ids, prepared memory accesses, prepared value
+    homes, typed scalar operations, return moves, and branch conditions through
+    their semantic records;
+  - render stores, loads, casts, binary expressions, statement sequencing,
+    returns, and branch predicates from those records rather than from a known
+    testcase sequence;
+  - support only the scalar widths and operations that the current backend can
+    prove semantically, and record explicit unsupported boundaries for the rest.
+- Add required negative coverage with the generalized route:
+  - missing or drifted prepared memory access for each used statement;
+  - missing or drifted frame-slot id and wrong access size;
+  - divergent load/store access authority;
+  - missing value homes for store, load, cast, binary, and return carriers;
+  - return source/destination drift;
+  - branch-condition missing or drifted identity for guard-lane expressions.
+- Do not claim progress by making only the red
+  `minimal local-slot add-chain guard route` pass; nearby add/sub guard-lane
+  and return cases must prove the same semantic renderer path.
+- Keep raw label and Step 4 control-flow authority work out of this step unless
+  the supervisor deliberately delegates a separate Step 4 packet.
 
 Completion check:
-- Supported scalar prepared-module cases render through the x86 path with
-  same-feature coverage, and the delegated narrow proof is green.
+- The dirty implementation has been split or retired so Step 3 contains only a
+  coherent scalar local-slot route; the remaining scalar route is generalized
+  over prepared local-slot expression/statement records, includes the required
+  negative coverage, and the delegated x86 handoff subset is green. If this
+  cannot be achieved without exact-sequence dispatch, record the unsupported
+  boundary and stop for plan review instead of adding another helper chain.
 
 ### Step 4: Recover Prepared Control-Flow Rendering Semantics
 
