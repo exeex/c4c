@@ -8,31 +8,27 @@ Current Step Title: Recover Prepared Control-Flow Rendering Semantics
 
 ## Just Finished
 
-Step 4 Recover Prepared Control-Flow Rendering Semantics is in rework after
-`review/step4_current_x86_control_flow_route_review.md`. The current dirty
-x86 control-flow slice is rejected as route drift: it weakens validation by
-accepting missing prepared identity through compare-join-specific skips and a
-bridge-block path that relies on raw BIR label topology. Do not treat the
-dirty implementation or its recorded failing proof as accepted progress.
+Step 4 Recover Prepared Control-Flow Rendering Semantics reworked the rejected
+dirty x86 control-flow slice back to the least misleading state: the broad
+prepared-block skip, raw-label bridge-block acceptance path, same-successor
+parallel-copy fallback, and stale-looking branch-condition skip were removed
+from `src/backend/mir/x86/module/module.cpp`. The remaining code consumes the
+direct prepared edge transfer and published parallel-copy bundle only, so the
+slice now stops on missing prepared identity instead of accepting it.
 
 ## Suggested Next
 
-Rework Step 4 before adding new capability. The next executor packet should
-replace the rejected validator escape paths with semantic prepared identity
-publication or direct prepared identity consumption:
+Lifecycle decision: keep the blocker inside the active idea 121 plan and
+continue Step 4 as a producer identity publication repair before returning to
+the x86 consumer. The current prepared records do not publish enough identity
+for the x86 consumer to accept the handoff without weakening validation: the
+proof now fails on a prepared control-flow block id that no longer maps to a
+live BIR block after the handoff test mutates the carrier labels.
 
-- remove or narrow any skip for a prepared control-flow block that has no live
-  BIR block identity unless the exact skipped label is proven to be owned by
-  the authoritative compare-join branch/edge metadata
-- replace the unprepared bridge-block raw-label topology proof with prepared
-  identity publication, an explicit prepared bridge-block record, or stop with
-  a blocker/split request if bridge blocks are now a real compiler concept
-- require compare-join parallel-copy authority to prove the authoritative edge
-  predecessor relationship, or add same-feature negative coverage before using
-  a fallback as progress
-- keep branch-condition stale-record handling from silencing live prepared
-  control-flow drift; add stale-vs-live negative coverage if that distinction
-  remains necessary
+The next executor packet should repair prepared producer publication for the
+mutated or bridge carrier blocks and their authoritative parallel-copy bundles,
+then re-run the x86 consumer proof with strict missing/drifted identity
+rejection. Do not add another x86-side validator escape as the repair.
 
 ## Watchouts
 
@@ -74,24 +70,18 @@ join return value home. The selected-value base home only explains how to
 materialize the branch arm; the prepared out-of-SSA edge bundles and join
 return bundle own the carrier-to-return authority.
 
-The rejected dirty route specifically added or depended on: broad
-prepared-block skip ownership that does not tie the skipped label to the
-authoritative edge; an unprepared bridge-block exception proven by raw label
-strings; a parallel-copy fallback that does not prove the edge predecessor
-relationship; and branch-condition metadata skips without stale-vs-live
-coverage. Rework those before following the next failing x86 handoff message.
-
-If semantic prepared identity publication/consumption cannot be expressed with
-the current prepared-module records, stop and report the blocker or request a
-plan split. Do not continue Step 4 by adding another validator exception for
-the next failing x86 handoff message.
+The rejected dirty route no longer remains in `module.cpp`. Do not reintroduce
+missing-identity acceptance through compare-join-specific validator exceptions:
+the current blocker is a prepared-record publication gap, not an x86 rendering
+shape gap. The bridge/passthrough cases visible in the tests need explicit
+prepared identity or a documented producer-side concept before x86 should
+consume them.
 
 ## Proof
 
-No acceptance proof for the current dirty Step 4 route. The reviewed
-`test_after.log` command rebuilt the two x86 targets, kept
-`backend_x86_prepared_handoff_label_authority` passing, and still failed
-`backend_x86_handoff_boundary` at `canonical prepared-module handoff rejected
-x86 control-flow label authority: compare-join edge has no authoritative
-prepared parallel-copy bundle`; the reviewer found the route itself drifting,
-so that proof is rework evidence only.
+Delegated proof command was run and preserved in `test_after.log`:
+`backend_x86_prepared_handoff_label_authority` passed, and
+`backend_x86_handoff_boundary` failed with `canonical prepared-module handoff
+rejected x86 control-flow label authority: prepared block #2 does not match
+any BIR block by label id`. This is blocker evidence after removing the
+rejected validator escapes, not acceptance proof.

@@ -25,6 +25,7 @@ general semantic lowering and nearby same-feature coverage.
 
 - `ideas/open/121_x86_prepared_module_renderer_recovery.md`
 - `review/step5_x86_handoff_dirty_slice_review.md`
+- `review/step4_current_x86_control_flow_route_review.md`
 - `src/backend/mir/x86/module/module.cpp`
 - Existing x86 prepared-module, handoff, and backend codegen tests.
 - Current MIR, prepared-module, and target-specific x86 backend interfaces.
@@ -36,6 +37,8 @@ general semantic lowering and nearby same-feature coverage.
   handoff tests from compiling.
 - Scalar instruction rendering for supported x86 prepared-module forms.
 - Control-flow rendering and prepared label consumption through the x86 path.
+- Prepared producer identity publication for control-flow and parallel-copy
+  records that the x86 consumer must validate.
 - x86 backend BIR, handoff, and codegen tests that distinguish semantic
   renderer support, explicit unsupported boundaries, and fixture-shaped output.
 
@@ -162,25 +165,41 @@ Completion check:
 ### Step 4: Recover Prepared Control-Flow Rendering Semantics
 
 Goal: restore control-flow rendering, including branches and labels, without
-falling back to raw or drifted identity.
+falling back to raw or drifted identity. If the x86 consumer reaches missing
+or drifted prepared identity, repair the prepared producer records before
+adding any x86-side acceptance path.
 
 Primary targets:
+- Prepared-module producer records for control-flow block identity,
+  branch-owned carrier or bridge blocks, and out-of-SSA parallel-copy bundles.
 - x86 control-flow rendering in the prepared-module path.
 - Prepared label id consumption and validation boundaries.
 - Branch, conditional branch, and label-target tests for the x86 backend.
 
 Concrete actions:
+- Treat the current blocker as a producer publication gap inside this plan:
+  the next Step 4 packet must publish explicit prepared identity for mutated
+  or bridge carrier blocks, or document a semantic unsupported boundary before
+  returning to x86 rendering.
+- Publish or preserve enough prepared identity for the consumer to tie every
+  live control-flow block and authoritative parallel-copy bundle to the exact
+  prepared edge or branch metadata it represents.
 - Route control-flow emission through prepared label identity where available.
-- Reject or surface missing and drifted label ids rather than recovering through
-  broad raw-string matching.
+- Reject or surface missing and drifted label ids rather than recovering
+  through broad raw-string matching, compare-join-specific validator
+  exceptions, or same-successor parallel-copy guesses.
 - Cover nearby branch and conditional-branch cases, not only the handoff case
   that exposed the drift.
+- Add same-feature negative coverage for missing, drifted, and ambiguous
+  prepared identities before treating the Step 4 route as progress.
 - Keep scalar rendering assumptions explicit so control-flow proof does not
   hide unrelated renderer gaps.
 
 Completion check:
-- x86 prepared control-flow cases consume prepared label ids directly, reject
-  invalid identity where appropriate, and pass the delegated narrow proof.
+- Prepared producer records publish the identity needed by x86 control-flow
+  rendering; x86 prepared control-flow cases consume prepared label ids
+  directly, reject invalid identity where appropriate, and pass the delegated
+  narrow proof without consumer-side raw-label or missing-identity escapes.
 
 ### Step 5: Reprove X86 Handoff And Decide Lifecycle Outcome
 
