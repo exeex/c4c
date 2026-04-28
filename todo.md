@@ -8,27 +8,21 @@ Current Step Title: Recover Prepared Control-Flow Rendering Semantics
 
 ## Just Finished
 
-Step 4 Recover Prepared Control-Flow Rendering Semantics reworked the rejected
-dirty x86 control-flow slice back to the least misleading state: the broad
-prepared-block skip, raw-label bridge-block acceptance path, same-successor
-parallel-copy fallback, and stale-looking branch-condition skip were removed
-from `src/backend/mir/x86/module/module.cpp`. The remaining code consumes the
-direct prepared edge transfer and published parallel-copy bundle only, so the
-slice now stops on missing prepared identity instead of accepting it.
+Step 4 Recover Prepared Control-Flow Rendering Semantics repaired the prepared
+return move bundle blocker for `branch_join_immediate_then_xor`. Regalloc now
+infers scalar return ABI authority when semantic BIR has a return type but no
+explicit return ABI record, and the joined-branch immediate return-context
+fixture refreshes its prepared value-location return bundle after mutating the
+already-prepared join carrier/topology metadata.
 
 ## Suggested Next
 
-Lifecycle decision: keep the blocker inside the active idea 121 plan and
-continue Step 4 as a producer identity publication repair before returning to
-the x86 consumer. The current prepared records do not publish enough identity
-for the x86 consumer to accept the handoff without weakening validation: the
-proof now fails on a prepared control-flow block id that no longer maps to a
-live BIR block after the handoff test mutates the carrier labels.
-
-The next executor packet should repair prepared producer publication for the
-mutated or bridge carrier blocks and their authoritative parallel-copy bundles,
-then re-run the x86 consumer proof with strict missing/drifted identity
-rejection. Do not add another x86-side validator escape as the repair.
+Continue Step 4 at the later value-location blocker now exposed by the selected
+proof: the selected x86 handoff subset advances to
+`branch_join_global_then_xor`, where the prepared consumer rejects the route as
+an unsupported global compare-join return context. Keep any repair on prepared
+same-module global/value-location records; do not add expected-assembly or
+function-name fallbacks.
 
 ## Watchouts
 
@@ -70,18 +64,36 @@ join return value home. The selected-value base home only explains how to
 materialize the branch arm; the prepared out-of-SSA edge bundles and join
 return bundle own the carrier-to-return authority.
 
+Immediate compare-join return-context fixture mutations now explicitly refresh
+the prepared `BeforeReturn` move bundle after changing prepared BIR topology.
+Preserve that fixture metadata maintenance if later packets add more
+post-prepare join carrier mutations.
+
+Immediate-source compare-join edge moves now have explicit
+`source_immediate_i32` value-location authority. Preserve the paired contract:
+the prepared parallel-copy move carries the immediate source, and the matching
+out-of-SSA move-resolution record must carry the same immediate source marker.
+
 The rejected dirty route no longer remains in `module.cpp`. Do not reintroduce
-missing-identity acceptance through compare-join-specific validator exceptions:
-the current blocker is a prepared-record publication gap, not an x86 rendering
-shape gap. The bridge/passthrough cases visible in the tests need explicit
-prepared identity or a documented producer-side concept before x86 should
-consume them.
+missing-identity acceptance through compare-join-specific validator exceptions.
+The producer-side identity blockers for retargeted condition targets, bridge
+blocks, parallel-copy bundles, out-of-SSA move bundles, and renamed
+compare-join carrier homes have been driven forward in the handoff fixture.
+The branch-condition semantic authority negative test and the
+`branch_join_adjust_then_xor` prepared return bundle blocker are now repaired.
+The immediate selected-value compare-join edge move-bundle blocker is now
+repaired, and `branch_join_immediate_then_xor` now has prepared return-bundle
+authority. The remaining selected-proof failure is the unsupported same-module
+global compare-join return context.
 
 ## Proof
 
 Delegated proof command was run and preserved in `test_after.log`:
 `backend_x86_prepared_handoff_label_authority` passed, and
-`backend_x86_handoff_boundary` failed with `canonical prepared-module handoff
-rejected x86 control-flow label authority: prepared block #2 does not match
-any BIR block by label id`. This is blocker evidence after removing the
-rejected validator escapes, not acceptance proof.
+`backend_x86_handoff_boundary` advanced past the previous `defined function
+'branch_join_immediate_then_xor' has no prepared return move bundle` blocker.
+It now fails later with `canonical prepared-module handoff rejected x86
+value-location authority: defined function 'branch_join_global_then_xor' has an
+unsupported global compare-join return context`. This is not acceptance proof;
+it is the current Step 4 semantic blocker after immediate return-bundle
+authority repair.

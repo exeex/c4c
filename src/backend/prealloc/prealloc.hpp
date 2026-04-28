@@ -758,6 +758,7 @@ struct PreparedMoveResolution {
   bool uses_cycle_temp_source = false;
   bool coalesced_by_assigned_storage = false;
   std::optional<std::size_t> source_parallel_copy_step_index;
+  std::optional<std::int64_t> source_immediate_i32;
   PreparedMoveResolutionOpKind op_kind = PreparedMoveResolutionOpKind::Move;
   PreparedMoveAuthorityKind authority_kind = PreparedMoveAuthorityKind::None;
   std::optional<BlockLabelId> source_parallel_copy_predecessor_label;

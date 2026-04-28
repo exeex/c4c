@@ -420,6 +420,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                move.uses_cycle_temp_source == uses_cycle_temp_source &&
                move.coalesced_by_assigned_storage == coalesced_by_assigned_storage &&
                move.source_parallel_copy_step_index == source_parallel_copy_step_index &&
+               !move.source_immediate_i32.has_value() &&
                move.op_kind == op_kind &&
                move.authority_kind == authority_kind &&
                move.source_parallel_copy_predecessor_label ==
@@ -446,6 +447,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       .uses_cycle_temp_source = uses_cycle_temp_source,
       .coalesced_by_assigned_storage = coalesced_by_assigned_storage,
       .source_parallel_copy_step_index = source_parallel_copy_step_index,
+      .source_immediate_i32 = std::nullopt,
       .op_kind = op_kind,
       .authority_kind = authority_kind,
       .source_parallel_copy_predecessor_label = source_parallel_copy_predecessor_label,
@@ -498,6 +500,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                move.uses_cycle_temp_source == uses_cycle_temp_source &&
                move.coalesced_by_assigned_storage == coalesced_by_assigned_storage &&
                move.source_parallel_copy_step_index == source_parallel_copy_step_index &&
+               !move.source_immediate_i32.has_value() &&
                move.op_kind == op_kind &&
                move.authority_kind == authority_kind &&
                move.source_parallel_copy_predecessor_label ==
@@ -524,10 +527,138 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       .uses_cycle_temp_source = uses_cycle_temp_source,
       .coalesced_by_assigned_storage = coalesced_by_assigned_storage,
       .source_parallel_copy_step_index = source_parallel_copy_step_index,
+      .source_immediate_i32 = std::nullopt,
       .op_kind = op_kind,
       .authority_kind = authority_kind,
       .source_parallel_copy_predecessor_label = source_parallel_copy_predecessor_label,
       .source_parallel_copy_successor_label = source_parallel_copy_successor_label,
+      .reason = std::move(reason),
+  });
+}
+
+void append_immediate_i32_move_resolution_record(
+    PreparedRegallocFunction& regalloc_function,
+    const bir::Value& source,
+    const PreparedRegallocValue& destination,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::optional<std::size_t> source_parallel_copy_step_index,
+    PreparedMoveAuthorityKind authority_kind,
+    std::string reason,
+    std::optional<BlockLabelId> source_parallel_copy_predecessor_label = std::nullopt,
+    std::optional<BlockLabelId> source_parallel_copy_successor_label = std::nullopt) {
+  if (source.kind != bir::Value::Kind::Immediate || source.type != bir::TypeKind::I32 ||
+      assigned_storage_kind(destination) == PreparedMoveStorageKind::None) {
+    return;
+  }
+
+  const auto duplicate = std::find_if(
+      regalloc_function.move_resolution.begin(),
+      regalloc_function.move_resolution.end(),
+      [&](const PreparedMoveResolution& move) {
+        return move.from_value_id == destination.value_id &&
+               move.to_value_id == destination.value_id &&
+               move.destination_kind == PreparedMoveDestinationKind::Value &&
+               move.destination_storage_kind == assigned_storage_kind(destination) &&
+               !move.destination_abi_index.has_value() &&
+               !move.destination_register_name.has_value() &&
+               !move.destination_stack_offset_bytes.has_value() &&
+               !move.uses_cycle_temp_source && !move.coalesced_by_assigned_storage &&
+               move.source_parallel_copy_step_index == source_parallel_copy_step_index &&
+               move.source_immediate_i32 == source.immediate &&
+               move.op_kind == PreparedMoveResolutionOpKind::Move &&
+               move.authority_kind == authority_kind &&
+               move.source_parallel_copy_predecessor_label ==
+                   source_parallel_copy_predecessor_label &&
+               move.source_parallel_copy_successor_label ==
+                   source_parallel_copy_successor_label &&
+               move.block_index == block_index &&
+               move.instruction_index == instruction_index;
+      });
+  if (duplicate != regalloc_function.move_resolution.end()) {
+    return;
+  }
+
+  regalloc_function.move_resolution.push_back(PreparedMoveResolution{
+      .from_value_id = destination.value_id,
+      .to_value_id = destination.value_id,
+      .destination_kind = PreparedMoveDestinationKind::Value,
+      .destination_storage_kind = assigned_storage_kind(destination),
+      .destination_abi_index = std::nullopt,
+      .destination_register_name = std::nullopt,
+      .destination_stack_offset_bytes = std::nullopt,
+      .block_index = block_index,
+      .instruction_index = instruction_index,
+      .uses_cycle_temp_source = false,
+      .coalesced_by_assigned_storage = false,
+      .source_parallel_copy_step_index = source_parallel_copy_step_index,
+      .source_immediate_i32 = source.immediate,
+      .op_kind = PreparedMoveResolutionOpKind::Move,
+      .authority_kind = authority_kind,
+      .source_parallel_copy_predecessor_label = source_parallel_copy_predecessor_label,
+      .source_parallel_copy_successor_label = source_parallel_copy_successor_label,
+      .reason = std::move(reason),
+  });
+}
+
+void append_unassigned_return_move_resolution_record(
+    PreparedRegallocFunction& regalloc_function,
+    const PreparedRegallocValue& source,
+    PreparedMoveStorageKind consumed_kind,
+    std::optional<std::string> destination_register_name,
+    std::size_t destination_contiguous_width,
+    std::vector<std::string> destination_occupied_register_names,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::string reason) {
+  if (assigned_storage_kind(source) != PreparedMoveStorageKind::None ||
+      consumed_kind == PreparedMoveStorageKind::None) {
+    return;
+  }
+
+  const auto duplicate = std::find_if(
+      regalloc_function.move_resolution.begin(),
+      regalloc_function.move_resolution.end(),
+      [&](const PreparedMoveResolution& move) {
+        return move.from_value_id == source.value_id &&
+               move.to_value_id == source.value_id &&
+               move.destination_kind == PreparedMoveDestinationKind::FunctionReturnAbi &&
+               move.destination_storage_kind == consumed_kind &&
+               !move.destination_abi_index.has_value() &&
+               move.destination_register_name == destination_register_name &&
+               move.destination_contiguous_width == destination_contiguous_width &&
+               move.destination_occupied_register_names == destination_occupied_register_names &&
+               !move.destination_stack_offset_bytes.has_value() &&
+               move.block_index == block_index &&
+               move.instruction_index == instruction_index &&
+               !move.uses_cycle_temp_source && !move.coalesced_by_assigned_storage &&
+               !move.source_parallel_copy_step_index.has_value() &&
+               !move.source_immediate_i32.has_value() &&
+               move.op_kind == PreparedMoveResolutionOpKind::Move &&
+               move.authority_kind == PreparedMoveAuthorityKind::None;
+      });
+  if (duplicate != regalloc_function.move_resolution.end()) {
+    return;
+  }
+
+  regalloc_function.move_resolution.push_back(PreparedMoveResolution{
+      .from_value_id = source.value_id,
+      .to_value_id = source.value_id,
+      .destination_kind = PreparedMoveDestinationKind::FunctionReturnAbi,
+      .destination_storage_kind = consumed_kind,
+      .destination_abi_index = std::nullopt,
+      .destination_register_name = std::move(destination_register_name),
+      .destination_contiguous_width = destination_contiguous_width,
+      .destination_occupied_register_names = std::move(destination_occupied_register_names),
+      .destination_stack_offset_bytes = std::nullopt,
+      .block_index = block_index,
+      .instruction_index = instruction_index,
+      .uses_cycle_temp_source = false,
+      .coalesced_by_assigned_storage = false,
+      .source_parallel_copy_step_index = std::nullopt,
+      .source_immediate_i32 = std::nullopt,
+      .op_kind = PreparedMoveResolutionOpKind::Move,
+      .authority_kind = PreparedMoveAuthorityKind::None,
       .reason = std::move(reason),
   });
 }
@@ -1545,8 +1676,27 @@ void append_phi_move_resolution(const PreparedNameTables& names,
         continue;
       }
 
-      if (step.kind != PreparedParallelCopyStepKind::Move ||
-          move.source_value.kind != bir::Value::Kind::Named) {
+      if (step.kind != PreparedParallelCopyStepKind::Move) {
+        continue;
+      }
+
+      if (move.source_value.kind == bir::Value::Kind::Immediate &&
+          move.source_value.type == bir::TypeKind::I32) {
+        append_immediate_i32_move_resolution_record(
+            regalloc_function,
+            move.source_value,
+            *destination,
+            *block_index,
+            0,
+            step_index,
+            PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+            phi_transfer_reason_prefix(join_transfer, false) + "_immediate_materialization",
+            bundle.predecessor_label,
+            bundle.successor_label);
+        continue;
+      }
+
+      if (move.source_value.kind != bir::Value::Kind::Named) {
         continue;
       }
 
@@ -1769,11 +1919,49 @@ void append_consumer_move_resolution(const PreparedNameTables& names,
   return PreparedMoveStorageKind::None;
 }
 
+[[nodiscard]] std::optional<bir::CallResultAbiInfo> infer_scalar_function_return_abi(
+    const bir::Function& function) {
+  if (function.return_type == bir::TypeKind::Void) {
+    return std::nullopt;
+  }
+
+  bir::CallResultAbiInfo abi{
+      .type = function.return_type,
+      .primary_class = bir::AbiValueClass::None,
+      .secondary_class = bir::AbiValueClass::None,
+      .returned_in_memory = false,
+  };
+  switch (function.return_type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      abi.primary_class = bir::AbiValueClass::Integer;
+      return abi;
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+      abi.primary_class = bir::AbiValueClass::Sse;
+      return abi;
+    case bir::TypeKind::I128:
+      abi.primary_class = bir::AbiValueClass::Memory;
+      abi.returned_in_memory = true;
+      return abi;
+    case bir::TypeKind::Void:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] PreparedMoveStorageKind function_return_storage_kind(const bir::Function& function) {
-  if (!function.return_abi.has_value()) {
+  const auto return_abi = function.return_abi.has_value()
+                              ? function.return_abi
+                              : infer_scalar_function_return_abi(function);
+  if (!return_abi.has_value()) {
     return PreparedMoveStorageKind::None;
   }
-  const auto& abi = *function.return_abi;
+  const auto& abi = *return_abi;
   if (abi.returned_in_memory || abi.primary_class == bir::AbiValueClass::Memory) {
     return PreparedMoveStorageKind::StackSlot;
   }
@@ -1936,6 +2124,9 @@ void append_return_move_resolution(const PreparedNameTables& names,
   if (consumed_kind == PreparedMoveStorageKind::None) {
     return;
   }
+  const auto return_abi = function.return_abi.has_value()
+                              ? function.return_abi
+                              : infer_scalar_function_return_abi(function);
 
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     const auto& block = function.blocks[block_index];
@@ -1950,9 +2141,9 @@ void append_return_move_resolution(const PreparedNameTables& names,
     }
 
     const PreparedMoveStorageKind source_kind = assigned_storage_kind(*source);
-    const auto destination_register_name = function.return_abi.has_value()
+    const auto destination_register_name = return_abi.has_value()
                                                ? call_result_destination_register_name(
-                                                     target_profile, *function.return_abi)
+                                                     target_profile, *return_abi)
                                                : std::nullopt;
     const std::size_t destination_contiguous_width =
         consumed_kind == PreparedMoveStorageKind::Register
@@ -1966,9 +2157,23 @@ void append_return_move_resolution(const PreparedNameTables& names,
                                                      *destination_register_name,
                                                      destination_contiguous_width)
             : std::vector<std::string>{};
-    if (source_kind == PreparedMoveStorageKind::Register &&
-        consumed_kind == PreparedMoveStorageKind::Register && source->assigned_register.has_value() &&
-        destination_register_name == std::optional<std::string>{source->assigned_register->register_name}) {
+    const bool coalesced_by_assigned_storage =
+        source_kind == PreparedMoveStorageKind::Register &&
+        consumed_kind == PreparedMoveStorageKind::Register &&
+        source->assigned_register.has_value() &&
+        destination_register_name ==
+            std::optional<std::string>{source->assigned_register->register_name};
+    if (source_kind == PreparedMoveStorageKind::None) {
+      append_unassigned_return_move_resolution_record(
+          regalloc_function,
+          *source,
+          consumed_kind,
+          destination_register_name,
+          destination_contiguous_width,
+          destination_occupied_register_names,
+          block_index,
+          block.insts.size(),
+          "return_context_to_register");
       continue;
     }
     append_move_resolution_record(regalloc_function,
@@ -1985,7 +2190,7 @@ void append_return_move_resolution(const PreparedNameTables& names,
                                   block_index,
                                   block.insts.size(),
                                   false,
-                                  false,
+                                  coalesced_by_assigned_storage,
                                   std::nullopt,
                                   PreparedMoveResolutionOpKind::Move,
                                   PreparedMoveAuthorityKind::None,

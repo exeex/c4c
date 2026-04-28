@@ -397,6 +397,19 @@ void validate_prepared_branch_condition(
       &control_flow,
       condition.block_label);
 
+  const bool has_any_compare_authority =
+      condition.predicate.has_value() || condition.compare_type.has_value() ||
+      condition.lhs.has_value() || condition.rhs.has_value();
+  const bool requires_complete_compare_authority =
+      condition.kind == c4c::backend::prepare::PreparedBranchConditionKind::FusedCompare ||
+      condition.can_fuse_with_branch || has_any_compare_authority;
+  if (requires_complete_compare_authority &&
+      (!condition.predicate.has_value() || !condition.compare_type.has_value() ||
+       !condition.lhs.has_value() || !condition.rhs.has_value())) {
+    throw_prepared_control_flow_handoff_error(
+        "prepared branch condition compare authority is incomplete");
+  }
+
   const auto* block = c4c::backend::prepare::find_prepared_control_flow_block(
       control_flow, condition.block_label);
   if (block == nullptr ||
@@ -1913,12 +1926,22 @@ void require_prepared_compare_join_parallel_copy(
         "compare-join edge has no authoritative prepared out-of-SSA move bundle");
   }
   for (std::size_t step_index = 0; step_index < parallel_copy->steps.size(); ++step_index) {
-    if (c4c::backend::prepare::find_prepared_parallel_copy_move_for_step(
-            *parallel_copy, step_index) == nullptr ||
+    const auto* parallel_copy_move =
+        c4c::backend::prepare::find_prepared_parallel_copy_move_for_step(
+            *parallel_copy, step_index);
+    const auto* value_location_move =
         c4c::backend::prepare::find_prepared_out_of_ssa_parallel_copy_move_for_step(
-            *move_bundle, step_index) == nullptr) {
+            *move_bundle, step_index);
+    if (parallel_copy_move == nullptr || value_location_move == nullptr) {
       throw_prepared_value_location_handoff_error(
           "compare-join edge parallel-copy step drifted from prepared move authority");
+    }
+    if (parallel_copy_move->source_value.kind ==
+            c4c::backend::bir::Value::Kind::Immediate &&
+        parallel_copy_move->source_value.type == c4c::backend::bir::TypeKind::I32 &&
+        value_location_move->source_immediate_i32 != parallel_copy_move->source_value.immediate) {
+      throw_prepared_value_location_handoff_error(
+          "compare-join edge immediate source drifted from prepared move authority");
     }
   }
 }

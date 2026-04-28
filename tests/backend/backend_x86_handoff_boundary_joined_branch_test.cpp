@@ -1933,6 +1933,101 @@ prepare::PreparedValueHome* find_mutable_prepared_value_home(
   return nullptr;
 }
 
+void refresh_prepared_i32_return_bundle(prepare::PreparedBirModule& prepared,
+                                        const c4c::TargetProfile& target_profile,
+                                        bir::Function& function,
+                                        const bir::Block& return_block,
+                                        std::string_view function_name) {
+  if (return_block.terminator.kind != bir::TerminatorKind::Return ||
+      !return_block.terminator.value.has_value() ||
+      return_block.terminator.value->kind != bir::Value::Kind::Named) {
+    return;
+  }
+
+  auto* function_locations =
+      find_mutable_prepared_value_location_function(prepared, function_name);
+  if (function_locations == nullptr) {
+    return;
+  }
+
+  const auto return_value_name =
+      prepared.names.value_names.intern(return_block.terminator.value->name);
+  auto* return_home =
+      find_mutable_prepared_value_home(
+          prepared, *function_locations, return_block.terminator.value->name);
+  if (return_home == nullptr) {
+    prepare::PreparedValueId next_value_id = 0;
+    for (const auto& home : function_locations->value_homes) {
+      next_value_id = std::max(next_value_id, home.value_id + 1);
+    }
+    function_locations->value_homes.push_back(prepare::PreparedValueHome{
+        .value_id = next_value_id,
+        .function_name = function_locations->function_name,
+        .value_name = return_value_name,
+        .kind = prepare::PreparedValueHomeKind::Register,
+        .register_name = minimal_i32_return_register(),
+    });
+    return_home = &function_locations->value_homes.back();
+  }
+
+  std::optional<std::size_t> return_block_index;
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    if (&function.blocks[block_index] == &return_block) {
+      return_block_index = block_index;
+      break;
+    }
+  }
+  if (!return_block_index.has_value()) {
+    return;
+  }
+
+  const auto return_register =
+      function.return_abi.has_value()
+          ? prepare::call_result_destination_register_name(target_profile, *function.return_abi)
+          : std::optional<std::string>{minimal_i32_return_register()};
+  if (!return_register.has_value()) {
+    return;
+  }
+
+  auto return_bundle_it =
+      std::find_if(function_locations->move_bundles.begin(),
+                   function_locations->move_bundles.end(),
+                   [](const prepare::PreparedMoveBundle& bundle) {
+                     return bundle.phase == prepare::PreparedMovePhase::BeforeReturn;
+                   });
+  if (return_bundle_it == function_locations->move_bundles.end()) {
+    function_locations->move_bundles.push_back(prepare::PreparedMoveBundle{
+        .function_name = function_locations->function_name,
+        .phase = prepare::PreparedMovePhase::BeforeReturn,
+    });
+    return_bundle_it = function_locations->move_bundles.end() - 1;
+  }
+
+  return_bundle_it->function_name = function_locations->function_name;
+  return_bundle_it->phase = prepare::PreparedMovePhase::BeforeReturn;
+  return_bundle_it->authority_kind = prepare::PreparedMoveAuthorityKind::None;
+  return_bundle_it->block_index = *return_block_index;
+  return_bundle_it->instruction_index = return_block.insts.size();
+  return_bundle_it->source_parallel_copy_predecessor_label.reset();
+  return_bundle_it->source_parallel_copy_successor_label.reset();
+  return_bundle_it->moves = {
+      prepare::PreparedMoveResolution{
+          .from_value_id = return_home->value_id,
+          .to_value_id = return_home->value_id,
+          .destination_kind = prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+          .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+          .destination_register_name = return_register,
+          .block_index = *return_block_index,
+          .instruction_index = return_block.insts.size(),
+          .coalesced_by_assigned_storage =
+              return_home->kind == prepare::PreparedValueHomeKind::Register &&
+              return_home->register_name == return_register,
+          .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+          .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+          .reason = "return_register_to_register",
+      },
+  };
+}
 
 int check_route_outputs(const bir::Module& module,
                         const std::string& expected_asm,
@@ -2061,6 +2156,7 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
   }
   const auto true_transfer_index = *join_transfer.source_true_transfer_index;
   const auto false_transfer_index = *join_transfer.source_false_transfer_index;
+  const auto join_block_label_id = join_transfer.join_block_label;
   if (true_transfer_index >= join_transfer.edge_transfers.size() ||
       false_transfer_index >= join_transfer.edge_transfers.size() ||
       true_transfer_index == false_transfer_index) {
@@ -2068,9 +2164,15 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
                  ": prepared joined branch contract published invalid true/false join ownership indices")
                     .c_str());
   }
+  const auto original_true_edge_predecessor =
+      join_transfer.edge_transfers[true_transfer_index].predecessor_label;
+  const auto original_false_edge_predecessor =
+      join_transfer.edge_transfers[false_transfer_index].predecessor_label;
 
   const std::string renamed_true_label = "carrier.zero";
   const std::string renamed_false_label = "carrier.nonzero";
+  const auto original_true_label_id = branch_condition.true_label;
+  const auto original_false_label_id = branch_condition.false_label;
   const std::string original_false_label = entry_block->terminator.false_label;
   auto* true_carrier = find_block(function, entry_block->terminator.true_label.c_str());
   auto* false_carrier = find_block(function, entry_block->terminator.false_label.c_str());
@@ -2081,8 +2183,28 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
   }
   true_carrier->label = renamed_true_label;
   false_carrier->label = renamed_false_label;
+  true_carrier->label_id = prepared.module.names.block_labels.intern(renamed_true_label);
+  false_carrier->label_id = prepared.module.names.block_labels.intern(renamed_false_label);
   branch_condition.true_label = intern_block_label(prepared, renamed_true_label);
   branch_condition.false_label = intern_block_label(prepared, renamed_false_label);
+  for (auto& prepared_block : mutable_control_flow->blocks) {
+    if (prepared_block.block_label == original_true_label_id) {
+      prepared_block.block_label = branch_condition.true_label;
+    } else if (prepared_block.block_label == original_false_label_id) {
+      prepared_block.block_label = branch_condition.false_label;
+    }
+    if (prepared_block.true_label == original_true_label_id) {
+      prepared_block.true_label = branch_condition.true_label;
+    }
+    if (prepared_block.false_label == original_false_label_id) {
+      prepared_block.false_label = branch_condition.false_label;
+    }
+    if (prepared_block.branch_target_label == original_true_label_id) {
+      prepared_block.branch_target_label = branch_condition.true_label;
+    } else if (prepared_block.branch_target_label == original_false_label_id) {
+      prepared_block.branch_target_label = branch_condition.false_label;
+    }
+  }
   entry_block->terminator.true_label = "carrier.raw.zero";
   entry_block->terminator.false_label = "carrier.raw.nonzero";
 
@@ -2092,6 +2214,49 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
       *join_transfer.source_true_incoming_label;
   join_transfer.edge_transfers[false_transfer_index].predecessor_label =
       *join_transfer.source_false_incoming_label;
+  for (auto& bundle : mutable_control_flow->parallel_copy_bundles) {
+    if (bundle.predecessor_label == original_true_edge_predecessor &&
+        bundle.successor_label == join_transfer.join_block_label) {
+      bundle.predecessor_label = *join_transfer.source_true_incoming_label;
+      bundle.execution_block_label = branch_condition.true_label;
+    } else if (bundle.predecessor_label == original_false_edge_predecessor &&
+               bundle.successor_label == join_transfer.join_block_label) {
+      bundle.predecessor_label = *join_transfer.source_false_incoming_label;
+      bundle.execution_block_label = branch_condition.false_label;
+    }
+  }
+  if (auto* function_locations =
+          find_mutable_prepared_value_location_function(prepared, function_name);
+      function_locations != nullptr) {
+    for (auto& bundle : function_locations->move_bundles) {
+      if (bundle.source_parallel_copy_successor_label != join_transfer.join_block_label) {
+        continue;
+      }
+      if (bundle.source_parallel_copy_predecessor_label == original_true_edge_predecessor) {
+        bundle.source_parallel_copy_predecessor_label =
+            *join_transfer.source_true_incoming_label;
+      } else if (bundle.source_parallel_copy_predecessor_label ==
+                 original_false_edge_predecessor) {
+        bundle.source_parallel_copy_predecessor_label =
+            *join_transfer.source_false_incoming_label;
+      } else {
+        continue;
+      }
+      for (auto& move : bundle.moves) {
+        if (move.source_parallel_copy_successor_label != join_transfer.join_block_label) {
+          continue;
+        }
+        if (move.source_parallel_copy_predecessor_label == original_true_edge_predecessor) {
+          move.source_parallel_copy_predecessor_label =
+              *join_transfer.source_true_incoming_label;
+        } else if (move.source_parallel_copy_predecessor_label ==
+                   original_false_edge_predecessor) {
+          move.source_parallel_copy_predecessor_label =
+              *join_transfer.source_false_incoming_label;
+        }
+      }
+    }
+  }
   join_transfer.incomings.push_back(
       bir::PhiIncoming{.label = "contract.extra_lane", .value = bir::Value::immediate_i32(77)});
   join_transfer.edge_transfers.push_back(prepare::PreparedEdgeValueTransfer{
@@ -2118,6 +2283,15 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
   const std::string original_carrier_result_name = join_select->result.name;
   const auto renamed_carrier_result =
       bir::Value::named(bir::TypeKind::I32, "carrier.join.contract.result");
+  if (auto* function_locations =
+          find_mutable_prepared_value_location_function(prepared, function_name);
+      function_locations != nullptr) {
+    if (auto* result_home = find_mutable_prepared_value_home(
+            prepared, *function_locations, original_carrier_result_name);
+        result_home != nullptr) {
+      result_home->value_name = prepared.names.value_names.intern(renamed_carrier_result.name);
+    }
+  }
   if (use_edge_store_slot_carrier) {
     join_transfer.kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot;
     join_transfer.storage_name = intern_slot_name(prepared, "%contract.join.slot");
@@ -2157,6 +2331,79 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
       join_block->terminator.value->kind == bir::Value::Kind::Named &&
       join_block->terminator.value->name == original_carrier_result_name) {
     join_block->terminator.value = renamed_carrier_result;
+  }
+  const auto current_true_label_id = branch_condition.true_label;
+  const auto current_false_label_id = branch_condition.false_label;
+  if (join_block->terminator.kind == bir::TerminatorKind::Return &&
+      join_block->terminator.value.has_value() &&
+      join_block->terminator.value->kind == bir::Value::Kind::Named) {
+    auto* function_locations =
+        find_mutable_prepared_value_location_function(prepared, function_name);
+    auto* return_home =
+        function_locations == nullptr
+            ? nullptr
+            : find_mutable_prepared_value_home(
+                  prepared, *function_locations, join_block->terminator.value->name);
+    const auto return_value_name =
+        prepared.names.value_names.intern(join_block->terminator.value->name);
+    if (function_locations != nullptr && return_home == nullptr) {
+      prepare::PreparedValueId next_value_id = 0;
+      for (const auto& home : function_locations->value_homes) {
+        next_value_id = std::max(next_value_id, home.value_id + 1);
+      }
+      function_locations->value_homes.push_back(prepare::PreparedValueHome{
+          .value_id = next_value_id,
+          .function_name = function_locations->function_name,
+          .value_name = return_value_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = minimal_i32_return_register(),
+      });
+      return_home = &function_locations->value_homes.back();
+    }
+    std::optional<std::size_t> join_block_index;
+    for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+      if (&function.blocks[block_index] == join_block) {
+        join_block_index = block_index;
+        break;
+      }
+    }
+    if (function_locations != nullptr && return_home != nullptr &&
+        join_block_index.has_value() &&
+        prepare::find_prepared_move_bundle(*function_locations,
+                                           prepare::PreparedMovePhase::BeforeReturn,
+                                           *join_block_index,
+                                           join_block->insts.size()) == nullptr &&
+        function.return_abi.has_value()) {
+      const auto return_register =
+          prepare::call_result_destination_register_name(target_profile, *function.return_abi);
+      if (return_register.has_value()) {
+        function_locations->move_bundles.push_back(prepare::PreparedMoveBundle{
+            .function_name = function_locations->function_name,
+            .phase = prepare::PreparedMovePhase::BeforeReturn,
+            .block_index = *join_block_index,
+            .instruction_index = join_block->insts.size(),
+            .moves =
+                {
+                    prepare::PreparedMoveResolution{
+                        .from_value_id = return_home->value_id,
+                        .to_value_id = return_home->value_id,
+                        .destination_kind =
+                            prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                        .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                        .destination_register_name = return_register,
+                        .block_index = *join_block_index,
+                        .instruction_index = join_block->insts.size(),
+                        .coalesced_by_assigned_storage =
+                            return_home->kind == prepare::PreparedValueHomeKind::Register &&
+                            return_home->register_name == return_register,
+                        .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                        .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+                        .reason = "return_register_to_register",
+                    },
+                },
+        });
+      }
+    }
   }
 
   if (use_selected_value_chain) {
@@ -2347,6 +2594,77 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
       }
     }
   }
+  if (join_block->terminator.kind == bir::TerminatorKind::Return &&
+      join_block->terminator.value.has_value() &&
+      join_block->terminator.value->kind == bir::Value::Kind::Named) {
+    auto* function_locations =
+        find_mutable_prepared_value_location_function(prepared, function_name);
+    auto* return_home =
+        function_locations == nullptr
+            ? nullptr
+            : find_mutable_prepared_value_home(
+                  prepared, *function_locations, join_block->terminator.value->name);
+    const auto return_value_name =
+        prepared.names.value_names.intern(join_block->terminator.value->name);
+    if (function_locations != nullptr && return_home == nullptr) {
+      prepare::PreparedValueId next_value_id = 0;
+      for (const auto& home : function_locations->value_homes) {
+        next_value_id = std::max(next_value_id, home.value_id + 1);
+      }
+      function_locations->value_homes.push_back(prepare::PreparedValueHome{
+          .value_id = next_value_id,
+          .function_name = function_locations->function_name,
+          .value_name = return_value_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = minimal_i32_return_register(),
+      });
+      return_home = &function_locations->value_homes.back();
+    }
+    std::optional<std::size_t> join_block_index;
+    for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+      if (&function.blocks[block_index] == join_block) {
+        join_block_index = block_index;
+        break;
+      }
+    }
+    if (function_locations != nullptr && return_home != nullptr &&
+        join_block_index.has_value() &&
+        prepare::find_prepared_move_bundle(*function_locations,
+                                           prepare::PreparedMovePhase::BeforeReturn,
+                                           *join_block_index,
+                                           join_block->insts.size()) == nullptr &&
+        function.return_abi.has_value()) {
+      const auto return_register =
+          prepare::call_result_destination_register_name(target_profile, *function.return_abi);
+      if (return_register.has_value()) {
+        function_locations->move_bundles.push_back(prepare::PreparedMoveBundle{
+            .function_name = function_locations->function_name,
+            .phase = prepare::PreparedMovePhase::BeforeReturn,
+            .block_index = *join_block_index,
+            .instruction_index = join_block->insts.size(),
+            .moves =
+                {
+                    prepare::PreparedMoveResolution{
+                        .from_value_id = return_home->value_id,
+                        .to_value_id = return_home->value_id,
+                        .destination_kind =
+                            prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                        .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                        .destination_register_name = return_register,
+                        .block_index = *join_block_index,
+                        .instruction_index = join_block->insts.size(),
+                        .coalesced_by_assigned_storage =
+                            return_home->kind == prepare::PreparedValueHomeKind::Register &&
+                            return_home->register_name == return_register,
+                        .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                        .authority_kind = prepare::PreparedMoveAuthorityKind::None,
+                        .reason = "return_register_to_register",
+                    },
+                },
+        });
+      }
+    }
+  }
 
   mutable_control_flow->branch_conditions.push_back(prepare::PreparedBranchCondition{
       .function_name = prepared.names.function_names.intern(function_name),
@@ -2356,30 +2674,125 @@ int check_join_route_consumes_prepared_control_flow_impl(const bir::Module& modu
       .true_label = intern_block_label(prepared, "dead.true"),
       .false_label = intern_block_label(prepared, "dead.false"),
   });
+  mutable_control_flow->blocks.push_back(prepare::PreparedControlFlowBlock{
+      .block_label = intern_block_label(prepared, "dead.cond"),
+      .terminator_kind = bir::TerminatorKind::CondBranch,
+      .true_label = intern_block_label(prepared, "dead.true"),
+      .false_label = intern_block_label(prepared, "dead.false"),
+  });
+  mutable_control_flow->blocks.push_back(prepare::PreparedControlFlowBlock{
+      .block_label = intern_block_label(prepared, "dead.true"),
+      .terminator_kind = bir::TerminatorKind::Branch,
+      .branch_target_label = intern_block_label(prepared, "dead.join"),
+  });
+  mutable_control_flow->blocks.push_back(prepare::PreparedControlFlowBlock{
+      .block_label = intern_block_label(prepared, "dead.false"),
+      .terminator_kind = bir::TerminatorKind::Branch,
+      .branch_target_label = intern_block_label(prepared, "dead.join"),
+  });
+  mutable_control_flow->blocks.push_back(prepare::PreparedControlFlowBlock{
+      .block_label = intern_block_label(prepared, "dead.join"),
+      .terminator_kind = bir::TerminatorKind::Return,
+  });
   mutable_control_flow->join_transfers.push_back(prepare::PreparedJoinTransfer{
       .function_name = prepared.names.function_names.intern(function_name),
       .join_block_label = intern_block_label(prepared, "dead.join"),
       .result = bir::Value::named(bir::TypeKind::I32, "dead.result"),
       .kind = prepare::PreparedJoinTransferKind::EdgeStoreSlot,
   });
+  function.blocks.push_back(bir::Block{
+      .label = "dead.cond",
+      .terminator = bir::CondBranchTerminator{
+          .condition = bir::Value::named(bir::TypeKind::I32, "dead.cond"),
+          .true_label = "dead.true",
+          .false_label = "dead.false",
+          .true_label_id = prepared.module.names.block_labels.intern("dead.true"),
+          .false_label_id = prepared.module.names.block_labels.intern("dead.false"),
+      },
+      .label_id = prepared.module.names.block_labels.intern("dead.cond"),
+  });
+  function.blocks.push_back(bir::Block{
+      .label = "dead.true",
+      .terminator = bir::BranchTerminator{
+          .target_label = "dead.join",
+          .target_label_id = prepared.module.names.block_labels.intern("dead.join"),
+      },
+      .label_id = prepared.module.names.block_labels.intern("dead.true"),
+  });
+  function.blocks.push_back(bir::Block{
+      .label = "dead.false",
+      .terminator = bir::BranchTerminator{
+          .target_label = "dead.join",
+          .target_label_id = prepared.module.names.block_labels.intern("dead.join"),
+      },
+      .label_id = prepared.module.names.block_labels.intern("dead.false"),
+  });
+  function.blocks.push_back(bir::Block{
+      .label = "dead.join",
+      .terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)},
+      .label_id = prepared.module.names.block_labels.intern("dead.join"),
+  });
   if (add_true_lane_passthrough_block) {
-    true_carrier->terminator = bir::BranchTerminator{.target_label = "contract.true.bridge"};
+    const auto true_bridge_label = intern_block_label(prepared, "contract.true.bridge");
+    const auto true_bridge_bir_label =
+        prepared.module.names.block_labels.intern("contract.true.bridge");
+    true_carrier->terminator = bir::BranchTerminator{
+        .target_label = "contract.true.bridge",
+        .target_label_id = true_bridge_bir_label,
+    };
+    for (auto& prepared_block : mutable_control_flow->blocks) {
+      if (prepared_block.block_label == current_true_label_id) {
+        prepared_block.terminator_kind = bir::TerminatorKind::Branch;
+        prepared_block.branch_target_label = true_bridge_label;
+        prepared_block.true_label = c4c::kInvalidBlockLabel;
+        prepared_block.false_label = c4c::kInvalidBlockLabel;
+      }
+    }
+    mutable_control_flow->blocks.push_back(prepare::PreparedControlFlowBlock{
+        .block_label = true_bridge_label,
+        .terminator_kind = bir::TerminatorKind::Branch,
+        .branch_target_label = join_block_label_id,
+    });
     function.blocks.push_back(bir::Block{
         .label = "contract.true.bridge",
         .terminator = bir::BranchTerminator{.target_label = join_block->label},
+        .label_id = true_bridge_bir_label,
     });
+    function.blocks.back().terminator.target_label_id = join_block->label_id;
   }
   if (add_false_lane_passthrough_block) {
-    false_carrier->terminator = bir::BranchTerminator{.target_label = "contract.false.bridge"};
+    const auto false_bridge_label = intern_block_label(prepared, "contract.false.bridge");
+    const auto false_bridge_bir_label =
+        prepared.module.names.block_labels.intern("contract.false.bridge");
+    false_carrier->terminator = bir::BranchTerminator{
+        .target_label = "contract.false.bridge",
+        .target_label_id = false_bridge_bir_label,
+    };
+    for (auto& prepared_block : mutable_control_flow->blocks) {
+      if (prepared_block.block_label == current_false_label_id) {
+        prepared_block.terminator_kind = bir::TerminatorKind::Branch;
+        prepared_block.branch_target_label = false_bridge_label;
+        prepared_block.true_label = c4c::kInvalidBlockLabel;
+        prepared_block.false_label = c4c::kInvalidBlockLabel;
+      }
+    }
+    mutable_control_flow->blocks.push_back(prepare::PreparedControlFlowBlock{
+        .block_label = false_bridge_label,
+        .terminator_kind = bir::TerminatorKind::Branch,
+        .branch_target_label = join_block_label_id,
+    });
     function.blocks.push_back(bir::Block{
         .label = "contract.false.bridge",
         .terminator = bir::BranchTerminator{.target_label = join_block->label},
+        .label_id = false_bridge_bir_label,
     });
+    function.blocks.back().terminator.target_label_id = join_block->label_id;
   }
   if (add_unreachable_block) {
     function.blocks.push_back(bir::Block{
         .label = "contract.dead.unreachable",
         .terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(99)},
+        .label_id = prepared.module.names.block_labels.intern("contract.dead.unreachable"),
     });
   }
 
@@ -4492,6 +4905,82 @@ int check_materialized_compare_join_route_requires_authoritative_prepared_return
   return 0;
 }
 
+int check_materialized_compare_join_route_rejects_drifted_immediate_move_source(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  const auto function_name_id = prepare::resolve_prepared_function_name_id(prepared.names, function_name);
+  if (!function_name_id.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepared compare-join fixture no longer resolves the function name for value-location ownership")
+                    .c_str());
+  }
+  const auto* control_flow =
+      prepare::find_prepared_control_flow_function(prepared.control_flow, *function_name_id);
+  auto function_locations_it =
+      std::find_if(prepared.value_locations.functions.begin(),
+                   prepared.value_locations.functions.end(),
+                   [&](const prepare::PreparedValueLocationFunction& function_locations) {
+                     return function_locations.function_name == *function_name_id;
+                   });
+  const auto bir_function_it =
+      std::find_if(prepared.module.functions.begin(),
+                   prepared.module.functions.end(),
+                   [&](const bir::Function& function) {
+                     return function.name == function_name;
+                   });
+  const auto* bir_function =
+      bir_function_it == prepared.module.functions.end() ? nullptr : &*bir_function_it;
+  if (control_flow == nullptr || function_locations_it == prepared.value_locations.functions.end() ||
+      bir_function == nullptr || control_flow->parallel_copy_bundles.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the compare-join immediate move authority contract")
+                    .c_str());
+  }
+
+  prepare::PreparedMoveResolution* immediate_move = nullptr;
+  for (const auto& parallel_copy : control_flow->parallel_copy_bundles) {
+    const auto* step_move =
+        prepare::find_prepared_parallel_copy_move_for_step(parallel_copy, 0);
+    if (step_move == nullptr ||
+        step_move->source_value.kind != bir::Value::Kind::Immediate ||
+        step_move->source_value.type != bir::TypeKind::I32) {
+      continue;
+    }
+    immediate_move = prepare::find_prepared_out_of_ssa_parallel_copy_move_for_step(
+        prepared.names, *bir_function, *function_locations_it, parallel_copy, 0);
+    if (immediate_move != nullptr) {
+      break;
+    }
+  }
+  if (immediate_move == nullptr || !immediate_move->source_immediate_i32.has_value()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes immediate-source out-of-SSA move authority for compare-join edges")
+                    .c_str());
+  }
+  immediate_move->source_immediate_i32.reset();
+
+  try {
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted a drifted immediate-source compare-join move contract")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the drifted immediate-source compare-join move contract with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_materialized_compare_join_route_consumes_authoritative_prepared_param_home(
     const bir::Module& module,
     const std::string& expected_asm,
@@ -5298,6 +5787,8 @@ int check_materialized_compare_join_branches_publish_prepared_immediate_return_c
     return status;
   }
   if (expected_asm != nullptr) {
+    refresh_prepared_i32_return_bundle(
+        prepared, target_profile, function, *join_block, function_name);
     const auto prepared_asm = c4c::backend::x86::api::emit_prepared_module(prepared);
     if (prepared_asm != *expected_asm) {
       return fail((std::string(failure_context) +
@@ -7684,6 +8175,14 @@ int run_backend_x86_handoff_boundary_joined_branch_tests() {
                   "branch_join_immediate_then_xor", "is_nonzero", 5, 1, 3),
               "branch_join_immediate_then_xor",
               "scalar-control-flow compare-against-zero joined branch lane with immediate selected values prepared-control-flow ownership");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_materialized_compare_join_route_rejects_drifted_immediate_move_source(
+              make_x86_param_eq_zero_branch_joined_immediates_then_xor_module(),
+              "branch_join_immediate_then_xor",
+              "scalar-control-flow compare-against-zero joined branch lane with immediate selected values rejects a drifted authoritative prepared immediate move source");
       status != 0) {
     return status;
   }
