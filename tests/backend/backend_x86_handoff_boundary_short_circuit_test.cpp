@@ -846,6 +846,58 @@ int check_short_circuit_route_rejects_drifted_branch_plan_continuation_targets(
   return 0;
 }
 
+int check_short_circuit_route_rejects_missing_prepared_local_frame_slot(
+    const bir::Module& module,
+    const char* function_name,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  if (find_control_flow_function(prepared, function_name) == nullptr ||
+      find_value_location_function(prepared, function_name) == nullptr ||
+      prepared.stack_layout.frame_slots.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the local-slot short-circuit frame/value-location contract")
+                    .c_str());
+  }
+
+  bool saw_prepared_frame_slot_access = false;
+  for (const auto& function_addressing : prepared.addressing.functions) {
+    for (const auto& access : function_addressing.accesses) {
+      if (access.address.base_kind == prepare::PreparedAddressBaseKind::FrameSlot &&
+          access.address.frame_slot_id.has_value()) {
+        saw_prepared_frame_slot_access = true;
+        break;
+      }
+    }
+  }
+  if (!saw_prepared_frame_slot_access) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes local-slot short-circuit frame-slot accesses")
+                    .c_str());
+  }
+
+  prepared.stack_layout.frame_slots.clear();
+
+  try {
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted local-slot short-circuit rendering without prepared frame-slot authority")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    const std::string_view message(error.what());
+    if (message.find("canonical prepared-module handoff") == std::string_view::npos ||
+        message.find("prepared frame slot") == std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected missing local frame-slot authority with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_short_circuit_route_consumes_prepared_control_flow_impl(const bir::Module& module,
                                                                   const char* function_name,
                                                                   const char* failure_context,
@@ -2417,18 +2469,18 @@ int check_short_circuit_branch_plan_helper_publishes_prepared_labels_impl(
                     .c_str());
   }
 
-  if (block_label(prepared, prepared_branch_plan->on_compare_true.block_label) !=
-          "carrier.join.false" ||
+  if (prepared_branch_plan->on_compare_true.block_label !=
+          prepared_join_context->continuation_true_label ||
       !prepared_branch_plan->on_compare_false.continuation.has_value() ||
       block_label(prepared, prepared_branch_plan->on_compare_false.block_label) != "logic.end.10" ||
       block_label(prepared, prepared_branch_plan->on_compare_false.continuation->incoming_label) !=
           block_label(prepared,
                       join_transfer.edge_transfers[*join_transfer.source_false_transfer_index]
                           .predecessor_label) ||
-      block_label(prepared, prepared_branch_plan->on_compare_false.continuation->true_label) !=
-          "carrier.join.false" ||
-      block_label(prepared, prepared_branch_plan->on_compare_false.continuation->false_label) !=
-          "carrier.join.true") {
+      prepared_branch_plan->on_compare_false.continuation->true_label !=
+          prepared_join_context->continuation_true_label ||
+      prepared_branch_plan->on_compare_false.continuation->false_label !=
+          prepared_join_context->continuation_false_label) {
     return fail((std::string(failure_context) +
                  ": shared helper stopped publishing the authoritative short-circuit branch-plan labels")
                     .c_str());
@@ -2884,6 +2936,15 @@ int run_backend_x86_handoff_boundary_short_circuit_tests() {
               make_x86_local_i32_short_circuit_or_guard_module(),
               "main",
               "minimal local-slot short-circuit route rejects drifted prepared branch-plan continuation targets");
+      status != 0) {
+    return status;
+  }
+
+  if (const auto status =
+          check_short_circuit_route_rejects_missing_prepared_local_frame_slot(
+              make_x86_local_i32_short_circuit_or_guard_module(),
+              "main",
+              "minimal local-slot short-circuit route rejects missing prepared frame-slot authority");
       status != 0) {
     return status;
   }

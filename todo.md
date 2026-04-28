@@ -8,59 +8,39 @@ Current Step Title: Reset The Accumulated Scalar Local-Slot Route
 
 ## Just Finished
 
-Reviewer report
-`review/step3_accumulated_scalar_local_slot_route_review.md` rejected the
-accumulated Step 3 scalar local-slot route as drifting. The dirty implementation
-is too broad for one Step 3 packet, still mixes Step 4 short-circuit/control-flow
-authority work with several scalar local-slot helpers, and the scalar strategy
-is becoming exact-sequence-shaped around instruction counts and instruction
-indexes.
+Reset packet retired the accumulated Step 3 scalar local-slot renderer route
+from the dirty slice. The exact-sequence scalar helpers for local-slot return,
+local i32 guard, i16 increment guard, and i16/i64 subtract return were removed,
+along with the uncommitted i16 guard drifted-carrier test addition. The
+remaining dirty implementation is limited to the Step 4 short-circuit/control-
+flow authority work and its short-circuit test changes.
 
-The current proof is red at `minimal local-slot add-chain guard route`, so the
-dirty slice is not acceptance-ready and should not be extended with another
-case-specific add-chain helper.
+The reset proof now fails earlier at `minimal local-slot return route`, which is
+the expected unsupported scalar boundary after retiring the rejected helper
+cluster.
 
 ## Suggested Next
 
-Next executor packet must split or retire the dirty implementation before any
-new scalar renderer support:
-
-- keep Step 4 short-circuit/control-flow authority changes separate from Step 3
-  scalar local-slot work;
-- keep any already-valid i16/i64 subtract-return scalar work separate from the
-  red add-chain/guard-lane problem;
-- remove, park, or rewrite scalar helpers selected mainly by exact instruction
-  counts, fixed instruction indexes, or fixture topology;
-- do not add a new helper just to make `minimal local-slot add-chain guard
-  route` pass.
-
-If scalar work continues after that split, the next Step 3 implementation must
-start from a generalized prepared local-slot expression/statement renderer. It
-must consume prepared frame-slot ids, prepared memory accesses, prepared value
-homes, typed scalar operations, return moves, and branch conditions as semantic
-records. It must cover nearby add/sub guard-lane and return cases through the
-same route, with negative coverage for missing/drifted memory access,
-frame-slot id, access size, load/store authority, value homes, return
-source/destination, and branch-condition identity.
+Next executor packet should stay on the retained Step 4 short-circuit/control-
+flow authority slice, or the supervisor should open a fresh Step 3 packet for a
+generalized prepared local-slot expression/statement renderer. Do not resume
+the removed exact-sequence scalar helpers.
 
 ## Watchouts
 
-Do not commit the accumulated dirty slice as-is. Do not treat a green
-add-chain positive alone as enough proof. If the remaining scalar route cannot
-be expressed without exact instruction-sequence dispatch, record the boundary as
-unsupported for this packet and stop for plan review.
-
-Step 4 work belongs in Step 4 unless it is inseparable from the delegated scalar
-proof. No-branch local-slot return, scalar-width increment, subtract, add-chain,
-and guard-lane expression rendering belong in Step 3 only if they share a
-general prepared local-slot expression/statement route.
+The dirty `tests/backend/backend_x86_handoff_boundary_local_i16_guard_test.cpp`
+changes are gone. The root-level untracked `review/` reports remain untouched
+per packet guardrails. The current red proof is not a regression of the reset
+objective; it documents the unsupported scalar boundary after cleanup.
 
 ## Proof
 
-Current `test_after.log` is red and is not acceptance proof. The command run was:
+Current `test_after.log` is red and is not scalar acceptance proof. The command
+run was:
 `cmake -S . -B build-x86 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DENABLE_C4C_BACKEND=ON -DC4C_ENABLE_X86_BACKEND_TESTS=ON && cmake --build build-x86 --target backend_x86_handoff_boundary_test backend_x86_prepared_handoff_label_authority_test -j2 && ctest --test-dir build-x86 -j --output-on-failure -R '^(backend_x86_handoff_boundary|backend_x86_prepared_handoff_label_authority)$'`.
 
 Configure and build passed. `backend_x86_prepared_handoff_label_authority`
 passed. `backend_x86_handoff_boundary` failed with
-`minimal local-slot add-chain guard route: x86 prepared-module consumer did not
-emit the canonical asm`.
+`minimal local-slot return route: x86 prepared-module consumer did not emit the
+canonical asm`. This is the expected boundary after removing the rejected scalar
+local-slot helpers; the proof did not reach the previous add-chain blocker.
