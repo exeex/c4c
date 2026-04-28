@@ -3,27 +3,32 @@
 Status: Active
 Source Idea Path: ideas/open/122_bir_string_legacy_path_cleanup.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Carry Structured Identity Through LIR-To-BIR
+Current Step ID: Step 4
+Current Step Title: Document Retained String Boundaries
 
 ## Just Finished
 
-Completed the next Step 3 packet by threading structured global/function
-identity into BIR pointer initializer symbol IDs. Parsed LIR pointer initializer
-text still supplies the retained display spelling, but `initializer_symbol_name_id`
-is now populated when that target resolves through the existing semantic global
-table or function symbol table. Focused coverage proves drifted global/function
-display spelling cannot override the structured initializer target identity, and
-unknown compatibility-only initializer symbols remain valid only with an invalid
-`LinkNameId`.
+Completed the Step 3 identity-threading sequence far enough to advance to Step
+4. The committed Step 3 packets thread structured identity into dynamic global
+scalar loads and BIR pointer initializer symbol IDs, after earlier packets had
+already threaded ordinary link-name identity through BIR declarations and direct
+symbol references. Pointer initializer display text is now retained spelling,
+while `initializer_symbol_name_id` is populated when the target resolves through
+the existing global or function symbol tables. Focused coverage proves drifted
+global/function display spelling cannot override the structured initializer
+target identity, and unknown compatibility-only initializer symbols remain valid
+only with an invalid `LinkNameId`.
 
 ## Suggested Next
 
-Continue Step 3 with the next bounded LIR-to-BIR identity-threading packet.
-Prefer another ordinary BIR symbol reference family that still carries only
-compatibility text but already has structured identity available at the lowering
-boundary, then add focused coverage for drifted display text or missing-identity
-rejection.
+Start Step 4 with a bounded retained-string documentation/classification
+packet. Update the retained-boundary comments/map for pointer initializer
+symbols, especially the stale comments that still say
+`initializer_symbol_name_id` remains invalid until identity is threaded, and
+audit nearby dynamic global load/store comments so they distinguish retained
+display or compatibility spelling from structured `LinkNameId` authority. Keep
+the packet documentation/classification-focused; only add or tighten focused
+tests if needed to make the retained-string boundary observable.
 
 ## Watchouts
 
@@ -41,9 +46,10 @@ Dynamic global scalar-array materialization now uses `global_types_` for
 `initializer_symbol_name_id` from the same structured global identity plus the
 function symbol table. Do not reclassify either path as a compatibility
 unresolved-id boundary unless the structured table entry is genuinely
-unavailable. For Step 3, do not pull parser or HIR cleanup into the packet; if
-BIR cannot receive needed structure yet, record that as an upstream gap rather
-than expanding this plan.
+unavailable. The current reason to advance is documentation drift, not an
+identified remaining Step 3 implementation family. For Step 4, do not pull
+parser or HIR cleanup into the packet; if BIR cannot receive needed structure
+yet, record that as an upstream gap rather than expanding this plan.
 
 ## Proof
 
