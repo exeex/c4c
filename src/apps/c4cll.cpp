@@ -742,8 +742,9 @@ int main(int argc, char **argv) {
                            : c4c::backend::BackendDumpStage::MirTrace;
       const ScopedEnvVar mir_focus_value_env(
           "C4C_MIR_FOCUS_VALUE",
-          (dump_mir || trace_mir) ? std::optional<std::string_view>(*mir_focus_value)
-                                  : std::nullopt);
+          (dump_mir || trace_mir) && mir_focus_value.has_value()
+              ? std::optional<std::string_view>(*mir_focus_value)
+              : std::nullopt);
       std::cout << c4c::backend::dump_module(
           c4c::backend::BackendModuleInput{lir_mod},
           c4c::backend::BackendOptions{

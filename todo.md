@@ -8,43 +8,45 @@ Current Step Title: Reprove X86 Handoff And Decide Lifecycle Outcome
 
 ## Just Finished
 
-Step 4 is completion-ready enough to transition to Step 5. Per
-`review/step4_completion_readiness_review.md`, the committed range since
-`f8bf064c` covers the accepted prepared-control-flow identity route:
-byval stack-authority producer support; loop-countdown missing/drifted branch,
-join, edge-transfer, and predecessor-owned parallel-copy identity; guard-chain,
-short-circuit, compare-branch, and joined-branch missing/drifted prepared
-metadata coverage; and tightened diagnostics for compare-branch and
-compare-join missing metadata. The reviewer found the route on track, matching
-the source idea, with low testcase-overfit risk and no remaining required
-narrow Step 4 identity packet.
+Step 5 adjacent CLI MIR safety fix completed. `ScopedEnvVar
+mir_focus_value_env` now receives `C4C_MIR_FOCUS_VALUE` only when
+`--dump-mir` or `--trace-mir` is active and `mir_focus_value.has_value()` is
+true, avoiding an empty optional dereference when no value focus is provided.
+
+The existing route-debug CLI repair remains intact: `--dump-mir` and
+`--trace-mir` still pass `route_debug_focus_value` into the x86 route-debug
+renderer and print `focus value: %...` when a value focus is provided.
 
 ## Suggested Next
 
-Delegate a Step 5 reprove/acceptance packet. The packet should re-run the
-supervisor-selected x86 handoff proof, confirm supported x86 BIR/handoff cases
-remain usable acceptance surfaces, verify prepared label and metadata identity
-is consumed directly and rejects missing or drifted ids, and then run the
-broader backend validation required before any lifecycle closure request.
-Record any remaining renderer gaps here before asking for closure or plan
-revision.
+Delegate a Step 5 completion-readiness review/decision packet. The CLI MIR
+route-debug blocker and adjacent empty-focus safety issue are resolved, so the
+next packet should decide whether the active plan can move to lifecycle
+closure or needs one final source-idea acceptance note.
 
 ## Watchouts
 
-Step 5 is an acceptance/reprove packet, not a new renderer-growth packet.
-Do not claim source-idea closure from narrow Step 4 proof alone. Closure still
-needs the Step 5 supported/unsupported matrix review and broader backend proof.
-Keep remaining gaps in `todo.md` unless they require a durable plan revision or
-source-idea split.
+Remaining supported renderer surface observed in this packet is the committed
+semantic route listed by `append_supported_scalar_function`: trivial void
+return, loop-join countdown, local-slot return/immediate guard/short-circuit,
+i32 immediate guard chain, i32 immediate/rematerialized/passthrough/binary
+return, same-module global return/sub-return, symbol-call local i32, direct
+extern call return, i32 param-zero compare-join/branch return, and folded
+pointer-compare return. Anything outside those routes still falls through the
+contract-first unsupported/stub boundary and should stay named explicitly
+rather than hidden by expectations.
+
+The x86 route-debug surface remains contract-first: CLI MIR dump/trace tests
+should assert the current `x86 route` debug wrapper and deferred structured
+lane diagnostics, not older lane-classifier details. Value focus is currently a
+header/plumbing guarantee for route-debug output; detailed prepared-value
+filtering remains owned by the generic prepared-BIR dump path.
 
 ## Proof
 
-Step 4 narrow proof ran as delegated:
-`cmake -S . -B build-x86 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DENABLE_C4C_BACKEND=ON -DC4C_ENABLE_X86_BACKEND_TESTS=ON && cmake --build build-x86 --target backend_prepare_phi_materialize_test backend_prepare_liveness_test backend_x86_handoff_boundary_test -j2 && ctest --test-dir build-x86 -j --output-on-failure -R '^(backend_prepare_phi_materialize|backend_prepare_liveness|backend_x86_handoff_boundary)$' > test_after.log 2>&1`.
+Step 5 broad backend proof ran exactly as delegated for the adjacent CLI MIR
+focus-value safety fix:
+`cmake -S . -B build-x86 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DENABLE_C4C_BACKEND=ON -DC4C_ENABLE_X86_BACKEND_TESTS=ON && cmake --build build-x86 -j2 && ctest --test-dir build-x86 -j --output-on-failure -R '^backend_' > test_after.log 2>&1`.
 
-Configure and build passed. CTest passed
-`backend_prepare_phi_materialize`, `backend_prepare_liveness`, and
-`backend_x86_handoff_boundary`. Canonical proof log: `test_after.log`.
-
-`review/step4_completion_readiness_review.md` also records
-`test_baseline.log` full-suite proof at `ef372f8c`: 3088/3088 tests passed.
+Configure and build passed. CTest passed 122/122 backend tests. Canonical
+proof log: `test_after.log`.

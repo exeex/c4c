@@ -337,7 +337,8 @@ bool has_indirect_variadic_call(const c4c::backend::prepare::PreparedBirModule& 
 std::string render_report(const c4c::backend::prepare::PreparedBirModule& module,
                           bool trace,
                           std::optional<std::string_view> focus_function,
-                          std::optional<std::string_view> focus_block) {
+                          std::optional<std::string_view> focus_block,
+                          std::optional<std::string_view> focus_value) {
   std::ostringstream out;
   const auto target_profile = c4c::backend::x86::abi::resolve_target_profile(module);
   const auto target_triple = c4c::backend::x86::abi::resolve_target_triple(module);
@@ -351,6 +352,9 @@ std::string render_report(const c4c::backend::prepare::PreparedBirModule& module
   }
   if (focus_block.has_value()) {
     out << "focus block: " << *focus_block << "\n";
+  }
+  if (focus_value.has_value()) {
+    out << "focus value: " << *focus_value << "\n";
   }
   out << "route owner: x86/debug\n";
   out << "module emitter: x86/module\n";
@@ -416,15 +420,17 @@ std::string render_report(const c4c::backend::prepare::PreparedBirModule& module
 std::string summarize_prepared_module_routes(
     const c4c::backend::prepare::PreparedBirModule& module,
     std::optional<std::string_view> focus_function,
-    std::optional<std::string_view> focus_block) {
-  return render_report(module, false, focus_function, focus_block);
+    std::optional<std::string_view> focus_block,
+    std::optional<std::string_view> focus_value) {
+  return render_report(module, false, focus_function, focus_block, focus_value);
 }
 
 std::string trace_prepared_module_routes(
     const c4c::backend::prepare::PreparedBirModule& module,
     std::optional<std::string_view> focus_function,
-    std::optional<std::string_view> focus_block) {
-  return render_report(module, true, focus_function, focus_block);
+    std::optional<std::string_view> focus_block,
+    std::optional<std::string_view> focus_value) {
+  return render_report(module, true, focus_function, focus_block, focus_value);
 }
 
 }  // namespace c4c::backend::x86::debug

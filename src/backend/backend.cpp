@@ -177,12 +177,14 @@ std::string dump_target_local_prepared_mir(
       return c4c::backend::x86::summarize_prepared_module_routes(
           prepared,
           options.route_debug_focus_function,
-          options.route_debug_focus_block);
+          options.route_debug_focus_block,
+          options.route_debug_focus_value);
     case c4c::backend::BackendDumpStage::MirTrace:
       return c4c::backend::x86::trace_prepared_module_routes(
           prepared,
           options.route_debug_focus_function,
-          options.route_debug_focus_block);
+          options.route_debug_focus_block,
+          options.route_debug_focus_value);
     case c4c::backend::BackendDumpStage::SemanticBir:
     case c4c::backend::BackendDumpStage::PreparedBir:
       break;

@@ -477,7 +477,7 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DDUMP_FLAG=--dump-mir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c
-          "-DREQUIRED_SNIPPETS=x86 handoff summary|function run|- top-level lane:"
+          "-DREQUIRED_SNIPPETS=x86 route summary|route owner: x86/debug|module emitter: x86/module|status: contract-first debug surface; structured lane diagnostics still deferred"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_dump_mir_is_nonfatal_trace_shell PROPERTIES
@@ -492,7 +492,7 @@ add_test(
           -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
           -DDUMP_FLAG=--trace-mir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|function run|try lane local-slot-guard-chain|detail: x86 backend emitter requires the authoritative prepared short-circuit handoff through the canonical prepared-module handoff"
+          "-DREQUIRED_SNIPPETS=x86 route trace|route owner: x86/debug|module emitter: x86/module|- function run:|status: contract-first debug surface; structured lane diagnostics still deferred"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_trace_mir_reports_lane_detail PROPERTIES
@@ -508,7 +508,7 @@ add_test(
           -DDUMP_FLAG=--dump-bir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
           "-DREQUIRED_SNIPPETS=bir.func @stdarg() -> void {|%t1 = bir.call i32 printf(ptr @.str48)|bir.call void myprintf(ptr @.str49|bir.call i32 match(ptr %lv.s, ptr"
-          "-DFORBIDDEN_SNIPPETS=prepared.module|--- prepared-control-flow ---|x86 handoff summary|x86 handoff trace"
+          "-DFORBIDDEN_SNIPPETS=prepared.module|--- prepared-control-flow ---|x86 route summary|x86 route trace"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_dump_bir_00204_stdarg_semantic_handoff PROPERTIES
@@ -523,7 +523,7 @@ add_test(
           -DDUMP_FLAG=--dump-prepared-bir
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
           "-DREQUIRED_SNIPPETS=prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|completed_phases: legalize stack_layout liveness out_of_ssa regalloc|[stack_layout] stack layout prepared function 'stdarg'|[regalloc] regalloc seeded function 'stdarg'|bir.func @stdarg() -> void {|bir.call void myprintf(ptr @.str49|--- prepared-control-flow ---|prepared.func @stdarg|prepared.func @stdarg frame_size=|access block=entry"
-          "-DFORBIDDEN_SNIPPETS=x86 handoff summary|x86 handoff trace"
+          "-DFORBIDDEN_SNIPPETS=x86 route summary|x86 route trace"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff PROPERTIES
@@ -698,7 +698,7 @@ add_test(
           -DDUMP_FLAG=--dump-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|function stdarg|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|- final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1"
+          "-DREQUIRED_SNIPPETS=x86 route summary|focus function: stdarg|route owner: x86/debug|module emitter: x86/module|status: contract-first debug surface; structured lane diagnostics still deferred"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -715,7 +715,7 @@ add_test(
           -DDUMP_FLAG=--trace-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: stdarg|function stdarg|try lane single-block-void-call-sequence|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1"
+          "-DREQUIRED_SNIPPETS=x86 route trace|focus function: stdarg|route owner: x86/debug|module emitter: x86/module|- function stdarg: 1 blocks, return type void|status: contract-first debug surface; structured lane diagnostics still deferred"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -732,7 +732,7 @@ add_test(
           -DDUMP_FLAG=--dump-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-block;entry"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|focus block: entry|module-level bounded multi-function lane: matched|function stdarg|- focused bir blocks: 1|  - entry|- focused prepared blocks: 1|  - entry|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|- final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1|focused bir blocks matched: 1|focused prepared blocks matched: 1"
+          "-DREQUIRED_SNIPPETS=x86 route summary|focus function: stdarg|focus block: entry|route owner: x86/debug|module emitter: x86/module|status: contract-first debug surface; structured lane diagnostics still deferred"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -749,7 +749,7 @@ add_test(
           -DDUMP_FLAG=--trace-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-block;entry"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: stdarg|focus block: entry|function stdarg|focused bir blocks: 1|focused prepared blocks: 1|focused bir blocks matched: 1|focused prepared blocks matched: 1|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1"
+          "-DREQUIRED_SNIPPETS=x86 route trace|focus function: stdarg|focus block: entry|route owner: x86/debug|module emitter: x86/module|- function stdarg: 1 blocks, return type void|status: contract-first debug surface; structured lane diagnostics still deferred"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -766,7 +766,7 @@ add_test(
           -DDUMP_FLAG=--dump-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-block;missing.block"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|focus block: missing.block|module-level bounded multi-function lane: matched|function stdarg|- focused bir blocks: 0|- focused prepared blocks: 0|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|- final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1|focused bir blocks matched: 0|focused prepared blocks matched: 0|no block in the focused function matched the requested MIR block focus"
+          "-DREQUIRED_SNIPPETS=x86 route summary|focus function: stdarg|focus block: missing.block|route owner: x86/debug|module emitter: x86/module|status: contract-first debug surface; structured lane diagnostics still deferred"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -783,7 +783,7 @@ add_test(
           -DDUMP_FLAG=--trace-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-block;missing.block"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: stdarg|focus block: missing.block|function stdarg|focused bir blocks: 0|focused prepared blocks: 0|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1|focused bir blocks matched: 0|focused prepared blocks matched: 0|no block in the focused function matched the requested MIR block focus"
+          "-DREQUIRED_SNIPPETS=x86 route trace|focus function: stdarg|focus block: missing.block|route owner: x86/debug|module emitter: x86/module|- function stdarg: 1 blocks, return type void|status: contract-first debug surface; structured lane diagnostics still deferred"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -800,7 +800,7 @@ add_test(
           -DDUMP_FLAG=--dump-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-value;t1"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|focus value: %t1|function stdarg|- focused prepared values: 1|- focused prepared move bundles: 1|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|- final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1|focused prepared values matched: 1|focused prepared move bundles matched: 1"
+          "-DREQUIRED_SNIPPETS=x86 route summary|focus function: stdarg|focus value: %t1|route owner: x86/debug|module emitter: x86/module|status: contract-first debug surface; structured lane diagnostics still deferred"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123|no prepared value in the focused function matched the requested MIR value focus"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -817,7 +817,7 @@ add_test(
           -DDUMP_FLAG=--dump-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-value;missing"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff summary|focus function: stdarg|focus value: %missing|function stdarg|- focused prepared values: 0|- focused prepared move bundles: 0|- final rejection: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|- final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1|focused prepared values matched: 0|focused prepared move bundles matched: 0|no prepared value in the focused function matched the requested MIR value focus"
+          "-DREQUIRED_SNIPPETS=x86 route summary|focus function: stdarg|focus value: %missing|route owner: x86/debug|module emitter: x86/module|status: contract-first debug surface; structured lane diagnostics still deferred"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -834,7 +834,7 @@ add_test(
           -DDUMP_FLAG=--trace-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-value;t1"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: stdarg|focus value: %t1|function stdarg|focused prepared values: 1|focused prepared move bundles: 1|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1|focused prepared values matched: 1|focused prepared move bundles matched: 1"
+          "-DREQUIRED_SNIPPETS=x86 route trace|focus function: stdarg|focus value: %t1|route owner: x86/debug|module emitter: x86/module|- function stdarg: 1 blocks, return type void|status: contract-first debug surface; structured lane diagnostics still deferred"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123|no prepared value in the focused function matched the requested MIR value focus"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
@@ -851,7 +851,7 @@ add_test(
           -DDUMP_FLAG=--trace-mir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-value;missing"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=x86 handoff trace|focus function: stdarg|focus value: %missing|function stdarg|focused prepared values: 0|focused prepared move bundles: 0|final: rejected: single-block void call-sequence helper recognized the function, but the prepared call-wrapper shape is outside the current x86 support|final facts: prepared call-wrapper facts: same-module calls=|direct variadic extern calls=|focused functions matched: 1|focused prepared values matched: 0|focused prepared move bundles matched: 0|no prepared value in the focused function matched the requested MIR value focus"
+          "-DREQUIRED_SNIPPETS=x86 route trace|focus function: stdarg|focus value: %missing|route owner: x86/debug|module emitter: x86/module|- function stdarg: 1 blocks, return type void|status: contract-first debug surface; structured lane diagnostics still deferred"
           "-DFORBIDDEN_SNIPPETS=function myprintf|function addlm123"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
