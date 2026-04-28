@@ -3,6 +3,7 @@
 #include "src/backend/mir/x86/api/api.hpp"
 #include "src/backend/prealloc/target_register_profile.hpp"
 
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -675,6 +676,56 @@ int check_i32_guard_chain_route_requires_authoritative_prepared_branch_labels(
   return 0;
 }
 
+int check_i32_guard_chain_route_requires_authoritative_prepared_branch_record(
+    const bir::Module& module,
+    const char* function_name,
+    const char* branch_block_label,
+    const char* failure_context) {
+  c4c::TargetProfile target_profile;
+  auto prepared =
+      prepare::prepare_semantic_bir_module_with_options(
+          module, target_profile_from_module_triple(module.target_triple, target_profile));
+  auto* control_flow = find_control_flow_function(prepared, function_name);
+  if (control_flow == nullptr || control_flow->branch_conditions.size() < 2 ||
+      !control_flow->join_transfers.empty()) {
+    return fail((std::string(failure_context) +
+                 ": prepare no longer publishes the guard-chain prepared branch contracts")
+                    .c_str());
+  }
+
+  const auto original_condition_count = control_flow->branch_conditions.size();
+  control_flow->branch_conditions.erase(
+      std::remove_if(control_flow->branch_conditions.begin(),
+                     control_flow->branch_conditions.end(),
+                     [&](const prepare::PreparedBranchCondition& branch_condition) {
+                       return prepare::prepared_block_label(prepared.names,
+                                                            branch_condition.block_label) ==
+                              branch_block_label;
+                     }),
+      control_flow->branch_conditions.end());
+  if (control_flow->branch_conditions.size() != original_condition_count - 1) {
+    return fail((std::string(failure_context) +
+                 ": prepared guard-chain fixture no longer exposes the expected authoritative branch contract")
+                    .c_str());
+  }
+
+  try {
+    (void)c4c::backend::x86::api::emit_prepared_module(prepared);
+    return fail((std::string(failure_context) +
+                 ": x86 prepared-module consumer unexpectedly accepted a missing prepared guard-chain branch record")
+                    .c_str());
+  } catch (const std::invalid_argument& error) {
+    if (std::string_view(error.what()).find("canonical prepared-module handoff") ==
+        std::string_view::npos) {
+      return fail((std::string(failure_context) +
+                   ": x86 prepared-module consumer rejected the missing prepared guard-chain branch record with the wrong contract message")
+                      .c_str());
+    }
+  }
+
+  return 0;
+}
+
 int check_i32_guard_chain_route_consumes_authoritative_prepared_compare_contract(
     const bir::Module& module,
     const std::string& expected_asm,
@@ -1092,6 +1143,15 @@ int run_backend_x86_handoff_boundary_i32_guard_chain_tests() {
               "main",
               "block_2",
               "minimal non-global equality-against-immediate guard-chain route rejects drifted prepared branch labels instead of falling back to the raw guard-chain matcher");
+      status != 0) {
+    return status;
+  }
+  if (const auto status =
+          check_i32_guard_chain_route_requires_authoritative_prepared_branch_record(
+              make_x86_immediate_i32_guard_chain_module(),
+              "main",
+              "block_2",
+              "minimal non-global equality-against-immediate guard-chain route rejects missing prepared branch metadata instead of recovering from raw guard-chain topology");
       status != 0) {
     return status;
   }

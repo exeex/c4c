@@ -8,29 +8,26 @@ Current Step Title: Recover Prepared Control-Flow Rendering Semantics
 
 ## Just Finished
 
-Step 4 added direct loop-countdown prepared-control-flow identity coverage for
-missing branch-condition metadata, missing join-transfer metadata, missing and
-drifted edge-transfer identity, removed parallel-copy publication, and drifted
-predecessor-owned parallel-copy bundle identity. The x86 loop-countdown
-consumer now treats a published loop-carry join without its prepared branch
-condition as a prepared control-flow handoff error instead of falling through to
-later topology-shaped renderer routes.
+Step 4 added direct non-global i32 guard-chain coverage for missing
+branch-condition metadata. Removing the authoritative prepared branch-condition
+record for the second guard block is now asserted to reject through the
+prepared-module handoff contract rather than recovering from raw guard-chain
+topology; the existing drifted-label and compare-ownership checks remain in the
+same route.
 
 ## Suggested Next
 
-Supervisor should review this Step 4 loop-countdown producer/consumer identity
-slice for acceptance. The next coherent packet is either a reviewer pass for
-remaining control-flow route drift or Step 4 continuation on another prepared
-control-flow form that still needs direct missing/drifted identity coverage.
+Supervisor should review this focused Step 4 guard-chain missing-metadata
+negative for acceptance. The next coherent packet is either a reviewer pass for
+remaining control-flow route drift or another prepared control-flow form that
+still lacks direct missing/drifted identity coverage.
 
 ## Watchouts
 
-This slice does not add consumer-side recovery from BIR topology, same-successor
-guesses, raw label spelling, or local countdown branch synthesis. Missing join
-transfer still reaches the existing canonical prepared-module handoff rejection
-through the broader unsupported path; the branch-condition gap required an
-explicit loop-carry guard because another renderer could otherwise accept the
-shape after the branch-condition record was removed.
+This slice did not change renderer behavior: the existing i32 immediate
+guard-chain path already rejects missing prepared branch metadata. It only adds
+the direct non-global missing-record negative requested for the guard-chain
+route and does not resume helper-prefix/local-byval renderer work.
 
 ## Proof
 
