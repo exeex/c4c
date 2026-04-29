@@ -93,17 +93,34 @@ struct TemplateArgRefList {
 };
 
 struct TypeSpec {
+    // Cross-stage type contract: semantic type identity consumed after parsing.
     TypeBase base;
     TypeBase enum_underlying_base; // fixed underlying base for TB_ENUM, or TB_VOID when unknown/default
+
+    // Compatibility/display spelling: source names that may still bridge
+    // parser, Sema, HIR, and diagnostics where no TextId-backed authority
+    // exists yet.
     const char* tag;         // struct/union/enum tag or typedef name (may be null)
+
+    // Cross-stage type contract: parser-owned record identity for structured
+    // type names.
     Node* record_def;        // concrete parser-owned NK_STRUCT_DEF for struct/union types, or null
+
+    // Compatibility/display spelling: qualified source name path attached to
+    // tagged/typedef names until all consumers use structured identity.
     const char** qualifier_segments; // structured qualifier path for tagged/typedef names
     int n_qualifier_segments;        // qualifier segment count (excludes base name)
     bool is_global_qualified;        // true when the source type started with ::
+
+    // Cross-stage type contract: declarator shape attached to the base type.
     int ptr_level;           // 0 = not a pointer; 1 = *; 2 = **; ...
     bool is_lvalue_ref;      // true for C++ lvalue references (T&)
     bool is_rvalue_ref;      // true for C++ rvalue references (T&&)
+
+    // Parser-produced layout hint from parsed attributes.
     int align_bytes;         // explicit alignment from __attribute__((aligned)) / aligned(N)
+
+    // Cross-stage type contract: array/function-pointer declarator shape.
     long long array_size;    // -1 = not array; -2 = [] (unsized); >= 0 = size
     int array_rank;          // number of array dimensions (0 = not array)
     long long array_dims[8]; // outer-to-inner dimensions; each is -2 (unsized) or >= 0
@@ -111,28 +128,47 @@ struct TypeSpec {
     int  inner_rank;         // >= 0: array_dims split: inner_rank trailing dims belong to
                              // pointed-to typedef array; outer (array_rank-inner_rank) are
                              // declarator dims → llvm_ty generates [outer x ptr]
+
+    // Parser-produced layout and lowering hints; later stages should treat
+    // these as parsed attributes, not independent type identity.
     bool is_vector;          // GCC vector type from __attribute__((vector_size(N)))
     long long vector_lanes;  // number of vector elements when is_vector=true
     long long vector_bytes;  // total storage size in bytes when is_vector=true
+
+    // Debug/recovery payload: preserves the unevaluated bound expression when
+    // the array size is not a resolved integer at parse time.
     Node* array_size_expr;   // non-null when array size is a computed expression
+
+    // Parser-produced qualifier, declarator, and attribute hints.
     bool is_const;
     bool is_volatile;
     bool is_fn_ptr;      // true when this TypeSpec was derived from a (*)(params) declarator
     bool is_packed;      // __attribute__((packed)) — struct layout uses alignment 1
     bool is_noinline;    // __attribute__((noinline))
     bool is_always_inline; // __attribute__((always_inline))
-    // Pending template struct instantiation: non-null when this struct type
-    // depends on unresolved template type params (e.g., Pair<T> inside a
-    // template function body).  The HIR resolves it during instantiation.
+
+    // Cross-stage contract payload for unresolved template struct
+    // instantiation. Non-null when this struct type depends on unresolved
+    // template type params (e.g., Pair<T> inside a template function body).
+    // The HIR resolves it during instantiation.
     const char* tpl_struct_origin;     // original template struct name (e.g., "Pair")
     TemplateArgRefList tpl_struct_args; // structured template arg payload
+
+    // Legacy bridge spelling for dependent member typedefs; this is a pending
+    // `StructLike::type`-style name until a structured member-type reference
+    // replaces the string handoff.
     const char* deferred_member_type_name; // pending `StructLike::type`-style member typedef
 };
 
 struct TemplateArgRef {
+    // Cross-stage template argument contract.
     TemplateArgKind kind;
     TypeSpec type;
     long long value;
+
+    // Debug/recovery/display spelling. Helpers may use this to preserve or
+    // search original argument text, but structured fields above remain the
+    // primary semantic payload.
     const char* debug_text;
 };
 
