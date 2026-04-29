@@ -663,6 +663,109 @@ void test_struct_owner_key_lookup_detects_stale_rendered_member_and_method_maps(
               "method return-type owner-key lookup should detect stale rendered authority");
 }
 
+c4c::Node make_compile_time_registry_node(c4c::NodeKind kind,
+                                           const char* name,
+                                           c4c::TextId unqualified_text_id) {
+  c4c::Node node{};
+  node.kind = kind;
+  node.name = name;
+  node.unqualified_name = name;
+  node.unqualified_text_id = unqualified_text_id;
+  return node;
+}
+
+void test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered_names() {
+  c4c::TextTable texts;
+  c4c::hir::CompileTimeState state;
+
+  c4c::Node stale_template = make_compile_time_registry_node(
+      c4c::NK_FUNCTION, "stale_template", texts.intern("stale_template"));
+  stale_template.n_template_params = 1;
+  c4c::Node structured_template = make_compile_time_registry_node(
+      c4c::NK_FUNCTION, "structured_template",
+      texts.intern("structured_template"));
+  structured_template.n_template_params = 1;
+  state.register_template_def("stale_template", &stale_template);
+  state.register_template_def("structured_template", &structured_template);
+  expect_true(state.find_template_def(&structured_template, "stale_template") ==
+                  &structured_template,
+              "template definition lookup should prefer declaration-key mirror over stale rendered name");
+  c4c::Node unregistered_template = make_compile_time_registry_node(
+      c4c::NK_FUNCTION, "unregistered_template",
+      texts.intern("unregistered_template"));
+  expect_true(state.find_template_def(&unregistered_template, "stale_template") ==
+                  &stale_template,
+              "template definition lookup should preserve rendered fallback when declaration key is absent");
+
+  c4c::Node stale_struct = make_compile_time_registry_node(
+      c4c::NK_STRUCT_DEF, "StaleTemplateStruct",
+      texts.intern("StaleTemplateStruct"));
+  stale_struct.n_template_params = 1;
+  c4c::Node structured_struct = make_compile_time_registry_node(
+      c4c::NK_STRUCT_DEF, "StructuredTemplateStruct",
+      texts.intern("StructuredTemplateStruct"));
+  structured_struct.n_template_params = 1;
+  state.register_template_struct_def("StaleTemplateStruct", &stale_struct);
+  state.register_template_struct_def("StructuredTemplateStruct",
+                                     &structured_struct);
+  expect_true(state.find_template_struct_def(&structured_struct,
+                                             "StaleTemplateStruct") ==
+                  &structured_struct,
+              "template struct definition lookup should prefer declaration-key mirror over stale rendered name");
+  c4c::Node unregistered_struct = make_compile_time_registry_node(
+      c4c::NK_STRUCT_DEF, "UnregisteredTemplateStruct",
+      texts.intern("UnregisteredTemplateStruct"));
+  unregistered_struct.n_template_params = 1;
+  expect_true(state.find_template_struct_def(&unregistered_struct,
+                                             "StaleTemplateStruct") ==
+                  &stale_struct,
+              "template struct definition lookup should preserve rendered fallback when declaration key is absent");
+
+  c4c::Node stale_struct_spec = make_compile_time_registry_node(
+      c4c::NK_STRUCT_DEF, "StaleTemplateStruct<int>",
+      texts.intern("StaleTemplateStruct"));
+  c4c::Node structured_struct_spec = make_compile_time_registry_node(
+      c4c::NK_STRUCT_DEF, "StructuredTemplateStruct<int>",
+      texts.intern("StructuredTemplateStruct"));
+  state.register_template_struct_specialization("StaleTemplateStruct",
+                                                &stale_struct_spec);
+  state.register_template_struct_specialization(&structured_struct,
+                                                &structured_struct_spec);
+  const std::vector<const c4c::Node*>* structured_specs =
+      state.find_template_struct_specializations(&structured_struct,
+                                                 "StaleTemplateStruct");
+  expect_true(structured_specs && structured_specs->size() == 1 &&
+                  (*structured_specs)[0] == &structured_struct_spec,
+              "template struct specialization lookup should prefer owner-key mirror over stale rendered primary name");
+  const std::vector<const c4c::Node*>* fallback_specs =
+      state.find_template_struct_specializations(&unregistered_struct,
+                                                 "StaleTemplateStruct");
+  expect_true(fallback_specs && fallback_specs->size() == 1 &&
+                  (*fallback_specs)[0] == &stale_struct_spec,
+              "template struct specialization lookup should preserve rendered fallback when owner key is absent");
+
+  c4c::Node stale_consteval = make_compile_time_registry_node(
+      c4c::NK_FUNCTION, "stale_consteval", texts.intern("stale_consteval"));
+  stale_consteval.is_consteval = true;
+  c4c::Node structured_consteval = make_compile_time_registry_node(
+      c4c::NK_FUNCTION, "structured_consteval",
+      texts.intern("structured_consteval"));
+  structured_consteval.is_consteval = true;
+  state.register_consteval_def("stale_consteval", &stale_consteval);
+  state.register_consteval_def("structured_consteval", &structured_consteval);
+  expect_true(state.find_consteval_def(&structured_consteval,
+                                       "stale_consteval") ==
+                  &structured_consteval,
+              "consteval definition lookup should prefer declaration-key mirror over stale rendered name");
+  c4c::Node unregistered_consteval = make_compile_time_registry_node(
+      c4c::NK_FUNCTION, "unregistered_consteval",
+      texts.intern("unregistered_consteval"));
+  unregistered_consteval.is_consteval = true;
+  expect_true(state.find_consteval_def(&unregistered_consteval,
+                                       "stale_consteval") == &stale_consteval,
+              "consteval definition lookup should preserve rendered fallback when declaration key is absent");
+}
+
 }  // namespace
 
 int main() {
@@ -672,6 +775,7 @@ int main() {
   test_operator_callee_lookup_uses_authoritative_decl_identity();
   test_range_for_method_callee_lookup_uses_authoritative_decl_identity();
   test_struct_owner_key_lookup_detects_stale_rendered_member_and_method_maps();
+  test_compile_time_state_structured_registry_lookup_wins_over_stale_rendered_names();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }

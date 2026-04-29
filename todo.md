@@ -8,29 +8,25 @@ Current Step Title: Extend Structured Lookup Proof Across HIR Edge Paths
 
 ## Just Finished
 
-Completed Step 4 struct owner-key proof extension. `frontend_hir_lookup_tests`
-now covers stale rendered struct member, method mangled-name, method link-name,
-and method return-type lookup maps disagreeing with the structured owner-key
-mirrors, and asserts those owner-key parity paths record mismatches instead of
-letting rendered spelling silently count as authoritative.
+Completed Step 4 compile-time registry lookup proof extension.
+`frontend_hir_lookup_tests` now covers stale rendered-name conflicts for
+`CompileTimeState::find_template_def`, `find_template_struct_def`,
+`find_template_struct_specializations(primary_def, rendered_name)`, and
+`find_consteval_def`, and asserts declaration-key mirrors win while rendered
+fallback remains available when the declaration key has no structured entry.
 
 ## Suggested Next
 
-Next coherent Step 4 packet: extend `frontend_hir_lookup_tests` to cover the
-compile-time registry edge paths that already have structured mirrors. Build
-stale-rendered mismatch tests for `CompileTimeState::find_template_def`,
-`find_template_struct_def`, `find_template_struct_specializations(primary_def,
-rendered_name)`, and `find_consteval_def`, proving declaration-key lookup wins
-over a conflicting rendered-name entry and rendered fallback remains available
-only when declaration metadata is absent.
+Next coherent Step 4 packet: have the supervisor review whether the HIR lookup
+edge-path proof set is now broad enough for Step 4 acceptance, or select the
+next uncovered structured lookup family if one remains in the active plan.
 
 ## Watchouts
 
-The new test deliberately uses the existing owner-key parity mirrors and does
-not change production lookup authority; it proves detection rather than a full
-owner-key replacement. Link-name and return-type assertions still expect the
-rendered lookup result while requiring the structured owner-key parity mismatch
-to be counted.
+This packet is test-only and exercises existing `CompileTimeState` precedence;
+it does not change production lookup authority. The fallback assertions use
+unregistered declaration keys to prove rendered-name compatibility stays
+available when no structured entry exists.
 
 ## Proof
 
