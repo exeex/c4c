@@ -3,13 +3,14 @@
 Status: Active
 Source Idea Path: ideas/open/127_typed_parser_record_identity_bridge.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Demote struct_tag_def_map To Compatibility Mirror
+Current Step ID: Step 6
+Current Step Title: Reprove And Return To Parser Cleanup
 
 ## Just Finished
 
-Step 5 final classification pass found no remaining primary semantic
-`struct_tag_def_map` authority after the template static-member blocker fix.
+Plan-owner review accepted Step 5 as complete. The latest Step 5
+classification records no remaining primary semantic `struct_tag_def_map`
+authority after the template static-member blocker fix.
 
 Remaining map use is classified as compatibility/fallback:
 
@@ -31,9 +32,21 @@ semantic authority.
 
 ## Suggested Next
 
-Step 5 is ready for plan-owner review/handoff. Suggested next packet: advance
-to Step 6 reproof and return-to-parent-parser-cleanup decision, with supervisor
-selecting the broader validation scope.
+Step 6 supervisor packet: reprove the typed parser record identity bridge and
+decide the return path to parent parser cleanup idea 123.
+
+Concrete expected work:
+
+- Run the focused typed-record and compatibility fallback parser/frontend proof
+  subset against the current bridge state, producing or refreshing
+  `test_after.log` as appropriate for the supervisor-selected regression guard.
+- Run broader parser-adjacent frontend validation appropriate for the
+  `TypeSpec` contract and template/static-member lookup changes.
+- Review the bridge diff for expectation downgrades or testcase-shaped
+  shortcuts; reject any overfit before lifecycle closure or parent-plan return.
+- If proof is clean, ask the plan owner to close or park idea 127 and resume or
+  regenerate parent parser cleanup idea 123 with `struct_tag_def_map`
+  classified as compatibility/final-spelling mirror.
 
 ## Watchouts
 
@@ -45,6 +58,9 @@ Preserve `TypeSpec::tag` as spelling, diagnostics, emitted text, and
 compatibility payload; semantic record lookup should continue to flow through
 `TypeSpec::record_def` where available.
 
+Step 6 should be validation and lifecycle routing, not another semantic
+conversion packet, unless reproof exposes a real covered-path gap.
+
 ## Proof
 
 Delegated proof for this packet:
@@ -53,3 +69,6 @@ Delegated proof for this packet:
 
 Result: passed. This text-only classification packet did not update
 `test_after.log`.
+
+Plan-owner decision: Step 5 completion accepted; `plan.md` was already aligned
+with Step 6 and did not need a rewrite.
