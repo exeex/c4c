@@ -495,6 +495,11 @@ struct LirExternDecl {
 
 // ── Function ─────────────────────────────────────────────────────────────────
 
+struct LirSignatureParam {
+  std::string name;
+  TypeSpec type{};
+};
+
 struct LirFunction {
   std::string name;
   LinkNameId link_name_id = kInvalidLinkName;
@@ -503,6 +508,9 @@ struct LirFunction {
   bool is_declaration = false;  // true for declarations (no body)
   TypeSpec return_type{};
   std::vector<std::pair<std::string, TypeSpec>> params;  // name, type
+  bool signature_is_variadic = false;
+  bool signature_has_void_param_list = false;
+  std::vector<LirSignatureParam> signature_params;
   std::optional<LirTypeRef> signature_return_type_ref;
   std::vector<LirTypeRef> signature_param_type_refs;
   std::vector<LirBlock> blocks;

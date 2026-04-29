@@ -97,6 +97,9 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
                                   LirModule* lir_module,
                                   LirFunction& lir_fn) {
   using namespace c4c::codegen::llvm_helpers;
+  lir_fn.signature_is_variadic = fn.attrs.variadic;
+  lir_fn.signature_params.clear();
+  lir_fn.signature_param_type_refs.clear();
   lir_fn.signature_return_type_ref =
       lir_signature_type_ref(llvm_ret_ty(fn.return_type.spec), lir_module,
                              fn.return_type.spec);
@@ -106,12 +109,24 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
       fn.params[0].type.spec.base == TB_VOID &&
       fn.params[0].type.spec.ptr_level == 0 &&
       fn.params[0].type.spec.array_rank == 0;
+  lir_fn.signature_has_void_param_list = void_param_list;
   if (void_param_list) return;
 
   for (const auto& param : fn.params) {
+    lir_fn.signature_params.push_back(
+        {"%p." + sanitize_llvm_ident(param.name), param.type.spec});
     const TypeSpec& param_ts = param.type.spec;
     lir_fn.signature_param_type_refs.push_back(lir_signature_type_ref(
         rendered_signature_param_type(mod, lir_module, param_ts), lir_module, param_ts));
+  }
+}
+
+void populate_lir_function_params(const c4c::hir::Function& fn,
+                                  LirFunction& lir_fn) {
+  lir_fn.params.clear();
+  for (const auto& param : fn.params) {
+    lir_fn.params.push_back(
+        {"%p." + sanitize_llvm_ident(param.name), param.type.spec});
   }
 }
 
@@ -1253,10 +1268,7 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
       lir_fn.can_elide_if_unreferenced = false;
       lir_fn.is_declaration = true;
       lir_fn.return_type = fn.return_type.spec;
-      for (const auto& param : fn.params) {
-        lir_fn.params.push_back(
-            {"%p." + sanitize_llvm_ident(param.name), param.type.spec});
-      }
+      populate_lir_function_params(fn, lir_fn);
       lir_fn.signature_text = sig;
       populate_signature_type_refs(hir_mod, fn, &module, lir_fn);
       module.functions.push_back(std::move(lir_fn));

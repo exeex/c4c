@@ -134,6 +134,18 @@ void expect_byval_signature_refs(
               "byval parameter mirror should stay raw when text is not the aggregate name");
 }
 
+void expect_single_signature_param(const c4c::codegen::lir::LirFunction& fn,
+                                   std::string_view expected_name,
+                                   c4c::TypeBase expected_base,
+                                   const std::string& msg) {
+  expect_eq(std::to_string(fn.signature_params.size()), "1",
+            msg + " should carry one structured signature parameter");
+  expect_eq(fn.signature_params[0].name, expected_name,
+            msg + " should carry the lowered parameter name");
+  expect_true(fn.signature_params[0].type.base == expected_base,
+              msg + " should carry the HIR parameter type");
+}
+
 }  // namespace
 
 int main() {
@@ -159,6 +171,16 @@ struct Pair defined_pair(struct Pair input) {
 int defined_big(struct Big input) {
   return (int)input.a;
 }
+
+int declared_variadic(int fixed, ...);
+int defined_variadic(int fixed, ...) {
+  return fixed;
+}
+
+int declared_void_params(void);
+int defined_void_params(void) {
+  return 1;
+}
 )c");
   hir_module.target_profile =
       c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -167,16 +189,76 @@ int defined_big(struct Big input) {
 
   const auto& declared_pair = require_function(lir_module, "declared_pair", true);
   expect_struct_signature_refs(lir_module, declared_pair);
+  expect_single_signature_param(declared_pair, "%p.input", c4c::TB_STRUCT,
+                                "declared aggregate signature metadata");
+  expect_true(!declared_pair.signature_is_variadic,
+              "non-variadic declaration should carry a structured variadic=false flag");
+  expect_true(!declared_pair.signature_has_void_param_list,
+              "aggregate declaration should not carry a void-param-list flag");
 
   const auto& defined_pair = require_function(lir_module, "defined_pair", false);
   expect_struct_signature_refs(lir_module, defined_pair);
+  expect_single_signature_param(defined_pair, "%p.input", c4c::TB_STRUCT,
+                                "defined aggregate signature metadata");
+  expect_true(!defined_pair.signature_is_variadic,
+              "non-variadic definition should carry a structured variadic=false flag");
+  expect_true(!defined_pair.signature_has_void_param_list,
+              "aggregate definition should not carry a void-param-list flag");
 
   const std::string byval_param_text = "ptr byval(%struct.Big) align 8";
   const auto& declared_big = require_function(lir_module, "declared_big", true);
   expect_byval_signature_refs(declared_big, byval_param_text);
+  expect_single_signature_param(declared_big, "%p.input", c4c::TB_STRUCT,
+                                "declared byval signature metadata");
 
   const auto& defined_big = require_function(lir_module, "defined_big", false);
   expect_byval_signature_refs(defined_big, byval_param_text);
+  expect_single_signature_param(defined_big, "%p.input", c4c::TB_STRUCT,
+                                "defined byval signature metadata");
+
+  const auto& declared_variadic =
+      require_function(lir_module, "declared_variadic", true);
+  expect_true(declared_variadic.signature_is_variadic,
+              "variadic declaration should carry a structured variadic flag");
+  expect_true(!declared_variadic.signature_has_void_param_list,
+              "variadic declaration should not carry a void-param-list flag");
+  expect_single_signature_param(declared_variadic, "%p.fixed", c4c::TB_INT,
+                                "declared variadic signature metadata");
+  expect_eq(std::to_string(declared_variadic.signature_param_type_refs.size()), "1",
+            "variadic declaration should mirror only fixed parameters");
+
+  const auto& defined_variadic =
+      require_function(lir_module, "defined_variadic", false);
+  expect_true(defined_variadic.signature_is_variadic,
+              "variadic definition should carry a structured variadic flag");
+  expect_true(!defined_variadic.signature_has_void_param_list,
+              "variadic definition should not carry a void-param-list flag");
+  expect_single_signature_param(defined_variadic, "%p.fixed", c4c::TB_INT,
+                                "defined variadic signature metadata");
+  expect_eq(std::to_string(defined_variadic.signature_param_type_refs.size()), "1",
+            "variadic definition should mirror only fixed parameters");
+
+  const auto& declared_void_params =
+      require_function(lir_module, "declared_void_params", true);
+  expect_true(declared_void_params.signature_has_void_param_list,
+              "void-parameter declaration should carry a structured void-param-list flag");
+  expect_true(!declared_void_params.signature_is_variadic,
+              "void-parameter declaration should not be variadic");
+  expect_eq(std::to_string(declared_void_params.signature_params.size()), "0",
+            "void-parameter declaration should not expose a fixed signature parameter");
+  expect_eq(std::to_string(declared_void_params.signature_param_type_refs.size()), "0",
+            "void-parameter declaration should not expose a fixed parameter mirror");
+
+  const auto& defined_void_params =
+      require_function(lir_module, "defined_void_params", false);
+  expect_true(defined_void_params.signature_has_void_param_list,
+              "void-parameter definition should carry a structured void-param-list flag");
+  expect_true(!defined_void_params.signature_is_variadic,
+              "void-parameter definition should not be variadic");
+  expect_eq(std::to_string(defined_void_params.signature_params.size()), "0",
+            "void-parameter definition should not expose a fixed signature parameter");
+  expect_eq(std::to_string(defined_void_params.signature_param_type_refs.size()), "0",
+            "void-parameter definition should not expose a fixed parameter mirror");
 
   const std::string llvm_ir = c4c::codegen::lir::print_llvm(lir_module);
   expect_true(llvm_ir.find("declare %struct.Pair @declared_pair(%struct.Pair)") !=
