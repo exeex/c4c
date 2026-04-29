@@ -799,6 +799,169 @@ int expect_structured_block_label_ids() {
   return 0;
 }
 
+c4c::backend::bir::Module make_block_label_verifier_identity_module() {
+  namespace bir = c4c::backend::bir;
+
+  bir::Module module;
+  const c4c::BlockLabelId entry_id = module.names.block_labels.intern("entry");
+  const c4c::BlockLabelId then_id = module.names.block_labels.intern("then");
+  const c4c::BlockLabelId else_id = module.names.block_labels.intern("else");
+  const c4c::BlockLabelId join_id = module.names.block_labels.intern("join");
+
+  bir::Function function;
+  function.name = "block_identity";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I1,
+      .name = "%cond",
+  });
+
+  bir::Block entry;
+  entry.label = "raw.entry";
+  entry.label_id = entry_id;
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = bir::Value::named(bir::TypeKind::I1, "%cond"),
+      .true_label = "stale.then.raw",
+      .false_label = "stale.else.raw",
+      .true_label_id = then_id,
+      .false_label_id = else_id,
+  };
+  function.blocks.push_back(std::move(entry));
+
+  bir::Block then_block;
+  then_block.label = "raw.then";
+  then_block.label_id = then_id;
+  then_block.terminator = bir::BranchTerminator{
+      .target_label = "stale.join.raw",
+      .target_label_id = join_id,
+  };
+  function.blocks.push_back(std::move(then_block));
+
+  bir::Block else_block;
+  else_block.label = "raw.else";
+  else_block.label_id = else_id;
+  else_block.terminator = bir::BranchTerminator{
+      .target_label = "stale.join.raw",
+      .target_label_id = join_id,
+  };
+  function.blocks.push_back(std::move(else_block));
+
+  bir::Block join_block;
+  join_block.label = "raw.join";
+  join_block.label_id = join_id;
+  join_block.insts.push_back(bir::PhiInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%merged"),
+      .incomings = {bir::PhiIncoming{
+                        .label = "stale.then.raw",
+                        .value = bir::Value::immediate_i32(1),
+                        .label_id = then_id,
+                    },
+                    bir::PhiIncoming{
+                        .label = "stale.else.raw",
+                        .value = bir::Value::immediate_i32(2),
+                        .label_id = else_id,
+                    }},
+  });
+  join_block.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "%merged")};
+  function.blocks.push_back(std::move(join_block));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_bir_verifier_prefers_block_label_ids() {
+  namespace bir = c4c::backend::bir;
+
+  {
+    const auto module = make_block_label_verifier_identity_module();
+    std::string error;
+    if (!bir::validate(module, &error)) {
+      return fail("BIR verifier should accept stale raw block labels when structured ids match");
+    }
+  }
+
+  {
+    auto module = make_block_label_verifier_identity_module();
+    const c4c::BlockLabelId ghost_id = module.names.block_labels.intern("ghost.branch");
+    module.functions.front().blocks[1].terminator.target_label = "raw.join";
+    module.functions.front().blocks[1].terminator.target_label_id = ghost_id;
+    if (!validate_rejects_with_message(
+            module,
+            "bir branch in @block_identity must target a block in the same function by BlockLabelId")) {
+      return fail("BIR verifier should reject branch target ids even when raw labels match");
+    }
+  }
+
+  {
+    auto module = make_block_label_verifier_identity_module();
+    const c4c::BlockLabelId ghost_id = module.names.block_labels.intern("ghost.cond");
+    module.functions.front().blocks[0].terminator.true_label = "raw.then";
+    module.functions.front().blocks[0].terminator.true_label_id = ghost_id;
+    if (!validate_rejects_with_message(
+            module,
+            "bir cond_br in @block_identity must target blocks in the same function by BlockLabelId")) {
+      return fail("BIR verifier should reject cond_br target ids even when raw labels match");
+    }
+  }
+
+  {
+    auto module = make_block_label_verifier_identity_module();
+    const c4c::BlockLabelId ghost_id = module.names.block_labels.intern("ghost.phi");
+    auto* phi = std::get_if<bir::PhiInst>(&module.functions.front().blocks[3].insts.front());
+    if (phi == nullptr) {
+      return fail("BIR verifier block-label test fixture lost its phi");
+    }
+    phi->incomings.front().label = "raw.then";
+    phi->incomings.front().label_id = ghost_id;
+    if (!validate_rejects_with_message(
+            module,
+            "bir phi in @block_identity must reference blocks in the same function by BlockLabelId")) {
+      return fail("BIR verifier should reject phi incoming ids even when raw labels match");
+    }
+  }
+
+  {
+    auto module = make_block_label_verifier_identity_module();
+    auto& function = module.functions.front();
+    for (auto& block : function.blocks) {
+      block.label = std::string(module.names.block_labels.spelling(block.label_id));
+      block.label_id = c4c::kInvalidBlockLabel;
+      switch (block.terminator.kind) {
+        case bir::TerminatorKind::Branch:
+          block.terminator.target_label =
+              std::string(module.names.block_labels.spelling(block.terminator.target_label_id));
+          block.terminator.target_label_id = c4c::kInvalidBlockLabel;
+          break;
+        case bir::TerminatorKind::CondBranch:
+          block.terminator.true_label =
+              std::string(module.names.block_labels.spelling(block.terminator.true_label_id));
+          block.terminator.false_label =
+              std::string(module.names.block_labels.spelling(block.terminator.false_label_id));
+          block.terminator.true_label_id = c4c::kInvalidBlockLabel;
+          block.terminator.false_label_id = c4c::kInvalidBlockLabel;
+          break;
+        case bir::TerminatorKind::Return:
+          break;
+      }
+      for (auto& inst : block.insts) {
+        if (auto* phi = std::get_if<bir::PhiInst>(&inst); phi != nullptr) {
+          for (auto& incoming : phi->incomings) {
+            incoming.label = std::string(module.names.block_labels.spelling(incoming.label_id));
+            incoming.label_id = c4c::kInvalidBlockLabel;
+          }
+        }
+      }
+    }
+    std::string error;
+    if (!bir::validate(module, &error)) {
+      return fail("BIR verifier should preserve raw block-label compatibility without ids");
+    }
+  }
+
+  return 0;
+}
+
 int expect_admitted_aggregate_string_array_field_global() {
   auto result =
       try_lower_to_bir_with_options(make_admitted_aggregate_string_array_field_global_module(),
@@ -2869,6 +3032,10 @@ int main() {
   if (const int structured_block_label_id_status = expect_structured_block_label_ids();
       structured_block_label_id_status != 0) {
     return structured_block_label_id_status;
+  }
+  if (const int verifier_block_label_id_status = expect_bir_verifier_prefers_block_label_ids();
+      verifier_block_label_id_status != 0) {
+    return verifier_block_label_id_status;
   }
 
   if (const int scalar_float_globals_status = expect_admitted_scalar_float_globals();

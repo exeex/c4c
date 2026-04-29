@@ -1,48 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/126_bir_legacy_string_lookup_removal_convergence.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Prefer Semantic Identity In Function, Call, And Global Paths
+Current Step ID: Step 4
+Current Step Title: Extend Structured Identity Across Blocks And Types
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 completed for `FunctionSymbolSet` semantic membership in the
-LIR-to-BIR function/global paths.
+Step 4 completed the BIR verifier block-label membership slice.
 
-`FunctionSymbolSet` now stores `LinkNameId` membership separately from raw
-symbol-name compatibility lookup. Known-function APIs prefer structured
-`LinkNameId` membership when an id is available, and the remaining string-only
-callers use the clearly named `is_known_raw_function_symbol` compatibility
-boundary.
+`bir_validate.cpp` now collects structured `BlockLabelId` definitions alongside
+legacy raw block labels. Phi incoming labels, branch targets, and conditional
+branch targets prefer structured membership whenever the reference carries a
+valid id; raw-string membership remains the compatibility path only when the
+reference id is absent. The verifier also rejects duplicate or unknown block
+definition ids.
 
-Scalar pointer global initializers now carry the structured
-`LirGlobal::initializer_function_link_name_ids` id through `GlobalInfo` and use
-that id before raw initializer spelling when resolving
-`initializer_symbol_name_id` or known function-pointer addresses. Added focused
-coverage proving a drifted raw initializer function spelling still resolves to
-the covered function `LinkNameId` when the structured id is present, while the
-raw spelling remains preserved as compatibility/final spelling.
+Added focused backend verifier coverage proving stale raw label text cannot
+override structured ids for phi incoming labels, plain branch targets, and
+conditional branch targets, while raw-only BIR remains valid when ids are
+absent.
 
 ## Suggested Next
 
-Continue Step 3 on aggregate pointer-initializer function references or other
-call/global paths only where a structured id carrier already reaches BIR. If no
-per-reference id carrier exists, keep that boundary classified instead of
-inventing local name matching.
+Continue Step 4 by extending the same structured-id preference to the next
+block/type validation boundary that already carries ids. Keep raw fallback
+limited to carriers whose structured id is absent.
 
 ## Watchouts
 
-`GlobalAddress` and aggregate pointer-initializer offsets still carry only raw
-parsed LIR symbol text, so `resolve_pointer_initializer_offsets` remains a
-raw-string compatibility boundary. This packet intentionally did not add a
-local offset-to-function-id shortcut because `LirGlobal::initializer_function_link_name_ids`
-does not provide per-offset carriers.
+This packet intentionally did not change BIR printing, lowering, prepared BIR,
+or LIR producers. Block references still require non-empty raw label strings
+even when ids are present, matching the existing BIR surface contract.
 
 ## Proof
 
-Passed delegated Step 3 proof:
+Passed delegated Step 4 proof:
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } 2>&1 | tee test_after.log`
 
 Result: build completed; `ctest` reported 100% tests passed, 0 failed out of

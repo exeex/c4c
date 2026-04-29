@@ -91,6 +91,7 @@ bool validate_cast(const Function& function,
 
 bool validate_phi(const Function& function,
                   const std::vector<std::string>& block_labels,
+                  const std::vector<BlockLabelId>& block_label_ids,
                   const PhiInst& inst,
                   std::vector<std::string>* defined_names,
                   std::string* error) {
@@ -102,17 +103,33 @@ bool validate_phi(const Function& function,
     return fail(error, "bir phi in @" + function.name + " must have at least one incoming");
   }
   std::vector<std::string_view> incoming_labels;
+  std::vector<BlockLabelId> incoming_label_ids;
   incoming_labels.reserve(inst.incomings.size());
+  incoming_label_ids.reserve(inst.incomings.size());
   for (const auto& incoming : inst.incomings) {
     if (incoming.label.empty()) {
       return fail(error, "bir phi in @" + function.name +
                              " must not use an empty incoming label");
     }
-    if (std::find(block_labels.begin(), block_labels.end(), incoming.label) == block_labels.end()) {
+    if (incoming.label_id != kInvalidBlockLabel &&
+        std::find(block_label_ids.begin(), block_label_ids.end(), incoming.label_id) ==
+            block_label_ids.end()) {
+      return fail(error, "bir phi in @" + function.name +
+                             " must reference blocks in the same function by BlockLabelId");
+    }
+    if (incoming.label_id == kInvalidBlockLabel &&
+        std::find(block_labels.begin(), block_labels.end(), incoming.label) == block_labels.end()) {
       return fail(error, "bir phi in @" + function.name +
                              " must reference blocks in the same function");
     }
-    if (std::find(incoming_labels.begin(), incoming_labels.end(), incoming.label) !=
+    if (incoming.label_id != kInvalidBlockLabel &&
+        std::find(incoming_label_ids.begin(), incoming_label_ids.end(), incoming.label_id) !=
+            incoming_label_ids.end()) {
+      return fail(error, "bir phi in @" + function.name +
+                             " must not repeat an incoming BlockLabelId");
+    }
+    if (incoming.label_id == kInvalidBlockLabel &&
+        std::find(incoming_labels.begin(), incoming_labels.end(), incoming.label) !=
         incoming_labels.end()) {
       return fail(error, "bir phi in @" + function.name +
                              " must not repeat an incoming label");
@@ -120,7 +137,11 @@ bool validate_phi(const Function& function,
     if (!validate_named_value(incoming.value, "bir phi incoming value in @" + function.name, error)) {
       return false;
     }
-    incoming_labels.push_back(incoming.label);
+    if (incoming.label_id != kInvalidBlockLabel) {
+      incoming_label_ids.push_back(incoming.label_id);
+    } else {
+      incoming_labels.push_back(incoming.label);
+    }
   }
   defined_names->push_back(inst.result.name);
   return true;
@@ -447,6 +468,7 @@ bool validate_return(const Function& function,
 bool validate_terminator(const Function& function,
                          const Block& block,
                          const std::vector<std::string>& block_labels,
+                         const std::vector<BlockLabelId>& block_label_ids,
                          const std::vector<std::string>& defined_names,
                          std::string* error) {
   switch (block.terminator.kind) {
@@ -456,8 +478,16 @@ bool validate_terminator(const Function& function,
       if (block.terminator.target_label.empty()) {
         return fail(error, "bir branch in @" + function.name + " must name a target");
       }
-      if (std::find(block_labels.begin(), block_labels.end(), block.terminator.target_label) ==
-          block_labels.end()) {
+      if (block.terminator.target_label_id != kInvalidBlockLabel &&
+          std::find(block_label_ids.begin(),
+                    block_label_ids.end(),
+                    block.terminator.target_label_id) == block_label_ids.end()) {
+        return fail(error, "bir branch in @" + function.name +
+                               " must target a block in the same function by BlockLabelId");
+      }
+      if (block.terminator.target_label_id == kInvalidBlockLabel &&
+          std::find(block_labels.begin(), block_labels.end(), block.terminator.target_label) ==
+              block_labels.end()) {
         return fail(error, "bir branch in @" + function.name +
                                " must target a block in the same function");
       }
@@ -478,10 +508,23 @@ bool validate_terminator(const Function& function,
         return fail(error, "bir cond_br in @" + function.name +
                                " must name both successor labels");
       }
-      if (std::find(block_labels.begin(), block_labels.end(), block.terminator.true_label) ==
-              block_labels.end() ||
-          std::find(block_labels.begin(), block_labels.end(), block.terminator.false_label) ==
-              block_labels.end()) {
+      if ((block.terminator.true_label_id != kInvalidBlockLabel &&
+           std::find(block_label_ids.begin(),
+                     block_label_ids.end(),
+                     block.terminator.true_label_id) == block_label_ids.end()) ||
+          (block.terminator.false_label_id != kInvalidBlockLabel &&
+           std::find(block_label_ids.begin(),
+                     block_label_ids.end(),
+                     block.terminator.false_label_id) == block_label_ids.end())) {
+        return fail(error, "bir cond_br in @" + function.name +
+                               " must target blocks in the same function by BlockLabelId");
+      }
+      if ((block.terminator.true_label_id == kInvalidBlockLabel &&
+           std::find(block_labels.begin(), block_labels.end(), block.terminator.true_label) ==
+               block_labels.end()) ||
+          (block.terminator.false_label_id == kInvalidBlockLabel &&
+           std::find(block_labels.begin(), block_labels.end(), block.terminator.false_label) ==
+               block_labels.end())) {
         return fail(error, "bir cond_br in @" + function.name +
                                " must target blocks in the same function");
       }
@@ -601,14 +644,29 @@ bool validate(const Module& module, std::string* error) {
     }
 
     std::vector<std::string> block_labels;
+    std::vector<BlockLabelId> block_label_ids;
     block_labels.reserve(function.blocks.size());
+    block_label_ids.reserve(function.blocks.size());
     for (const auto& block : function.blocks) {
       if (block.label.empty()) {
         return fail(error, "bir block in @" + function.name + " must have a label");
       }
+      if (block.label_id != kInvalidBlockLabel &&
+          module.names.block_labels.spelling(block.label_id).empty()) {
+        return fail(error, "bir block in @" + function.name +
+                               " must reference a known BlockLabelId");
+      }
       if (std::find(block_labels.begin(), block_labels.end(), block.label) != block_labels.end()) {
         return fail(error, "bir function @" + function.name +
                                " must not reuse a block label");
+      }
+      if (block.label_id != kInvalidBlockLabel) {
+        if (std::find(block_label_ids.begin(), block_label_ids.end(), block.label_id) !=
+            block_label_ids.end()) {
+          return fail(error, "bir function @" + function.name +
+                                 " must not reuse a block BlockLabelId");
+        }
+        block_label_ids.push_back(block.label_id);
       }
       block_labels.push_back(block.label);
     }
@@ -630,7 +688,8 @@ bool validate(const Module& module, std::string* error) {
               } else if constexpr (std::is_same_v<T, CastInst>) {
                 return validate_cast(function, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, PhiInst>) {
-                return validate_phi(function, block_labels, lowered, &defined_names, error);
+                return validate_phi(
+                    function, block_labels, block_label_ids, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, CallInst>) {
                 return validate_call(module, function, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, LoadLocalInst>) {
@@ -649,7 +708,8 @@ bool validate(const Module& module, std::string* error) {
         }
       }
 
-      if (!validate_terminator(function, block, block_labels, defined_names, error)) {
+      if (!validate_terminator(
+              function, block, block_labels, block_label_ids, defined_names, error)) {
         return false;
       }
     }
