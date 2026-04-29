@@ -605,10 +605,24 @@ void test_struct_owner_key_lookup_detects_stale_rendered_member_and_method_maps(
 
   c4c::hir::Lowerer lowerer;
   lowerer.module_ = &module;
+  const c4c::LinkNameId stale_method_link_name =
+      module.link_names.intern("stale_method_mangled");
+  const c4c::LinkNameId structured_method_link_name =
+      module.link_names.intern("structured_method_mangled");
+  c4c::TypeSpec stale_return_type{};
+  stale_return_type.base = c4c::TB_INT;
+  c4c::TypeSpec structured_return_type{};
+  structured_return_type.base = c4c::TB_LONG;
   lowerer.struct_static_member_decls_["RenderedOwner"]["value"] = &stale_member;
   lowerer.struct_static_member_decls_by_owner_[member_key] = &structured_member;
   lowerer.struct_methods_["RenderedOwner::method"] = "stale_method_mangled";
   lowerer.struct_methods_by_owner_[method_key] = "structured_method_mangled";
+  lowerer.struct_method_link_name_ids_["RenderedOwner::method"] =
+      stale_method_link_name;
+  lowerer.struct_method_link_name_ids_by_owner_[method_key] =
+      structured_method_link_name;
+  lowerer.struct_method_ret_types_["RenderedOwner::method"] = stale_return_type;
+  lowerer.struct_method_ret_types_by_owner_[method_key] = structured_return_type;
 
   const c4c::Node* rendered_member =
       lowerer.find_struct_static_member_decl("RenderedOwner", "value");
@@ -627,6 +641,26 @@ void test_struct_owner_key_lookup_detects_stale_rendered_member_and_method_maps(
               "method owner-key lookup should run a parity check");
   expect_true(lowerer.struct_method_mangled_lookup_parity_mismatches_ == 1,
               "method owner-key lookup should detect stale rendered authority");
+
+  const std::optional<c4c::LinkNameId> rendered_method_link_name =
+      lowerer.find_struct_method_link_name_id("RenderedOwner", "method", false);
+  expect_true(rendered_method_link_name &&
+                  *rendered_method_link_name == stale_method_link_name,
+              "rendered method link-name lookup should still expose the legacy map result");
+  expect_true(lowerer.struct_method_link_name_lookup_parity_checks_ == 1,
+              "method link-name owner-key lookup should run a parity check");
+  expect_true(lowerer.struct_method_link_name_lookup_parity_mismatches_ == 1,
+              "method link-name owner-key lookup should detect stale rendered authority");
+
+  const std::optional<c4c::TypeSpec> rendered_method_return_type =
+      lowerer.find_struct_method_return_type("RenderedOwner", "method", false);
+  expect_true(rendered_method_return_type &&
+                  rendered_method_return_type->base == c4c::TB_INT,
+              "rendered method return-type lookup should still expose the legacy map result");
+  expect_true(lowerer.struct_method_return_type_lookup_parity_checks_ == 1,
+              "method return-type owner-key lookup should run a parity check");
+  expect_true(lowerer.struct_method_return_type_lookup_parity_mismatches_ == 1,
+              "method return-type owner-key lookup should detect stale rendered authority");
 }
 
 }  // namespace

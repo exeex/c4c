@@ -9,23 +9,25 @@ Current Step Title: Extend Structured Lookup Proof Across HIR Edge Paths
 ## Just Finished
 
 Completed Step 4 struct owner-key proof extension. `frontend_hir_lookup_tests`
-now covers stale rendered struct member and method lookup maps disagreeing with
-the structured owner-key mirrors, and asserts those owner-key parity paths record
-mismatches instead of letting rendered spelling silently count as authoritative.
+now covers stale rendered struct member, method mangled-name, method link-name,
+and method return-type lookup maps disagreeing with the structured owner-key
+mirrors, and asserts those owner-key parity paths record mismatches instead of
+letting rendered spelling silently count as authoritative.
 
 ## Suggested Next
 
-Next coherent Step 4 packet: either extend the same owner-key proof to another
-existing mirror such as method link-name or return-type lookup, or ask for plan
-review if the remaining Step 4 edge paths now look exhausted enough for
-acceptance routing.
+Next coherent Step 4 packet: ask for plan review if the remaining Step 4 edge
+paths now look exhausted enough for acceptance routing, or target another
+existing owner-key parity mirror only if the supervisor identifies one still
+missing.
 
 ## Watchouts
 
 The new test deliberately uses the existing owner-key parity mirrors and does
 not change production lookup authority; it proves detection rather than a full
-owner-key replacement. Future packets should keep that distinction explicit and
-avoid weakening legacy fallback expectations.
+owner-key replacement. Link-name and return-type assertions still expect the
+rendered lookup result while requiring the structured owner-key parity mismatch
+to be counted.
 
 ## Proof
 
