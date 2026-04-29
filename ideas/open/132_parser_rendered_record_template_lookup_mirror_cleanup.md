@@ -1,8 +1,9 @@
 # Parser Rendered Record Template Lookup Mirror Cleanup
 
-Status: Closed
+Status: Open
 Created: 2026-04-29
 Closed: 2026-04-29
+Reopened: 2026-04-29
 
 Parent Ideas:
 - [129_parser_intermediate_carrier_boundary_labeling.md](/workspaces/c4c/ideas/closed/129_parser_intermediate_carrier_boundary_labeling.md)
@@ -77,8 +78,24 @@ artifact/generated spelling, eval_const_int support APIs, or focused tests. No
 unclassified semantic lookup path was found where rendered spelling silently
 wins after structured identity is available.
 
-Close proof included the canonical matching `frontend_parser_tests`
+Close proof originally included the canonical matching `frontend_parser_tests`
 before/after guard with equal pass counts allowed, supplemental
 `frontend_cxx_` coverage, and a final broad `ctest --test-dir build -j
 --output-on-failure` run with all 3089 executed tests passing and 12 tests
 disabled by CTest.
+
+## Reopen Note
+
+Reopened after baseline review of close commit `0e39decb` exposed a rebuilt
+test failure that the earlier final broad CTest likely missed through stale
+binaries:
+
+`frontend_lir_function_signature_type_ref` fails because
+`LirFunction.signature_return_type_ref` for function `declared_pair` names a
+different structured return type than `%struct.Big`.
+
+Repair work should treat this as an invalid close proof for this idea, not as a
+new unrelated initiative. The fix must preserve the no-overfit rule: diagnose
+and repair the structured identity propagation/mirror authority path that can
+produce the mismatched return type-ref, rather than weakening the rebuilt test,
+rewriting expectations, or matching only `declared_pair`.
