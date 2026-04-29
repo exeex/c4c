@@ -341,13 +341,6 @@ QualifiedNameKey qualified_key_in_context(const Parser& parser, int context_id,
                   qualifier_text_ids);
     if (key.qualifier_path_id != kInvalidNamePath) return key;
 
-    if (!create_missing_path) {
-        const std::string candidate =
-            parser.compatibility_namespace_name_in_context(context_id, name_text_id,
-                                                           fallback_name);
-        return find_known_fn_name_key_from_spelling(parser, 0, name_text_id,
-                                                    candidate);
-    }
     return key;
 }
 
@@ -3062,7 +3055,7 @@ bool Parser::lookup_type_in_context(int context_id, TextId name_text_id,
     }
     const std::string candidate =
         bridge_name_in_context(context_id, name_text_id, name);
-    if (has_typedef_type(candidate)) {
+    if (name_text_id == kInvalidText && has_typedef_type(candidate)) {
         resolved->found = true;
         resolved->kind = VisibleNameKind::Type;
         resolved->key = candidate_key;

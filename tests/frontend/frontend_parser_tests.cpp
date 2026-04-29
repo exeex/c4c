@@ -1762,11 +1762,16 @@ void test_parser_global_using_value_import_keeps_global_target_resolution() {
             "global using-import lookup should keep the global target spelling instead of introducing a leading scope bridge");
 }
 
-void test_parser_namespace_value_lookup_demotes_legacy_rendered_name_bridges() {
+void test_parser_namespace_lookup_demotes_legacy_rendered_name_bridges() {
   c4c::Arena arena;
   c4c::TextTable texts;
   c4c::FileTable files;
   c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::TypeSpec legacy_type_ts{};
+  legacy_type_ts.array_size = -1;
+  legacy_type_ts.inner_rank = -1;
+  legacy_type_ts.base = c4c::TB_INT;
 
   c4c::TypeSpec legacy_ts{};
   legacy_ts.array_size = -1;
@@ -1776,6 +1781,14 @@ void test_parser_namespace_value_lookup_demotes_legacy_rendered_name_bridges() {
   const c4c::TextId ns_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "ns");
   const int ns_context = parser.ensure_named_namespace_context(0, ns_text, "ns");
+  const c4c::TextId type_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText, "LegacyOnlyType");
+  const c4c::TextId qualified_type_text =
+      parser.parser_text_id_for_token(c4c::kInvalidText,
+                                      "ns::LegacyOnlyType");
+  parser.binding_state_.non_atom_typedef_types[qualified_type_text] =
+      legacy_type_ts;
+
   const c4c::TextId value_text =
       parser.parser_text_id_for_token(c4c::kInvalidText, "LegacyOnlyValue");
   const c4c::TextId qualified_value_text =
@@ -1784,6 +1797,15 @@ void test_parser_namespace_value_lookup_demotes_legacy_rendered_name_bridges() {
   parser.binding_state_.non_atom_var_types[qualified_value_text] = legacy_ts;
 
   std::string resolved;
+  expect_true(!parser.lookup_type_in_context(ns_context, type_text,
+                                             "LegacyOnlyType", &resolved),
+              "namespace type lookup should not promote legacy-only rendered names when a valid TextId lookup misses structured storage");
+  resolved.clear();
+  expect_true(parser.lookup_type_in_context(ns_context, c4c::kInvalidText,
+                                            "LegacyOnlyType", &resolved) &&
+                  resolved == "ns::LegacyOnlyType",
+              "namespace type lookup should preserve TextId-less rendered-name compatibility");
+
   expect_true(!parser.lookup_value_in_context(ns_context, value_text,
                                               "LegacyOnlyValue", &resolved),
               "namespace value lookup should not promote legacy-only rendered names when a valid TextId lookup misses structured storage");
@@ -1796,6 +1818,14 @@ void test_parser_namespace_value_lookup_demotes_legacy_rendered_name_bridges() {
   c4c::Parser::QualifiedNameRef qn;
   qn.qualifier_segments.push_back("ns");
   qn.qualifier_text_ids.push_back(ns_text);
+  qn.base_name = "LegacyOnlyType";
+  qn.base_text_id = type_text;
+  expect_true(!parser.resolve_qualified_type(qn),
+              "qualified type resolution should not promote legacy-only rendered names for valid TextIds");
+  qn.base_text_id = c4c::kInvalidText;
+  expect_eq(parser.resolve_qualified_type_name(qn), "ns::LegacyOnlyType",
+            "qualified type resolution should preserve explicit TextId-less compatibility");
+
   qn.base_name = "LegacyOnlyValue";
   qn.base_text_id = value_text;
   expect_true(!parser.resolve_qualified_value(qn),
@@ -1805,6 +1835,11 @@ void test_parser_namespace_value_lookup_demotes_legacy_rendered_name_bridges() {
             "qualified value resolution should preserve explicit TextId-less compatibility");
 
   parser.namespace_state_.using_namespace_contexts[0].push_back(ns_context);
+  resolved.clear();
+  expect_true(!parser.lookup_type_in_context(0, type_text,
+                                             "LegacyOnlyType", &resolved),
+              "namespace-import type lookup should not promote imported legacy-only rendered names for valid TextIds");
+
   resolved.clear();
   expect_true(!parser.lookup_value_in_context(0, value_text,
                                               "LegacyOnlyValue", &resolved),
@@ -4367,7 +4402,7 @@ int main() {
   test_parser_using_value_import_keeps_structured_target_key();
   test_parser_using_value_import_prefers_structured_type_over_corrupt_rendered_name();
   test_parser_global_using_value_import_keeps_global_target_resolution();
-  test_parser_namespace_value_lookup_demotes_legacy_rendered_name_bridges();
+  test_parser_namespace_lookup_demotes_legacy_rendered_name_bridges();
   test_parser_using_value_alias_rejects_missing_structured_target_bridge();
   test_parser_using_value_alias_prefers_structured_target_type();
   test_parser_using_value_alias_respects_local_shadowing();

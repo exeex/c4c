@@ -8,47 +8,33 @@ Current Step Title: Tighten Namespace and Visible-Name Context Lookup
 
 ## Just Finished
 
-Plan Step 2 `Make Using-Value Alias Lookup Structured-Primary` completed.
-`lookup_using_value_alias(..., VisibleNameResult*)` now treats a non-empty
-`UsingValueAlias::compatibility_name` as authority only for explicit no-key
-aliases. Structured aliases still populate display spelling from
-`render_value_binding_name`, but they only resolve through
-`has_known_fn_name(alias.target_key)` or
-`find_structured_var_type(alias.target_key)`.
+Plan Step 3 `Tighten Namespace and Visible-Name Context Lookup` completed.
+`qualified_key_in_context(..., create_missing_path=false)` no longer repairs a
+missing structured namespace path by rendering
+`compatibility_namespace_name_in_context` and reparsing it as semantic
+authority. The non-creating key path now returns the structured key it can
+actually prove from context ids and TextIds.
 
-Focused parser tests now cover structured-target-missing rejection with a
-non-empty compatibility bridge, explicit no-key fallback preservation, and the
-type/template projection cases that intentionally pass through a known
-structured target key rather than compatibility spelling.
+`lookup_type_in_context` now gates legacy rendered typedef lookup behind the
+explicit TextId-less compatibility path, matching the existing value lookup
+behavior. Namespace type/value tests now cover valid-TextId rejection for
+legacy rendered namespace bridges, direct qualified resolution rejection, and
+the remaining explicit TextId-less compatibility branches.
 
 ## Suggested Next
 
-Execute a bounded `plan.md` Step 3 packet against namespace
-rendering/projection bridges, especially
-`compatibility_namespace_name_in_context`, `bridge_name_in_context`,
-`lookup_*_in_context`, and `resolve_namespace_*`. Keep TextId, namespace
-context ids, `find_named_namespace_child`, and `qualified_key_in_context` as
-primary authority; preserve TextId-less or keyless branches only as explicit,
-tested compatibility fallback.
+Run a supervisor review or proceed to the next plan step if Step 3 is accepted.
 
 ## Watchouts
 
-Some visible type/template tests use using-value aliases as projection bridges.
-Those tests now register the structured target key as known before expecting the
-projection to succeed; do not reintroduce compatibility-name success for
-structured aliases to satisfy similar cases.
+The preserved compatibility path is intentionally TextId-less. Imported
+namespace value compatibility already existed and remains covered; the new
+type-side coverage is direct namespace and qualified resolution only, because
+imported type fallback was not accepted by the current implementation.
 
 ## Proof
 
 Ran the supervisor-selected proof:
-`cmake --build build --target frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -R '^frontend_parser_tests$' --output-on-failure >> test_after.log 2>&1`
+`cmake --build build --target frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -R '^frontend_parser_tests$|using_namespace_directive_parse|local_value_shadows_using_alias_assign_expr_parse' --output-on-failure >> test_after.log 2>&1`
 
 Result: passed; proof log is `test_after.log`.
-
-Also ran targeted parse-only selectors:
-`ctest --test-dir build -R 'using_namespace_directive_parse|local_value_shadows_using_alias_assign_expr_parse' --output-on-failure`
-
-Result: passed; both selectors were present in this build.
-
-Supervisor accepted the baseline review for Step 2, so canonical execution is
-advanced to Step 3.
