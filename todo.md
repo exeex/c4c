@@ -8,20 +8,21 @@ Current Step Title: Demote Rendered-Name Semantic Lookup For Functions And Globa
 
 ## Just Finished
 
-Completed Step 3 operator-callee lookup demotion packet. The main overloaded
-operator-call helper in `src/frontend/hir/impl/expr/operator.cpp` now resolves
-callee return metadata through `Module::resolve_operator_callee()`, which uses
-the existing structured/LinkNameId function declaration resolver before
-explicit legacy rendered-name fallback. The focused HIR lookup test now proves
-stale rendered names cannot override operator-callee structured or LinkNameId
-authority.
+Completed Step 3 bool-conversion operator lookup demotion packet.
+`Lowerer::maybe_bool_convert()` in `src/frontend/hir/impl/expr/operator.cpp`
+now resolves operator method return metadata through
+`Module::resolve_operator_callee()` after constructing the `DeclRef` with its
+`link_name_id`, instead of calling `find_function_by_name_legacy()` directly.
+The focused HIR lookup test now also pins explicit operator-callee rendered-name
+fallback while retaining stale rendered-name disagreement coverage for
+structured and LinkNameId authority.
 
 ## Suggested Next
 
-Next coherent Step 3 packet: demote one remaining adjacent operator or
-range-for method return-type lookup that still calls
-`find_function_by_name_legacy()` directly even after constructing a `DeclRef`
-with `link_name_id`.
+Next coherent Step 3 packet: demote one remaining range-for method return-type
+lookup, such as prefix increment or dereference, that still calls
+`find_function_by_name_legacy()` directly after constructing a `DeclRef` with
+`link_name_id`.
 
 ## Watchouts
 
@@ -70,8 +71,9 @@ Step 1 inventory classification:
   compatibility/fallback surfaces for missing or incomplete structured
   declaration metadata. The direct-call packet removed direct-call uses of the
   function legacy helper in `call.cpp`; this packet demoted the main
-  overloaded-operator helper in `operator.cpp`, but the nested `operator_arrow`,
-  bool conversion, and range-for method helpers still need separate packets.
+  overloaded-operator helper and bool-conversion helper in `operator.cpp`, but
+  the nested `operator_arrow` and range-for method helpers still need separate
+  packets.
 - Direct-call link-carrier discovery now records declaration lookup hits through
   the shared resolver. The hit/mismatch recorders deduplicate exact repeats, but
   future packets should keep an eye on noisy lookup telemetry if more call-site

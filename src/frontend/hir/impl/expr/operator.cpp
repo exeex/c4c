@@ -451,7 +451,7 @@ ExprId Lowerer::maybe_bool_convert(FunctionCtx* ctx, ExprId expr, const Node* n)
   dr.link_name_id = module_->link_names.find(dr.name);
   TypeSpec fn_ts{};
   fn_ts.base = TB_BOOL;
-  if (const Function* fn = module_->find_function_by_name_legacy(dr.name)) {
+  if (const Function* fn = module_->resolve_operator_callee(dr)) {
     fn_ts = fn->return_type.spec;
   }
   TypeSpec callee_ts = fn_ts;

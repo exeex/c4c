@@ -440,6 +440,22 @@ void test_operator_callee_lookup_uses_authoritative_decl_identity() {
   expect_true(has_mismatch(module, c4c::hir::ModuleDeclKind::Function,
                            "stale_operator_callee", 42, 40),
               "operator link-name callee lookup should record stale-rendered mismatch");
+
+  const c4c::TextId legacy_text = texts.intern("legacy_operator_callee");
+  add_function(module, c4c::hir::FunctionId{43}, "legacy_operator_callee",
+               c4c::kInvalidText);
+
+  c4c::hir::DeclRef legacy_ref;
+  legacy_ref.name = "legacy_operator_callee";
+  legacy_ref.name_text_id = legacy_text;
+  const c4c::hir::Function* legacy_fn =
+      module.resolve_operator_callee(legacy_ref);
+  expect_true(legacy_fn != nullptr && legacy_fn->id.value == 43,
+              "operator callee lookup should preserve rendered-name fallback");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
+                      c4c::hir::ModuleDeclLookupAuthority::LegacyRendered,
+                      "legacy_operator_callee", 43),
+              "operator legacy fallback should record rendered-name authority");
 }
 
 }  // namespace
