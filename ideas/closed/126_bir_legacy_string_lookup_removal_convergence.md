@@ -1,7 +1,8 @@
 # BIR Legacy String Lookup Removal Convergence
 
-Status: Open
+Status: Closed
 Created: 2026-04-29
+Closed: 2026-04-29
 
 Parent Ideas:
 - [122_bir_string_legacy_path_cleanup.md](/workspaces/c4c/ideas/closed/122_bir_string_legacy_path_cleanup.md)
@@ -83,3 +84,24 @@ When BIR work conflicts with upstream or downstream tests:
   compatibility, final spelling, diagnostics, or unresolved boundary.
 - Focused BIR and LIR-to-BIR tests pass with no expectation downgrades.
 - Any cross-module blocker becomes a separate idea under `ideas/open/`.
+
+## Closure Notes
+
+Step 6 accepted closure after the Step 5 classification commit
+`f4a9465f classify retained BIR string surfaces`.
+
+The BIR-owned cleanup route converted or classified the covered legacy string
+lookup surfaces without downgrading backend expectations. Remaining raw string
+surfaces are retained as display, selector, dump text, diagnostics, final
+spelling, compatibility payload, byte-offset or route-local lowering handles,
+or unresolved producer-boundary compatibility surfaces rather than silent BIR
+semantic authority.
+
+The unresolved producer-boundary follow-up is tracked separately in
+`ideas/open/127_lir_structured_signature_reference_producer_boundary.md`; it is
+not remaining scope for this BIR convergence idea.
+
+Close proof used the accepted full-suite baseline for commit `f4a9465f`:
+`log/baseline_f4a9465fe50aad78749abb425a5435708f5dfd1c.log`, reporting 3088
+passed, 0 failed, with the same disabled backend CLI MIR tests. The regression
+guard was run in non-decreasing mode against that accepted baseline and passed.
