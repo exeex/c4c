@@ -1,12 +1,16 @@
 # LIR Legacy String Lookup Removal Convergence
 
-Status: Open
+Status: Closed
 Created: 2026-04-29
+Closed: 2026-04-29
 
 Parent Ideas:
 - [105_hir_to_lir_text_id_bridge_inventory_and_cleanup.md](/workspaces/c4c/ideas/closed/105_hir_to_lir_text_id_bridge_inventory_and_cleanup.md)
 - [118_lir_bir_legacy_type_text_removal.md](/workspaces/c4c/ideas/closed/118_lir_bir_legacy_type_text_removal.md)
 - [122_bir_string_legacy_path_cleanup.md](/workspaces/c4c/ideas/closed/122_bir_string_legacy_path_cleanup.md)
+
+Follow-up Ideas:
+- [127_lir_structured_signature_reference_producer_boundary.md](/workspaces/c4c/ideas/open/127_lir_structured_signature_reference_producer_boundary.md)
 
 ## Goal
 
@@ -86,3 +90,21 @@ When LIR cleanup collides with HIR or BIR tests:
   rendered spelling.
 - Final emitted spelling remains stable unless intentionally changed.
 - Any unresolved cross-module blocker is represented by a separate idea.
+
+## Closure Notes
+
+Closed after Step 6 review. Step 5 classified the retained LIR rendered string
+surfaces as final LLVM spelling, display, diagnostics, dump text,
+compatibility payloads, or explicit unresolved boundaries.
+
+The remaining `collect_fn_refs` scan of `signature_text` is not accepted as
+semantic authority for this idea. It is archived here as a classified
+compatibility fallback around a missing structured signature-reference producer
+carrier, and that producer-boundary work is split into open follow-up idea 127.
+
+Supervisor-side close proof used matching before/after runs for:
+
+`ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests$|frontend_lir_|backend_)'`
+
+Both reported 113 passed, 0 failed, and the non-decreasing regression guard
+passed.
