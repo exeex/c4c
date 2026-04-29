@@ -72,14 +72,14 @@ struct ParserTemplateDeclarationPreludeGuard;
 
 class Parser {
  public:
-  // ── parser-side table / identity model ───────────────────────────────────
+  // ── public facade: parser-side table / identity model ────────────────────
   using SymbolId = ParserSymbolId;
   static constexpr SymbolId kInvalidSymbol = kInvalidParserSymbol;
   using SymbolTable = ParserSymbolTable;
   using ParserSymbolTables = c4c::ParserNameTables;
   using FnPtrTypedefInfo = ParserFnPtrTypedefInfo;
 
-  // ── parser-side structural model ─────────────────────────────────────────
+  // ── public facade: parser-side structural model ──────────────────────────
   // Namespace tree node used by C++ qualified-name lookup and using-directive
   // visibility tracking.
   using NamespaceContext = ParserNamespaceContext;
@@ -146,7 +146,7 @@ class Parser {
     ParseDebugAll = ParseDebugGeneral | ParseDebugTentative | ParseDebugInjected,
   };
 
-  // ── tentative parse snapshot / guard ─────────────────────────────────────
+  // ── parser-local state snapshots / guard facades ─────────────────────────
   using TentativeParseMode = ParserTentativeParseMode;
   using TentativeTextRefKind = ParserTentativeTextRefKind;
   using TentativeTextRef = ParserTentativeTextRef;
@@ -168,7 +168,7 @@ class Parser {
   ParserSymbolTables& parser_symbol_tables();
   const ParserSymbolTables& parser_symbol_tables() const;
 
-  // ── public parser entry points ────────────────────────────────────────────
+  // ── public parse entry / facade lifecycle ────────────────────────────────
   // All members public (required by project coding constraints).
   explicit Parser(std::vector<Token> tokens, Arena& arena,
                   TextTable* token_texts,
@@ -184,44 +184,44 @@ class Parser {
   // Parse the entire token stream and return a NK_PROGRAM node.
   Node* parse();
 
-  // ── opaque parser implementation ownership ──────────────────────────────
+  // ── parser-local state references: opaque implementation ownership ───────
   std::unique_ptr<ParserImpl> impl_;
 
-  // ── core parser state ─────────────────────────────────────────────────────
+  // ── parser-local state references: core token cursor and arena ────────────
   using TokenMutation = ParserTokenMutation;
   ParserCoreInputState& core_input_state_;
   std::vector<Token>& tokens_;
   int& pos_;
   Arena& arena_;
 
-  // ── parser-owned shared lookup tables ────────────────────────────────────
+  // ── parser-local state references: shared lookup tables ──────────────────
   ParserSharedLookupState& shared_lookup_state_;
 
-  // ── parser name / binding tables ─────────────────────────────────────────
+  // ── parser-local state references: name / binding tables ─────────────────
   ParserBindingState& binding_state_;
 
-  // ── record / enum definition tables ──────────────────────────────────────
+  // ── parser-local state references: record / enum definition tables ───────
   ParserDefinitionState& definition_state_;
 
-  // ── template metadata tables and active template scopes ──────────────────
+  // ── parser-local state references: template metadata and active scopes ───
   ParserTemplateState& template_state_;
 
-  // ── parser-local lexical binding scopes ──────────────────────────────────
+  // ── parser-local state references: lexical binding scopes ────────────────
   ParserLexicalScopeState& lexical_scope_state_;
 
-  // ── active parse context ──────────────────────────────────────────────────
+  // ── parser-local state references: active parse context ──────────────────
   ParserActiveContextState& active_context_state_;
 
-  // ── namespace / using-directive tables ───────────────────────────────────
+  // ── parser-local state references: namespace / using-directive tables ────
   ParserNamespaceState& namespace_state_;
 
-  // ── diagnostic and recovery state ────────────────────────────────────────
+  // ── parser-local state references: diagnostic and recovery state ─────────
   ParserDiagnosticState& diagnostic_state_;
 
-  // ── pragma state ─────────────────────────────────────────────────────────
+  // ── parser-local state references: pragma state ──────────────────────────
   ParserPragmaState& pragma_state_;
 
-  // ── parser diagnostics / debug tracing ───────────────────────────────────
+  // ── diagnostics / debug hooks: parser tracing and failure reporting ──────
   void set_parser_debug(bool enabled);
   void set_parser_debug_channels(unsigned channels);
   bool had_parse_error() const;
@@ -256,7 +256,7 @@ class Parser {
                                             int end_pos) const;
   std::string format_parse_failure_token_window(const ParseFailure& failure) const;
 
-  // ── token cursor / shared token utilities ────────────────────────────────
+  // ── lookup / binding helpers: token cursor and shared token utilities ────
   const Token& cur() const;              // current token
   const Token& peek(int offset = 0) const; // peek at pos_+offset (0=current)
   const Token& consume();                // consume and return current token
@@ -274,7 +274,7 @@ class Parser {
   void skip_until(TokenKind k);          // skip tokens until k (consume k)
   bool try_parse_operator_function_id(std::string& out_name);
 
-  // ── parser mode / identifier classification ──────────────────────────────
+  // ── lookup / binding helpers: parser mode and identifier classification ──
   bool is_type_start() const;            // can current token start a type?
   bool can_start_parameter_type() const;
   int classify_visible_value_or_type_head(int pos, int* after_pos = nullptr);
@@ -309,6 +309,8 @@ class Parser {
                                 TypeSpec* out_resolved = nullptr);
   bool has_defined_struct_tag(std::string_view tag) const;
   bool eval_const_int_with_parser_tables(Node* n, long long* out) const;
+
+  // Diagnostics / debug / testing hooks: white-box parser state probes.
   void replace_token_stream_for_testing(std::vector<Token> tokens, int pos = 0);
   int token_cursor_for_testing() const;
   const Token& token_at_for_testing(int index) const;
@@ -325,6 +327,8 @@ class Parser {
       const QualifiedNameKey& key, const ParserAliasTemplateInfo& info);
   bool has_last_using_alias_name_text_id_for_testing() const;
   void replace_last_using_alias_name_fallback_for_testing(std::string name);
+
+  // Lookup / binding helpers: parser symbol identity and typedef tables.
   std::string_view last_resolved_typedef_text() const;
   SymbolId symbol_id_for_token_text(TextId token_text_id,
                                     std::string_view fallback = {});
@@ -426,7 +430,7 @@ class Parser {
   bool is_typedef_name(std::string_view s) const;
   bool is_cpp_mode() const;
 
-  // ── namespace resolution / qualified-name plumbing ───────────────────────
+  // ── lookup / binding helpers: namespace resolution and qualified names ───
   void refresh_current_namespace_bridge();
   int current_namespace_context_id() const;
   int ensure_named_namespace_context(int parent_id, TextId text_id,
@@ -525,7 +529,7 @@ class Parser {
                             const char* resolved_name = nullptr);
   void apply_decl_namespace(Node* node, int context_id, const char* unqualified_name);
 
-  // ── generic skipping / attribute helpers ─────────────────────────────────
+  // ── AST handoff helpers: generic skipping and attributes ─────────────────
   void skip_attributes();
   void skip_exception_spec();
   void parse_attributes(TypeSpec* ts);
@@ -533,7 +537,7 @@ class Parser {
   void skip_paren_group();
   void skip_brace_group();
 
-  // ── template argument parsing / template instantiation helpers ───────────
+  // ── lookup / binding helpers: template arguments and instantiation ───────
   // Evaluate a deferred NTTP default expression for a template parameter.
   // Returns true if evaluation succeeded and writes the result to *out.
   bool eval_deferred_nttp_default(
@@ -621,7 +625,7 @@ class Parser {
                                     std::string_view name) const;
   bool is_template_scope_type_param(std::string_view name) const;
 
-  // ── type spelling / type-specifier parsing ────────────────────────────────
+  // ── AST handoff producers: type spelling and type-specifier parsing ──────
   bool consume_qualified_type_spelling_with_typename(
       bool require_typename, bool allow_global,
       bool consume_final_template_args,
@@ -641,7 +645,7 @@ class Parser {
   // Parse a full type-name (type + declarator with no name): e.g. for sizeof.
   TypeSpec parse_type_name();
 
-  // ── declarator parsing ────────────────────────────────────────────────────
+  // ── AST handoff producers: declarator parsing ────────────────────────────
   // Modifies ts in place. Returns the declared name via out_name.
   // Function-pointer metadata is optionally surfaced through the out_* params.
   void parse_declarator(TypeSpec& ts, const char** out_name,
@@ -655,7 +659,7 @@ class Parser {
                         TextId* out_name_text_id = nullptr);
   bool parse_operator_declarator_name(std::string* out_name);
 
-  // ── AST node builders ─────────────────────────────────────────────────────
+  // ── AST handoff builders: AST node construction ──────────────────────────
   Node* make_node(NodeKind k, int line);
   Node* make_int_lit(long long v, int line);
   Node* make_float_lit(double v, const char* raw, int line);

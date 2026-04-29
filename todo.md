@@ -8,20 +8,24 @@ Current Step Title: Classify the Parser public surface
 
 ## Just Finished
 
-Lifecycle activation created the active runbook from
-`ideas/open/129_parser_intermediate_carrier_boundary_labeling.md`.
+Step 1: Classified the `Parser` public surface in
+`src/frontend/parser/parser.hpp` by role using comment-only grouping updates:
+public parse entry/facade, parser-local state references, lookup/binding
+helpers, AST handoff producers/builders, and diagnostics/debug/testing hooks.
 
 ## Suggested Next
 
-Delegate Step 1 to an executor: classify the `Parser` public surface in
-`src/frontend/parser/parser.hpp` by role without changing behavior.
+Delegate Step 2 to classify parser helper structs in
+`src/frontend/parser/parser_types.hpp`, matching plan.md.
 
 ## Watchouts
 
-- Keep this pass to documentation/classification unless a separate follow-up
-  idea is required for suspicious cross-stage string authority.
-- Do not change parser lookup behavior, helper ownership, or member visibility.
+- Step 1 was comment-only; declaration order, member visibility, and behavior
+  were preserved.
+- The public surface still intentionally exposes all members because of the
+  project coding constraint noted in `parser.hpp`.
 
 ## Proof
 
-Lifecycle-only activation. No build proof was run.
+`cmake --build --preset default > test_after.log 2>&1` completed
+successfully. Proof log: `test_after.log`.
