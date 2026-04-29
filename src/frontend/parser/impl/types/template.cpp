@@ -384,6 +384,7 @@ bool Parser::ensure_template_struct_instantiated_from_args(
             out_resolved->inner_rank = -1;
             out_resolved->base = TB_STRUCT;
             out_resolved->tag = core_input_state_.arena.strdup(out_mangled->c_str());
+            out_resolved->record_def = const_cast<Node*>(selected);
         }
         mark_template_instantiation_dedup_keys(
             *this, structured_instance_key, rendered_instance_key);
@@ -400,13 +401,15 @@ bool Parser::ensure_template_struct_instantiated_from_args(
     mark_template_instantiation_dedup_keys(
         *this, structured_instance_key, rendered_instance_key);
 
+    auto injected_it = definition_state_.struct_tag_def_map.find(*out_mangled);
     if (out_resolved && !out_resolved->tag &&
-        definition_state_.struct_tag_def_map.count(*out_mangled)) {
+        injected_it != definition_state_.struct_tag_def_map.end()) {
         *out_resolved = {};
         out_resolved->array_size = -1;
         out_resolved->inner_rank = -1;
         out_resolved->base = TB_STRUCT;
         out_resolved->tag = core_input_state_.arena.strdup(out_mangled->c_str());
+        out_resolved->record_def = injected_it->second;
     }
     return definition_state_.struct_tag_def_map.count(*out_mangled) > 0;
 }

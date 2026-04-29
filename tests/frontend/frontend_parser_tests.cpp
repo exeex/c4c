@@ -3190,6 +3190,35 @@ void test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse()
           parser.template_state_.template_struct_instantiation_key_mismatch_count),
       1,
       "missing structured template instantiation mirrors should be detected");
+
+  c4c::Parser::TemplateArgParseResult arg{};
+  arg.is_value = false;
+  arg.type.array_size = -1;
+  arg.type.inner_rank = -1;
+  arg.type.base = c4c::TB_INT;
+  std::string resolved_mangled;
+  c4c::TypeSpec resolved_specialization{};
+  expect_true(parser.ensure_template_struct_instantiated_from_args(
+                  "Trait", primary, {arg}, 1, &resolved_mangled,
+                  "template_specialization_record_def_test",
+                  &resolved_specialization),
+              "explicit specialization reuse should produce a resolved TypeSpec");
+  expect_true(resolved_specialization.record_def == specialization,
+              "explicit specialization reuse should carry the selected record_def");
+
+  c4c::Node* stale_instantiation = parser.make_node(c4c::NK_STRUCT_DEF, 3);
+  stale_instantiation->name = arena.strdup("StaleTrait");
+  stale_instantiation->n_member_typedefs = 0;
+  parser.definition_state_.struct_tag_def_map[resolved_mangled] =
+      stale_instantiation;
+  resolved_specialization = {};
+  expect_true(parser.ensure_template_struct_instantiated_from_args(
+                  "Trait", primary, {arg}, 1, &resolved_mangled,
+                  "template_specialization_stale_record_def_test",
+                  &resolved_specialization),
+              "explicit specialization reuse should ignore stale rendered map payloads");
+  expect_true(resolved_specialization.record_def == specialization,
+              "stale rendered template tag-map entries should not override record_def");
 }
 
 void test_parser_template_instantiation_dedup_keys_demote_rendered_sync() {
@@ -3273,6 +3302,11 @@ void test_parser_template_instantiation_dedup_keys_mirror_direct_emission() {
   c4c::TypeSpec first = parse_box_int();
   expect_true(first.base == c4c::TB_STRUCT && first.tag != nullptr,
               "template type parsing should emit a concrete struct type");
+  expect_true(first.record_def != nullptr,
+              "direct template emission should return the created record_def");
+  expect_true(parser.definition_state_.struct_tag_def_map[first.tag] ==
+                  first.record_def,
+              "direct template emission record_def should match the rendered map mirror");
   expect_eq_int(
       static_cast<int>(
           parser.template_state_.instantiated_template_struct_keys.size()),
@@ -3295,6 +3329,8 @@ void test_parser_template_instantiation_dedup_keys_mirror_direct_emission() {
   c4c::TypeSpec second = parse_box_int();
   expect_true(second.base == c4c::TB_STRUCT && second.tag != nullptr,
               "legacy-only rendered direct-emission de-dup should fall through to concrete emission when a structured key is available");
+  expect_true(second.record_def != nullptr,
+              "demoted direct template emission should return the recreated record_def");
   expect_eq(first.tag, second.tag,
             "demoted rendered direct-emission de-dup should preserve the instantiated tag spelling");
   expect_true(parser.definition_state_.struct_tag_def_map.count(first.tag) > 0,

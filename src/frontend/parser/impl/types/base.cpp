@@ -2613,6 +2613,7 @@ TypeSpec Parser::parse_base_type() {
                         return ts;
                     }
 
+                    Node* instantiated_record = nullptr;
                     if (!has_template_instantiation_dedup_key_for_direct_emit(
                             *this, structured_emitted_instance_key,
                             emitted_instance_key)) {
@@ -2763,15 +2764,20 @@ TypeSpec Parser::parse_base_type() {
                                                         tpl_def->line, &base_mangled,
                                                         "template_base_instantiation",
                                                         &inst->base_types[bi])) {
+                                                    auto base_def_it =
+                                                        definition_state_.struct_tag_def_map.find(
+                                                            base_mangled);
                                                     if (!inst->base_types[bi].tag &&
-                                                        definition_state_.struct_tag_def_map.count(
-                                                            base_mangled)) {
+                                                        base_def_it != definition_state_
+                                                                           .struct_tag_def_map.end()) {
                                                         inst->base_types[bi] = TypeSpec{};
                                                         inst->base_types[bi].array_size = -1;
                                                         inst->base_types[bi].inner_rank = -1;
                                                         inst->base_types[bi].base = TB_STRUCT;
                                                         inst->base_types[bi].tag =
                                                             arena_.strdup(base_mangled.c_str());
+                                                        inst->base_types[bi].record_def =
+                                                            base_def_it->second;
                                                     }
                                                     continue;
                                                 }
@@ -2982,23 +2988,32 @@ TypeSpec Parser::parse_base_type() {
                                                 tpl_def->line, &base_mangled,
                                                 "template_base_instantiation",
                                                 &inst->base_types[bi])) {
+                                            auto base_def_it =
+                                                definition_state_.struct_tag_def_map.find(
+                                                    base_mangled);
                                             if (!inst->base_types[bi].tag &&
-                                                definition_state_.struct_tag_def_map.count(
-                                                    base_mangled)) {
+                                                base_def_it != definition_state_
+                                                                   .struct_tag_def_map.end()) {
                                                 inst->base_types[bi] = TypeSpec{};
                                                 inst->base_types[bi].array_size = -1;
                                                 inst->base_types[bi].inner_rank = -1;
                                                 inst->base_types[bi].base = TB_STRUCT;
                                                 inst->base_types[bi].tag =
                                                     arena_.strdup(base_mangled.c_str());
+                                                inst->base_types[bi].record_def =
+                                                    base_def_it->second;
                                             }
-                                        } else if (definition_state_.struct_tag_def_map.count(
-                                                       base_mangled)) {
+                                        } else if (auto base_def_it =
+                                                       definition_state_.struct_tag_def_map.find(
+                                                           base_mangled);
+                                                   base_def_it != definition_state_
+                                                                      .struct_tag_def_map.end()) {
                                             inst->base_types[bi] = TypeSpec{};
                                             inst->base_types[bi].array_size = -1;
                                             inst->base_types[bi].inner_rank = -1;
                                             inst->base_types[bi].base = TB_STRUCT;
                                             inst->base_types[bi].tag = arena_.strdup(base_mangled.c_str());
+                                            inst->base_types[bi].record_def = base_def_it->second;
                                         }
                                     }
                                 }
@@ -3243,8 +3258,10 @@ TypeSpec Parser::parse_base_type() {
                         definition_state_.struct_defs.push_back(inst);
                         definition_state_.struct_tag_def_map[mangled] = inst;
                         definition_state_.defined_struct_tags.insert(mangled);
+                        instantiated_record = inst;
                     }
                     ts.tag = arena_.strdup(mangled.c_str());
+                    ts.record_def = instantiated_record;
                 }
                 // C++ template using alias: typedef resolved but the resolved
                 // type is not a primary template struct (e.g. using A = S<T>;
