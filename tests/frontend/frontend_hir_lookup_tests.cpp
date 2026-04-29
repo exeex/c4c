@@ -1,8 +1,28 @@
 #include "hir/hir_ir.hpp"
 
+#include <algorithm>
+#include <cctype>
+#include <cstdint>
 #include <cstdlib>
+#include <cstring>
+#include <functional>
+#include <initializer_list>
 #include <iostream>
+#include <memory>
+#include <optional>
+#include <set>
+#include <sstream>
+#include <stdexcept>
 #include <string>
+#include <tuple>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#define private public
+#include "hir/impl/lowerer.hpp"
+#undef private
 
 namespace {
 
@@ -550,6 +570,65 @@ void test_range_for_method_callee_lookup_uses_authoritative_decl_identity() {
               "range-for method legacy fallback should record rendered-name authority");
 }
 
+void test_struct_owner_key_lookup_detects_stale_rendered_member_and_method_maps() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+
+  const c4c::TextId owner_text = texts.intern("Owner");
+  const c4c::TextId member_text = texts.intern("value");
+  const c4c::TextId method_text = texts.intern("method");
+
+  c4c::hir::NamespaceQualifier ns;
+  ns.context_id = 3;
+  const c4c::hir::HirRecordOwnerKey owner_key =
+      c4c::hir::make_hir_record_owner_key(ns, owner_text);
+  module.index_struct_def_owner(owner_key, "RenderedOwner", true);
+
+  c4c::hir::HirStructMemberLookupKey member_key;
+  member_key.owner_key = owner_key;
+  member_key.member_text_id = member_text;
+
+  c4c::hir::HirStructMethodLookupKey method_key;
+  method_key.owner_key = owner_key;
+  method_key.method_text_id = method_text;
+  method_key.is_const_method = false;
+
+  c4c::Node stale_member{};
+  stale_member.kind = c4c::NK_DECL;
+  stale_member.name = "value";
+  stale_member.unqualified_name = "value";
+  c4c::Node structured_member{};
+  structured_member.kind = c4c::NK_DECL;
+  structured_member.name = "value";
+  structured_member.unqualified_name = "value";
+
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+  lowerer.struct_static_member_decls_["RenderedOwner"]["value"] = &stale_member;
+  lowerer.struct_static_member_decls_by_owner_[member_key] = &structured_member;
+  lowerer.struct_methods_["RenderedOwner::method"] = "stale_method_mangled";
+  lowerer.struct_methods_by_owner_[method_key] = "structured_method_mangled";
+
+  const c4c::Node* rendered_member =
+      lowerer.find_struct_static_member_decl("RenderedOwner", "value");
+  expect_true(rendered_member == &stale_member,
+              "rendered static-member lookup should still expose the legacy map result");
+  expect_true(lowerer.struct_static_member_decl_lookup_parity_checks_ == 1,
+              "static-member owner-key lookup should run a parity check");
+  expect_true(lowerer.struct_static_member_decl_lookup_parity_mismatches_ == 1,
+              "static-member owner-key lookup should detect stale rendered authority");
+
+  const std::optional<std::string> rendered_method =
+      lowerer.find_struct_method_mangled("RenderedOwner", "method", false);
+  expect_true(rendered_method && *rendered_method == "stale_method_mangled",
+              "rendered method lookup should still expose the legacy map result");
+  expect_true(lowerer.struct_method_mangled_lookup_parity_checks_ == 1,
+              "method owner-key lookup should run a parity check");
+  expect_true(lowerer.struct_method_mangled_lookup_parity_mismatches_ == 1,
+              "method owner-key lookup should detect stale rendered authority");
+}
+
 }  // namespace
 
 int main() {
@@ -558,6 +637,7 @@ int main() {
   test_direct_call_callee_lookup_uses_authoritative_decl_identity();
   test_operator_callee_lookup_uses_authoritative_decl_identity();
   test_range_for_method_callee_lookup_uses_authoritative_decl_identity();
+  test_struct_owner_key_lookup_detects_stale_rendered_member_and_method_maps();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }

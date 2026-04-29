@@ -8,25 +8,24 @@ Current Step Title: Extend Structured Lookup Proof Across HIR Edge Paths
 
 ## Just Finished
 
-Completed Step 4 direct-call proof extension. `frontend_hir_lookup_tests` now
-covers a namespace-qualified `Module::resolve_direct_call_callee()` disagreement
-where `DeclRef::NamespaceQualifier` plus `TextId` resolve the structured callee
-even when the rendered name points at a different legacy-index function.
+Completed Step 4 struct owner-key proof extension. `frontend_hir_lookup_tests`
+now covers stale rendered struct member and method lookup maps disagreeing with
+the structured owner-key mirrors, and asserts those owner-key parity paths record
+mismatches instead of letting rendered spelling silently count as authoritative.
 
 ## Suggested Next
 
-Next coherent Step 4 packet: choose another HIR edge path with existing
-structured metadata, such as member/method owner keys or link-name-backed method
-return lookup, and add the same stale-rendered-name authority proof without
-changing resolver implementation.
+Next coherent Step 4 packet: either extend the same owner-key proof to another
+existing mirror such as method link-name or return-type lookup, or ask for plan
+review if the remaining Step 4 edge paths now look exhausted enough for
+acceptance routing.
 
 ## Watchouts
 
-Fallback behavior remains covered by the existing declaration, operator, and
-range-for cases; this packet only added a new structured-authority edge. Keep
-future Step 4 tests focused on paths where structured metadata already exists,
-and split missing metadata propagation into a separate idea instead of expanding
-this runbook.
+The new test deliberately uses the existing owner-key parity mirrors and does
+not change production lookup authority; it proves detection rather than a full
+owner-key replacement. Future packets should keep that distinction explicit and
+avoid weakening legacy fallback expectations.
 
 ## Proof
 
