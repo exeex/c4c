@@ -1,11 +1,12 @@
 # Parser Intermediate Carrier Boundary Labeling
 
-Status: Open
+Status: Closed
 Created: 2026-04-29
+Closed: 2026-04-29
 
 Parent Ideas:
 - [123_parser_legacy_string_lookup_removal_convergence.md](/workspaces/c4c/ideas/closed/123_parser_legacy_string_lookup_removal_convergence.md)
-- [128_parser_ast_handoff_role_labeling.md](/workspaces/c4c/ideas/open/128_parser_ast_handoff_role_labeling.md)
+- [128_parser_ast_handoff_role_labeling.md](/workspaces/c4c/ideas/closed/128_parser_ast_handoff_role_labeling.md)
 
 ## Goal
 
@@ -57,3 +58,22 @@ definitions before deeper cleanup work.
 - Suspicious cross-stage string use is captured in follow-up idea text rather
   than silently expanded into this documentation pass.
 - No parser behavior changes.
+
+## Completion Summary
+
+The active runbook labeled the parser facade and parser helper carriers in
+`src/frontend/parser/parser.hpp` and
+`src/frontend/parser/parser_types.hpp` by boundary role while preserving parser
+behavior and ownership. Parser-side string use was classified as local-only,
+generated-name-only, compatibility spelling, or suspicious cross-stage
+authority.
+
+Suspicious follow-up cleanup was queued separately in open ideas, including
+`ideas/open/131_cross_ir_string_authority_audit_and_followup_queue.md`,
+`ideas/open/132_parser_rendered_record_template_lookup_mirror_cleanup.md`,
+`ideas/open/133_parser_namespace_visible_name_compatibility_spelling_cleanup.md`,
+and `ideas/open/134_parser_ast_template_payload_string_bridge_cleanup.md`.
+
+Close proof used matching frontend parser regression logs:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`.
+The regression guard passed with 1 passed / 0 failed before and after.
