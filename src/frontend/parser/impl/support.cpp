@@ -491,10 +491,22 @@ bool eval_const_int(Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* struct_map,
     const std::unordered_map<std::string, long long>* compatibility_named_consts);
 
-// Forward declaration
-static long long struct_align(const char* tag,
+Node* resolve_record_type_spec(
+    const TypeSpec& ts,
+    const std::unordered_map<std::string, Node*>* struct_map) {
+    if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
+        return ts.record_def;
+    }
+    if (!struct_map || !ts.tag) return nullptr;
+    const auto it = struct_map->find(ts.tag);
+    if (it == struct_map->end()) return nullptr;
+    Node* sd = it->second;
+    return sd && sd->kind == NK_STRUCT_DEF ? sd : nullptr;
+}
+
+static long long struct_align(const TypeSpec& ts,
     const std::unordered_map<std::string, Node*>* struct_map);
-static long long struct_sizeof(const char* tag,
+static long long struct_sizeof(const TypeSpec& ts,
     const std::unordered_map<std::string, Node*>* struct_map);
 
 // Compute the ABI alignment of a field type.
@@ -504,8 +516,8 @@ static long long field_align(const TypeSpec& ts,
     if (ts.ptr_level > 0) return 8;
     if (ts.is_vector && ts.vector_bytes > 0) {
         natural = ts.vector_bytes > 16 ? 16 : ts.vector_bytes;
-    } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag) {
-        natural = struct_align(ts.tag, struct_map);
+    } else if (ts.base == TB_STRUCT || ts.base == TB_UNION) {
+        natural = struct_align(ts, struct_map);
     } else {
         natural = alignof_type_spec(ts);
     }
@@ -514,13 +526,10 @@ static long long field_align(const TypeSpec& ts,
 }
 
 // Compute the alignment of a struct/union (max alignment of its fields).
-static long long struct_align(const char* tag,
+static long long struct_align(const TypeSpec& ts,
     const std::unordered_map<std::string, Node*>* struct_map) {
-    if (!struct_map || !tag) return 8;
-    auto it = struct_map->find(tag);
-    if (it == struct_map->end()) return 8;
-    Node* sd = it->second;
-    if (!sd || sd->kind != NK_STRUCT_DEF) return 8;
+    Node* sd = resolve_record_type_spec(ts, struct_map);
+    if (!sd) return 8;
     long long max_align = 1;
     for (int i = 0; i < sd->n_fields; i++) {
         Node* f = sd->fields[i];
@@ -533,13 +542,10 @@ static long long struct_align(const char* tag,
 }
 
 // Compute sizeof a struct (with alignment padding).
-static long long struct_sizeof(const char* tag,
+static long long struct_sizeof(const TypeSpec& ts,
     const std::unordered_map<std::string, Node*>* struct_map) {
-    if (!struct_map || !tag) return 8;
-    auto it = struct_map->find(tag);
-    if (it == struct_map->end()) return 8;
-    Node* sd = it->second;
-    if (!sd || sd->kind != NK_STRUCT_DEF) return 8;
+    Node* sd = resolve_record_type_spec(ts, struct_map);
+    if (!sd) return 8;
     long long offset = 0, max_align = 1;
     for (int i = 0; i < sd->n_fields; i++) {
         Node* f = sd->fields[i];
@@ -552,7 +558,7 @@ static long long struct_sizeof(const char* tag,
         else if (f->type.is_vector && f->type.vector_bytes > 0)
             sz = f->type.vector_bytes;
         else if (f->type.base == TB_STRUCT || f->type.base == TB_UNION)
-            sz = struct_sizeof(f->type.tag, struct_map);
+            sz = struct_sizeof(f->type, struct_map);
         else sz = sizeof_type_spec(f->type);
         if (f->type.array_rank > 0)
             for (int d = 0; d < f->type.array_rank; d++)
@@ -562,14 +568,13 @@ static long long struct_sizeof(const char* tag,
     return (offset + max_align - 1) / max_align * max_align;
 }
 
-// Helper: compute offsetof(tag, field_name) using struct_tag_def_map
-static bool compute_offsetof(const char* tag, const char* field_name,
+// Helper: compute offsetof(type, field_name) using typed record identity first
+// and rendered tag lookup only as a compatibility fallback.
+static bool compute_offsetof(const TypeSpec& ts, const char* field_name,
     const std::unordered_map<std::string, Node*>* struct_map, long long* out) {
-    if (!struct_map || !tag || !field_name) return false;
-    auto it = struct_map->find(tag);
-    if (it == struct_map->end()) return false;
-    Node* sd = it->second;
-    if (!sd || sd->kind != NK_STRUCT_DEF) return false;
+    if (!field_name) return false;
+    Node* sd = resolve_record_type_spec(ts, struct_map);
+    if (!sd) return false;
     std::string path(field_name);
     std::string head = path;
     std::string tail;
@@ -591,9 +596,9 @@ static bool compute_offsetof(const char* tag, const char* field_name,
                 *out = offset;
                 return true;
             }
-            if ((f->type.base == TB_STRUCT || f->type.base == TB_UNION) && f->type.tag) {
+            if (f->type.base == TB_STRUCT || f->type.base == TB_UNION) {
                 long long inner = 0;
-                if (!compute_offsetof(f->type.tag, tail.c_str(), struct_map, &inner)) return false;
+                if (!compute_offsetof(f->type, tail.c_str(), struct_map, &inner)) return false;
                 *out = offset + inner;
                 return true;
             }
@@ -603,7 +608,7 @@ static bool compute_offsetof(const char* tag, const char* field_name,
         long long sz;
         if (f->type.ptr_level > 0) sz = 8;
         else if (f->type.base == TB_STRUCT || f->type.base == TB_UNION)
-            sz = struct_sizeof(f->type.tag, struct_map);
+            sz = struct_sizeof(f->type, struct_map);
         else sz = sizeof_type_spec(f->type);
         if (f->type.array_rank > 0) {
             for (int d = 0; d < f->type.array_rank; d++)
@@ -647,7 +652,7 @@ bool eval_const_int(Node* n, long long* out,
     }
     if (n->kind == NK_OFFSETOF) {
         if (n->type.base == TB_STRUCT || n->type.base == TB_UNION) {
-            return compute_offsetof(n->type.tag, n->name, struct_map, out);
+            return compute_offsetof(n->type, n->name, struct_map, out);
         }
         return false;
     }
@@ -657,8 +662,8 @@ bool eval_const_int(Node* n, long long* out,
     }
     if (n->kind == NK_SIZEOF_TYPE) {
         long long sz = sizeof_type_spec(n->type);
-        if ((n->type.base == TB_STRUCT || n->type.base == TB_UNION) && n->type.tag) {
-            sz = struct_sizeof(n->type.tag, struct_map);
+        if (n->type.base == TB_STRUCT || n->type.base == TB_UNION) {
+            sz = struct_sizeof(n->type, struct_map);
         }
         if (n->type.array_rank > 0) {
             for (int i = 0; i < n->type.array_rank; ++i)
@@ -743,7 +748,7 @@ bool eval_const_int(Node* n, long long* out,
     }
     if (n->kind == NK_OFFSETOF) {
         if (n->type.base == TB_STRUCT || n->type.base == TB_UNION) {
-            return compute_offsetof(n->type.tag, n->name, struct_map, out);
+            return compute_offsetof(n->type, n->name, struct_map, out);
         }
         return false;
     }
@@ -754,8 +759,8 @@ bool eval_const_int(Node* n, long long* out,
     if (n->kind == NK_SIZEOF_TYPE) {
         // sizeof(type): use LP64 sizes
         long long sz = sizeof_type_spec(n->type);
-        if ((n->type.base == TB_STRUCT || n->type.base == TB_UNION) && n->type.tag) {
-            sz = struct_sizeof(n->type.tag, struct_map);
+        if (n->type.base == TB_STRUCT || n->type.base == TB_UNION) {
+            sz = struct_sizeof(n->type, struct_map);
         }
         if (n->type.array_rank > 0) {
             for (int i = 0; i < n->type.array_rank; ++i)

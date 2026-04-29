@@ -12,6 +12,9 @@ namespace c4c {
 long long sizeof_base(TypeBase b);
 long long sizeof_type_spec(const TypeSpec& ts);
 long long alignof_type_spec(const TypeSpec& ts);
+Node* resolve_record_type_spec(
+    const TypeSpec& ts,
+    const std::unordered_map<std::string, Node*>* struct_map);
 
 // Parser-owned constant evaluation should pass named constants through the
 // TextId table. Rendered struct tags remain a compatibility bridge for

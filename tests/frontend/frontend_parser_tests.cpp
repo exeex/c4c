@@ -4,9 +4,11 @@
 
 #include <cstdlib>
 #include <exception>
+#include <initializer_list>
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -3244,6 +3246,134 @@ void test_parser_tag_only_record_types_keep_null_record_definition() {
               "tag-only struct TypeSpec should not synthesize typed record identity");
 }
 
+c4c::TypeSpec parser_test_scalar_type(c4c::TypeBase base) {
+  c4c::TypeSpec ts{};
+  ts.base = base;
+  ts.enum_underlying_base = c4c::TB_VOID;
+  ts.array_size = -1;
+  ts.inner_rank = -1;
+  return ts;
+}
+
+c4c::Node* parser_test_field(c4c::Parser& parser, c4c::Arena& arena,
+                             const char* name, c4c::TypeSpec type) {
+  c4c::Node* field = parser.make_node(c4c::NK_DECL, 1);
+  field->name = arena.strdup(name);
+  field->type = type;
+  return field;
+}
+
+c4c::Node* parser_test_record(c4c::Parser& parser, c4c::Arena& arena,
+                              const char* name,
+                              std::initializer_list<c4c::Node*> fields) {
+  c4c::Node* record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  record->name = arena.strdup(name);
+  record->n_fields = static_cast<int>(fields.size());
+  record->fields = arena.alloc_array<c4c::Node*>(record->n_fields);
+  int index = 0;
+  for (c4c::Node* field : fields) {
+    record->fields[index++] = field;
+  }
+  return record;
+}
+
+void test_parser_record_layout_const_eval_prefers_record_definition() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files);
+
+  c4c::Node* real = parser_test_record(
+      parser, arena, "Real",
+      {parser_test_field(parser, arena, "head",
+                         parser_test_scalar_type(c4c::TB_CHAR)),
+       parser_test_field(parser, arena, "value",
+                         parser_test_scalar_type(c4c::TB_INT))});
+  c4c::Node* stale = parser_test_record(
+      parser, arena, "Stale",
+      {parser_test_field(parser, arena, "head",
+                         parser_test_scalar_type(c4c::TB_CHAR)),
+       parser_test_field(parser, arena, "value",
+                         parser_test_scalar_type(c4c::TB_CHAR))});
+
+  std::unordered_map<std::string, c4c::Node*> struct_map;
+  struct_map["Shared"] = stale;
+
+  c4c::TypeSpec typed = parser_test_scalar_type(c4c::TB_STRUCT);
+  typed.tag = arena.strdup("Shared");
+  typed.record_def = real;
+
+  c4c::Node* align_node = parser.make_node(c4c::NK_ALIGNOF_TYPE, 1);
+  align_node->type = typed;
+  long long align_value = 0;
+  expect_true(c4c::eval_const_int(align_node, &align_value, &struct_map),
+              "alignof should evaluate for typed record TypeSpecs");
+  expect_eq_int(static_cast<int>(align_value), 4,
+                "alignof should prefer record_def over stale rendered tag lookup");
+
+  c4c::Node* size_node = parser.make_node(c4c::NK_SIZEOF_TYPE, 1);
+  size_node->type = typed;
+  long long size_value = 0;
+  expect_true(c4c::eval_const_int(size_node, &size_value, &struct_map),
+              "sizeof should evaluate for typed record TypeSpecs");
+  expect_eq_int(static_cast<int>(size_value), 8,
+                "sizeof should prefer record_def over stale rendered tag lookup");
+
+  c4c::Node* offset_node = parser.make_node(c4c::NK_OFFSETOF, 1);
+  offset_node->type = typed;
+  offset_node->name = arena.strdup("value");
+  long long offset_value = 0;
+  expect_true(c4c::eval_const_int(offset_node, &offset_value, &struct_map),
+              "offsetof should evaluate for typed record TypeSpecs");
+  expect_eq_int(static_cast<int>(offset_value), 4,
+                "offsetof should prefer record_def over stale rendered tag lookup");
+}
+
+void test_parser_record_layout_const_eval_keeps_tag_fallback() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files);
+
+  c4c::Node* fallback = parser_test_record(
+      parser, arena, "Fallback",
+      {parser_test_field(parser, arena, "head",
+                         parser_test_scalar_type(c4c::TB_CHAR)),
+       parser_test_field(parser, arena, "value",
+                         parser_test_scalar_type(c4c::TB_CHAR))});
+
+  std::unordered_map<std::string, c4c::Node*> struct_map;
+  struct_map["Fallback"] = fallback;
+
+  c4c::TypeSpec tag_only = parser_test_scalar_type(c4c::TB_STRUCT);
+  tag_only.tag = arena.strdup("Fallback");
+
+  c4c::Node* align_node = parser.make_node(c4c::NK_ALIGNOF_TYPE, 1);
+  align_node->type = tag_only;
+  long long align_value = 0;
+  expect_true(c4c::eval_const_int(align_node, &align_value, &struct_map),
+              "alignof should keep tag-only compatibility fallback");
+  expect_eq_int(static_cast<int>(align_value), 1,
+                "alignof fallback should use the rendered tag map");
+
+  c4c::Node* size_node = parser.make_node(c4c::NK_SIZEOF_TYPE, 1);
+  size_node->type = tag_only;
+  long long size_value = 0;
+  expect_true(c4c::eval_const_int(size_node, &size_value, &struct_map),
+              "sizeof should keep tag-only compatibility fallback");
+  expect_eq_int(static_cast<int>(size_value), 2,
+                "sizeof fallback should use the rendered tag map");
+
+  c4c::Node* offset_node = parser.make_node(c4c::NK_OFFSETOF, 1);
+  offset_node->type = tag_only;
+  offset_node->name = arena.strdup("value");
+  long long offset_value = 0;
+  expect_true(c4c::eval_const_int(offset_node, &offset_value, &struct_map),
+              "offsetof should keep tag-only compatibility fallback");
+  expect_eq_int(static_cast<int>(offset_value), 1,
+                "offsetof fallback should use the rendered tag map");
+}
+
 void test_parser_alias_template_value_probes_use_token_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -3458,6 +3588,8 @@ int main() {
   test_parser_template_instantiation_dedup_keys_mirror_direct_emission();
   test_parser_direct_record_types_carry_record_definition();
   test_parser_tag_only_record_types_keep_null_record_definition();
+  test_parser_record_layout_const_eval_prefers_record_definition();
+  test_parser_record_layout_const_eval_keeps_tag_fallback();
   test_parser_alias_template_value_probes_use_token_spelling();
   test_parser_alias_template_info_prefers_structured_key_over_recovery();
   test_parser_typename_template_parameter_probe_uses_token_spelling();
