@@ -2686,6 +2686,249 @@ void test_hir_delete_expr_method_owner_prefers_record_def_over_stale_tag() {
               "delete-expression method lookup should use structured record_def owner before stale rendered spelling");
 }
 
+void test_hir_init_list_member_symbol_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealInitListOwner");
+  real_record->unqualified_name = arena.strdup("RealInitListOwner");
+  real_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(real_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build a structured owner key for init-list owner");
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  c4c::TypeSpec int_ptr_ts = int_ts;
+  int_ptr_ts.ptr_level = 1;
+
+  const c4c::MemberSymbolId real_array_id =
+      module.member_symbols.intern("RealInitListOwner::_M_array");
+  const c4c::MemberSymbolId stale_array_id =
+      module.member_symbols.intern("StaleInitListOwner::_M_array");
+  const c4c::MemberSymbolId real_len_id =
+      module.member_symbols.intern("RealInitListOwner::_M_len");
+  module.member_symbols.intern("StaleInitListOwner::_M_len");
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealInitListOwner";
+  real_def.tag_text_id = module.link_name_texts->intern("RealInitListOwner");
+  real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleInitListOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleInitListOwner");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  c4c::hir::HirStructField array_field;
+  array_field.name = "_M_array";
+  array_field.field_text_id = module.link_name_texts->intern("_M_array");
+  array_field.elem_type = int_ptr_ts;
+  array_field.member_symbol_id = stale_array_id;
+  stale_def.fields.push_back(array_field);
+  c4c::hir::HirStructField len_field;
+  len_field.name = "_M_len";
+  len_field.field_text_id = module.link_name_texts->intern("_M_len");
+  len_field.elem_type = int_ts;
+  len_field.member_symbol_id = module.member_symbols.find("StaleInitListOwner::_M_len");
+  stale_def.fields.push_back(len_field);
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::TypeSpec owner_ts{};
+  owner_ts.array_size = -1;
+  owner_ts.inner_rank = -1;
+  owner_ts.base = c4c::TB_STRUCT;
+  owner_ts.tag = arena.strdup("StaleInitListOwner");
+  owner_ts.record_def = real_record;
+
+  c4c::Node* list_node = parser.make_node(c4c::NK_INIT_LIST, 1);
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  c4c::hir::Function fn;
+  ctx.fn = &fn;
+  ctx.current_block = c4c::hir::BlockId{0};
+
+  const c4c::hir::ExprId tmp_id =
+      lowerer.materialize_initializer_list_arg(&ctx, list_node, owner_ts);
+  expect_true(tmp_id.valid(), "initializer-list materialization should produce a temp");
+
+  const c4c::hir::MemberExpr* array_member = nullptr;
+  const c4c::hir::MemberExpr* len_member = nullptr;
+  for (const c4c::hir::Expr& expr : module.expr_pool) {
+    if (const auto* member = std::get_if<c4c::hir::MemberExpr>(&expr.payload)) {
+      if (member->field == "_M_array") array_member = member;
+      if (member->field == "_M_len") len_member = member;
+    }
+  }
+  expect_true(array_member != nullptr,
+              "initializer-list materialization should lower _M_array member access");
+  expect_true(array_member->resolved_owner_tag == "RealInitListOwner",
+              "initializer-list member access should resolve structured owner tag first");
+  expect_true(array_member->member_symbol_id == real_array_id &&
+                  array_member->member_symbol_id != stale_array_id,
+              "initializer-list member symbol should prefer record_def owner over stale tag");
+  expect_true(len_member != nullptr && len_member->member_symbol_id == real_len_id,
+              "initializer-list length member should use the structured owner symbol");
+}
+
+void test_hir_implicit_this_member_symbol_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealThisOwner");
+  real_record->unqualified_name = arena.strdup("RealThisOwner");
+  real_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(real_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build a structured owner key for implicit this");
+  lowerer.struct_def_nodes_["StaleThisOwner"] = real_record;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  const c4c::MemberSymbolId real_id =
+      module.member_symbols.intern("RealThisOwner::field");
+  const c4c::MemberSymbolId stale_id =
+      module.member_symbols.intern("StaleThisOwner::field");
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealThisOwner";
+  real_def.tag_text_id = module.link_name_texts->intern("RealThisOwner");
+  real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleThisOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleThisOwner");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  c4c::hir::HirStructField field;
+  field.name = "field";
+  field.field_text_id = module.link_name_texts->intern("field");
+  field.elem_type = int_ts;
+  field.member_symbol_id = stale_id;
+  stale_def.fields.push_back(field);
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::Node* var = parser.make_node(c4c::NK_VAR, 1);
+  var->name = arena.strdup("field");
+  var->type = int_ts;
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.method_struct_tag = "StaleThisOwner";
+  ctx.params["this"] = 0;
+
+  const c4c::hir::ExprId field_id = lowerer.lower_var_expr(&ctx, var);
+  const c4c::hir::Expr* field_expr = module.find_expr(field_id);
+  expect_true(field_expr != nullptr,
+              "implicit-this field lowering should append a member expression");
+  const c4c::hir::MemberExpr* member =
+      std::get_if<c4c::hir::MemberExpr>(&field_expr->payload);
+  expect_true(member != nullptr,
+              "implicit-this field lowering should produce a MemberExpr");
+  expect_true(member->resolved_owner_tag == "RealThisOwner",
+              "implicit-this member access should resolve structured owner tag first");
+  expect_true(member->member_symbol_id == real_id &&
+                  member->member_symbol_id != stale_id,
+              "implicit-this member symbol should prefer record_def owner over stale tag");
+}
+
+void test_hir_ctor_init_member_symbol_prefers_record_def_over_stale_tag() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::Node* real_record = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  real_record->name = arena.strdup("RealCtorOwner");
+  real_record->unqualified_name = arena.strdup("RealCtorOwner");
+  real_record->namespace_context_id = parser.current_namespace_context_id();
+  const std::optional<c4c::hir::HirRecordOwnerKey> owner_key =
+      lowerer.make_struct_def_node_owner_key(real_record);
+  expect_true(owner_key.has_value(),
+              "fixture should build a structured owner key for ctor init");
+  lowerer.struct_def_nodes_["StaleCtorOwner"] = real_record;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  const c4c::MemberSymbolId real_id =
+      module.member_symbols.intern("RealCtorOwner::field");
+  const c4c::MemberSymbolId stale_id =
+      module.member_symbols.intern("StaleCtorOwner::field");
+
+  c4c::hir::HirStructDef real_def;
+  real_def.tag = "RealCtorOwner";
+  real_def.tag_text_id = module.link_name_texts->intern("RealCtorOwner");
+  real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  module.index_struct_def_owner(*owner_key, real_def.tag, true);
+  module.struct_defs[real_def.tag] = real_def;
+
+  c4c::hir::HirStructDef stale_def;
+  stale_def.tag = "StaleCtorOwner";
+  stale_def.tag_text_id = module.link_name_texts->intern("StaleCtorOwner");
+  stale_def.ns_qual.context_id = parser.current_namespace_context_id();
+  c4c::hir::HirStructField field;
+  field.name = "field";
+  field.field_text_id = module.link_name_texts->intern("field");
+  field.elem_type = int_ts;
+  field.member_symbol_id = stale_id;
+  stale_def.fields.push_back(field);
+  module.struct_defs[stale_def.tag] = stale_def;
+
+  c4c::Node* zero = parser.make_node(c4c::NK_INT_LIT, 1);
+  zero->ival = 0;
+  zero->type = int_ts;
+  c4c::Node* body = parser.make_node(c4c::NK_BLOCK, 1);
+  body->ival = 1;
+  c4c::Node* ctor = parser.make_node(c4c::NK_FUNCTION, 1);
+  ctor->name = arena.strdup("StaleCtorOwner");
+  ctor->unqualified_name = arena.strdup("StaleCtorOwner");
+  ctor->is_constructor = true;
+  ctor->type.base = c4c::TB_VOID;
+  ctor->body = body;
+  ctor->n_ctor_inits = 1;
+  ctor->ctor_init_names = arena.alloc_array<const char*>(1);
+  ctor->ctor_init_names[0] = arena.strdup("field");
+  ctor->ctor_init_nargs = arena.alloc_array<int>(1);
+  ctor->ctor_init_nargs[0] = 1;
+  ctor->ctor_init_args = arena.alloc_array<c4c::Node**>(1);
+  ctor->ctor_init_args[0] = arena.alloc_array<c4c::Node*>(1);
+  ctor->ctor_init_args[0][0] = zero;
+
+  lowerer.lower_struct_method("StaleCtorOwner__ctor", "StaleCtorOwner", ctor, nullptr, nullptr);
+
+  const c4c::hir::MemberExpr* member = nullptr;
+  for (const c4c::hir::Expr& expr : module.expr_pool) {
+    if (const auto* candidate = std::get_if<c4c::hir::MemberExpr>(&expr.payload);
+        candidate && candidate->field == "field") {
+      member = candidate;
+      break;
+    }
+  }
+  expect_true(member != nullptr,
+              "constructor initializer should lower the initialized member access");
+  expect_true(member->resolved_owner_tag == "RealCtorOwner",
+              "constructor initializer member access should resolve structured owner tag first");
+  expect_true(member->member_symbol_id == real_id &&
+                  member->member_symbol_id != stale_id,
+              "constructor initializer member symbol should prefer record_def owner over stale tag");
+}
+
 void test_lir_printer_resolves_link_names_at_emission_boundary() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 int global_value = 7;
@@ -3160,6 +3403,9 @@ int main() {
   test_hir_member_call_method_owner_prefers_record_def_over_stale_tag();
   test_hir_new_expr_method_owner_prefers_record_def_over_stale_tag();
   test_hir_delete_expr_method_owner_prefers_record_def_over_stale_tag();
+  test_hir_init_list_member_symbol_prefers_record_def_over_stale_tag();
+  test_hir_implicit_this_member_symbol_prefers_record_def_over_stale_tag();
+  test_hir_ctor_init_member_symbol_prefers_record_def_over_stale_tag();
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();

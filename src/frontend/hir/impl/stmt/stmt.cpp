@@ -712,6 +712,10 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
       this_ts.tag = sit != module_->struct_defs.end() ? sit->second.tag.c_str()
                                                       : struct_tag.c_str();
       this_ts.ptr_level = 1;
+      auto owner_sdit = struct_def_nodes_.find(struct_tag);
+      if (owner_sdit != struct_def_nodes_.end()) {
+        this_ts.record_def = const_cast<Node*>(owner_sdit->second);
+      }
       ExprId this_id = append_expr(
           method_node, this_ref, this_ts, ValueCategory::LValue);
       TypeSpec field_ts{};
@@ -755,8 +759,11 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
       me.field = mem_name;
       me.field_text_id = make_text_id(
           me.field, module_ ? module_->link_name_texts.get() : nullptr);
-      me.resolved_owner_tag = struct_tag;
-      me.member_symbol_id = find_struct_member_symbol_id(struct_tag, mem_name);
+      const std::optional<std::string> owner_tag = resolve_member_lookup_owner_tag(
+          this_ts, true, &ctx.tpl_bindings, &ctx.nttp_bindings, &ctx.method_struct_tag,
+          method_node, std::string("ctor-init-member-owner:") + mem_name);
+      me.resolved_owner_tag = owner_tag.value_or(struct_tag);
+      me.member_symbol_id = find_struct_member_symbol_id(me.resolved_owner_tag, mem_name);
       me.is_arrow = true;
       ExprId lhs_id = append_expr(method_node, me, field_ts, ValueCategory::LValue);
 

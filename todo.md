@@ -9,33 +9,32 @@ Current Step Title: Tighten AST Boundary Fields and Deferred Member Types
 ## Just Finished
 
 Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` continued
-with the remaining assigned `expr/object.cpp` new/delete method-lookup callers.
-Class-specific `operator_new` and `operator_delete` lookup now resolves the
-owner from the relevant `TypeSpec` carrier through structured identity before
-calling the method lookup registry, while preserving rendered-tag fallback
-through the existing owner-resolution helper.
+with direct HIR member-symbol lookup ingress in `expr/object.cpp`,
+`expr/scalar_control.cpp`, and `stmt/stmt.cpp`. Initializer-list temporary
+member writes, implicit `this.member` lowering, and constructor member
+initializers now resolve the member owner from the available `TypeSpec` or
+current-struct carrier through structured owner identity before falling back to
+rendered tags for `find_struct_member_symbol_id`.
 
-Added focused HIR coverage for `lower_new_expr` and `lower_delete_expr` where
-stale rendered tags would select the wrong allocator/deallocator method unless
-`record_def` structured owner identity is used first.
+Added focused HIR coverage for stale rendered owner tags in initializer-list
+member materialization, implicit `this` field access, and constructor member
+initializers. Each test proves the lowered `MemberExpr` keeps the structured
+owner tag and selects the real owner member symbol instead of the stale rendered
+symbol.
 
 ## Suggested Next
 
-Continue Step 4 by auditing the remaining rendered-tag member/method lookup
-ingress outside the completed call/operator/new/delete object-expression
-families, with care to keep static member routing separate from method lookup
-routing unless the supervisor delegates that owner family.
+Continue Step 4 by auditing remaining rendered-tag member-symbol ingress in
+files outside this packet, especially statement declaration paths, while keeping
+static member lookup and constructor overload routing separate unless delegated.
 
 ## Watchouts
 
-`resolve_struct_method_lookup_owner_tag` still delegates to the member-owner
-resolver and then falls back to `TypeSpec::tag`, so legacy rendered-only method
-lookup remains available. Constructor routing in `lower_new_expr` still uses
-`struct_constructors_` and was left untouched because this packet only owned
-method lookup callers. The `operator_call` empty-argument static `value`
-shortcut in `try_lower_operator_call` remains a static-member path, not a
-method lookup; it should stay out of method-owner packets unless static member
-owner routing is explicitly delegated.
+The new current-struct member-symbol paths construct a `TypeSpec` carrier from
+the rendered struct tag plus the existing `struct_def_nodes_` entry when one is
+available, so legacy rendered fallback remains active. Constructor overload
+routing, static member lookup, and previously completed method lookup routing
+were left untouched by this packet.
 
 ## Proof
 

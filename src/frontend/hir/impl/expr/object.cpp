@@ -307,8 +307,16 @@ ExprId Lowerer::materialize_initializer_list_arg(FunctionCtx* ctx,
     lhs.field = field_name;
     lhs.field_text_id = make_text_id(
         lhs.field, module_ ? module_->link_name_texts.get() : nullptr);
-    if (param_ts.tag && param_ts.tag[0]) lhs.resolved_owner_tag = param_ts.tag;
-    if (param_ts.tag && param_ts.tag[0]) {
+    const std::optional<std::string> owner_tag = resolve_member_lookup_owner_tag(
+        param_ts, false, ctx ? &ctx->tpl_bindings : nullptr,
+        ctx ? &ctx->nttp_bindings : nullptr,
+        (ctx && !ctx->method_struct_tag.empty()) ? &ctx->method_struct_tag : nullptr,
+        list_node, std::string("init-list-member:") + field_name);
+    if (owner_tag) {
+      lhs.resolved_owner_tag = *owner_tag;
+      lhs.member_symbol_id = find_struct_member_symbol_id(*owner_tag, field_name);
+    } else if (param_ts.tag && param_ts.tag[0]) {
+      lhs.resolved_owner_tag = param_ts.tag;
       lhs.member_symbol_id = find_struct_member_symbol_id(param_ts.tag, field_name);
     }
     lhs.is_arrow = false;

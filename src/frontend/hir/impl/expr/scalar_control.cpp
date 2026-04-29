@@ -206,15 +206,22 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
       this_ts.base = TB_STRUCT;
       this_ts.tag = sit->second.tag.c_str();
       this_ts.ptr_level = 1;
+      auto sdit = struct_def_nodes_.find(ctx->method_struct_tag);
+      if (sdit != struct_def_nodes_.end()) {
+        this_ts.record_def = const_cast<Node*>(sdit->second);
+      }
       ExprId this_id = append_expr(n, this_ref, this_ts, ValueCategory::LValue);
       MemberExpr me{};
       me.base = this_id;
       me.field = r.name;
       me.field_text_id = make_text_id(
           me.field, module_ ? module_->link_name_texts.get() : nullptr);
-      me.resolved_owner_tag = ctx->method_struct_tag;
+      const std::optional<std::string> owner_tag = resolve_member_lookup_owner_tag(
+          this_ts, true, &ctx->tpl_bindings, &ctx->nttp_bindings,
+          &ctx->method_struct_tag, n, std::string("implicit-this-member:") + r.name);
+      me.resolved_owner_tag = owner_tag.value_or(ctx->method_struct_tag);
       me.member_symbol_id =
-          find_struct_member_symbol_id(ctx->method_struct_tag, r.name);
+          find_struct_member_symbol_id(me.resolved_owner_tag, r.name);
       me.is_arrow = true;
       return append_expr(n, me, n->type, ValueCategory::LValue);
     }
