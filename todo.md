@@ -3,6 +3,8 @@ Source Idea Path: ideas/open/132_parser_rendered_record_template_lookup_mirror_c
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Reproduce And Localize Signature Type-Ref Mismatch
+你該做test baseline review了
+
 你該做baseline sanity check了
 
 # Current Packet
