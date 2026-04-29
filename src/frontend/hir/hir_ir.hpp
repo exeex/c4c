@@ -1505,8 +1505,8 @@ struct Module {
     const Function* legacy = find_function_by_name_legacy(ref.name);
     if (structured && legacy && structured->id.value != legacy->id.value) {
       return ModuleDeclLookupHit{
-          ModuleDeclKind::Function, ModuleDeclLookupAuthority::LegacyRendered, ref.name,
-          legacy->id.value};
+          ModuleDeclKind::Function, ModuleDeclLookupAuthority::Structured, ref.name,
+          structured->id.value};
     }
     if (structured) {
       return ModuleDeclLookupHit{
@@ -1526,13 +1526,18 @@ struct Module {
     if (!hit) return nullptr;
     record_decl_lookup_hit(*hit);
     if (hit->authority == ModuleDeclLookupAuthority::LinkNameId) {
-      return find_function(FunctionId{hit->resolved_id});
+      const Function* authoritative = find_function(FunctionId{hit->resolved_id});
+      const Function* legacy = find_function_by_name_legacy(ref.name);
+      if (authoritative && legacy && authoritative->id.value != legacy->id.value) {
+        record_function_decl_lookup_parity_mismatch(ref, *authoritative, *legacy);
+      }
+      return authoritative;
     }
     const Function* structured = find_function_by_decl_ref_structured(ref);
     const Function* legacy = find_function_by_name_legacy(ref.name);
     if (structured && legacy && structured->id.value != legacy->id.value) {
       record_function_decl_lookup_parity_mismatch(ref, *structured, *legacy);
-      return legacy;
+      return structured;
     }
     return structured ? structured : legacy;
   }
@@ -1611,8 +1616,8 @@ struct Module {
     const GlobalVar* legacy = find_global_by_name_legacy(ref.name);
     if (structured && legacy && structured->id.value != legacy->id.value) {
       return ModuleDeclLookupHit{
-          ModuleDeclKind::Global, ModuleDeclLookupAuthority::LegacyRendered, ref.name,
-          legacy->id.value};
+          ModuleDeclKind::Global, ModuleDeclLookupAuthority::Structured, ref.name,
+          structured->id.value};
     }
     if (structured) {
       return ModuleDeclLookupHit{
@@ -1633,13 +1638,18 @@ struct Module {
     record_decl_lookup_hit(*hit);
     if (hit->authority == ModuleDeclLookupAuthority::ConcreteGlobalId ||
         hit->authority == ModuleDeclLookupAuthority::LinkNameId) {
-      return find_global(GlobalId{hit->resolved_id});
+      const GlobalVar* authoritative = find_global(GlobalId{hit->resolved_id});
+      const GlobalVar* legacy = find_global_by_name_legacy(ref.name);
+      if (authoritative && legacy && authoritative->id.value != legacy->id.value) {
+        record_global_decl_lookup_parity_mismatch(ref, *authoritative, *legacy);
+      }
+      return authoritative;
     }
     const GlobalVar* structured = find_global_by_decl_ref_structured(ref);
     const GlobalVar* legacy = find_global_by_name_legacy(ref.name);
     if (structured && legacy && structured->id.value != legacy->id.value) {
       record_global_decl_lookup_parity_mismatch(ref, *structured, *legacy);
-      return legacy;
+      return structured;
     }
     return structured ? structured : legacy;
   }

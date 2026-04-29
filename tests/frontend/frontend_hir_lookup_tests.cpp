@@ -29,6 +29,21 @@ bool has_hit(const c4c::hir::Module& module,
   return false;
 }
 
+bool has_mismatch(const c4c::hir::Module& module,
+                  c4c::hir::ModuleDeclKind kind,
+                  const std::string& name,
+                  uint32_t structured_id,
+                  uint32_t legacy_id) {
+  for (const auto& mismatch : module.decl_lookup_parity_mismatches) {
+    if (mismatch.kind == kind && mismatch.name == name &&
+        mismatch.structured_id == structured_id &&
+        mismatch.legacy_id == legacy_id) {
+      return true;
+    }
+  }
+  return false;
+}
+
 c4c::hir::NamespaceQualifier make_ns(c4c::TextTable& texts, std::string segment) {
   c4c::hir::NamespaceQualifier ns;
   ns.segments.push_back(segment);
@@ -224,10 +239,118 @@ void test_module_decl_lookup_records_each_authority() {
               "global LinkNameId lookup should record a link-name hit");
 }
 
+void test_stale_rendered_names_do_not_override_authoritative_decl_lookup() {
+  c4c::hir::Module module;
+  module.attach_link_name_texts(std::make_shared<c4c::TextTable>());
+  c4c::TextTable& texts = *module.link_name_texts;
+
+  const c4c::TextId stale_fn_text = texts.intern("stale_function_name");
+  const c4c::TextId structured_fn_text = texts.intern("structured_function");
+  const c4c::TextId link_fn_text = texts.intern("link_function");
+  const c4c::TextId stale_global_text = texts.intern("stale_global_name");
+  const c4c::TextId structured_global_text = texts.intern("structured_global");
+  const c4c::TextId concrete_global_text = texts.intern("concrete_global");
+  const c4c::TextId link_global_text = texts.intern("link_global");
+
+  add_function(module, c4c::hir::FunctionId{10}, "stale_function_name",
+               stale_fn_text);
+  add_function(module, c4c::hir::FunctionId{11}, "structured_function",
+               structured_fn_text);
+  add_function(module, c4c::hir::FunctionId{12}, "link_function",
+               link_fn_text, module.link_names.intern("link_function"));
+
+  add_global(module, c4c::hir::GlobalId{20}, "stale_global_name",
+             stale_global_text);
+  add_global(module, c4c::hir::GlobalId{21}, "structured_global",
+             structured_global_text);
+  add_global(module, c4c::hir::GlobalId{22}, "concrete_global",
+             concrete_global_text);
+  add_global(module, c4c::hir::GlobalId{23}, "link_global",
+             link_global_text, module.link_names.intern("link_global"));
+
+  c4c::hir::DeclRef structured_fn_ref;
+  structured_fn_ref.name = "stale_function_name";
+  structured_fn_ref.name_text_id = structured_fn_text;
+  const c4c::hir::Function* structured_fn =
+      module.resolve_function_decl(structured_fn_ref);
+  expect_true(structured_fn != nullptr && structured_fn->id.value == 11,
+              "stale function rendered name should not override structured lookup");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
+                      c4c::hir::ModuleDeclLookupAuthority::Structured,
+                      "stale_function_name", 11),
+              "function disagreement should record structured authority");
+  expect_true(has_mismatch(module, c4c::hir::ModuleDeclKind::Function,
+                           "stale_function_name", 11, 10),
+              "function disagreement should record legacy mismatch");
+
+  c4c::hir::DeclRef link_fn_ref;
+  link_fn_ref.name = "stale_function_name";
+  link_fn_ref.name_text_id = stale_fn_text;
+  link_fn_ref.link_name_id = module.link_names.find("link_function");
+  const c4c::hir::Function* link_fn = module.resolve_function_decl(link_fn_ref);
+  expect_true(link_fn != nullptr && link_fn->id.value == 12,
+              "stale function rendered name should not override LinkNameId lookup");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Function,
+                      c4c::hir::ModuleDeclLookupAuthority::LinkNameId,
+                      "stale_function_name", 12),
+              "function link-name disagreement should record link-name authority");
+  expect_true(has_mismatch(module, c4c::hir::ModuleDeclKind::Function,
+                           "stale_function_name", 12, 10),
+              "function link-name disagreement should record legacy mismatch");
+
+  c4c::hir::DeclRef structured_global_ref;
+  structured_global_ref.name = "stale_global_name";
+  structured_global_ref.name_text_id = structured_global_text;
+  const c4c::hir::GlobalVar* structured_global =
+      module.resolve_global_decl(structured_global_ref);
+  expect_true(structured_global != nullptr && structured_global->id.value == 21,
+              "stale global rendered name should not override structured lookup");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Global,
+                      c4c::hir::ModuleDeclLookupAuthority::Structured,
+                      "stale_global_name", 21),
+              "global disagreement should record structured authority");
+  expect_true(has_mismatch(module, c4c::hir::ModuleDeclKind::Global,
+                           "stale_global_name", 21, 20),
+              "global disagreement should record legacy mismatch");
+
+  c4c::hir::DeclRef concrete_global_ref;
+  concrete_global_ref.name = "stale_global_name";
+  concrete_global_ref.name_text_id = stale_global_text;
+  concrete_global_ref.global = c4c::hir::GlobalId{22};
+  const c4c::hir::GlobalVar* concrete_global =
+      module.resolve_global_decl(concrete_global_ref);
+  expect_true(concrete_global != nullptr && concrete_global->id.value == 22,
+              "stale global rendered name should not override concrete GlobalId lookup");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Global,
+                      c4c::hir::ModuleDeclLookupAuthority::ConcreteGlobalId,
+                      "stale_global_name", 22),
+              "global concrete-id disagreement should record concrete-id authority");
+  expect_true(has_mismatch(module, c4c::hir::ModuleDeclKind::Global,
+                           "stale_global_name", 22, 20),
+              "global concrete-id disagreement should record legacy mismatch");
+
+  c4c::hir::DeclRef link_global_ref;
+  link_global_ref.name = "stale_global_name";
+  link_global_ref.name_text_id = stale_global_text;
+  link_global_ref.link_name_id = module.link_names.find("link_global");
+  const c4c::hir::GlobalVar* link_global =
+      module.resolve_global_decl(link_global_ref);
+  expect_true(link_global != nullptr && link_global->id.value == 23,
+              "stale global rendered name should not override LinkNameId lookup");
+  expect_true(has_hit(module, c4c::hir::ModuleDeclKind::Global,
+                      c4c::hir::ModuleDeclLookupAuthority::LinkNameId,
+                      "stale_global_name", 23),
+              "global link-name disagreement should record link-name authority");
+  expect_true(has_mismatch(module, c4c::hir::ModuleDeclKind::Global,
+                           "stale_global_name", 23, 20),
+              "global link-name disagreement should record legacy mismatch");
+}
+
 }  // namespace
 
 int main() {
   test_module_decl_lookup_records_each_authority();
+  test_stale_rendered_names_do_not_override_authoritative_decl_lookup();
   std::cout << "PASS: frontend_hir_lookup_tests\n";
   return 0;
 }

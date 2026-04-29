@@ -1,41 +1,27 @@
 Status: Active
 Source Idea Path: ideas/open/124_hir_legacy_string_lookup_removal_convergence.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Inventory HIR String Lookup Surfaces
+Current Step ID: Step 3
+Current Step Title: Demote Rendered-Name Semantic Lookup For Functions And Globals
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 inventory of HIR legacy string lookup surfaces under
-`src/frontend/hir` and named the first bounded conversion packet.
+Completed Step 3 first bounded semantic lookup demotion packet for HIR module
+declaration resolution. `Module::classify_function_decl_lookup()`,
+`resolve_function_decl()`, `classify_global_decl_lookup()`, and
+`resolve_global_decl()` now keep structured, link-name, and concrete-global
+authority ahead of stale rendered-name legacy hits when both exist and
+disagree, while recording the legacy mismatch.
 
 ## Suggested Next
 
-First bounded conversion packet: demote legacy rendered-name authority in
-module declaration resolution.
-
-Owned implementation files:
-- `src/frontend/hir/hir_ir.hpp`
-- `tests/frontend/frontend_hir_lookup_tests.cpp`
-
-Target:
-- `Module::resolve_function_decl()` and `Module::resolve_global_decl()` should
-  prefer `LinkNameId`, concrete IDs, and `ModuleDeclLookupKey` structured
-  results over `find_*_by_name_legacy()` when both structured and legacy
-  rendered-name hits exist but disagree.
-- Keep `fn_index`, `global_index`, `find_*_by_name_legacy()`, and
-  `LegacyRendered` hit reporting as compatibility/fallback surfaces for missing
-  structured metadata.
-- Add or update a focused HIR lookup test proving stale rendered names do not
-  override structured function/global declaration lookup.
-
-Suggested focused proof command:
-
-```bash
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_lookup_tests$' > test_after.log 2>&1
-```
+Next coherent Step 3 packet: demote rendered-name semantic authority for one
+nearby function/global lookup edge path that already has structured metadata,
+preferably namespace-qualified or link-name-backed flows outside
+`Module::resolve_*_decl()` rather than lowerer local maps or compile-time-engine
+registries.
 
 ## Watchouts
 
@@ -80,6 +66,12 @@ Step 1 inventory classification:
 - Unresolved boundary: type tags in `TypeSpec::tag`, struct/base/member owner
   discovery that must search rendered owner tags, and local-scope AST name
   maps need separate metadata analysis before conversion.
+- `fn_index`, `global_index`, and `find_*_by_name_legacy()` remain live
+  compatibility/fallback surfaces for missing or incomplete structured
+  declaration metadata.
+- The new focused HIR lookup test covers structured function/global, function
+  and global `LinkNameId`, and concrete `GlobalId` stale-rendered-name
+  disagreement cases without weakening legacy fallback coverage.
 
 Do not weaken tests or add named-case shortcuts. Stale rendered-name tests are
 appropriate only when they prove structured identity wins over legacy lookup
@@ -87,5 +79,11 @@ authority while preserving explicit fallback behavior.
 
 ## Proof
 
-Inventory-only lifecycle scratchpad update; no build or test proof required and
-no `test_after.log` was produced for this packet.
+Supervisor-selected proof ran exactly:
+
+```bash
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_lookup_tests$' > test_after.log 2>&1
+```
+
+Result: passed. `test_after.log` contains `frontend_hir_lookup_tests`: 1 passed
+/ 0 failed.
