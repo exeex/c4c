@@ -34,10 +34,17 @@ std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
   return resolved.empty() ? std::string(fallback) : std::string(resolved);
 }
 
+TypeSpec lir_owned_type_spec(TypeSpec type, LirModule* lir_module) {
+  if (!lir_module) return type;
+  type.tag = lir_module->intern_type_tag(type.tag);
+  return type;
+}
+
 LirTypeRef lir_aggregate_type_ref(const std::string& rendered_text, LirModule* lir_module,
                                   const char* tag, bool is_union) {
   if (!lir_module || !tag || !tag[0]) return LirTypeRef(rendered_text);
-  const StructNameId name_id = lir_module->struct_names.intern(rendered_text);
+  const StructNameId name_id =
+      lir_module->struct_names.intern(c4c::codegen::llvm_helpers::llvm_struct_type_str(tag));
   return is_union ? LirTypeRef::union_type(rendered_text, name_id)
                   : LirTypeRef::struct_type(rendered_text, name_id);
 }
@@ -113,20 +120,23 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
   if (void_param_list) return;
 
   for (const auto& param : fn.params) {
+    const TypeSpec param_ts = lir_owned_type_spec(param.type.spec, lir_module);
     lir_fn.signature_params.push_back(
-        {"%p." + sanitize_llvm_ident(param.name), param.type.spec});
-    const TypeSpec& param_ts = param.type.spec;
+        {"%p." + sanitize_llvm_ident(param.name), param_ts});
     lir_fn.signature_param_type_refs.push_back(lir_signature_type_ref(
-        rendered_signature_param_type(mod, lir_module, param_ts), lir_module, param_ts));
+        rendered_signature_param_type(mod, lir_module, param.type.spec), lir_module,
+        param.type.spec));
   }
 }
 
 void populate_lir_function_params(const c4c::hir::Function& fn,
+                                  LirModule* lir_module,
                                   LirFunction& lir_fn) {
   lir_fn.params.clear();
   for (const auto& param : fn.params) {
     lir_fn.params.push_back(
-        {"%p." + sanitize_llvm_ident(param.name), param.type.spec});
+        {"%p." + sanitize_llvm_ident(param.name),
+         lir_owned_type_spec(param.type.spec, lir_module)});
   }
 }
 
@@ -1267,8 +1277,8 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
       lir_fn.is_internal = false;
       lir_fn.can_elide_if_unreferenced = false;
       lir_fn.is_declaration = true;
-      lir_fn.return_type = fn.return_type.spec;
-      populate_lir_function_params(fn, lir_fn);
+      lir_fn.return_type = lir_owned_type_spec(fn.return_type.spec, &module);
+      populate_lir_function_params(fn, &module, lir_fn);
       lir_fn.signature_text = sig;
       populate_signature_type_refs(hir_mod, fn, &module, lir_fn);
       module.functions.push_back(std::move(lir_fn));
@@ -1308,7 +1318,7 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
       lir_fn.can_elide_if_unreferenced =
           fn.linkage.is_static || fn.linkage.is_inline || is_std_impl_helper;
       lir_fn.is_declaration = false;
-      lir_fn.return_type = fn.return_type.spec;
+      lir_fn.return_type = lir_owned_type_spec(fn.return_type.spec, &module);
       lir_fn.signature_text = sig;
       populate_signature_type_refs(hir_mod, fn, &module, lir_fn);
       lir_fn.alloca_insts = std::move(ctx.alloca_insts);

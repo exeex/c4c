@@ -24,6 +24,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <deque>
 #include <initializer_list>
 #include <limits>
 #include <memory>
@@ -609,8 +610,18 @@ struct LirModule {
   c4c::TargetProfile target_profile{};
   std::string data_layout;
   std::shared_ptr<c4c::TextTable> link_name_texts;
+  std::shared_ptr<std::deque<std::string>> type_tag_storage;
   c4c::LinkNameTable link_names;
   c4c::StructNameTable struct_names;
+
+  [[nodiscard]] const char* intern_type_tag(const char* tag) {
+    if (!tag || !tag[0]) return tag;
+    if (!type_tag_storage) {
+      type_tag_storage = std::make_shared<std::deque<std::string>>();
+    }
+    type_tag_storage->emplace_back(tag);
+    return type_tag_storage->back().c_str();
+  }
 
   std::vector<LirGlobal> globals;
   std::vector<LirFunction> functions;

@@ -11,28 +11,38 @@ Current Step Title: Reproduce And Localize Signature Type-Ref Mismatch
 
 ## Just Finished
 
-Lifecycle correction reopened idea 132 after close commit `0e39decb` failed
-baseline review on a rebuilt `frontend_lir_function_signature_type_ref` test.
+Step 1 localized and repaired the signature type-ref mismatch in the same
+packet. The first bad fact was in LIR storage: `LirFunction.return_type` and
+signature parameter TypeSpecs retained raw frontend `TypeSpec::tag` pointers,
+so later copied-module string mutations could make `declared_pair.return_type`
+identify as `%struct.Big` while its signature mirror still carried `%struct.Pair`.
+LIR lowering now stores LIR-owned tag strings for function return/parameter
+TypeSpecs, and aggregate type-ref construction derives `StructNameId` from the
+structured tag rather than from rendered mirror text.
 
 ## Suggested Next
 
-Execute Step 1. Reproduce the failure, then trace `declared_pair` return type
-identity through parser/HIR/LIR until the structured return type-ref mirror
-first diverges from the expected `%struct.Big` identity.
-
-Suggested proof command:
-`ctest --test-dir build -R '^frontend_lir_function_signature_type_ref$' --output-on-failure`
+Supervisor should review whether Step 2 can be treated as satisfied by this
+repair or whether a separate narrow packet should stabilize any remaining
+LIR-held TypeSpec tag fields outside function signature metadata.
 
 ## Watchouts
 
-Do not accept the pending baseline review while this test fails. Do not weaken
-the LIR verifier, downgrade the test, or special-case `declared_pair`; repair
-the structured identity or mirror-authority path that can produce the mismatch.
+No verifier weakening or named fixture special-casing was used. The current
+repair covers function return types, function params, and structured signature
+params; globals or stack objects with retained TypeSpec tags were not broadened
+in this packet.
 
 ## Proof
 
-Supervisor reported two direct reruns of
+Built the focused test target, then ran:
+
 `ctest --test-dir build -R '^frontend_lir_function_signature_type_ref$' --output-on-failure`
-failed with:
+
+Result: passed, 1/1 tests. Proof log: `test_after.log`.
+
+Original failure reproduced before the repair with:
+
+`ctest --test-dir build -R '^frontend_lir_function_signature_type_ref$' --output-on-failure`
 
 `LirFunction.signature_return_type_ref: return mirror for function 'declared_pair' names a different structured return type than %struct.Big`
