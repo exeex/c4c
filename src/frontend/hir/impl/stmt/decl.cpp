@@ -151,6 +151,20 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   const std::string decl_struct_owner_tag =
       resolve_decl_struct_owner_tag(
           d.type.spec, std::string("local-decl-struct-owner:") + d.name);
+  auto resolve_decl_struct_def =
+      [&](const TypeSpec& owner_ts,
+          const std::string& context_name)
+          -> std::pair<std::string, const HirStructDef*> {
+    std::string owner_tag =
+        resolve_decl_struct_owner_tag(owner_ts, context_name);
+    if (owner_tag.empty() && owner_ts.base == TB_UNION && owner_ts.tag) {
+      owner_tag = owner_ts.tag;
+    }
+    if (owner_tag.empty()) return {{}, nullptr};
+    const auto it = module_->struct_defs.find(owner_tag);
+    if (it == module_->struct_defs.end()) return {owner_tag, nullptr};
+    return {owner_tag, &it->second};
+  };
   // C++ copy initialization: T var = expr; where T has a copy/move constructor.
   // Detect this early so we can skip setting d.init (the ctor call is emitted
   // after the decl, similar to the is_ctor_init path).
@@ -218,7 +232,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     d.init = lower_expr(&ctx, n->init);
   else if (n->is_ctor_init &&
            !(effective_decl_ts.base == TB_STRUCT && effective_decl_ts.ptr_level == 0 &&
-             effective_decl_ts.array_rank == 0 && effective_decl_ts.tag) &&
+             effective_decl_ts.array_rank == 0 && !decl_struct_owner_tag.empty()) &&
            n->n_children == 1) {
     // Parser reuses is_ctor_init for C++ direct-initialization syntax such as
     // `int i(0)` / `bool b(expr)`. Non-record locals should still lower like a
@@ -605,7 +619,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
       const bool elem_is_agg =
           (elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) &&
           elem_ts.ptr_level == 0 && elem_ts.array_rank == 0;
-      if (elem_is_agg && elem_ts.tag) {
+      if (elem_is_agg) {
         const Node* scalar_node = val_node;
         if (scalar_node && scalar_node->kind == NK_COMPOUND_LIT) {
           const Node* init_list =
@@ -636,16 +650,27 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
           const TypeSpec st = infer_generic_ctrl_type(&ctx, scalar_node);
           if (st.ptr_level == 0 && st.array_rank == 0 &&
               st.base == elem_ts.base) {
-            const char* et = elem_ts.tag ? elem_ts.tag : "";
-            const char* stg = st.tag ? st.tag : "";
-            direct_agg = std::strcmp(et, stg) == 0;
+            const std::string elem_owner_tag =
+                resolve_decl_struct_owner_tag(
+                    elem_ts, std::string("decl-array-elem-direct-owner:") + d.name);
+            const std::string scalar_owner_tag =
+                resolve_decl_struct_owner_tag(
+                    st, std::string("decl-array-scalar-direct-owner:") + d.name);
+            if (!elem_owner_tag.empty() || !scalar_owner_tag.empty()) {
+              direct_agg = elem_owner_tag == scalar_owner_tag;
+            } else {
+              const char* et = elem_ts.tag ? elem_ts.tag : "";
+              const char* stg = st.tag ? st.tag : "";
+              direct_agg = std::strcmp(et, stg) == 0;
+            }
           }
         }
         if (!direct_agg) {
-          const auto sit = module_->struct_defs.find(elem_ts.tag);
-          if (sit != module_->struct_defs.end() && !sit->second.fields.empty() &&
-              scalar_node) {
-            const HirStructField& fld = sit->second.fields[0];
+          const auto [elem_owner_tag, elem_def] =
+              resolve_decl_struct_def(
+                  elem_ts, std::string("decl-array-elem-owner:") + d.name);
+          if (elem_def && !elem_def->fields.empty() && scalar_node) {
+            const HirStructField& fld = elem_def->fields[0];
             TypeSpec field_ts = field_type_of(fld);
             MemberExpr me{};
             me.base = ie_id;
@@ -717,7 +742,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
       append_stmt(ctx, Stmt{StmtPayload{es}, make_span(n)});
     }
   }
-  if (((is_struct_with_init_list && decl_ts.tag) ||
+  if (((is_struct_with_init_list && (!decl_struct_owner_tag.empty() || decl_ts.tag)) ||
        (is_array_with_init_list && !use_array_init_fast_path)) &&
       n->init) {
     auto is_agg = [](const TypeSpec& ts) {
@@ -777,6 +802,15 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
       if (rhs_ts.ptr_level != 0 || rhs_ts.array_rank != 0) return false;
       if (rhs_ts.base != lhs_ts.base) return false;
       if (rhs_ts.base == TB_STRUCT || rhs_ts.base == TB_UNION || rhs_ts.base == TB_ENUM) {
+        if (rhs_ts.base == TB_STRUCT || rhs_ts.base == TB_UNION) {
+          const std::string lhs_owner_tag =
+              resolve_decl_struct_owner_tag(lhs_ts, "decl-direct-assign-lhs-owner");
+          const std::string rhs_owner_tag =
+              resolve_decl_struct_owner_tag(rhs_ts, "decl-direct-assign-rhs-owner");
+          if (!lhs_owner_tag.empty() || !rhs_owner_tag.empty()) {
+            return lhs_owner_tag == rhs_owner_tag;
+          }
+        }
         const char* lt = lhs_ts.tag ? lhs_ts.tag : "";
         const char* rt = rhs_ts.tag ? rhs_ts.tag : "";
         return std::strcmp(lt, rt) == 0;
@@ -794,10 +828,10 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     auto append_base_lvalue = [&](const TypeSpec& owner_ts, ExprId owner_lhs,
                                   const std::string& base_tag)
         -> std::optional<std::pair<TypeSpec, ExprId>> {
-      if (!owner_ts.tag || !owner_ts.tag[0]) return std::nullopt;
-      const auto sit = module_->struct_defs.find(owner_ts.tag);
-      if (sit == module_->struct_defs.end()) return std::nullopt;
-      if (sit->second.base_tags.empty() || sit->second.base_tags.front() != base_tag)
+      const auto [owner_tag, owner_def] =
+          resolve_decl_struct_def(owner_ts, "decl-base-owner");
+      if (!owner_def) return std::nullopt;
+      if (owner_def->base_tags.empty() || owner_def->base_tags.front() != base_tag)
         return std::nullopt;
       TypeSpec owner_ptr_ts = owner_ts;
       owner_ptr_ts.ptr_level++;
@@ -830,10 +864,11 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
           if (!list_node || list_node->kind != NK_INIT_LIST) return;
           if (cursor < 0) cursor = 0;
 
-          if (is_agg(cur_ts) && cur_ts.tag) {
-            const auto sit = module_->struct_defs.find(cur_ts.tag);
-            if (sit == module_->struct_defs.end()) return;
-            const auto& sd = sit->second;
+          if (is_agg(cur_ts)) {
+            const auto [cur_owner_tag, cur_def] =
+                resolve_decl_struct_def(cur_ts, "decl-aggregate-owner");
+            if (!cur_def) return;
+            const auto& sd = *cur_def;
             size_t next_base = 0;
             size_t next_field = 0;
             while (cursor < list_node->n_children) {

@@ -9,27 +9,28 @@ Current Step Title: Tighten AST Boundary Fields and Deferred Member Types
 ## Just Finished
 
 Plan Step 4 `Tighten AST Boundary Fields and Deferred Member Types` continued
-with declaration-side local destructor tracking in `decl.cpp`. Local destructor
-stack registration now derives the tracked destructor/member-dtor owner from
-structured declaration type identity (`record_def` or template owner carriers)
-before falling back to the rendered declaration `tag`.
+with remaining declaration-side aggregate owner lookups in `decl.cpp`.
+Local aggregate initialization now resolves struct definitions, direct aggregate
+assignment identity, base aggregate traversal, and array-element aggregate field
+selection through structured declaration owner identity before falling back to
+rendered tags where no structured owner is available.
 
-Added focused HIR coverage proving a stale rendered local declaration tag cannot
-select the wrong explicit destructor tracking or suppress member-dtor tracking
-when structured `record_def` owner identity is available.
+Tightened focused HIR coverage so a stale rendered local declaration tag with a
+different field shape cannot select the wrong aggregate owner when structured
+`record_def` owner identity is available.
 
 ## Suggested Next
 
-Continue Step 4 by auditing remaining declaration-side struct owner lookups in
-`decl.cpp` for any paths that still prefer rendered `tag` before structured
-owner identity.
+Continue Step 4 with supervisor review of the declaration-side owner lookup
+slice and decide whether the remaining raw rendered-tag guards in `decl.cpp`
+are intentional fallbacks or need a plan-owner follow-up.
 
 ## Watchouts
 
-Declaration constructor routing intentionally keeps the rendered fallback when
-no structured declaration owner can be resolved. Local destructor tracking now
-uses the same declaration owner helper; the rendered fallback remains
-intentional when no structured owner can be resolved.
+The packet repaired declaration-side aggregate paths in
+`src/frontend/hir/impl/stmt/decl.cpp`, which is the compile-database path for
+the requested `decl.cpp`. Union aggregate paths still preserve rendered-tag
+fallback because the current structured owner helper is struct-specific.
 
 ## Proof
 

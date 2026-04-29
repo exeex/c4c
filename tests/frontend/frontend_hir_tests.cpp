@@ -3820,23 +3820,29 @@ void test_hir_local_decl_member_symbol_prefers_record_def_over_stale_tag() {
   const c4c::MemberSymbolId stale_id =
       module.member_symbols.intern("StaleDeclOwner::field");
 
+  c4c::hir::HirStructField real_field;
+  real_field.name = "field";
+  real_field.field_text_id = module.link_name_texts->intern("field");
+  real_field.elem_type = int_ts;
+  real_field.member_symbol_id = real_id;
   c4c::hir::HirStructDef real_def;
   real_def.tag = "RealDeclOwner";
   real_def.tag_text_id = module.link_name_texts->intern("RealDeclOwner");
   real_def.ns_qual.context_id = parser.current_namespace_context_id();
+  real_def.fields.push_back(real_field);
   module.index_struct_def_owner(*owner_key, real_def.tag, true);
   module.struct_defs[real_def.tag] = real_def;
 
+  c4c::hir::HirStructField stale_field;
+  stale_field.name = "wrong_field";
+  stale_field.field_text_id = module.link_name_texts->intern("wrong_field");
+  stale_field.elem_type = int_ts;
+  stale_field.member_symbol_id = stale_id;
   c4c::hir::HirStructDef stale_def;
   stale_def.tag = "StaleDeclOwner";
   stale_def.tag_text_id = module.link_name_texts->intern("StaleDeclOwner");
   stale_def.ns_qual.context_id = parser.current_namespace_context_id();
-  c4c::hir::HirStructField field;
-  field.name = "field";
-  field.field_text_id = module.link_name_texts->intern("field");
-  field.elem_type = int_ts;
-  field.member_symbol_id = stale_id;
-  stale_def.fields.push_back(field);
+  stale_def.fields.push_back(stale_field);
   module.struct_defs[stale_def.tag] = stale_def;
 
   c4c::TypeSpec owner_ts{};
@@ -3875,6 +3881,8 @@ void test_hir_local_decl_member_symbol_prefers_record_def_over_stale_tag() {
   }
   expect_true(member != nullptr,
               "local declaration aggregate init should lower the member access");
+  expect_true(member->field == "field",
+              "local declaration aggregate init must select fields from the structured owner");
   expect_true(member->resolved_owner_tag == "RealDeclOwner",
               "local declaration member access should resolve structured owner tag first");
   expect_true(member->member_symbol_id == real_id &&
