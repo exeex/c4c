@@ -8,21 +8,20 @@ Current Step Title: Demote Rendered-Name Semantic Lookup For Functions And Globa
 
 ## Just Finished
 
-Completed Step 3 small builtin/scalar-control direct function lookup demotion
-packet. `Lowerer::builtin_alignof_expr_bytes()` now builds a `DeclRef` carrier
-from the variable node, attaches available link-name metadata, and resolves
-function alignment through `Module::resolve_function_decl()`.
-`Lowerer::lower_var_expr()` now uses the existing `DeclRef` carrier plus
-available link-name metadata to derive function-pointer type metadata through
-the same resolver. Both sites preserve rendered-name fallback through the
-resolver when structured/link metadata is unavailable.
+Completed Step 3 `hir_functions.cpp` previous-declaration alignment carryover
+packet. `Lowerer::lower_function()` now builds a `DeclRef` carrier from the
+function being lowered (`name`, `name_text_id`, `link_name_id`, and
+`ns_qual`) and resolves the previous declaration through
+`Module::resolve_function_decl()`. This routes structured and link-name
+authority through the shared resolver while preserving rendered-name fallback
+inside that resolver when declaration metadata is incomplete.
 
 ## Suggested Next
 
-Next coherent Step 3 packet: inspect the remaining `find_function_by_name_legacy()`
-callers in `hir_functions.cpp` and `hir_types.cpp`, then route each through
-resolver authority where a `DeclRef`/`LinkNameId` carrier exists or classify
-the exact metadata gap.
+Next coherent Step 3 packet: inspect the remaining
+`find_function_by_name_legacy()` callers in `hir_types.cpp`, then route each
+through resolver authority where a `DeclRef`/`LinkNameId` carrier exists or
+classify the exact metadata gap.
 
 ## Watchouts
 
@@ -76,9 +75,11 @@ Step 1 inventory classification:
   in `range_for.cpp`, and the nested `operator_arrow` helper in `operator.cpp`
   through resolver authority. The small builtin/scalar-control packet demoted
   `builtin.cpp` and `scalar_control.cpp` direct function lookups through
-  `Module::resolve_function_decl()`. Remaining direct function legacy helper
-  callers are in `hir_functions.cpp` and `hir_types.cpp` and need separate
-  carrier-metadata inspection.
+  `Module::resolve_function_decl()`. The `hir_functions.cpp`
+  previous-declaration alignment carryover now uses a `DeclRef` built from the
+  function's existing declaration metadata and resolves through the same shared
+  function declaration resolver. Remaining direct function legacy helper callers
+  are in `hir_types.cpp` and need separate carrier-metadata inspection.
 - Direct-call link-carrier discovery now records declaration lookup hits through
   the shared resolver. The hit/mismatch recorders deduplicate exact repeats, but
   future packets should keep an eye on noisy lookup telemetry if more call-site

@@ -217,7 +217,12 @@ void Lowerer::lower_function(const Node* fn_node,
     fn.attrs.align_bytes = fn_node->type.align_bytes;
   }
   if (fn.attrs.align_bytes == 0) {
-    if (const Function* prev_fn = module_->find_function_by_name_legacy(fn.name)) {
+    DeclRef prev_ref{};
+    prev_ref.name = fn.name;
+    prev_ref.name_text_id = fn.name_text_id;
+    prev_ref.link_name_id = fn.link_name_id;
+    prev_ref.ns_qual = fn.ns_qual;
+    if (const Function* prev_fn = module_->resolve_function_decl(prev_ref)) {
       int prev_align = prev_fn->attrs.align_bytes;
       if (prev_align > 0) {
         fn.attrs.align_bytes = prev_align;
