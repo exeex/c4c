@@ -3327,8 +3327,9 @@ void test_parser_nttp_default_cache_keeps_rendered_mirror_secondary() {
       parser.make_injected_token(seed, c4c::TokenKind::IntLit, "3"),
   };
   long long value = 0;
-  expect_true(parser.eval_deferred_nttp_default("Trait", 0, {}, {}, &value),
-              "dual NTTP default cache lookup should use the structured result");
+  expect_true(parser.eval_deferred_nttp_default(trait_key, "Trait", 0, {}, {},
+                                                &value),
+              "keyed NTTP default cache lookup should use the structured result");
   expect_eq_int(value, 2,
                 "mismatched NTTP default cache entries should not let the rendered-name mirror override structured data");
   expect_eq_int(
@@ -3336,6 +3337,20 @@ void test_parser_nttp_default_cache_keeps_rendered_mirror_secondary() {
           parser.template_state_.nttp_default_expr_cache_mismatch_count),
       1,
       "mismatched structured cache and rendered-name mirror entries should be detected");
+
+  c4c::QualifiedNameKey other_trait_key = trait_key;
+  other_trait_key.context_id = trait_key.context_id + 1;
+  parser.cache_nttp_default_expr_tokens(other_trait_key, "Trait", 0, {
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "7"),
+  });
+  parser.template_state_.nttp_default_expr_tokens["Trait:0"] = {
+      parser.make_injected_token(seed, c4c::TokenKind::IntLit, "11"),
+  };
+  expect_true(parser.eval_deferred_nttp_default(other_trait_key, "Trait", 0,
+                                                {}, {}, &value),
+              "keyed NTTP default lookup should not reconstruct identity from the rendered name");
+  expect_eq_int(value, 7,
+                "ambiguous rendered-name NTTP defaults should follow the supplied primary template key");
 
   parser.template_state_.nttp_default_expr_tokens_by_key.erase(cache_key);
   expect_true(!parser.eval_deferred_nttp_default("Trait", 0, {}, {}, &value),

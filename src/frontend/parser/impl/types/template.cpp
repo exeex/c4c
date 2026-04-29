@@ -1260,22 +1260,22 @@ bool Parser::eval_deferred_nttp_expr_tokens(
 }
 
 bool Parser::eval_deferred_nttp_default(
-    const std::string& tpl_name, int param_idx,
+    const QualifiedNameKey& template_key,
+    std::string_view rendered_template_name,
+    int param_idx,
     const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
     const std::vector<std::pair<std::string, long long>>& nttp_bindings,
     long long* out) {
+    std::string rendered_name(rendered_template_name);
     const std::string rendered_mirror_key =
-        tpl_name + ":" + std::to_string(param_idx);
+        rendered_name + ":" + std::to_string(param_idx);
     auto rendered_mirror_it =
         template_state_.nttp_default_expr_tokens.find(rendered_mirror_key);
 
-    const TextId template_text_id = find_parser_text_id(tpl_name);
-    const QualifiedNameKey structured_key = alias_template_key_in_context(
-        current_namespace_context_id(), template_text_id, tpl_name);
     const std::vector<Token>* structured_tokens = nullptr;
-    if (structured_key.base_text_id != kInvalidText) {
+    if (template_key.base_text_id != kInvalidText) {
         const ParserTemplateState::NttpDefaultExprKey key{
-            structured_key, param_idx};
+            template_key, param_idx};
         auto structured_it =
             template_state_.nttp_default_expr_tokens_by_key.find(key);
         if (structured_it !=
@@ -1284,18 +1284,18 @@ bool Parser::eval_deferred_nttp_default(
         }
     }
 
-    if (template_text_id != kInvalidText) {
+    if (template_key.base_text_id != kInvalidText) {
         if (!structured_tokens) return false;
 
         long long structured_value = 0;
         const bool structured_ok = eval_deferred_nttp_expr_tokens(
-            tpl_name, *structured_tokens, type_bindings, nttp_bindings,
+            rendered_name, *structured_tokens, type_bindings, nttp_bindings,
             &structured_value);
         if (rendered_mirror_it !=
             template_state_.nttp_default_expr_tokens.end()) {
             long long rendered_mirror_value = 0;
             const bool rendered_mirror_ok = eval_deferred_nttp_expr_tokens(
-                tpl_name, rendered_mirror_it->second, type_bindings,
+                rendered_name, rendered_mirror_it->second, type_bindings,
                 nttp_bindings, &rendered_mirror_value);
             if (structured_ok != rendered_mirror_ok ||
                 (structured_ok && rendered_mirror_ok &&
@@ -1311,13 +1311,13 @@ bool Parser::eval_deferred_nttp_default(
     if (rendered_mirror_it != template_state_.nttp_default_expr_tokens.end()) {
         long long rendered_mirror_value = 0;
         const bool rendered_mirror_ok = eval_deferred_nttp_expr_tokens(
-            tpl_name, rendered_mirror_it->second, type_bindings,
+            rendered_name, rendered_mirror_it->second, type_bindings,
             nttp_bindings, &rendered_mirror_value);
 
         if (structured_tokens) {
             long long structured_value = 0;
             const bool structured_ok = eval_deferred_nttp_expr_tokens(
-                tpl_name, *structured_tokens, type_bindings, nttp_bindings,
+                rendered_name, *structured_tokens, type_bindings, nttp_bindings,
                 &structured_value);
             if (structured_ok != rendered_mirror_ok ||
                 (structured_ok && rendered_mirror_ok &&
@@ -1335,8 +1335,23 @@ bool Parser::eval_deferred_nttp_default(
         return false;
     }
 
-    return eval_deferred_nttp_expr_tokens(tpl_name, *structured_tokens,
+    return eval_deferred_nttp_expr_tokens(rendered_name, *structured_tokens,
                                           type_bindings, nttp_bindings, out);
+}
+
+bool Parser::eval_deferred_nttp_default(
+    const std::string& tpl_name, int param_idx,
+    const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
+    const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+    long long* out) {
+    const TextId template_text_id = find_parser_text_id(tpl_name);
+    QualifiedNameKey structured_key;
+    if (template_text_id != kInvalidText) {
+        structured_key = alias_template_key_in_context(
+            current_namespace_context_id(), template_text_id, tpl_name);
+    }
+    return eval_deferred_nttp_default(structured_key, tpl_name, param_idx,
+                                      type_bindings, nttp_bindings, out);
 }
 
 void Parser::cache_nttp_default_expr_tokens(

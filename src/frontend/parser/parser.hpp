@@ -541,6 +541,13 @@ class Parser {
   // Evaluate a deferred NTTP default expression for a template parameter.
   // Returns true if evaluation succeeded and writes the result to *out.
   bool eval_deferred_nttp_default(
+      const QualifiedNameKey& template_key,
+      std::string_view rendered_template_name,
+      int param_idx,
+      const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
+      const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+      long long* out);
+  bool eval_deferred_nttp_default(
       const std::string& tpl_name, int param_idx,
       const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
       const std::vector<std::pair<std::string, long long>>& nttp_bindings,

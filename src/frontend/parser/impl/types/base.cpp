@@ -2440,6 +2440,9 @@ TypeSpec Parser::parse_base_type() {
                     // Fill in deferred NTTP defaults before pattern selection
                     // so specialization matching has the complete arg list.
                     if (primary_tpl) {
+                        const QualifiedNameKey primary_template_key =
+                            template_instantiation_name_key_for_direct_emit(
+                                *this, primary_tpl, tpl_name);
                         // Build preliminary type bindings from explicit args
                         std::vector<std::pair<std::string, TypeSpec>> prelim_tb;
                         std::vector<std::pair<std::string, long long>> prelim_nb;
@@ -2476,7 +2479,9 @@ TypeSpec Parser::parse_base_type() {
                             da.is_value = primary_tpl->template_param_is_nttp[sz];
                             if (da.is_value && primary_tpl->template_param_default_values[sz] == LLONG_MIN) {
                                 long long ev = 0;
-                                if (eval_deferred_nttp_default(tpl_name, sz, prelim_tb, prelim_nb, &ev)) {
+                                if (eval_deferred_nttp_default(
+                                        primary_template_key, tpl_name, sz,
+                                        prelim_tb, prelim_nb, &ev)) {
                                     da.value = ev;
                                     actual_args.push_back(da);
                                 } else if (primary_tpl->template_param_default_exprs &&
@@ -2535,8 +2540,13 @@ TypeSpec Parser::parse_base_type() {
                             if (primary_tpl->template_param_default_values[i] == LLONG_MIN) {
                                 // Deferred NTTP default — evaluate with current bindings
                                 long long eval_val = 0;
-                                if (eval_deferred_nttp_default(tpl_name, i,
-                                        type_bindings, nttp_bindings, &eval_val)) {
+                                const QualifiedNameKey primary_template_key =
+                                    template_instantiation_name_key_for_direct_emit(
+                                        *this, primary_tpl, tpl_name);
+                                if (eval_deferred_nttp_default(
+                                        primary_template_key, tpl_name, i,
+                                        type_bindings, nttp_bindings,
+                                        &eval_val)) {
                                     arg.value = eval_val;
                                 } else if (primary_tpl->template_param_default_exprs &&
                                            primary_tpl->template_param_default_exprs[i]) {
@@ -2800,7 +2810,13 @@ TypeSpec Parser::parse_base_type() {
                                                     base_primary->template_param_default_values[bsz] ==
                                                         LLONG_MIN) {
                                                     long long ev = 0;
+                                                    const QualifiedNameKey
+                                                        base_template_key =
+                                                            template_instantiation_name_key_for_direct_emit(
+                                                                *this, base_primary,
+                                                                origin);
                                                     if (eval_deferred_nttp_default(
+                                                            base_template_key,
                                                             origin, bsz,
                                                             base_prelim_tb, base_prelim_nb,
                                                             &ev)) {
@@ -3026,8 +3042,13 @@ TypeSpec Parser::parse_base_type() {
                                                 da.is_value = base_primary->template_param_is_nttp[bsz];
                                                 if (da.is_value && base_primary->template_param_default_values[bsz] == LLONG_MIN) {
                                                     long long ev = 0;
-                                                    if (eval_deferred_nttp_default(origin, bsz,
-                                                            base_prelim_tb, base_prelim_nb, &ev)) {
+                                                    const QualifiedNameKey base_template_key =
+                                                        template_instantiation_name_key_for_direct_emit(
+                                                            *this, base_primary, origin);
+                                                    if (eval_deferred_nttp_default(
+                                                            base_template_key, origin, bsz,
+                                                            base_prelim_tb, base_prelim_nb,
+                                                            &ev)) {
                                                         da.value = ev;
                                                         base_args.push_back(da);
                                                     } else if (base_primary->template_param_default_exprs &&
