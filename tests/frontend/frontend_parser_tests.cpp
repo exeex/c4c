@@ -3374,6 +3374,118 @@ void test_parser_template_instantiation_dedup_keys_mirror_direct_emission() {
       "direct template emission should detect a missing rendered mirror");
 }
 
+void test_parser_template_substitution_preserves_record_definition_payloads() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+  c4c::Token seed{};
+  const c4c::Token box_token =
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "Box");
+  const c4c::Token payload_alias_token =
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "PayloadAlias");
+
+  const c4c::TextId box_text = box_token.text_id;
+  c4c::TypeSpec param_ts{};
+  param_ts.base = c4c::TB_TYPEDEF;
+  param_ts.tag = arena.strdup("T");
+  param_ts.array_size = -1;
+  param_ts.inner_rank = -1;
+
+  c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  primary->name = arena.strdup("Box");
+  primary->unqualified_name = arena.strdup("Box");
+  primary->unqualified_text_id = box_text;
+  primary->namespace_context_id = parser.current_namespace_context_id();
+  primary->n_template_params = 1;
+  primary->n_template_args = 0;
+  primary->template_param_names = arena.alloc_array<const char*>(1);
+  primary->template_param_names[0] = arena.strdup("T");
+  primary->template_param_is_nttp = arena.alloc_array<bool>(1);
+  primary->template_param_is_nttp[0] = false;
+  primary->template_param_is_pack = arena.alloc_array<bool>(1);
+  primary->template_param_is_pack[0] = false;
+  primary->n_member_typedefs = 1;
+  primary->member_typedef_names = arena.alloc_array<const char*>(1);
+  primary->member_typedef_names[0] = arena.strdup("Alias");
+  primary->member_typedef_types = arena.alloc_array<c4c::TypeSpec>(1);
+  primary->member_typedef_types[0] = param_ts;
+  primary->n_fields = 1;
+  primary->fields = arena.alloc_array<c4c::Node*>(1);
+  primary->fields[0] = parser.make_node(c4c::NK_DECL, 1);
+  primary->fields[0]->name = arena.strdup("field");
+  primary->fields[0]->type = param_ts;
+  primary->n_children = 1;
+  primary->children = arena.alloc_array<c4c::Node*>(1);
+  c4c::Node* method = parser.make_node(c4c::NK_FUNCTION, 1);
+  method->name = arena.strdup("get");
+  method->type = param_ts;
+  method->n_params = 1;
+  method->params = arena.alloc_array<c4c::Node*>(1);
+  method->params[0] = parser.make_node(c4c::NK_DECL, 1);
+  method->params[0]->name = arena.strdup("arg");
+  method->params[0]->type = param_ts;
+  primary->children[0] = method;
+  parser.register_template_struct_primary(
+      parser.current_namespace_context_id(), box_text, "Box", primary);
+  const c4c::QualifiedNameKey box_key = parser.alias_template_key_in_context(
+      parser.current_namespace_context_id(), box_text, "Box");
+  parser.template_state_.template_struct_defs_by_key[box_key] = primary;
+  parser.template_state_.template_struct_defs["Box"] = primary;
+  c4c::TypeSpec box_alias{};
+  box_alias.base = c4c::TB_STRUCT;
+  box_alias.tag = arena.strdup("Box");
+  box_alias.array_size = -1;
+  box_alias.inner_rank = -1;
+  parser.register_typedef_binding(box_text, "Box", box_alias, true);
+
+  c4c::Node* payload = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  payload->name = arena.strdup("Payload");
+  payload->n_fields = 0;
+  parser.register_struct_definition_for_testing("Payload", payload);
+  c4c::TypeSpec payload_alias{};
+  payload_alias.base = c4c::TB_STRUCT;
+  payload_alias.tag = arena.strdup("Payload");
+  payload_alias.array_size = -1;
+  payload_alias.inner_rank = -1;
+  payload_alias.record_def = payload;
+  parser.register_typedef_binding(payload_alias_token.text_id, "PayloadAlias",
+                                  payload_alias, true);
+
+  parser.replace_token_stream_for_testing({
+      box_token,
+      parser.make_injected_token(seed, c4c::TokenKind::Less, "<"),
+      payload_alias_token,
+      parser.make_injected_token(seed, c4c::TokenKind::Greater, ">"),
+      parser.make_injected_token(seed, c4c::TokenKind::Identifier, "after"),
+  });
+
+  const c4c::TypeSpec box_ts = parser.parse_base_type();
+  expect_true(box_ts.base == c4c::TB_STRUCT && box_ts.tag != nullptr,
+              "direct template instantiation should produce a concrete struct type");
+  expect_true(box_ts.record_def != nullptr,
+              "direct template instantiation should return the instantiated record");
+  const c4c::Node* box = box_ts.record_def;
+  expect_true(box->n_member_typedefs == 1 && box->member_typedef_types,
+              "template instantiation should clone member typedef payloads");
+  expect_true(box->member_typedef_types[0].record_def == payload,
+              "template member typedef substitution should preserve record_def");
+  expect_true(box->n_fields == 1 && box->fields && box->fields[0],
+              "template instantiation should clone field payloads");
+  expect_true(box->fields[0]->type.record_def == payload,
+              "template field substitution should preserve record_def");
+  expect_true(box->n_children == 1 && box->children && box->children[0],
+              "template instantiation should clone method payloads");
+  const c4c::Node* cloned_method = box->children[0];
+  expect_true(cloned_method->type.record_def == payload,
+              "template method return substitution should preserve record_def");
+  expect_true(cloned_method->n_params == 1 && cloned_method->params &&
+                  cloned_method->params[0],
+              "template instantiation should clone method parameter payloads");
+  expect_true(cloned_method->params[0]->type.record_def == payload,
+              "template method parameter substitution should preserve record_def");
+}
+
 void test_parser_direct_record_types_carry_record_definition() {
   c4c::Lexer lexer("struct Direct { int value; } after;\n");
   const std::vector<c4c::Token> tokens = lexer.scan_all();
@@ -3835,6 +3947,7 @@ int main() {
   test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse();
   test_parser_template_instantiation_dedup_keys_demote_rendered_sync();
   test_parser_template_instantiation_dedup_keys_mirror_direct_emission();
+  test_parser_template_substitution_preserves_record_definition_payloads();
   test_parser_direct_record_types_carry_record_definition();
   test_parser_tag_only_record_types_keep_null_record_definition();
   test_parser_record_layout_const_eval_prefers_record_definition();

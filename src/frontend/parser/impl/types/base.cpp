@@ -3110,6 +3110,7 @@ TypeSpec Parser::parse_base_type() {
                                         const bool outer_rref = member_ts.is_rvalue_ref;
                                         member_ts.base = pts.base;
                                         member_ts.tag = pts.tag;
+                                        member_ts.record_def = pts.record_def;
                                         member_ts.ptr_level += pts.ptr_level;
                                         member_ts.is_lvalue_ref =
                                             pts.is_lvalue_ref || outer_lref;
@@ -3163,6 +3164,7 @@ TypeSpec Parser::parse_base_type() {
                                     std::string(new_f->type.tag) == pname) {
                                     new_f->type.base = pts.base;
                                     new_f->type.tag = pts.tag;
+                                    new_f->type.record_def = pts.record_def;
                                     new_f->type.ptr_level += pts.ptr_level;
                                     new_f->type.is_const |= pts.is_const;
                                     new_f->type.is_volatile |= pts.is_volatile;
@@ -3222,6 +3224,7 @@ TypeSpec Parser::parse_base_type() {
                                         std::string(new_m->type.tag) == pname) {
                                         new_m->type.base = pts.base;
                                         new_m->type.tag = pts.tag;
+                                        new_m->type.record_def = pts.record_def;
                                         new_m->type.ptr_level += pts.ptr_level;
                                     }
                                 }
@@ -3239,6 +3242,7 @@ TypeSpec Parser::parse_base_type() {
                                                 std::string(new_p->type.tag) == pname) {
                                                 new_p->type.base = pts.base;
                                                 new_p->type.tag = pts.tag;
+                                                new_p->type.record_def = pts.record_def;
                                                 new_p->type.ptr_level += pts.ptr_level;
                                             }
                                         }

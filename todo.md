@@ -8,29 +8,24 @@ Current Step Title: Propagate Typed Record Identity Through Template Records
 
 ## Just Finished
 
-Completed Step 4 first bounded template propagation packet.
+Completed Step 4 substitution-copy propagation for direct template
+instantiation payloads.
 
-`types/template.cpp::ensure_template_struct_instantiated_from_args()` now
-preserves `TypeSpec::record_def` when explicit full-specialization reuse
-selects a concrete specialization, even if a stale rendered instantiation map
-entry already exists. Its tag-only injected fallback reconstruction also
-copies `record_def` from the known instantiated `struct_tag_def_map` node.
+`types/base.cpp` now copies `TypeSpec::record_def` when a template type
+parameter is substituted into cloned member typedefs, fields, method return
+types, and method parameter types. Existing base/tag, pointer, reference, and
+cv propagation behavior is otherwise preserved.
 
-`types/base.cpp` now returns the newly created direct template-instantiation
-record through the caller `TypeSpec::record_def`, and both template-base
-fallback reconstructions from `base_mangled` preserve the known base
-instantiation node as `record_def`.
-
-Focused parser coverage now checks explicit specialization reuse against a
-stale rendered template tag-map payload, and direct template emission checks
-that newly created instantiations return the created `record_def`.
+Focused parser coverage now instantiates a manually built `Box<T>` primary
+with a record-backed `PayloadAlias` actual type and checks that the cloned
+member typedef, field, method return, and method parameter all keep the
+`Payload` `record_def`.
 
 ## Suggested Next
 
-Run the broader Step 4 substitution copy audit: member typedefs, fields, method
-return types, and method parameters should preserve `record_def` when template
-type-parameter substitution copies a record-backed actual type into an
-instantiated record payload.
+Run a final Step 4 inventory pass over the remaining template record identity
+paths and decide whether any additional bounded template propagation packet is
+needed before moving to compatibility demotion.
 
 ## Watchouts
 
@@ -40,8 +35,9 @@ left unchanged. Direct template-emission reuse does not yet infer
 `record_def` from an existing rendered map entry because that can be stale; it
 only returns `record_def` when this producer creates the concrete node.
 
-The remaining Step 4 work is propagation through substitution copies, not
-deleting rendered compatibility state.
+The new substitution coverage uses a hand-built parser fixture so the direct
+instantiation clone path can inspect method payloads without depending on
+record-body method parsing support.
 
 ## Proof
 
