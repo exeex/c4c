@@ -1,7 +1,8 @@
 # Parser AST Handoff Role Labeling
 
-Status: Open
+Status: Closed
 Created: 2026-04-29
+Closed: 2026-04-29
 
 Parent Ideas:
 - [123_parser_legacy_string_lookup_removal_convergence.md](/workspaces/c4c/ideas/closed/123_parser_legacy_string_lookup_removal_convergence.md)
@@ -55,3 +56,15 @@ from behavior.
 - Any suspicious cross-stage `std::string` or rendered-spelling authority found
   during review is listed in a follow-up idea instead of being fixed ad hoc.
 - Parser and frontend tests still build or compile with no behavior change.
+
+## Completion Summary
+
+The active runbook labeled `TypeSpec`, `TemplateArgRef`, and `Node` parser AST
+handoff fields by boundary role while preserving the flat carrier model and
+behavior. Suspicious string-authority cleanup was left to follow-up open ideas,
+including `ideas/open/130_sema_hir_ast_ingress_boundary_audit.md` and
+`ideas/open/131_cross_ir_string_authority_audit_and_followup_queue.md`.
+
+Close proof used matching frontend parser regression logs:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_parser_tests$'`.
+The regression guard passed with 1 passed / 0 failed before and after.
