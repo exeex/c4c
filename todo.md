@@ -26,10 +26,23 @@ whose rendered template parameter name is stale while
 
 ## Suggested Next
 
-Next bounded Step 3 packet: continue the remaining parser semantic lookup
-split by inventorying any other template/type binding state that still treats
-rendered spelling as semantic authority, without changing public support
-helper signatures or template rendered mirror maps.
+Step 3 remains active.
+
+Next bounded Step 3 packet: convert the alias-template substitution scratch
+state in `src/frontend/parser/impl/types/base.cpp` away from rendered spelling
+as semantic binding authority. Scope this to the `parse_type_name()` alias
+template path around `find_alias_template_info()`, the local
+`std::unordered_map<std::string, std::string> subst`,
+`substitute_template_arg_refs()`, and the related transformed-owner argument
+builder. Use `ParserAliasTemplateInfo::param_name_text_ids` as the primary
+parameter identity for substitution bindings, with rendered names retained only
+for existing argument-ref spelling, parsing compatibility, and fallback when a
+stored text id is invalid.
+
+Suggested focused proof: `cmake --build --preset default && ctest --test-dir
+build -j --output-on-failure -R
+'^(frontend_parser_tests|cpp_positive_sema_(template_specialization_member_typedef_trait_parse_cpp|template_specialization_typedef_chain_parse_cpp|template_specialization_visible_typedef_chain_parse_cpp|template_struct_specialization_parse_cpp|template_struct_specialization_runtime_cpp|template_bool_specialization_parse_cpp|specialization_identity_cpp|template_forward_pick_specialization_identity_cpp|eastl_slice6_template_defaults_and_refqual_cpp))$'
+> test_after.log 2>&1`
 
 ## Watchouts
 
@@ -38,6 +51,14 @@ the only available payload for pattern references; the conversion resolves that
 spelling back to parser `TextId` before touching binding maps. Avoid widening
 this into `parser_state.hpp`, template rendered mirrors, public binding vector
 APIs, `defined_struct_tags`, or `struct_tag_def_map`.
+
+For the next alias-template packet, do not change public support helper
+signatures, `ParserAliasTemplateInfo` lookup keys, template rendered mirror
+maps, `nttp_default_expr_tokens`, `defined_struct_tags`, or
+`struct_tag_def_map`. The local string-to-string substitution helper may still
+need to render substituted argument refs because `TypeSpec` and existing alias
+argument refs carry spelling; the semantic binding map should stop using those
+rendered parameter names as its primary key.
 
 The focused unit test includes `impl/types/types_helpers.hpp` directly, so that
 header now explicitly includes `<stdexcept>` instead of relying on including
