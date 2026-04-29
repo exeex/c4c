@@ -1,5 +1,6 @@
 #include "lexer.hpp"
 #include "impl/parser_impl.hpp"
+#include "impl/types/types_helpers.hpp"
 #include "parser.hpp"
 
 #include <cstdlib>
@@ -2777,6 +2778,83 @@ void test_parser_template_scope_type_param_prefers_text_id_over_spelling() {
   parser.pop_template_scope();
 }
 
+void test_parser_template_specialization_binding_prefers_param_text_id() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  const c4c::TextId trait_text = texts.intern("Trait");
+  const c4c::TextId param_text = texts.intern("T");
+
+  c4c::Node* primary = parser.make_node(c4c::NK_STRUCT_DEF, 1);
+  primary->name = arena.strdup("Trait");
+  primary->unqualified_name = arena.strdup("Trait");
+  primary->unqualified_text_id = trait_text;
+  primary->namespace_context_id = parser.current_namespace_context_id();
+  primary->n_template_params = 1;
+  primary->template_param_names = arena.alloc_array<const char*>(1);
+  primary->template_param_names[0] = arena.strdup("PrimaryT");
+  primary->template_param_name_text_ids = arena.alloc_array<c4c::TextId>(1);
+  primary->template_param_name_text_ids[0] = param_text;
+  primary->template_param_is_nttp = arena.alloc_array<bool>(1);
+  primary->template_param_is_nttp[0] = false;
+  primary->template_param_is_pack = arena.alloc_array<bool>(1);
+  primary->template_param_is_pack[0] = false;
+
+  c4c::Node* specialization = parser.make_node(c4c::NK_STRUCT_DEF, 2);
+  specialization->name = arena.strdup("Trait_T_int");
+  specialization->unqualified_name = arena.strdup("Trait");
+  specialization->unqualified_text_id = trait_text;
+  specialization->namespace_context_id = parser.current_namespace_context_id();
+  specialization->template_origin_name = arena.strdup("Trait");
+  specialization->n_template_params = 1;
+  specialization->template_param_names = arena.alloc_array<const char*>(1);
+  specialization->template_param_names[0] = arena.strdup("StaleRenderedName");
+  specialization->template_param_name_text_ids =
+      arena.alloc_array<c4c::TextId>(1);
+  specialization->template_param_name_text_ids[0] = param_text;
+  specialization->template_param_is_nttp = arena.alloc_array<bool>(1);
+  specialization->template_param_is_nttp[0] = false;
+  specialization->template_param_is_pack = arena.alloc_array<bool>(1);
+  specialization->template_param_is_pack[0] = false;
+  specialization->template_param_has_default = arena.alloc_array<bool>(1);
+  specialization->template_param_has_default[0] = false;
+  specialization->n_template_args = 1;
+  specialization->template_arg_types = arena.alloc_array<c4c::TypeSpec>(1);
+  specialization->template_arg_types[0].array_size = -1;
+  specialization->template_arg_types[0].inner_rank = -1;
+  specialization->template_arg_types[0].base = c4c::TB_TYPEDEF;
+  specialization->template_arg_types[0].tag = arena.strdup("T");
+  specialization->template_arg_is_value = arena.alloc_array<bool>(1);
+  specialization->template_arg_is_value[0] = false;
+
+  c4c::Parser::TemplateArgParseResult actual{};
+  actual.is_value = false;
+  actual.type.array_size = -1;
+  actual.type.inner_rank = -1;
+  actual.type.base = c4c::TB_INT;
+  std::vector<c4c::Parser::TemplateArgParseResult> actual_args = {actual};
+  std::vector<c4c::Node*> specializations = {specialization};
+  std::vector<std::pair<std::string, c4c::TypeSpec>> type_bindings;
+  std::vector<std::pair<std::string, long long>> nttp_bindings;
+
+  const c4c::Node* selected = c4c::select_template_struct_pattern(
+      actual_args, primary, &specializations, parser, &type_bindings,
+      &nttp_bindings);
+
+  expect_true(selected == specialization,
+              "template specialization matching should bind by parameter TextId even when rendered parameter spelling is stale");
+  expect_eq_int(static_cast<int>(type_bindings.size()), 1,
+                "TextId-based specialization matching should emit the type binding");
+  expect_eq(type_bindings[0].first, "StaleRenderedName",
+            "specialization binding output should preserve compatibility spelling");
+  expect_true(type_bindings[0].second.base == c4c::TB_INT,
+              "specialization binding should capture the concrete argument type");
+  expect_true(nttp_bindings.empty(),
+              "type-only specialization matching should not emit NTTP bindings");
+}
+
 void test_parser_template_type_arg_uses_visible_scope_local_alias() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4058,6 +4136,7 @@ int main() {
   test_parser_template_member_suffix_probe_uses_token_spelling();
   test_parser_template_type_arg_probes_use_token_spelling();
   test_parser_template_scope_type_param_prefers_text_id_over_spelling();
+  test_parser_template_specialization_binding_prefers_param_text_id();
   test_parser_template_type_arg_uses_visible_scope_local_alias();
   test_parser_synthesized_typedef_binding_unregisters_by_text_id();
   test_parser_template_type_arg_prefers_local_visible_typedef_text_id();

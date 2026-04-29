@@ -9,6 +9,7 @@
 
 #include <cstring>
 #include <functional>
+#include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -775,6 +776,68 @@ bool is_value_template_param(const Node* tpl_def, const char* name) {
     return false;
 }
 
+TextId template_param_text_id(const Node* tpl_def, int param_index,
+                              const Parser& parser) {
+    if (!tpl_def || param_index < 0 ||
+        param_index >= tpl_def->n_template_params ||
+        !tpl_def->template_param_names) {
+        return kInvalidText;
+    }
+    if (tpl_def->template_param_name_text_ids &&
+        tpl_def->template_param_name_text_ids[param_index] != kInvalidText) {
+        return tpl_def->template_param_name_text_ids[param_index];
+    }
+    const char* name = tpl_def->template_param_names[param_index];
+    return name ? parser.parser_text_id_for_token(kInvalidText, name)
+                : kInvalidText;
+}
+
+int find_template_param_index(const Node* tpl_def, TextId name_text_id,
+                              const char* fallback_name,
+                              const Parser& parser) {
+    if (!tpl_def || !tpl_def->template_param_names) return -1;
+    if (name_text_id == kInvalidText && fallback_name && fallback_name[0]) {
+        name_text_id = parser.parser_text_id_for_token(kInvalidText,
+                                                       fallback_name);
+    }
+    if (name_text_id != kInvalidText) {
+        for (int i = 0; i < tpl_def->n_template_params; ++i) {
+            if (template_param_text_id(tpl_def, i, parser) == name_text_id)
+                return i;
+        }
+        return -1;
+    }
+    if (!fallback_name || !fallback_name[0]) return -1;
+    for (int i = 0; i < tpl_def->n_template_params; ++i) {
+        const char* param_name = tpl_def->template_param_names[i];
+        if (param_name && std::strcmp(param_name, fallback_name) == 0)
+            return i;
+    }
+    return -1;
+}
+
+TextId type_template_param_text_id(const Node* tpl_def, const char* name,
+                                   const Parser& parser) {
+    const int index = find_template_param_index(tpl_def, kInvalidText, name,
+                                                parser);
+    if (index < 0 || !tpl_def->template_param_is_nttp ||
+        tpl_def->template_param_is_nttp[index]) {
+        return kInvalidText;
+    }
+    return template_param_text_id(tpl_def, index, parser);
+}
+
+TextId value_template_param_text_id(const Node* tpl_def, const char* name,
+                                    const Parser& parser) {
+    const int index = find_template_param_index(tpl_def, kInvalidText, name,
+                                                parser);
+    if (index < 0 || !tpl_def->template_param_is_nttp ||
+        !tpl_def->template_param_is_nttp[index]) {
+        return kInvalidText;
+    }
+    return template_param_text_id(tpl_def, index, parser);
+}
+
 TypeSpec strip_pattern_qualifiers(TypeSpec ts, const TypeSpec& pattern) {
     if (pattern.is_const) ts.is_const = false;
     if (pattern.is_volatile) ts.is_volatile = false;
@@ -792,7 +855,7 @@ TypeSpec strip_pattern_qualifiers(TypeSpec ts, const TypeSpec& pattern) {
 
 bool match_type_pattern(const TypeSpec& pattern_raw, const TypeSpec& actual_raw,
                         const Node* tpl_def, const Parser& parser,
-                        std::unordered_map<std::string, TypeSpec>* type_bindings) {
+                        std::unordered_map<TextId, TypeSpec>* type_bindings) {
     TypeSpec pattern = parser.resolve_typedef_type_chain(pattern_raw);
     TypeSpec actual = parser.resolve_typedef_type_chain(actual_raw);
     if (pattern.is_const && !actual.is_const) return false;
@@ -803,11 +866,13 @@ bool match_type_pattern(const TypeSpec& pattern_raw, const TypeSpec& actual_raw,
     if (pattern.array_rank > actual.array_rank) return false;
 
     if (pattern.base == TB_TYPEDEF && pattern.tag &&
-        is_type_template_param(tpl_def, pattern.tag)) {
+        type_template_param_text_id(tpl_def, pattern.tag, parser) != kInvalidText) {
+        const TextId param_text_id =
+            type_template_param_text_id(tpl_def, pattern.tag, parser);
         TypeSpec bound = strip_pattern_qualifiers(actual, pattern);
-        auto it = type_bindings->find(pattern.tag);
+        auto it = type_bindings->find(param_text_id);
         if (it == type_bindings->end()) {
-            (*type_bindings)[pattern.tag] = bound;
+            (*type_bindings)[param_text_id] = bound;
             return true;
         }
         return parser.are_types_compatible(it->second, bound);
@@ -1013,8 +1078,8 @@ const Node* select_template_struct_pattern(
     auto try_candidate = [&](const Node* cand) {
         if (!cand) return;
         if (cand->n_template_args != static_cast<int>(actual_args.size())) return;
-        std::unordered_map<std::string, TypeSpec> type_bindings_map;
-        std::unordered_map<std::string, long long> value_bindings_map;
+        std::unordered_map<TextId, TypeSpec> type_bindings_map;
+        std::unordered_map<TextId, long long> value_bindings_map;
         for (int i = 0; i < cand->n_template_args; ++i) {
             const ParsedTemplateArg& actual = actual_args[i];
             const bool pattern_is_value =
@@ -1023,9 +1088,12 @@ const Node* select_template_struct_pattern(
             if (pattern_is_value) {
                 const char* pname = cand->template_arg_nttp_names ?
                     cand->template_arg_nttp_names[i] : nullptr;
-                if (pname && is_value_template_param(cand, pname)) {
-                    auto it = value_bindings_map.find(pname);
-                    if (it == value_bindings_map.end()) value_bindings_map[pname] = actual.value;
+                const TextId param_text_id =
+                    value_template_param_text_id(cand, pname, parser);
+                if (param_text_id != kInvalidText) {
+                    auto it = value_bindings_map.find(param_text_id);
+                    if (it == value_bindings_map.end())
+                        value_bindings_map[param_text_id] = actual.value;
                     else if (it->second != actual.value) return;
                 } else {
                     if (cand->template_arg_values[i] != actual.value) return;
@@ -1040,14 +1108,19 @@ const Node* select_template_struct_pattern(
         for (int i = 0; i < cand->n_template_params; ++i) {
             const char* pname = cand->template_param_names[i];
             if (!pname) continue;
+            const TextId param_text_id = template_param_text_id(cand, i, parser);
             const bool has_default =
                 cand->template_param_has_default &&
                 cand->template_param_has_default[i];
             if (cand->template_param_is_nttp[i]) {
-                if (!has_default && value_bindings_map.count(pname) == 0)
+                if (!has_default &&
+                    (param_text_id == kInvalidText ||
+                     value_bindings_map.count(param_text_id) == 0))
                     return;
             } else {
-                if (!has_default && type_bindings_map.count(pname) == 0)
+                if (!has_default &&
+                    (param_text_id == kInvalidText ||
+                     type_bindings_map.count(param_text_id) == 0))
                     return;
             }
         }
@@ -1061,8 +1134,11 @@ const Node* select_template_struct_pattern(
         for (int i = 0; i < cand->n_template_params; ++i) {
             const char* pname = cand->template_param_names[i];
             if (!pname) continue;
+            const TextId param_text_id = template_param_text_id(cand, i, parser);
             if (cand->template_param_is_nttp[i]) {
-                auto it = value_bindings_map.find(pname);
+                auto it = param_text_id != kInvalidText
+                    ? value_bindings_map.find(param_text_id)
+                    : value_bindings_map.end();
                 if (it != value_bindings_map.end()) {
                     out_nttp_bindings->push_back({pname, it->second});
                 } else if (cand->template_param_has_default &&
@@ -1070,7 +1146,9 @@ const Node* select_template_struct_pattern(
                     out_nttp_bindings->push_back({pname, cand->template_param_default_values[i]});
                 }
             } else {
-                auto it = type_bindings_map.find(pname);
+                auto it = param_text_id != kInvalidText
+                    ? type_bindings_map.find(param_text_id)
+                    : type_bindings_map.end();
                 if (it != type_bindings_map.end()) {
                     out_type_bindings->push_back({pname, it->second});
                 } else if (cand->template_param_has_default &&
