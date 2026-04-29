@@ -3183,6 +3183,67 @@ void test_parser_template_instantiation_dedup_keys_mirror_direct_emission() {
       "direct template emission should detect a missing rendered mirror");
 }
 
+void test_parser_direct_record_types_carry_record_definition() {
+  c4c::Lexer lexer("struct Direct { int value; } after;\n");
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table());
+
+  const c4c::TypeSpec direct_ts = parser.parse_base_type();
+  expect_true(direct_ts.base == c4c::TB_STRUCT,
+              "direct struct type parsing should produce a struct TypeSpec");
+  expect_true(direct_ts.tag != nullptr,
+              "direct struct type parsing should preserve the final tag spelling");
+  expect_true(direct_ts.record_def != nullptr,
+              "direct struct TypeSpec should carry the concrete parser record definition");
+  expect_true(direct_ts.record_def->kind == c4c::NK_STRUCT_DEF,
+              "direct struct record identity should point at an NK_STRUCT_DEF");
+  expect_true(!direct_ts.record_def->is_union,
+              "direct struct record identity should preserve record kind");
+  expect_true(direct_ts.record_def->name == direct_ts.tag ||
+                  std::string_view(direct_ts.record_def->name) ==
+                      std::string_view(direct_ts.tag),
+              "direct struct record identity should not change TypeSpec tag spelling");
+  expect_true(parser.definition_state_.struct_tag_def_map[direct_ts.tag] ==
+                  direct_ts.record_def,
+              "direct struct record identity should match the compatibility tag map entry");
+
+  c4c::Lexer union_lexer("union Payload { int value; } after;\n");
+  const std::vector<c4c::Token> union_tokens = union_lexer.scan_all();
+  c4c::Arena union_arena;
+  c4c::Parser union_parser(union_tokens, union_arena, &union_lexer.text_table(),
+                           &union_lexer.file_table());
+
+  const c4c::TypeSpec union_ts = union_parser.parse_base_type();
+  expect_true(union_ts.base == c4c::TB_UNION,
+              "direct union type parsing should produce a union TypeSpec");
+  expect_true(union_ts.record_def != nullptr,
+              "direct union TypeSpec should carry the concrete parser record definition");
+  expect_true(union_ts.record_def->kind == c4c::NK_STRUCT_DEF,
+              "direct union record identity should point at an NK_STRUCT_DEF");
+  expect_true(union_ts.record_def->is_union,
+              "direct union record identity should preserve record kind");
+  expect_true(union_ts.tag != nullptr &&
+                  std::string_view(union_ts.record_def->name) ==
+                      std::string_view(union_ts.tag),
+              "direct union record identity should preserve TypeSpec tag spelling");
+}
+
+void test_parser_tag_only_record_types_keep_null_record_definition() {
+  c4c::Lexer lexer("struct Forward after;\n");
+  const std::vector<c4c::Token> tokens = lexer.scan_all();
+  c4c::Arena arena;
+  c4c::Parser parser(tokens, arena, &lexer.text_table(), &lexer.file_table());
+
+  const c4c::TypeSpec tag_only_ts = parser.parse_base_type();
+  expect_true(tag_only_ts.base == c4c::TB_STRUCT,
+              "tag-only struct parsing should still produce a struct TypeSpec");
+  expect_true(tag_only_ts.tag != nullptr,
+              "tag-only struct parsing should preserve the tag spelling");
+  expect_true(tag_only_ts.record_def == nullptr,
+              "tag-only struct TypeSpec should not synthesize typed record identity");
+}
+
 void test_parser_alias_template_value_probes_use_token_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -3395,6 +3456,8 @@ int main() {
   test_parser_template_instantiation_dedup_keys_mirror_specialization_reuse();
   test_parser_template_instantiation_dedup_keys_demote_rendered_sync();
   test_parser_template_instantiation_dedup_keys_mirror_direct_emission();
+  test_parser_direct_record_types_carry_record_definition();
+  test_parser_tag_only_record_types_keep_null_record_definition();
   test_parser_alias_template_value_probes_use_token_spelling();
   test_parser_alias_template_info_prefers_structured_key_over_recovery();
   test_parser_typename_template_parameter_probe_uses_token_spelling();

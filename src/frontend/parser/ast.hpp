@@ -96,6 +96,7 @@ struct TypeSpec {
     TypeBase base;
     TypeBase enum_underlying_base; // fixed underlying base for TB_ENUM, or TB_VOID when unknown/default
     const char* tag;         // struct/union/enum tag or typedef name (may be null)
+    Node* record_def;        // concrete parser-owned NK_STRUCT_DEF for struct/union types, or null
     const char** qualifier_segments; // structured qualifier path for tagged/typedef names
     int n_qualifier_segments;        // qualifier segment count (excludes base name)
     bool is_global_qualified;        // true when the source type started with ::

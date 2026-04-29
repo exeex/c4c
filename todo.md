@@ -3,62 +3,32 @@
 Status: Active
 Source Idea Path: ideas/open/127_typed_parser_record_identity_bridge.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Inventory Record Identity Through TypeSpec
+Current Step ID: Step 2
+Current Step Title: Add TypeSpec Record Identity Payload
 
 ## Just Finished
 
-Completed Step 1 inventory for the typed record identity bridge. The selected
-representation is a nullable parser-owned record definition pointer on
-`TypeSpec`, provisionally `Node* record_def`, populated only for `TB_STRUCT` and
-`TB_UNION` values when the parser already has the concrete `NK_STRUCT_DEF`.
+Completed Step 2 first implementation packet. `TypeSpec` now has nullable
+parser-owned record identity storage as `Node* record_def`, defaulting to null
+under existing zero-initialization and aggregate-copy behavior.
 
-This is stable enough for parser semantic lookup because record definition nodes
-are arena-owned for the parser lifetime, are already the values stored in
-`ParserDefinitionState::struct_defs` and `struct_tag_def_map`, and are the common
-object passed through ordinary record parsing, explicit specialization reuse,
-injected template instantiation, nested record fields, base classes, member
-typedef lookup, layout, and const-eval support paths. It is intentionally not a
-`TextId`: text identities are good spelling keys, but they cannot distinguish a
-rendered compatibility spelling from the actual record object selected by
-semantic parsing.
+Direct parser-owned record construction paths now populate `record_def` only
+when they already hold a concrete `NK_STRUCT_DEF`: ordinary
+`parse_base_type()` struct/union definitions and nested record member TypeSpecs
+set the pointer when `sd->n_fields >= 0`. Tag-only or forward-reference record
+TypeSpecs keep `record_def == nullptr`, and `TypeSpec::tag` spelling is left
+unchanged.
 
-Inventory result:
-- Direct record producers already have the pointer: `parse_struct_or_union`
-  returns `Node* sd`, `register_record_definition` installs the same `sd`, and
-  direct struct/union base-type parsing immediately builds the `TypeSpec`.
-- Template producers already have the pointer: explicit full-specialization reuse
-  sees `selected`, injected/direct instantiation creates `inst`, and template
-  member lookup resolves through the instantiated struct node before falling back
-  to rendered lookup.
-- Nested/member producers often have the pointer in hand while constructing field
-  declarations or walking owner nodes; copied `TypeSpec` values should preserve
-  the pointer when substituting typedefs, bases, template args, fields, params,
-  and member typedefs.
-- Semantic consumers currently using `TypeSpec::tag` are layout and const-eval
-  (`field_align`, `struct_align`, `struct_sizeof`, `compute_offsetof`,
-  `eval_const_int`), incomplete object checks in declarations, `offsetof`
-  folding, recursive member typedef/owner lookup in declarator parsing, template
-  static member/base lookup, and template/direct-emission dedup compatibility
-  checks.
-
-Retained `TypeSpec::tag` categories:
-- final spelling and emitted aggregate name for HIR/LIR/backend surfaces
-- diagnostics, dumps, and user-visible type rendering
-- namespace-qualified compatibility spelling for current maps and tests
-- unresolved or tag-only forward declarations where no `NK_STRUCT_DEF` exists
-- pending template spelling (`tpl_struct_origin`, mangled instance tag, and
-  deferred member typedef text) until the instantiation has a concrete record node
-- compatibility fallback for `struct_tag_def_map` while unconverted consumers
-  remain
+Focused parser tests now prove direct struct and union TypeSpecs carry the same
+record pointer registered in the compatibility tag map, while a tag-only
+forward record TypeSpec keeps null typed identity.
 
 ## Suggested Next
 
-First bounded implementation packet: add the nullable `TypeSpec` record identity
-payload and populate it only in direct parser-owned record construction paths.
-Owned implementation should be limited to the `TypeSpec` definition plus
-ordinary `parse_struct_or_union` / `register_record_definition` handoff sites
-that already hold `Node* sd`; do not convert semantic consumers yet.
+Next bounded packet: add a parser-local record-resolution helper for
+`const TypeSpec&` that returns `ts.record_def` first and falls back to
+`struct_tag_def_map[ts.tag]` only for tag-only compatibility, then convert one
+small consumer family to use it.
 
 ## Watchouts
 
@@ -67,15 +37,15 @@ compatibility payload. Do not treat `TextId` alone as semantic record identity.
 Do not delete `struct_tag_def_map` while tag-only compatibility consumers
 remain.
 
-The first propagation packet should preserve behavior with null `record_def` and
-must not force downstream HIR/LIR/backend consumers to understand parser node
-pointers. Consumer conversion should follow in a separate packet by adding a
-small parser-local helper that resolves `const TypeSpec&` to `Node*` through
-`record_def` first and `struct_tag_def_map[ts.tag]` second.
+The payload is intentionally parser-owned; do not require HIR/LIR/backend
+consumers to understand parser node pointers. Template-instantiated and alias
+propagation paths may still produce null or copied `record_def` depending on
+their source TypeSpec; convert those deliberately in later packets rather than
+through broad incidental rewrites.
 
 ## Proof
 
-Inventory-only packet. Build/tests intentionally not run.
+Delegated proof passed:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_hir_tests)$' > test_after.log 2>&1`
 
-Focused proof command for the first implementation packet:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_hir_tests)$'`
+Proof log: `test_after.log`

@@ -1360,6 +1360,7 @@ TypeSpec Parser::parse_base_type() {
         Node* sd = parse_struct_or_union(*this, false);
         ts.base = TB_STRUCT;
         ts.tag  = sd ? sd->name : nullptr;
+        ts.record_def = (sd && sd->n_fields >= 0) ? sd : nullptr;
         // In C++ mode, 'struct Pair<int>' should trigger template struct instantiation
         // just like 'Pair<int>' does via the typedef path. If the tag matches a known
         // template struct and '<' follows, fall through to the template instantiation
@@ -1376,6 +1377,7 @@ TypeSpec Parser::parse_base_type() {
         Node* sd = parse_struct_or_union(*this, true);
         ts.base = TB_UNION;
         ts.tag  = sd ? sd->name : nullptr;
+        ts.record_def = (sd && sd->n_fields >= 0) ? sd : nullptr;
         return ts;
     }
     if (has_enum) {

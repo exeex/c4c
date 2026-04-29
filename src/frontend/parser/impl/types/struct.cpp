@@ -849,6 +849,7 @@ bool try_parse_nested_record_member(
     anon_fts.array_rank = 0;
     anon_fts.base = inner_union ? TB_UNION : TB_STRUCT;
     anon_fts.tag = inner ? inner->name : nullptr;
+    anon_fts.record_def = (inner && inner->n_fields >= 0) ? inner : nullptr;
     parser.parse_attributes(&anon_fts);
 
     bool has_declarator = !parser.check(TokenKind::Semi) && !parser.check(TokenKind::RBrace);
@@ -874,6 +875,7 @@ bool try_parse_nested_record_member(
             fts2.array_rank = 0;
             fts2.base = inner_union ? TB_UNION : TB_STRUCT;
             fts2.tag = inner ? inner->name : nullptr;
+            fts2.record_def = (inner && inner->n_fields >= 0) ? inner : nullptr;
             const char* fname2 = nullptr;
             parser.parse_declarator(fts2, &fname2);
             if (fname2) {
