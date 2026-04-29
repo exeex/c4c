@@ -478,6 +478,17 @@ ConstEvalEnv bind_consteval_call_env(
           !callee_expr->template_arg_is_value[i]) {
         continue;
       }
+      if (callee_expr->template_arg_exprs && callee_expr->template_arg_exprs[i]) {
+        auto expr_value =
+            evaluate_constant_expr(callee_expr->template_arg_exprs[i], outer_env);
+        if (expr_value.ok()) {
+          (*out_nttp_bindings)[param_name] = expr_value.as_int();
+          record_nttp_binding_mirrors(
+              expr_value.as_int(), nttp_binding_key_for_param(func_def, i),
+              out_nttp_bindings_by_text, out_nttp_bindings_by_key);
+          continue;
+        }
+      }
       if (callee_expr->template_arg_nttp_names && callee_expr->template_arg_nttp_names[i] &&
           outer_env.nttp_bindings) {
         auto it = outer_env.nttp_bindings->find(callee_expr->template_arg_nttp_names[i]);

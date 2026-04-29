@@ -9,35 +9,37 @@ Current Step Title: Quarantine NTTP and Template Argument Debug Text
 ## Just Finished
 
 Plan Step 3 `Quarantine NTTP and Template Argument Debug Text` continued with
-parser `types/base.cpp` template-arg ref rendering. The local
-`render_template_arg_ref` nested-argument rendering and `template_arg_refs_text`
-now use structured `TemplateArgRef` payload first: value args render from
-`value`, and type args render from the nested `TypeSpec` tag or mangled type.
-`debug_text` is only an explicit fallback when the structured type payload
-cannot produce a spelling.
+the regression repair for the AST expression payload side of parser `$expr:` /
+`template_arg_nttp_names`. Consteval call binding, HIR consteval-call lowering,
+HIR call NTTP deduction, and AST template value-arg resolution now evaluate
+`template_arg_exprs` first and only bypass the rendered-name path when that
+structured evaluation succeeds.
 
-Focused coverage now parses `Outer<InnerAlias>` where `InnerAlias` carries a
-nested value `TemplateArgRef` with stale `debug_text`. The rendered template
-arg ref is `@Inner:7`, proving the parser render path uses the structured
-value instead of the stale debug string.
+Focused coverage now builds a callee whose structured template arg expression
+evaluates to `Structured + 1 == 7` while the stale rendered mirror names
+`$expr:Rendered+1 == 101`. The consteval binding records `N = 7`, proving the
+rendered `$expr:` string cannot select the semantic payload when the structured
+expression succeeds. Failed structured evaluation now falls through to the
+existing deferred fallback path, which repairs the variadic `sizeof...` pack
+case.
 
 ## Suggested Next
 
-Continue Step 3 with the `$expr:` / `template_arg_nttp_names` projection path,
-or stop for supervisor review if the remaining NTTP string authority needs a
-broader parser/HIR boundary packet.
+Continue Step 3 by reviewing remaining string fallbacks that lack a structured
+AST expression payload, especially HIR template materialization paths that still
+decode `TemplateArgRef::debug_text`.
 
 ## Watchouts
 
-`debug_text` is still used as an explicit fallback for structurally unknown
-type arguments in parser rendering and the canonical key helper. This packet
-intentionally did not touch HIR template materialization or parser-side
-`$expr:` / `template_arg_nttp_names` flows. Avoid changing broad `Node::name`
-or `TypeSpec::tag` behavior while continuing Step 3.
+Plain forwarded NTTP identifiers still use `template_arg_nttp_names` because no
+structured expression node is produced for that legacy path. This packet only
+quarantines rendered-name authority when `template_arg_exprs[index]` evaluates
+successfully. `debug_text` remains an explicit fallback for structurally unknown
+type args.
 
 ## Proof
 
 Ran the supervisor-selected proof:
-`cmake --build build --target c4cll frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -R '^frontend_parser_tests$|template_alias_nttp_expr|template_qualified_nttp_parse|template_type_context_nttp_parse|template_typedef_nttp_variants_parse|qualified_trait_value_template_arg_parse' --output-on-failure >> test_after.log 2>&1`
+`cmake --build build --target c4cll frontend_parser_tests > test_after.log 2>&1 && ctest --test-dir build -R '^frontend_parser_tests$|template_alias_nttp_expr|template_qualified_nttp_parse|template_type_context_nttp_parse|template_typedef_nttp_variants_parse|qualified_trait_value_template_arg_parse|variadic_template_arg_sizeof_pack_parse' --output-on-failure >> test_after.log 2>&1`
 
 Result: passed; proof log is `test_after.log`.

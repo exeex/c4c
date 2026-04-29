@@ -336,6 +336,17 @@ bool Lowerer::resolve_ast_template_value_arg(
           ? ref->template_arg_nttp_names[index]
           : nullptr;
   if (out_debug_ref) *out_debug_ref = nttp_name;
+  if (ref->template_arg_exprs && ref->template_arg_exprs[index]) {
+    LowererConstEvalStructuredMaps structured_maps;
+    ConstEvalEnv env = make_lowerer_consteval_env(
+        structured_maps, ctx ? &ctx->local_const_bindings : nullptr);
+    if (ctx) env.nttp_bindings = &ctx->nttp_bindings;
+    auto expr_value = evaluate_constant_expr(ref->template_arg_exprs[index], env);
+    if (expr_value.ok()) {
+      *out_value = expr_value.as_int();
+      return true;
+    }
+  }
   if (ctx && nttp_name && nttp_name[0]) {
     auto it = ctx->nttp_bindings.find(nttp_name);
     if (it != ctx->nttp_bindings.end()) {

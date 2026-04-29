@@ -1,6 +1,21 @@
 #include "templates.hpp"
 
 namespace c4c::hir {
+namespace {
+
+bool eval_template_arg_expr_with_nttp_bindings(const Node* expr,
+                                               const NttpBindings* enclosing_nttp,
+                                               long long* out) {
+  if (!expr || !out) return false;
+  ConstEvalEnv env{};
+  env.nttp_bindings = enclosing_nttp;
+  auto value = evaluate_constant_expr(expr, env);
+  if (!value.ok()) return false;
+  *out = value.as_int();
+  return true;
+}
+
+}  // namespace
 
 TypeBindings Lowerer::build_call_bindings(const Node* call_var, const Node* fn_def,
                                           const TypeBindings* enclosing_bindings) {
@@ -75,6 +90,15 @@ NttpBindings Lowerer::build_call_nttp_bindings(const Node* call_var, const Node*
           continue;
         }
         const std::string key = pack_binding_name(fn_def->template_param_names[i], pack_index);
+        long long expr_value = 0;
+        if (call_var->template_arg_exprs && call_var->template_arg_exprs[arg_index]) {
+          if (eval_template_arg_expr_with_nttp_bindings(
+                  call_var->template_arg_exprs[arg_index], enclosing_nttp,
+                  &expr_value)) {
+            bindings[key] = expr_value;
+            continue;
+          }
+        }
         if (call_var->template_arg_nttp_names && call_var->template_arg_nttp_names[arg_index]) {
           if (enclosing_nttp) {
             auto it = enclosing_nttp->find(call_var->template_arg_nttp_names[arg_index]);
@@ -88,6 +112,16 @@ NttpBindings Lowerer::build_call_nttp_bindings(const Node* call_var, const Node*
     }
     if (arg_index >= total_args) continue;
     if (call_var->template_arg_is_value && call_var->template_arg_is_value[arg_index]) {
+      long long expr_value = 0;
+      if (call_var->template_arg_exprs && call_var->template_arg_exprs[arg_index]) {
+        if (eval_template_arg_expr_with_nttp_bindings(
+                call_var->template_arg_exprs[arg_index], enclosing_nttp,
+                &expr_value)) {
+          bindings[fn_def->template_param_names[i]] = expr_value;
+          ++arg_index;
+          continue;
+        }
+      }
       if (call_var->template_arg_nttp_names && call_var->template_arg_nttp_names[arg_index]) {
         if (enclosing_nttp) {
           auto it = enclosing_nttp->find(call_var->template_arg_nttp_names[arg_index]);

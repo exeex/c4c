@@ -2,6 +2,7 @@
 #include "impl/parser_impl.hpp"
 #include "impl/types/types_helpers.hpp"
 #include "parser.hpp"
+#include "sema/consteval.hpp"
 #include "sema/type_utils.hpp"
 
 #include <cstdlib>
@@ -4444,6 +4445,62 @@ void test_parser_template_arg_ref_rendering_prefers_structured_nested_arg() {
             "parser template arg ref rendering should prefer structured nested value over debug_text");
 }
 
+void test_consteval_template_arg_expr_payload_ignores_stale_rendered_name() {
+  c4c::Arena arena;
+  c4c::TextTable texts;
+  c4c::FileTable files;
+  c4c::Parser parser({}, arena, &texts, &files, c4c::SourceProfile::CppSubset);
+
+  c4c::Node* fn = parser.make_node(c4c::NK_FUNCTION, 1);
+  fn->kind = c4c::NK_FUNCTION;
+  fn->n_template_params = 1;
+  fn->template_param_names = arena.alloc_array<const char*>(1);
+  fn->template_param_names[0] = arena.strdup("N");
+  fn->template_param_is_nttp = arena.alloc_array<bool>(1);
+  fn->template_param_is_nttp[0] = true;
+
+  c4c::Node* lhs = parser.make_node(c4c::NK_VAR, 1);
+  lhs->kind = c4c::NK_VAR;
+  lhs->name = arena.strdup("Structured");
+  c4c::Node* rhs = parser.make_node(c4c::NK_INT_LIT, 1);
+  rhs->kind = c4c::NK_INT_LIT;
+  rhs->ival = 1;
+  c4c::Node* expr = parser.make_node(c4c::NK_BINOP, 1);
+  expr->kind = c4c::NK_BINOP;
+  expr->op = arena.strdup("+");
+  expr->left = lhs;
+  expr->right = rhs;
+
+  c4c::Node* callee = parser.make_node(c4c::NK_VAR, 1);
+  callee->kind = c4c::NK_VAR;
+  callee->name = arena.strdup("fn");
+  callee->has_template_args = true;
+  callee->n_template_args = 1;
+  callee->template_arg_is_value = arena.alloc_array<bool>(1);
+  callee->template_arg_is_value[0] = true;
+  callee->template_arg_values = arena.alloc_array<long long>(1);
+  callee->template_arg_values[0] = 0;
+  callee->template_arg_nttp_names = arena.alloc_array<const char*>(1);
+  callee->template_arg_nttp_names[0] = arena.strdup("$expr:Rendered+1");
+  callee->template_arg_exprs = arena.alloc_array<c4c::Node*>(1);
+  callee->template_arg_exprs[0] = expr;
+
+  c4c::hir::ConstMap outer_nttp;
+  outer_nttp["Structured"] = 6;
+  outer_nttp["Rendered"] = 100;
+  c4c::hir::ConstEvalEnv outer_env{};
+  outer_env.nttp_bindings = &outer_nttp;
+  c4c::hir::TypeBindings type_bindings;
+  c4c::hir::NttpBindings nttp_bindings;
+  c4c::hir::bind_consteval_call_env(
+      callee, fn, outer_env, &type_bindings, &nttp_bindings);
+
+  expect_true(nttp_bindings.count("N") == 1,
+              "consteval call binding should evaluate structured NTTP expression payload");
+  expect_eq_int(static_cast<int>(nttp_bindings["N"]), 7,
+                "stale rendered $expr text must not select the NTTP value");
+}
+
 void test_parser_typename_template_parameter_probe_uses_token_spelling() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -4599,6 +4656,7 @@ int main() {
   test_template_arg_ref_equivalence_ignores_debug_text_when_structured_payload_matches();
   test_canonical_template_struct_type_key_prefers_structured_arg_over_debug_text();
   test_parser_template_arg_ref_rendering_prefers_structured_nested_arg();
+  test_consteval_template_arg_expr_payload_ignores_stale_rendered_name();
   test_parser_typename_template_parameter_probe_uses_token_spelling();
   test_parser_post_pointer_qualifier_probes_use_token_spelling();
   test_parser_qualified_declarator_name_uses_token_spelling();

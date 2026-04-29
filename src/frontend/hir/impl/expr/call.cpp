@@ -573,6 +573,15 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
       if (!fn_def->template_param_names[i]) continue;
       if (fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]) {
         if (n->left->template_arg_is_value && n->left->template_arg_is_value[i]) {
+          if (n->left->template_arg_exprs && n->left->template_arg_exprs[i]) {
+            auto expr_value = evaluate_constant_expr(
+                n->left->template_arg_exprs[i], arg_env);
+            if (expr_value.ok()) {
+              ce_nttp_bindings[fn_def->template_param_names[i]] =
+                  expr_value.as_int();
+              continue;
+            }
+          }
           if (n->left->template_arg_nttp_names && n->left->template_arg_nttp_names[i] &&
               ctx && !ctx->nttp_bindings.empty()) {
             auto it = ctx->nttp_bindings.find(n->left->template_arg_nttp_names[i]);
