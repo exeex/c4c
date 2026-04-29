@@ -8,47 +8,48 @@ Current Step Title: Demote struct_tag_def_map To Compatibility Mirror
 
 ## Just Finished
 
-Step 5 converted the template static-member lookup blocker in
-`types/template.cpp`.
+Step 5 final classification pass found no remaining primary semantic
+`struct_tag_def_map` authority after the template static-member blocker fix.
 
-`try_eval_template_static_member` now asks
-`ensure_template_struct_instantiated_from_args()` for a resolved `TypeSpec` and
-uses `resolve_record_type_spec()` so `TypeSpec::record_def` is semantic
-authority when present. The rendered `struct_tag_def_map` lookup remains only
-as fallback for tag-only compatibility.
+Remaining map use is classified as compatibility/fallback:
 
-Recursive inherited static-member lookup now resolves each `base_ts` through
-`resolve_record_type_spec(base_ts, &definition_state_.struct_tag_def_map)`,
-which prefers typed base identity before rendered tag fallback.
+- Mirror writers for parsed records, testing hooks, and direct/template
+  instantiation spelling keys.
+- Template instantiation dedup/reuse checks that preserve rendered spelling
+  compatibility while returning `TypeSpec::record_def` when the concrete record
+  is known.
+- `resolve_record_type_spec()` fallbacks and call sites that now prefer
+  `TypeSpec::record_def` before rendered tag lookup.
+- Const-eval/layout callers that pass the map so tag-only compatibility types
+  still work when no typed record identity is available.
+- Legacy nested-owner/member-typedef fallback branches that only run after the
+  typed owner path fails.
 
-Focused parser coverage now proves stale rendered map entries cannot redirect
-template static-member lookup: the instantiated record map key points at one
-stale record and the base tag points at another stale record, but lookup still
-returns the static member value from the real typed base `record_def`.
+Added a local `ParserDefinitionState` comment documenting
+`struct_tag_def_map` as a rendered-tag compatibility mirror rather than typed
+semantic authority.
 
 ## Suggested Next
 
-Run a final Step 5 classification pass over remaining
-`DefinitionState::struct_tag_def_map` readers/writers and record whether the
-map can now be documented or renamed as a compatibility mirror without changing
-behavior. Keep the packet inventory-first and only make a tiny documentation or
-name-local clarification if the classification is unambiguous.
+Step 5 is ready for plan-owner review/handoff. Suggested next packet: advance
+to Step 6 reproof and return-to-parent-parser-cleanup decision, with supervisor
+selecting the broader validation scope.
 
 ## Watchouts
 
 Do not delete `struct_tag_def_map` or remove rendered template compatibility
-keys during Step 5. Preserve `TypeSpec::tag` as spelling, diagnostics, emitted
-text, and compatibility payload.
+keys as part of this bridge. The retained map still supports tag-only fallback,
+testing hooks, rendered instantiation keys, and final spelling compatibility.
 
-The converted static-member path still passes the map to
-`resolve_record_type_spec()` and `eval_const_int()` for tag-only/layout
-compatibility; that is intentional fallback behavior, not semantic authority
-when a `record_def` exists.
+Preserve `TypeSpec::tag` as spelling, diagnostics, emitted text, and
+compatibility payload; semantic record lookup should continue to flow through
+`TypeSpec::record_def` where available.
 
 ## Proof
 
 Delegated proof for this packet:
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_parser_tests|frontend_hir_tests|frontend_cxx_)' > test_after.log 2>&1`
+`git diff --check -- todo.md src/frontend/parser/impl/parser_state.hpp src/frontend/parser/impl/support.cpp src/frontend/parser/impl/types/base.cpp src/frontend/parser/impl/types/template.cpp src/frontend/parser/impl/types/declarator.cpp src/frontend/parser/impl/types/struct.cpp src/frontend/parser/impl/declarations.cpp src/frontend/parser/impl/expressions.cpp tests/frontend/frontend_parser_tests.cpp`
 
-Result: passed. Proof log: `test_after.log`.
+Result: passed. This text-only classification packet did not update
+`test_after.log`.

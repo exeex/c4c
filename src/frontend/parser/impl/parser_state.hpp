@@ -81,6 +81,8 @@ struct ParserDefinitionState {
   std::vector<Node*> struct_defs;
   int anon_counter = 0;
   std::set<std::string> defined_struct_tags;
+  // Rendered-tag compatibility mirror. Semantic record lookup should prefer
+  // TypeSpec::record_def via resolve_record_type_spec() before using this map.
   std::unordered_map<std::string, Node*> struct_tag_def_map;
   Node* last_enum_def = nullptr;
 };
